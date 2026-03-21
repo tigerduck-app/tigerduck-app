@@ -10,7 +10,7 @@ enum MockData {
             classroom: "RB-504",
             enrolledCount: 45,
             maxCount: 60,
-            schedule: [1: ["3", "4"], 3: ["3", "4"]],
+            schedule: [1: ["3", "4"], 3: ["6", "7"]],
             moodleIdNumber: "1142EC1013701"
         ),
         SDCourse(
@@ -56,6 +56,17 @@ enum MockData {
             maxCount: 30,
             schedule: [5: ["6", "7", "8"]],
             moodleIdNumber: "1142EE2045601"
+        ),
+        SDCourse(
+            courseNo: "TEST12345",
+            courseName: "測試的課程",
+            instructor: "黃教授",
+            credits: 1,
+            classroom: "EE-302",
+            enrolledCount: 30,
+            maxCount: 30,
+            schedule: [7: ["1", "2", "3"]],
+            moodleIdNumber: "1142TEST12345"
         ),
     ]
 
