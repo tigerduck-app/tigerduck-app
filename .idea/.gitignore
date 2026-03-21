@@ -1,0 +1,24 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+# Editor-based HTTP Client requests
+/httpRequests/
+# Ignored default folder with query files
+/queries/
+# Datasource local storage ignored files
+/dataSources/
+/dataSources.local.xml
+# Zeppelin ignored files
+/ZeppelinRemoteNotebooks/
+
+discord.xml
+*.iml
+copilot.data.migration.ask2agent.xml
+go.imports.xml
+misc.xml
+modules.xml
+project.xml
+Project_Default.xml
+ruff.xml
+swift-toolchain.xml
+vcs.xml
