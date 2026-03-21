@@ -43,12 +43,9 @@ struct HomeView: View {
                             }
                         }
                         .wiggling(viewModel.isEditingHome)
-                        .opacity(draggingSection?.id == section.id ? 0.5 : 1)
                         .onDrag {
                             draggingSection = section
                             return NSItemProvider(object: section.id as NSString)
-                        } preview: {
-                            Color.clear.frame(width: 1, height: 1)
                         }
                         .onDrop(
                             of: [UTType.text],
@@ -69,10 +66,6 @@ struct HomeView: View {
                         }
                     }
                 }
-                .onDrop(
-                    of: [UTType.text],
-                    delegate: BackgroundDropDelegate(draggingSection: $draggingSection)
-                )
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -94,6 +87,7 @@ struct HomeView: View {
                         }
                         Button("完成") {
                             withAnimation(.smoothSpring) {
+                                draggingSection = nil
                                 viewModel.isEditingHome = false
                             }
                         }
@@ -140,21 +134,6 @@ private struct SectionDropDelegate: DropDelegate {
 
     func dropExited(info: DropInfo) {
         // No-op
-    }
-}
-
-// MARK: - Background drop delegate (catch-all for drops outside sections)
-
-private struct BackgroundDropDelegate: DropDelegate {
-    @Binding var draggingSection: HomeSection?
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingSection = nil
-        return true
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
     }
 }
 

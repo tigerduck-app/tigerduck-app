@@ -34,7 +34,6 @@ struct WidgetGridView: View {
                     }
                 }
                 .wiggling(isEditing)
-                .opacity(draggingWidget?.id == widget.id ? 0.5 : 1)
                 .onTapGesture {
                     if !isEditing {
                         onTap?(widget.feature)
@@ -48,8 +47,6 @@ struct WidgetGridView: View {
                 .onDrag {
                     draggingWidget = widget
                     return NSItemProvider(object: widget.id as NSString)
-                } preview: {
-                    Color.clear.frame(width: 1, height: 1)
                 }
                 .onDrop(
                     of: [UTType.text],
@@ -62,10 +59,6 @@ struct WidgetGridView: View {
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .onDrop(
-            of: [UTType.text],
-            delegate: WidgetBackgroundDropDelegate(draggingWidget: $draggingWidget)
-        )
     }
 }
 
@@ -94,19 +87,6 @@ private struct WidgetDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         draggingWidget = nil
         return true
-    }
-}
-
-private struct WidgetBackgroundDropDelegate: DropDelegate {
-    @Binding var draggingWidget: WidgetItem?
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingWidget = nil
-        return true
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
     }
 }
 
