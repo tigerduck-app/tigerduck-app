@@ -1,0 +1,70 @@
+import Foundation
+import SwiftData
+import SwiftUI
+
+@Model
+final class SDCourse: Identifiable {
+    @Attribute(.unique) var courseNo: String
+    var courseName: String
+    var instructor: String
+    var credits: Int
+    var classroom: String
+    var enrolledCount: Int
+    var maxCount: Int
+
+    /// Schedule stored as JSON: {"1":["3","4"],"3":["6","7"]}
+    /// Keys = weekday (1=Mon..7=Sun), Values = period IDs
+    var scheduleJSON: String
+
+    /// Moodle course ID number (e.g. "1142EC1013701")
+    var moodleIdNumber: String?
+
+    var id: String { courseNo }
+
+    init(
+        courseNo: String,
+        courseName: String,
+        instructor: String = "",
+        credits: Int = 0,
+        classroom: String = "",
+        enrolledCount: Int = 0,
+        maxCount: Int = 0,
+        schedule: [Int: [String]] = [:],
+        moodleIdNumber: String? = nil
+    ) {
+        self.courseNo = courseNo
+        self.courseName = courseName
+        self.instructor = instructor
+        self.credits = credits
+        self.classroom = classroom
+        self.enrolledCount = enrolledCount
+        self.maxCount = maxCount
+        // Encode schedule as JSON string
+        let stringKeyDict = Dictionary(uniqueKeysWithValues: schedule.map { ("\($0.key)", $0.value) })
+        self.scheduleJSON = (try? JSONEncoder().encode(stringKeyDict))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        self.moodleIdNumber = moodleIdNumber
+    }
+
+    var schedule: [Int: [String]] {
+        guard let data = scheduleJSON.data(using: .utf8),
+              let dict = try? JSONDecoder().decode([String: [String]].self, from: data) else {
+            return [:]
+        }
+        return Dictionary(uniqueKeysWithValues: dict.compactMap { key, value in
+            guard let intKey = Int(key) else { return nil }
+            return (intKey, value)
+        })
+    }
+
+    var color: Color {
+        TigerDuckTheme.courseColor(for: courseNo)
+    }
+
+    static func courseNoFromMoodleId(_ moodleId: String) -> String {
+        if moodleId.count > 4 {
+            return String(moodleId.dropFirst(4))
+        }
+        return moodleId
+    }
+}
