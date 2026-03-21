@@ -34,8 +34,6 @@ struct TabEditorView: View {
                                     .onDrag {
                                         draggingTab = feature
                                         return NSItemProvider(object: feature.rawValue as NSString)
-                                    } preview: {
-                                        Color.clear.frame(width: 1, height: 1)
                                     }
                                     .onDrop(
                                         of: [UTType.text],
@@ -61,10 +59,6 @@ struct TabEditorView: View {
                             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                             .padding(.vertical, TigerDuckTheme.Spacing.md)
                         }
-                        .onDrop(
-                            of: [UTType.text],
-                            delegate: TabBackgroundDropDelegate(draggingTab: $draggingTab)
-                        )
                         .glassCard()
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     }
@@ -157,7 +151,6 @@ private struct TabPreviewItem: View {
         }
         .foregroundStyle(Color.accentPrimary)
         .frame(width: 56)
-        .opacity(isDragging ? 0.4 : 1)
         .overlay(alignment: .topTrailing) {
             Button(action: onRemove) {
                 Image(systemName: "xmark.circle.fill")
@@ -166,21 +159,6 @@ private struct TabPreviewItem: View {
             }
             .offset(x: 4, y: -4)
         }
-    }
-}
-
-// MARK: - Background drop delegate
-
-private struct TabBackgroundDropDelegate: DropDelegate {
-    @Binding var draggingTab: AppFeature?
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingTab = nil
-        return true
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
     }
 }
 
