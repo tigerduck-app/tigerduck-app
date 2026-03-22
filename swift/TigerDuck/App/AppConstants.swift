@@ -4,6 +4,8 @@ enum AppConstants {
     static let appName = "TigerDuck"
     static let defaultUsername = "同學"
 
+    static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
+
     enum Periods {
         static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9"]
         static let extended = ["5", "10", "A", "B", "C", "D"]
