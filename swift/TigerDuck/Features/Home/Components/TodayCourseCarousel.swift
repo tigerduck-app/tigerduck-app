@@ -3,6 +3,7 @@ import SwiftUI
 struct TodayCourseCarousel: View {
     let courses: [SDCourse]
     let hasAssignment: (String) -> Bool
+    var onSelect: ((SDCourse) -> Void)? = nil
 
     var body: some View {
         if courses.isEmpty {
@@ -11,11 +12,16 @@ struct TodayCourseCarousel: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: TigerDuckTheme.Spacing.md) {
                     ForEach(sortedCourses, id: \.courseNo) { course in
-                        HomeTodayCourseCard(
-                            course: course,
-                            showBadge: hasAssignment(course.courseNo),
-                            progress: courseProgress(course)
-                        )
+                        Button {
+                            onSelect?(course)
+                        } label: {
+                            HomeTodayCourseCard(
+                                course: course,
+                                showBadge: hasAssignment(course.courseNo),
+                                progress: courseProgress(course)
+                            )
+                        }
+                        .buttonStyle(.plain)
                         .opacity(opacityForCourse(course))
                     }
                 }

@@ -102,6 +102,13 @@ struct HomeView: View {
                 AddSectionSheet(viewModel: viewModel)
                     .presentationDetents([.medium])
             }
+            .sheet(item: $viewModel.selectedCourse) { course in
+                CourseDetailSheet(
+                    course: course,
+                    assignments: viewModel.assignmentsFor(courseNo: course.courseNo)
+                )
+                .presentationDetents([.medium, .large])
+            }
         }
         .onAppear {
             viewModel.load(authService: appState.authService)
@@ -156,7 +163,8 @@ private struct HomeSectionView: View {
             case .todayCourses:
                 TodayCourseCarousel(
                     courses: viewModel.todayCourses,
-                    hasAssignment: viewModel.hasUnfinishedAssignment
+                    hasAssignment: viewModel.hasUnfinishedAssignment,
+                    onSelect: { viewModel.selectedCourse = $0 }
                 )
             case .upcomingAssignments:
                 if viewModel.upcomingAssignments.isEmpty {
