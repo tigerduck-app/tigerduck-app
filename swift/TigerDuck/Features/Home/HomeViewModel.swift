@@ -8,13 +8,13 @@ final class HomeViewModel {
     var isEditingHome = false
 
     private var hasLoaded = false
-    private var dataObserver: Any?
+    private var dataObserver: NSObjectProtocol?
 
     init() {
         dataObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.dataDidUpdate,
+            forName: AppConstants.Notifications.dataDidUpdate,
             object: nil,
-            queue: .main
+            queue: nil
         ) { [weak self] _ in
             self?.reloadFromCache()
         }
@@ -27,14 +27,24 @@ final class HomeViewModel {
     }
 
     private func reloadFromCache() {
-        let courses = DataCache.shared.loadCourses()
-        let assignments = DataCache.shared.loadAssignments()
-        TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
-        let today = Date().weekdayIndex + 1
-        todayCourses = courses.filter { $0.schedule[today] != nil }
-        upcomingAssignments = assignments
-            .filter { !$0.isCompleted }
-            .sorted { $0.dueDate < $1.dueDate }
+        Task.detached(priority: .background) { [weak self] in
+            guard let self else { return }
+
+            let courses = DataCache.shared.loadCourses()
+            let assignments = DataCache.shared.loadAssignments()
+
+            let today = Date().weekdayIndex + 1
+            let computedTodayCourses = courses.filter { $0.schedule[today] != nil }
+            let computedUpcomingAssignments = assignments
+                .filter { !$0.isCompleted }
+                .sorted { $0.dueDate < $1.dueDate }
+
+            await MainActor.run {
+                TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
+                self.todayCourses = computedTodayCourses
+                self.upcomingAssignments = computedUpcomingAssignments
+            }
+        }
     }
 
     func load(authService: AuthService) {

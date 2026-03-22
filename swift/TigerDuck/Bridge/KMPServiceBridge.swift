@@ -74,6 +74,7 @@ enum KMPServiceBridge {
 
             if !courses.isEmpty {
                 DataCache.shared.saveCourses(courses)
+                NotificationCenter.default.post(name: AppConstants.Notifications.dataDidUpdate, object: nil)
             }
             return courses
         } catch {
@@ -104,6 +105,7 @@ enum KMPServiceBridge {
                 password: password
             )
             DataCache.shared.saveAssignments(assignments)
+            NotificationCenter.default.post(name: AppConstants.Notifications.dataDidUpdate, object: nil)
             return assignments
         } catch {
             let cached = DataCache.shared.loadAssignments()

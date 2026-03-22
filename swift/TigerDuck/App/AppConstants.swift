@@ -13,6 +13,10 @@ enum AppConstants {
         static let weekendDays = ["六", "日"]
     }
 
+    enum Notifications {
+        static let dataDidUpdate = Notification.Name("AppConstants.dataDidUpdate")
+    }
+
     enum PeriodTimes {
         static let mapping: [String: (start: String, end: String)] = [
             "1": ("08:10", "09:00"),
