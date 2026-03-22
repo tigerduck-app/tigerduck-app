@@ -7,15 +7,58 @@ final class HomeViewModel {
     var upcomingAssignments: [SDAssignment] = []
     var isEditingHome = false
 
-    func load() {
-        let today = Date().weekdayIndex + 1
-        todayCourses = MockData.courses.filter { $0.schedule[today] != nil }
-        upcomingAssignments = MockData.assignments
-            .filter { !$0.isCompleted }
-            .sorted { $0.dueDate < $1.dueDate }
+    private var hasLoaded = false
+
+    func load(authService: AuthService) {
+        guard !hasLoaded else { return }
+        hasLoaded = true
 
         if sections.isEmpty {
             sections = defaultSections()
+        }
+
+        // Load cached data immediately so UI isn't empty on restart
+        let cachedCourses = DataCache.shared.loadCourses()
+        let cachedAssignments = DataCache.shared.loadAssignments()
+        if !cachedCourses.isEmpty || !cachedAssignments.isEmpty {
+            TigerDuckTheme.buildCourseColorMap(courseNos: cachedCourses.map(\.courseNo))
+            let today = Date().weekdayIndex + 1
+            todayCourses = cachedCourses.filter { $0.schedule[today] != nil }
+            upcomingAssignments = cachedAssignments
+                .filter { !$0.isCompleted }
+                .sorted { $0.dueDate < $1.dueDate }
+        }
+
+        Task {
+            await fetchData(authService: authService)
+        }
+    }
+
+    func refresh(authService: AuthService) async {
+        await fetchData(authService: authService)
+    }
+
+    private func fetchData(authService: AuthService) async {
+        let manager = NTUSTSessionManager.shared
+        await MainActor.run { manager.loadingState = .loading }
+
+        async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
+        async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+
+        let allCourses = await coursesTask
+        let allAssignments = await assignmentsTask
+
+        let today = Date().weekdayIndex + 1
+        let todayFiltered = allCourses.filter { $0.schedule[today] != nil }
+        let upcoming = allAssignments
+            .filter { !$0.isCompleted }
+            .sorted { $0.dueDate < $1.dueDate }
+
+        await MainActor.run {
+            TigerDuckTheme.buildCourseColorMap(courseNos: allCourses.map(\.courseNo))
+            todayCourses = todayFiltered
+            upcomingAssignments = upcoming
+            manager.loadingState = .loaded
         }
     }
 

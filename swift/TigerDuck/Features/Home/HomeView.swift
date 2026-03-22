@@ -17,6 +17,7 @@ struct HomeView: View {
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
+                        NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
                     }
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
@@ -67,6 +68,9 @@ struct HomeView: View {
                     }
                 }
             }
+            .refreshable {
+                await viewModel.refresh(authService: appState.authService)
+            }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbar {
@@ -100,7 +104,7 @@ struct HomeView: View {
             }
         }
         .onAppear {
-            viewModel.load()
+            viewModel.load(authService: appState.authService)
         }
     }
 }

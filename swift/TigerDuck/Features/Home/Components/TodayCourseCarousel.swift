@@ -8,17 +8,19 @@ struct TodayCourseCarousel: View {
         if courses.isEmpty {
             noCourseView
         } else {
-            VStack(spacing: TigerDuckTheme.Spacing.md) {
-                ForEach(courses, id: \.courseNo) { course in
-                    TodayCourseRow(
-                        course: course,
-                        showBadge: hasAssignment(course.courseNo),
-                        isActive: isCourseActive(course),
-                        progress: courseProgress(course)
-                    )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: TigerDuckTheme.Spacing.md) {
+                    ForEach(sortedCourses, id: \.courseNo) { course in
+                        HomeTodayCourseCard(
+                            course: course,
+                            showBadge: hasAssignment(course.courseNo),
+                            progress: courseProgress(course)
+                        )
+                        .opacity(opacityForCourse(course))
+                    }
                 }
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
     }
 
@@ -37,35 +39,34 @@ struct TodayCourseCarousel: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    private func isCourseActive(_ course: SDCourse) -> Bool {
-        let today = Date().weekdayIndex + 1
-        guard let periods = course.schedule[today] else { return false }
-        let now = Date()
-        for periodId in periods {
-            guard let times = AppConstants.PeriodTimes.mapping[periodId] else { continue }
-            let cal = Calendar.current
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            guard let startDate = formatter.date(from: times.start),
-                  let endDate = formatter.date(from: times.end) else { continue }
-            let startComponents = cal.dateComponents([.hour, .minute], from: startDate)
-            let endComponents = cal.dateComponents([.hour, .minute], from: endDate)
-            guard let start = cal.date(bySettingHour: startComponents.hour!, minute: startComponents.minute!, second: 0, of: now),
-                  let end = cal.date(bySettingHour: endComponents.hour!, minute: endComponents.minute!, second: 0, of: now) else { continue }
-            if now >= start && now <= end { return true }
+    /// Sort: active first, then upcoming, then completed
+    private var sortedCourses: [SDCourse] {
+        courses.sorted { a, b in
+            let pa = courseProgress(a) ?? 0
+            let pb = courseProgress(b) ?? 0
+            // Active (0 < p < 1) first, then not started (p == 0), then completed (p >= 1)
+            let orderA = pa >= 1 ? 2 : (pa > 0 ? 0 : 1)
+            let orderB = pb >= 1 ? 2 : (pb > 0 ? 0 : 1)
+            if orderA != orderB { return orderA < orderB }
+            return pa < pb
         }
-        return false
+    }
+
+    private func opacityForCourse(_ course: SDCourse) -> Double {
+        guard let progress = courseProgress(course) else { return 1.0 }
+        if progress >= 1.0 { return 0.35 }
+        if progress > 0 { return 1.0 - (progress * 0.6) }
+        return 1.0
     }
 
     private func courseProgress(_ course: SDCourse) -> Double? {
         let today = Date().weekdayIndex + 1
-        guard let periods = course.schedule[today] else { return nil }
+        guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
         let now = Date()
         let cal = Calendar.current
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
 
-        // Get overall start/end for this course block
         guard let firstPeriod = periods.first,
               let lastPeriod = periods.last,
               let firstTimes = AppConstants.PeriodTimes.mapping[firstPeriod],
@@ -84,73 +85,62 @@ struct TodayCourseCarousel: View {
     }
 }
 
-struct TodayCourseRow: View {
+/// Card style matching ClassTable's TodayCourseCards
+private struct HomeTodayCourseCard: View {
     let course: SDCourse
     var showBadge: Bool = false
-    var isActive: Bool = false
     var progress: Double? = nil
 
-    private var timeRange: String {
+    private var periods: String {
         let today = Date().weekdayIndex + 1
-        guard let periods = course.schedule[today],
-              let first = periods.first,
-              let last = periods.last,
+        guard let p = course.schedule[today]?.sortedByPeriodOrder(),
+              let first = p.first,
+              let last = p.last,
               let firstTimes = AppConstants.PeriodTimes.mapping[first],
               let lastTimes = AppConstants.PeriodTimes.mapping[last] else { return "" }
-        return "\(firstTimes.start) - \(lastTimes.end)"
+        return "\(firstTimes.start)-\(lastTimes.end)"
+    }
+
+    private var isActive: Bool {
+        guard let p = progress else { return false }
+        return p > 0 && p < 1
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            HStack(spacing: TigerDuckTheme.Spacing.md) {
-                // Color accent bar
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(course.color)
-                    .frame(width: 4, height: 44)
+            HStack {
+                Text(course.courseName)
+                    .font(TigerDuckTheme.Typography.headline)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(course.courseName)
-                            .font(TigerDuckTheme.Typography.headline)
-                            .foregroundStyle(Color.textPrimary)
-                            .lineLimit(1)
-
-                        if isActive {
-                            Text("進行中")
-                                .font(.caption2.bold())
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.green, in: Capsule())
-                        }
-
-                        Spacer()
-
-                        if showBadge {
-                            Image(systemName: "circle.fill")
-                                .font(.system(size: 8))
-                                .foregroundStyle(Color.badgeRed)
-                        }
-                    }
-
-                    HStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Label(course.classroom, systemImage: "mappin")
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(Color.textSecondary)
-                        Label(timeRange, systemImage: "clock")
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(Color.textSecondary)
-                    }
+                if isActive {
+                    Text("進行中")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green, in: Capsule())
                 }
             }
 
-            // Progress bar for active course
+            Text(course.classroom)
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textSecondary)
+
+            Text(periods)
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textSecondary)
+
             if let progress, isActive {
                 ProgressView(value: progress)
                     .tint(course.color)
             }
         }
+        .frame(width: 140, alignment: .leading)
         .cardPadding()
+        .background(course.color.opacity(0.15), in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
         .glassCard()
+        .assignmentBadge(show: showBadge)
     }
 }

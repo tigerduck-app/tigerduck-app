@@ -13,9 +13,6 @@ struct UpcomingAssignmentsView: View {
                     }
                 } label: {
                     HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.yellow)
-                            .font(.caption)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(assignment.title)
                                 .font(TigerDuckTheme.Typography.body)
