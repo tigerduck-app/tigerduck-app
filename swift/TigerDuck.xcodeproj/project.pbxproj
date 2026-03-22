@@ -187,11 +187,12 @@
 				};
 			};
 			buildConfigurationList = 424C46512F6E763C009D1DDA /* Build configuration list for PBXProject "TigerDuck" */;
-			developmentRegion = en;
+			developmentRegion = "zh-Hant";
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hant",
 			);
 			mainGroup = 424C464D2F6E763C009D1DDA;
 			minimizedProjectReferenceProxies = 1;
