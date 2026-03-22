@@ -48,7 +48,7 @@ struct AddSectionSheet: View {
                         .map(\.feature)
                     let addable: [AppFeature] = [
                         .announcements, .freeLunch, .clubs, .emptyClassroom,
-                        .gpa, .libraryQR, .scholarship, .englishVocab,
+                        .gpa, .scholarship, .englishVocab,
                     ].filter { !allWidgetFeatures.contains($0) }
 
                     if addable.isEmpty {

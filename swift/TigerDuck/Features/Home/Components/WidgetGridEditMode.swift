@@ -6,7 +6,7 @@ struct WidgetGridEditMode: View {
 
     private let availableFeatures: [AppFeature] = [
         .announcements, .freeLunch, .clubs, .emptyClassroom,
-        .gpa, .libraryQR, .scholarship, .englishVocab,
+        .gpa, .scholarship, .englishVocab,
     ]
 
     var body: some View {

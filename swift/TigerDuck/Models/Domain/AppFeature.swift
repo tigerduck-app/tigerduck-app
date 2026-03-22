@@ -14,7 +14,6 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     // Library
     case library
-    case libraryQR
     case discussionRoom
     case libraryLecture
 
@@ -43,7 +42,6 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .gpa: "GPA 查詢"
         case .courseSelection: "選課系統"
         case .graduationRequirements: "畢業門檻"
-        case .libraryQR: "QR 入館"
         case .discussionRoom: "討論小間"
         case .libraryLecture: "圖書館講座"
         case .freeLunch: "免費便當"
@@ -66,7 +64,6 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .gpa: "chart.bar.fill"
         case .courseSelection: "pencil.and.list.clipboard"
         case .graduationRequirements: "graduationcap.fill"
-        case .libraryQR: "qrcode"
         case .discussionRoom: "door.left.hand.open"
         case .libraryLecture: "mic.fill"
         case .freeLunch: "takeoutbag.and.cup.and.straw.fill"
@@ -82,7 +79,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     var category: FeatureCategory? {
         switch self {
         case .gpa, .courseSelection, .graduationRequirements: .academic
-        case .library, .libraryQR, .discussionRoom, .libraryLecture: .library
+        case .library, .discussionRoom, .libraryLecture: .library
         case .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
         case .englishVocab: .language
         case .settings: .system
@@ -94,7 +91,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     static let pinnableFeatures: [AppFeature] = [
         .home, .classTable, .calendar, .announcements, .library,
         .gpa, .courseSelection, .graduationRequirements,
-        .libraryQR, .discussionRoom, .libraryLecture,
+        .discussionRoom, .libraryLecture,
         .freeLunch, .clubs, .emptyClassroom, .scholarship,
         .englishVocab,
     ]
@@ -107,7 +104,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     static let moreFeatures: [AppFeature] = [
         .announcements,
         .gpa, .courseSelection, .graduationRequirements,
-        .libraryQR, .discussionRoom, .libraryLecture,
+        .discussionRoom, .libraryLecture,
         .freeLunch, .clubs, .emptyClassroom, .scholarship,
         .englishVocab,
     ]
