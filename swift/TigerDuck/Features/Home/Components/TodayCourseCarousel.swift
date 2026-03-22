@@ -141,6 +141,6 @@ private struct HomeTodayCourseCard: View {
         .cardPadding()
         .background(course.color.opacity(0.15), in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
         .glassCard()
-        .assignmentBadge(show: showBadge)
+        .assignmentBadge(show: showBadge, color: course.color)
     }
 }
