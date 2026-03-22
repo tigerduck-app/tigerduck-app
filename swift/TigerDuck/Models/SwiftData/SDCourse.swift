@@ -67,4 +67,13 @@ final class SDCourse: Identifiable {
         }
         return moodleId
     }
+
+    /// Returns the start time string (e.g. "08:10") for this course on the given weekday,
+    /// or nil if the course has no scheduled periods that day or the period mapping is missing.
+    func startTime(forWeekday weekday: Int) -> String? {
+        guard let periods = schedule[weekday]?.sortedByPeriodOrder(),
+              let first = periods.first,
+              let times = AppConstants.PeriodTimes.mapping[first] else { return nil }
+        return times.start
+    }
 }

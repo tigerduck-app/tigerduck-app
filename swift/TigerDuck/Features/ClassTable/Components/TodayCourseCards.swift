@@ -25,19 +25,20 @@ struct TodayCourseCards: View {
         }
     }
 
-    /// Sort by start time: earliest (left) → latest (right)
+    /// Sort by start time: earliest (left) → latest (right), courses with no start time go last.
     private var sortedCourses: [SDCourse] {
-        courses.sorted { a, b in
-            courseStartTime(a) < courseStartTime(b)
-        }
-    }
-
-    private func courseStartTime(_ course: SDCourse) -> String {
         let today = Date().weekdayIndex + 1
-        guard let periods = course.schedule[today]?.sortedByPeriodOrder(),
-              let first = periods.first,
-              let times = AppConstants.PeriodTimes.mapping[first] else { return "" }
-        return times.start
+        return courses
+            .map { ($0, $0.startTime(forWeekday: today)) }
+            .sorted { lhs, rhs in
+                switch (lhs.1, rhs.1) {
+                case let (a?, b?): return a < b
+                case (nil, _?):   return false
+                case (_?, nil):   return true
+                case (nil, nil):  return false
+                }
+            }
+            .map(\.0)
     }
 
     private func opacityForCourse(_ course: SDCourse) -> Double {
