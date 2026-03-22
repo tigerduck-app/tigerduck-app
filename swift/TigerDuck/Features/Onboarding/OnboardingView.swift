@@ -12,7 +12,7 @@ struct OnboardingView: View {
             OnboardingPageView(
                 icon: "graduationcap.fill",
                 title: "歡迎使用 TigerDuck",
-                subtitle: "你的台科大校園助手",
+                subtitle: "你的臺科大校園助手",
                 accentColor: .accentPrimary
             ) {
                 Button("下一步") {
