@@ -3,6 +3,8 @@ import SwiftUI
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @State private var currentPage = 0
+    @State private var studentId = ""
+    @State private var password = ""
 
     var body: some View {
         TabView(selection: $currentPage) {
@@ -28,11 +30,44 @@ struct OnboardingView: View {
                 accentColor: .green
             ) {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    Button("登入 NTUST SSO") {
-                        // TODO: Trigger SSO login
-                        withAnimation { currentPage = 2 }
+                    TextField("學號", text: $studentId)
+                        .textFieldStyle(.roundedBorder)
+                        .textContentType(.username)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.characters)
+                        .frame(maxWidth: 280)
+
+                    SecureField("密碼", text: $password)
+                        .textFieldStyle(.roundedBorder)
+                        .textContentType(.password)
+                        .frame(maxWidth: 280)
+
+                    if let error = appState.authService.loginError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    Button {
+                        Task {
+                            let success = await appState.authService.login(
+                                studentId: studentId,
+                                password: password
+                            )
+                            if success {
+                                withAnimation { currentPage = 2 }
+                            }
+                        }
+                    } label: {
+                        if appState.authService.isLoggingIn {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text("登入 NTUST SSO")
+                        }
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(studentId.isEmpty || password.isEmpty || appState.authService.isLoggingIn)
 
                     Button("暫時跳過") {
                         withAnimation { currentPage = 2 }
