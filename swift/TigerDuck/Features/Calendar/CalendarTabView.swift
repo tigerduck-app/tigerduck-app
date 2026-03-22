@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CalendarTabView: View {
+    @Environment(AppState.self) private var appState
     @State private var viewModel = CalendarViewModel()
 
     var body: some View {
@@ -12,6 +13,14 @@ struct CalendarTabView: View {
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
+                        NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
+                        Button {
+                            viewModel.goToToday()
+                        } label: {
+                            Text("今天")
+                                .font(TigerDuckTheme.Typography.caption)
+                                .foregroundStyle(Color.textSecondary)
+                        }
                     }
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
@@ -28,12 +37,14 @@ struct CalendarTabView: View {
                 }
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
+            .refreshable {
+                await viewModel.refresh(authService: appState.authService)
+            }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         }
         .onAppear {
-            viewModel.load()
+            viewModel.load(authService: appState.authService)
         }
     }
 }
-

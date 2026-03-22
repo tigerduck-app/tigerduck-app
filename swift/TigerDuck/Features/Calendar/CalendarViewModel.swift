@@ -9,6 +9,7 @@ final class CalendarViewModel {
 
     private let eventStore = EKEventStore()
     var calendarAccessGranted = false
+    private var hasLoaded = false
 
     var eventsForSelectedDate: [SDCalendarEvent] {
         events.filter { $0.date.isSameDay(as: selectedDate) }
@@ -27,9 +28,68 @@ final class CalendarViewModel {
         displayedMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth)!
     }
 
-    func load() {
-        events = MockData.calendarEvents
+    func goToToday() {
+        withAnimation(.smoothSpring) {
+            selectedDate = .now
+            displayedMonth = .now
+        }
+    }
+
+    func load(authService: AuthService) {
+        guard !hasLoaded else { return }
+        hasLoaded = true
+
+        // Load cached events first
+        events = DataCache.shared.loadCalendarEvents()
+
         requestCalendarAccess()
+
+        Task {
+            await fetchMoodleEvents(authService: authService)
+            await fetchSchoolEvents()
+        }
+    }
+
+    func refresh(authService: AuthService) async {
+        let manager = NTUSTSessionManager.shared
+        await MainActor.run { manager.loadingState = .loading }
+
+        await fetchMoodleEvents(authService: authService)
+        await fetchSchoolEvents()
+        loadSystemCalendarEvents()
+
+        await MainActor.run { manager.loadingState = .loaded }
+    }
+
+    private func fetchMoodleEvents(authService: AuthService) async {
+        let assignments = await KMPServiceBridge.fetchAssignments(authService: authService)
+
+        let moodleEvents = assignments.map { assignment in
+            SDCalendarEvent(
+                eventId: "moodle-\(assignment.assignmentId)",
+                title: "\(assignment.title)",
+                date: assignment.dueDate,
+                source: .moodle
+            )
+        }
+
+        await MainActor.run {
+            // Remove old moodle events, keep system events
+            events.removeAll { $0.source == .moodle }
+            events.append(contentsOf: moodleEvents)
+            DataCache.shared.saveCalendarEvents(events)
+        }
+    }
+
+    private func fetchSchoolEvents() async {
+        let schoolEvents = await CalendarService.fetchAndParseICS()
+        guard !schoolEvents.isEmpty else { return }
+
+        await MainActor.run {
+            events.removeAll { $0.source == .school }
+            events.append(contentsOf: schoolEvents)
+            DataCache.shared.saveCalendarEvents(events)
+        }
     }
 
     func requestCalendarAccess() {
@@ -38,7 +98,7 @@ final class CalendarViewModel {
                 let granted = try await eventStore.requestFullAccessToEvents()
                 calendarAccessGranted = granted
                 if granted {
-                    await loadSystemCalendarEvents()
+                    loadSystemCalendarEvents()
                 }
             } catch {
                 calendarAccessGranted = false
@@ -49,7 +109,6 @@ final class CalendarViewModel {
     @MainActor
     private func loadSystemCalendarEvents() {
         let cal = Calendar.current
-        // Load events for the current month +/- 1 month
         guard let startDate = cal.date(byAdding: .month, value: -1, to: displayedMonth.startOfMonth),
               let endDate = cal.date(byAdding: .month, value: 2, to: displayedMonth.startOfMonth) else { return }
 
@@ -65,7 +124,6 @@ final class CalendarViewModel {
             )
         }
 
-        // Merge system events with app events, avoid duplicates by title+date
         let existingKeys = Set(events.map { "\($0.title)-\($0.date.startOfDay)" })
         let newEvents = systemEvents.filter { !existingKeys.contains("\($0.title)-\($0.date.startOfDay)") }
         events.append(contentsOf: newEvents)
