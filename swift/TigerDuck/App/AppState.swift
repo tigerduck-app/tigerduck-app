@@ -5,8 +5,12 @@ import SwiftData
 final class AppState {
     var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     var username: String = UserDefaults.standard.string(forKey: "username") ?? AppConstants.defaultUsername
-    var isNTUSTLoggedIn = false
-    var isMoodleLinked = false
+
+    let authService = AuthService()
+    let sessionManager = NTUSTSessionManager.shared
+
+    var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
+    var isMoodleLinked: Bool { authService.isNTUSTAuthenticated }
     var isLibraryLoggedIn = false
 
     // MARK: - Theme
@@ -87,6 +91,35 @@ final class AppState {
     func setUsername(_ name: String) {
         username = name
         UserDefaults.standard.set(name, forKey: "username")
+    }
+
+    /// Background sync all data on app launch
+    func backgroundSync() {
+        guard hasCompletedOnboarding else { return }
+        Task {
+            sessionManager.loadingState = .loading
+
+            async let courses = KMPServiceBridge.fetchCourses(authService: authService)
+            async let assignments = KMPServiceBridge.fetchAssignments(authService: authService)
+            async let schoolEvents = CalendarService.fetchAndParseICS()
+
+            // Await all — results are cached by their respective services
+            let _ = await courses
+            let _ = await assignments
+            let fetchedSchoolEvents = await schoolEvents
+
+            // Merge school events into calendar cache
+            if !fetchedSchoolEvents.isEmpty {
+                var cached = DataCache.shared.loadCalendarEvents()
+                cached.removeAll { $0.source == .school }
+                cached.append(contentsOf: fetchedSchoolEvents)
+                DataCache.shared.saveCalendarEvents(cached)
+            }
+
+            await MainActor.run {
+                sessionManager.loadingState = .loaded
+            }
+        }
     }
 
     /// Open a URL using the user's browser preference
