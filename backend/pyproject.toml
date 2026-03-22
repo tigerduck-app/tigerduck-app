@@ -8,4 +8,5 @@ dependencies = [
     "httpx[http2]>=0.28.1",
     "ntust-courses>=0.2.1",
     "pip-system-certs>=5.3",
+    "rich>=14.3.3",
 ]
