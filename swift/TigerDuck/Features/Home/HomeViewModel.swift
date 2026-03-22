@@ -116,10 +116,10 @@ final class HomeViewModel {
                 sortOrder: 2,
                 isVisible: true,
                 widgets: [
-                    WidgetItem(id: "w1", feature: .announcements, size: .small),
-                    WidgetItem(id: "w2", feature: .freeLunch, size: .small),
-                    WidgetItem(id: "w3", feature: .clubs, size: .small),
-                    WidgetItem(id: "w4", feature: .emptyClassroom, size: .small),
+                    WidgetItem(id: "w1", feature: .freeLunch, size: .small),
+                    WidgetItem(id: "w2", feature: .emptyClassroom, size: .small),
+                    WidgetItem(id: "w3", feature: .scholarship, size: .small),
+                    WidgetItem(id: "w4", feature: .gpa, size: .small),
                 ]
             ),
         ]
