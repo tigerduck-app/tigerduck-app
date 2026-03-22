@@ -5,7 +5,7 @@ struct GreetingHeaderView: View {
 
     var body: some View {
         HStack {
-            Text("\(Date().greetingText())，\(username)")
+            Text("\(Date().greetingText())")
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
