@@ -8,6 +8,8 @@ struct SettingsView: View {
     @State private var notifyClubs = false
     @State private var showingTabEditor = false
     @State private var showLicense = false
+    @State private var loginStudentId = ""
+    @State private var loginPassword = ""
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -138,12 +140,55 @@ struct SettingsView: View {
                 Text("NTUST 校務系統")
                     .font(.headline)
                 Spacer()
-                Text(appState.isNTUSTLoggedIn ? "已登入" : "未登入")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if appState.authService.isLoggingIn {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text(appState.isNTUSTLoggedIn ? "已登入" : "未登入")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            if !appState.isNTUSTLoggedIn {
-                Button("登入 NTUST") {}
+
+            if appState.isNTUSTLoggedIn {
+                if let studentId = appState.authService.storedStudentId {
+                    Text("學號：\(studentId)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                if let expiry = appState.sessionManager.cookieExpiryDate {
+                    Text("Cookie 有效至 \(expiry.formatted(.dateTime.hour().minute().second()))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                Button("登出", role: .destructive) {
+                    appState.authService.logout()
+                    loginStudentId = ""
+                    loginPassword = ""
+                }
+            } else {
+                TextField("學號", text: $loginStudentId)
+                    .textContentType(.username)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                SecureField("密碼", text: $loginPassword)
+                    .textContentType(.password)
+
+                if let error = appState.authService.loginError {
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundColor(.red)
+                }
+
+                Button("登入 NTUST") {
+                    Task {
+                        await appState.authService.login(
+                            studentId: loginStudentId,
+                            password: loginPassword
+                        )
+                    }
+                }
+                .disabled(loginStudentId.isEmpty || loginPassword.isEmpty || appState.authService.isLoggingIn)
             }
         }
     }
