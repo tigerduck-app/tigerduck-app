@@ -13,7 +13,7 @@ struct TimetablePeriod: Identifiable, Hashable {
     }
 
     static let all: [TimetablePeriod] = {
-        let order = AppConstants.Periods.defaultVisible + AppConstants.Periods.extended
+        let order = AppConstants.Periods.chronologicalOrder
         return order.compactMap { periodID in
             guard let times = AppConstants.PeriodTimes.mapping[periodID] else { return nil }
             return TimetablePeriod(id: periodID, startTime: times.start, endTime: times.end)
