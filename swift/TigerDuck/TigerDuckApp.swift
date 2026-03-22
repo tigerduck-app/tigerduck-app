@@ -31,6 +31,9 @@ struct TigerDuckApp: App {
                 .environment(appState)
                 .tint(appState.accentColor)
                 .preferredColorScheme(.dark)
+                .onAppear {
+                    appState.backgroundSync()
+                }
         }
         .modelContainer(sharedModelContainer)
     }
