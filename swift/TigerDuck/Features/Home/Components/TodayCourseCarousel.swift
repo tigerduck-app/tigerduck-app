@@ -39,17 +39,19 @@ struct TodayCourseCarousel: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    /// Sort: active first, then upcoming, then completed
+    /// Sort by start time: earliest (left) → latest (right)
     private var sortedCourses: [SDCourse] {
         courses.sorted { a, b in
-            let pa = courseProgress(a) ?? 0
-            let pb = courseProgress(b) ?? 0
-            // Active (0 < p < 1) first, then not started (p == 0), then completed (p >= 1)
-            let orderA = pa >= 1 ? 2 : (pa > 0 ? 0 : 1)
-            let orderB = pb >= 1 ? 2 : (pb > 0 ? 0 : 1)
-            if orderA != orderB { return orderA < orderB }
-            return pa < pb
+            courseStartTime(a) < courseStartTime(b)
         }
+    }
+
+    private func courseStartTime(_ course: SDCourse) -> String {
+        let today = Date().weekdayIndex + 1
+        guard let periods = course.schedule[today]?.sortedByPeriodOrder(),
+              let first = periods.first,
+              let times = AppConstants.PeriodTimes.mapping[first] else { return "" }
+        return times.start
     }
 
     private func opacityForCourse(_ course: SDCourse) -> Double {
