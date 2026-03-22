@@ -59,6 +59,7 @@ final class HomeViewModel {
             todayCourses = todayFiltered
             upcomingAssignments = upcoming
             manager.loadingState = .loaded
+            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
     }
 

@@ -30,6 +30,31 @@ final class ClassTableViewModel {
     var showAddCourse = false
 
     private var hasLoaded = false
+    private var dataObserver: Any?
+
+    init() {
+        dataObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.dataDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reloadFromCache()
+        }
+    }
+
+    deinit {
+        if let observer = dataObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    private func reloadFromCache() {
+        let cached = DataCache.shared.loadCourses()
+        let userAdded = courses.filter { $0.moodleIdNumber == nil }
+        courses = cached + userAdded
+        assignments = DataCache.shared.loadAssignments()
+        rebuildColorMap()
+    }
 
     var totalCredits: Int {
         courses.reduce(0) { $0 + $1.credits }
@@ -190,6 +215,7 @@ final class ClassTableViewModel {
             assignments = fetchedAssignments
             rebuildColorMap()
             manager.loadingState = .loaded
+            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
     }
 }
