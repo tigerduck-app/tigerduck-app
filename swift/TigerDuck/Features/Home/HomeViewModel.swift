@@ -8,6 +8,34 @@ final class HomeViewModel {
     var isEditingHome = false
 
     private var hasLoaded = false
+    private var dataObserver: Any?
+
+    init() {
+        dataObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.dataDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reloadFromCache()
+        }
+    }
+
+    deinit {
+        if let observer = dataObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    private func reloadFromCache() {
+        let courses = DataCache.shared.loadCourses()
+        let assignments = DataCache.shared.loadAssignments()
+        TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
+        let today = Date().weekdayIndex + 1
+        todayCourses = courses.filter { $0.schedule[today] != nil }
+        upcomingAssignments = assignments
+            .filter { !$0.isCompleted }
+            .sorted { $0.dueDate < $1.dueDate }
+    }
 
     func load(authService: AuthService) {
         guard !hasLoaded else { return }
@@ -97,8 +125,14 @@ final class HomeViewModel {
         ]
     }
 
+    var selectedCourse: SDCourse? = nil
+
     func hasUnfinishedAssignment(for courseNo: String) -> Bool {
         upcomingAssignments.contains { $0.courseNo == courseNo && !$0.isCompleted }
+    }
+
+    func assignmentsFor(courseNo: String) -> [SDAssignment] {
+        upcomingAssignments.filter { $0.courseNo == courseNo && !$0.isCompleted }
     }
 
     func removeSection(_ section: HomeSection) {
