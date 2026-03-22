@@ -25,6 +25,18 @@ struct ClassTableView: View {
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
 
+                    // Today's course cards
+                    if !viewModel.todayCourses.isEmpty {
+                        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                            SectionHeader(title: "今日課程")
+                            TodayCourseCards(
+                                courses: viewModel.todayCourses,
+                                hasAssignment: viewModel.hasAssignment,
+                                onSelect: { viewModel.selectedCourse = $0 }
+                            )
+                        }
+                    }
+
                     // Semester picker and credits
                     HStack {
                         Picker("學期", selection: $viewModel.currentSemester) {
@@ -37,20 +49,10 @@ struct ClassTableView: View {
                         Spacer()
 
                         Text("共 \(viewModel.totalCredits) 學分")
-                            .font(TigerDuckTheme.Typography.body)
-                            .foregroundStyle(Color.textSecondary)
+                        .font(TigerDuckTheme.Typography.body)
+                        .foregroundStyle(Color.textSecondary)
                     }
                     .padding(.horizontal)
-
-                    // Today's course cards
-                    if !viewModel.todayCourses.isEmpty {
-                        SectionHeader(title: "今日課程")
-                        TodayCourseCards(
-                            courses: viewModel.todayCourses,
-                            hasAssignment: viewModel.hasAssignment,
-                            onSelect: { viewModel.selectedCourse = $0 }
-                        )
-                    }
 
                     // Timetable grid
                     TimetableGridView(viewModel: viewModel)
