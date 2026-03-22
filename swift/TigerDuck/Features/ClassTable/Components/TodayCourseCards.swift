@@ -8,7 +8,7 @@ struct TodayCourseCards: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: TigerDuckTheme.Spacing.md) {
-                ForEach(courses, id: \.courseNo) { course in
+                ForEach(sortedCourses, id: \.courseNo) { course in
                     Button {
                         onSelect?(course)
                     } label: {
@@ -18,10 +18,55 @@ struct TodayCourseCards: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .opacity(opacityForCourse(course))
                 }
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
+    }
+
+    /// Sort: active first, then upcoming, then completed
+    private var sortedCourses: [SDCourse] {
+        courses.sorted { a, b in
+            let pa = courseProgress(a) ?? 0
+            let pb = courseProgress(b) ?? 0
+            let orderA = pa >= 1 ? 2 : (pa > 0 ? 0 : 1)
+            let orderB = pb >= 1 ? 2 : (pb > 0 ? 0 : 1)
+            if orderA != orderB { return orderA < orderB }
+            return pa < pb
+        }
+    }
+
+    private func opacityForCourse(_ course: SDCourse) -> Double {
+        guard let progress = courseProgress(course) else { return 1.0 }
+        if progress >= 1.0 { return 0.35 }
+        if progress > 0 { return 1.0 - (progress * 0.6) }
+        return 1.0
+    }
+
+    private func courseProgress(_ course: SDCourse) -> Double? {
+        let today = Date().weekdayIndex + 1
+        guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
+        let now = Date()
+        let cal = Calendar.current
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+
+        guard let firstPeriod = periods.first,
+              let lastPeriod = periods.last,
+              let firstTimes = AppConstants.PeriodTimes.mapping[firstPeriod],
+              let lastTimes = AppConstants.PeriodTimes.mapping[lastPeriod],
+              let startDate = formatter.date(from: firstTimes.start),
+              let endDate = formatter.date(from: lastTimes.end) else { return nil }
+
+        let startComponents = cal.dateComponents([.hour, .minute], from: startDate)
+        let endComponents = cal.dateComponents([.hour, .minute], from: endDate)
+        guard let start = cal.date(bySettingHour: startComponents.hour!, minute: startComponents.minute!, second: 0, of: now),
+              let end = cal.date(bySettingHour: endComponents.hour!, minute: endComponents.minute!, second: 0, of: now) else { return nil }
+
+        if now < start { return 0 }
+        if now > end { return 1 }
+        return now.timeIntervalSince(start) / end.timeIntervalSince(start)
     }
 }
 
@@ -31,7 +76,7 @@ private struct ClassTableCourseCard: View {
 
     private var periods: String {
         let today = Date().weekdayIndex + 1
-        guard let p = course.schedule[today],
+        guard let p = course.schedule[today]?.sortedByPeriodOrder(),
               let first = p.first,
               let last = p.last,
               let firstTimes = AppConstants.PeriodTimes.mapping[first],

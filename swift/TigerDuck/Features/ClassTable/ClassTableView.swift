@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ClassTableView: View {
+    @Environment(AppState.self) private var appState
     @State private var viewModel = ClassTableViewModel()
 
     var body: some View {
@@ -13,12 +14,7 @@ struct ClassTableView: View {
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
-                        Button {
-                            viewModel.refresh()
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .foregroundStyle(Color.textSecondary)
-                        }
+                        NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
                         Button {
                             viewModel.showAddCourse = true
                         } label: {
@@ -61,6 +57,9 @@ struct ClassTableView: View {
                 }
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
+            .refreshable {
+                await viewModel.refresh(authService: appState.authService)
+            }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .sheet(item: $viewModel.selectedCourse) { course in
@@ -76,8 +75,7 @@ struct ClassTableView: View {
             }
         }
         .onAppear {
-            viewModel.load()
+            viewModel.load(authService: appState.authService)
         }
     }
 }
-

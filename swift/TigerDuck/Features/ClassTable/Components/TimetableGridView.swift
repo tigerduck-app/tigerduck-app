@@ -4,8 +4,10 @@ struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
 
     private let cellHeight: CGFloat = 52
-    private let headerHeight: CGFloat = 36
-    private let periodWidth: CGFloat = 10
+    private let rowSpacing: CGFloat = 3
+    private let colSpacing: CGFloat = 3
+    private let headerHeight: CGFloat = 30
+    private let periodWidth: CGFloat = 12
 
     private var weekdayLabels: [String] {
         viewModel.activeWeekdays.map { day in
@@ -23,9 +25,9 @@ struct TimetableGridView: View {
     }
 
     var body: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: rowSpacing) {
             // Header row
-            HStack(spacing: 3) {
+            HStack(spacing: colSpacing) {
                 Text("")
                     .frame(width: periodWidth, height: headerHeight)
                 ForEach(Array(weekdayLabels.enumerated()), id: \.offset) { _, label in
@@ -38,34 +40,73 @@ struct TimetableGridView: View {
             }
 
             // Grid rows
-            ForEach(viewModel.activePeriods) { period in
-                HStack(spacing: 3) {
+            ForEach(Array(viewModel.activePeriods.enumerated()), id: \.element.id) { periodIndex, period in
+                HStack(spacing: colSpacing) {
                     // Period label
                     Text(period.displayLabel)
                         .font(TigerDuckTheme.Typography.caption2)
+                        .font(.system(size: 10))
                         .foregroundStyle(Color.textSecondary)
                         .frame(width: periodWidth, height: cellHeight)
 
                     // Day cells
                     ForEach(viewModel.activeWeekdays, id: \.self) { weekday in
-                        TimetableCellView(
-                            course: viewModel.course(for: weekday, period: period.id),
-                            hasBadge: {
-                                guard let c = viewModel.course(for: weekday, period: period.id) else { return false }
-                                return viewModel.hasAssignment(for: c.courseNo)
-                            }(),
-                            onTap: {
-                                if let c = viewModel.course(for: weekday, period: period.id) {
-                                    viewModel.selectCourse(c, weekday: weekday, periodId: period.id)
-                                }
-                            }
-                        )
-                        .frame(maxWidth: .infinity)
-                        .frame(height: cellHeight)
+                        cellView(weekday: weekday, periodIndex: periodIndex, periodId: period.id)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: cellHeight)
                     }
                 }
             }
         }
-        .padding(.horizontal, TigerDuckTheme.Spacing.sm)
+        .padding(.horizontal, TigerDuckTheme.Spacing.xs)
+    }
+
+    @ViewBuilder
+    private func cellView(weekday: Int, periodIndex: Int, periodId: String) -> some View {
+        switch viewModel.cellRole(weekday: weekday, periodIndex: periodIndex) {
+        case .empty:
+            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                .fill(Color.cardSurface.opacity(0.15))
+
+        case .blockStart(let course, let spanCount):
+            let hasBadge = viewModel.hasAssignment(for: course.courseNo)
+            let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
+
+            Color.clear
+                .overlay(alignment: .top) {
+                    Button {
+                        viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
+                    } label: {
+                        RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                            .fill(course.color.opacity(0.25))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                                    .strokeBorder(course.color.opacity(0.4), lineWidth: 1)
+                            }
+                            .overlay {
+                                Text(course.courseName)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(Color.textPrimary)
+                                    .lineLimit(spanCount > 1 ? 3 : 2)
+                                    .multilineTextAlignment(.center)
+                                    .padding(2)
+                            }
+                            .overlay(alignment: .bottom) {
+                                if hasBadge {
+                                    Capsule()
+                                        .fill(course.color)
+                                        .frame(width: 16, height: 3)
+                                        .padding(.bottom, 3)
+                                }
+                            }
+                            .frame(height: totalHeight)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .zIndex(1)
+
+        case .blockContinuation:
+            Color.clear
+        }
     }
 }

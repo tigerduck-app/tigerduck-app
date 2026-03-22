@@ -18,12 +18,13 @@ struct CourseDetailSheet: View {
                     // Course info
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
                         InfoRow(label: "授課教師", value: course.instructor)
-                        InfoRow(label: "學分數", value: "\(course.credits)")
+                        InfoRow(label: "代碼", value: course.courseNo)
+                        InfoRow(label: "學分", value: "\(course.credits)")
                         InfoRow(label: "教室", value: course.classroom)
                         if let timeRange {
                             InfoRow(label: "時間", value: timeRange)
                         }
-                        InfoRow(label: "選課人數", value: "\(course.enrolledCount) / \(course.maxCount)")
+                        InfoRow(label: "人數", value: "\(course.enrolledCount) / \(course.maxCount)")
                     }
                     .padding(.horizontal)
 

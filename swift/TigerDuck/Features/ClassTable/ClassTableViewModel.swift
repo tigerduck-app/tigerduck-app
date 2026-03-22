@@ -9,10 +9,27 @@ final class ClassTableViewModel {
     var selectedWeekday: Int? = nil
     var selectedPeriodId: String? = nil
 
-    var currentSemester: String = "114-2"
-    let availableSemesters = ["114-2", "114-1", "113-2", "113-1"]
+    var currentSemester: String = CourseService.currentSemesterCode()
+    var availableSemesters: [String] {
+        let code = CourseService.currentSemesterCode()
+        let yearStr = String(code.dropLast())
+        guard let year = Int(yearStr) else { return [code] }
+        let sem = String(code.last!)
+        var semesters: [String] = []
+        // Current + 3 previous semesters
+        var y = year
+        var s = Int(sem)!
+        for _ in 0..<4 {
+            semesters.append("\(y)\(s)")
+            s -= 1
+            if s < 1 { s = 2; y -= 1 }
+        }
+        return semesters
+    }
 
     var showAddCourse = false
+
+    private var hasLoaded = false
 
     var totalCredits: Int {
         courses.reduce(0) { $0 + $1.credits }
@@ -25,10 +42,7 @@ final class ClassTableViewModel {
               !periods.isEmpty else {
             return nil
         }
-        let order = AppConstants.Periods.defaultVisible + AppConstants.Periods.extended
-        let sorted = periods.sorted { a, b in
-            (order.firstIndex(of: a) ?? Int.max) < (order.firstIndex(of: b) ?? Int.max)
-        }
+        let sorted = periods.sortedByPeriodOrder()
         guard let firstPeriod = sorted.first,
               let lastPeriod = sorted.last,
               let firstTime = AppConstants.PeriodTimes.mapping[firstPeriod],
@@ -43,7 +57,6 @@ final class ClassTableViewModel {
         return courses.filter { $0.schedule[today] != nil }
     }
 
-    /// Weekdays that have courses (1=Mon..7=Sun)
     var activeWeekdays: [Int] {
         var days = Set<Int>()
         for course in courses {
@@ -51,14 +64,12 @@ final class ClassTableViewModel {
                 days.insert(day)
             }
         }
-        // Always show Mon-Fri, add Sat/Sun only if courses exist
         var result = Array(1...5)
         if days.contains(6) { result.append(6) }
         if days.contains(7) { result.append(7) }
         return result.sorted()
     }
 
-    /// Periods that have courses
     var activePeriods: [TimetablePeriod] {
         var periodIds = Set(AppConstants.Periods.defaultVisible)
         for course in courses {
@@ -68,7 +79,7 @@ final class ClassTableViewModel {
                 }
             }
         }
-        let order = AppConstants.Periods.defaultVisible + AppConstants.Periods.extended
+        let order = AppConstants.Periods.chronologicalOrder
         return order.filter { periodIds.contains($0) }.compactMap { pid in
             TimetablePeriod.all.first { $0.id == pid }
         }
@@ -88,20 +99,97 @@ final class ClassTableViewModel {
         assignments.filter { $0.courseNo == courseNo && !$0.isCompleted }
     }
 
+    enum CellRole {
+        case empty
+        case blockStart(SDCourse, spanCount: Int)
+        case blockContinuation
+    }
+
+    /// Determine the role of a cell at the given weekday and period index.
+    /// Used by TimetableGridView to merge contiguous periods.
+    func cellRole(weekday: Int, periodIndex: Int) -> CellRole {
+        let periods = activePeriods
+        guard periodIndex >= 0, periodIndex < periods.count else { return .empty }
+
+        let period = periods[periodIndex]
+        guard let course = course(for: weekday, period: period.id) else { return .empty }
+
+        // Check if previous period has the same course → this is a continuation
+        if periodIndex > 0 {
+            let prevPeriod = periods[periodIndex - 1]
+            if let prevCourse = self.course(for: weekday, period: prevPeriod.id),
+               prevCourse.courseNo == course.courseNo {
+                return .blockContinuation
+            }
+        }
+
+        // This is the start of a block — count how many contiguous periods follow
+        var span = 1
+        var nextIdx = periodIndex + 1
+        while nextIdx < periods.count {
+            let nextPeriod = periods[nextIdx]
+            if let nextCourse = self.course(for: weekday, period: nextPeriod.id),
+               nextCourse.courseNo == course.courseNo {
+                span += 1
+                nextIdx += 1
+            } else {
+                break
+            }
+        }
+
+        return .blockStart(course, spanCount: span)
+    }
+
     func selectCourse(_ course: SDCourse, weekday: Int, periodId: String) {
         selectedWeekday = weekday
         selectedPeriodId = periodId
         selectedCourse = course
     }
 
-    func refresh() {
-        let userAdded = courses.filter { $0.moodleIdNumber == nil }
-        courses = MockData.courses + userAdded
-        assignments = MockData.assignments
+    private func rebuildColorMap() {
+        TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
     }
 
-    func load() {
-        courses = MockData.courses
-        assignments = MockData.assignments
+    func load(authService: AuthService) {
+        guard !hasLoaded else { return }
+        hasLoaded = true
+
+        // Load cached data immediately
+        let cachedCourses = DataCache.shared.loadCourses()
+        let cachedAssignments = DataCache.shared.loadAssignments()
+        if !cachedCourses.isEmpty {
+            courses = cachedCourses
+            assignments = cachedAssignments
+            rebuildColorMap()
+        }
+
+        Task {
+            await fetchData(authService: authService)
+        }
+    }
+
+    func refresh(authService: AuthService) async {
+        await fetchData(authService: authService)
+    }
+
+    private func fetchData(authService: AuthService) async {
+        let manager = NTUSTSessionManager.shared
+        await MainActor.run { manager.loadingState = .loading }
+
+        async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
+        async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+
+        let fetchedCourses = await coursesTask
+        let fetchedAssignments = await assignmentsTask
+
+        // Merge user-added courses (those without moodleIdNumber)
+        let userAdded = courses.filter { $0.moodleIdNumber == nil }
+
+        await MainActor.run {
+            courses = fetchedCourses + userAdded
+            assignments = fetchedAssignments
+            rebuildColorMap()
+            manager.loadingState = .loaded
+        }
     }
 }
