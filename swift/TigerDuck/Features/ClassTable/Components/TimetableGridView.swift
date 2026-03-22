@@ -44,9 +44,10 @@ struct TimetableGridView: View {
                 HStack(spacing: colSpacing) {
                     // Period label
                     Text(period.displayLabel)
-                        .font(TigerDuckTheme.Typography.caption2)
                         .font(.system(size: 10))
                         .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .frame(width: periodWidth, height: cellHeight)
 
                     // Day cells
