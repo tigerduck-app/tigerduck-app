@@ -13,6 +13,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     case graduationRequirements
 
     // Library
+    case library
     case libraryQR
     case discussionRoom
     case libraryLecture
@@ -38,6 +39,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .classTable: "課表"
         case .calendar: "行事曆"
         case .announcements: "公告"
+        case .library: "圖書館"
         case .gpa: "GPA 查詢"
         case .courseSelection: "選課系統"
         case .graduationRequirements: "畢業門檻"
@@ -60,6 +62,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .classTable: "calendar.day.timeline.left"
         case .calendar: "calendar"
         case .announcements: "megaphone.fill"
+        case .library: "books.vertical.fill"
         case .gpa: "chart.bar.fill"
         case .courseSelection: "pencil.and.list.clipboard"
         case .graduationRequirements: "graduationcap.fill"
@@ -79,7 +82,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     var category: FeatureCategory? {
         switch self {
         case .gpa, .courseSelection, .graduationRequirements: .academic
-        case .libraryQR, .discussionRoom, .libraryLecture: .library
+        case .library, .libraryQR, .discussionRoom, .libraryLecture: .library
         case .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
         case .englishVocab: .language
         case .settings: .system
@@ -89,7 +92,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     /// Features that can be pinned to tab bar (positions 1-4)
     static let pinnableFeatures: [AppFeature] = [
-        .home, .classTable, .calendar, .announcements,
+        .home, .classTable, .calendar, .announcements, .library,
         .gpa, .courseSelection, .graduationRequirements,
         .libraryQR, .discussionRoom, .libraryLecture,
         .freeLunch, .clubs, .emptyClassroom, .scholarship,
@@ -97,11 +100,12 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     ]
 
     static let defaultTabs: [AppFeature] = [
-        .home, .classTable, .calendar, .announcements,
+        .home, .classTable, .calendar, .library,
     ]
 
     /// Features displayed in the "More" page, grouped by category
     static let moreFeatures: [AppFeature] = [
+        .announcements,
         .gpa, .courseSelection, .graduationRequirements,
         .libraryQR, .discussionRoom, .libraryLecture,
         .freeLunch, .clubs, .emptyClassroom, .scholarship,

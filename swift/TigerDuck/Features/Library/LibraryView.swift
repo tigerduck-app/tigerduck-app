@@ -1,0 +1,192 @@
+import SwiftUI
+
+struct LibraryView: View {
+    @Environment(AppState.self) private var appState
+    @State private var viewModel = LibraryViewModel()
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    headerSection
+                    errorBanner
+                    if viewModel.isLoggedIn {
+                        qrSection
+                    } else {
+                        loginPrompt
+                    }
+                    libraryFeaturesSection
+                }
+                .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+            }
+            .background(Color.backgroundPrimary)
+        }
+        .onAppear {
+            viewModel.load()
+            viewModel.onAppear()
+        }
+        .onDisappear {
+            viewModel.onDisappear()
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        HStack {
+            Text("圖書館")
+                .font(TigerDuckTheme.Typography.largeTitle)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            HStack(spacing: TigerDuckTheme.Spacing.xs) {
+                Circle()
+                    .fill(viewModel.isLoggedIn ? Color.green : Color.textSecondary.opacity(0.5))
+                    .frame(width: 8, height: 8)
+                Text(viewModel.isLoggedIn ? "已登入" : "未登入")
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.top, TigerDuckTheme.Spacing.md)
+    }
+
+    // MARK: - Error
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let error = viewModel.errorMessage {
+            HStack(spacing: TigerDuckTheme.Spacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(error)
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(2)
+            }
+            .cardPadding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassCard()
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        }
+    }
+
+    // MARK: - QR Code Section
+
+    private var qrSection: some View {
+        LibraryQRCodeView(
+            qrImage: viewModel.qrCodeImage,
+            countdown: viewModel.countdown,
+            isLoading: viewModel.isLoadingQR,
+            username: LibraryService.storedUsername
+        )
+    }
+
+    // MARK: - Login Prompt
+
+    private var loginPrompt: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.lg) {
+            Image(systemName: "qrcode")
+                .font(.system(size: 56))
+                .foregroundStyle(Color.accentPrimary)
+
+            Text("登入以使用 QR 入館")
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+
+            Text("密碼可能與校務系統不同")
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textSecondary)
+                .multilineTextAlignment(.center)
+
+            VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                TextField("圖書館帳號", text: $viewModel.libUsername)
+                    .textContentType(.username)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                    .padding(TigerDuckTheme.Spacing.md)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
+
+                SecureField("圖書館密碼", text: $viewModel.libPassword)
+                    .textContentType(.password)
+                    .padding(TigerDuckTheme.Spacing.md)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
+            }
+
+            loginButton
+        }
+        .cardPadding()
+        .frame(maxWidth: .infinity)
+        .glassCard()
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    @ViewBuilder
+    private var loginButton: some View {
+        let disabled = viewModel.libUsername.isEmpty || viewModel.libPassword.isEmpty || viewModel.isLoggingIn
+
+        if #available(iOS 26, *) {
+            Button {
+                viewModel.loginAndStart()
+            } label: {
+                loginButtonLabel
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(disabled)
+        } else {
+            Button {
+                viewModel.loginAndStart()
+            } label: {
+                loginButtonLabel
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(TigerDuckTheme.Spacing.md)
+                    .background(
+                        Color.accentPrimary.opacity(disabled ? 0.5 : 1),
+                        in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md)
+                    )
+            }
+            .disabled(disabled)
+        }
+    }
+
+    private var loginButtonLabel: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            if viewModel.isLoggingIn {
+                ProgressView()
+                    .tint(.white)
+            }
+            Text(viewModel.isLoggingIn ? "登入中..." : "登入圖書館")
+                .font(TigerDuckTheme.Typography.headline)
+        }
+    }
+
+    // MARK: - Library Features
+
+    private var libraryFeaturesSection: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.md) {
+            featureCard(icon: "door.left.hand.open", title: "討論小間", subtitle: "即將推出")
+            featureCard(icon: "mic.fill", title: "講座", subtitle: "即將推出")
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    private func featureCard(icon: String, title: String, subtitle: String) -> some View {
+        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(Color.accentPrimary)
+
+            Text(title)
+                .font(TigerDuckTheme.Typography.headline)
+                .foregroundStyle(Color.textPrimary)
+
+            Text(subtitle)
+                .font(TigerDuckTheme.Typography.caption2)
+                .foregroundStyle(Color.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, TigerDuckTheme.Spacing.lg)
+        .glassCard()
+    }
+}

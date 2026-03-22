@@ -10,6 +10,10 @@ struct SettingsView: View {
     @State private var showLicense = false
     @State private var loginStudentId = ""
     @State private var loginPassword = ""
+    @State private var libUsername = ""
+    @State private var libPassword = ""
+    @State private var libIsLoggingIn = false
+    @State private var libLoginError: String?
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -197,17 +201,73 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Circle()
-                    .fill(appState.isLibraryLoggedIn ? Color.green : Color.red)
+                    .fill(LibraryService.isTokenValid ? Color.green : Color.red)
                     .frame(width: 10, height: 10)
                 Text("圖書館系統")
                     .font(.headline)
                 Spacer()
-                Text(appState.isLibraryLoggedIn ? "已登入" : "未登入")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if libIsLoggingIn {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text(LibraryService.isTokenValid ? "已登入" : "未登入")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
-            if !appState.isLibraryLoggedIn {
-                Button("登入圖書館") {}
+
+            if LibraryService.isTokenValid {
+                if let username = LibraryService.storedUsername {
+                    Text("帳號：\(username)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                if let expiry = LibraryService.storedTokenExpiry {
+                    Text("Token 有效至 \(expiry.formatted(.dateTime.year().month().day()))")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                Button("登出", role: .destructive) {
+                    LibraryService.clearCredentials()
+                    libUsername = ""
+                    libPassword = ""
+                }
+            } else {
+                Text("帳號密碼可能與校務系統不同")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+
+                TextField("圖書館帳號", text: $libUsername)
+                    .textContentType(.username)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                SecureField("圖書館密碼", text: $libPassword)
+                    .textContentType(.password)
+
+                if let error = libLoginError {
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundColor(.red)
+                }
+
+                Button("登入圖書館") {
+                    Task {
+                        libIsLoggingIn = true
+                        libLoginError = nil
+                        do {
+                            try await LibraryService.login(
+                                username: libUsername,
+                                password: libPassword
+                            )
+                            libUsername = ""
+                            libPassword = ""
+                        } catch {
+                            libLoginError = error.localizedDescription
+                        }
+                        libIsLoggingIn = false
+                    }
+                }
+                .disabled(libUsername.isEmpty || libPassword.isEmpty || libIsLoggingIn)
             }
         }
     }

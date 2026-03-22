@@ -35,12 +35,18 @@ final class AuthService {
             )
 
             if success {
+                let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
                 // Store credentials in Keychain
-                if let idData = studentId.uppercased().data(using: .utf8) {
+                if let idData = normalizedId.data(using: .utf8) {
                     KeychainManager.save(key: "ntust_student_id", data: idData)
                 }
                 if let pwData = password.data(using: .utf8) {
                     KeychainManager.save(key: "ntust_password", data: pwData)
+                }
+
+                // Auto-attempt library login with same credentials (best-effort)
+                if !LibraryService.isTokenValid {
+                    _ = try? await LibraryService.login(username: normalizedId, password: password)
                 }
             }
 

@@ -11,7 +11,7 @@ final class AppState {
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
     var isMoodleLinked: Bool { authService.isNTUSTAuthenticated }
-    var isLibraryLoggedIn = false
+    var isLibraryLoggedIn: Bool { LibraryService.isTokenValid }
 
     // MARK: - Theme
 

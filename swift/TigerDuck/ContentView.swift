@@ -40,6 +40,7 @@ struct MainTabView: View {
         case .gpa: PlaceholderFeatureView(feature: feature)
         case .courseSelection: PlaceholderFeatureView(feature: feature)
         case .graduationRequirements: PlaceholderFeatureView(feature: feature)
+        case .library: LibraryView()
         case .libraryQR: PlaceholderFeatureView(feature: feature)
         case .discussionRoom: PlaceholderFeatureView(feature: feature)
         case .libraryLecture: PlaceholderFeatureView(feature: feature)
