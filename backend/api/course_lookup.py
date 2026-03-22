@@ -18,6 +18,8 @@ if __name__ == "__main__":
             html = client.get_class_table()
             result = re.findall(r"<tr>\s*<td>\s*([A-Z]{2}[A-Z0-9]{7})\s*</td>", html)
             print(result)
+            # ['CS1007701', 'CS2001301', 'CS2006301', 'CS2008301', 'CS3001302', 'CS3019701', 'EC1013701', 'EC1014701', 'PE139B022']
+
             for i in result:
                 print(search_courses(semester="1142", course_no=i))
                 # [{'Semester': '1142', 'CourseNo': 'CS1007701', 'CourseName': '網際網路與應用', 'CourseTeacher': '吳添勝', 'Dimension': '', 'CreditPoint': '3', 'RequireOption': 'E', 'AllYear': 'H', 'ChooseStudent': 26, 'Restrict1': '29', 'Restrict2': '29', 'ThreeStudent': 0, 'AllStudent': 26, 'NTURestrict': '0', 'NTNURestrict': '0', 'CourseTimes': '3', 'PracticalTimes': '0', 'ClassRoomNo': 'RB-504', 'ThreeNode': None, 'Node': 'M10,M8,M9', 'Contents': '限29人', 'NTU_People': 0, 'NTNU_People': 0, 'AbroadPeople': 5}]
