@@ -128,11 +128,11 @@ final class HomeViewModel {
     var selectedCourse: SDCourse? = nil
 
     func hasUnfinishedAssignment(for courseNo: String) -> Bool {
-        upcomingAssignments.contains { $0.courseNo == courseNo && !$0.isCompleted }
+        upcomingAssignments.hasUnfinished(for: courseNo)
     }
 
     func assignmentsFor(courseNo: String) -> [SDAssignment] {
-        upcomingAssignments.filter { $0.courseNo == courseNo && !$0.isCompleted }
+        upcomingAssignments.unfinished(for: courseNo)
     }
 
     func removeSection(_ section: HomeSection) {
