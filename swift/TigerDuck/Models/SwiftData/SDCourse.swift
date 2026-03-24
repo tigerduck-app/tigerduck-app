@@ -14,10 +14,14 @@ final class SDCourse: Identifiable {
 
     /// Schedule stored as JSON: {"1":["3","4"],"3":["6","7"]}
     /// Keys = weekday (1=Mon..7=Sun), Values = period IDs
-    var scheduleJSON: String
+    var scheduleJSON: String {
+        didSet { _cachedSchedule = nil }
+    }
 
     /// Moodle course ID number (e.g. "1142EC1013701")
     var moodleIdNumber: String?
+
+    @Transient private var _cachedSchedule: [Int: [String]]?
 
     var id: String { courseNo }
 
@@ -39,7 +43,6 @@ final class SDCourse: Identifiable {
         self.classroom = classroom
         self.enrolledCount = enrolledCount
         self.maxCount = maxCount
-        // Encode schedule as JSON string
         let stringKeyDict = Dictionary(uniqueKeysWithValues: schedule.map { ("\($0.key)", $0.value) })
         self.scheduleJSON = (try? JSONEncoder().encode(stringKeyDict))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
@@ -47,14 +50,18 @@ final class SDCourse: Identifiable {
     }
 
     var schedule: [Int: [String]] {
+        if let cached = _cachedSchedule { return cached }
         guard let data = scheduleJSON.data(using: .utf8),
               let dict = try? JSONDecoder().decode([String: [String]].self, from: data) else {
+            _cachedSchedule = [:]
             return [:]
         }
-        return Dictionary(uniqueKeysWithValues: dict.compactMap { key, value in
+        let decoded = Dictionary(uniqueKeysWithValues: dict.compactMap { key, value -> (Int, [String])? in
             guard let intKey = Int(key) else { return nil }
             return (intKey, value)
         })
+        _cachedSchedule = decoded
+        return decoded
     }
 
     var color: Color {
