@@ -29,9 +29,10 @@ struct ClassTableView: View {
                     if !viewModel.todayCourses.isEmpty {
                         VStack(spacing: TigerDuckTheme.Spacing.sm) {
                             SectionHeader(title: "今日課程")
-                            TodayCourseCards(
+                            TodayCourseCarousel(
                                 courses: viewModel.todayCourses,
                                 hasAssignment: viewModel.hasAssignment,
+                                showProgress: false,
                                 onSelect: { viewModel.selectedCourse = $0 }
                             )
                         }
