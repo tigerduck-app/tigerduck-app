@@ -48,7 +48,7 @@ struct AnnouncementDetailView: View {
             // Floating button: open original announcement
             if let urlString = announcement.detailUrl, let url = URL(string: urlString) {
                 Button {
-                    if appState.browserPreference == "inApp" {
+                    if appState.browserPreference == .inApp {
                         showInAppBrowser = true
                     } else {
                         UIApplication.shared.open(url)

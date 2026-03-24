@@ -2,15 +2,21 @@ import SwiftUI
 
 @Observable
 final class AnnouncementsViewModel {
-    var announcements: [SDAnnouncement] = []
-    var selectedDepartments: Set<String> = []
-    var searchText: String = ""
-
-    var departments: [String] {
-        Array(Set(announcements.map(\.department))).sorted()
+    var announcements: [SDAnnouncement] = [] {
+        didSet { refilter() }
+    }
+    var selectedDepartments: Set<String> = [] {
+        didSet { refilter() }
+    }
+    var searchText: String = "" {
+        didSet { refilter() }
     }
 
-    var filteredAnnouncements: [SDAnnouncement] {
+    private(set) var departments: [String] = []
+    private(set) var filteredAnnouncements: [SDAnnouncement] = []
+
+    private func refilter() {
+        departments = Array(Set(announcements.map(\.department))).sorted()
         var result = announcements
         if !selectedDepartments.isEmpty {
             result = result.filter { selectedDepartments.contains($0.department) }
@@ -21,7 +27,7 @@ final class AnnouncementsViewModel {
                 $0.summary.localizedCaseInsensitiveContains(searchText)
             }
         }
-        return result.sorted { $0.publishDate > $1.publishDate }
+        filteredAnnouncements = result.sorted { $0.publishDate > $1.publishDate }
     }
 
     func toggleDepartment(_ dept: String, appState: AppState) {
@@ -37,7 +43,6 @@ final class AnnouncementsViewModel {
 
     func load(appState: AppState) {
         announcements = MockData.announcements
-        // Restore saved filter if enabled
         if appState.rememberAnnouncementFilter {
             selectedDepartments = appState.savedAnnouncementDepartments
         }
