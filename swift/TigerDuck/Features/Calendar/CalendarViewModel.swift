@@ -45,8 +45,9 @@ final class CalendarViewModel {
         requestCalendarAccess()
 
         Task {
-            await fetchMoodleEvents(authService: authService)
-            await fetchSchoolEvents()
+            async let moodle: Void = fetchMoodleEvents(authService: authService)
+            async let school: Void = fetchSchoolEvents()
+            _ = await (moodle, school)
         }
     }
 
@@ -54,8 +55,9 @@ final class CalendarViewModel {
         let manager = NTUSTSessionManager.shared
         await MainActor.run { manager.loadingState = .loading }
 
-        await fetchMoodleEvents(authService: authService)
-        await fetchSchoolEvents()
+        async let moodle: Void = fetchMoodleEvents(authService: authService)
+        async let school: Void = fetchSchoolEvents()
+        _ = await (moodle, school)
         loadSystemCalendarEvents()
 
         await MainActor.run { manager.loadingState = .loaded }
