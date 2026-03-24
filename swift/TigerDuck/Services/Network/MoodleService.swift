@@ -86,7 +86,7 @@ enum MoodleService {
                 let parts = fullname.components(separatedBy: " ")
                 if parts.count >= 2 {
                     // Find the part after the course number
-                    if let idx = parts.firstIndex(where: { $0.range(of: "[A-Z]{2}[A-Z0-9]{7}", options: .regularExpression) != nil }),
+                    if let idx = parts.firstIndex(where: { $0.range(of: "3?[A-Z]{2}[A-Z0-9]{6,7}", options: .regularExpression) != nil }),
                        idx + 1 < parts.count {
                         courseName = parts[idx + 1]
                     } else {

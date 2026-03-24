@@ -52,8 +52,7 @@ enum CourseService {
             throw CourseServiceError.redirectedToSSO
         }
 
-        // Extract course numbers: 2 uppercase letters + 7 alphanumeric chars
-        let pattern = "<tr>\\s*<td>\\s*([A-Z]{2}[A-Z0-9]{7})\\s*</td>"
+        let pattern = "<tr>\\s*<td>\\s*(3?[A-Z]{2}[A-Z0-9]{6,7})\\s*</td>"
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return []
         }
