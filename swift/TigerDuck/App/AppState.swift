@@ -1,10 +1,14 @@
 import SwiftUI
 import SwiftData
 
+enum BrowserPreference: String, CaseIterable {
+    case system
+    case inApp
+}
+
 @Observable
 final class AppState {
     var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
-    var username: String = UserDefaults.standard.string(forKey: "username") ?? AppConstants.defaultUsername
 
     let authService = AuthService()
     let sessionManager = NTUSTSessionManager.shared
@@ -56,9 +60,15 @@ final class AppState {
         }
     }
 
-    /// Browser preference for opening links: "system" (default), "inApp"
-    var browserPreference: String = UserDefaults.standard.string(forKey: "browserPreference") ?? "system" {
-        didSet { UserDefaults.standard.set(browserPreference, forKey: "browserPreference") }
+    /// Browser preference for opening links
+    var browserPreference: BrowserPreference = {
+        if let raw = UserDefaults.standard.string(forKey: "browserPreference"),
+           let pref = BrowserPreference(rawValue: raw) {
+            return pref
+        }
+        return .system
+    }() {
+        didSet { UserDefaults.standard.set(browserPreference.rawValue, forKey: "browserPreference") }
     }
 
     /// Assignment time display: true = absolute (2026/3/24 23:59:00), false = relative (5 天後)
@@ -86,11 +96,6 @@ final class AppState {
     func completeOnboarding() {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
-    }
-
-    func setUsername(_ name: String) {
-        username = name
-        UserDefaults.standard.set(name, forKey: "username")
     }
 
     /// Background sync all data on app launch
