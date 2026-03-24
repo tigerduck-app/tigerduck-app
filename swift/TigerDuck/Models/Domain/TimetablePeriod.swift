@@ -19,4 +19,6 @@ struct TimetablePeriod: Identifiable, Hashable {
             return TimetablePeriod(id: periodID, startTime: times.start, endTime: times.end)
         }
     }()
+
+    static let byId: [String: TimetablePeriod] = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
 }
