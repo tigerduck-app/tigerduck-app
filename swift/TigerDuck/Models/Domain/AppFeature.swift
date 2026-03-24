@@ -108,6 +108,12 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .freeLunch, .clubs, .emptyClassroom, .scholarship,
         .englishVocab,
     ]
+
+    /// Features available as home screen widgets
+    static let widgetFeatures: [AppFeature] = [
+        .announcements, .freeLunch, .clubs, .emptyClassroom,
+        .gpa, .scholarship, .englishVocab,
+    ]
 }
 
 enum FeatureCategory: String, CaseIterable, Identifiable {
