@@ -2,7 +2,6 @@ import Foundation
 
 enum AppConstants {
     static let appName = "TigerDuck"
-    static let defaultUsername = "同學"
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
 
