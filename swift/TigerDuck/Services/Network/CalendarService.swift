@@ -148,25 +148,33 @@ enum CalendarService {
         return events
     }
 
+    private static let icsDateOnly: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd"
+        f.timeZone = TimeZone(identifier: "Asia/Taipei")
+        return f
+    }()
+
+    private static let icsDateTime: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd'T'HHmmss"
+        f.timeZone = TimeZone(identifier: "Asia/Taipei")
+        return f
+    }()
+
+    private static let icsDateTimeZ: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
     /// Parse ICS date formats: DTSTART;VALUE=DATE:20250901 or DTSTART:20250901T080000Z
     private static func parseICSDate(_ line: String) -> Date? {
         guard let colonIndex = line.lastIndex(of: ":") else { return nil }
         let value = String(line[line.index(after: colonIndex)...])
-
-        let dateOnly = DateFormatter()
-        dateOnly.dateFormat = "yyyyMMdd"
-        dateOnly.timeZone = TimeZone(identifier: "Asia/Taipei")
-
-        let dateTime = DateFormatter()
-        dateTime.dateFormat = "yyyyMMdd'T'HHmmss"
-        dateTime.timeZone = TimeZone(identifier: "Asia/Taipei")
-
-        let dateTimeZ = DateFormatter()
-        dateTimeZ.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
-        dateTimeZ.timeZone = TimeZone(identifier: "UTC")
-
-        return dateTimeZ.date(from: value)
-            ?? dateTime.date(from: value)
-            ?? dateOnly.date(from: value)
+        return icsDateTimeZ.date(from: value)
+            ?? icsDateTime.date(from: value)
+            ?? icsDateOnly.date(from: value)
     }
 }
