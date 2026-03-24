@@ -66,8 +66,8 @@ struct SettingsView: View {
                 Toggle("作業截止時間顯示完整日期", isOn: $appState.showAbsoluteAssignmentTime)
                 Toggle("記住公告篩選條件", isOn: $appState.rememberAnnouncementFilter)
                 Picker("開啟連結方式", selection: $appState.browserPreference) {
-                    Text("系統預設瀏覽器").tag("system")
-                    Text("App 內瀏覽器").tag("inApp")
+                    Text("系統預設瀏覽器").tag(BrowserPreference.system)
+                    Text("App 內瀏覽器").tag(BrowserPreference.inApp)
                 }
             }
 
