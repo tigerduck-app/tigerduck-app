@@ -51,11 +51,15 @@ extension Date {
         }
     }
 
+    private static let absoluteFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d HH:mm:ss"
+        return f
+    }()
+
     /// Absolute time: "3/24 23:59:00"
     var absoluteTimeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "M/d HH:mm:ss"
-        return formatter.string(from: self)
+        Self.absoluteFormatter.string(from: self)
     }
 
     /// Relative time: "5 天後", "3 小時後", "已逾期"
