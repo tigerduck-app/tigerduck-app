@@ -4,10 +4,7 @@ struct WidgetGridEditMode: View {
     @Binding var widgets: [WidgetItem]
     @Binding var isEditing: Bool
 
-    private let availableFeatures: [AppFeature] = [
-        .announcements, .freeLunch, .clubs, .emptyClassroom,
-        .gpa, .scholarship, .englishVocab,
-    ]
+    private let availableFeatures = AppFeature.widgetFeatures
 
     var body: some View {
         NavigationStack {

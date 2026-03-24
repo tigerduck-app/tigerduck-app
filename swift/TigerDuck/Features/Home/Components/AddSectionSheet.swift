@@ -46,10 +46,8 @@ struct AddSectionSheet: View {
                     let allWidgetFeatures = viewModel.sections
                         .flatMap(\.widgets)
                         .map(\.feature)
-                    let addable: [AppFeature] = [
-                        .announcements, .freeLunch, .clubs, .emptyClassroom,
-                        .gpa, .scholarship, .englishVocab,
-                    ].filter { !allWidgetFeatures.contains($0) }
+                    let addable = AppFeature.widgetFeatures
+                        .filter { !allWidgetFeatures.contains($0) }
 
                     if addable.isEmpty {
                         Text("所有快速功能已添加")

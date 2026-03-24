@@ -3,7 +3,14 @@ import SwiftUI
 struct TodayCourseCarousel: View {
     let courses: [SDCourse]
     let hasAssignment: (String) -> Bool
+    var showProgress: Bool = true
     var onSelect: ((SDCourse) -> Void)? = nil
+
+    private static let periodTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
 
     var body: some View {
         if courses.isEmpty {
@@ -15,10 +22,10 @@ struct TodayCourseCarousel: View {
                         Button {
                             onSelect?(course)
                         } label: {
-                            HomeTodayCourseCard(
+                            TodayCourseCard(
                                 course: course,
                                 showBadge: hasAssignment(course.courseNo),
-                                progress: courseProgress(course)
+                                progress: showProgress ? courseProgress(course) : nil
                             )
                         }
                         .buttonStyle(.plain)
@@ -45,7 +52,6 @@ struct TodayCourseCarousel: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    /// Sort by start time: earliest (left) → latest (right)
     private var sortedCourses: [SDCourse] {
         courses.sorted { a, b in
             courseStartTime(a) < courseStartTime(b)
@@ -72,8 +78,7 @@ struct TodayCourseCarousel: View {
         guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
         let now = Date()
         let cal = Calendar.current
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
+        let formatter = Self.periodTimeFormatter
 
         guard let firstPeriod = periods.first,
               let lastPeriod = periods.last,
@@ -93,8 +98,7 @@ struct TodayCourseCarousel: View {
     }
 }
 
-/// Card style matching ClassTable's TodayCourseCards
-private struct HomeTodayCourseCard: View {
+private struct TodayCourseCard: View {
     let course: SDCourse
     var showBadge: Bool = false
     var progress: Double? = nil
