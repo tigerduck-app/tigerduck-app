@@ -105,9 +105,7 @@ final class ClassTableViewModel {
             }
         }
         let order = AppConstants.Periods.chronologicalOrder
-        return order.filter { periodIds.contains($0) }.compactMap { pid in
-            TimetablePeriod.all.first { $0.id == pid }
-        }
+        return order.filter { periodIds.contains($0) }.compactMap { TimetablePeriod.byId[$0] }
     }
 
     func course(for weekday: Int, period: String) -> SDCourse? {
@@ -117,11 +115,11 @@ final class ClassTableViewModel {
     }
 
     func hasAssignment(for courseNo: String) -> Bool {
-        assignments.contains { $0.courseNo == courseNo && !$0.isCompleted }
+        assignments.hasUnfinished(for: courseNo)
     }
 
     func assignmentsFor(courseNo: String) -> [SDAssignment] {
-        assignments.filter { $0.courseNo == courseNo && !$0.isCompleted }
+        assignments.unfinished(for: courseNo)
     }
 
     enum CellRole {
