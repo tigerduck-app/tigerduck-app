@@ -3,9 +3,9 @@ import SwiftUI
 @Observable
 final class TimeSliderViewModel {
     // MARK: - Data
-    private(set) var timeSlots: [CourseTimeSlot] = []
-    private(set) var rangeStart: Date = Date()
-    private(set) var rangeEnd: Date = Date()
+    var timeSlots: [CourseTimeSlot] = []
+    var rangeStart: Date = Date()
+    var rangeEnd: Date = Date()
 
     // MARK: - State
     var selectedTime: Date = Date()
