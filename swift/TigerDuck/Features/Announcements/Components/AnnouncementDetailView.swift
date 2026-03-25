@@ -79,22 +79,31 @@ struct AnnouncementDetailView: View {
 /// Renders HTML content with image support using AttributedString
 struct HTMLContentView: View {
     let html: String
+    @State private var parsed: AttributedString?
 
     var body: some View {
-        if let nsAttr = try? NSAttributedString(
-            data: Data(wrappedHTML.utf8),
-            options: [
-                .documentType: NSAttributedString.DocumentType.html,
-                .characterEncoding: String.Encoding.utf8.rawValue,
-            ],
-            documentAttributes: nil
-        ), let attr = try? AttributedString(nsAttr) {
-            Text(attr)
-                .foregroundStyle(Color.textPrimary)
-        } else {
-            Text(html)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
+        Group {
+            if let parsed {
+                Text(parsed)
+                    .foregroundStyle(Color.textPrimary)
+            } else {
+                Text(html)
+                    .font(TigerDuckTheme.Typography.body)
+                    .foregroundStyle(Color.textPrimary)
+            }
+        }
+        .task(id: html) {
+            // NSAttributedString HTML parsing must run on main thread;
+            // .task defers it out of the body eval hot path
+            guard let nsAttr = try? NSAttributedString(
+                data: Data(wrappedHTML.utf8),
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue,
+                ],
+                documentAttributes: nil
+            ), let attr = try? AttributedString(nsAttr) else { return }
+            parsed = attr
         }
     }
 

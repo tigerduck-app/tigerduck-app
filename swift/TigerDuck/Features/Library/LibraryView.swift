@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LibraryView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = LibraryViewModel()
 
     var body: some View {
@@ -27,6 +28,13 @@ struct LibraryView: View {
         }
         .onDisappear {
             viewModel.onDisappear()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                viewModel.onAppear()
+            } else {
+                viewModel.stopTimers()
+            }
         }
     }
 
