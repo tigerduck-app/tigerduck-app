@@ -6,6 +6,8 @@
     {
       "layers" : [
         {
+          "blend-mode" : "normal",
+          "glass" : true,
           "image-name" : "tigerduck.png",
           "name" : "tigerduck",
           "position" : {
