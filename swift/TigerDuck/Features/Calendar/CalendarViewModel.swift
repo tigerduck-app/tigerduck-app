@@ -9,7 +9,7 @@ final class CalendarViewModel {
         didSet { calendarDays = Self.buildCalendarDays(for: displayedMonth) }
     }
 
-    private(set) var calendarDays: [Date?] = Self.buildCalendarDays(for: .now)
+    private(set) var calendarDays: [Date?] = CalendarViewModel.buildCalendarDays(for: .now)
 
     private let eventStore = EKEventStore()
     var calendarAccessGranted = false
