@@ -8,6 +8,7 @@ final class HomeViewModel {
     var isEditingHome = false
 
     private var hasLoaded = false
+    private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
 
     init() {
@@ -16,6 +17,8 @@ final class HomeViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            // Skip if we just posted this notification ourselves (data already up-to-date)
+            guard self?.isUpdatingFromNetwork != true else { return }
             self?.reloadFromCache()
         }
     }
@@ -42,12 +45,8 @@ final class HomeViewModel {
             sections = defaultSections()
         }
 
-        // Load cached data immediately so UI isn't empty on restart
+        // Load cached data immediately; backgroundSync() on app launch handles the network refresh
         reloadFromCache()
-
-        Task {
-            await fetchData(authService: authService)
-        }
     }
 
     func refresh(authService: AuthService) async {
@@ -68,11 +67,13 @@ final class HomeViewModel {
         let upcoming = allAssignments.upcomingSorted()
 
         await MainActor.run {
+            isUpdatingFromNetwork = true
             TigerDuckTheme.buildCourseColorMap(courseNos: allCourses.map(\.courseNo))
             todayCourses = todayFiltered
             upcomingAssignments = upcoming
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            isUpdatingFromNetwork = false
         }
     }
 

@@ -34,6 +34,7 @@ final class ClassTableViewModel {
     private var courseLookup: [Int: [String: SDCourse]] = [:]
 
     private var hasLoaded = false
+    private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
 
     init() {
@@ -42,6 +43,7 @@ final class ClassTableViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            guard self?.isUpdatingFromNetwork != true else { return }
             self?.reloadFromCache()
         }
     }
@@ -170,10 +172,7 @@ final class ClassTableViewModel {
             courses = cachedCourses
             assignments = cachedAssignments
         }
-
-        Task {
-            await fetchData(authService: authService)
-        }
+        // backgroundSync() on app launch handles the network refresh
     }
 
     func refresh(authService: AuthService) async {
@@ -193,10 +192,12 @@ final class ClassTableViewModel {
         let userAdded = courses.filter { $0.moodleIdNumber == nil }
 
         await MainActor.run {
+            isUpdatingFromNetwork = true
             courses = fetchedCourses + userAdded
             assignments = fetchedAssignments
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            isUpdatingFromNetwork = false
         }
     }
 }
