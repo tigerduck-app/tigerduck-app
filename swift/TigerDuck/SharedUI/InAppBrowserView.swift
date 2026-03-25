@@ -8,7 +8,6 @@ struct InAppBrowserView: UIViewControllerRepresentable {
         let config = SFSafariViewController.Configuration()
         config.entersReaderIfAvailable = false
         let vc = SFSafariViewController(url: url, configuration: config)
-        vc.preferredControlTintColor = UIColor(Color.accentPrimary)
         return vc
     }
 
