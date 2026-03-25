@@ -23,6 +23,7 @@ enum AppConstants {
         static let browserPreference = "browserPreference"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let configuredTabs = "configuredTabs"
+        static let timeSliderStyle = "timeSliderStyle"
     }
 
     enum Periods {
