@@ -83,7 +83,7 @@ enum CourseService {
 
     /// Convert NTUST Node format "M6,M7,R10" to schedule dict [weekday: [periodId]]
     /// Day mapping: M=1(Mon), T=2(Tue), W=3(Wed), R=4(Thu), F=5(Fri), S=6(Sat), U=7(Sun)
-    static func parseNodeToSchedule(_ node: String?) -> [Int: [String]] {
+    nonisolated static func parseNodeToSchedule(_ node: String?) -> [Int: [String]] {
         guard let node, !node.isEmpty else { return [:] }
 
         let dayMap: [Character: Int] = [
