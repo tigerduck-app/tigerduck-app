@@ -2,55 +2,60 @@ import SwiftUI
 
 struct FluidGlassTrackView: View {
     var viewModel: TimeSliderViewModel
+    var invertDirection: Bool = false
+    @State private var lastDragX: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
+            let centerX = width / 2
 
-            ZStack(alignment: .leading) {
+            ZStack {
                 // Glass track background
                 Capsule()
                     .fill(.clear)
                     .glassEffect(.regular, in: .capsule)
 
-                // Course segments
+                // Course segments positioned relative to center
                 ForEach(viewModel.timeSlots) { slot in
-                    let startX = viewModel.normalizedPosition(for: slot.start) * width
-                    let endX = viewModel.normalizedPosition(for: slot.end) * width
-                    let segWidth = max(4, endX - startX)
+                    let startOffset = viewModel.xOffset(for: slot.start)
+                    let endOffset = viewModel.xOffset(for: slot.end)
+                    let segWidth = max(4, endOffset - startOffset)
+                    let segCenterX = centerX + (startOffset + endOffset) / 2
                     let isActive = viewModel.selectedTime >= slot.start && viewModel.selectedTime <= slot.end
 
                     RoundedRectangle(cornerRadius: 4)
                         .fill(slot.course.color.opacity(isActive ? 0.5 : 0.3))
                         .frame(width: segWidth, height: 24)
-                        .offset(x: startX)
+                        .position(x: segCenterX, y: 16)
                         .animation(.smooth(duration: 0.2), value: isActive)
                 }
 
-                // Thumb
-                let thumbX = viewModel.normalizedPosition(for: viewModel.selectedTime) * width
+                // Center indicator (current selection point)
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(.white.opacity(0.7))
+                    .frame(width: 2, height: 28)
+                    .position(x: centerX, y: 16)
 
+                // Glow dot at center
                 Circle()
-                    .fill(.ultraThinMaterial)
-                    .frame(width: 24, height: 24)
-                    .overlay(
-                        Circle().stroke(.white.opacity(0.5), lineWidth: 2)
-                    )
-                    .shadow(color: thumbGlowColor.opacity(0.4), radius: 8)
-                    .offset(x: thumbX - 12)
+                    .fill(thumbGlowColor)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: thumbGlowColor.opacity(0.6), radius: 6)
+                    .position(x: centerX, y: 16)
             }
             .frame(height: 32)
+            .clipShape(Capsule())
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        if !viewModel.isUserDragging {
-                            viewModel.onDragStarted()
-                        }
-                        let normalized = max(0, min(1, value.location.x / width))
-                        viewModel.selectedTime = viewModel.time(forNormalized: normalized)
+                        let dx = value.translation.width - lastDragX
+                        lastDragX = value.translation.width
+                        viewModel.onDragChanged(dx: dx, invertDirection: invertDirection)
                     }
                     .onEnded { _ in
+                        lastDragX = 0
                         viewModel.onDragEnded()
                     }
             )

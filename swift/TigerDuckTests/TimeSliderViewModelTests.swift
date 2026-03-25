@@ -18,36 +18,22 @@ struct TimeSliderViewModelTests {
         #expect(CourseTimeSlot.dateFromTimeString("", on: ref) == nil)
     }
 
-    @Test func normalizedPosition_clampsToRange() {
+    @Test func xOffset_returnsCorrectPixels() {
         let vm = TimeSliderViewModel(weekday: 1)
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let start = calendar.date(byAdding: .hour, value: 8, to: today)!
-        let end = calendar.date(byAdding: .hour, value: 18, to: today)!
-        vm.rangeStart = start
-        vm.rangeEnd = end
+        let now = calendar.date(byAdding: .hour, value: 10, to: today)!
+        vm.selectedTime = now
 
-        let before = calendar.date(byAdding: .hour, value: 7, to: today)!
-        #expect(vm.normalizedPosition(for: before) == 0.0)
+        // 60 minutes in the future → 60 * 1.5 = 90 pixels right
+        let future = calendar.date(byAdding: .hour, value: 11, to: today)!
+        let offset = vm.xOffset(for: future)
+        #expect(abs(offset - 90) < 0.01)
 
-        let after = calendar.date(byAdding: .hour, value: 19, to: today)!
-        #expect(vm.normalizedPosition(for: after) == 1.0)
-
-        let mid = calendar.date(byAdding: .hour, value: 13, to: today)!
-        let pos = vm.normalizedPosition(for: mid)
-        #expect(pos > 0.49 && pos < 0.51)
-    }
-
-    @Test func timeForNormalized_roundtrips() {
-        let vm = TimeSliderViewModel(weekday: 1)
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        vm.rangeStart = calendar.date(byAdding: .hour, value: 8, to: today)!
-        vm.rangeEnd = calendar.date(byAdding: .hour, value: 18, to: today)!
-
-        let time = vm.time(forNormalized: 0.5)
-        let pos = vm.normalizedPosition(for: time)
-        #expect(abs(pos - 0.5) < 0.001)
+        // 30 minutes in the past → -30 * 1.5 = -45 pixels left
+        let past = calendar.date(byAdding: .minute, value: -30, to: now)!
+        let pastOffset = vm.xOffset(for: past)
+        #expect(abs(pastOffset - (-45)) < 0.01)
     }
 
     @Test func courseState_inClass() {
@@ -60,8 +46,6 @@ struct TimeSliderViewModelTests {
             end: calendar.date(byAdding: .hour, value: 12, to: today)!
         )
         vm.timeSlots = [slot]
-        vm.rangeStart = slot.start.addingTimeInterval(-30 * 60)
-        vm.rangeEnd = slot.end.addingTimeInterval(30 * 60)
 
         let during = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: during)
@@ -82,8 +66,6 @@ struct TimeSliderViewModelTests {
             end: calendar.date(byAdding: .hour, value: 12, to: today)!
         )
         vm.timeSlots = [slot]
-        vm.rangeStart = slot.start.addingTimeInterval(-30 * 60)
-        vm.rangeEnd = slot.end.addingTimeInterval(30 * 60)
 
         let before = calendar.date(byAdding: .hour, value: 9, to: today)!
         let state = vm.courseState(at: before)
@@ -109,8 +91,6 @@ struct TimeSliderViewModelTests {
             end: calendar.date(byAdding: .hour, value: 15, to: today)!
         )
         vm.timeSlots = [slot1, slot2]
-        vm.rangeStart = slot1.start.addingTimeInterval(-30 * 60)
-        vm.rangeEnd = slot2.end.addingTimeInterval(30 * 60)
 
         let gap = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: gap)

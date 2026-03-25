@@ -4,12 +4,14 @@ import SwiftUI
 final class TimeSliderViewModel {
     // MARK: - Data
     var timeSlots: [CourseTimeSlot] = []
-    var rangeStart: Date = Date()
-    var rangeEnd: Date = Date()
 
     // MARK: - State
     var selectedTime: Date = Date()
     var isUserDragging: Bool = false
+
+    // MARK: - Scale
+    /// Pixels per minute — controls how zoomed the timeline is
+    let pixelsPerMinute: CGFloat = 1.5
 
     // MARK: - Private
     private var autoReturnTask: Task<Void, Never>?
@@ -25,9 +27,6 @@ final class TimeSliderViewModel {
 
     func configure(courses: [SDCourse]) {
         timeSlots = CourseTimeSlot.buildSlots(from: courses, weekday: weekday)
-        guard let first = timeSlots.first, let last = timeSlots.last else { return }
-        rangeStart = first.start.addingTimeInterval(-30 * 60)
-        rangeEnd = last.end.addingTimeInterval(30 * 60)
         if !isUserDragging {
             selectedTime = Date()
         }
@@ -35,7 +34,6 @@ final class TimeSliderViewModel {
 
     // MARK: - Real-time Update
 
-    /// Called by TimelineView every second.
     func tick(_ now: Date) {
         if !isUserDragging {
             selectedTime = now
@@ -66,25 +64,29 @@ final class TimeSliderViewModel {
         courseState(at: selectedTime)
     }
 
-    // MARK: - Position Mapping
+    // MARK: - Relative Position
 
-    func normalizedPosition(for time: Date) -> Double {
-        let total = rangeEnd.timeIntervalSince(rangeStart)
-        guard total > 0 else { return 0.5 }
-        let elapsed = time.timeIntervalSince(rangeStart)
-        return min(1, max(0, elapsed / total))
+    /// X offset (in points) of a given time relative to the center (selectedTime).
+    /// Positive = to the right (future), negative = to the left (past).
+    func xOffset(for time: Date) -> CGFloat {
+        let minutes = time.timeIntervalSince(selectedTime) / 60
+        return CGFloat(minutes) * pixelsPerMinute
     }
 
-    func time(forNormalized position: Double) -> Date {
-        let total = rangeEnd.timeIntervalSince(rangeStart)
-        return rangeStart.addingTimeInterval(total * min(1, max(0, position)))
-    }
-
-    // MARK: - Drag & Snap
+    // MARK: - Drag
 
     func onDragStarted() {
         isUserDragging = true
         autoReturnTask?.cancel()
+    }
+
+    /// Called incrementally with dx delta (in points). Positive dx = drag right.
+    /// invertDirection: if false, drag left → past; if true, drag left → future.
+    func onDragChanged(dx: CGFloat, invertDirection: Bool) {
+        if !isUserDragging { onDragStarted() }
+        let direction: Double = invertDirection ? -1 : 1
+        let minutes = Double(dx) / Double(pixelsPerMinute)
+        selectedTime = selectedTime.addingTimeInterval(direction * minutes * 60)
     }
 
     func onDragEnded() {

@@ -74,6 +74,7 @@ struct SettingsView: View {
                         Text(style.displayName).tag(style)
                     }
                 }
+                Toggle("反轉滑條方向", isOn: $appState.invertSliderDirection)
             }
 
             // MARK: - Notifications
