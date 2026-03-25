@@ -7,6 +7,40 @@ enum HTMLParser {
         let inputs: [(name: String, value: String)]
     }
 
+    // MARK: - Pre-compiled static regex patterns
+
+    private static let allFormsRegex = try! NSRegularExpression(
+        pattern: "<form[^>]*>(.*?)</form>",
+        options: [.dotMatchesLineSeparators, .caseInsensitive]
+    )
+
+    private static let inputTagRegex = try! NSRegularExpression(
+        pattern: "<input[^>]*>",
+        options: [.caseInsensitive]
+    )
+
+    private static let formActionRegex = try! NSRegularExpression(
+        pattern: "<form[^>]*action=\"([^\"]*)\"[^>]*>",
+        options: .caseInsensitive
+    )
+
+    private static let nameAttrRegex = try! NSRegularExpression(
+        pattern: "name=\"([^\"]*)\"",
+        options: .caseInsensitive
+    )
+
+    private static let valueAttrRegex = try! NSRegularExpression(
+        pattern: "value=\"([^\"]*)\"",
+        options: .caseInsensitive
+    )
+
+    private static let valueAttrSQRegex = try! NSRegularExpression(
+        pattern: "value='([^']*)'",
+        options: .caseInsensitive
+    )
+
+    // MARK: - Public API
+
     /// Check if a response landed on the NTUST SSO login page
     static func isSSOLoginPage(html: String, url: URL) -> Bool {
         guard url.host?.contains("ssoam2.ntust.edu.tw") == true else { return false }
@@ -16,45 +50,38 @@ enum HTMLParser {
 
     /// Find a form by its id attribute and extract action + input fields
     static func findFormById(_ html: String, id: String) -> FormData? {
-        // Match <form ... id="<id>" ...>...</form>
-        let pattern = "<form[^>]*id=\"\(NSRegularExpression.escapedPattern(for: id))\"[^>]*>(.*?)</form>"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive]),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)) else {
+        let escaped = NSRegularExpression.escapedPattern(for: id)
+        guard let regex = try? NSRegularExpression(
+            pattern: "<form[^>]*id=\"\(escaped)\"[^>]*>(.*?)</form>",
+            options: [.dotMatchesLineSeparators, .caseInsensitive]
+        ),
+        let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)) else {
             return nil
         }
 
         let formRange = Range(match.range, in: html)!
         let formHTML = String(html[formRange])
-        let action = extractAttribute(from: formHTML, tag: "form", attribute: "action") ?? ""
+        let action = firstCapture(formActionRegex, in: formHTML) ?? ""
         let inputs = extractInputFields(formHTML)
         return FormData(action: action, inputs: inputs)
     }
 
     /// Find an OIDC bridge form (has code/state/iss or SAMLResponse fields, excludes logout)
     static func findOIDCBridgeForm(_ html: String) -> FormData? {
-        let formPattern = "<form[^>]*>(.*?)</form>"
-        guard let regex = try? NSRegularExpression(pattern: formPattern, options: [.dotMatchesLineSeparators, .caseInsensitive]) else {
-            return nil
-        }
-
-        let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        let matches = allFormsRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
         for match in matches {
             guard let range = Range(match.range, in: html) else { continue }
             let formHTML = String(html[range])
 
-            let action = extractAttribute(from: formHTML, tag: "form", attribute: "action") ?? ""
-            if action.lowercased().contains("logout") { continue }
-            if action.isEmpty { continue }
+            let action = firstCapture(formActionRegex, in: formHTML) ?? ""
+            if action.lowercased().contains("logout") || action.isEmpty { continue }
 
             let inputs = extractInputFields(formHTML)
             if inputs.isEmpty { continue }
 
             let names = Set(inputs.map(\.name))
-
-            // Skip interactive login forms
             if names.contains("Username") || names.contains("Password") { continue }
 
-            // Accept OIDC / SAML bridge forms
             let isOIDC = (names.contains("code") && names.contains("state") && names.contains("iss")) ||
                          names.contains("id_token") ||
                          names.contains("SAMLResponse") ||
@@ -62,59 +89,30 @@ enum HTMLParser {
                          names.contains("wresult") ||
                          names.contains("wctx")
 
-            if isOIDC {
-                return FormData(action: action, inputs: inputs)
-            }
+            if isOIDC { return FormData(action: action, inputs: inputs) }
         }
         return nil
     }
 
     /// Extract all <input> name/value pairs from HTML
     static func extractInputFields(_ html: String) -> [(name: String, value: String)] {
-        let pattern = "<input[^>]*>"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return []
-        }
-
         var results: [(String, String)] = []
-        let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        let matches = inputTagRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
         for match in matches {
             guard let range = Range(match.range, in: html) else { continue }
             let tag = String(html[range])
-            guard let name = extractTagAttribute(tag, "name"), !name.isEmpty else { continue }
-            let value = extractTagAttribute(tag, "value") ?? ""
+            guard let name = firstCapture(nameAttrRegex, in: tag), !name.isEmpty else { continue }
+            let value = firstCapture(valueAttrRegex, in: tag) ?? firstCapture(valueAttrSQRegex, in: tag) ?? ""
             results.append((name, value))
         }
         return results
     }
 
-    /// Extract an attribute value from the first occurrence of a tag
-    private static func extractAttribute(from html: String, tag: String, attribute: String) -> String? {
-        let pattern = "<\(tag)[^>]*\(attribute)=\"([^\"]*)\"[^>]*>"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let range = Range(match.range(at: 1), in: html) else {
-            return nil
-        }
-        return String(html[range])
-    }
+    // MARK: - Helpers
 
-    /// Extract a single attribute from an HTML tag string
-    private static func extractTagAttribute(_ tag: String, _ attribute: String) -> String? {
-        // Try double quotes
-        let dqPattern = "\(attribute)=\"([^\"]*)\""
-        if let regex = try? NSRegularExpression(pattern: dqPattern, options: .caseInsensitive),
-           let match = regex.firstMatch(in: tag, range: NSRange(tag.startIndex..., in: tag)),
-           let range = Range(match.range(at: 1), in: tag) {
-            return String(tag[range])
-        }
-        // Try single quotes
-        let sqPattern = "\(attribute)='([^']*)'"
-        if let regex = try? NSRegularExpression(pattern: sqPattern, options: .caseInsensitive),
-           let match = regex.firstMatch(in: tag, range: NSRange(tag.startIndex..., in: tag)),
-           let range = Range(match.range(at: 1), in: tag) {
-            return String(tag[range])
-        }
-        return nil
+    private static func firstCapture(_ regex: NSRegularExpression, in string: String) -> String? {
+        guard let match = regex.firstMatch(in: string, range: NSRange(string.startIndex..., in: string)),
+              let range = Range(match.range(at: 1), in: string) else { return nil }
+        return String(string[range])
     }
 }

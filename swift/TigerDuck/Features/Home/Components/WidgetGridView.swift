@@ -50,43 +50,15 @@ struct WidgetGridView: View {
                 }
                 .onDrop(
                     of: [UTType.text],
-                    delegate: WidgetDropDelegate(
-                        targetWidget: widget,
-                        widgets: $widgets,
-                        draggingWidget: $draggingWidget
+                    delegate: ReorderDropDelegate(
+                        targetItem: widget,
+                        items: $widgets,
+                        draggingItem: $draggingWidget
                     )
                 )
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-    }
-}
-
-// MARK: - Widget drop delegate
-
-private struct WidgetDropDelegate: DropDelegate {
-    let targetWidget: WidgetItem
-    @Binding var widgets: [WidgetItem]
-    @Binding var draggingWidget: WidgetItem?
-
-    func dropEntered(info: DropInfo) {
-        guard let dragging = draggingWidget,
-              dragging.id != targetWidget.id,
-              let fromIndex = widgets.firstIndex(where: { $0.id == dragging.id }),
-              let toIndex = widgets.firstIndex(where: { $0.id == targetWidget.id }) else { return }
-        withAnimation(.smoothSpring) {
-            widgets.move(fromOffsets: IndexSet(integer: fromIndex),
-                         toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingWidget = nil
-        return true
     }
 }
 

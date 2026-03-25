@@ -2,7 +2,9 @@ import SwiftUI
 
 @Observable
 final class ClassTableViewModel {
-    var courses: [SDCourse] = []
+    var courses: [SDCourse] = [] {
+        didSet { rebuildLookup() }
+    }
     var assignments: [SDAssignment] = []
     var selectedCourse: SDCourse? = nil
 
@@ -28,6 +30,9 @@ final class ClassTableViewModel {
 
     var showAddCourse = false
 
+    /// weekday → period ID → SDCourse (built once when courses change)
+    private var courseLookup: [Int: [String: SDCourse]] = [:]
+
     private var hasLoaded = false
     private var dataObserver: Any?
 
@@ -52,7 +57,19 @@ final class ClassTableViewModel {
         let userAdded = courses.filter { $0.moodleIdNumber == nil }
         courses = cached + userAdded
         assignments = DataCache.shared.loadAssignments()
-        rebuildColorMap()
+    }
+
+    private func rebuildLookup() {
+        var lookup: [Int: [String: SDCourse]] = [:]
+        for course in courses {
+            for (weekday, periods) in course.schedule {
+                for period in periods {
+                    lookup[weekday, default: [:]][period] = course
+                }
+            }
+        }
+        courseLookup = lookup
+        TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
     }
 
     var totalCredits: Int {
@@ -69,9 +86,7 @@ final class ClassTableViewModel {
     var activeWeekdays: [Int] {
         var days = Set<Int>()
         for course in courses {
-            for day in course.schedule.keys {
-                days.insert(day)
-            }
+            for day in course.schedule.keys { days.insert(day) }
         }
         var result = Array(1...5)
         if days.contains(6) { result.append(6) }
@@ -83,9 +98,7 @@ final class ClassTableViewModel {
         var periodIds = Set(AppConstants.Periods.defaultVisible)
         for course in courses {
             for periods in course.schedule.values {
-                for p in periods {
-                    periodIds.insert(p)
-                }
+                for p in periods { periodIds.insert(p) }
             }
         }
         let order = AppConstants.Periods.chronologicalOrder
@@ -93,9 +106,7 @@ final class ClassTableViewModel {
     }
 
     func course(for weekday: Int, period: String) -> SDCourse? {
-        courses.first { course in
-            course.schedule[weekday]?.contains(period) == true
-        }
+        courseLookup[weekday]?[period]
     }
 
     func hasAssignment(for courseNo: String) -> Bool {
@@ -112,8 +123,6 @@ final class ClassTableViewModel {
         case blockContinuation
     }
 
-    /// Determine the role of a cell at the given weekday and period index.
-    /// Used by TimetableGridView to merge contiguous periods.
     func cellRole(weekday: Int, periodIndex: Int) -> CellRole {
         let periods = activePeriods
         guard periodIndex >= 0, periodIndex < periods.count else { return .empty }
@@ -121,7 +130,6 @@ final class ClassTableViewModel {
         let period = periods[periodIndex]
         guard let course = course(for: weekday, period: period.id) else { return .empty }
 
-        // Check if previous period has the same course → this is a continuation
         if periodIndex > 0 {
             let prevPeriod = periods[periodIndex - 1]
             if let prevCourse = self.course(for: weekday, period: prevPeriod.id),
@@ -130,7 +138,6 @@ final class ClassTableViewModel {
             }
         }
 
-        // This is the start of a block — count how many contiguous periods follow
         var span = 1
         var nextIdx = periodIndex + 1
         while nextIdx < periods.count {
@@ -153,21 +160,15 @@ final class ClassTableViewModel {
         selectedCourse = course
     }
 
-    private func rebuildColorMap() {
-        TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
-    }
-
     func load(authService: AuthService) {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        // Load cached data immediately
         let cachedCourses = DataCache.shared.loadCourses()
         let cachedAssignments = DataCache.shared.loadAssignments()
         if !cachedCourses.isEmpty {
             courses = cachedCourses
             assignments = cachedAssignments
-            rebuildColorMap()
         }
 
         Task {
@@ -189,13 +190,11 @@ final class ClassTableViewModel {
         let fetchedCourses = await coursesTask
         let fetchedAssignments = await assignmentsTask
 
-        // Merge user-added courses (those without moodleIdNumber)
         let userAdded = courses.filter { $0.moodleIdNumber == nil }
 
         await MainActor.run {
             courses = fetchedCourses + userAdded
             assignments = fetchedAssignments
-            rebuildColorMap()
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }

@@ -37,10 +37,10 @@ struct TabEditorView: View {
                                     }
                                     .onDrop(
                                         of: [UTType.text],
-                                        delegate: TabDropDelegate(
-                                            targetFeature: feature,
-                                            tabs: $tabs,
-                                            draggingTab: $draggingTab
+                                        delegate: ReorderDropDelegate(
+                                            targetItem: feature,
+                                            items: $tabs,
+                                            draggingItem: $draggingTab
                                         )
                                     )
                                 }
@@ -162,30 +162,3 @@ private struct TabPreviewItem: View {
     }
 }
 
-// MARK: - Drop delegate for tab reordering
-
-private struct TabDropDelegate: DropDelegate {
-    let targetFeature: AppFeature
-    @Binding var tabs: [AppFeature]
-    @Binding var draggingTab: AppFeature?
-
-    func dropEntered(info: DropInfo) {
-        guard let dragging = draggingTab,
-              dragging != targetFeature,
-              let fromIndex = tabs.firstIndex(of: dragging),
-              let toIndex = tabs.firstIndex(of: targetFeature) else { return }
-        withAnimation(.smoothSpring) {
-            tabs.move(fromOffsets: IndexSet(integer: fromIndex),
-                      toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingTab = nil
-        return true
-    }
-}

@@ -50,10 +50,10 @@ struct HomeView: View {
                         }
                         .onDrop(
                             of: [UTType.text],
-                            delegate: SectionDropDelegate(
-                                targetSection: section,
-                                sections: $viewModel.sections,
-                                draggingSection: $draggingSection
+                            delegate: ReorderDropDelegate(
+                                targetItem: section,
+                                items: $viewModel.sections,
+                                draggingItem: $draggingSection
                             )
                         )
                     }
@@ -113,38 +113,6 @@ struct HomeView: View {
         .onAppear {
             viewModel.load(authService: appState.authService)
         }
-    }
-}
-
-// MARK: - Drop delegate for real-time section reordering
-
-private struct SectionDropDelegate: DropDelegate {
-    let targetSection: HomeSection
-    @Binding var sections: [HomeSection]
-    @Binding var draggingSection: HomeSection?
-
-    func dropEntered(info: DropInfo) {
-        guard let dragging = draggingSection,
-              dragging.id != targetSection.id,
-              let fromIndex = sections.firstIndex(where: { $0.id == dragging.id }),
-              let toIndex = sections.firstIndex(where: { $0.id == targetSection.id }) else { return }
-        withAnimation(.smoothSpring) {
-            sections.move(fromOffsets: IndexSet(integer: fromIndex),
-                          toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingSection = nil
-        return true
-    }
-
-    func dropExited(info: DropInfo) {
-        // No-op
     }
 }
 

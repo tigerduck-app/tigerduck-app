@@ -3,7 +3,10 @@ import SwiftUI
 @Observable
 final class AnnouncementsViewModel {
     var announcements: [SDAnnouncement] = [] {
-        didSet { refilter() }
+        didSet {
+            departments = Array(Set(announcements.map(\.department))).sorted()
+            refilter()
+        }
     }
     var selectedDepartments: Set<String> = [] {
         didSet { refilter() }
@@ -16,7 +19,6 @@ final class AnnouncementsViewModel {
     private(set) var filteredAnnouncements: [SDAnnouncement] = []
 
     private func refilter() {
-        departments = Array(Set(announcements.map(\.department))).sorted()
         var result = announcements
         if !selectedDepartments.isEmpty {
             result = result.filter { selectedDepartments.contains($0.department) }

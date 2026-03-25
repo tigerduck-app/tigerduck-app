@@ -5,11 +5,18 @@ import EventKit
 final class CalendarViewModel {
     var events: [SDCalendarEvent] = []
     var selectedDate: Date = .now
-    var displayedMonth: Date = .now
+    var displayedMonth: Date = .now {
+        didSet { calendarDays = Self.buildCalendarDays(for: displayedMonth) }
+    }
+
+    private(set) var calendarDays: [Date?] = Self.buildCalendarDays(for: .now)
 
     private let eventStore = EKEventStore()
     var calendarAccessGranted = false
     private var hasLoaded = false
+
+    /// Pre-grouped events by day for O(1) lookups in the month grid.
+    private var eventsByDay: [DateComponents: [SDCalendarEvent]] = [:]
 
     var eventsForSelectedDate: [SDCalendarEvent] {
         events.filter { $0.date.isSameDay(as: selectedDate) }
@@ -17,7 +24,8 @@ final class CalendarViewModel {
     }
 
     func eventsOnDate(_ date: Date) -> [SDCalendarEvent] {
-        events.filter { $0.date.isSameDay(as: date) }
+        let key = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return eventsByDay[key] ?? []
     }
 
     func previousMonth() {
@@ -40,14 +48,24 @@ final class CalendarViewModel {
         hasLoaded = true
 
         // Load cached events first
-        events = DataCache.shared.loadCalendarEvents()
+        setEvents(DataCache.shared.loadCalendarEvents())
 
         requestCalendarAccess()
 
         Task {
-            async let moodle: Void = fetchMoodleEvents(authService: authService)
-            async let school: Void = fetchSchoolEvents()
-            _ = await (moodle, school)
+            async let moodleEvents = fetchMoodleEvents(authService: authService)
+            async let schoolEvents = fetchSchoolEvents()
+            let (moodle, school) = await (moodleEvents, schoolEvents)
+
+            await MainActor.run {
+                var updated = events
+                updated.removeAll { $0.source == .moodle }
+                updated.append(contentsOf: moodle)
+                updated.removeAll { $0.source == .school }
+                updated.append(contentsOf: school)
+                setEvents(updated)
+                DataCache.shared.saveCalendarEvents(updated)
+            }
         }
     }
 
@@ -55,18 +73,26 @@ final class CalendarViewModel {
         let manager = NTUSTSessionManager.shared
         await MainActor.run { manager.loadingState = .loading }
 
-        async let moodle: Void = fetchMoodleEvents(authService: authService)
-        async let school: Void = fetchSchoolEvents()
-        _ = await (moodle, school)
-        loadSystemCalendarEvents()
+        async let moodleEvents = fetchMoodleEvents(authService: authService)
+        async let schoolEvents = fetchSchoolEvents()
+        let (moodle, school) = await (moodleEvents, schoolEvents)
 
-        await MainActor.run { manager.loadingState = .loaded }
+        await MainActor.run {
+            var updated = events
+            updated.removeAll { $0.source == .moodle }
+            updated.append(contentsOf: moodle)
+            updated.removeAll { $0.source == .school }
+            updated.append(contentsOf: school)
+            setEvents(updated)
+            DataCache.shared.saveCalendarEvents(updated)
+            loadSystemCalendarEvents()
+            manager.loadingState = .loaded
+        }
     }
 
-    private func fetchMoodleEvents(authService: AuthService) async {
+    private func fetchMoodleEvents(authService: AuthService) async -> [SDCalendarEvent] {
         let assignments = await KMPServiceBridge.fetchAssignments(authService: authService)
-
-        let moodleEvents = assignments.map { assignment in
+        return assignments.map { assignment in
             SDCalendarEvent(
                 eventId: "moodle-\(assignment.assignmentId)",
                 title: "\(assignment.title)",
@@ -74,24 +100,10 @@ final class CalendarViewModel {
                 source: .moodle
             )
         }
-
-        await MainActor.run {
-            // Remove old moodle events, keep system events
-            events.removeAll { $0.source == .moodle }
-            events.append(contentsOf: moodleEvents)
-            DataCache.shared.saveCalendarEvents(events)
-        }
     }
 
-    private func fetchSchoolEvents() async {
-        let schoolEvents = await CalendarService.fetchAndParseICS()
-        guard !schoolEvents.isEmpty else { return }
-
-        await MainActor.run {
-            events.removeAll { $0.source == .school }
-            events.append(contentsOf: schoolEvents)
-            DataCache.shared.saveCalendarEvents(events)
-        }
+    private func fetchSchoolEvents() async -> [SDCalendarEvent] {
+        await CalendarService.fetchAndParseICS()
     }
 
     func requestCalendarAccess() {
@@ -122,12 +134,39 @@ final class CalendarViewModel {
                 eventId: ekEvent.eventIdentifier ?? UUID().uuidString,
                 title: ekEvent.title ?? "",
                 date: ekEvent.startDate,
-                source: .school
+                source: .system
             )
         }
 
-        let existingKeys = Set(events.map { "\($0.title)-\($0.date.startOfDay)" })
+        let existingKeys = Set(events.filter { $0.source != .system }.map { "\($0.title)-\($0.date.startOfDay)" })
         let newEvents = systemEvents.filter { !existingKeys.contains("\($0.title)-\($0.date.startOfDay)") }
-        events.append(contentsOf: newEvents)
+        var updated = events
+        updated.removeAll { $0.source == .system }
+        updated.append(contentsOf: newEvents)
+        setEvents(updated)
+    }
+
+    private static func buildCalendarDays(for month: Date) -> [Date?] {
+        let cal = Calendar.current
+        let start = month.startOfMonth
+        let daysInMonth = month.daysInMonth
+        let firstWeekday = month.firstWeekdayOfMonth // 1=Sunday
+
+        var days: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
+        for day in 1...daysInMonth {
+            var components = cal.dateComponents([.year, .month], from: start)
+            components.day = day
+            days.append(cal.date(from: components))
+        }
+        while days.count % 7 != 0 { days.append(nil) }
+        return days
+    }
+
+    private func setEvents(_ newEvents: [SDCalendarEvent]) {
+        events = newEvents
+        let cal = Calendar.current
+        eventsByDay = Dictionary(grouping: newEvents) { event in
+            cal.dateComponents([.year, .month, .day], from: event.date)
+        }
     }
 }

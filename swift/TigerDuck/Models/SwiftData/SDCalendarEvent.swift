@@ -30,12 +30,14 @@ enum EventSource: String, Codable {
     case moodle
     case school
     case exam
+    case system  // iOS Calendar events
 
     var color: Color {
         switch self {
         case .moodle: .moodleBlue
         case .school: .schoolOrange
         case .exam: .examRed
+        case .system: .gray
         }
     }
 
@@ -44,6 +46,7 @@ enum EventSource: String, Codable {
         case .moodle: "Moodle"
         case .school: "學校"
         case .exam: "考試"
+        case .system: "行事曆"
         }
     }
 }

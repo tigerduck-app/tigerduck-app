@@ -10,23 +10,7 @@ struct MonthCalendarView: View {
         viewModel.displayedMonth.formatted(.dateTime.year().month(.wide))
     }
 
-    private var calendarDays: [Date?] {
-        let month = viewModel.displayedMonth.startOfMonth
-        let daysInMonth = viewModel.displayedMonth.daysInMonth
-        let firstWeekday = viewModel.displayedMonth.firstWeekdayOfMonth // 1=Sunday
-
-        var days: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
-        for day in 1...daysInMonth {
-            var components = Calendar.current.dateComponents([.year, .month], from: month)
-            components.day = day
-            days.append(Calendar.current.date(from: components))
-        }
-        // Pad to complete the last week
-        while days.count % 7 != 0 {
-            days.append(nil)
-        }
-        return days
-    }
+    private var calendarDays: [Date?] { viewModel.calendarDays }
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.md) {
