@@ -23,11 +23,15 @@ struct DayEventListView: View {
         }
     }
 
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh-Hant")
+        f.dateFormat = "M月d日"
+        return f
+    }()
+
     private var dateTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh-Hant")
-        formatter.dateFormat = "M月d日"
-        let dateStr = formatter.string(from: date)
+        let dateStr = Self.dateFormatter.string(from: date)
         return date.isToday ? "\(dateStr) (今日)" : dateStr
     }
 }

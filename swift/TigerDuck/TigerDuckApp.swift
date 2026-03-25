@@ -11,10 +11,6 @@ struct TigerDuckApp: App {
             SDAssignment.self,
             SDAnnouncement.self,
             SDCalendarEvent.self,
-            SDUserProfile.self,
-            SDWidgetConfig.self,
-            SDTabConfig.self,
-            SDHomeSectionConfig.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

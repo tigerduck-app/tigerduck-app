@@ -34,7 +34,6 @@ final class AppState {
     }
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
-    var isMoodleLinked: Bool { authService.isNTUSTAuthenticated }
     var isLibraryLoggedIn: Bool { LibraryService.isTokenValid }
 
     // MARK: - Theme
@@ -147,8 +146,4 @@ final class AppState {
         }
     }
 
-    /// Open a URL using the user's browser preference
-    func openURL(_ url: URL) {
-        UIApplication.shared.open(url)
-    }
 }

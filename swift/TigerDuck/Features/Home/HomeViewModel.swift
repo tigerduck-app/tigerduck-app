@@ -46,16 +46,7 @@ final class HomeViewModel {
         }
 
         // Load cached data immediately so UI isn't empty on restart
-        let cachedCourses = DataCache.shared.loadCourses()
-        let cachedAssignments = DataCache.shared.loadAssignments()
-        if !cachedCourses.isEmpty || !cachedAssignments.isEmpty {
-            TigerDuckTheme.buildCourseColorMap(courseNos: cachedCourses.map(\.courseNo))
-            let today = Date().weekdayIndex + 1
-            todayCourses = cachedCourses.filter { $0.schedule[today] != nil }
-            upcomingAssignments = cachedAssignments
-                .filter { !$0.isCompleted }
-                .sorted { $0.dueDate < $1.dueDate }
-        }
+        reloadFromCache()
 
         Task {
             await fetchData(authService: authService)

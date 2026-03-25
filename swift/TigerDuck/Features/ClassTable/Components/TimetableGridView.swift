@@ -9,18 +9,11 @@ struct TimetableGridView: View {
     private let headerHeight: CGFloat = 30
     private let periodWidth: CGFloat = 12
 
+    private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
+
     private var weekdayLabels: [String] {
         viewModel.activeWeekdays.map { day in
-            switch day {
-            case 1: "一"
-            case 2: "二"
-            case 3: "三"
-            case 4: "四"
-            case 5: "五"
-            case 6: "六"
-            case 7: "日"
-            default: ""
-            }
+            Self.allWeekdayLabels[safe: day - 1] ?? ""
         }
     }
 

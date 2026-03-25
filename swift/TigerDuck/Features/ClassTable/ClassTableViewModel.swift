@@ -10,13 +10,12 @@ final class ClassTableViewModel {
     var selectedPeriodId: String? = nil
 
     var currentSemester: String = CourseService.currentSemesterCode()
-    var availableSemesters: [String] {
+    let availableSemesters: [String] = {
         let code = CourseService.currentSemesterCode()
         let yearStr = String(code.dropLast())
         guard let year = Int(yearStr) else { return [code] }
         let sem = String(code.last!)
         var semesters: [String] = []
-        // Current + 3 previous semesters
         var y = year
         var s = Int(sem)!
         for _ in 0..<4 {
@@ -25,7 +24,7 @@ final class ClassTableViewModel {
             if s < 1 { s = 2; y -= 1 }
         }
         return semesters
-    }
+    }()
 
     var showAddCourse = false
 

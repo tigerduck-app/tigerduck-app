@@ -73,12 +73,7 @@ enum MoodleService {
         return calData.events.compactMap { event -> SDAssignment? in
             guard event.modulename == "assign" else { return nil }
 
-            let courseNo: String
-            if let idNumber = event.course?.idnumber, idNumber.count > 4 {
-                courseNo = String(idNumber.dropFirst(4))
-            } else {
-                courseNo = ""
-            }
+            let courseNo = event.course.map { SDCourse.courseNoFromMoodleId($0.idnumber ?? "") } ?? ""
 
             let courseName: String
             if let fullname = event.course?.fullname {
