@@ -21,6 +21,8 @@ final class SDCourse: Identifiable {
     /// Moodle course ID number (e.g. "1142EC1013701")
     var moodleIdNumber: String?
 
+    var skippedDatesJSON: String = "[]"
+
     @Transient private var _cachedSchedule: [Int: [String]]?
 
     var id: String { courseNo }
@@ -92,5 +94,43 @@ extension Array where Element == SDCourse {
     func coursesForToday() -> [SDCourse] {
         let today = Date().scheduleWeekday
         return filter { $0.schedule[today] != nil }
+    }
+}
+
+extension SDCourse {
+    private static let isoFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    var skippedDates: [String] {
+        get {
+            guard let data = skippedDatesJSON.data(using: .utf8),
+                  let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+            return arr
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let str = String(data: data, encoding: .utf8) {
+                skippedDatesJSON = str
+            }
+        }
+    }
+
+    func isSkipped(on date: Date) -> Bool {
+        let key = Self.isoFormatter.string(from: date)
+        return skippedDates.contains(key)
+    }
+
+    func toggleSkip(on date: Date) {
+        let key = Self.isoFormatter.string(from: date)
+        var dates = skippedDates
+        if let index = dates.firstIndex(of: key) {
+            dates.remove(at: index)
+        } else {
+            dates.append(key)
+        }
+        skippedDates = dates
     }
 }
