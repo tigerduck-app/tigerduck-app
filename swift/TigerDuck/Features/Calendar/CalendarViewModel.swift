@@ -14,6 +14,7 @@ final class CalendarViewModel {
     private let eventStore = EKEventStore()
     var calendarAccessGranted = false
     private var hasLoaded = false
+    private var dataObserver: Any?
 
     /// Pre-grouped events by day for O(1) lookups in the month grid.
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] = [:]
@@ -47,25 +48,28 @@ final class CalendarViewModel {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        // Load cached events first
         setEvents(DataCache.shared.loadCalendarEvents())
-
         requestCalendarAccess()
 
-        Task {
-            async let moodleEvents = fetchMoodleEvents(authService: authService)
-            async let schoolEvents = fetchSchoolEvents()
-            let (moodle, school) = await (moodleEvents, schoolEvents)
+        // backgroundSync() on app launch handles the network refresh
+        dataObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.dataDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            let fresh = DataCache.shared.loadCalendarEvents()
+            var updated = fresh
+            updated.removeAll { $0.source == .system }
+            // Re-add system events that were already loaded from EventKit
+            updated.append(contentsOf: self.events.filter { $0.source == .system })
+            self.setEvents(updated)
+        }
+    }
 
-            await MainActor.run {
-                var updated = events
-                updated.removeAll { $0.source == .moodle }
-                updated.append(contentsOf: moodle)
-                updated.removeAll { $0.source == .school }
-                updated.append(contentsOf: school)
-                setEvents(updated)
-                DataCache.shared.saveCalendarEvents(updated)
-            }
+    deinit {
+        if let observer = dataObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -78,13 +82,14 @@ final class CalendarViewModel {
         let (moodle, school) = await (moodleEvents, schoolEvents)
 
         await MainActor.run {
-            var updated = events
-            updated.removeAll { $0.source == .moodle }
+            // Preserve system events (from EventKit); only replace network-sourced events
+            let systemEvents = events.filter { $0.source == .system }
+            var updated = systemEvents
             updated.append(contentsOf: moodle)
-            updated.removeAll { $0.source == .school }
             updated.append(contentsOf: school)
             setEvents(updated)
-            DataCache.shared.saveCalendarEvents(updated)
+            // Save only non-system events to cache
+            DataCache.shared.saveCalendarEvents(updated.filter { $0.source != .system })
             loadSystemCalendarEvents()
             manager.loadingState = .loaded
         }

@@ -122,22 +122,21 @@ final class AppState {
         Task {
             sessionManager.loadingState = .loading
 
-            async let courses = KMPServiceBridge.fetchCourses(authService: authService)
-            async let assignments = KMPServiceBridge.fetchAssignments(authService: authService)
-            async let schoolEvents = CalendarService.fetchAndParseICS()
+            async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
+            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+            async let schoolEventsTask = CalendarService.fetchAndParseICS()
 
-            // Await all — results are cached by their respective services
-            let _ = await courses
-            let _ = await assignments
-            let fetchedSchoolEvents = await schoolEvents
+            let (_, fetchedAssignments, fetchedSchoolEvents) = await (coursesTask, assignmentsTask, schoolEventsTask)
 
-            // Merge school events into calendar cache
-            if !fetchedSchoolEvents.isEmpty {
-                var cached = DataCache.shared.loadCalendarEvents()
-                cached.removeAll { $0.source == .school }
-                cached.append(contentsOf: fetchedSchoolEvents)
-                DataCache.shared.saveCalendarEvents(cached)
+            // Build moodle calendar events from assignments and merge with school events
+            let moodleEvents = fetchedAssignments.map {
+                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.title, date: $0.dueDate, source: .moodle)
             }
+            var calendarCache = DataCache.shared.loadCalendarEvents()
+            calendarCache.removeAll { $0.source == .school || $0.source == .moodle }
+            calendarCache.append(contentsOf: fetchedSchoolEvents)
+            calendarCache.append(contentsOf: moodleEvents)
+            DataCache.shared.saveCalendarEvents(calendarCache)
 
             await MainActor.run {
                 sessionManager.loadingState = .loaded
