@@ -129,10 +129,9 @@ private struct HomeSectionView: View {
 
             switch section.type {
             case .todayCourses:
-                TodayCourseCarousel(
+                TimeSliderSection(
                     courses: viewModel.todayCourses,
-                    hasAssignment: viewModel.hasUnfinishedAssignment,
-                    onSelect: { viewModel.selectedCourse = $0 }
+                    onSelectCourse: { viewModel.selectedCourse = $0 }
                 )
             case .upcomingAssignments:
                 if viewModel.upcomingAssignments.isEmpty {
