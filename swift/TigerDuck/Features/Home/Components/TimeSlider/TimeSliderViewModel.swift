@@ -88,7 +88,10 @@ final class TimeSliderViewModel {
     }
 
     func onDragEnded() {
-        snapToNearestCourse()
+        let isInsideCourse = timeSlots.contains { selectedTime >= $0.start && selectedTime <= $0.end }
+        if !isInsideCourse {
+            snapToNearestCourse()
+        }
         startAutoReturn()
     }
 

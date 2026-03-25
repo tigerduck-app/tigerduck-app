@@ -31,20 +31,19 @@ struct TimeSliderSection: View {
                 CourseTimeCard(
                     state: viewModel.currentCourseState,
                     weekday: Date().scheduleWeekday,
-                    onSelect: onSelectCourse,
-                    onSkip: { _ in }
+                    onSelect: onSelectCourse
                 )
 
-                // Track (style-dependent)
-                switch appState.timeSliderStyle {
-                case .fluidTrack:
-                    FluidGlassTrackView(viewModel: viewModel)
-                case .segmentedBar:
-                    SegmentedGlassBarView(viewModel: viewModel)
+                // Time labels + track
+                VStack(spacing: 6) {
+                    timeLabels
+                    switch appState.timeSliderStyle {
+                    case .fluidTrack:
+                        FluidGlassTrackView(viewModel: viewModel)
+                    case .segmentedBar:
+                        SegmentedGlassBarView(viewModel: viewModel)
+                    }
                 }
-
-                // Time labels
-                timeLabels
             }
         }
     }
@@ -53,15 +52,16 @@ struct TimeSliderSection: View {
         HStack {
             Text(Self.timeFormatter.string(from: viewModel.rangeStart))
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.white.opacity(0.6))
             Spacer()
             Text(Self.timeFormatter.string(from: viewModel.selectedTime))
-                .font(.caption2.bold())
-                .foregroundStyle(.white.opacity(0.7))
+                .font(.caption.bold())
+                .foregroundStyle(.white.opacity(0.9))
+                .contentTransition(.numericText())
             Spacer()
             Text(Self.timeFormatter.string(from: viewModel.rangeEnd))
                 .font(.caption2)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.white.opacity(0.6))
         }
     }
 
