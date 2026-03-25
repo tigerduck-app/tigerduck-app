@@ -24,16 +24,16 @@ final class AuthService {
         do {
             let session = NTUSTSessionManager.shared.session
             let serviceURL = URL(string: "https://courseselection.ntust.edu.tw/")!
+            let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
 
             let success = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: serviceURL,
-                studentId: studentId.trimmingCharacters(in: .whitespaces).uppercased(),
+                studentId: normalizedId,
                 password: password
             )
 
             if success {
-                let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
 

@@ -22,6 +22,10 @@ enum CourseService {
     private static let courseListURL = URL(string: "https://courseselection.ntust.edu.tw/ChooseList/D01/D01")!
     private static let courseSearchAPI = URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//courses")!
 
+    private static let courseNoRegex = try! NSRegularExpression(
+        pattern: "<tr>\\s*<td>\\s*(3?[A-Z]{2}[A-Z0-9]{6,7})\\s*</td>"
+    )
+
     // MARK: - Fetch enrolled course numbers
 
     /// Login to course selection system and scrape enrolled course IDs
@@ -52,11 +56,7 @@ enum CourseService {
             throw CourseServiceError.redirectedToSSO
         }
 
-        let pattern = "<tr>\\s*<td>\\s*(3?[A-Z]{2}[A-Z0-9]{6,7})\\s*</td>"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return []
-        }
-        let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        let matches = courseNoRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
         return matches.compactMap { match in
             guard let range = Range(match.range(at: 1), in: html) else { return nil }
             return String(html[range])

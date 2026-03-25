@@ -109,11 +109,4 @@ enum KMPServiceBridge {
         }
     }
 
-    static func fetchAnnouncements() async -> [SDAnnouncement] {
-        MockData.announcements
-    }
-
-    static func fetchCalendarEvents() async -> [SDCalendarEvent] {
-        MockData.calendarEvents
-    }
 }

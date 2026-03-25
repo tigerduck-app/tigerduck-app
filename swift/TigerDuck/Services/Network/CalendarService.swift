@@ -4,6 +4,12 @@ enum CalendarService {
 
     private static let calendarPageURL = URL(string: "https://r.xinshou.tw/ntust-calender")!
 
+    private static let linkRegex = try! NSRegularExpression(
+        pattern: "<a[^>]*href=\"([^\"]*)\"[^>]*>(.*?)</a>",
+        options: [.caseInsensitive, .dotMatchesLineSeparators]
+    )
+    private static let yearRegex = try! NSRegularExpression(pattern: "(\\d{3})")
+
     /// URLSession with browser-like User-Agent (NTUST server returns 403 without one)
     private static let browserSession: URLSession = {
         let config = URLSessionConfiguration.default
@@ -22,16 +28,8 @@ enum CalendarService {
             return [:]
         }
 
-        // Find <a> tags with .ics hrefs (text may be inside nested <span> tags)
-        let linkPattern = "<a[^>]*href=\"([^\"]*)\"[^>]*>(.*?)</a>"
-        guard let regex = try? NSRegularExpression(pattern: linkPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
-            return [:]
-        }
-
-        let yearPattern = try! NSRegularExpression(pattern: "(\\d{3})")
-
         var result: [Int: URL] = [:]
-        let matches = regex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+        let matches = linkRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
 
         for match in matches {
             guard let hrefRange = Range(match.range(at: 1), in: html),
@@ -44,7 +42,7 @@ enum CalendarService {
 
             guard href.lowercased().hasSuffix(".ics") else { continue }
 
-            if let yearMatch = yearPattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+            if let yearMatch = yearRegex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
                let yearRange = Range(yearMatch.range(at: 1), in: text),
                let year = Int(text[yearRange]) {
                 if let url = URL(string: href, relativeTo: baseURL)?.absoluteURL {

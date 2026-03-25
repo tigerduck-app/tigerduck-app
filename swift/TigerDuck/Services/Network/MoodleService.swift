@@ -20,6 +20,7 @@ enum MoodleService {
 
     private static let moodleLoginURL = URL(string: "https://moodle2.ntust.edu.tw/login/index.php")!
     private static let moodleAPITemplate = "https://moodle2.ntust.edu.tw/lib/ajax/service.php?sesskey=%@&info=core_calendar_get_action_events_by_timesort"
+    private static let sesskeyRegex = try! NSRegularExpression(pattern: "\"sesskey\":\"([^\"]+)\"")
 
     /// Fetch upcoming assignments from Moodle via SSO
     static func fetchAssignments(
@@ -43,9 +44,7 @@ enum MoodleService {
         }
 
         // Extract sesskey from page
-        let sesskeyPattern = "\"sesskey\":\"([^\"]+)\""
-        guard let regex = try? NSRegularExpression(pattern: sesskeyPattern),
-              let match = regex.firstMatch(in: pageHTML, range: NSRange(pageHTML.startIndex..., in: pageHTML)),
+        guard let match = sesskeyRegex.firstMatch(in: pageHTML, range: NSRange(pageHTML.startIndex..., in: pageHTML)),
               let range = Range(match.range(at: 1), in: pageHTML) else {
             throw MoodleServiceError.sesskeyNotFound
         }
