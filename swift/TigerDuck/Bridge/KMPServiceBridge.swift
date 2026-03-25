@@ -1,5 +1,17 @@
 import Foundation
 
+private struct CourseData: Sendable {
+    let courseNo: String
+    let courseName: String
+    let instructor: String
+    let credits: Int
+    let classroom: String
+    let enrolledCount: Int
+    let maxCount: Int
+    let schedule: [Int: [String]]
+    let moodleIdNumber: String
+}
+
 enum KMPServiceBridge {
 
     static func fetchCourses(authService: AuthService) async -> [SDCourse] {
@@ -25,7 +37,7 @@ enum KMPServiceBridge {
 
             let semester = CourseService.currentSemesterCode()
 
-            let courses = await withTaskGroup(of: SDCourse?.self) { group in
+            let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
                 for courseNo in courseNos {
                     group.addTask {
                         guard let results = try? await CourseService.lookupCourse(
@@ -50,7 +62,7 @@ enum KMPServiceBridge {
                         let enrolled = first.ChooseStudent ?? 0
                         let maxCount = Int(first.Restrict2 ?? "0") ?? 0
 
-                        return SDCourse(
+                        return CourseData(
                             courseNo: first.CourseNo,
                             courseName: first.CourseName,
                             instructor: first.CourseTeacher,
@@ -64,11 +76,24 @@ enum KMPServiceBridge {
                     }
                 }
 
-                var results: [SDCourse] = []
-                for await course in group {
-                    if let c = course { results.append(c) }
+                var results: [CourseData] = []
+                for await data in group {
+                    if let d = data { results.append(d) }
                 }
                 return results
+            }
+            let courses = courseDataList.map { d in
+                SDCourse(
+                    courseNo: d.courseNo,
+                    courseName: d.courseName,
+                    instructor: d.instructor,
+                    credits: d.credits,
+                    classroom: d.classroom,
+                    enrolledCount: d.enrolledCount,
+                    maxCount: d.maxCount,
+                    schedule: d.schedule,
+                    moodleIdNumber: d.moodleIdNumber
+                )
             }
 
             if !courses.isEmpty {
