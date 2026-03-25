@@ -24,6 +24,7 @@ enum AppConstants {
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let configuredTabs = "configuredTabs"
         static let timeSliderStyle = "timeSliderStyle"
+        static let invertSliderDirection = "invertSliderDirection"
     }
 
     enum Periods {

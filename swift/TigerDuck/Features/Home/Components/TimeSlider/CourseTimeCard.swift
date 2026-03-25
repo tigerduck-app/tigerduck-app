@@ -42,15 +42,17 @@ struct CourseTimeCard: View {
 
             cardContent(course: course, opacity: opacity)
                 .offset(x: swipeOffset)
-                .gesture(
-                    DragGesture(minimumDistance: 20)
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 30)
                         .onChanged { value in
                             if value.translation.width < 0 {
-                                swipeOffset = value.translation.width
+                                withAnimation(.interactiveSpring) {
+                                    swipeOffset = value.translation.width * 0.6
+                                }
                             }
                         }
                         .onEnded { value in
-                            if value.translation.width < -60 {
+                            if value.translation.width < -80 {
                                 course.toggleSkip(on: Date())
                             }
                             withAnimation(.smooth(duration: 0.25)) {

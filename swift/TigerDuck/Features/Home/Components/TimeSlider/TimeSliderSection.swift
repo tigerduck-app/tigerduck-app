@@ -14,6 +14,7 @@ struct TimeSliderSection: View {
                 emptyState
             }
         }
+        .padding(.horizontal, 16)
         .onAppear {
             viewModel.configure(courses: courses)
         }
@@ -34,34 +35,33 @@ struct TimeSliderSection: View {
                     onSelect: onSelectCourse
                 )
 
-                // Time labels + track
+                // Time label + track
                 VStack(spacing: 6) {
-                    timeLabels
+                    timeLabel
                     switch appState.timeSliderStyle {
                     case .fluidTrack:
-                        FluidGlassTrackView(viewModel: viewModel)
+                        FluidGlassTrackView(
+                            viewModel: viewModel,
+                            invertDirection: appState.invertSliderDirection
+                        )
                     case .segmentedBar:
-                        SegmentedGlassBarView(viewModel: viewModel)
+                        SegmentedGlassBarView(
+                            viewModel: viewModel,
+                            invertDirection: appState.invertSliderDirection
+                        )
                     }
                 }
             }
         }
     }
 
-    private var timeLabels: some View {
+    private var timeLabel: some View {
         HStack {
-            Text(Self.timeFormatter.string(from: viewModel.rangeStart))
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
-            Spacer()
             Text(Self.timeFormatter.string(from: viewModel.selectedTime))
                 .font(.caption.bold())
                 .foregroundStyle(.white.opacity(0.9))
                 .contentTransition(.numericText())
             Spacer()
-            Text(Self.timeFormatter.string(from: viewModel.rangeEnd))
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.6))
         }
     }
 
