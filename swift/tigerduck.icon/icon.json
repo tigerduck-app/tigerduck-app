@@ -1,20 +1,31 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+    "linear-gradient" : [
+      "display-p3:0.04853,0.62485,1.00000,1.00000",
+      "display-p3:0.45432,0.78704,0.96783,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
   },
   "groups" : [
     {
       "layers" : [
         {
-          "blend-mode" : "normal",
-          "glass" : true,
           "image-name" : "tigerduck.png",
           "name" : "tigerduck",
           "position" : {
-            "scale" : 0.5,
+            "scale" : 0.95,
             "translation-in-points" : [
-              -2.5,
-              -34.15869772382848
+              13.419898822275854,
+              2.375
             ]
           }
         }

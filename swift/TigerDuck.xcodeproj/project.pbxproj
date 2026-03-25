@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		420FB0F42F72E8130041EA11 /* tigerduck.icon in Resources */ = {isa = PBXBuildFile; fileRef = 420FB0F32F72E8130041EA11 /* tigerduck.icon */; };
+		42D2EEAB2F73B0A000973752 /* tigerduck.icon in Resources */ = {isa = PBXBuildFile; fileRef = 42D2EEAA2F73B0A000973752 /* tigerduck.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,10 +28,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		420FB0F32F72E8130041EA11 /* tigerduck.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = tigerduck.icon; sourceTree = "<group>"; };
 		424C46562F6E763C009D1DDA /* TigerDuck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TigerDuck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		424C46652F6E763E009D1DDA /* TigerDuckTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TigerDuckTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		424C466F2F6E763E009D1DDA /* TigerDuckUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TigerDuckUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		42D2EEAA2F73B0A000973752 /* tigerduck.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = tigerduck.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -84,7 +84,7 @@
 				424C46682F6E763E009D1DDA /* TigerDuckTests */,
 				424C46722F6E763E009D1DDA /* TigerDuckUITests */,
 				424C46572F6E763C009D1DDA /* Products */,
-				420FB0F32F72E8130041EA11 /* tigerduck.icon */,
+				42D2EEAA2F73B0A000973752 /* tigerduck.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -219,7 +219,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				420FB0F42F72E8130041EA11 /* tigerduck.icon in Resources */,
+				42D2EEAB2F73B0A000973752 /* tigerduck.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
