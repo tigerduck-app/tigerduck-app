@@ -22,10 +22,10 @@
           "image-name" : "tigerduck.png",
           "name" : "tigerduck",
           "position" : {
-            "scale" : 0.95,
+            "scale" : 1,
             "translation-in-points" : [
-              13.419898822275854,
-              2.375
+              12.91014565013188,
+              -11.404020360876075
             ]
           }
         }
