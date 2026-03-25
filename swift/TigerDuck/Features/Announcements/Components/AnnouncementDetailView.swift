@@ -102,8 +102,8 @@ struct HTMLContentView: View {
                     .characterEncoding: String.Encoding.utf8.rawValue,
                 ],
                 documentAttributes: nil
-            ), let attr = try? AttributedString(nsAttr) else { return }
-            parsed = attr
+            ) else { return }
+            parsed = AttributedString(nsAttr)
         }
     }
 
