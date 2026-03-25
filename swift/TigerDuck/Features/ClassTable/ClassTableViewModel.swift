@@ -60,26 +60,11 @@ final class ClassTableViewModel {
     }
 
     var selectedCourseTimeRange: String? {
-        guard let course = selectedCourse,
-              let weekday = selectedWeekday,
-              let periods = course.schedule[weekday],
-              !periods.isEmpty else {
-            return nil
-        }
-        let sorted = periods.sortedByPeriodOrder()
-        guard let firstPeriod = sorted.first,
-              let lastPeriod = sorted.last,
-              let firstTime = AppConstants.PeriodTimes.mapping[firstPeriod],
-              let lastTime = AppConstants.PeriodTimes.mapping[lastPeriod] else {
-            return nil
-        }
-        return "\(firstTime.start) - \(lastTime.end)"
+        guard let course = selectedCourse, let weekday = selectedWeekday else { return nil }
+        return course.timeRange(for: weekday)
     }
 
-    var todayCourses: [SDCourse] {
-        let today = Date().weekdayIndex + 1
-        return courses.filter { $0.schedule[today] != nil }
-    }
+    var todayCourses: [SDCourse] { courses.coursesForToday() }
 
     var activeWeekdays: [Int] {
         var days = Set<Int>()

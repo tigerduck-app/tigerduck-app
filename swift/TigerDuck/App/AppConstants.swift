@@ -5,6 +5,26 @@ enum AppConstants {
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
 
+    enum KeychainKeys {
+        static let studentId = "ntust_student_id"
+        static let password = "ntust_password"
+        static let libraryUsername = "library_username"
+        static let libraryPassword = "library_password"
+        static let libraryToken = "library_token"
+        static let libraryTokenExpiry = "library_token_expiry"
+    }
+
+    enum UserDefaultsKeys {
+        static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let appHasBeenInstalled = "appHasBeenInstalled"
+        static let accentColorHex = "accentColorHex"
+        static let rememberAnnouncementFilter = "rememberAnnouncementFilter"
+        static let savedAnnouncementDepartments = "savedAnnouncementDepartments"
+        static let browserPreference = "browserPreference"
+        static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
+        static let configuredTabs = "configuredTabs"
+    }
+
     enum Periods {
         static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9"]
         static let extended = ["5", "10", "A", "B", "C", "D"]

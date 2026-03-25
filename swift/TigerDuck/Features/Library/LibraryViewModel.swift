@@ -30,7 +30,7 @@ final class LibraryViewModel {
         // Pre-fill username from stored library credentials or NTUST student ID
         if let stored = LibraryService.storedUsername {
             libUsername = stored
-        } else if let ntustId = KeychainManager.load(key: "ntust_student_id").flatMap({ String(data: $0, encoding: .utf8) }) {
+        } else if let ntustId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId) {
             libUsername = ntustId
         }
 

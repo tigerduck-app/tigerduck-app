@@ -74,4 +74,23 @@ final class SDCourse: Identifiable {
         }
         return moodleId
     }
+
+    /// Returns the formatted time range string for this course on the given weekday, e.g. "08:10 - 12:10"
+    func timeRange(for weekday: Int) -> String? {
+        guard let periods = schedule[weekday], !periods.isEmpty else { return nil }
+        let sorted = periods.sortedByPeriodOrder()
+        guard let first = sorted.first,
+              let last = sorted.last,
+              let firstTime = AppConstants.PeriodTimes.mapping[first],
+              let lastTime = AppConstants.PeriodTimes.mapping[last] else { return nil }
+        return "\(firstTime.start) - \(lastTime.end)"
+    }
+}
+
+extension Array where Element == SDCourse {
+    /// Courses that have a schedule entry for today's weekday.
+    func coursesForToday() -> [SDCourse] {
+        let today = Date().scheduleWeekday
+        return filter { $0.schedule[today] != nil }
+    }
 }

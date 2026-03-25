@@ -16,6 +16,9 @@ extension Date {
         return (weekday + 5) % 7
     }
 
+    /// 1-based weekday key used in SDCourse.schedule (1=Monday … 7=Sunday)
+    var scheduleWeekday: Int { weekdayIndex + 1 }
+
     var isToday: Bool {
         Calendar.current.isDateInToday(self)
     }

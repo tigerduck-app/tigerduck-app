@@ -10,13 +10,11 @@ final class AuthService {
     var loginError: String?
 
     var storedStudentId: String? {
-        guard let data = KeychainManager.load(key: "ntust_student_id") else { return nil }
-        return String(data: data, encoding: .utf8)
+        KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
     }
 
-    private var storedPassword: String? {
-        guard let data = KeychainManager.load(key: "ntust_password") else { return nil }
-        return String(data: data, encoding: .utf8)
+    var storedPassword: String? {
+        KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
     }
 
     func login(studentId: String, password: String) async -> Bool {
@@ -36,13 +34,8 @@ final class AuthService {
 
             if success {
                 let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
-                // Store credentials in Keychain
-                if let idData = normalizedId.data(using: .utf8) {
-                    KeychainManager.save(key: "ntust_student_id", data: idData)
-                }
-                if let pwData = password.data(using: .utf8) {
-                    KeychainManager.save(key: "ntust_password", data: pwData)
-                }
+                KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
+                KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
 
                 // Auto-attempt library login with same credentials (best-effort)
                 if !LibraryService.isTokenValid {
@@ -73,8 +66,8 @@ final class AuthService {
     }
 
     func logout() {
-        KeychainManager.delete(key: "ntust_student_id")
-        KeychainManager.delete(key: "ntust_password")
+        KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
+        KeychainManager.delete(key: AppConstants.KeychainKeys.password)
         NTUSTSessionManager.shared.invalidateSession()
         loginError = nil
     }

@@ -19,71 +19,52 @@ enum LibraryServiceError: LocalizedError {
 enum LibraryService {
     private static let baseURL = "https://api.lib.ntust.edu.tw/v1"
 
-    // Keychain keys — separate from NTUST SSO credentials
-    private static let usernameKey = "library_username"
-    private static let passwordKey = "library_password"
-    private static let tokenKey = "library_token"
-    private static let tokenExpiryKey = "library_token_expiry"
-
     // MARK: - Credential Management
 
     static var storedUsername: String? {
-        guard let data = KeychainManager.load(key: usernameKey) else { return nil }
-        return String(data: data, encoding: .utf8)
+        KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryUsername)
     }
 
     static func saveCredentials(username: String, password: String) {
-        if let data = username.data(using: .utf8) {
-            KeychainManager.save(key: usernameKey, data: data)
-        }
-        if let data = password.data(using: .utf8) {
-            KeychainManager.save(key: passwordKey, data: data)
-        }
+        KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
+        KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
     }
 
     static func clearCredentials() {
-        KeychainManager.delete(key: usernameKey)
-        KeychainManager.delete(key: passwordKey)
+        KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
+        KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
         clearToken()
     }
 
     private static var storedPassword: String? {
-        guard let data = KeychainManager.load(key: passwordKey) else { return nil }
-        return String(data: data, encoding: .utf8)
+        KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryPassword)
     }
 
     // MARK: - Token Management
 
     static var storedToken: String? {
-        guard let data = KeychainManager.load(key: tokenKey) else { return nil }
-        return String(data: data, encoding: .utf8)
+        KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryToken)
     }
 
     static var storedTokenExpiry: Date? {
-        guard let data = KeychainManager.load(key: tokenExpiryKey),
-              let str = String(data: data, encoding: .utf8),
+        guard let str = KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryTokenExpiry),
               let ms = Int64(str) else { return nil }
         return Date(timeIntervalSince1970: Double(ms) / 1000.0)
     }
 
     static var isTokenValid: Bool {
-        guard storedToken != nil,
-              let expiry = storedTokenExpiry else { return false }
+        guard storedToken != nil, let expiry = storedTokenExpiry else { return false }
         return Date() < expiry
     }
 
     private static func saveToken(_ token: String, expirationMs: Int64) {
-        if let data = token.data(using: .utf8) {
-            KeychainManager.save(key: tokenKey, data: data)
-        }
-        if let data = String(expirationMs).data(using: .utf8) {
-            KeychainManager.save(key: tokenExpiryKey, data: data)
-        }
+        KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryToken, value: token)
+        KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryTokenExpiry, value: String(expirationMs))
     }
 
     static func clearToken() {
-        KeychainManager.delete(key: tokenKey)
-        KeychainManager.delete(key: tokenExpiryKey)
+        KeychainManager.delete(key: AppConstants.KeychainKeys.libraryToken)
+        KeychainManager.delete(key: AppConstants.KeychainKeys.libraryTokenExpiry)
     }
 
     // MARK: - API Calls

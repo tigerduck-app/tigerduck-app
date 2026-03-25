@@ -52,15 +52,17 @@ struct TodayCourseCarousel: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
+    private var today: Int { Date().scheduleWeekday }
+
     private var sortedCourses: [SDCourse] {
-        courses.sorted { a, b in
-            courseStartTime(a) < courseStartTime(b)
+        let t = today
+        return courses.sorted { a, b in
+            startTime(a, weekday: t) < startTime(b, weekday: t)
         }
     }
 
-    private func courseStartTime(_ course: SDCourse) -> String {
-        let today = Date().weekdayIndex + 1
-        guard let periods = course.schedule[today]?.sortedByPeriodOrder(),
+    private func startTime(_ course: SDCourse, weekday: Int) -> String {
+        guard let periods = course.schedule[weekday]?.sortedByPeriodOrder(),
               let first = periods.first,
               let times = AppConstants.PeriodTimes.mapping[first] else { return "" }
         return times.start
@@ -74,7 +76,6 @@ struct TodayCourseCarousel: View {
     }
 
     private func courseProgress(_ course: SDCourse) -> Double? {
-        let today = Date().weekdayIndex + 1
         guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
         let now = Date()
         let cal = Calendar.current
@@ -104,13 +105,7 @@ private struct TodayCourseCard: View {
     var progress: Double? = nil
 
     private var periods: String {
-        let today = Date().weekdayIndex + 1
-        guard let p = course.schedule[today]?.sortedByPeriodOrder(),
-              let first = p.first,
-              let last = p.last,
-              let firstTimes = AppConstants.PeriodTimes.mapping[first],
-              let lastTimes = AppConstants.PeriodTimes.mapping[last] else { return "" }
-        return "\(firstTimes.start)-\(lastTimes.end)"
+        course.timeRange(for: Date().scheduleWeekday)?.replacingOccurrences(of: " - ", with: "-") ?? ""
     }
 
     private var isActive: Bool {

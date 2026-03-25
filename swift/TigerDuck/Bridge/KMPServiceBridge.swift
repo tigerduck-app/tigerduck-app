@@ -11,8 +11,7 @@ enum KMPServiceBridge {
             return DataCache.shared.loadCourses()
         }
 
-        guard let pwData = KeychainManager.load(key: "ntust_password"),
-              let password = String(data: pwData, encoding: .utf8) else {
+        guard let password = authService.storedPassword else {
             return DataCache.shared.loadCourses()
         }
 
@@ -91,8 +90,7 @@ enum KMPServiceBridge {
             return DataCache.shared.loadAssignments()
         }
 
-        guard let pwData = KeychainManager.load(key: "ntust_password"),
-              let password = String(data: pwData, encoding: .utf8) else {
+        guard let password = authService.storedPassword else {
             return DataCache.shared.loadAssignments()
         }
 

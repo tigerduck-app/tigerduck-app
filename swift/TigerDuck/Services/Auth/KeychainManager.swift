@@ -31,4 +31,14 @@ enum KeychainManager {
         ]
         SecItemDelete(query as CFDictionary)
     }
+
+    static func loadString(key: String) -> String? {
+        guard let data = load(key: key) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func saveString(key: String, value: String) {
+        guard let data = value.data(using: .utf8) else { return }
+        save(key: key, data: data)
+    }
 }

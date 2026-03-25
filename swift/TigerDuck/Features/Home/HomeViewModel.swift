@@ -30,11 +30,8 @@ final class HomeViewModel {
         let courses = DataCache.shared.loadCourses()
         let assignments = DataCache.shared.loadAssignments()
         TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
-        let today = Date().weekdayIndex + 1
-        todayCourses = courses.filter { $0.schedule[today] != nil }
-        upcomingAssignments = assignments
-            .filter { !$0.isCompleted }
-            .sorted { $0.dueDate < $1.dueDate }
+        todayCourses = courses.coursesForToday()
+        upcomingAssignments = assignments.upcomingSorted()
     }
 
     func load(authService: AuthService) {
@@ -67,11 +64,8 @@ final class HomeViewModel {
         let allCourses = await coursesTask
         let allAssignments = await assignmentsTask
 
-        let today = Date().weekdayIndex + 1
-        let todayFiltered = allCourses.filter { $0.schedule[today] != nil }
-        let upcoming = allAssignments
-            .filter { !$0.isCompleted }
-            .sorted { $0.dueDate < $1.dueDate }
+        let todayFiltered = allCourses.coursesForToday()
+        let upcoming = allAssignments.upcomingSorted()
 
         await MainActor.run {
             TigerDuckTheme.buildCourseColorMap(courseNos: allCourses.map(\.courseNo))
