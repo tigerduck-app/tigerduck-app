@@ -13,7 +13,7 @@ struct HomeView: View {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     // Greeting
                     HStack {
-                        Text("\(Date().greetingText())")
+                        Text(Date().greetingText())
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
