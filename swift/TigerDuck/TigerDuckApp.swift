@@ -21,7 +21,22 @@ struct TigerDuckApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // Schema incompatible with existing store (e.g. upgrade from early version).
+            // Delete the old store and retry.
+            let storeURL = modelConfiguration.url
+            let relatedFiles = [
+                storeURL,
+                storeURL.appendingPathExtension("wal"),
+                storeURL.appendingPathExtension("shm"),
+            ]
+            for file in relatedFiles {
+                try? FileManager.default.removeItem(at: file)
+            }
+            do {
+                return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            } catch {
+                fatalError("Could not create ModelContainer after reset: \(error)")
+            }
         }
     }()
 

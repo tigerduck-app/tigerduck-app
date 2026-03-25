@@ -13,6 +13,26 @@ final class AppState {
     let authService = AuthService()
     let sessionManager = NTUSTSessionManager.shared
 
+    // MARK: - Fresh Install Keychain Cleanup
+
+    /// Keychain persists across app uninstall/reinstall on iOS.
+    /// Detect fresh install (no UserDefaults marker) and clear stale Keychain data
+    /// so the app doesn't start with orphaned credentials from a previous install.
+    private static let installedMarkerKey = "appHasBeenInstalled"
+
+    init() {
+        if !UserDefaults.standard.bool(forKey: Self.installedMarkerKey) {
+            // Fresh install — purge any leftover Keychain items
+            KeychainManager.delete(key: "ntust_student_id")
+            KeychainManager.delete(key: "ntust_password")
+            KeychainManager.delete(key: "library_username")
+            KeychainManager.delete(key: "library_password")
+            KeychainManager.delete(key: "library_token")
+            KeychainManager.delete(key: "library_token_expiry")
+            UserDefaults.standard.set(true, forKey: Self.installedMarkerKey)
+        }
+    }
+
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
     var isMoodleLinked: Bool { authService.isNTUSTAuthenticated }
     var isLibraryLoggedIn: Bool { LibraryService.isTokenValid }
