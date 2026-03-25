@@ -89,6 +89,17 @@ final class AppState {
         didSet { UserDefaults.standard.set(browserPreference.rawValue, forKey: AppConstants.UserDefaultsKeys.browserPreference) }
     }
 
+    /// Time slider style preference
+    var timeSliderStyle: TimeSliderStyle = {
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.UserDefaultsKeys.timeSliderStyle),
+           let style = TimeSliderStyle(rawValue: raw) {
+            return style
+        }
+        return .fluidTrack
+    }() {
+        didSet { UserDefaults.standard.set(timeSliderStyle.rawValue, forKey: AppConstants.UserDefaultsKeys.timeSliderStyle) }
+    }
+
     /// Assignment time display: true = absolute (2026/3/24 23:59:00), false = relative (5 天後)
     var showAbsoluteAssignmentTime: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime) {
         didSet { UserDefaults.standard.set(showAbsoluteAssignmentTime, forKey: AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime) }
