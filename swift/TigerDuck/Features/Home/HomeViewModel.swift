@@ -82,7 +82,7 @@ final class HomeViewModel {
             HomeSection(
                 id: "today-courses",
                 type: .todayCourses,
-                title: "今日課程",
+                title: "時光機",
                 sortOrder: 0,
                 isVisible: true,
                 widgets: []
