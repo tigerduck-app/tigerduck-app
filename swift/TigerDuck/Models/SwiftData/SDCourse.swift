@@ -100,6 +100,9 @@ extension Array where Element == SDCourse {
 extension SDCourse {
     private static let isoFormatter: DateFormatter = {
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = .current
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()

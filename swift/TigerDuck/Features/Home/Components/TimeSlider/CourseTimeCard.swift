@@ -70,11 +70,15 @@ struct CourseTimeCard: View {
         .onTapGesture { onSelect?(course) }
     }
 
-    private static func dateLabelString(from date: Date) -> String {
+    private static let dateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_TW")
         f.dateFormat = "M/d (EEE)"
-        return f.string(from: date)
+        return f
+    }()
+
+    private static func dateLabelString(from date: Date) -> String {
+        dateLabelFormatter.string(from: date)
     }
 }
 

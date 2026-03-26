@@ -19,25 +19,31 @@ struct TimeSliderViewModelTests {
     }
 
     @Test func xOffset_returnsCorrectPixels() {
-        let vm = TimeSliderViewModel(weekday: 1)
+        let vm = TimeSliderViewModel()
+        vm.configure(courses: [])
+
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let now = calendar.date(byAdding: .hour, value: 10, to: today)!
         vm.selectedTime = now
 
-        // 60 minutes in the future → 60 * 1.5 = 90 pixels right
+        let ppm = TimeSliderMetrics.pointsPerMinute
+
+        // 60 minutes in the future
         let future = calendar.date(byAdding: .hour, value: 11, to: today)!
         let offset = vm.xOffset(for: future)
-        #expect(abs(offset - 90) < 0.01)
+        let expectedFuture = 60.0 * ppm
+        #expect(abs(offset - expectedFuture) < 0.01)
 
-        // 30 minutes in the past → -30 * 1.5 = -45 pixels left
+        // 30 minutes in the past
         let past = calendar.date(byAdding: .minute, value: -30, to: now)!
         let pastOffset = vm.xOffset(for: past)
-        #expect(abs(pastOffset - (-45)) < 0.01)
+        let expectedPast = -30.0 * ppm
+        #expect(abs(pastOffset - expectedPast) < 0.01)
     }
 
     @Test func courseState_inClass() {
-        let vm = TimeSliderViewModel(weekday: 1)
+        let vm = TimeSliderViewModel()
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let slot = makeMockSlot(
@@ -57,7 +63,7 @@ struct TimeSliderViewModelTests {
     }
 
     @Test func courseState_beforeFirst() {
-        let vm = TimeSliderViewModel(weekday: 1)
+        let vm = TimeSliderViewModel()
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let slot = makeMockSlot(
@@ -77,7 +83,7 @@ struct TimeSliderViewModelTests {
     }
 
     @Test func courseState_between() {
-        let vm = TimeSliderViewModel(weekday: 1)
+        let vm = TimeSliderViewModel()
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let slot1 = makeMockSlot(
@@ -113,6 +119,6 @@ struct TimeSliderViewModelTests {
             maxCount: 50,
             schedule: [:]
         )
-        return CourseTimeSlot(id: courseNo, course: course, start: start, end: end)
+        return CourseTimeSlot(id: courseNo, course: course, start: start, end: end, date: start)
     }
 }
