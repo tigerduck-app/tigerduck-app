@@ -32,13 +32,30 @@ struct SkipClassButton: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
         }
-        .glassEffect(
-            isSkipped ? .regular.tint(.white.opacity(0.3)) : .regular.interactive(),
-            in: .capsule
-        )
+        .modifier(SkipGlassModifier(isSkipped: isSkipped))
         .offset(y: flyAway ? -80 : 0)
         .rotationEffect(flyAway ? .degrees(-15) : .zero)
         .scaleEffect(flyAway ? 0.3 : 1.0)
         .opacity(flyAway ? 0 : 1)
+    }
+}
+
+// MARK: - Availability Helpers
+
+private struct SkipGlassModifier: ViewModifier {
+    let isSkipped: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.glassEffect(
+                isSkipped ? .regular.tint(.white.opacity(0.3)) : .regular.interactive(),
+                in: .capsule
+            )
+        } else {
+            content.background(
+                isSkipped ? .white.opacity(0.15) : .ultraThinMaterial,
+                in: Capsule()
+            )
+        }
     }
 }
