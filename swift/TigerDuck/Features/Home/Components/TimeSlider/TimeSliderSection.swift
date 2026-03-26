@@ -32,6 +32,8 @@ struct TimeSliderSection: View {
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
+        }
+        .overlay(alignment: .trailing) {
             if viewModel.isUserDragging {
                 Button("回到現在") {
                     viewModel.returnToNow()
@@ -39,7 +41,7 @@ struct TimeSliderSection: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .buttonStyle(.glass)
+                .modifier(GlassButtonStyleModifier())
                 .transition(.opacity.combined(with: .scale(0.85, anchor: .trailing)))
             }
         }
@@ -123,4 +125,16 @@ struct TimeSliderSection: View {
         f.dateFormat = "M/d (EEEEE) HH:mm"
         return f
     }()
+}
+
+// MARK: - Availability Helpers
+
+private struct GlassButtonStyleModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+    }
 }

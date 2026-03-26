@@ -14,9 +14,14 @@ struct FluidGlassTrackView: View {
 
             ZStack {
                 // Glass track background
-                Capsule()
-                    .fill(.clear)
-                    .glassEffect(.regular, in: .capsule)
+                if #available(iOS 26, *) {
+                    Capsule()
+                        .fill(.clear)
+                        .glassEffect(.regular, in: .capsule)
+                } else {
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                }
 
                 // Tick marks
                 tickMarks(centerX: centerX, visibleWidth: width)
