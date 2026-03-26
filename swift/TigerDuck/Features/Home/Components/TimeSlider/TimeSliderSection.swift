@@ -95,7 +95,7 @@ struct TimeSliderSection: View {
     private static let dateTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_TW")
-        f.dateFormat = "M/d (EEE) HH:mm"
+        f.dateFormat = "M/d (EEEEE) HH:mm"
         return f
     }()
 }
