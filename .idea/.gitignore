@@ -22,3 +22,5 @@ Project_Default.xml
 ruff.xml
 swift-toolchain.xml
 vcs.xml
+dataSources.xml
+sqldialects.xml

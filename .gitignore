@@ -1,5 +1,8 @@
 TigerDuck.iml
+swift/buildServer.json
 
+.superpowers/
+docs/plans/
 # Created by https://www.toptal.com/developers/gitignore/api/linux,macos,swift,xcode,kotlin,python,pycharm,windows,intellij,visualstudio,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,macos,swift,xcode,kotlin,python,pycharm,windows,intellij,visualstudio,visualstudiocode
 
