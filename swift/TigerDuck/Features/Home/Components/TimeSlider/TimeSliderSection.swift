@@ -33,13 +33,13 @@ struct TimeSliderSection: View {
                 .foregroundStyle(Color.textPrimary)
             Spacer()
             if viewModel.isUserDragging {
-                Button {
+                Button("回到現在") {
                     viewModel.returnToNow()
-                } label: {
-                    Text("回到現在")
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.accentPrimary)
                 }
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .buttonStyle(.glass)
                 .transition(.opacity.combined(with: .scale(0.85, anchor: .trailing)))
             }
         }
