@@ -72,6 +72,8 @@ struct CourseTimeSlot: Identifiable, Equatable {
 
     private static let dayKeyFormatter: DateFormatter = {
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
         f.dateFormat = "yyyyMMdd"
         return f
     }()

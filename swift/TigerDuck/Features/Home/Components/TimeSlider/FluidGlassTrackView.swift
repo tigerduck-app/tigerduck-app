@@ -80,7 +80,6 @@ struct FluidGlassTrackView: View {
         let majorInterval = TimeSliderMetrics.majorMarkerIntervalMinutes * 60
 
         // Determine visible time range
-        let refDate = Date.timeIntervalSinceReferenceDate
         let selectedRef = viewModel.selectedTime.timeIntervalSinceReferenceDate
 
         // Generate markers covering visible range
@@ -89,7 +88,6 @@ struct FluidGlassTrackView: View {
         let rangeEnd = selectedRef + visibleMinutes * 60
 
         let firstMarker = floor(rangeStart / markerInterval) * markerInterval
-        let _ = refDate // suppress unused warning
 
         Canvas { context, size in
             var t = firstMarker
