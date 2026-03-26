@@ -1,11 +1,18 @@
 import Foundation
 
-struct CourseTimeSlot: Identifiable {
+struct CourseTimeSlot: Identifiable, Equatable {
+    static func == (lhs: CourseTimeSlot, rhs: CourseTimeSlot) -> Bool {
+        lhs.id == rhs.id
+    }
+
     let id: String
     let course: SDCourse
     let start: Date
     let end: Date
+    /// The calendar date this slot belongs to (for display purposes).
+    let date: Date
 
+    /// Build slots for a single day.
     static func buildSlots(from courses: [SDCourse], weekday: Int, on date: Date = Date()) -> [CourseTimeSlot] {
         let calendar = Calendar.current
         var slots: [CourseTimeSlot] = []
@@ -21,10 +28,36 @@ struct CourseTimeSlot: Identifiable {
                   let endDate = Self.dateFromTimeString(lastTime.end, on: date, calendar: calendar)
             else { continue }
 
-            slots.append(CourseTimeSlot(id: course.courseNo, course: course, start: startDate, end: endDate))
+            let dayKey = Self.dayKeyFormatter.string(from: date)
+            slots.append(CourseTimeSlot(
+                id: "\(course.courseNo)_\(dayKey)",
+                course: course,
+                start: startDate,
+                end: endDate,
+                date: date
+            ))
         }
 
         return slots.sorted { $0.start < $1.start }
+    }
+
+    /// Build a multi-day timeline centered on `centerDate`, spanning ±`dayRadius` days.
+    static func buildMultiDaySlots(
+        from courses: [SDCourse],
+        centerDate: Date,
+        dayRadius: Int = TimeSliderMetrics.timelineDayRadius
+    ) -> [CourseTimeSlot] {
+        let calendar = Calendar.current
+        var allSlots: [CourseTimeSlot] = []
+
+        for offset in -dayRadius...dayRadius {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: calendar.startOfDay(for: centerDate)) else { continue }
+            let weekday = date.scheduleWeekday
+            let daySlots = buildSlots(from: courses, weekday: weekday, on: date)
+            allSlots.append(contentsOf: daySlots)
+        }
+
+        return allSlots.sorted { $0.start < $1.start }
     }
 
     static func dateFromTimeString(_ time: String, on date: Date, calendar: Calendar = .current) -> Date? {
@@ -36,4 +69,10 @@ struct CourseTimeSlot: Identifiable {
         dc.second = 0
         return calendar.date(from: dc)
     }
+
+    private static let dayKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd"
+        return f
+    }()
 }
