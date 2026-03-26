@@ -31,7 +31,6 @@ struct TimeSliderSection: View {
                 // Course card
                 CourseTimeCard(
                     state: viewModel.currentCourseState,
-                    weekday: Date().scheduleWeekday,
                     onSelect: onSelectCourse
                 )
 
@@ -57,11 +56,20 @@ struct TimeSliderSection: View {
 
     private var timeLabel: some View {
         HStack {
-            Text(Self.timeFormatter.string(from: viewModel.selectedTime))
+            Text(timeLabelString)
                 .font(.caption.bold())
                 .foregroundStyle(.white.opacity(0.9))
                 .contentTransition(.numericText())
             Spacer()
+        }
+    }
+
+    private var timeLabelString: String {
+        let isToday = Calendar.current.isDateInToday(viewModel.selectedTime)
+        if isToday {
+            return Self.timeFormatter.string(from: viewModel.selectedTime)
+        } else {
+            return Self.dateTimeFormatter.string(from: viewModel.selectedTime)
         }
     }
 
@@ -81,6 +89,13 @@ struct TimeSliderSection: View {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private static let dateTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_TW")
+        f.dateFormat = "M/d (EEE) HH:mm"
         return f
     }()
 }
