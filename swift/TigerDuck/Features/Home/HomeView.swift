@@ -130,7 +130,7 @@ private struct HomeSectionView: View {
             switch section.type {
             case .todayCourses:
                 TimeSliderSection(
-                    courses: viewModel.todayCourses,
+                    courses: viewModel.allCourses,
                     onSelectCourse: { viewModel.selectedCourse = $0 }
                 )
             case .upcomingAssignments:
