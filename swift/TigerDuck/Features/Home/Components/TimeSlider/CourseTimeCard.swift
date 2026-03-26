@@ -65,7 +65,7 @@ struct CourseTimeCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.tint(course.color), in: RoundedRectangle(cornerRadius: 16))
+        .modifier(TintedGlassModifier(tint: course.color))
         .opacity(opacity)
         .onTapGesture { onSelect?(course) }
     }
@@ -79,6 +79,23 @@ struct CourseTimeCard: View {
 
     private static func dateLabelString(from date: Date) -> String {
         dateLabelFormatter.string(from: date)
+    }
+}
+
+// MARK: - Availability Helpers
+
+private struct TintedGlassModifier: ViewModifier {
+    let tint: Color
+    private let shape = RoundedRectangle(cornerRadius: 16)
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.glassEffect(.regular.tint(tint), in: shape)
+        } else {
+            content
+                .background(tint, in: shape)
+                .background(.ultraThinMaterial, in: shape)
+        }
     }
 }
 
