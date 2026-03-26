@@ -125,7 +125,9 @@ private struct HomeSectionView: View {
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
-            SectionHeader(title: section.title)
+            if section.type != .todayCourses {
+                SectionHeader(title: section.title)
+            }
 
             switch section.type {
             case .todayCourses:

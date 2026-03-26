@@ -7,20 +7,45 @@ struct TimeSliderSection: View {
     @State private var viewModel = TimeSliderViewModel()
 
     var body: some View {
-        Group {
-            if viewModel.hasCourses {
-                sliderContent
-            } else {
-                emptyState
+        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+            sectionHeader
+            Group {
+                if viewModel.hasCourses {
+                    sliderContent
+                } else {
+                    emptyState
+                }
             }
+            .padding(.horizontal, 16)
         }
-        .padding(.horizontal, 16)
         .onAppear {
             viewModel.configure(courses: courses)
         }
         .onChange(of: courses.map(\.courseNo)) {
             viewModel.configure(courses: courses)
         }
+    }
+
+    private var sectionHeader: some View {
+        HStack {
+            Text("時光機")
+                .font(TigerDuckTheme.Typography.headline)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            if viewModel.isUserDragging {
+                Button {
+                    viewModel.returnToNow()
+                } label: {
+                    Text("回到現在")
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(Color.accentPrimary)
+                }
+                .transition(.opacity.combined(with: .scale(0.85, anchor: .trailing)))
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.top, TigerDuckTheme.Spacing.md)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isUserDragging)
     }
 
     private var sliderContent: some View {
@@ -61,21 +86,7 @@ struct TimeSliderSection: View {
                 .foregroundStyle(.white.opacity(0.9))
                 .contentTransition(.numericText())
             Spacer()
-            if viewModel.isUserDragging {
-                Button {
-                    viewModel.returnToNow()
-                } label: {
-                    Text("回到現在")
-                        .font(.caption.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(.white.opacity(0.2), in: Capsule())
-                }
-                .transition(.opacity.combined(with: .scale(0.85)))
-            }
         }
-        .animation(.easeInOut(duration: 0.2), value: viewModel.isUserDragging)
     }
 
     private var timeLabelString: String {
