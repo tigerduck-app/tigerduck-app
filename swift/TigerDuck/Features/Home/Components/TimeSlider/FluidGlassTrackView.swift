@@ -5,6 +5,8 @@ struct FluidGlassTrackView: View {
     var invertDirection: Bool = false
     @State private var lastDragX: CGFloat = 0
 
+    private let trackHeight = TimeSliderMetrics.fluidTrackHeight
+
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
@@ -16,35 +18,42 @@ struct FluidGlassTrackView: View {
                     .fill(.clear)
                     .glassEffect(.regular, in: .capsule)
 
+                // Tick marks
+                tickMarks(centerX: centerX, visibleWidth: width)
+
                 // Course segments positioned relative to center
                 ForEach(viewModel.timeSlots) { slot in
                     let startOffset = viewModel.xOffset(for: slot.start)
                     let endOffset = viewModel.xOffset(for: slot.end)
-                    let segWidth = max(4, endOffset - startOffset)
+                    let segWidth = max(TimeSliderMetrics.minimumSegmentedBlockWidth, endOffset - startOffset)
                     let segCenterX = centerX + (startOffset + endOffset) / 2
-                    let isActive = viewModel.selectedTime >= slot.start && viewModel.selectedTime <= slot.end
 
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(slot.course.color.opacity(isActive ? 0.5 : 0.3))
-                        .frame(width: segWidth, height: 24)
-                        .position(x: segCenterX, y: 16)
-                        .animation(.smooth(duration: 0.2), value: isActive)
+                    // Only render if visible
+                    if segCenterX + segWidth / 2 > -50 && segCenterX - segWidth / 2 < width + 50 {
+                        let isActive = viewModel.selectedTime >= slot.start && viewModel.selectedTime <= slot.end
+
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(slot.course.color.opacity(isActive ? 0.5 : 0.3))
+                            .frame(width: segWidth, height: TimeSliderMetrics.fluidSegmentHeight)
+                            .position(x: segCenterX, y: trackHeight / 2)
+                            .animation(.smooth(duration: 0.2), value: isActive)
+                    }
                 }
 
-                // Center indicator (current selection point)
+                // Center indicator
                 RoundedRectangle(cornerRadius: 1)
                     .fill(.white.opacity(0.7))
-                    .frame(width: 2, height: 28)
-                    .position(x: centerX, y: 16)
+                    .frame(width: TimeSliderMetrics.selectionThumbWidth, height: TimeSliderMetrics.selectionThumbHeight)
+                    .position(x: centerX, y: trackHeight / 2)
 
-                // Glow dot at center
+                // Glow dot
                 Circle()
                     .fill(thumbGlowColor)
-                    .frame(width: 8, height: 8)
+                    .frame(width: TimeSliderMetrics.glowDotSize, height: TimeSliderMetrics.glowDotSize)
                     .shadow(color: thumbGlowColor.opacity(0.6), radius: 6)
-                    .position(x: centerX, y: 16)
+                    .position(x: centerX, y: trackHeight / 2)
             }
-            .frame(height: 32)
+            .frame(height: trackHeight)
             .clipShape(Capsule())
             .contentShape(Rectangle())
             .gesture(
@@ -60,12 +69,66 @@ struct FluidGlassTrackView: View {
                     }
             )
         }
-        .frame(height: 32)
+        .frame(height: trackHeight)
+    }
+
+    // MARK: - Tick Marks
+
+    @ViewBuilder
+    private func tickMarks(centerX: CGFloat, visibleWidth: CGFloat) -> some View {
+        let markerInterval = TimeSliderMetrics.markerIntervalMinutes * 60
+        let majorInterval = TimeSliderMetrics.majorMarkerIntervalMinutes * 60
+
+        // Determine visible time range
+        let refDate = Date.timeIntervalSinceReferenceDate
+        let selectedRef = viewModel.selectedTime.timeIntervalSinceReferenceDate
+
+        // Generate markers covering visible range
+        let visibleMinutes = Double(visibleWidth / TimeSliderMetrics.pointsPerMinute)
+        let rangeStart = selectedRef - visibleMinutes * 60
+        let rangeEnd = selectedRef + visibleMinutes * 60
+
+        let firstMarker = floor(rangeStart / markerInterval) * markerInterval
+        let _ = refDate // suppress unused warning
+
+        Canvas { context, size in
+            var t = firstMarker
+            while t <= rangeEnd {
+                let markerDate = Date(timeIntervalSinceReferenceDate: t)
+                let x = centerX + viewModel.xOffset(for: markerDate)
+
+                if x > -10 && x < size.width + 10 {
+                    let isMajor = t.truncatingRemainder(dividingBy: majorInterval) == 0
+
+                    if isMajor {
+                        let rect = CGRect(
+                            x: x - 0.5,
+                            y: (trackHeight - TimeSliderMetrics.majorMarkerHeight) / 2,
+                            width: 1,
+                            height: TimeSliderMetrics.majorMarkerHeight
+                        )
+                        context.fill(Path(rect), with: .color(.white.opacity(0.15)))
+                    } else {
+                        let dotSize = TimeSliderMetrics.markerDotSize
+                        let rect = CGRect(
+                            x: x - dotSize / 2,
+                            y: trackHeight / 2 - dotSize / 2,
+                            width: dotSize,
+                            height: dotSize
+                        )
+                        context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.1)))
+                    }
+                }
+
+                t += markerInterval
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private var thumbGlowColor: Color {
-        if case .inClass(let course) = viewModel.currentCourseState {
-            return course.color
+        if case .inClass(let slot) = viewModel.currentCourseState {
+            return slot.course.color
         }
         return .white
     }
