@@ -101,8 +101,7 @@ enum KMPServiceBridge {
             }
             return courses
         } catch {
-            let cached = DataCache.shared.loadCourses()
-            return cached.isEmpty ? MockData.courses : cached
+            return DataCache.shared.loadCourses()
         }
     }
 
@@ -129,8 +128,7 @@ enum KMPServiceBridge {
             DataCache.shared.saveAssignments(assignments)
             return assignments
         } catch {
-            let cached = DataCache.shared.loadAssignments()
-            return cached.isEmpty ? MockData.assignments : cached
+            return DataCache.shared.loadAssignments()
         }
     }
 

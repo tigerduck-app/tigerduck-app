@@ -44,7 +44,6 @@ final class AnnouncementsViewModel {
     }
 
     func load(appState: AppState) {
-        announcements = MockData.announcements
         if appState.rememberAnnouncementFilter {
             selectedDepartments = appState.savedAnnouncementDepartments
         }
