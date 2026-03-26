@@ -51,11 +51,13 @@ private struct SkipGlassModifier: ViewModifier {
                 isSkipped ? .regular.tint(.white.opacity(0.3)) : .regular.interactive(),
                 in: .capsule
             )
+        } else if isSkipped {
+            content
+                .background(.white.opacity(0.15), in: Capsule())
+                .background(.ultraThinMaterial, in: Capsule())
         } else {
-            content.background(
-                isSkipped ? .white.opacity(0.15) : .ultraThinMaterial,
-                in: Capsule()
-            )
+            content
+                .background(.ultraThinMaterial, in: Capsule())
         }
     }
 }
