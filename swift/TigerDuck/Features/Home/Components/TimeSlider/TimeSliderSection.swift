@@ -32,6 +32,8 @@ struct TimeSliderSection: View {
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
+        }
+        .overlay(alignment: .trailing) {
             if viewModel.isUserDragging {
                 Button("回到現在") {
                     viewModel.returnToNow()
