@@ -3,6 +3,7 @@ import SwiftUI
 @Observable
 final class HomeViewModel {
     var sections: [HomeSection] = []
+    var allCourses: [SDCourse] = []
     var todayCourses: [SDCourse] = []
     var upcomingAssignments: [SDAssignment] = []
     var isEditingHome = false
@@ -33,6 +34,7 @@ final class HomeViewModel {
         let courses = DataCache.shared.loadCourses()
         let assignments = DataCache.shared.loadAssignments()
         TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
+        allCourses = courses
         todayCourses = courses.coursesForToday()
         upcomingAssignments = assignments.upcomingSorted()
     }
@@ -69,6 +71,7 @@ final class HomeViewModel {
         await MainActor.run {
             isUpdatingFromNetwork = true
             TigerDuckTheme.buildCourseColorMap(courseNos: allCourses.map(\.courseNo))
+            self.allCourses = allCourses
             todayCourses = todayFiltered
             upcomingAssignments = upcoming
             manager.loadingState = .loaded

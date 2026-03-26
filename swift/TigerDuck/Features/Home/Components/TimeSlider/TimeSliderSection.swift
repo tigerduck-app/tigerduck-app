@@ -78,7 +78,7 @@ struct TimeSliderSection: View {
             Image(systemName: "checkmark.circle")
                 .font(.title)
                 .foregroundStyle(.white.opacity(0.4))
-            Text("今日無課")
+            Text("目前沒有課程")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.5))
         }
