@@ -61,7 +61,21 @@ struct TimeSliderSection: View {
                 .foregroundStyle(.white.opacity(0.9))
                 .contentTransition(.numericText())
             Spacer()
+            if viewModel.isUserDragging {
+                Button {
+                    viewModel.returnToNow()
+                } label: {
+                    Text("回到現在")
+                        .font(.caption.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.white.opacity(0.2), in: Capsule())
+                }
+                .transition(.opacity.combined(with: .scale(0.85)))
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isUserDragging)
     }
 
     private var timeLabelString: String {

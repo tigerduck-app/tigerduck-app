@@ -282,6 +282,14 @@ final class TimeSliderViewModel {
         startAutoReturn()
     }
 
+    func returnToNow() {
+        autoReturnTask?.cancel()
+        withAnimation(.bouncy(duration: 0.6)) {
+            isUserDragging = false
+            selectedTime = Date()
+        }
+    }
+
     func startAutoReturn() {
         autoReturnTask?.cancel()
         autoReturnTask = Task { @MainActor in
