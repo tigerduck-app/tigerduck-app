@@ -24,3 +24,4 @@ swift-toolchain.xml
 vcs.xml
 dataSources.xml
 sqldialects.xml
+git_toolbox_prj.xml
