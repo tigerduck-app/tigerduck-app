@@ -56,7 +56,7 @@ struct TimeSliderViewModelTests {
         let during = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: during)
         if case .inClass(let c) = state {
-            #expect(c.courseNo == "MATH101")
+            #expect(c.course.courseNo == "MATH101")
         } else {
             Issue.record("Expected .inClass, got \(state)")
         }
@@ -76,7 +76,7 @@ struct TimeSliderViewModelTests {
         let before = calendar.date(byAdding: .hour, value: 9, to: today)!
         let state = vm.courseState(at: before)
         if case .beforeFirst(let next) = state {
-            #expect(next.courseNo == "MATH101")
+            #expect(next.course.courseNo == "MATH101")
         } else {
             Issue.record("Expected .beforeFirst, got \(state)")
         }
@@ -101,8 +101,8 @@ struct TimeSliderViewModelTests {
         let gap = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: gap)
         if case .between(let prev, let next) = state {
-            #expect(prev?.courseNo == "MATH101")
-            #expect(next?.courseNo == "PHYS201")
+            #expect(prev?.course.courseNo == "MATH101")
+            #expect(next?.course.courseNo == "PHYS201")
         } else {
             Issue.record("Expected .between, got \(state)")
         }
