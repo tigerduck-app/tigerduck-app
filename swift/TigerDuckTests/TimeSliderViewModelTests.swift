@@ -18,7 +18,7 @@ struct TimeSliderViewModelTests {
         #expect(CourseTimeSlot.dateFromTimeString("", on: ref) == nil)
     }
 
-    @Test func xOffset_returnsCorrectPixels() {
+    @Test func xOffset_returnsZeroWithNoCourses() {
         let vm = TimeSliderViewModel()
         vm.configure(courses: [])
 
@@ -27,19 +27,40 @@ struct TimeSliderViewModelTests {
         let now = calendar.date(byAdding: .hour, value: 10, to: today)!
         vm.selectedTime = now
 
+        // With no courses, anchors are empty so all offsets should be 0
+        let future = calendar.date(byAdding: .hour, value: 11, to: today)!
+        #expect(vm.xOffset(for: future) == 0)
+
+        let past = calendar.date(byAdding: .minute, value: -30, to: now)!
+        #expect(vm.xOffset(for: past) == 0)
+    }
+
+    @Test func xOffset_returnsCorrectPixels() {
+        let vm = TimeSliderViewModel()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Course with periods "3","4" (10:20–12:10) every weekday so anchors are built
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
+        vm.configure(courses: [course])
+
+        // Pick 11:00 as selectedTime — within the 10:20–12:10 block
+        let selectedTime = calendar.date(byAdding: DateComponents(hour: 11), to: today)!
+        vm.selectedTime = selectedTime
+
+        // Within a single course block, mapping is linear (deltaMinutes × ppm)
         let ppm = TimeSliderMetrics.pointsPerMinute
 
-        // 60 minutes in the future
-        let future = calendar.date(byAdding: .hour, value: 11, to: today)!
+        // +15 min → 11:15, still inside block
+        let future = calendar.date(byAdding: .minute, value: 15, to: selectedTime)!
         let offset = vm.xOffset(for: future)
-        let expectedFuture = 60.0 * ppm
-        #expect(abs(offset - expectedFuture) < 0.01)
+        #expect(abs(offset - 15.0 * ppm) < 0.01)
 
-        // 30 minutes in the past
-        let past = calendar.date(byAdding: .minute, value: -30, to: now)!
+        // −15 min → 10:45, still inside block
+        let past = calendar.date(byAdding: .minute, value: -15, to: selectedTime)!
         let pastOffset = vm.xOffset(for: past)
-        let expectedPast = -30.0 * ppm
-        #expect(abs(pastOffset - expectedPast) < 0.01)
+        #expect(abs(pastOffset - (-15.0 * ppm)) < 0.01)
     }
 
     @Test func courseState_inClass() {
