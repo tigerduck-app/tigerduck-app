@@ -22,9 +22,7 @@ enum CourseService {
     private static let courseListURL = URL(string: "https://courseselection.ntust.edu.tw/ChooseList/D01/D01")!
     private static let courseSearchAPI = URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//courses")!
 
-    private static let courseNoRegex = try! NSRegularExpression(
-        pattern: "<tr>\\s*<td>\\s*(3?[A-Z]{2}[A-Z0-9]{6,7})\\s*</td>"
-    )
+    private static let courseNoRegex = /<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*<\/td>/
 
     // MARK: - Fetch enrolled course numbers
 
@@ -56,37 +54,24 @@ enum CourseService {
             throw CourseServiceError.redirectedToSSO
         }
 
-        let matches = courseNoRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
-        return matches.compactMap { match in
-            guard let range = Range(match.range(at: 1), in: html) else { return nil }
-            return String(html[range])
-        }
+        return html.matches(of: courseNoRegex).map { String($0.1) }
     }
 
     // MARK: - Lookup course details from public API
 
-    /// Call the NTUST course search API (public, no auth required)
-    /// Returns all rows for the course (same course can have multiple time slots)
     static func lookupCourse(semester: String, courseNo: String) async throws -> [CourseSearchResult] {
-        let requestBody = CourseSearchRequest.forCourseNo(courseNo, semester: semester)
-
-        var request = URLRequest(url: courseSearchAPI)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(requestBody)
-
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode([CourseSearchResult].self, from: data)
+        try await searchAPI(body: .forCourseNo(courseNo, semester: semester))
     }
 
-    /// Search courses by name (public API, no auth required)
     static func searchCourses(semester: String, courseName: String) async throws -> [CourseSearchResult] {
-        let requestBody = CourseSearchRequest.forCourseName(courseName, semester: semester)
+        try await searchAPI(body: .forCourseName(courseName, semester: semester))
+    }
 
+    private static func searchAPI(body: CourseSearchRequest) async throws -> [CourseSearchResult] {
         var request = URLRequest(url: courseSearchAPI)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(requestBody)
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await URLSession.shared.data(for: request)
         return try JSONDecoder().decode([CourseSearchResult].self, from: data)
