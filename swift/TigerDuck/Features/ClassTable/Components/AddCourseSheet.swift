@@ -138,7 +138,8 @@ struct AddCourseSheet: View {
     // MARK: - Search
 
     private func search() {
-        guard !searchText.isEmpty else { return }
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
         errorMessage = nil
         isSearching = true
         searchResults = []
@@ -151,11 +152,11 @@ struct AddCourseSheet: View {
                 switch searchMode {
                 case .courseCode:
                     results = try await CourseService.lookupCourse(
-                        semester: semester, courseNo: searchText.trimmingCharacters(in: .whitespaces)
+                        semester: semester, courseNo: trimmed
                     )
                 case .courseName:
                     results = try await CourseService.searchCourses(
-                        semester: semester, courseName: searchText.trimmingCharacters(in: .whitespaces)
+                        semester: semester, courseName: trimmed
                     )
                 }
                 await MainActor.run {
@@ -200,9 +201,10 @@ struct AddCourseSheet: View {
                 for (day, periods) in partial {
                     merged[day, default: []].append(contentsOf: periods)
                 }
-                let room = result.ClassRoomNo ?? ""
+                let room = (result.ClassRoomNo ?? "").trimmingCharacters(in: .whitespaces)
+                let existingRooms = existing.classroom.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
                 let newClassroom = existing.classroom.isEmpty ? room :
-                    (room.isEmpty || existing.classroom.contains(room)) ? existing.classroom :
+                    (room.isEmpty || existingRooms.contains(room)) ? existing.classroom :
                     "\(existing.classroom), \(room)"
                 let nodeStr = existing.nodeDisplay.isEmpty ? (result.Node ?? "") :
                     (result.Node == nil || result.Node!.isEmpty) ? existing.nodeDisplay :

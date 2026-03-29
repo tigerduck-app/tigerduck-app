@@ -81,6 +81,15 @@ struct ClassTableView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
+            .alert("重新命名", isPresented: $viewModel.showRenameAlert) {
+                TextField("課程名稱", text: $viewModel.renameText)
+                Button("確認") {
+                    viewModel.confirmRename()
+                }
+                Button("取消", role: .cancel) {
+                    viewModel.courseToRename = nil
+                }
+            }
         }
         .onAppear {
             viewModel.load(authService: appState.authService)
