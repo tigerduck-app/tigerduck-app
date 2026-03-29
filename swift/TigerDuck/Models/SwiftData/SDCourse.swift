@@ -18,12 +18,19 @@ final class SDCourse: Identifiable {
         didSet { _cachedSchedule = nil }
     }
 
+    /// Classroom per (weekday, period) as JSON: {"1-3":"TR-313","1-4":"TR-313","4-10":"TR-409"}
+    /// Key format: "weekday-period"
+    var classroomMapJSON: String = "{}" {
+        didSet { _cachedClassroomMap = nil }
+    }
+
     /// Moodle course ID number (e.g. "1142EC1013701")
     var moodleIdNumber: String?
 
     var skippedDatesJSON: String = "[]"
 
     @Transient private var _cachedSchedule: [Int: [String]]?
+    @Transient private var _cachedClassroomMap: [String: String]?
 
     var id: String { courseNo }
 
@@ -36,7 +43,8 @@ final class SDCourse: Identifiable {
         enrolledCount: Int = 0,
         maxCount: Int = 0,
         schedule: [Int: [String]] = [:],
-        moodleIdNumber: String? = nil
+        moodleIdNumber: String? = nil,
+        classroomMap: [String: String] = [:]
     ) {
         self.courseNo = courseNo
         self.courseName = courseName
@@ -49,6 +57,8 @@ final class SDCourse: Identifiable {
         self.scheduleJSON = (try? JSONEncoder().encode(stringKeyDict))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         self.moodleIdNumber = moodleIdNumber
+        self.classroomMapJSON = (try? JSONEncoder().encode(classroomMap))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     }
 
     var schedule: [Int: [String]] {
@@ -64,6 +74,60 @@ final class SDCourse: Identifiable {
         })
         _cachedSchedule = decoded
         return decoded
+    }
+
+    /// Parsed classroom map: "weekday-period" → classroom name
+    var classroomMap: [String: String] {
+        if let cached = _cachedClassroomMap { return cached }
+        guard let data = classroomMapJSON.data(using: .utf8),
+              let dict = try? JSONDecoder().decode([String: String].self, from: data) else {
+            _cachedClassroomMap = [:]
+            return [:]
+        }
+        _cachedClassroomMap = dict
+        return dict
+    }
+
+    /// Returns the classroom(s) for a specific weekday, deduped.
+    /// Falls back to the flat `classroom` string if no map data.
+    func classroom(for weekday: Int) -> String {
+        let map = classroomMap
+        guard !map.isEmpty else { return Self.dedup(classroom) }
+
+        guard let periods = schedule[weekday] else { return Self.dedup(classroom) }
+
+        var seen = Set<String>()
+        var rooms: [String] = []
+        for period in periods.sortedByPeriodOrder() {
+            let key = "\(weekday)-\(period)"
+            if let raw = map[key] {
+                for part in Self.splitRoom(raw) where !seen.contains(part) {
+                    seen.insert(part)
+                    rooms.append(part)
+                }
+            }
+        }
+        return rooms.isEmpty ? Self.dedup(classroom) : rooms.joined(separator: ", ")
+    }
+
+    private static let roomSeparators = CharacterSet(charactersIn: "、，,")
+
+    /// Split a classroom string by common separators, trim, drop empties.
+    static func splitRoom(_ raw: String) -> [String] {
+        raw.components(separatedBy: roomSeparators)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Dedup a raw classroom string that may contain separator-joined duplicates.
+    static func dedup(_ raw: String) -> String {
+        var seen = Set<String>()
+        var result: [String] = []
+        for part in splitRoom(raw) where !seen.contains(part) {
+            seen.insert(part)
+            result.append(part)
+        }
+        return result.isEmpty ? raw : result.joined(separator: ", ")
     }
 
     var color: Color {

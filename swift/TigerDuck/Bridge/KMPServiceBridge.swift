@@ -10,6 +10,7 @@ private struct CourseData: Sendable {
     let maxCount: Int
     let schedule: [Int: [String]]
     let moodleIdNumber: String
+    let classroomMap: [String: String]
 }
 
 enum KMPServiceBridge {
@@ -47,14 +48,30 @@ enum KMPServiceBridge {
                         // Merge schedules and classrooms from all rows
                         // (same course can have multiple time slots / classrooms)
                         var mergedSchedule: [Int: [String]] = [:]
-                        var classrooms: [String] = []
+                        var classroomMap: [String: String] = [:]
+                        var allClassrooms: [String] = []
+                        var seenClassrooms = Set<String>()
+
                         for row in results {
                             let partial = CourseService.parseNodeToSchedule(row.Node)
+                            // API may return "教室A、教室A" — reuse SDCourse helpers to split/dedup
+                            var seenParts = Set<String>()
+                            let uniqueParts = SDCourse.splitRoom(row.ClassRoomNo ?? "")
+                                .filter { seenParts.insert($0).inserted }
+                            let room = uniqueParts.joined(separator: ", ")
+
                             for (day, periods) in partial {
                                 mergedSchedule[day, default: []].append(contentsOf: periods)
+                                if !room.isEmpty {
+                                    for period in periods {
+                                        classroomMap["\(day)-\(period)"] = room
+                                    }
+                                }
                             }
-                            if let room = row.ClassRoomNo, !room.isEmpty, !classrooms.contains(room) {
-                                classrooms.append(room)
+
+                            for part in uniqueParts where !seenClassrooms.contains(part) {
+                                seenClassrooms.insert(part)
+                                allClassrooms.append(part)
                             }
                         }
 
@@ -67,11 +84,12 @@ enum KMPServiceBridge {
                             courseName: first.CourseName,
                             instructor: first.CourseTeacher,
                             credits: credits,
-                            classroom: classrooms.joined(separator: ", "),
+                            classroom: allClassrooms.joined(separator: ", "),
                             enrolledCount: enrolled,
                             maxCount: maxCount,
                             schedule: mergedSchedule,
-                            moodleIdNumber: "\(first.Semester)\(first.CourseNo)"
+                            moodleIdNumber: "\(first.Semester)\(first.CourseNo)",
+                            classroomMap: classroomMap
                         )
                     }
                 }
@@ -92,7 +110,8 @@ enum KMPServiceBridge {
                     enrolledCount: d.enrolledCount,
                     maxCount: d.maxCount,
                     schedule: d.schedule,
-                    moodleIdNumber: d.moodleIdNumber
+                    moodleIdNumber: d.moodleIdNumber,
+                    classroomMap: d.classroomMap
                 )
             }
 

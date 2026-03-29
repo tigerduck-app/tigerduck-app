@@ -6,6 +6,7 @@ final class DataCache {
     static let shared = DataCache()
 
     private let cacheDir: URL
+    private let persistentDir: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -14,6 +15,11 @@ final class DataCache {
             .appendingPathComponent("TigerDuckCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         cacheDir = dir
+
+        let persistent = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("TigerDuckData", isDirectory: true)
+        try? FileManager.default.createDirectory(at: persistent, withIntermediateDirectories: true)
+        persistentDir = persistent
     }
 
     // MARK: - Courses
@@ -25,6 +31,18 @@ final class DataCache {
 
     func loadCourses() -> [SDCourse] {
         let dtos: [CachedCourse] = load(from: "courses.json") ?? []
+        return dtos.map { $0.toSDCourse() }
+    }
+
+    // MARK: - User-Added Courses
+
+    func saveUserAddedCourses(_ courses: [SDCourse]) {
+        let dtos = courses.map { CachedCourse(from: $0) }
+        save(dtos, to: "user_added_courses.json", in: persistentDir)
+    }
+
+    func loadUserAddedCourses() -> [SDCourse] {
+        let dtos: [CachedCourse] = load(from: "user_added_courses.json", in: persistentDir) ?? []
         return dtos.map { $0.toSDCourse() }
     }
 
@@ -52,17 +70,37 @@ final class DataCache {
         return dtos.map { $0.toSDCalendarEvent() }
     }
 
+    // MARK: - Deleted Courses
+
+    func saveDeletedCourseNos(_ courseNos: [String]) {
+        save(courseNos, to: "deleted_courses.json", in: persistentDir)
+    }
+
+    func loadDeletedCourseNos() -> [String] {
+        load(from: "deleted_courses.json", in: persistentDir) ?? []
+    }
+
+    // MARK: - Course Custom Names
+
+    func saveCourseCustomNames(_ names: [String: String]) {
+        save(names, to: "course_custom_names.json", in: persistentDir)
+    }
+
+    func loadCourseCustomNames() -> [String: String] {
+        load(from: "course_custom_names.json", in: persistentDir) ?? [:]
+    }
+
     // MARK: - Private helpers
 
-    private func save<T: Encodable>(_ value: T, to filename: String) {
-        let url = cacheDir.appendingPathComponent(filename)
+    private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {
+        let url = (directory ?? cacheDir).appendingPathComponent(filename)
         if let data = try? encoder.encode(value) {
             try? data.write(to: url, options: .atomic)
         }
     }
 
-    private func load<T: Decodable>(from filename: String) -> T? {
-        let url = cacheDir.appendingPathComponent(filename)
+    private func load<T: Decodable>(from filename: String, in directory: URL? = nil) -> T? {
+        let url = (directory ?? cacheDir).appendingPathComponent(filename)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? decoder.decode(T.self, from: data)
     }
@@ -80,6 +118,7 @@ private struct CachedCourse: Codable {
     let maxCount: Int
     let scheduleJSON: String
     let moodleIdNumber: String?
+    let classroomMapJSON: String?
 
     init(from course: SDCourse) {
         courseNo = course.courseNo
@@ -91,6 +130,7 @@ private struct CachedCourse: Codable {
         maxCount = course.maxCount
         scheduleJSON = course.scheduleJSON
         moodleIdNumber = course.moodleIdNumber
+        classroomMapJSON = course.classroomMapJSON
     }
 
     func toSDCourse() -> SDCourse {
@@ -105,6 +145,16 @@ private struct CachedCourse: Codable {
         } else {
             schedule = [:]
         }
+
+        let classroomMap: [String: String]
+        if let json = classroomMapJSON,
+           let data = json.data(using: .utf8),
+           let dict = try? JSONDecoder().decode([String: String].self, from: data) {
+            classroomMap = dict
+        } else {
+            classroomMap = [:]
+        }
+
         return SDCourse(
             courseNo: courseNo,
             courseName: courseName,
@@ -114,7 +164,8 @@ private struct CachedCourse: Codable {
             enrolledCount: enrolledCount,
             maxCount: maxCount,
             schedule: schedule,
-            moodleIdNumber: moodleIdNumber
+            moodleIdNumber: moodleIdNumber,
+            classroomMap: classroomMap
         )
     }
 }

@@ -105,7 +105,8 @@ struct HomeView: View {
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
                     course: course,
-                    assignments: viewModel.assignmentsFor(courseNo: course.courseNo)
+                    assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
+                    weekday: Date().scheduleWeekday
                 )
                 .presentationDetents([.medium, .large])
             }

@@ -69,12 +69,27 @@ struct ClassTableView: View {
                 CourseDetailSheet(
                     course: course,
                     assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
-                    timeRange: viewModel.selectedCourseTimeRange
+                    timeRange: viewModel.selectedCourseTimeRange,
+                    weekday: viewModel.selectedWeekday
                 )
                 .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $viewModel.showAddCourse) {
-                AddCourseSheet()
+                AddCourseSheet(
+                    semester: viewModel.currentSemester,
+                    existingCourseNos: Set(viewModel.courses.map(\.courseNo)),
+                    onAdd: { viewModel.addCourse($0) }
+                )
+                .presentationDetents([.medium, .large])
+            }
+            .alert("重新命名", isPresented: $viewModel.showRenameAlert) {
+                TextField("課程名稱", text: $viewModel.renameText)
+                Button("確認") {
+                    viewModel.confirmRename()
+                }
+                Button("取消", role: .cancel) {
+                    viewModel.courseToRename = nil
+                }
             }
         }
         .onAppear {

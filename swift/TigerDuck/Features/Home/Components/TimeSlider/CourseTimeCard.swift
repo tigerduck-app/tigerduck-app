@@ -58,7 +58,7 @@ struct CourseTimeCard: View {
                 .font(.headline)
                 .foregroundStyle(isSkipped ? .pink : .white)
                 .lineLimit(1)
-            Text("\(course.classroom) · \(course.instructor)")
+            Text("\(course.classroom(for: weekday)) · \(course.instructor)")
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.6))
                 .lineLimit(1)

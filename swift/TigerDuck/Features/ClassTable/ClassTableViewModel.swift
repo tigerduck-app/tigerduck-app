@@ -29,6 +29,12 @@ final class ClassTableViewModel {
     }()
 
     var showAddCourse = false
+    var courseToRename: SDCourse? = nil
+    var renameText: String = ""
+    var showRenameAlert = false
+
+    private var deletedCourseNos: Set<String> = []
+    private var courseCustomNames: [String: String] = [:]
 
     /// weekday → period ID → SDCourse (built once when courses change)
     private var courseLookup: [Int: [String: SDCourse]] = [:]
@@ -38,6 +44,9 @@ final class ClassTableViewModel {
     private var dataObserver: Any?
 
     init() {
+        deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
+        courseCustomNames = DataCache.shared.loadCourseCustomNames()
+
         dataObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.dataDidUpdate,
             object: nil,
@@ -54,10 +63,27 @@ final class ClassTableViewModel {
         }
     }
 
+    private func mergeWithUserAdded(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
+        var merged = primary
+        for course in userAdded {
+            if !merged.contains(where: { $0.courseNo == course.courseNo }) {
+                merged.append(course)
+            }
+        }
+        return merged
+    }
+
+    private func buildCourseList(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
+        var merged = mergeWithUserAdded(primary, userAdded)
+        applyCustomizations(&merged)
+        return merged
+    }
+
     private func reloadFromCache() {
-        let cached = DataCache.shared.loadCourses()
-        let userAdded = courses.filter { $0.moodleIdNumber == nil }
-        courses = cached + userAdded
+        courses = buildCourseList(
+            DataCache.shared.loadCourses(),
+            DataCache.shared.loadUserAddedCourses()
+        )
         assignments = DataCache.shared.loadAssignments()
     }
 
@@ -162,14 +188,68 @@ final class ClassTableViewModel {
         selectedCourse = course
     }
 
+    func addCourse(_ course: SDCourse) {
+        if deletedCourseNos.remove(course.courseNo) != nil {
+            DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+        }
+        guard !courses.contains(where: { $0.courseNo == course.courseNo }) else { return }
+        if let customName = courseCustomNames[course.courseNo] {
+            course.courseName = customName
+        }
+        courses.append(course)
+        persistUserAddedCourses()
+    }
+
+    private func persistUserAddedCourses() {
+        let userAdded = courses.filter { $0.moodleIdNumber == nil }
+        DataCache.shared.saveUserAddedCourses(userAdded)
+    }
+
+    private func applyCustomizations(_ courses: inout [SDCourse]) {
+        courses.removeAll { deletedCourseNos.contains($0.courseNo) }
+        for i in courses.indices {
+            if let customName = courseCustomNames[courses[i].courseNo] {
+                courses[i].courseName = customName
+            }
+        }
+    }
+
+    func deleteCourse(_ course: SDCourse) {
+        courses.removeAll { $0.courseNo == course.courseNo }
+        deletedCourseNos.insert(course.courseNo)
+        DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+        persistUserAddedCourses()
+    }
+
+    func startRename(_ course: SDCourse) {
+        courseToRename = course
+        renameText = course.courseName
+        showRenameAlert = true
+    }
+
+    func confirmRename() {
+        guard let course = courseToRename, !renameText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let newName = renameText.trimmingCharacters(in: .whitespaces)
+        courseCustomNames[course.courseNo] = newName
+        DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        course.courseName = newName
+        rebuildLookup()
+        persistUserAddedCourses()
+        courseToRename = nil
+    }
+
     func load(authService: AuthService) {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        let cachedCourses = DataCache.shared.loadCourses()
         let cachedAssignments = DataCache.shared.loadAssignments()
-        if !cachedCourses.isEmpty {
-            courses = cachedCourses
+        let merged = buildCourseList(
+            DataCache.shared.loadCourses(),
+            DataCache.shared.loadUserAddedCourses()
+        )
+
+        if !merged.isEmpty {
+            courses = merged
             assignments = cachedAssignments
         }
         // backgroundSync() on app launch handles the network refresh
@@ -189,11 +269,11 @@ final class ClassTableViewModel {
         let fetchedCourses = await coursesTask
         let fetchedAssignments = await assignmentsTask
 
-        let userAdded = courses.filter { $0.moodleIdNumber == nil }
+        let userAdded = DataCache.shared.loadUserAddedCourses()
 
         await MainActor.run {
             isUpdatingFromNetwork = true
-            courses = fetchedCourses + userAdded
+            courses = buildCourseList(fetchedCourses, userAdded)
             assignments = fetchedAssignments
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
