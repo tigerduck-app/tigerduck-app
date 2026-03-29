@@ -64,6 +64,26 @@ final class DataCache {
         return dtos.map { $0.toSDCalendarEvent() }
     }
 
+    // MARK: - Deleted Courses
+
+    func saveDeletedCourseNos(_ courseNos: [String]) {
+        save(courseNos, to: "deleted_courses.json")
+    }
+
+    func loadDeletedCourseNos() -> [String] {
+        load(from: "deleted_courses.json") ?? []
+    }
+
+    // MARK: - Course Custom Names
+
+    func saveCourseCustomNames(_ names: [String: String]) {
+        save(names, to: "course_custom_names.json")
+    }
+
+    func loadCourseCustomNames() -> [String: String] {
+        load(from: "course_custom_names.json") ?? [:]
+    }
+
     // MARK: - Private helpers
 
     private func save<T: Encodable>(_ value: T, to filename: String) {

@@ -96,6 +96,18 @@ struct TimetableGridView: View {
                             .frame(height: totalHeight)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button {
+                            viewModel.startRename(course)
+                        } label: {
+                            Label("重新命名", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            viewModel.deleteCourse(course)
+                        } label: {
+                            Label("刪除", systemImage: "trash")
+                        }
+                    }
                 }
                 .zIndex(1)
 
