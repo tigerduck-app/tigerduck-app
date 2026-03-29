@@ -20,7 +20,9 @@ final class SDCourse: Identifiable {
 
     /// Classroom per (weekday, period) as JSON: {"1-3":"TR-313","1-4":"TR-313","4-10":"TR-409"}
     /// Key format: "weekday-period"
-    var classroomMapJSON: String = "{}"
+    var classroomMapJSON: String = "{}" {
+        didSet { _cachedClassroomMap = nil }
+    }
 
     /// Moodle course ID number (e.g. "1142EC1013701")
     var moodleIdNumber: String?
@@ -113,7 +115,7 @@ final class SDCourse: Identifiable {
     /// Split a classroom string by common separators, trim, drop empties.
     static func splitRoom(_ raw: String) -> [String] {
         raw.components(separatedBy: roomSeparators)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
 

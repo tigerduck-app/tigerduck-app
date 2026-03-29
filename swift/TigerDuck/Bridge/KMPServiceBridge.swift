@@ -54,17 +54,10 @@ enum KMPServiceBridge {
 
                         for row in results {
                             let partial = CourseService.parseNodeToSchedule(row.Node)
-                            // API may return "教室A、教室A" — split by common separators, trim, dedup
-                            let rawRoom = row.ClassRoomNo ?? ""
-                            let roomParts = rawRoom
-                                .components(separatedBy: CharacterSet(charactersIn: "、，,"))
-                                .map { $0.trimmingCharacters(in: .whitespaces) }
-                            var uniqueParts: [String] = []
+                            // API may return "教室A、教室A" — reuse SDCourse helpers to split/dedup
                             var seenParts = Set<String>()
-                            for part in roomParts where !part.isEmpty && !seenParts.contains(part) {
-                                seenParts.insert(part)
-                                uniqueParts.append(part)
-                            }
+                            let uniqueParts = SDCourse.splitRoom(row.ClassRoomNo ?? "")
+                                .filter { seenParts.insert($0).inserted }
                             let room = uniqueParts.joined(separator: ", ")
 
                             for (day, periods) in partial {
