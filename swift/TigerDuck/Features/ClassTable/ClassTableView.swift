@@ -69,7 +69,8 @@ struct ClassTableView: View {
                 CourseDetailSheet(
                     course: course,
                     assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
-                    timeRange: viewModel.selectedCourseTimeRange
+                    timeRange: viewModel.selectedCourseTimeRange,
+                    weekday: viewModel.selectedWeekday
                 )
                 .presentationDetents([.medium, .large])
             }

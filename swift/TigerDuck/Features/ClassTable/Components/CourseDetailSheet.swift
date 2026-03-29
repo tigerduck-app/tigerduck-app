@@ -4,6 +4,7 @@ struct CourseDetailSheet: View {
     let course: SDCourse
     let assignments: [SDAssignment]
     var timeRange: String? = nil
+    var weekday: Int? = nil
 
     var body: some View {
         NavigationStack {
@@ -20,7 +21,7 @@ struct CourseDetailSheet: View {
                         InfoRow(label: "授課教師", value: course.instructor)
                         InfoRow(label: "代碼", value: course.courseNo)
                         InfoRow(label: "學分", value: "\(course.credits)")
-                        InfoRow(label: "教室", value: course.classroom)
+                        InfoRow(label: "教室", value: weekday.map { course.classroom(for: $0) } ?? course.classroom)
                         if let timeRange {
                             InfoRow(label: "時間", value: timeRange)
                         }
