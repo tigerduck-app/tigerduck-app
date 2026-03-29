@@ -54,11 +54,11 @@ enum KMPServiceBridge {
 
                         for row in results {
                             let partial = CourseService.parseNodeToSchedule(row.Node)
-                            // API may return "教室A、教室A" with Chinese comma — split, trim, dedup
+                            // API may return "教室A、教室A" — split by common separators, trim, dedup
                             let rawRoom = row.ClassRoomNo ?? ""
-                            let roomParts = rawRoom.split(separator: "、").map {
-                                $0.trimmingCharacters(in: .whitespaces)
-                            }
+                            let roomParts = rawRoom
+                                .components(separatedBy: CharacterSet(charactersIn: "、，,"))
+                                .map { $0.trimmingCharacters(in: .whitespaces) }
                             var uniqueParts: [String] = []
                             var seenParts = Set<String>()
                             for part in roomParts where !part.isEmpty && !seenParts.contains(part) {

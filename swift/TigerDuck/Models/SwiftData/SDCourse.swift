@@ -90,21 +90,42 @@ final class SDCourse: Identifiable {
     /// Falls back to the flat `classroom` string if no map data.
     func classroom(for weekday: Int) -> String {
         let map = classroomMap
-        guard !map.isEmpty else { return classroom }
+        guard !map.isEmpty else { return Self.dedup(classroom) }
 
-        guard let periods = schedule[weekday] else { return classroom }
+        guard let periods = schedule[weekday] else { return Self.dedup(classroom) }
 
         var seen = Set<String>()
         var rooms: [String] = []
         for period in periods.sortedByPeriodOrder() {
             let key = "\(weekday)-\(period)"
-            if let room = map[key]?.trimmingCharacters(in: .whitespaces),
-               !room.isEmpty, !seen.contains(room) {
-                seen.insert(room)
-                rooms.append(room)
+            if let raw = map[key] {
+                for part in Self.splitRoom(raw) where !seen.contains(part) {
+                    seen.insert(part)
+                    rooms.append(part)
+                }
             }
         }
-        return rooms.isEmpty ? classroom : rooms.joined(separator: ", ")
+        return rooms.isEmpty ? Self.dedup(classroom) : rooms.joined(separator: ", ")
+    }
+
+    private static let roomSeparators = CharacterSet(charactersIn: "、，,")
+
+    /// Split a classroom string by common separators, trim, drop empties.
+    static func splitRoom(_ raw: String) -> [String] {
+        raw.components(separatedBy: roomSeparators)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Dedup a raw classroom string that may contain separator-joined duplicates.
+    static func dedup(_ raw: String) -> String {
+        var seen = Set<String>()
+        var result: [String] = []
+        for part in splitRoom(raw) where !seen.contains(part) {
+            seen.insert(part)
+            result.append(part)
+        }
+        return result.isEmpty ? raw : result.joined(separator: ", ")
     }
 
     var color: Color {
