@@ -131,7 +131,7 @@ private struct TodayCourseCard: View {
                 }
             }
 
-            Text(course.classroom)
+            Text(course.classroom(for: Date().scheduleWeekday))
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
 

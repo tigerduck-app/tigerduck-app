@@ -118,6 +118,7 @@ private struct CachedCourse: Codable {
     let maxCount: Int
     let scheduleJSON: String
     let moodleIdNumber: String?
+    let classroomMapJSON: String?
 
     init(from course: SDCourse) {
         courseNo = course.courseNo
@@ -129,6 +130,7 @@ private struct CachedCourse: Codable {
         maxCount = course.maxCount
         scheduleJSON = course.scheduleJSON
         moodleIdNumber = course.moodleIdNumber
+        classroomMapJSON = course.classroomMapJSON
     }
 
     func toSDCourse() -> SDCourse {
@@ -143,6 +145,16 @@ private struct CachedCourse: Codable {
         } else {
             schedule = [:]
         }
+
+        let classroomMap: [String: String]
+        if let json = classroomMapJSON,
+           let data = json.data(using: .utf8),
+           let dict = try? JSONDecoder().decode([String: String].self, from: data) {
+            classroomMap = dict
+        } else {
+            classroomMap = [:]
+        }
+
         return SDCourse(
             courseNo: courseNo,
             courseName: courseName,
@@ -152,7 +164,8 @@ private struct CachedCourse: Codable {
             enrolledCount: enrolledCount,
             maxCount: maxCount,
             schedule: schedule,
-            moodleIdNumber: moodleIdNumber
+            moodleIdNumber: moodleIdNumber,
+            classroomMap: classroomMap
         )
     }
 }
