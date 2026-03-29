@@ -28,6 +28,18 @@ final class DataCache {
         return dtos.map { $0.toSDCourse() }
     }
 
+    // MARK: - User-Added Courses
+
+    func saveUserAddedCourses(_ courses: [SDCourse]) {
+        let dtos = courses.map { CachedCourse(from: $0) }
+        save(dtos, to: "user_added_courses.json")
+    }
+
+    func loadUserAddedCourses() -> [SDCourse] {
+        let dtos: [CachedCourse] = load(from: "user_added_courses.json") ?? []
+        return dtos.map { $0.toSDCourse() }
+    }
+
     // MARK: - Assignments
 
     func saveAssignments(_ assignments: [SDAssignment]) {
