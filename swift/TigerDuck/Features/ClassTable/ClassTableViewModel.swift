@@ -54,16 +54,21 @@ final class ClassTableViewModel {
         }
     }
 
-    private func reloadFromCache() {
-        let cached = DataCache.shared.loadCourses()
-        let userAdded = DataCache.shared.loadUserAddedCourses()
-        var merged = cached
+    private func mergeWithUserAdded(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
+        var merged = primary
         for course in userAdded {
             if !merged.contains(where: { $0.courseNo == course.courseNo }) {
                 merged.append(course)
             }
         }
-        courses = merged
+        return merged
+    }
+
+    private func reloadFromCache() {
+        courses = mergeWithUserAdded(
+            DataCache.shared.loadCourses(),
+            DataCache.shared.loadUserAddedCourses()
+        )
         assignments = DataCache.shared.loadAssignments()
     }
 
@@ -183,16 +188,11 @@ final class ClassTableViewModel {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        let cachedCourses = DataCache.shared.loadCourses()
-        let userAddedCourses = DataCache.shared.loadUserAddedCourses()
         let cachedAssignments = DataCache.shared.loadAssignments()
-
-        var merged = cachedCourses
-        for course in userAddedCourses {
-            if !merged.contains(where: { $0.courseNo == course.courseNo }) {
-                merged.append(course)
-            }
-        }
+        let merged = mergeWithUserAdded(
+            DataCache.shared.loadCourses(),
+            DataCache.shared.loadUserAddedCourses()
+        )
 
         if !merged.isEmpty {
             courses = merged
@@ -219,13 +219,7 @@ final class ClassTableViewModel {
 
         await MainActor.run {
             isUpdatingFromNetwork = true
-            var merged = fetchedCourses
-            for course in userAdded {
-                if !merged.contains(where: { $0.courseNo == course.courseNo }) {
-                    merged.append(course)
-                }
-            }
-            courses = merged
+            courses = mergeWithUserAdded(fetchedCourses, userAdded)
             assignments = fetchedAssignments
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)

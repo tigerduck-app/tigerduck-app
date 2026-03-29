@@ -18,6 +18,7 @@ struct AddCourseSheet: View {
     @State private var isSearching = false
     @State private var errorMessage: String?
     @State private var addedCourseNo: String?
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -141,8 +142,10 @@ struct AddCourseSheet: View {
         errorMessage = nil
         isSearching = true
         searchResults = []
+        addedCourseNo = nil
+        searchTask?.cancel()
 
-        Task {
+        searchTask = Task {
             do {
                 let results: [CourseSearchResult]
                 switch searchMode {

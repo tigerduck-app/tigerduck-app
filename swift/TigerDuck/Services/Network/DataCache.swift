@@ -6,6 +6,7 @@ final class DataCache {
     static let shared = DataCache()
 
     private let cacheDir: URL
+    private let persistentDir: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -14,6 +15,11 @@ final class DataCache {
             .appendingPathComponent("TigerDuckCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         cacheDir = dir
+
+        let persistent = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("TigerDuckData", isDirectory: true)
+        try? FileManager.default.createDirectory(at: persistent, withIntermediateDirectories: true)
+        persistentDir = persistent
     }
 
     // MARK: - Courses
@@ -32,11 +38,11 @@ final class DataCache {
 
     func saveUserAddedCourses(_ courses: [SDCourse]) {
         let dtos = courses.map { CachedCourse(from: $0) }
-        save(dtos, to: "user_added_courses.json")
+        save(dtos, to: "user_added_courses.json", in: persistentDir)
     }
 
     func loadUserAddedCourses() -> [SDCourse] {
-        let dtos: [CachedCourse] = load(from: "user_added_courses.json") ?? []
+        let dtos: [CachedCourse] = load(from: "user_added_courses.json", in: persistentDir) ?? []
         return dtos.map { $0.toSDCourse() }
     }
 
@@ -66,15 +72,15 @@ final class DataCache {
 
     // MARK: - Private helpers
 
-    private func save<T: Encodable>(_ value: T, to filename: String) {
-        let url = cacheDir.appendingPathComponent(filename)
+    private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {
+        let url = (directory ?? cacheDir).appendingPathComponent(filename)
         if let data = try? encoder.encode(value) {
             try? data.write(to: url, options: .atomic)
         }
     }
 
-    private func load<T: Decodable>(from filename: String) -> T? {
-        let url = cacheDir.appendingPathComponent(filename)
+    private func load<T: Decodable>(from filename: String, in directory: URL? = nil) -> T? {
+        let url = (directory ?? cacheDir).appendingPathComponent(filename)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? decoder.decode(T.self, from: data)
     }
