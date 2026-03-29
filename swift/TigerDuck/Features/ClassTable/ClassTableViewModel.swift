@@ -54,10 +54,21 @@ final class ClassTableViewModel {
         }
     }
 
+    private func mergeWithUserAdded(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
+        var merged = primary
+        for course in userAdded {
+            if !merged.contains(where: { $0.courseNo == course.courseNo }) {
+                merged.append(course)
+            }
+        }
+        return merged
+    }
+
     private func reloadFromCache() {
-        let cached = DataCache.shared.loadCourses()
-        let userAdded = courses.filter { $0.moodleIdNumber == nil }
-        courses = cached + userAdded
+        courses = mergeWithUserAdded(
+            DataCache.shared.loadCourses(),
+            DataCache.shared.loadUserAddedCourses()
+        )
         assignments = DataCache.shared.loadAssignments()
     }
 
@@ -162,14 +173,29 @@ final class ClassTableViewModel {
         selectedCourse = course
     }
 
+    func addCourse(_ course: SDCourse) {
+        guard !courses.contains(where: { $0.courseNo == course.courseNo }) else { return }
+        courses.append(course)
+        persistUserAddedCourses()
+    }
+
+    private func persistUserAddedCourses() {
+        let userAdded = courses.filter { $0.moodleIdNumber == nil }
+        DataCache.shared.saveUserAddedCourses(userAdded)
+    }
+
     func load(authService: AuthService) {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        let cachedCourses = DataCache.shared.loadCourses()
         let cachedAssignments = DataCache.shared.loadAssignments()
-        if !cachedCourses.isEmpty {
-            courses = cachedCourses
+        let merged = mergeWithUserAdded(
+            DataCache.shared.loadCourses(),
+            DataCache.shared.loadUserAddedCourses()
+        )
+
+        if !merged.isEmpty {
+            courses = merged
             assignments = cachedAssignments
         }
         // backgroundSync() on app launch handles the network refresh
@@ -189,11 +215,11 @@ final class ClassTableViewModel {
         let fetchedCourses = await coursesTask
         let fetchedAssignments = await assignmentsTask
 
-        let userAdded = courses.filter { $0.moodleIdNumber == nil }
+        let userAdded = DataCache.shared.loadUserAddedCourses()
 
         await MainActor.run {
             isUpdatingFromNetwork = true
-            courses = fetchedCourses + userAdded
+            courses = mergeWithUserAdded(fetchedCourses, userAdded)
             assignments = fetchedAssignments
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)

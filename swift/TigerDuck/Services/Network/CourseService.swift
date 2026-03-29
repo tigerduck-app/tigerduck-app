@@ -79,6 +79,19 @@ enum CourseService {
         return try JSONDecoder().decode([CourseSearchResult].self, from: data)
     }
 
+    /// Search courses by name (public API, no auth required)
+    static func searchCourses(semester: String, courseName: String) async throws -> [CourseSearchResult] {
+        let requestBody = CourseSearchRequest.forCourseName(courseName, semester: semester)
+
+        var request = URLRequest(url: courseSearchAPI)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(requestBody)
+
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return try JSONDecoder().decode([CourseSearchResult].self, from: data)
+    }
+
     // MARK: - Parse Node to schedule
 
     /// Convert NTUST Node format "M6,M7,R10" to schedule dict [weekday: [periodId]]

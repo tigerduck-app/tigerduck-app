@@ -74,7 +74,12 @@ struct ClassTableView: View {
                 .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $viewModel.showAddCourse) {
-                AddCourseSheet()
+                AddCourseSheet(
+                    semester: viewModel.currentSemester,
+                    existingCourseNos: Set(viewModel.courses.map(\.courseNo)),
+                    onAdd: { viewModel.addCourse($0) }
+                )
+                .presentationDetents([.medium, .large])
             }
         }
         .onAppear {
