@@ -73,13 +73,17 @@ final class ClassTableViewModel {
         return merged
     }
 
+    private func buildCourseList(_ primary: [SDCourse], _ userAdded: [SDCourse]) -> [SDCourse] {
+        var merged = mergeWithUserAdded(primary, userAdded)
+        applyCustomizations(&merged)
+        return merged
+    }
+
     private func reloadFromCache() {
-        var merged = mergeWithUserAdded(
+        courses = buildCourseList(
             DataCache.shared.loadCourses(),
             DataCache.shared.loadUserAddedCourses()
         )
-        applyCustomizations(&merged)
-        courses = merged
         assignments = DataCache.shared.loadAssignments()
     }
 
@@ -229,7 +233,7 @@ final class ClassTableViewModel {
         courseCustomNames[course.courseNo] = newName
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
         course.courseName = newName
-        courses = courses // trigger didSet for UI refresh
+        rebuildLookup()
         persistUserAddedCourses()
         courseToRename = nil
     }
@@ -239,11 +243,10 @@ final class ClassTableViewModel {
         hasLoaded = true
 
         let cachedAssignments = DataCache.shared.loadAssignments()
-        var merged = mergeWithUserAdded(
+        let merged = buildCourseList(
             DataCache.shared.loadCourses(),
             DataCache.shared.loadUserAddedCourses()
         )
-        applyCustomizations(&merged)
 
         if !merged.isEmpty {
             courses = merged
@@ -270,9 +273,7 @@ final class ClassTableViewModel {
 
         await MainActor.run {
             isUpdatingFromNetwork = true
-            var merged = mergeWithUserAdded(fetchedCourses, userAdded)
-            applyCustomizations(&merged)
-            courses = merged
+            courses = buildCourseList(fetchedCourses, userAdded)
             assignments = fetchedAssignments
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
