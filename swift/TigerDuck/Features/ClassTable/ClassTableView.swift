@@ -75,6 +75,7 @@ struct ClassTableView: View {
             }
             .sheet(isPresented: $viewModel.showAddCourse) {
                 AddCourseSheet()
+                    .presentationDetents([.medium, .large])
             }
         }
         .onAppear {
