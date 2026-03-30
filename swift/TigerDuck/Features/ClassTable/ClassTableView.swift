@@ -49,7 +49,7 @@ struct ClassTableView: View {
 
                         Spacer()
 
-                        Text("共 \(viewModel.totalCredits) 學分")
+                        Text("\(viewModel.totalCredits) 學分")
                         .font(TigerDuckTheme.Typography.body)
                         .foregroundStyle(Color.textSecondary)
                     }
