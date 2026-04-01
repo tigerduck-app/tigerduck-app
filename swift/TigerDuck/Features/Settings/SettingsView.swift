@@ -19,6 +19,7 @@ struct SettingsView: View {
 
     private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
     private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
+    private static let licenseURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/blob/main/LICENSE")!
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -131,31 +132,40 @@ struct SettingsView: View {
         .sheet(isPresented: $showLicense) {
             NavigationStack {
                 ScrollView {
-                    Text("""
-                    GNU AFFERO GENERAL PUBLIC LICENSE
-                    Version 3, 19 November 2007
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("""
+                        TigerDuck
+                        Copyright (C) 2026 TigerDuck Contributors
 
-                    Copyright (c) 2026 TigerDuck
+                        This program is free software: you can redistribute it \
+                        and/or modify it under the terms of the GNU Affero General \
+                        Public License as published by the Free Software Foundation, \
+                        either version 3 of the License, or (at your option) any \
+                        later version.
 
-                    This program is free software: you can redistribute it and/or modify \
-                    it under the terms of the GNU Affero General Public License as published by \
-                    the Free Software Foundation, either version 3 of the License, or \
-                    (at your option) any later version.
+                        This program is distributed in the hope that it will be \
+                        useful, but WITHOUT ANY WARRANTY; without even the implied \
+                        warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR \
+                        PURPOSE. See the GNU Affero General Public License for \
+                        more details.
 
-                    This program is distributed in the hope that it will be useful, \
-                    but WITHOUT ANY WARRANTY; without even the implied warranty of \
-                    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the \
-                    GNU Affero General Public License for more details.
+                        You should have received a copy of the GNU Affero General \
+                        Public License along with this program. If not, see \
+                        <https://www.gnu.org/licenses/>.
+                        """)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Color.textPrimary)
 
-                    You should have received a copy of the GNU Affero General Public License \
-                    along with this program. If not, see <https://www.gnu.org/licenses/>.
-                    """)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(Color.textPrimary)
+                        Button {
+                            UIApplication.shared.open(Self.licenseURL)
+                        } label: {
+                            Label("查看完整授權條款", systemImage: "doc.text")
+                        }
+                    }
                     .padding()
                 }
                 .background(Color.backgroundPrimary)
-                .navigationTitle("開源授權")
+                .navigationTitle("開源授權 — AGPLv3")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
