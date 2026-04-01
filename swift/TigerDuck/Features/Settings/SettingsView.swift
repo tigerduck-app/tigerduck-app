@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var showingTabEditor = false
     @State private var showLicense = false
     @State private var showPrivacyPolicy = false
+    @State private var showFeedback = false
     @State private var loginStudentId = ""
     @State private var loginPassword = ""
     @State private var libUsername = ""
@@ -90,16 +91,13 @@ struct SettingsView: View {
             Section("關於") {
                 LabeledContent("版本", value: appVersion)
                 Button {
-                    if let url = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues") {
+                    if appState.browserPreference == .inApp {
+                        showFeedback = true
+                    } else if let url = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues") {
                         UIApplication.shared.open(url)
                     }
                 } label: {
-                    HStack {
-                        Text("回饋/問題回報")
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("回饋/問題回報")
                 }
                 Button {
                     if appState.browserPreference == .inApp {
@@ -118,6 +116,10 @@ struct SettingsView: View {
         .navigationTitle("設定")
         .sheet(isPresented: $showingTabEditor) {
             TabEditorView()
+        }
+        .sheet(isPresented: $showFeedback) {
+            InAppBrowserView(url: URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!)
+                .ignoresSafeArea()
         }
         .sheet(isPresented: $showPrivacyPolicy) {
             InAppBrowserView(url: URL(string: "https://app.ntust.org/tigerduck/privacy")!)
