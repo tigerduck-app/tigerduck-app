@@ -17,6 +17,9 @@ struct SettingsView: View {
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
 
+    private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
+    private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
+
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
@@ -93,8 +96,8 @@ struct SettingsView: View {
                 Button {
                     if appState.browserPreference == .inApp {
                         showFeedback = true
-                    } else if let url = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues") {
-                        UIApplication.shared.open(url)
+                    } else {
+                        UIApplication.shared.open(Self.feedbackURL)
                     }
                 } label: {
                     Text("回饋/問題回報")
@@ -102,8 +105,8 @@ struct SettingsView: View {
                 Button {
                     if appState.browserPreference == .inApp {
                         showPrivacyPolicy = true
-                    } else if let url = URL(string: "https://app.ntust.org/tigerduck/privacy") {
-                        UIApplication.shared.open(url)
+                    } else {
+                        UIApplication.shared.open(Self.privacyURL)
                     }
                 } label: {
                     Text("隱私權政策")
@@ -118,11 +121,11 @@ struct SettingsView: View {
             TabEditorView()
         }
         .sheet(isPresented: $showFeedback) {
-            InAppBrowserView(url: URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!)
+            InAppBrowserView(url: Self.feedbackURL)
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showPrivacyPolicy) {
-            InAppBrowserView(url: URL(string: "https://app.ntust.org/tigerduck/privacy")!)
+            InAppBrowserView(url: Self.privacyURL)
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showLicense) {
