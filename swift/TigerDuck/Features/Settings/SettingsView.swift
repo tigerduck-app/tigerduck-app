@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var notifyClubs = false
     @State private var showingTabEditor = false
     @State private var showLicense = false
+    @State private var showPrivacyPolicy = false
     @State private var loginStudentId = ""
     @State private var loginPassword = ""
     @State private var libUsername = ""
@@ -88,8 +89,27 @@ struct SettingsView: View {
             // MARK: - About
             Section("關於") {
                 LabeledContent("版本", value: appVersion)
-                Text("回饋/問題回報")
-                Text("隱私權政策")
+                Button {
+                    if let url = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues") {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    HStack {
+                        Text("回饋/問題回報")
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Button {
+                    if appState.browserPreference == .inApp {
+                        showPrivacyPolicy = true
+                    } else if let url = URL(string: "https://app.ntust.org/tigerduck/privacy") {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text("隱私權政策")
+                }
                 Button("開源授權") {
                     showLicense = true
                 }
@@ -99,31 +119,31 @@ struct SettingsView: View {
         .sheet(isPresented: $showingTabEditor) {
             TabEditorView()
         }
+        .sheet(isPresented: $showPrivacyPolicy) {
+            InAppBrowserView(url: URL(string: "https://app.ntust.org/tigerduck/privacy")!)
+                .ignoresSafeArea()
+        }
         .sheet(isPresented: $showLicense) {
             NavigationStack {
                 ScrollView {
                     Text("""
-                    MIT License
+                    GNU AFFERO GENERAL PUBLIC LICENSE
+                    Version 3, 19 November 2007
 
                     Copyright (c) 2026 TigerDuck
 
-                    Permission is hereby granted, free of charge, to any person obtaining a copy \
-                    of this software and associated documentation files (the "Software"), to deal \
-                    in the Software without restriction, including without limitation the rights \
-                    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell \
-                    copies of the Software, and to permit persons to whom the Software is \
-                    furnished to do so, subject to the following conditions:
+                    This program is free software: you can redistribute it and/or modify \
+                    it under the terms of the GNU Affero General Public License as published by \
+                    the Free Software Foundation, either version 3 of the License, or \
+                    (at your option) any later version.
 
-                    The above copyright notice and this permission notice shall be included in all \
-                    copies or substantial portions of the Software.
+                    This program is distributed in the hope that it will be useful, \
+                    but WITHOUT ANY WARRANTY; without even the implied warranty of \
+                    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the \
+                    GNU Affero General Public License for more details.
 
-                    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR \
-                    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, \
-                    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE \
-                    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER \
-                    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, \
-                    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE \
-                    SOFTWARE.
+                    You should have received a copy of the GNU Affero General Public License \
+                    along with this program. If not, see <https://www.gnu.org/licenses/>.
                     """)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(Color.textPrimary)
