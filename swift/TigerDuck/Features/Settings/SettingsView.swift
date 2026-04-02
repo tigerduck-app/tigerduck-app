@@ -8,12 +8,19 @@ struct SettingsView: View {
     @State private var notifyClubs = false
     @State private var showingTabEditor = false
     @State private var showLicense = false
+    @State private var showPrivacyPolicy = false
+    @State private var showFeedback = false
+    @State private var showLicenseFullText = false
     @State private var loginStudentId = ""
     @State private var loginPassword = ""
     @State private var libUsername = ""
     @State private var libPassword = ""
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
+
+    private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
+    private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
+    private static let licenseURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/blob/main/LICENSE")!
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -88,8 +95,24 @@ struct SettingsView: View {
             // MARK: - About
             Section("關於") {
                 LabeledContent("版本", value: appVersion)
-                Text("回饋/問題回報")
-                Text("隱私權政策")
+                Button {
+                    if appState.browserPreference == .inApp {
+                        showFeedback = true
+                    } else {
+                        UIApplication.shared.open(Self.feedbackURL)
+                    }
+                } label: {
+                    Text("回饋/問題回報")
+                }
+                Button {
+                    if appState.browserPreference == .inApp {
+                        showPrivacyPolicy = true
+                    } else {
+                        UIApplication.shared.open(Self.privacyURL)
+                    }
+                } label: {
+                    Text("隱私權政策")
+                }
                 Button("開源授權") {
                     showLicense = true
                 }
@@ -99,38 +122,59 @@ struct SettingsView: View {
         .sheet(isPresented: $showingTabEditor) {
             TabEditorView()
         }
+        .sheet(isPresented: $showFeedback) {
+            InAppBrowserView(url: Self.feedbackURL)
+                .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showPrivacyPolicy) {
+            InAppBrowserView(url: Self.privacyURL)
+                .ignoresSafeArea()
+        }
         .sheet(isPresented: $showLicense) {
             NavigationStack {
                 ScrollView {
-                    Text("""
-                    MIT License
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("""
+                        TigerDuck
+                        Copyright (C) 2026 TigerDuck Contributors
 
-                    Copyright (c) 2026 TigerDuck
+                        This program is free software: you can redistribute it \
+                        and/or modify it under the terms of the GNU Affero General \
+                        Public License as published by the Free Software Foundation, \
+                        either version 3 of the License, or (at your option) any \
+                        later version.
 
-                    Permission is hereby granted, free of charge, to any person obtaining a copy \
-                    of this software and associated documentation files (the "Software"), to deal \
-                    in the Software without restriction, including without limitation the rights \
-                    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell \
-                    copies of the Software, and to permit persons to whom the Software is \
-                    furnished to do so, subject to the following conditions:
+                        This program is distributed in the hope that it will be \
+                        useful, but WITHOUT ANY WARRANTY; without even the implied \
+                        warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR \
+                        PURPOSE. See the GNU Affero General Public License for \
+                        more details.
 
-                    The above copyright notice and this permission notice shall be included in all \
-                    copies or substantial portions of the Software.
+                        You should have received a copy of the GNU Affero General \
+                        Public License along with this program. If not, see \
+                        <https://www.gnu.org/licenses/>.
+                        """)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Color.textPrimary)
 
-                    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR \
-                    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, \
-                    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE \
-                    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER \
-                    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, \
-                    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE \
-                    SOFTWARE.
-                    """)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(Color.textPrimary)
+                        Button {
+                            if appState.browserPreference == .inApp {
+                                showLicenseFullText = true
+                            } else {
+                                UIApplication.shared.open(Self.licenseURL)
+                            }
+                        } label: {
+                            Label("查看完整授權條款", systemImage: "doc.text")
+                        }
+                        .sheet(isPresented: $showLicenseFullText) {
+                            InAppBrowserView(url: Self.licenseURL)
+                                .ignoresSafeArea()
+                        }
+                    }
                     .padding()
                 }
                 .background(Color.backgroundPrimary)
-                .navigationTitle("開源授權")
+                .navigationTitle("開源授權 — AGPLv3")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
