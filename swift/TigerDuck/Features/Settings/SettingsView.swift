@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var showLicense = false
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
+    @State private var showLicenseFullText = false
     @State private var loginStudentId = ""
     @State private var loginPassword = ""
     @State private var libUsername = ""
@@ -157,9 +158,17 @@ struct SettingsView: View {
                         .foregroundStyle(Color.textPrimary)
 
                         Button {
-                            UIApplication.shared.open(Self.licenseURL)
+                            if appState.browserPreference == .inApp {
+                                showLicenseFullText = true
+                            } else {
+                                UIApplication.shared.open(Self.licenseURL)
+                            }
                         } label: {
                             Label("查看完整授權條款", systemImage: "doc.text")
+                        }
+                        .sheet(isPresented: $showLicenseFullText) {
+                            InAppBrowserView(url: Self.licenseURL)
+                                .ignoresSafeArea()
                         }
                     }
                     .padding()
