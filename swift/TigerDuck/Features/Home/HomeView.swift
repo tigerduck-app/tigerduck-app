@@ -30,7 +30,9 @@ struct HomeView: View {
                             viewModel: viewModel,
                             appState: appState,
                             onFeatureTap: { feature in
-                                if !feature.isImplemented {
+                                if feature.isImplemented {
+                                    // TODO: navigate to the feature (e.g. switch tab)
+                                } else {
                                     showNotImplementedAlert = true
                                 }
                             }
