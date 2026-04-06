@@ -59,11 +59,7 @@ struct MoreView: View {
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .alert("快了快了", isPresented: $showNotImplementedAlert) {
-                Button("收到！", role: .cancel) { }
-            } message: {
-                Text("此功能尚未實現，敬請期待～")
-            }
+            .notImplementedAlert(isPresented: $showNotImplementedAlert)
         }
     }
 }

@@ -110,11 +110,7 @@ struct HomeView: View {
                 AddSectionSheet(viewModel: viewModel)
                     .presentationDetents([.medium])
             }
-            .alert("快了快了", isPresented: $showNotImplementedAlert) {
-                Button("收到！", role: .cancel) { }
-            } message: {
-                Text("此功能尚未實現，敬請期待～")
-            }
+            .notImplementedAlert(isPresented: $showNotImplementedAlert)
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
                     course: course,

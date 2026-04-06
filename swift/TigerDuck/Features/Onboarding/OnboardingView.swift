@@ -43,6 +43,8 @@ struct OnboardingView: View {
                                 .textContentType(.username)
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.characters)
+                                .submitLabel(.next)
+                                .onSubmit { focusedField = .password }
                         }
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                         .padding(.vertical, TigerDuckTheme.Spacing.md)
@@ -58,6 +60,14 @@ struct OnboardingView: View {
                             SecureField("密碼", text: $password)
                                 .focused($focusedField, equals: .password)
                                 .textContentType(.password)
+                                .submitLabel(.go)
+                                .onSubmit {
+                                    guard !studentId.isEmpty, !password.isEmpty, !appState.authService.isLoggingIn else { return }
+                                    Task {
+                                        let success = await appState.authService.login(studentId: studentId, password: password)
+                                        if success { withAnimation { currentPage = 2 } }
+                                    }
+                                }
                         }
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                         .padding(.vertical, TigerDuckTheme.Spacing.md)
