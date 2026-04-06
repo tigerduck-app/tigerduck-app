@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension View {
-    func assignmentBadge(show: Bool, color: Color) -> some View {
+    func assignmentBadge(show: Bool) -> some View {
         overlay(alignment: .bottomTrailing) {
             if show {
                 Image(systemName: "book.fill")

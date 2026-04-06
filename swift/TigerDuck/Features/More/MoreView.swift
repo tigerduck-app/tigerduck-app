@@ -46,7 +46,9 @@ struct MoreView: View {
                             features: group.features,
                             isPinned: viewModel.isPinned,
                             onFeatureTap: { feature in
-                                if !feature.isImplemented {
+                                if feature.isImplemented {
+                                    // TODO: navigate to the feature (e.g. switch tab)
+                                } else {
                                     showNotImplementedAlert = true
                                 }
                             }
@@ -60,7 +62,7 @@ struct MoreView: View {
             .alert("快了快了", isPresented: $showNotImplementedAlert) {
                 Button("收到！", role: .cancel) { }
             } message: {
-                Text("此功能尚未實現，請進請期待～")
+                Text("此功能尚未實現，敬請期待～")
             }
         }
     }

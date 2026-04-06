@@ -111,7 +111,7 @@ struct HomeView: View {
             .alert("快了快了", isPresented: $showNotImplementedAlert) {
                 Button("收到！", role: .cancel) { }
             } message: {
-                Text("此功能尚未實現，請進請期待～")
+                Text("此功能尚未實現，敬請期待～")
             }
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
