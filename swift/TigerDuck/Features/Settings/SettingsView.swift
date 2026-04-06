@@ -10,7 +10,6 @@ struct SettingsView: View {
     @State private var showLicense = false
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
-    @State private var showLicenseFullText = false
     @State private var loginStudentId = ""
     @State private var loginPassword = ""
     @State private var libUsername = ""
@@ -114,7 +113,11 @@ struct SettingsView: View {
                     Text("隱私權政策")
                 }
                 Button("開源授權") {
-                    showLicense = true
+                    if appState.browserPreference == .inApp {
+                        showLicense = true
+                    } else {
+                        UIApplication.shared.open(Self.licenseURL)
+                    }
                 }
             }
         }
@@ -131,57 +134,8 @@ struct SettingsView: View {
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showLicense) {
-            NavigationStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("""
-                        TigerDuck
-                        Copyright (C) 2026 TigerDuck Contributors
-
-                        This program is free software: you can redistribute it \
-                        and/or modify it under the terms of the GNU Affero General \
-                        Public License as published by the Free Software Foundation, \
-                        either version 3 of the License, or (at your option) any \
-                        later version.
-
-                        This program is distributed in the hope that it will be \
-                        useful, but WITHOUT ANY WARRANTY; without even the implied \
-                        warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR \
-                        PURPOSE. See the GNU Affero General Public License for \
-                        more details.
-
-                        You should have received a copy of the GNU Affero General \
-                        Public License along with this program. If not, see \
-                        <https://www.gnu.org/licenses/>.
-                        """)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(Color.textPrimary)
-
-                        Button {
-                            if appState.browserPreference == .inApp {
-                                showLicenseFullText = true
-                            } else {
-                                UIApplication.shared.open(Self.licenseURL)
-                            }
-                        } label: {
-                            Label("查看完整授權條款", systemImage: "doc.text")
-                        }
-                        .sheet(isPresented: $showLicenseFullText) {
-                            InAppBrowserView(url: Self.licenseURL)
-                                .ignoresSafeArea()
-                        }
-                    }
-                    .padding()
-                }
-                .background(Color.backgroundPrimary)
-                .navigationTitle("開源授權 — AGPLv3")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("完成") { showLicense = false }
-                    }
-                }
-            }
+            InAppBrowserView(url: Self.licenseURL)
+                .ignoresSafeArea()
         }
     }
 
