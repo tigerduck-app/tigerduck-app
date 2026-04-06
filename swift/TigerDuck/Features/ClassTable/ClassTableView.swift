@@ -6,7 +6,7 @@ struct ClassTableView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
+            ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     // Title
                     HStack {
@@ -60,6 +60,7 @@ struct ClassTableView: View {
                 }
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
+            .scrollIndicators(.hidden)
             .refreshable {
                 await viewModel.refresh(authService: appState.authService)
             }
