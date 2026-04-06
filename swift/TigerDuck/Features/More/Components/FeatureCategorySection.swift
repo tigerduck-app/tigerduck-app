@@ -16,16 +16,7 @@ struct FeatureCategorySection: View {
 
             LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.md) {
                 ForEach(features) { feature in
-                    if feature == .settings {
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
-                            FeatureCardView(feature: feature, isPinned: isPinned(feature))
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        FeatureCardView(feature: feature, isPinned: isPinned(feature))
-                    }
+                    FeatureCardView(feature: feature, isPinned: isPinned(feature))
                 }
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
