@@ -85,12 +85,12 @@ struct TimetableGridView: View {
                                     .multilineTextAlignment(.center)
                                     .padding(2)
                             }
-                            .overlay(alignment: .bottom) {
+                            .overlay(alignment: .bottomTrailing) {
                                 if hasBadge {
-                                    Capsule()
-                                        .fill(course.color)
-                                        .frame(width: 16, height: 3)
-                                        .padding(.bottom, 3)
+                                    Image(systemName: "book.fill")
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(Color.gray.opacity(0.5))
+                                        .padding([.bottom, .trailing], 4)
                                 }
                             }
                             .frame(height: totalHeight)

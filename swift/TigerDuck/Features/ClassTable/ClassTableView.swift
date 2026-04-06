@@ -6,7 +6,7 @@ struct ClassTableView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     // Title
                     HStack {
