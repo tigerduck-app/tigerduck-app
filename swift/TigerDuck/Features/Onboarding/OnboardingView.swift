@@ -134,6 +134,7 @@ struct OnboardingView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
         .background(Color.backgroundPrimary)
+        .contentShape(Rectangle())
         .onTapGesture { focusedField = nil }
         .onChange(of: currentPage) { focusedField = nil }
     }
