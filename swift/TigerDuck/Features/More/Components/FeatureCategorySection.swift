@@ -4,6 +4,7 @@ struct FeatureCategorySection: View {
     let category: FeatureCategory
     let features: [AppFeature]
     var isPinned: (AppFeature) -> Bool = { _ in false }
+    var onFeatureTap: ((AppFeature) -> Void)? = nil
 
     private let columns = [
         GridItem(.flexible(), spacing: TigerDuckTheme.Spacing.md),
@@ -16,7 +17,12 @@ struct FeatureCategorySection: View {
 
             LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.md) {
                 ForEach(features) { feature in
-                    FeatureCardView(feature: feature, isPinned: isPinned(feature))
+                    Button {
+                        onFeatureTap?(feature)
+                    } label: {
+                        FeatureCardView(feature: feature, isPinned: isPinned(feature))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)

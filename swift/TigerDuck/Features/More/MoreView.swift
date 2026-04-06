@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MoreView: View {
     @State private var viewModel = MoreViewModel()
+    @State private var showNotImplementedAlert = false
 
     var body: some View {
         NavigationStack {
@@ -43,7 +44,12 @@ struct MoreView: View {
                         FeatureCategorySection(
                             category: group.category,
                             features: group.features,
-                            isPinned: viewModel.isPinned
+                            isPinned: viewModel.isPinned,
+                            onFeatureTap: { feature in
+                                if !feature.isImplemented {
+                                    showNotImplementedAlert = true
+                                }
+                            }
                         )
                     }
                 }
@@ -51,6 +57,11 @@ struct MoreView: View {
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .alert("快了快了", isPresented: $showNotImplementedAlert) {
+                Button("收到！", role: .cancel) { }
+            } message: {
+                Text("此功能尚未實現，請進請期待～")
+            }
         }
     }
 }
