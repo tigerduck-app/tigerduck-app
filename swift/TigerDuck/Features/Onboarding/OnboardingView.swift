@@ -5,6 +5,9 @@ struct OnboardingView: View {
     @State private var currentPage = 0
     @State private var studentId = ""
     @State private var password = ""
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case studentId, password }
 
     var body: some View {
         TabView(selection: $currentPage) {
@@ -29,18 +32,51 @@ struct OnboardingView: View {
                 subtitle: "使用 NTUST SSO 登入以存取課表、Moodle 等功能",
                 accentColor: .green
             ) {
-                VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    TextField("學號", text: $studentId)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.username)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.characters)
-                        .frame(maxWidth: 280)
+                VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    VStack(spacing: 1) {
+                        HStack(spacing: TigerDuckTheme.Spacing.md) {
+                            Image(systemName: "person.fill")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 20)
+                            TextField("學號", text: $studentId)
+                                .focused($focusedField, equals: .studentId)
+                                .textContentType(.username)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.characters)
+                                .submitLabel(.next)
+                                .onSubmit { focusedField = .password }
+                        }
+                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                        .padding(.vertical, TigerDuckTheme.Spacing.md)
+                        .background(.fill.quaternary, in: .rect(topLeadingRadius: TigerDuckTheme.CornerRadius.md, topTrailingRadius: TigerDuckTheme.CornerRadius.md))
 
-                    SecureField("密碼", text: $password)
-                        .textFieldStyle(.roundedBorder)
-                        .textContentType(.password)
-                        .frame(maxWidth: 280)
+                        Divider()
+                            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+
+                        HStack(spacing: TigerDuckTheme.Spacing.md) {
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 20)
+                            SecureField("密碼", text: $password)
+                                .focused($focusedField, equals: .password)
+                                .textContentType(.password)
+                                .submitLabel(.go)
+                                .onSubmit {
+                                    guard !studentId.isEmpty, !password.isEmpty, !appState.authService.isLoggingIn else { return }
+                                    Task {
+                                        let success = await appState.authService.login(studentId: studentId, password: password)
+                                        if success { withAnimation { currentPage = 2 } }
+                                    }
+                                }
+                        }
+                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                        .padding(.vertical, TigerDuckTheme.Spacing.md)
+                        .background(.fill.quaternary, in: .rect(bottomLeadingRadius: TigerDuckTheme.CornerRadius.md, bottomTrailingRadius: TigerDuckTheme.CornerRadius.md))
+                    }
+                    .frame(maxWidth: 320)
+
+                    Spacer()
+                        .frame(height: TigerDuckTheme.Spacing.lg)
 
                     if let error = appState.authService.loginError {
                         Text(error)
@@ -48,6 +84,11 @@ struct OnboardingView: View {
                             .foregroundStyle(.red)
                     }
 
+                    Button("暫時跳過") {
+                        withAnimation { currentPage = 2 }
+                    }
+                    .foregroundStyle(Color.textSecondary)
+                    
                     Button {
                         Task {
                             let success = await appState.authService.login(
@@ -68,11 +109,6 @@ struct OnboardingView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(studentId.isEmpty || password.isEmpty || appState.authService.isLoggingIn)
-
-                    Button("暫時跳過") {
-                        withAnimation { currentPage = 2 }
-                    }
-                    .foregroundStyle(Color.textSecondary)
                 }
             }
             .tag(1)
@@ -108,6 +144,9 @@ struct OnboardingView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
         .background(Color.backgroundPrimary)
+        .contentShape(Rectangle())
+        .onTapGesture { focusedField = nil }
+        .onChange(of: currentPage) { focusedField = nil }
     }
 }
 

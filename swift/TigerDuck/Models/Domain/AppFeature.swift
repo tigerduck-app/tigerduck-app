@@ -76,11 +76,20 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    var isImplemented: Bool {
+        switch self {
+        case .home, .classTable, .calendar, .announcements, .library:
+            return true
+        default:
+            return false
+        }
+    }
+
     var category: FeatureCategory? {
         switch self {
         case .gpa, .courseSelection, .graduationRequirements: .academic
         case .library, .discussionRoom, .libraryLecture: .library
-        case .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
+        case .announcements, .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
         case .englishVocab: .language
         case .settings: .system
         default: nil

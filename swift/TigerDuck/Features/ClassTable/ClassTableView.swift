@@ -60,6 +60,7 @@ struct ClassTableView: View {
                 }
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
+            .scrollIndicators(.hidden)
             .refreshable {
                 await viewModel.refresh(authService: appState.authService)
             }

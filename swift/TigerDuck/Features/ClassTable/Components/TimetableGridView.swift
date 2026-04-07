@@ -85,14 +85,7 @@ struct TimetableGridView: View {
                                     .multilineTextAlignment(.center)
                                     .padding(2)
                             }
-                            .overlay(alignment: .bottom) {
-                                if hasBadge {
-                                    Capsule()
-                                        .fill(course.color)
-                                        .frame(width: 16, height: 3)
-                                        .padding(.bottom, 3)
-                                }
-                            }
+                            .assignmentBadge(show: hasBadge, iconSize: 8, padding: 4)
                             .frame(height: totalHeight)
                     }
                     .buttonStyle(.plain)

@@ -6,6 +6,7 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
     @State private var draggingSection: HomeSection?
+    @State private var showNotImplementedAlert = false
 
     var body: some View {
         NavigationStack {
@@ -27,7 +28,14 @@ struct HomeView: View {
                         HomeSectionView(
                             section: section,
                             viewModel: viewModel,
-                            appState: appState
+                            appState: appState,
+                            onFeatureTap: { feature in
+                                if feature.isImplemented {
+                                    // TODO: navigate to the feature (e.g. switch tab)
+                                } else {
+                                    showNotImplementedAlert = true
+                                }
+                            }
                         )
                         .overlay(alignment: .topTrailing) {
                             if viewModel.isEditingHome {
@@ -102,6 +110,7 @@ struct HomeView: View {
                 AddSectionSheet(viewModel: viewModel)
                     .presentationDetents([.medium])
             }
+            .notImplementedAlert(isPresented: $showNotImplementedAlert)
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
                     course: course,
@@ -123,6 +132,7 @@ private struct HomeSectionView: View {
     let section: HomeSection
     let viewModel: HomeViewModel
     let appState: AppState
+    var onFeatureTap: ((AppFeature) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -170,7 +180,9 @@ private struct HomeSectionView: View {
                             viewModel.removeWidget(from: section.id, widget: widget)
                         }
                     },
-                    onTap: { _ in }
+                    onTap: { feature in
+                        onFeatureTap?(feature)
+                    }
                 )
             }
         }

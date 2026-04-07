@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MoreView: View {
     @State private var viewModel = MoreViewModel()
+    @State private var showNotImplementedAlert = false
 
     var body: some View {
         NavigationStack {
@@ -12,6 +13,29 @@ struct MoreView: View {
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
+                        if #available(iOS 26, *) {
+                            NavigationLink {
+                                SettingsView()
+                            } label: {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 50, height: 50)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            NavigationLink {
+                                SettingsView()
+                            } label: {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.textPrimary)
+                                    .frame(width: 44, height: 44)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
@@ -20,7 +44,14 @@ struct MoreView: View {
                         FeatureCategorySection(
                             category: group.category,
                             features: group.features,
-                            isPinned: viewModel.isPinned
+                            isPinned: viewModel.isPinned,
+                            onFeatureTap: { feature in
+                                if feature.isImplemented {
+                                    // TODO: navigate to the feature (e.g. switch tab)
+                                } else {
+                                    showNotImplementedAlert = true
+                                }
+                            }
                         )
                     }
                 }
@@ -28,6 +59,7 @@ struct MoreView: View {
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .notImplementedAlert(isPresented: $showNotImplementedAlert)
         }
     }
 }
