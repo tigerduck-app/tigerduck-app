@@ -38,20 +38,23 @@ struct ClassTableView: View {
                         }
                     }
 
-                    // Semester picker and credits
+                    // TODO: Implement semester picker (學年度 selection) once backend supports it
                     HStack {
-                        Picker("學期", selection: $viewModel.currentSemester) {
-                            ForEach(viewModel.availableSemesters, id: \.self) { semester in
-                                Text(semester).tag(semester)
-                            }
-                        }
-                        .pickerStyle(.menu)
+                        Text("學期選擇功能即將上線")
+                            .font(TigerDuckTheme.Typography.body)
+                            .foregroundStyle(Color.textSecondary)
+//                        Picker("學期", selection: $viewModel.currentSemester) {
+//                            ForEach(viewModel.availableSemesters, id: \.self) { semester in
+//                                Text(semester).tag(semester)
+//                            }
+//                        }
+//                        .pickerStyle(.menu)
 
                         Spacer()
 
                         Text("\(viewModel.totalCredits) 學分")
-                        .font(TigerDuckTheme.Typography.body)
-                        .foregroundStyle(Color.textSecondary)
+                            .font(TigerDuckTheme.Typography.body)
+                            .foregroundStyle(Color.textSecondary)
                     }
                     .padding(.horizontal)
 
