@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var libLoginError: String?
     @State private var showLibraryWarning = false
     @State private var warningFlash = false
+    @State private var libraryWarningTask: Task<Void, Never>?
     @State private var hapticEngine: CHHapticEngine?
     @State private var hapticPlayer: CHHapticPatternPlayer?
 
@@ -242,8 +243,10 @@ struct SettingsView: View {
             set: { newValue in
                 if newValue {
                     guard !showLibraryWarning else { return }
-                    Task { @MainActor in
+                    libraryWarningTask?.cancel()
+                    libraryWarningTask = Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(350))
+                        guard !Task.isCancelled else { return }
                         showLibraryWarning = true
                     }
                 } else {
