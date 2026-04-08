@@ -54,12 +54,6 @@ struct ClassTableView: View {
                         Text("學期選擇功能即將上線")
                             .font(TigerDuckTheme.Typography.body)
                             .foregroundStyle(Color.textSecondary)
-//                        Picker("學期", selection: $viewModel.currentSemester) {
-//                            ForEach(viewModel.availableSemesters, id: \.self) { semester in
-//                                Text(semester).tag(semester)
-//                            }
-//                        }
-//                        .pickerStyle(.menu)
 
                         Spacer()
 

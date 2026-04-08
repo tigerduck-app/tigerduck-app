@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var showLibraryWarning = false
     @State private var warningFlash = false
     @State private var hapticEngine: CHHapticEngine?
+    @State private var hapticPlayer: CHHapticPatternPlayer?
 
     private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
     private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
@@ -264,6 +265,7 @@ struct SettingsView: View {
             )
             let pattern = try CHHapticPattern(events: [event], parameters: [])
             let player = try engine.makePlayer(with: pattern)
+            self.hapticPlayer = player
             try player.start(atTime: CHHapticTimeImmediate)
         } catch {
             // Silently fail on devices without haptic support

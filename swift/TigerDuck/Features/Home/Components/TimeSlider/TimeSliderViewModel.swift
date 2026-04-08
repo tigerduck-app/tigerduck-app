@@ -279,6 +279,7 @@ final class TimeSliderViewModel {
     }
 
     func onDragEnded() {
+        startAutoReturn()
     }
 
     func returnToNow() {
