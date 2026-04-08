@@ -38,6 +38,11 @@ struct MainTabView: View {
                 MoreView()
             }
         }
+        .onChange(of: visibleTabs) { _, newTabs in
+            if !newTabs.contains(selectedTab), let first = newTabs.first {
+                selectedTab = first
+            }
+        }
     }
 
     @ViewBuilder

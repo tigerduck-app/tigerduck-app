@@ -236,6 +236,7 @@ struct SettingsView: View {
             get: { appState.libraryFeatureEnabled },
             set: { newValue in
                 if newValue {
+                    guard !showLibraryWarning else { return }
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(350))
                         showLibraryWarning = true

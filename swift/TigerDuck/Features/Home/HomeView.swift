@@ -7,7 +7,7 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
-    @State private var navigationPath = NavigationPath()
+    @State private var selectedFeature: AppFeature?
 
     // Section drag state
     @State private var draggingSection: HomeSection?
@@ -20,7 +20,7 @@ struct HomeView: View {
             content
                 .onAppear { viewModel.load(authService: appState.authService) }
         } else {
-            NavigationStack(path: $navigationPath) { content }
+            NavigationStack { content }
                 .onAppear { viewModel.load(authService: appState.authService) }
         }
     }
@@ -92,7 +92,7 @@ struct HomeView: View {
                     .presentationDetents([.medium])
             }
             .notImplementedAlert(isPresented: $showNotImplementedAlert)
-            .navigationDestination(for: AppFeature.self) { feature in
+            .navigationDestination(item: $selectedFeature) { feature in
                 homeDestination(for: feature)
             }
             .sheet(item: $viewModel.selectedCourse) { course in
@@ -149,7 +149,7 @@ struct HomeView: View {
             appState: appState,
             onFeatureTap: { feature in
                 if feature.isImplemented {
-                    navigationPath.append(feature)
+                    selectedFeature = feature
                 } else {
                     showNotImplementedAlert = true
                 }
