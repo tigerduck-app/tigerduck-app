@@ -122,6 +122,7 @@ struct HomeView: View {
                         withAnimation(.smoothSpring) {
                             draggingSection = nil
                         }
+                        viewModel.saveSectionLayout()
                     }
             )
         } else {
@@ -283,6 +284,9 @@ private struct HomeSectionView: View {
                     },
                     onTap: { feature in
                         onFeatureTap?(feature)
+                    },
+                    onReorder: {
+                        viewModel.saveSectionLayout()
                     }
                 )
             }

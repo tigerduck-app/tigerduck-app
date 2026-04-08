@@ -44,7 +44,7 @@ final class HomeViewModel {
         hasLoaded = true
 
         if sections.isEmpty {
-            sections = defaultSections()
+            sections = loadSectionLayout() ?? defaultSections()
         }
 
         // Load cached data immediately; backgroundSync() on app launch handles the network refresh
@@ -143,6 +143,7 @@ final class HomeViewModel {
     func removeSection(_ section: HomeSection) {
         sections.removeAll { $0.id == section.id }
         reindexSections()
+        saveSectionLayout()
     }
 
     func addSection(type: HomeSection.HomeSectionType, title: String) {
@@ -155,11 +156,13 @@ final class HomeViewModel {
             widgets: []
         )
         sections.append(section)
+        saveSectionLayout()
     }
 
     func removeWidget(from sectionId: String, widget: WidgetItem) {
         guard let idx = sections.firstIndex(where: { $0.id == sectionId }) else { return }
         sections[idx].widgets.removeAll { $0.id == widget.id }
+        saveSectionLayout()
     }
 
     func addWidget(to sectionId: String, feature: AppFeature) {
@@ -167,6 +170,22 @@ final class HomeViewModel {
         sections[idx].widgets.append(
             WidgetItem(id: UUID().uuidString, feature: feature, size: .small)
         )
+        saveSectionLayout()
+    }
+
+    /// Called by HomeView after drag-reorder completes.
+    func saveSectionLayout() {
+        reindexSections()
+        if let data = try? JSONEncoder().encode(sections) {
+            UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.homeSectionLayout)
+        }
+    }
+
+    private func loadSectionLayout() -> [HomeSection]? {
+        guard let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.homeSectionLayout),
+              let saved = try? JSONDecoder().decode([HomeSection].self, from: data),
+              !saved.isEmpty else { return nil }
+        return saved
     }
 
     private func reindexSections() {

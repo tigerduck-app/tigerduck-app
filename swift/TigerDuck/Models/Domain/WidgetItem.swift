@@ -1,6 +1,6 @@
 import Foundation
 
-struct WidgetItem: Identifiable, Equatable {
+struct WidgetItem: Identifiable, Equatable, Codable {
     let id: String
     let feature: AppFeature
     var size: WidgetSize

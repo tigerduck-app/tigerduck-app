@@ -6,6 +6,7 @@ struct WidgetGridView: View {
     var onRemove: ((WidgetItem) -> Void)? = nil
     var onTap: ((AppFeature) -> Void)? = nil
     var onAdd: (() -> Void)? = nil
+    var onReorder: (() -> Void)? = nil
 
     @State private var draggingWidget: WidgetItem?
     @State private var dragLocation: CGPoint = .zero
@@ -98,6 +99,7 @@ struct WidgetGridView: View {
                 withAnimation(.smoothSpring) {
                     draggingWidget = nil
                 }
+                onReorder?()
             }
     }
 
