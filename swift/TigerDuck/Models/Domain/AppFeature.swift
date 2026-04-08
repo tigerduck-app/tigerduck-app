@@ -78,7 +78,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     var isImplemented: Bool {
         switch self {
-        case .home, .classTable, .calendar, .announcements, .library:
+        case .home, .classTable, .calendar, .library:
             return true
         default:
             return false
