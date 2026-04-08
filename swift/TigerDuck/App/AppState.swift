@@ -100,7 +100,7 @@ final class AppState {
         didSet { UserDefaults.standard.set(timeSliderStyle.rawValue, forKey: AppConstants.UserDefaultsKeys.timeSliderStyle) }
     }
 
-    /// Invert slider scroll direction: false = drag left → past, true = drag left → future
+    /// Invert slider scroll direction: false = natural scroll (drag right → past), true = reversed
     var invertSliderDirection: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) {
         didSet { UserDefaults.standard.set(invertSliderDirection, forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) }
     }

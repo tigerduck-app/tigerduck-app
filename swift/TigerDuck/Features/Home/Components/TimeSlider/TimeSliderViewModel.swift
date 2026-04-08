@@ -222,7 +222,7 @@ final class TimeSliderViewModel {
         if !isUserDragging { onDragStarted() }
         // Always cancel pending auto-return (covers re-drag while timer is active)
         autoReturnTask?.cancel()
-        let direction: CGFloat = invertDirection ? -1 : 1
+        let direction: CGFloat = invertDirection ? 1 : -1
 
         // Convert visual dx back to time by finding what time corresponds to the new X
         let currentX = interpolateX(for: selectedTime)
