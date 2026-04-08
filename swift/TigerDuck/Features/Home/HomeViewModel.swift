@@ -44,7 +44,16 @@ final class HomeViewModel {
         hasLoaded = true
 
         if sections.isEmpty {
-            sections = loadSectionLayout() ?? defaultSections()
+            if var saved = loadSectionLayout() {
+                let savedIDs = Set(saved.map(\.id))
+                let newDefaults = defaultSections().filter { !savedIDs.contains($0.id) }
+                if !newDefaults.isEmpty {
+                    saved.append(contentsOf: newDefaults)
+                }
+                sections = saved
+            } else {
+                sections = defaultSections()
+            }
         }
 
         // Load cached data immediately; backgroundSync() on app launch handles the network refresh
