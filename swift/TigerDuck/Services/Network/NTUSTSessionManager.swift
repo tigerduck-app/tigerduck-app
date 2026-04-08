@@ -14,7 +14,6 @@ final class NTUSTSessionManager {
 
     /// Browser-like User-Agent built from actual device info so SSO/Moodle sees a consistent device fingerprint.
     static let browserUserAgent: String = {
-        assert(Thread.isMainThread, "browserUserAgent must be initialised on the main thread")
         let osVersion = UIDevice.current.systemVersion.replacingOccurrences(of: ".", with: "_")
         let majorVersion = UIDevice.current.systemVersion.components(separatedBy: ".").first ?? "18"
         return "Mozilla/5.0 (iPhone; CPU iPhone OS \(osVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(majorVersion).0 Mobile/15E148 Safari/604.1"
