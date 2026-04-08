@@ -51,10 +51,6 @@ struct ClassTableView: View {
 
                     // TODO: Implement semester picker (學年度 selection) once backend supports it
                     HStack {
-                        Text("學期選擇功能即將上線")
-                            .font(TigerDuckTheme.Typography.body)
-                            .foregroundStyle(Color.textSecondary)
-
                         Spacer()
 
                         Text("\(viewModel.totalCredits) 學分")
