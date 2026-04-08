@@ -227,6 +227,11 @@ struct SettingsView: View {
                     }
                     triggerWarningVibration()
                 }
+                .onDisappear {
+                    hapticPlayer = nil
+                    hapticEngine?.stop()
+                    hapticEngine = nil
+                }
             }
         }
     }
