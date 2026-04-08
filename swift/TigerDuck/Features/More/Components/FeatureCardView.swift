@@ -10,6 +10,7 @@ struct FeatureCardView: View {
                 Image(systemName: feature.iconName)
                     .font(.title2)
                     .foregroundStyle(Color.accentPrimary)
+                    .frame(width: 28, height: 28)
                 Spacer()
                 if isPinned {
                     Image(systemName: "pin.fill")

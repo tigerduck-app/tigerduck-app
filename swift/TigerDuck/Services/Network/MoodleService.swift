@@ -28,27 +28,49 @@ enum MoodleService {
         studentId: String,
         password: String
     ) async throws -> [SDAssignment] {
-        // Step 1: Login to Moodle via SSO
-        let loggedIn = try await SSOLoginService.ensureServiceLogin(
-            session: session,
-            serviceURL: moodleLoginURL,
-            studentId: studentId,
-            password: password
-        )
-        guard loggedIn else { throw MoodleServiceError.notAuthenticated }
+        // Try fetching directly when cookies are valid (SSO session transfers across services).
+        // Fall back to ensureServiceLogin if Moodle rejects us (no sesskey found).
+        if !NTUSTSessionManager.shared.cookiesValid {
+            let loggedIn = try await SSOLoginService.ensureServiceLogin(
+                session: session,
+                serviceURL: moodleLoginURL,
+                studentId: studentId,
+                password: password
+            )
+            guard loggedIn else { throw MoodleServiceError.notAuthenticated }
+        }
 
-        // Step 2: Visit Moodle to get sesskey
+        // Step 1: Visit Moodle to get sesskey
         let (pageData, _) = try await session.data(from: moodleLoginURL)
         guard let pageHTML = String(data: pageData, encoding: .utf8) else {
             throw MoodleServiceError.invalidResponse
         }
 
-        // Extract sesskey from page
-        guard let match = sesskeyRegex.firstMatch(in: pageHTML, range: NSRange(pageHTML.startIndex..., in: pageHTML)),
-              let range = Range(match.range(at: 1), in: pageHTML) else {
-            throw MoodleServiceError.sesskeyNotFound
+        // Extract sesskey — if missing, session is invalid; retry with full login
+        var sesskey: String
+        if let match = sesskeyRegex.firstMatch(in: pageHTML, range: NSRange(pageHTML.startIndex..., in: pageHTML)),
+           let range = Range(match.range(at: 1), in: pageHTML) {
+            sesskey = String(pageHTML[range])
+        } else {
+            // Session expired — re-authenticate to Moodle
+            let loggedIn = try await SSOLoginService.ensureServiceLogin(
+                session: session,
+                serviceURL: moodleLoginURL,
+                studentId: studentId,
+                password: password
+            )
+            guard loggedIn else { throw MoodleServiceError.notAuthenticated }
+
+            let (retryData, _) = try await session.data(from: moodleLoginURL)
+            guard let retryHTML = String(data: retryData, encoding: .utf8) else {
+                throw MoodleServiceError.invalidResponse
+            }
+            guard let retryMatch = sesskeyRegex.firstMatch(in: retryHTML, range: NSRange(retryHTML.startIndex..., in: retryHTML)),
+                  let retryRange = Range(retryMatch.range(at: 1), in: retryHTML) else {
+                throw MoodleServiceError.sesskeyNotFound
+            }
+            sesskey = String(retryHTML[retryRange])
         }
-        let sesskey = String(pageHTML[range])
 
         // Step 3: Call Moodle calendar API
         let startOfToday = Int(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)

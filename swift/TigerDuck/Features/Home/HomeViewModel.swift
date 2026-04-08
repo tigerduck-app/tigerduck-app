@@ -44,7 +44,16 @@ final class HomeViewModel {
         hasLoaded = true
 
         if sections.isEmpty {
-            sections = defaultSections()
+            if var saved = loadSectionLayout() {
+                let savedIDs = Set(saved.map(\.id))
+                let newDefaults = defaultSections().filter { !savedIDs.contains($0.id) }
+                if !newDefaults.isEmpty {
+                    saved.append(contentsOf: newDefaults)
+                }
+                sections = saved
+            } else {
+                sections = defaultSections()
+            }
         }
 
         // Load cached data immediately; backgroundSync() on app launch handles the network refresh
@@ -57,13 +66,27 @@ final class HomeViewModel {
 
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
+
+        guard NetworkMonitor.shared.isConnected else {
+            await MainActor.run { manager.loadingState = .error("無網路連線") }
+            return
+        }
+
         await MainActor.run { manager.loadingState = .loading }
 
-        async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
-        async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+        // Authenticate once upfront so parallel tasks reuse the SSO session
+        let isAuthenticated = await authService.ensureAuthenticated()
 
-        let allCourses = await coursesTask
-        let allAssignments = await assignmentsTask
+        let allCourses: [SDCourse]
+        let allAssignments: [SDAssignment]
+        if isAuthenticated {
+            async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
+            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+            (allCourses, allAssignments) = await (coursesTask, assignmentsTask)
+        } else {
+            allCourses = DataCache.shared.loadCourses()
+            allAssignments = DataCache.shared.loadAssignments()
+        }
 
         let todayFiltered = allCourses.coursesForToday()
         let upcoming = allAssignments.upcomingSorted()
@@ -98,19 +121,8 @@ final class HomeViewModel {
                 isVisible: true,
                 widgets: []
             ),
-            HomeSection(
-                id: "quick-widgets",
-                type: .quickWidgets,
-                title: "快速功能",
-                sortOrder: 2,
-                isVisible: true,
-                widgets: [
-                    WidgetItem(id: "w1", feature: .freeLunch, size: .small),
-                    WidgetItem(id: "w2", feature: .emptyClassroom, size: .small),
-                    WidgetItem(id: "w3", feature: .scholarship, size: .small),
-                    WidgetItem(id: "w4", feature: .gpa, size: .small),
-                ]
-            ),
+
+            // TODO: Add quickWidgets section once widget features are implemented
         ]
     }
 
@@ -126,7 +138,7 @@ final class HomeViewModel {
 
     func removeSection(_ section: HomeSection) {
         sections.removeAll { $0.id == section.id }
-        reindexSections()
+        saveSectionLayout()
     }
 
     func addSection(type: HomeSection.HomeSectionType, title: String) {
@@ -139,11 +151,13 @@ final class HomeViewModel {
             widgets: []
         )
         sections.append(section)
+        saveSectionLayout()
     }
 
     func removeWidget(from sectionId: String, widget: WidgetItem) {
         guard let idx = sections.firstIndex(where: { $0.id == sectionId }) else { return }
         sections[idx].widgets.removeAll { $0.id == widget.id }
+        saveSectionLayout()
     }
 
     func addWidget(to sectionId: String, feature: AppFeature) {
@@ -151,6 +165,22 @@ final class HomeViewModel {
         sections[idx].widgets.append(
             WidgetItem(id: UUID().uuidString, feature: feature, size: .small)
         )
+        saveSectionLayout()
+    }
+
+    /// Called by HomeView after drag-reorder completes.
+    func saveSectionLayout() {
+        reindexSections()
+        if let data = try? JSONEncoder().encode(sections) {
+            UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.homeSectionLayout)
+        }
+    }
+
+    private func loadSectionLayout() -> [HomeSection]? {
+        guard let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.homeSectionLayout),
+              let saved = try? JSONDecoder().decode([HomeSection].self, from: data),
+              !saved.isEmpty else { return nil }
+        return saved
     }
 
     private func reindexSections() {

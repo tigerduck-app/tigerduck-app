@@ -1,6 +1,6 @@
 import Foundation
 
-struct HomeSection: Identifiable, Equatable {
+struct HomeSection: Identifiable, Equatable, Codable {
     let id: String
     var type: HomeSectionType
     var title: String

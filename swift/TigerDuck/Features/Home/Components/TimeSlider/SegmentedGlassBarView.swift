@@ -26,7 +26,6 @@ struct SegmentedGlassBarView: View {
                     }
                     .onEnded { _ in
                         lastDragX = 0
-                        viewModel.onDragEnded()
                     }
             )
         }
@@ -77,7 +76,6 @@ struct SegmentedGlassBarView: View {
             withAnimation(.smooth(duration: 0.35)) {
                 viewModel.selectedTime = slot.start
             }
-            viewModel.startAutoReturn()
         } label: {
             Text(slot.course.courseName)
                 .font(isSelected ? .caption.bold() : .caption2)

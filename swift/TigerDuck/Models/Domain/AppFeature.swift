@@ -76,11 +76,21 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    var isImplemented: Bool {
+        switch self {
+        case .home, .classTable, .calendar, .library, .announcements:
+            return true
+        default:
+            return false
+        }
+    }
+
     var category: FeatureCategory? {
         switch self {
+        case .home, .classTable, .calendar: .page
         case .gpa, .courseSelection, .graduationRequirements: .academic
         case .library, .discussionRoom, .libraryLecture: .library
-        case .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
+        case .announcements, .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
         case .englishVocab: .language
         case .settings: .system
         default: nil
@@ -96,15 +106,19 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .englishVocab,
     ]
 
+    /// Library-related features gated behind the library opt-in toggle
+    static let libraryRelatedFeatures: Set<AppFeature> = [.library, .discussionRoom, .libraryLecture]
+
     static let defaultTabs: [AppFeature] = [
-        .home, .classTable, .calendar, .library,
+        .home, .classTable, .calendar,
     ]
 
     /// Features displayed in the "More" page, grouped by category
     static let moreFeatures: [AppFeature] = [
+        .home, .classTable, .calendar,
         .announcements,
         .gpa, .courseSelection, .graduationRequirements,
-        .discussionRoom, .libraryLecture,
+        .library, .discussionRoom, .libraryLecture,
         .freeLunch, .clubs, .emptyClassroom, .scholarship,
         .englishVocab,
     ]
@@ -117,6 +131,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 }
 
 enum FeatureCategory: String, CaseIterable, Identifiable {
+    case page
     case academic
     case library
     case life
@@ -127,6 +142,7 @@ enum FeatureCategory: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
+        case .page: "頁面"
         case .academic: "學業"
         case .library: "圖書館"
         case .life: "生活"

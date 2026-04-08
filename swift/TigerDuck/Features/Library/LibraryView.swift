@@ -1,27 +1,36 @@
 import SwiftUI
 
 struct LibraryView: View {
+    var embedded = false
+
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = LibraryViewModel()
+    @State private var showNotImplementedAlert = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    headerSection
-                    errorBanner
-                    if viewModel.isLoggedIn {
-                        qrSection
-                    } else {
-                        loginPrompt
-                    }
-                    libraryFeaturesSection
-                }
-                .padding(.bottom, TigerDuckTheme.Spacing.xxl)
-            }
-            .background(Color.backgroundPrimary)
+        if embedded {
+            content
+        } else {
+            NavigationStack { content }
         }
+    }
+
+    private var content: some View {
+        ScrollView {
+            VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                headerSection
+                errorBanner
+                if viewModel.isLoggedIn {
+                    qrSection
+                } else {
+                    loginPrompt
+                }
+                libraryFeaturesSection
+            }
+            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+        }
+        .background(Color.backgroundPrimary)
         .onAppear {
             viewModel.load()
             viewModel.onAppear()
@@ -177,24 +186,30 @@ struct LibraryView: View {
             featureCard(icon: "mic.fill", title: "講座", subtitle: "即將推出")
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .notImplementedAlert(isPresented: $showNotImplementedAlert)
     }
 
     private func featureCard(icon: String, title: String, subtitle: String) -> some View {
-        VStack(spacing: TigerDuckTheme.Spacing.sm) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundStyle(Color.accentPrimary)
+        Button {
+            showNotImplementedAlert = true
+        } label: {
+            VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundStyle(Color.accentPrimary)
 
-            Text(title)
-                .font(TigerDuckTheme.Typography.headline)
-                .foregroundStyle(Color.textPrimary)
+                Text(title)
+                    .font(TigerDuckTheme.Typography.headline)
+                    .foregroundStyle(Color.textPrimary)
 
-            Text(subtitle)
-                .font(TigerDuckTheme.Typography.caption2)
-                .foregroundStyle(Color.textSecondary)
+                Text(subtitle)
+                    .font(TigerDuckTheme.Typography.caption2)
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, TigerDuckTheme.Spacing.lg)
+            .glassCard()
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, TigerDuckTheme.Spacing.lg)
-        .glassCard()
+        .buttonStyle(.plain)
     }
 }

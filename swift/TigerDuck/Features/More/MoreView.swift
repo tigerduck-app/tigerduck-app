@@ -1,10 +1,13 @@
 import SwiftUI
 
 struct MoreView: View {
+    @Environment(AppState.self) private var appState
     @State private var viewModel = MoreViewModel()
+    @State private var showNotImplementedAlert = false
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     HStack {
@@ -12,15 +15,47 @@ struct MoreView: View {
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
+                        if #available(iOS 26, *) {
+                            NavigationLink {
+                                SettingsView()
+                            } label: {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 50, height: 50)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            NavigationLink {
+                                SettingsView()
+                            } label: {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(Color.textPrimary)
+                                    .frame(width: 44, height: 44)
+                                    .background(.ultraThinMaterial, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
 
-                    ForEach(viewModel.groupedFeatures, id: \.category) { group in
+                    ForEach(viewModel.groupedFeatures.filter { group in
+                        group.category != .library || appState.libraryFeatureEnabled
+                    }, id: \.category) { group in
                         FeatureCategorySection(
                             category: group.category,
                             features: group.features,
-                            isPinned: viewModel.isPinned
+                            isPinned: viewModel.isPinned,
+                            onFeatureTap: { feature in
+                                if feature.isImplemented {
+                                    navigationPath.append(feature)
+                                } else {
+                                    showNotImplementedAlert = true
+                                }
+                            }
                         )
                     }
                 }
@@ -28,6 +63,22 @@ struct MoreView: View {
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .notImplementedAlert(isPresented: $showNotImplementedAlert)
+            .navigationDestination(for: AppFeature.self) { feature in
+                moreDestination(for: feature)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func moreDestination(for feature: AppFeature) -> some View {
+        switch feature {
+        case .home: HomeView(embedded: true)
+        case .classTable: ClassTableView(embedded: true)
+        case .calendar: CalendarTabView(embedded: true)
+        case .announcements: AnnouncementsView(embedded: true)
+        case .library: LibraryView(embedded: true)
+        default: PlaceholderFeatureView(feature: feature)
         }
     }
 }

@@ -70,7 +70,6 @@ struct FluidGlassTrackView: View {
                     }
                     .onEnded { _ in
                         lastDragX = 0
-                        viewModel.onDragEnded()
                     }
             )
         }

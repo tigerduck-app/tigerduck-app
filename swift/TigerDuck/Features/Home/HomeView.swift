@@ -1,15 +1,32 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct HomeView: View {
+    var embedded = false
+
     @Environment(AppState.self) private var appState
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
+    @State private var showNotImplementedAlert = false
+    @State private var selectedFeature: AppFeature?
+
+    // Section drag state
     @State private var draggingSection: HomeSection?
+    @State private var sectionDragLocation: CGPoint = .zero
+    @State private var sectionFingerOffset: CGSize = .zero
+    @State private var sectionFrames: [String: CGRect] = [:]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        if embedded {
+            content
+                .onAppear { viewModel.load(authService: appState.authService) }
+        } else {
+            NavigationStack { content }
+                .onAppear { viewModel.load(authService: appState.authService) }
+        }
+    }
+
+    private var content: some View {
+        ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     // Greeting
                     HStack {
@@ -24,41 +41,13 @@ struct HomeView: View {
 
                     // Sections
                     ForEach(viewModel.sections) { section in
-                        HomeSectionView(
-                            section: section,
-                            viewModel: viewModel,
-                            appState: appState
-                        )
-                        .overlay(alignment: .topTrailing) {
-                            if viewModel.isEditingHome {
-                                Button {
-                                    withAnimation(.smoothSpring) {
-                                        viewModel.removeSection(section)
-                                    }
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.white, .red)
-                                        .font(.title3)
-                                }
-                                .offset(x: 6, y: -6)
-                            }
-                        }
-                        .wiggling(viewModel.isEditingHome)
-                        .onDrag {
-                            draggingSection = section
-                            return NSItemProvider(object: section.id as NSString)
-                        }
-                        .onDrop(
-                            of: [UTType.text],
-                            delegate: ReorderDropDelegate(
-                                targetItem: section,
-                                items: $viewModel.sections,
-                                draggingItem: $draggingSection
-                            )
-                        )
+                        sectionCell(section)
                     }
                 }
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+                .coordinateSpace(name: "sectionList")
+                .onPreferenceChange(SectionFrameKey.self) { sectionFrames = $0 }
+                .overlay { floatingSectionPreview }
                 .contentShape(Rectangle())
                 .onLongPressGesture {
                     if !viewModel.isEditingHome {
@@ -102,6 +91,10 @@ struct HomeView: View {
                 AddSectionSheet(viewModel: viewModel)
                     .presentationDetents([.medium])
             }
+            .notImplementedAlert(isPresented: $showNotImplementedAlert)
+            .navigationDestination(item: $selectedFeature) { feature in
+                homeDestination(for: feature)
+            }
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
                     course: course,
@@ -110,10 +103,175 @@ struct HomeView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
+    }
+
+    // MARK: - Section cell with conditional drag
+
+    @ViewBuilder
+    private func sectionCell(_ section: HomeSection) -> some View {
+        let content = sectionContent(section)
+
+        if viewModel.isEditingHome {
+            content.gesture(
+                DragGesture(minimumDistance: 5, coordinateSpace: .named("sectionList"))
+                    .onChanged { value in
+                        if draggingSection == nil {
+                            draggingSection = section
+                            if let frame = sectionFrames[section.id] {
+                                sectionFingerOffset = CGSize(
+                                    width: value.startLocation.x - frame.midX,
+                                    height: value.startLocation.y - frame.midY
+                                )
+                            }
+                            sectionDragLocation = value.location
+                            return
+                        }
+                        sectionDragLocation = value.location
+                        reorderSectionsIfNeeded(at: value.location)
+                    }
+                    .onEnded { _ in
+                        withAnimation(.smoothSpring) {
+                            draggingSection = nil
+                        }
+                        viewModel.saveSectionLayout()
+                    }
+            )
+        } else {
+            content
         }
-        .onAppear {
-            viewModel.load(authService: appState.authService)
+    }
+
+    @ViewBuilder
+    private func sectionContent(_ section: HomeSection) -> some View {
+        HomeSectionView(
+            section: section,
+            viewModel: viewModel,
+            appState: appState,
+            onFeatureTap: { feature in
+                if feature.isImplemented {
+                    selectedFeature = feature
+                } else {
+                    showNotImplementedAlert = true
+                }
+            }
+        )
+        .overlay(alignment: .top) {
+            if viewModel.isEditingHome {
+                SectionDragHandle()
+            }
         }
+        .overlay(alignment: .topTrailing) {
+            if viewModel.isEditingHome {
+                Button {
+                    withAnimation(.smoothSpring) {
+                        viewModel.removeSection(section)
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.white, .red)
+                        .font(.title3)
+                }
+                .offset(x: 6, y: -6)
+            }
+        }
+        .wiggling(viewModel.isEditingHome)
+        .opacity(draggingSection?.id == section.id ? 0 : 1)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: SectionFrameKey.self,
+                    value: [section.id: geo.frame(in: .named("sectionList"))]
+                )
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func homeDestination(for feature: AppFeature) -> some View {
+        switch feature {
+        case .announcements: AnnouncementsView(embedded: true)
+        case .classTable: ClassTableView(embedded: true)
+        case .calendar: CalendarTabView(embedded: true)
+        case .library: LibraryView(embedded: true)
+        default: PlaceholderFeatureView(feature: feature)
+        }
+    }
+
+    // MARK: - Floating section preview
+
+    @ViewBuilder
+    private var floatingSectionPreview: some View {
+        if let dragging = draggingSection {
+            HStack(spacing: TigerDuckTheme.Spacing.sm) {
+                Image(systemName: dragging.type.iconName)
+                    .font(.title3)
+                    .foregroundStyle(Color.accentPrimary)
+                Text(dragging.title)
+                    .font(TigerDuckTheme.Typography.headline)
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(TigerDuckTheme.Spacing.lg)
+            .frame(width: 280, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
+                    .fill(Color(.secondarySystemGroupedBackground))
+                    .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
+            )
+            .scaleEffect(1.05)
+            .position(
+                x: sectionDragLocation.x - sectionFingerOffset.width,
+                y: sectionDragLocation.y - sectionFingerOffset.height
+            )
+            .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: - Reorder sections
+
+    private func reorderSectionsIfNeeded(at point: CGPoint) {
+        guard let dragging = draggingSection,
+              let fromIndex = viewModel.sections.firstIndex(where: { $0.id == dragging.id }) else { return }
+
+        for (id, frame) in sectionFrames where id != dragging.id {
+            if frame.contains(point),
+               let toIndex = viewModel.sections.firstIndex(where: { $0.id == id }) {
+                withAnimation(.smoothSpring) {
+                    viewModel.sections.move(fromOffsets: IndexSet(integer: fromIndex),
+                                            toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+                }
+                return
+            }
+        }
+    }
+}
+
+// MARK: - Section frame tracking
+
+private struct SectionFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+// MARK: - Drag handle indicator
+
+private struct SectionDragHandle: View {
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.xs) {
+            Image(systemName: "line.3.horizontal")
+                .font(.caption.weight(.bold))
+            Text("長按拖曳排序")
+                .font(TigerDuckTheme.Typography.caption2)
+        }
+        .foregroundStyle(Color.textSecondary)
+        .padding(.horizontal, TigerDuckTheme.Spacing.md)
+        .padding(.vertical, TigerDuckTheme.Spacing.xs)
+        .background(
+            Capsule().fill(Color(.systemGray5))
+        )
+        .padding(.top, TigerDuckTheme.Spacing.xs)
     }
 }
 
@@ -123,6 +281,7 @@ private struct HomeSectionView: View {
     let section: HomeSection
     let viewModel: HomeViewModel
     let appState: AppState
+    var onFeatureTap: ((AppFeature) -> Void)? = nil
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -134,7 +293,10 @@ private struct HomeSectionView: View {
             case .todayCourses:
                 TimeSliderSection(
                     courses: viewModel.allCourses,
-                    onSelectCourse: { viewModel.selectedCourse = $0 }
+                    onSelectCourse: { course in
+                        guard !viewModel.isEditingHome else { return }
+                        viewModel.selectedCourse = course
+                    }
                 )
             case .upcomingAssignments:
                 if viewModel.upcomingAssignments.isEmpty {
@@ -148,6 +310,7 @@ private struct HomeSectionView: View {
                         assignments: viewModel.upcomingAssignments,
                         showAbsoluteTime: appState.showAbsoluteAssignmentTime
                     )
+                    .allowsHitTesting(!viewModel.isEditingHome)
                 }
             case .quickWidgets, .custom:
                 WidgetGridView(
@@ -170,7 +333,12 @@ private struct HomeSectionView: View {
                             viewModel.removeWidget(from: section.id, widget: widget)
                         }
                     },
-                    onTap: { _ in }
+                    onTap: { feature in
+                        onFeatureTap?(feature)
+                    },
+                    onReorder: {
+                        viewModel.saveSectionLayout()
+                    }
                 )
             }
         }

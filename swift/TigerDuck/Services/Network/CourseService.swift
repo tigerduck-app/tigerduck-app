@@ -32,14 +32,17 @@ enum CourseService {
         studentId: String,
         password: String
     ) async throws -> [String] {
-        // Ensure logged in
-        let loggedIn = try await SSOLoginService.ensureServiceLogin(
-            session: session,
-            serviceURL: courseSelectionRoot,
-            studentId: studentId,
-            password: password
-        )
-        guard loggedIn else { throw CourseServiceError.notAuthenticated }
+        // Try fetching directly when cookies are still valid (caller pre-authenticates via ensureAuthenticated).
+        // Fall back to ensureServiceLogin only if the server rejects us.
+        if !NTUSTSessionManager.shared.cookiesValid {
+            let loggedIn = try await SSOLoginService.ensureServiceLogin(
+                session: session,
+                serviceURL: courseSelectionRoot,
+                studentId: studentId,
+                password: password
+            )
+            guard loggedIn else { throw CourseServiceError.notAuthenticated }
+        }
 
         // Fetch course list page
         let (data, response) = try await session.data(from: courseListURL)
@@ -47,11 +50,28 @@ enum CourseService {
             throw CourseServiceError.noCourseData
         }
 
-        // Check we didn't get redirected back to SSO
+        // If redirected to SSO, session expired — retry with full login
         if let httpResp = response as? HTTPURLResponse,
            let finalURL = httpResp.url,
            finalURL.host?.contains("ssoam2.ntust.edu.tw") == true {
-            throw CourseServiceError.redirectedToSSO
+            let loggedIn = try await SSOLoginService.ensureServiceLogin(
+                session: session,
+                serviceURL: courseSelectionRoot,
+                studentId: studentId,
+                password: password
+            )
+            guard loggedIn else { throw CourseServiceError.notAuthenticated }
+
+            let (retryData, retryResponse) = try await session.data(from: courseListURL)
+            guard let retryHTML = String(data: retryData, encoding: .utf8) else {
+                throw CourseServiceError.noCourseData
+            }
+            if let retryResp = retryResponse as? HTTPURLResponse,
+               let retryURL = retryResp.url,
+               retryURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+                throw CourseServiceError.redirectedToSSO
+            }
+            return retryHTML.matches(of: courseNoRegex).map { String($0.1) }
         }
 
         return html.matches(of: courseNoRegex).map { String($0.1) }

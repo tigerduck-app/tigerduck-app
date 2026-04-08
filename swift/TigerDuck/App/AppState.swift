@@ -32,8 +32,28 @@ final class AppState {
         }
     }
 
+    private var _libraryRevision = 0
+
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
-    var isLibraryLoggedIn: Bool { LibraryService.isTokenValid }
+
+    var isLibraryLoggedIn: Bool {
+        _ = _libraryRevision
+        return LibraryService.isTokenValid
+    }
+
+    var libraryUsername: String? {
+        _ = _libraryRevision
+        return LibraryService.storedUsername
+    }
+
+    func logoutLibrary() {
+        LibraryService.clearCredentials()
+        _libraryRevision += 1
+    }
+
+    func notifyLibraryStateChanged() {
+        _libraryRevision += 1
+    }
 
     // MARK: - Theme
 
@@ -100,7 +120,7 @@ final class AppState {
         didSet { UserDefaults.standard.set(timeSliderStyle.rawValue, forKey: AppConstants.UserDefaultsKeys.timeSliderStyle) }
     }
 
-    /// Invert slider scroll direction: false = drag left → past, true = drag left → future
+    /// Invert slider scroll direction: false = natural scroll (drag right → past), true = reversed
     var invertSliderDirection: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) {
         didSet { UserDefaults.standard.set(invertSliderDirection, forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) }
     }
@@ -108,6 +128,11 @@ final class AppState {
     /// Assignment time display: true = absolute (2026/3/24 23:59:00), false = relative (5 天後)
     var showAbsoluteAssignmentTime: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime) {
         didSet { UserDefaults.standard.set(showAbsoluteAssignmentTime, forKey: AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime) }
+    }
+
+    /// Whether library-related features are enabled (requires explicit user consent)
+    var libraryFeatureEnabled: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) {
+        didSet { UserDefaults.standard.set(libraryFeatureEnabled, forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) }
     }
 
     // MARK: - Tab Configuration
@@ -136,13 +161,29 @@ final class AppState {
     func backgroundSync() {
         guard hasCompletedOnboarding else { return }
         Task {
+            guard NetworkMonitor.shared.isConnected else {
+                await MainActor.run {
+                    sessionManager.loadingState = .error("無網路連線")
+                }
+                return
+            }
+
             sessionManager.loadingState = .loading
 
-            async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
-            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
-            async let schoolEventsTask = CalendarService.fetchAndParseICS()
+            // Authenticate once upfront so parallel tasks reuse the SSO session
+            let isAuthenticated = await authService.ensureAuthenticated()
 
-            let (_, fetchedAssignments, fetchedSchoolEvents) = await (coursesTask, assignmentsTask, schoolEventsTask)
+            // School events are public — always fetch. Courses/assignments need auth.
+            async let schoolEventsTask = CalendarService.fetchAndParseICS()
+            let fetchedAssignments: [SDAssignment]
+            if isAuthenticated {
+                async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
+                async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+                (_, fetchedAssignments) = await (coursesTask, assignmentsTask)
+            } else {
+                fetchedAssignments = DataCache.shared.loadAssignments()
+            }
+            let fetchedSchoolEvents = await schoolEventsTask
 
             // Build moodle calendar events from assignments and merge with school events
             let moodleEvents = fetchedAssignments.map {

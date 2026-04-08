@@ -25,6 +25,8 @@ enum AppConstants {
         static let configuredTabs = "configuredTabs"
         static let timeSliderStyle = "timeSliderStyle"
         static let invertSliderDirection = "invertSliderDirection"
+        static let libraryFeatureEnabled = "libraryFeatureEnabled"
+        static let homeSectionLayout = "homeSectionLayout"
     }
 
     enum Periods {
