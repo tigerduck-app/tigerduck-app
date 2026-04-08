@@ -11,10 +11,8 @@ struct SettingsView: View {
     @State private var showLicense = false
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
-    @State private var loginStudentId = ""
-    @State private var loginPassword = ""
-    @State private var libUsername = ""
-    @State private var libPassword = ""
+    @State private var showNTUSTLogin = false
+    @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
     @State private var showLibraryWarning = false
@@ -148,6 +146,60 @@ struct SettingsView: View {
             InAppBrowserView(url: Self.licenseURL)
                 .ignoresSafeArea()
         }
+        .sheet(isPresented: $showNTUSTLogin) {
+            LoginSheet(
+                title: "NTUST 校務系統",
+                usernamePlaceholder: "學號",
+                passwordPlaceholder: "密碼",
+                isLoggingIn: appState.authService.isLoggingIn,
+                loginError: appState.authService.loginError,
+                onLogin: { studentId, password in
+                    Task {
+                        _ = await appState.authService.login(
+                            studentId: studentId,
+                            password: password
+                        )
+                        if appState.isNTUSTLoggedIn {
+                            showNTUSTLogin = false
+                            appState.notifyLibraryStateChanged()
+                        }
+                    }
+                },
+                onDismiss: { showNTUSTLogin = false }
+            )
+        }
+        .sheet(isPresented: $showLibraryLogin) {
+            LoginSheet(
+                title: "圖書館系統",
+                subtitle: "帳號密碼可能與校務系統不同",
+                usernamePlaceholder: "圖書館帳號",
+                passwordPlaceholder: "圖書館密碼",
+                initialUsername: appState.authService.storedStudentId ?? "",
+                isLoggingIn: libIsLoggingIn,
+                loginError: libLoginError,
+                onLogin: { username, password in
+                    Task {
+                        libIsLoggingIn = true
+                        libLoginError = nil
+                        do {
+                            try await LibraryService.login(
+                                username: username,
+                                password: password
+                            )
+                            appState.notifyLibraryStateChanged()
+                            showLibraryLogin = false
+                        } catch {
+                            libLoginError = error.localizedDescription
+                        }
+                        libIsLoggingIn = false
+                    }
+                },
+                onDismiss: {
+                    showLibraryLogin = false
+                    libLoginError = nil
+                }
+            )
+        }
         .overlay {
             if showLibraryWarning {
                 LibraryWarningOverlay(
@@ -219,128 +271,59 @@ struct SettingsView: View {
     }
 
     private var ntustAccountRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Circle()
-                    .fill(appState.isNTUSTLoggedIn ? Color.green : Color.red)
-                    .frame(width: 10, height: 10)
+        HStack {
+            Circle()
+                .fill(appState.isNTUSTLoggedIn ? Color.green : Color.red)
+                .frame(width: 10, height: 10)
+            VStack(alignment: .leading, spacing: 2) {
                 Text("NTUST 校務系統")
-                    .font(.headline)
-                Spacer()
-                if appState.authService.isLoggingIn {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text(appState.isNTUSTLoggedIn ? "已登入" : "未登入")
+                    .font(.body)
+                if appState.isNTUSTLoggedIn, let studentId = appState.authService.storedStudentId {
+                    Text(studentId)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
-
+            Spacer()
             if appState.isNTUSTLoggedIn {
-                if let studentId = appState.authService.storedStudentId {
-                    Text("學號：\(studentId)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
                 Button("登出", role: .destructive) {
                     appState.authService.logout()
-                    loginStudentId = ""
-                    loginPassword = ""
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             } else {
-                TextField("學號", text: $loginStudentId)
-                    .textContentType(.username)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.characters)
-                SecureField("密碼", text: $loginPassword)
-                    .textContentType(.password)
-
-                if let error = appState.authService.loginError {
-                    Text(error)
-                        .font(.caption2)
-                        .foregroundColor(.red)
-                }
-
-                Button("登入 NTUST") {
-                    Task {
-                        await appState.authService.login(
-                            studentId: loginStudentId,
-                            password: loginPassword
-                        )
-                    }
-                }
-                .disabled(loginStudentId.isEmpty || loginPassword.isEmpty || appState.authService.isLoggingIn)
+                Button("登入") { showNTUSTLogin = true }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
             }
         }
     }
 
     private var libraryAccountRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Circle()
-                    .fill(LibraryService.isTokenValid ? Color.green : Color.red)
-                    .frame(width: 10, height: 10)
+        HStack {
+            Circle()
+                .fill(appState.isLibraryLoggedIn ? Color.green : Color.red)
+                .frame(width: 10, height: 10)
+            VStack(alignment: .leading, spacing: 2) {
                 Text("圖書館系統")
-                    .font(.headline)
-                Spacer()
-                if libIsLoggingIn {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text(LibraryService.isTokenValid ? "已登入" : "未登入")
+                    .font(.body)
+                if appState.isLibraryLoggedIn, let username = appState.libraryUsername {
+                    Text(username)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
-
-            if LibraryService.isTokenValid {
-                if let username = LibraryService.storedUsername {
-                    Text("帳號：\(username)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+            Spacer()
+            if appState.isLibraryLoggedIn {
                 Button("登出", role: .destructive) {
-                    LibraryService.clearCredentials()
-                    libUsername = ""
-                    libPassword = ""
+                    appState.logoutLibrary()
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             } else {
-                Text("帳號密碼可能與校務系統不同")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-
-                TextField("圖書館帳號", text: $libUsername)
-                    .textContentType(.username)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.characters)
-                SecureField("圖書館密碼", text: $libPassword)
-                    .textContentType(.password)
-
-                if let error = libLoginError {
-                    Text(error)
-                        .font(.caption2)
-                        .foregroundColor(.red)
-                }
-
-                Button("登入圖書館") {
-                    Task {
-                        libIsLoggingIn = true
-                        libLoginError = nil
-                        do {
-                            try await LibraryService.login(
-                                username: libUsername,
-                                password: libPassword
-                            )
-                            libUsername = ""
-                            libPassword = ""
-                        } catch {
-                            libLoginError = error.localizedDescription
-                        }
-                        libIsLoggingIn = false
-                    }
-                }
-                .disabled(libUsername.isEmpty || libPassword.isEmpty || libIsLoggingIn)
+                Button("登入") { showLibraryLogin = true }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
             }
         }
     }

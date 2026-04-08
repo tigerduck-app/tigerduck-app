@@ -32,8 +32,28 @@ final class AppState {
         }
     }
 
+    private var _libraryRevision = 0
+
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
-    var isLibraryLoggedIn: Bool { LibraryService.isTokenValid }
+
+    var isLibraryLoggedIn: Bool {
+        _ = _libraryRevision
+        return LibraryService.isTokenValid
+    }
+
+    var libraryUsername: String? {
+        _ = _libraryRevision
+        return LibraryService.storedUsername
+    }
+
+    func logoutLibrary() {
+        LibraryService.clearCredentials()
+        _libraryRevision += 1
+    }
+
+    func notifyLibraryStateChanged() {
+        _libraryRevision += 1
+    }
 
     // MARK: - Theme
 
