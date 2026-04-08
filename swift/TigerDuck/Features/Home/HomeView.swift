@@ -7,6 +7,7 @@ struct HomeView: View {
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
+    @State private var navigationPath = NavigationPath()
 
     // Section drag state
     @State private var draggingSection: HomeSection?
@@ -19,7 +20,7 @@ struct HomeView: View {
             content
                 .onAppear { viewModel.load(authService: appState.authService) }
         } else {
-            NavigationStack { content }
+            NavigationStack(path: $navigationPath) { content }
                 .onAppear { viewModel.load(authService: appState.authService) }
         }
     }
@@ -91,6 +92,9 @@ struct HomeView: View {
                     .presentationDetents([.medium])
             }
             .notImplementedAlert(isPresented: $showNotImplementedAlert)
+            .navigationDestination(for: AppFeature.self) { feature in
+                homeDestination(for: feature)
+            }
             .sheet(item: $viewModel.selectedCourse) { course in
                 CourseDetailSheet(
                     course: course,
@@ -145,7 +149,7 @@ struct HomeView: View {
             appState: appState,
             onFeatureTap: { feature in
                 if feature.isImplemented {
-                    // TODO: navigate to the feature
+                    navigationPath.append(feature)
                 } else {
                     showNotImplementedAlert = true
                 }
@@ -180,6 +184,17 @@ struct HomeView: View {
                 )
             }
         )
+    }
+
+    @ViewBuilder
+    private func homeDestination(for feature: AppFeature) -> some View {
+        switch feature {
+        case .announcements: AnnouncementsView(embedded: true)
+        case .classTable: ClassTableView(embedded: true)
+        case .calendar: CalendarTabView(embedded: true)
+        case .library: LibraryView(embedded: true)
+        default: PlaceholderFeatureView(feature: feature)
+        }
     }
 
     // MARK: - Floating section preview
