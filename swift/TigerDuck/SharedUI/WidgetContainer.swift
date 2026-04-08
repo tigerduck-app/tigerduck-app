@@ -26,6 +26,7 @@ struct SimpleWidgetContent: View {
                 Image(systemName: feature.iconName)
                     .font(.title2)
                     .foregroundStyle(Color.accentPrimary)
+                    .frame(width: 28, height: 28)
                 Spacer()
                 if badgeCount > 0 {
                     Text("\(badgeCount)")

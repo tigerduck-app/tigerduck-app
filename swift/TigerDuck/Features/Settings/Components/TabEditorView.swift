@@ -1,16 +1,20 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct TabEditorView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @State private var tabs: [AppFeature] = []
     @State private var draggingTab: AppFeature?
+    @State private var tabDragLocation: CGPoint = .zero
+    @State private var tabFingerOffset: CGSize = .zero
+    @State private var tabFrames: [String: CGRect] = [:]
 
     private let maxTabs = 4
 
     private var availableFeatures: [AppFeature] {
-        AppFeature.pinnableFeatures.filter { !tabs.contains($0) }
+        AppFeature.pinnableFeatures
+            .filter { !tabs.contains($0) }
+            .filter { appState.libraryFeatureEnabled || !AppFeature.libraryRelatedFeatures.contains($0) }
     }
 
     var body: some View {
@@ -31,17 +35,35 @@ struct TabEditorView: View {
                                             tabs.removeAll { $0 == feature }
                                         }
                                     }
-                                    .onDrag {
-                                        draggingTab = feature
-                                        return NSItemProvider(object: feature.rawValue as NSString)
-                                    }
-                                    .onDrop(
-                                        of: [UTType.text],
-                                        delegate: ReorderDropDelegate(
-                                            targetItem: feature,
-                                            items: $tabs,
-                                            draggingItem: $draggingTab
-                                        )
+                                    .opacity(draggingTab == feature ? 0 : 1)
+                                    .background(
+                                        GeometryReader { geo in
+                                            Color.clear.preference(
+                                                key: TabFrameKey.self,
+                                                value: [feature.rawValue: geo.frame(in: .named("tabList"))]
+                                            )
+                                        }
+                                    )
+                                    .gesture(
+                                        DragGesture(minimumDistance: 1, coordinateSpace: .named("tabList"))
+                                            .onChanged { value in
+                                                if draggingTab == nil {
+                                                    draggingTab = feature
+                                                    if let frame = tabFrames[feature.rawValue] {
+                                                        tabFingerOffset = CGSize(
+                                                            width: value.startLocation.x - frame.midX,
+                                                            height: value.startLocation.y - frame.midY
+                                                        )
+                                                    }
+                                                }
+                                                tabDragLocation = value.location
+                                                reorderTabsIfNeeded(at: value.location)
+                                            }
+                                            .onEnded { _ in
+                                                withAnimation(.smoothSpring) {
+                                                    draggingTab = nil
+                                                }
+                                            }
                                     )
                                 }
 
@@ -58,6 +80,28 @@ struct TabEditorView: View {
                             }
                             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                             .padding(.vertical, TigerDuckTheme.Spacing.md)
+                            .coordinateSpace(name: "tabList")
+                            .onPreferenceChange(TabFrameKey.self) { tabFrames = $0 }
+                            .overlay {
+                                if let dragging = draggingTab {
+                                    VStack(spacing: 4) {
+                                        Image(systemName: dragging.iconName)
+                                            .font(.title3)
+                                        Text(dragging.displayName)
+                                            .font(.caption2)
+                                            .lineLimit(1)
+                                    }
+                                    .foregroundStyle(Color.accentPrimary)
+                                    .frame(width: 56)
+                                    .scaleEffect(1.1)
+                                    .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                                    .position(
+                                        x: tabDragLocation.x - tabFingerOffset.width,
+                                        y: tabDragLocation.y - tabFingerOffset.height
+                                    )
+                                    .allowsHitTesting(false)
+                                }
+                            }
                         }
                         .glassCard()
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -129,8 +173,38 @@ struct TabEditorView: View {
             }
         }
         .onAppear {
-            tabs = appState.configuredTabs
+            tabs = appState.configuredTabs.filter { feature in
+                appState.libraryFeatureEnabled || !AppFeature.libraryRelatedFeatures.contains(feature)
+            }
         }
+    }
+
+    // MARK: - Reorder tabs
+
+    private func reorderTabsIfNeeded(at point: CGPoint) {
+        guard let dragging = draggingTab,
+              let fromIndex = tabs.firstIndex(of: dragging) else { return }
+
+        for (rawValue, frame) in tabFrames where rawValue != dragging.rawValue {
+            if frame.contains(point),
+               let feature = AppFeature(rawValue: rawValue),
+               let toIndex = tabs.firstIndex(of: feature) {
+                withAnimation(.smoothSpring) {
+                    tabs.move(fromOffsets: IndexSet(integer: fromIndex),
+                              toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+                }
+                return
+            }
+        }
+    }
+}
+
+// MARK: - Tab frame tracking
+
+private struct TabFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
 }
 
@@ -161,4 +235,3 @@ private struct TabPreviewItem: View {
         }
     }
 }
-

@@ -12,7 +12,7 @@ struct NetworkStatusOverlay: View {
             case .loading:
                 ProgressView()
                     .controlSize(.small)
-                    .tint(Color.textSecondary)
+                    .tint(.orange)
 
             case .loaded:
                 Image(systemName: "checkmark.circle.fill")

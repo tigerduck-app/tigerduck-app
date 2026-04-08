@@ -16,15 +16,8 @@ private struct CourseData: Sendable {
 enum KMPServiceBridge {
 
     static func fetchCourses(authService: AuthService) async -> [SDCourse] {
-        guard let studentId = authService.storedStudentId else {
-            return DataCache.shared.loadCourses()
-        }
-
-        guard await authService.ensureAuthenticated() else {
-            return DataCache.shared.loadCourses()
-        }
-
-        guard let password = authService.storedPassword else {
+        guard let studentId = authService.storedStudentId,
+              let password = authService.storedPassword else {
             return DataCache.shared.loadCourses()
         }
 
@@ -125,15 +118,8 @@ enum KMPServiceBridge {
     }
 
     static func fetchAssignments(authService: AuthService) async -> [SDAssignment] {
-        guard let studentId = authService.storedStudentId else {
-            return DataCache.shared.loadAssignments()
-        }
-
-        guard await authService.ensureAuthenticated() else {
-            return DataCache.shared.loadAssignments()
-        }
-
-        guard let password = authService.storedPassword else {
+        guard let studentId = authService.storedStudentId,
+              let password = authService.storedPassword else {
             return DataCache.shared.loadAssignments()
         }
 

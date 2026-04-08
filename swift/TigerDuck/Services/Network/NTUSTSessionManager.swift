@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 enum LoadingState: Equatable {
     case idle
@@ -10,6 +11,13 @@ enum LoadingState: Equatable {
 @Observable
 final class NTUSTSessionManager {
     static let shared = NTUSTSessionManager()
+
+    /// Browser-like User-Agent built from actual device info so SSO/Moodle sees a consistent device fingerprint.
+    static let browserUserAgent: String = {
+        let osVersion = UIDevice.current.systemVersion.replacingOccurrences(of: ".", with: "_")
+        let majorVersion = UIDevice.current.systemVersion.components(separatedBy: ".").first ?? "18"
+        return "Mozilla/5.0 (iPhone; CPU iPhone OS \(osVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(majorVersion).0 Mobile/15E148 Safari/604.1"
+    }()
 
     var loadingState: LoadingState = .idle
 
@@ -30,11 +38,6 @@ final class NTUSTSessionManager {
         return Date(timeIntervalSince1970: ts)
     }
 
-    var cookieExpiryDate: Date? {
-        guard let ts = loginTimestamp else { return nil }
-        return ts.addingTimeInterval(Self.cookieTTL)
-    }
-
     private init() {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = HTTPCookieStorage.shared
@@ -42,7 +45,7 @@ final class NTUSTSessionManager {
         config.httpShouldSetCookies = true
         config.timeoutIntervalForRequest = 15
         config.httpAdditionalHeaders = [
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+            "User-Agent": Self.browserUserAgent,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9",
         ]

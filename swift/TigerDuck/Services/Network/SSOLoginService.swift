@@ -48,8 +48,10 @@ enum SSOLoginService {
             return true
         }
 
-        // Step 4: Clear cookies and start fresh
-        HTTPCookieStorage.shared.cookies?.forEach { HTTPCookieStorage.shared.deleteCookie($0) }
+        // Step 4: Clear SSO cookies only (preserve Moodle/service cookies to avoid device-change warnings)
+        HTTPCookieStorage.shared.cookies?
+            .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }
+            .forEach { HTTPCookieStorage.shared.deleteCookie($0) }
 
         // Re-visit service URL
         let (data2, response2) = try await session.data(from: serviceURL)

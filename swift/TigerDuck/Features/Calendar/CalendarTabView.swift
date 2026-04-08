@@ -1,12 +1,23 @@
 import SwiftUI
 
 struct CalendarTabView: View {
+    var embedded = false
+
     @Environment(AppState.self) private var appState
     @State private var viewModel = CalendarViewModel()
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        if embedded {
+            content
+                .onAppear { viewModel.load(authService: appState.authService) }
+        } else {
+            NavigationStack { content }
+                .onAppear { viewModel.load(authService: appState.authService) }
+        }
+    }
+
+    private var content: some View {
+        ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     HStack {
                         Text("行事曆")
@@ -42,9 +53,5 @@ struct CalendarTabView: View {
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-        }
-        .onAppear {
-            viewModel.load(authService: appState.authService)
-        }
     }
 }

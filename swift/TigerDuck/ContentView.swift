@@ -16,9 +16,19 @@ struct MainTabView: View {
     @Environment(AppState.self) private var appState
     @State private var selectedTab: AppFeature = .home
 
+    /// Configured tabs filtered to hide library features when disabled
+    private var visibleTabs: [AppFeature] {
+        appState.configuredTabs.filter { feature in
+            if AppFeature.libraryRelatedFeatures.contains(feature) {
+                return appState.libraryFeatureEnabled
+            }
+            return true
+        }
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
-            ForEach(appState.configuredTabs) { feature in
+            ForEach(visibleTabs) { feature in
                 Tab(feature.displayName, systemImage: feature.iconName, value: feature) {
                     viewForFeature(feature)
                 }
@@ -26,6 +36,11 @@ struct MainTabView: View {
 
             Tab(AppFeature.more.displayName, systemImage: AppFeature.more.iconName, value: .more) {
                 MoreView()
+            }
+        }
+        .onChange(of: visibleTabs) { _, newTabs in
+            if selectedTab != .more, !newTabs.contains(selectedTab), let first = newTabs.first {
+                selectedTab = first
             }
         }
     }
