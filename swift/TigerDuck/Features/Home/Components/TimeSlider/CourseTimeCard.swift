@@ -46,11 +46,12 @@ struct CourseTimeCard: View {
                 Text(course.timeRange(for: weekday) ?? "──:── - ──:──")
                     .font(.caption.bold())
                     .foregroundStyle(.white.opacity(0.7))
-                Spacer()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .layoutPriority(1)
+                Spacer(minLength: 4)
                 if !isToday {
-                    Text(Self.dateLabelString(from: slot.date))
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.5))
+                    Self.dateLabel(from: slot.date)
                 }
             }
 
@@ -73,12 +74,28 @@ struct CourseTimeCard: View {
     private static let dateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_TW")
-        f.dateFormat = "M/d (EEE)"
+        f.dateFormat = "M/d (EEEEE)"
         return f
     }()
 
-    private static func dateLabelString(from date: Date) -> String {
-        dateLabelFormatter.string(from: date)
+    private static let shortDateLabelFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_TW")
+        f.dateFormat = "M/d"
+        return f
+    }()
+
+    @ViewBuilder
+    private static func dateLabel(from date: Date) -> some View {
+        ViewThatFits(in: .horizontal) {
+            Text(dateLabelFormatter.string(from: date))
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.5))
+            Text(shortDateLabelFormatter.string(from: date))
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.5))
+        }
+        .lineLimit(1)
     }
 }
 
