@@ -30,11 +30,6 @@ final class NTUSTSessionManager {
         return Date(timeIntervalSince1970: ts)
     }
 
-    var cookieExpiryDate: Date? {
-        guard let ts = loginTimestamp else { return nil }
-        return ts.addingTimeInterval(Self.cookieTTL)
-    }
-
     private init() {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = HTTPCookieStorage.shared

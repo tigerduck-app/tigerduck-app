@@ -243,11 +243,6 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                if let expiry = appState.sessionManager.cookieExpiryDate {
-                    Text("Cookie 有效至 \(expiry.formatted(.dateTime.hour().minute().second()))")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
                 Button("登出", role: .destructive) {
                     appState.authService.logout()
                     loginStudentId = ""
@@ -303,11 +298,6 @@ struct SettingsView: View {
                 if let username = LibraryService.storedUsername {
                     Text("帳號：\(username)")
                         .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                if let expiry = LibraryService.storedTokenExpiry {
-                    Text("Token 有效至 \(expiry.formatted(.dateTime.year().month().day()))")
-                        .font(.caption2)
                         .foregroundColor(.secondary)
                 }
                 Button("登出", role: .destructive) {
