@@ -357,7 +357,7 @@ private struct LibraryWarningOverlay: View {
                 .opacity(isFlashing ? 0.15 : 1.0)
 
                 // Warning message
-                Text("本應用程式非臺科大官方圖書館應用程式，且尚未得到學校圖書館認可，無法保證各項功能的正常使用及其他相關使用後果。\n\n如需使用請謹慎。若使後產生任何負面結果，需自負責任，且與 tigerduck-app 一律無關！")
+                Text("本應用程式非臺科大官方圖書館應用程式，且尚未得到學校圖書館認可，無法保證各項功能的正常使用及其他相關使用後果。\n\n如需使用請謹慎。若使用後產生任何負面結果，需自負責任，且與 tigerduck-app 一律無關！")
                     .font(.subheadline)
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
