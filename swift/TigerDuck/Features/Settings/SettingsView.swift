@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
     @State private var showLibraryWarning = false
+    @State private var pendingLibraryEnable = false
     @State private var warningFlash = false
     @State private var libraryWarningTask: Task<Void, Never>?
     @State private var hapticEngine: CHHapticEngine?
@@ -207,10 +208,12 @@ struct SettingsView: View {
                 LibraryWarningOverlay(
                     isFlashing: $warningFlash,
                     onCancel: {
+                        pendingLibraryEnable = false
                         showLibraryWarning = false
                         warningFlash = false
                     },
                     onConfirm: {
+                        pendingLibraryEnable = false
                         appState.libraryFeatureEnabled = true
                         // Auto-add library tab if there's room
                         if !appState.configuredTabs.contains(.library),
@@ -239,10 +242,11 @@ struct SettingsView: View {
 
     private var libraryToggleBinding: Binding<Bool> {
         Binding(
-            get: { appState.libraryFeatureEnabled },
+            get: { appState.libraryFeatureEnabled || pendingLibraryEnable },
             set: { newValue in
                 if newValue {
                     guard !showLibraryWarning else { return }
+                    pendingLibraryEnable = true
                     libraryWarningTask?.cancel()
                     libraryWarningTask = Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(350))
@@ -250,6 +254,7 @@ struct SettingsView: View {
                         showLibraryWarning = true
                     }
                 } else {
+                    pendingLibraryEnable = false
                     appState.libraryFeatureEnabled = false
                     appState.configuredTabs.removeAll { AppFeature.libraryRelatedFeatures.contains($0) }
                 }
