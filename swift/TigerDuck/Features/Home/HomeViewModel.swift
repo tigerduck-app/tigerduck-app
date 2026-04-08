@@ -138,7 +138,6 @@ final class HomeViewModel {
 
     func removeSection(_ section: HomeSection) {
         sections.removeAll { $0.id == section.id }
-        reindexSections()
         saveSectionLayout()
     }
 
