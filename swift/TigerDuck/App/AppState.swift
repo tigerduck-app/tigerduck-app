@@ -141,6 +141,13 @@ final class AppState {
     func backgroundSync() {
         guard hasCompletedOnboarding else { return }
         Task {
+            guard NetworkMonitor.shared.isConnected else {
+                await MainActor.run {
+                    sessionManager.loadingState = .error("無網路連線")
+                }
+                return
+            }
+
             sessionManager.loadingState = .loading
 
             async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)

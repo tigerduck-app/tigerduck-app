@@ -57,6 +57,12 @@ final class HomeViewModel {
 
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
+
+        guard NetworkMonitor.shared.isConnected else {
+            await MainActor.run { manager.loadingState = .error("無網路連線") }
+            return
+        }
+
         await MainActor.run { manager.loadingState = .loading }
 
         async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
