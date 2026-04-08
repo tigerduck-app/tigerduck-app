@@ -271,7 +271,10 @@ private struct HomeSectionView: View {
             case .todayCourses:
                 TimeSliderSection(
                     courses: viewModel.allCourses,
-                    onSelectCourse: { viewModel.selectedCourse = $0 }
+                    onSelectCourse: { course in
+                        guard !viewModel.isEditingHome else { return }
+                        viewModel.selectedCourse = course
+                    }
                 )
             case .upcomingAssignments:
                 if viewModel.upcomingAssignments.isEmpty {
@@ -285,6 +288,7 @@ private struct HomeSectionView: View {
                         assignments: viewModel.upcomingAssignments,
                         showAbsoluteTime: appState.showAbsoluteAssignmentTime
                     )
+                    .allowsHitTesting(!viewModel.isEditingHome)
                 }
             case .quickWidgets, .custom:
                 WidgetGridView(
