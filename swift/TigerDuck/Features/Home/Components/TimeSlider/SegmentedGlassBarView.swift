@@ -26,7 +26,6 @@ struct SegmentedGlassBarView: View {
                     }
                     .onEnded { _ in
                         lastDragX = 0
-                        viewModel.onDragEnded()
                     }
             )
         }

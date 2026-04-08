@@ -274,9 +274,6 @@ final class TimeSliderViewModel {
         return Int(floor(time.timeIntervalSinceReferenceDate / interval))
     }
 
-    func onDragEnded() {
-    }
-
     func returnToNow() {
         withAnimation(.bouncy(duration: 0.6)) {
             isUserDragging = false
