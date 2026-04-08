@@ -105,8 +105,11 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .englishVocab,
     ]
 
+    /// Library-related features gated behind the library opt-in toggle
+    static let libraryRelatedFeatures: Set<AppFeature> = [.library, .discussionRoom, .libraryLecture]
+
     static let defaultTabs: [AppFeature] = [
-        .home, .classTable, .calendar, .library,
+        .home, .classTable, .calendar,
     ]
 
     /// Features displayed in the "More" page, grouped by category

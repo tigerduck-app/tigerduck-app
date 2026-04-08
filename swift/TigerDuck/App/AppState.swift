@@ -110,6 +110,11 @@ final class AppState {
         didSet { UserDefaults.standard.set(showAbsoluteAssignmentTime, forKey: AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime) }
     }
 
+    /// Whether library-related features are enabled (requires explicit user consent)
+    var libraryFeatureEnabled: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) {
+        didSet { UserDefaults.standard.set(libraryFeatureEnabled, forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) }
+    }
+
     // MARK: - Tab Configuration
 
     var configuredTabs: [AppFeature] = {

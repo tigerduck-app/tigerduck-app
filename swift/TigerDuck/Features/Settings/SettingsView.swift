@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreHaptics
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
@@ -16,6 +17,9 @@ struct SettingsView: View {
     @State private var libPassword = ""
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
+    @State private var showLibraryWarning = false
+    @State private var warningFlash = false
+    @State private var hapticEngine: CHHapticEngine?
 
     private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
     private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
@@ -33,7 +37,9 @@ struct SettingsView: View {
             // MARK: - Account
             Section("帳號") {
                 ntustAccountRow
-                libraryAccountRow
+                if appState.libraryFeatureEnabled {
+                    libraryAccountRow
+                }
             }
 
             // MARK: - Customization
@@ -83,13 +89,18 @@ struct SettingsView: View {
                 Toggle("反轉滑條方向", isOn: $appState.invertSliderDirection)
             }
 
-            // MARK: - Notifications
-            Section("通知") {
-                Toggle("作業到期提醒", isOn: $notifyAssignments)
-                Toggle("公告通知", isOn: $notifyAnnouncements)
-                Toggle("免費便當通知", isOn: $notifyFreeLunch)
-                Toggle("社團活動通知", isOn: $notifyClubs)
+            // MARK: - Other Features
+            Section("其他功能") {
+                Toggle("圖書館及相關功能", isOn: libraryToggleBinding)
             }
+
+            // MARK: - Notifications (hidden — not yet implemented)
+//            Section("通知") {
+//                Toggle("作業到期提醒", isOn: $notifyAssignments)
+//                Toggle("公告通知", isOn: $notifyAnnouncements)
+//                Toggle("免費便當通知", isOn: $notifyFreeLunch)
+//                Toggle("社團活動通知", isOn: $notifyClubs)
+//            }
 
             // MARK: - About
             Section("關於") {
@@ -136,6 +147,74 @@ struct SettingsView: View {
         .sheet(isPresented: $showLicense) {
             InAppBrowserView(url: Self.licenseURL)
                 .ignoresSafeArea()
+        }
+        .overlay {
+            if showLibraryWarning {
+                LibraryWarningOverlay(
+                    isFlashing: $warningFlash,
+                    onCancel: {
+                        showLibraryWarning = false
+                        warningFlash = false
+                    },
+                    onConfirm: {
+                        appState.libraryFeatureEnabled = true
+                        // Auto-add library tab if there's room
+                        if !appState.configuredTabs.contains(.library),
+                           appState.configuredTabs.count < 4 {
+                            appState.configuredTabs.append(.library)
+                        }
+                        showLibraryWarning = false
+                        warningFlash = false
+                    }
+                )
+                .onAppear {
+                    warningFlash = false
+                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                        warningFlash = true
+                    }
+                    triggerWarningVibration()
+                }
+            }
+        }
+    }
+
+    private var libraryToggleBinding: Binding<Bool> {
+        Binding(
+            get: { appState.libraryFeatureEnabled },
+            set: { newValue in
+                if newValue {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        showLibraryWarning = true
+                    }
+                } else {
+                    appState.libraryFeatureEnabled = false
+                    appState.configuredTabs.removeAll { AppFeature.libraryRelatedFeatures.contains($0) }
+                }
+            }
+        )
+    }
+
+    private func triggerWarningVibration() {
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+        do {
+            let engine = try CHHapticEngine()
+            try engine.start()
+            self.hapticEngine = engine
+            let event = CHHapticEvent(
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
+                ],
+                relativeTime: 0,
+                duration: 1.0
+            )
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            let player = try engine.makePlayer(with: pattern)
+            try player.start(atTime: CHHapticTimeImmediate)
+        } catch {
+            // Silently fail on devices without haptic support
         }
     }
 
@@ -272,6 +351,82 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(libUsername.isEmpty || libPassword.isEmpty || libIsLoggingIn)
+            }
+        }
+    }
+}
+
+// MARK: - Library Warning Overlay
+
+private struct LibraryWarningOverlay: View {
+    @Binding var isFlashing: Bool
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    @State private var countdown = 5
+    @State private var confirmEnabled = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                // Flashing warning title
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    Text("請注意！")
+                }
+                .font(.headline.bold())
+                .foregroundStyle(.red)
+                .opacity(isFlashing ? 0.15 : 1.0)
+
+                // Warning message
+                Text("本應用程式非臺科大官方圖書館應用程式，且尚未得到學校圖書館認可，無法保證各項功能的正常使用及其他相關使用後果。\n\n如需使用請謹慎。若使後產生任何負面結果，需自負責任，且與 tigerduck-app 一律無關！")
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Buttons
+                VStack(spacing: 10) {
+                    Button(action: onConfirm) {
+                        Text(confirmEnabled ? "我願意自負後果" : "我願意自負後果（\(countdown)）")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                confirmEnabled ? Color.red : Color.red.opacity(0.35),
+                                in: RoundedRectangle(cornerRadius: 10)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!confirmEnabled)
+
+                    Button(action: onCancel) {
+                        Text("退回")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(24)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.horizontal, 32)
+        }
+        .transition(.opacity)
+        .task {
+            for i in stride(from: 4, through: 0, by: -1) {
+                try? await Task.sleep(for: .seconds(1))
+                countdown = i
+            }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                confirmEnabled = true
             }
         }
     }

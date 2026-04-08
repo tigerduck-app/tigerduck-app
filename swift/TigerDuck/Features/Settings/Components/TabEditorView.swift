@@ -10,7 +10,9 @@ struct TabEditorView: View {
     private let maxTabs = 4
 
     private var availableFeatures: [AppFeature] {
-        AppFeature.pinnableFeatures.filter { !tabs.contains($0) }
+        AppFeature.pinnableFeatures
+            .filter { !tabs.contains($0) }
+            .filter { appState.libraryFeatureEnabled || !AppFeature.libraryRelatedFeatures.contains($0) }
     }
 
     var body: some View {
@@ -129,7 +131,9 @@ struct TabEditorView: View {
             }
         }
         .onAppear {
-            tabs = appState.configuredTabs
+            tabs = appState.configuredTabs.filter { feature in
+                appState.libraryFeatureEnabled || !AppFeature.libraryRelatedFeatures.contains(feature)
+            }
         }
     }
 }
