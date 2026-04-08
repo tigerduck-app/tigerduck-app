@@ -1,12 +1,16 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct HomeView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
-    @State private var draggingSection: HomeSection?
     @State private var showNotImplementedAlert = false
+
+    // Section drag state
+    @State private var draggingSection: HomeSection?
+    @State private var sectionDragLocation: CGPoint = .zero
+    @State private var sectionFingerOffset: CGSize = .zero
+    @State private var sectionFrames: [String: CGRect] = [:]
 
     var body: some View {
         NavigationStack {
@@ -25,48 +29,13 @@ struct HomeView: View {
 
                     // Sections
                     ForEach(viewModel.sections) { section in
-                        HomeSectionView(
-                            section: section,
-                            viewModel: viewModel,
-                            appState: appState,
-                            onFeatureTap: { feature in
-                                if feature.isImplemented {
-                                    // TODO: navigate to the feature (e.g. switch tab)
-                                } else {
-                                    showNotImplementedAlert = true
-                                }
-                            }
-                        )
-                        .overlay(alignment: .topTrailing) {
-                            if viewModel.isEditingHome {
-                                Button {
-                                    withAnimation(.smoothSpring) {
-                                        viewModel.removeSection(section)
-                                    }
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.white, .red)
-                                        .font(.title3)
-                                }
-                                .offset(x: 6, y: -6)
-                            }
-                        }
-                        .wiggling(viewModel.isEditingHome)
-                        .onDrag {
-                            draggingSection = section
-                            return NSItemProvider(object: section.id as NSString)
-                        }
-                        .onDrop(
-                            of: [UTType.text],
-                            delegate: ReorderDropDelegate(
-                                targetItem: section,
-                                items: $viewModel.sections,
-                                draggingItem: $draggingSection
-                            )
-                        )
+                        sectionCell(section)
                     }
                 }
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+                .coordinateSpace(name: "sectionList")
+                .onPreferenceChange(SectionFrameKey.self) { sectionFrames = $0 }
+                .overlay { floatingSectionPreview }
                 .contentShape(Rectangle())
                 .onLongPressGesture {
                     if !viewModel.isEditingHome {
@@ -123,6 +92,138 @@ struct HomeView: View {
         .onAppear {
             viewModel.load(authService: appState.authService)
         }
+    }
+
+    // MARK: - Section cell with conditional drag
+
+    @ViewBuilder
+    private func sectionCell(_ section: HomeSection) -> some View {
+        let content = sectionContent(section)
+
+        if viewModel.isEditingHome {
+            content.gesture(
+                DragGesture(minimumDistance: 5, coordinateSpace: .named("sectionList"))
+                    .onChanged { value in
+                        if draggingSection == nil {
+                            draggingSection = section
+                            if let frame = sectionFrames[section.id] {
+                                sectionFingerOffset = CGSize(
+                                    width: value.startLocation.x - frame.midX,
+                                    height: value.startLocation.y - frame.midY
+                                )
+                            }
+                            sectionDragLocation = value.location
+                            return
+                        }
+                        sectionDragLocation = value.location
+                        reorderSectionsIfNeeded(at: value.location)
+                    }
+                    .onEnded { _ in
+                        withAnimation(.smoothSpring) {
+                            draggingSection = nil
+                        }
+                    }
+            )
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private func sectionContent(_ section: HomeSection) -> some View {
+        HomeSectionView(
+            section: section,
+            viewModel: viewModel,
+            appState: appState,
+            onFeatureTap: { feature in
+                if feature.isImplemented {
+                    // TODO: navigate to the feature
+                } else {
+                    showNotImplementedAlert = true
+                }
+            }
+        )
+        .overlay(alignment: .topTrailing) {
+            if viewModel.isEditingHome {
+                Button {
+                    withAnimation(.smoothSpring) {
+                        viewModel.removeSection(section)
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.white, .red)
+                        .font(.title3)
+                }
+                .offset(x: 6, y: -6)
+            }
+        }
+        .wiggling(viewModel.isEditingHome)
+        .opacity(draggingSection?.id == section.id ? 0 : 1)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: SectionFrameKey.self,
+                    value: [section.id: geo.frame(in: .named("sectionList"))]
+                )
+            }
+        )
+    }
+
+    // MARK: - Floating section preview
+
+    @ViewBuilder
+    private var floatingSectionPreview: some View {
+        if let dragging = draggingSection {
+            HStack(spacing: TigerDuckTheme.Spacing.sm) {
+                Image(systemName: dragging.type.iconName)
+                    .font(.title3)
+                    .foregroundStyle(Color.accentPrimary)
+                Text(dragging.title)
+                    .font(TigerDuckTheme.Typography.headline)
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(TigerDuckTheme.Spacing.lg)
+            .frame(width: 280, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
+                    .fill(Color(.secondarySystemGroupedBackground))
+                    .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
+            )
+            .scaleEffect(1.05)
+            .position(
+                x: sectionDragLocation.x - sectionFingerOffset.width,
+                y: sectionDragLocation.y - sectionFingerOffset.height
+            )
+            .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: - Reorder sections
+
+    private func reorderSectionsIfNeeded(at point: CGPoint) {
+        guard let dragging = draggingSection,
+              let fromIndex = viewModel.sections.firstIndex(where: { $0.id == dragging.id }) else { return }
+
+        for (id, frame) in sectionFrames where id != dragging.id {
+            if frame.contains(point),
+               let toIndex = viewModel.sections.firstIndex(where: { $0.id == id }) {
+                withAnimation(.smoothSpring) {
+                    viewModel.sections.move(fromOffsets: IndexSet(integer: fromIndex),
+                                            toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+                }
+                return
+            }
+        }
+    }
+}
+
+// MARK: - Section frame tracking
+
+private struct SectionFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
 }
 
