@@ -144,6 +144,11 @@ struct HomeView: View {
                 }
             }
         )
+        .overlay(alignment: .top) {
+            if viewModel.isEditingHome {
+                SectionDragHandle()
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if viewModel.isEditingHome {
                 Button {
@@ -225,6 +230,26 @@ private struct SectionFrameKey: PreferenceKey {
     static var defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { $1 })
+    }
+}
+
+// MARK: - Drag handle indicator
+
+private struct SectionDragHandle: View {
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.xs) {
+            Image(systemName: "line.3.horizontal")
+                .font(.caption.weight(.bold))
+            Text("長按拖曳排序")
+                .font(TigerDuckTheme.Typography.caption2)
+        }
+        .foregroundStyle(Color.textSecondary)
+        .padding(.horizontal, TigerDuckTheme.Spacing.md)
+        .padding(.vertical, TigerDuckTheme.Spacing.xs)
+        .background(
+            Capsule().fill(Color(.systemGray5))
+        )
+        .padding(.top, TigerDuckTheme.Spacing.xs)
     }
 }
 
