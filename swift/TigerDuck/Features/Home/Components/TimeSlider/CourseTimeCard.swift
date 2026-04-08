@@ -107,10 +107,10 @@ private struct TintedGlassModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
-            content.glassEffect(.regular.tint(tint), in: shape)
+            content.glassEffect(.regular.tint(tint.opacity(0.6)), in: shape)
         } else {
             content
-                .background(tint, in: shape)
+                .background(tint.opacity(0.55), in: shape)
                 .background(.ultraThinMaterial, in: shape)
         }
     }
