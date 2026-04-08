@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct HomeView: View {
+    var embedded = false
+
     @Environment(AppState.self) private var appState
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
@@ -13,8 +15,17 @@ struct HomeView: View {
     @State private var sectionFrames: [String: CGRect] = [:]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        if embedded {
+            content
+                .onAppear { viewModel.load(authService: appState.authService) }
+        } else {
+            NavigationStack { content }
+                .onAppear { viewModel.load(authService: appState.authService) }
+        }
+    }
+
+    private var content: some View {
+        ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     // Greeting
                     HStack {
@@ -88,10 +99,6 @@ struct HomeView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
-        }
-        .onAppear {
-            viewModel.load(authService: appState.authService)
-        }
     }
 
     // MARK: - Section cell with conditional drag

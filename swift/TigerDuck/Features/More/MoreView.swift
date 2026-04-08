@@ -73,6 +73,9 @@ struct MoreView: View {
     @ViewBuilder
     private func moreDestination(for feature: AppFeature) -> some View {
         switch feature {
+        case .home: HomeView(embedded: true)
+        case .classTable: ClassTableView(embedded: true)
+        case .calendar: CalendarTabView(embedded: true)
         case .announcements: AnnouncementsView(embedded: true)
         case .library: LibraryView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)

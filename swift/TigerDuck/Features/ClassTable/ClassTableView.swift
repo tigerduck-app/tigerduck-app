@@ -1,12 +1,23 @@
 import SwiftUI
 
 struct ClassTableView: View {
+    var embedded = false
+
     @Environment(AppState.self) private var appState
     @State private var viewModel = ClassTableViewModel()
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        if embedded {
+            content
+                .onAppear { viewModel.load(authService: appState.authService) }
+        } else {
+            NavigationStack { content }
+                .onAppear { viewModel.load(authService: appState.authService) }
+        }
+    }
+
+    private var content: some View {
+        ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     // Title
                     HStack {
@@ -95,9 +106,5 @@ struct ClassTableView: View {
                     viewModel.courseToRename = nil
                 }
             }
-        }
-        .onAppear {
-            viewModel.load(authService: appState.authService)
-        }
     }
 }
