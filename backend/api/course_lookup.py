@@ -1,9 +1,7 @@
 import os
-import re
-
 from ntust_courses import search_courses
 
-from course_list import NtustCourseSelectionClient
+from course_list import COURSE_NO_PATTERN, NtustCourseSelectionClient
 
 if __name__ == "__main__":
     student_id = os.getenv("STUDENT_ID")
@@ -16,7 +14,7 @@ if __name__ == "__main__":
         ok = client.login()
         if ok:
             html = client.get_class_table()
-            result = re.findall(r"<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*</td>", html)
+            result = COURSE_NO_PATTERN.findall(html)
             print(result)
             # ['CS1007701', 'CS2001301', 'CS2006301', 'CS2008301', 'CS3001302', 'CS3019701', 'EC1013701', 'EC1014701', 'PE139B022']
 
