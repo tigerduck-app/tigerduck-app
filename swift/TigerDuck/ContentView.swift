@@ -39,7 +39,7 @@ struct MainTabView: View {
             }
         }
         .onChange(of: visibleTabs) { _, newTabs in
-            if !newTabs.contains(selectedTab), let first = newTabs.first {
+            if selectedTab != .more, !newTabs.contains(selectedTab), let first = newTabs.first {
                 selectedTab = first
             }
         }
