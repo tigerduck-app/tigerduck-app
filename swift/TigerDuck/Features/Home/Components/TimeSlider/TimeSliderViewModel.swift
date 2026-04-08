@@ -11,7 +11,6 @@ final class TimeSliderViewModel {
     var isUserDragging: Bool = false
 
     // MARK: - Private
-    private var autoReturnTask: Task<Void, Never>?
     private var allCourses: [SDCourse] = []
     private var timelineCenterDate: Date = Date()
     /// Tracks which haptic interval the user was last in, to fire once per crossing.
@@ -211,7 +210,6 @@ final class TimeSliderViewModel {
 
     func onDragStarted() {
         isUserDragging = true
-        autoReturnTask?.cancel()
         hapticGenerator.prepare()
         lastHapticSlot = hapticSlot(for: selectedTime)
     }
@@ -220,8 +218,6 @@ final class TimeSliderViewModel {
     /// Converts dx from compressed visual space back to real time movement.
     func onDragChanged(dx: CGFloat, invertDirection: Bool) {
         if !isUserDragging { onDragStarted() }
-        // Always cancel pending auto-return (covers re-drag while timer is active)
-        autoReturnTask?.cancel()
         let direction: CGFloat = invertDirection ? 1 : -1
 
         // Convert visual dx back to time by finding what time corresponds to the new X
@@ -279,27 +275,14 @@ final class TimeSliderViewModel {
     }
 
     func onDragEnded() {
-        startAutoReturn()
     }
 
     func returnToNow() {
-        autoReturnTask?.cancel()
         withAnimation(.bouncy(duration: 0.6)) {
             isUserDragging = false
             selectedTime = Date()
         }
     }
 
-    func startAutoReturn() {
-        autoReturnTask?.cancel()
-        autoReturnTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            withAnimation(.bouncy(duration: 0.6)) {
-                isUserDragging = false
-                selectedTime = Date()
-            }
-        }
-    }
 
 }
