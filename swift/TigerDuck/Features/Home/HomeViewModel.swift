@@ -112,19 +112,21 @@ final class HomeViewModel {
                 isVisible: true,
                 widgets: []
             ),
-            HomeSection(
-                id: "quick-widgets",
-                type: .quickWidgets,
-                title: "快速功能",
-                sortOrder: 2,
-                isVisible: true,
-                widgets: [
-                    WidgetItem(id: "w1", feature: .freeLunch, size: .small),
-                    WidgetItem(id: "w2", feature: .emptyClassroom, size: .small),
-                    WidgetItem(id: "w3", feature: .scholarship, size: .small),
-                    WidgetItem(id: "w4", feature: .gpa, size: .small),
-                ]
-            ),
+
+// not implemented yet
+//            HomeSection(
+//                id: "quick-widgets",
+//                type: .quickWidgets,
+//                title: "快速功能",
+//                sortOrder: 2,
+//                isVisible: true,
+//                widgets: [
+//                    WidgetItem(id: "w1", feature: .freeLunch, size: .small),
+//                    WidgetItem(id: "w2", feature: .emptyClassroom, size: .small),
+//                    WidgetItem(id: "w3", feature: .scholarship, size: .small),
+//                    WidgetItem(id: "w4", feature: .gpa, size: .small),
+//                ]
+//            ),
         ]
     }
 
