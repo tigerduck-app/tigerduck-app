@@ -151,13 +151,19 @@ final class AppState {
             sessionManager.loadingState = .loading
 
             // Authenticate once upfront so parallel tasks reuse the SSO session
-            _ = await authService.ensureAuthenticated()
+            let isAuthenticated = await authService.ensureAuthenticated()
 
-            async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
-            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+            // School events are public — always fetch. Courses/assignments need auth.
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
-
-            let (_, fetchedAssignments, fetchedSchoolEvents) = await (coursesTask, assignmentsTask, schoolEventsTask)
+            let fetchedAssignments: [SDAssignment]
+            if isAuthenticated {
+                async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
+                async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+                (_, fetchedAssignments) = await (coursesTask, assignmentsTask)
+            } else {
+                fetchedAssignments = DataCache.shared.loadAssignments()
+            }
+            let fetchedSchoolEvents = await schoolEventsTask
 
             // Build moodle calendar events from assignments and merge with school events
             let moodleEvents = fetchedAssignments.map {

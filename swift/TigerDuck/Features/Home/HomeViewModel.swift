@@ -66,13 +66,18 @@ final class HomeViewModel {
         await MainActor.run { manager.loadingState = .loading }
 
         // Authenticate once upfront so parallel tasks reuse the SSO session
-        _ = await authService.ensureAuthenticated()
+        let isAuthenticated = await authService.ensureAuthenticated()
 
-        async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
-        async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
-
-        let allCourses = await coursesTask
-        let allAssignments = await assignmentsTask
+        let allCourses: [SDCourse]
+        let allAssignments: [SDAssignment]
+        if isAuthenticated {
+            async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
+            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+            (allCourses, allAssignments) = await (coursesTask, assignmentsTask)
+        } else {
+            allCourses = DataCache.shared.loadCourses()
+            allAssignments = DataCache.shared.loadAssignments()
+        }
 
         let todayFiltered = allCourses.coursesForToday()
         let upcoming = allAssignments.upcomingSorted()
