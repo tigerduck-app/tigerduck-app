@@ -12,6 +12,7 @@ struct WidgetGridView: View {
     @State private var dragLocation: CGPoint = .zero
     @State private var fingerOffset: CGSize = .zero
     @State private var cellFrames: [String: CGRect] = [:]
+    @State private var didReorder = false
 
     private let columns = [
         GridItem(.flexible(), spacing: TigerDuckTheme.Spacing.md),
@@ -99,7 +100,10 @@ struct WidgetGridView: View {
                 withAnimation(.smoothSpring) {
                     draggingWidget = nil
                 }
-                onReorder?()
+                if didReorder {
+                    onReorder?()
+                    didReorder = false
+                }
             }
     }
 
@@ -136,6 +140,7 @@ struct WidgetGridView: View {
                     widgets.move(fromOffsets: IndexSet(integer: fromIndex),
                                  toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
                 }
+                didReorder = true
                 return
             }
         }
