@@ -14,7 +14,7 @@ enum CalendarService {
     private static let browserSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = [
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"
+            "User-Agent": NTUSTSessionManager.browserUserAgent
         ]
         return URLSession(configuration: config)
     }()
