@@ -35,7 +35,7 @@ struct TimeSliderSection: View {
         }
         .overlay(alignment: .trailing) {
             if viewModel.isUserDragging {
-                Button("回到現在") {
+                Button("現在") {
                     viewModel.returnToNow()
                 }
                 .font(.caption.weight(.semibold))
