@@ -122,7 +122,7 @@ private struct SwipeToSkipWrapper<Content: View>: View {
                     Text(isSkipped ? "取消翹課" : "翹課")
                         .font(.caption2.bold())
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(isSkipped ? .white : .red)
                 .opacity(Double(progress))
                 .scaleEffect(0.8 + 0.2 * progress)
                 .padding(.trailing, 24)
