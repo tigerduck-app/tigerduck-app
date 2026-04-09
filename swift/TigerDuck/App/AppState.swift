@@ -155,6 +155,7 @@ final class AppState {
     func completeOnboarding() {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: AppConstants.UserDefaultsKeys.hasCompletedOnboarding)
+        backgroundSync()
     }
 
     /// Background sync all data on app launch
