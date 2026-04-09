@@ -35,7 +35,7 @@ struct UpcomingAssignmentsView: View {
                         Spacer()
                         Text(timeLabel(for: assignment, now: now))
                             .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(assignment.isOverdue ? Color.badgeRed : Color.textSecondary)
+                            .foregroundStyle(assignment.dueDate < now ? Color.badgeRed : Color.textSecondary)
                     }
                     .cardPadding()
                     .glassCard()
