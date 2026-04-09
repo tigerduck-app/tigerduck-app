@@ -66,8 +66,7 @@ extension Date {
     }
 
     /// Relative time: "5 天後", "3 小時後", "已逾期"
-    var relativeTimeString: String {
-        let now = Date()
+    func relativeTimeString(from now: Date) -> String {
         let interval = timeIntervalSince(now)
         if interval < 0 {
             return "已逾期"
