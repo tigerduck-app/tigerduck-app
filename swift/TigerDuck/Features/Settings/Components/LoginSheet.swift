@@ -43,6 +43,7 @@ struct LoginSheet: View {
             Form {
                 Section {
                     TextField(usernamePlaceholder, text: $username)
+                        .keyboardType(.asciiCapable)
                         .textContentType(.username)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.characters)
@@ -51,6 +52,7 @@ struct LoginSheet: View {
                         .onSubmit { focusedField = .password }
 
                     SecureField(passwordPlaceholder, text: $password)
+                        .keyboardType(.asciiCapable)
                         .textContentType(.password)
                         .focused($focusedField, equals: .password)
                         .submitLabel(.go)
