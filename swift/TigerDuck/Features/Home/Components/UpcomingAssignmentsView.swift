@@ -5,12 +5,8 @@ struct UpcomingAssignmentsView: View {
     var showAbsoluteTime: Bool = false
 
     var body: some View {
-        if showAbsoluteTime {
-            assignmentList(for: .now)
-        } else {
-            TimelineView(.periodic(from: .now, by: 60)) { context in
-                assignmentList(for: context.date)
-            }
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            assignmentList(for: context.date)
         }
     }
 
