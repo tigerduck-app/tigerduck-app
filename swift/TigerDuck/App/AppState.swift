@@ -33,6 +33,7 @@ final class AppState {
     }
 
     private var _libraryRevision = 0
+    private var syncTask: Task<Void, Never>?
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
@@ -155,12 +156,14 @@ final class AppState {
     func completeOnboarding() {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: AppConstants.UserDefaultsKeys.hasCompletedOnboarding)
+        backgroundSync()
     }
 
     /// Background sync all data on app launch
     func backgroundSync() {
         guard hasCompletedOnboarding else { return }
-        Task {
+        syncTask?.cancel()
+        syncTask = Task {
             guard NetworkMonitor.shared.isConnected else {
                 await MainActor.run {
                     sessionManager.loadingState = .error("無網路連線")

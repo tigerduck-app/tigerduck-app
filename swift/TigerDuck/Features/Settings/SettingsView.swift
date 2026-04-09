@@ -165,6 +165,7 @@ struct SettingsView: View {
                         if appState.isNTUSTLoggedIn {
                             showNTUSTLogin = false
                             appState.notifyLibraryStateChanged()
+                            appState.backgroundSync()
                         }
                     }
                 },

@@ -5,6 +5,12 @@ struct UpcomingAssignmentsView: View {
     var showAbsoluteTime: Bool = false
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            assignmentList(for: context.date)
+        }
+    }
+
+    private func assignmentList(for now: Date) -> some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
@@ -23,9 +29,9 @@ struct UpcomingAssignmentsView: View {
                                 .foregroundStyle(Color.textSecondary)
                         }
                         Spacer()
-                        Text(timeLabel(for: assignment))
+                        Text(timeLabel(for: assignment, now: now))
                             .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(assignment.isOverdue ? Color.badgeRed : Color.textSecondary)
+                            .foregroundStyle(assignment.dueDate < now ? Color.badgeRed : Color.textSecondary)
                     }
                     .cardPadding()
                     .glassCard()
@@ -36,11 +42,11 @@ struct UpcomingAssignmentsView: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    private func timeLabel(for assignment: SDAssignment) -> String {
+    private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
         if showAbsoluteTime {
             return assignment.dueDate.absoluteTimeString
         } else {
-            return assignment.dueDate.relativeTimeString
+            return assignment.dueDate.relativeTimeString(from: now)
         }
     }
 }
