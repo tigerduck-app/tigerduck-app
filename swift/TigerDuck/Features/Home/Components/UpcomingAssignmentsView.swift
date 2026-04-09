@@ -5,6 +5,16 @@ struct UpcomingAssignmentsView: View {
     var showAbsoluteTime: Bool = false
 
     var body: some View {
+        if showAbsoluteTime {
+            assignmentList
+        } else {
+            TimelineView(.periodic(from: .now, by: 60)) { _ in
+                assignmentList
+            }
+        }
+    }
+
+    private var assignmentList: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
