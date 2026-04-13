@@ -20,9 +20,9 @@ struct MoreView: View {
                                 SettingsView()
                             } label: {
                                 Image(systemName: "gearshape.fill")
-                                    .font(.title3)
+                                    .font(.body)
                                     .foregroundStyle(.primary)
-                                    .frame(width: 50, height: 50)
+                                    .frame(width: 34, height: 34)
                                     .glassEffect(.regular.interactive(), in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -31,9 +31,9 @@ struct MoreView: View {
                                 SettingsView()
                             } label: {
                                 Image(systemName: "gearshape.fill")
-                                    .font(.title3)
+                                    .font(.body)
                                     .foregroundStyle(Color.textPrimary)
-                                    .frame(width: 44, height: 44)
+                                    .frame(width: 34, height: 34)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
