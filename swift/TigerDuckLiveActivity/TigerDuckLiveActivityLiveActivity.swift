@@ -70,78 +70,82 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
 
 private struct LockScreenView: View {
     let snapshot: LiveActivitySnapshot
-    private let iconVerticalOffset: CGFloat = 11
-    private let countdownFontSize: CGFloat = 44
-    private let countdownVerticalOffset: CGFloat = -6
-    private let metadataRowHeight: CGFloat = 18
-    private let titleMinimumScale: CGFloat = 0.8
-    private let secondaryMinimumScale: CGFloat = 0.82
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: iconName(for: snapshot.scenario))
-                    .font(.title2.bold())
-                    .foregroundStyle(hexColor(snapshot.accentHex))
-                    .frame(width: 48, height: 48)
-                    .background(hexColor(snapshot.accentHex).opacity(0.18), in: Circle())
-                    .offset(y: iconVerticalOffset)
+        VStack(alignment: .leading, spacing: 8) {
+            // Row 1: status (leading, intrinsic width) + remaining countdown (trailing, intrinsic width)
+            // Canonical pattern: Spacer 吃掉中間所有伸縮，兩側用 intrinsic size 自然貼齊邊界。
+            // 注意：不可對右側 timer 或其容器使用 .fixedSize()，會破壞 Text(timerInterval:) 的
+            // widget reservation 機制。
+            HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(hexColor(snapshot.accentHex))
+                        .frame(width: 8, height: 8)
+                    Text(statusLabel(for: snapshot.scenario))
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(snapshot.title)
-                        .font(.title3.bold())
-                        .lineLimit(1)
-                        .minimumScaleFactor(titleMinimumScale)
-                        .truncationMode(.tail)
-                        .allowsTightening(true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 12)
 
-                    HStack(alignment: .top, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(snapshot.subtitle)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(secondaryMinimumScale)
-                                .truncationMode(.tail)
-                                .allowsTightening(true)
+                countdownLabel(snapshot)
+                    .font(.footnote.monospacedDigit().bold())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.trailing)
+            }
+            .frame(maxWidth: .infinity)
 
-                            Group {
-                                if let loc = snapshot.locationText, !loc.isEmpty {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "mappin.and.ellipse")
-                                        Text(loc)
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(secondaryMinimumScale)
-                                            .truncationMode(.tail)
-                                            .allowsTightening(true)
-                                    }
-                                } else {
-                                    Color.clear
-                                }
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(height: metadataRowHeight, alignment: .center)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            // Row 2: title
+            Text(snapshot.title)
+                .font(.title2.bold())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .truncationMode(.tail)
+                .allowsTightening(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                        countdownLabel(snapshot)
-                            .font(.system(size: countdownFontSize, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(hexColor(snapshot.accentHex))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                            .offset(y: countdownVerticalOffset)
+            // Row 3: progress bar (only when provided)
+            if let progress = snapshot.progress {
+                ProgressView(value: max(0, min(1, progress)))
+                    .tint(hexColor(snapshot.accentHex))
+                    .scaleEffect(x: 1, y: 1.2, anchor: .center)
+                    .padding(.vertical, 6)
+            }
+
+            // Row 4: metadata — 地點 | Spacer | 時間 | Spacer | 老師
+            HStack(spacing: 0) {
+                HStack(spacing: 4) {
+                    if let loc = snapshot.locationText, !loc.isEmpty {
+                        Image(systemName: "paperplane.fill")
+                        Text(loc)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
 
-            if let progress = snapshot.progress {
-                ProgressView(value: progress)
-                    .tint(hexColor(snapshot.accentHex))
-                    .scaleEffect(x: 1, y: 1.4, anchor: .center)
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    if !snapshot.subtitle.isEmpty {
+                        Image(systemName: "clock.fill")
+                        Text(snapshot.subtitle)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    if let ins = snapshot.instructor, !ins.isEmpty {
+                        Image(systemName: "person.fill")
+                        Text(ins)
+                    }
+                }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -159,11 +163,18 @@ private func iconName(for scenario: LiveActivityScenarioKind) -> String {
     }
 }
 
+private func statusLabel(for scenario: LiveActivityScenarioKind) -> String {
+    switch scenario {
+    case .inClass: return "上課"
+    case .classPreparing: return "下課"
+    case .assignmentUrgent: return "作業"
+    }
+}
+
 @ViewBuilder
 private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
-    if let target = snapshot.countdownTarget {
-        let upper = max(target, Date())
-        Text(timerInterval: Date()...upper, countsDown: true)
+    if let target = snapshot.countdownTarget, target > Date() {
+        Text(timerInterval: Date()...target, countsDown: true)
     } else {
         Text("—")
     }

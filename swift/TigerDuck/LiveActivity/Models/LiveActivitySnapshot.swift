@@ -8,6 +8,7 @@ nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable 
     let title: String
     let subtitle: String
     let locationText: String?
+    let instructor: String?
     /// Target date for countdown timers (e.g. class end, assignment due).
     let countdownTarget: Date?
     /// 0.0 ... 1.0 for progress bars (nil when N/A).

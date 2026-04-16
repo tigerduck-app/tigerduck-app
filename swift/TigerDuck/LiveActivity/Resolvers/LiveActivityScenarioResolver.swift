@@ -63,6 +63,7 @@ struct LiveActivityScenarioResolver {
             title: slot.course.courseName,
             subtitle: slot.course.timeRange(for: weekday) ?? "",
             locationText: slot.course.classroom(for: weekday),
+            instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.end,
             progress: progress(from: slot.start, to: slot.end, at: now),
             accentHex: accentHex,
@@ -78,6 +79,7 @@ struct LiveActivityScenarioResolver {
             title: slot.course.courseName,
             subtitle: slot.course.timeRange(for: weekday) ?? "",
             locationText: slot.course.classroom(for: weekday),
+            instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.start,
             progress: nil,
             accentHex: accentHex,
@@ -92,12 +94,18 @@ struct LiveActivityScenarioResolver {
             title: assignment.title,
             subtitle: assignment.courseName,
             locationText: nil,
+            instructor: nil,
             countdownTarget: assignment.dueDate,
             progress: nil,
             accentHex: accentHex,
             deepLink: assignment.moodleDeepLink,
             sourceId: assignment.assignmentId
         )
+    }
+
+    private static func nonEmpty(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     // MARK: - Selection helpers
