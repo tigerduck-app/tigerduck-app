@@ -139,6 +139,10 @@ private struct CachedCourse: Codable {
     let scheduleJSON: String
     let moodleIdNumber: String?
     let classroomMapJSON: String?
+    /// Persisted skip state for the course. Optional so older cache files
+    /// written before this field existed continue to decode cleanly; falls
+    /// back to "[]" (no skipped dates) when absent.
+    let skippedDatesJSON: String?
 
     init(from course: SDCourse) {
         courseNo = course.courseNo
@@ -151,6 +155,7 @@ private struct CachedCourse: Codable {
         scheduleJSON = course.scheduleJSON
         moodleIdNumber = course.moodleIdNumber
         classroomMapJSON = course.classroomMapJSON
+        skippedDatesJSON = course.skippedDatesJSON
     }
 
     func toSDCourse() -> SDCourse {
@@ -175,7 +180,7 @@ private struct CachedCourse: Codable {
             classroomMap = [:]
         }
 
-        return SDCourse(
+        let course = SDCourse(
             courseNo: courseNo,
             courseName: courseName,
             instructor: instructor,
@@ -187,6 +192,8 @@ private struct CachedCourse: Codable {
             moodleIdNumber: moodleIdNumber,
             classroomMap: classroomMap
         )
+        course.skippedDatesJSON = skippedDatesJSON ?? "[]"
+        return course
     }
 }
 
