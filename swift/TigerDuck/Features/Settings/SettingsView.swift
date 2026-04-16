@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var showLicense = false
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
+    @State private var showSourceCode = false
     @State private var showNTUSTLogin = false
     @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
@@ -25,6 +26,7 @@ struct SettingsView: View {
     private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
     private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
     private static let licenseURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/blob/main/LICENSE")!
+    private static let sourceCodeURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app")!
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -95,13 +97,12 @@ struct SettingsView: View {
                 Toggle("圖書館及相關功能", isOn: libraryToggleBinding)
             }
 
-            // MARK: - Notifications (hidden — not yet implemented)
-//            Section("通知") {
-//                Toggle("作業到期提醒", isOn: $notifyAssignments)
-//                Toggle("公告通知", isOn: $notifyAnnouncements)
-//                Toggle("免費便當通知", isOn: $notifyFreeLunch)
-//                Toggle("社團活動通知", isOn: $notifyClubs)
-//            }
+            // MARK: - Notifications & Live Activity
+            Section("通知") {
+                NavigationLink("即時動態 Live Activity（實驗性）") {
+                    LiveActivitySettingsView(store: appState.liveActivityPreferences)
+                }
+            }
 
             // MARK: - About
             Section("關於") {
@@ -131,6 +132,13 @@ struct SettingsView: View {
                         UIApplication.shared.open(Self.licenseURL)
                     }
                 }
+                Button("查看原始碼") {
+                    if appState.browserPreference == .inApp {
+                        showSourceCode = true
+                    } else {
+                        UIApplication.shared.open(Self.sourceCodeURL)
+                    }
+                }
             }
         }
         .navigationTitle("設定")
@@ -147,6 +155,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showLicense) {
             InAppBrowserView(url: Self.licenseURL)
+                .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showSourceCode) {
+            InAppBrowserView(url: Self.sourceCodeURL)
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showNTUSTLogin) {
@@ -304,7 +316,7 @@ struct SettingsView: View {
             Spacer()
             if appState.isNTUSTLoggedIn {
                 Button("登出", role: .destructive) {
-                    appState.authService.logout()
+                    appState.logoutNTUST()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

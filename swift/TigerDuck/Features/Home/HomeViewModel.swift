@@ -11,6 +11,10 @@ final class HomeViewModel {
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
+    /// Single source of truth for the merged course list (portal + user-added,
+    /// minus deletions, with custom names overlaid). Sharing this with the
+    /// Live Activity stack keeps Home, Class Table, and lock screen aligned.
+    private let courseProvider = CanonicalCourseProvider()
 
     init() {
         dataObserver = NotificationCenter.default.addObserver(
@@ -31,7 +35,7 @@ final class HomeViewModel {
     }
 
     private func reloadFromCache() {
-        let courses = DataCache.shared.loadCourses()
+        let courses = courseProvider.currentCourses()
         let assignments = DataCache.shared.loadAssignments()
         TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
         allCourses = courses
@@ -82,9 +86,16 @@ final class HomeViewModel {
         if isAuthenticated {
             async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
             async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
-            (allCourses, allAssignments) = await (coursesTask, assignmentsTask)
+            // Discard the raw fetched courses — fetchCourses already wrote
+            // them to DataCache, so currentCourses() returns the same list
+            // merged with user-added entries, deletions, and custom names.
+            // Reading via the provider keeps Home in lockstep with Class
+            // Table and the Live Activity scenario resolver.
+            let (_, fetchedAssignments) = await (coursesTask, assignmentsTask)
+            allCourses = courseProvider.currentCourses()
+            allAssignments = fetchedAssignments
         } else {
-            allCourses = DataCache.shared.loadCourses()
+            allCourses = courseProvider.currentCourses()
             allAssignments = DataCache.shared.loadAssignments()
         }
 

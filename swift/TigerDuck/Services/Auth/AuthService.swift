@@ -6,6 +6,15 @@ final class AuthService {
     /// that read from external stores (Keychain, cookie jar).
     private var _revision = 0
 
+    /// Monotonic counter that identifies the current login session. Bumped
+    /// on logout so that any fetch already in flight at logout time can
+    /// detect it (by capturing this value before the request and comparing
+    /// before persisting) and skip writing the previous user's data back to
+    /// disk. Cancelling the AppState `syncTask` only covers the AppState
+    /// background sync; Home / Class Table / Calendar `refresh` paths run
+    /// on their own Tasks that this generation check protects.
+    private(set) var loginGeneration: Int = 0
+
     var isNTUSTAuthenticated: Bool {
         _ = _revision
         return NTUSTSessionManager.shared.cookiesValid && storedStudentId != nil
@@ -78,6 +87,7 @@ final class AuthService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
         NTUSTSessionManager.shared.invalidateSession()
         loginError = nil
+        loginGeneration &+= 1
         _revision += 1
     }
 }

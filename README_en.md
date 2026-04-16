@@ -21,19 +21,16 @@ It was created to solve common pain points: scattered resources, delayed notific
 Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard to take things even further with TigerDuck!
 
 ### 📚 **Assignments**
-- See how many assignments are still due at a glance
-- Fully automatic sync of assignments and deadlines from Moodle — no more surprise due dates!
+- See how many **assignments are still due** at a glance
+- **Fully automatic** sync of assignments and deadlines from Moodle — no more surprise due dates!
+- **Dynamic Island** and push notifications — don't wait until the last hour for Moodle alerts
 
 ### 📋 **Class Table**
-- Synced directly from the course enrollment system — no more waiting on Moodle's delay like TAT
+- Synced directly from the course enrollment system — no more **Moodle delay**
+- Dynamic Island and Live Activity show you where your next class is!
 
-### 🏛️ **Library**
+### 🏛️ **Library** (Experimental)
 - Instant library entry QR code with zero delay
-- Available as a Widget and on Apple Watch
-
-### 📣 **Announcements**
-- Proactive push notifications for department and faculty announcements
-- Filter, bookmark, and full-text search
 
 ### 🎨 **Customization**
 - Add what you want, remove what you don't
@@ -74,10 +71,11 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard to
 
 ### 🎓 Academics & Learning
 - [x] **Assignments** — Fully automatic Moodle assignment sync
-- [ ] **Assignments+** — Change app icon based on remaining time; send reminder notifications
+- [x] **Assignments+** — Notifications and Dynamic Island
+- [ ] **Assignments++** — Change app icon based on remaining time, tribute to Duolingo
 - [x] **Class Table** — Fetched from the course enrollment system
-- [ ] **Class Table+** — Editable course names, hideable courses, custom pre-class notifications
-- [ ] **Class Table++** — Live Activity / Dynamic Island course status
+- [x] **Class Table+** — Editable course names, deletable courses
+- [x] **Class Table++** — Dynamic Island course status
 - [x] **Calendar** — Aggregated events from school announcements, Moodle, etc.
 - [ ] **Calendar+** — Track study room bookings, lectures, and club events
 - [ ] **Historical GPA & Rankings** — Quick lookup of past academic performance and rankings
@@ -169,6 +167,13 @@ tigerduck-app/
 │       │   ├── Announcements/  # Announcements
 │       │   ├── Settings/       # Settings
 │       │   └── Onboarding/     # First-run onboarding flow
+│       ├── LiveActivity/       # Live Activity / Dynamic Island
+│       │   ├── Models/         # Feature models
+│       │   ├── Preferences/    # User preferences
+│       │   ├── Providers/      # Data providers
+│       │   ├── Resolvers/      # Resolvers
+│       │   ├── Runtime/        # Core runtime
+│       │   └── Scheduling/     # Schedulers
 │       ├── Models/
 │       │   ├── Domain/         # Business logic models
 │       │   └── SwiftData/      # Local persistence models
