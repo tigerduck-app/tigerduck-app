@@ -3,15 +3,18 @@ import SwiftUI
 /// Centralizes Live Activity / reminder related preferences so `AppState`
 /// does not keep accumulating unrelated toggles.
 ///
-/// Defaults match the spec's recommendations:
-/// - `assignmentReminderOffsets`: all 11 offsets selected
+/// Defaults:
+/// - `assignmentReminderOffsets`: 6 high-signal offsets (48h/24h/8h/2h/1h/30m)
+///   — sized so 10 concurrent unfinished assignments still fit under the
+///   scheduler's 60-pending cap without silent drops. Users can opt into
+///   denser coverage in Settings.
 /// - `isLiveActivityEnabled`: true
 /// - `assignmentLiveActivityLeadTime`: 8 hours (also the spec cap)
 /// - `classPreparingLeadTime`: 15 minutes
 /// - All scenario toggles on
 @Observable
 final class LiveActivityPreferencesStore {
-    static let defaultOffsets: Set<AssignmentReminderOffset> = Set(AssignmentReminderOffset.allCases)
+    static let defaultOffsets: Set<AssignmentReminderOffset> = [.hr48, .hr24, .hr8, .hr2, .hr1, .min30]
     static let defaultAssignmentLeadTime: TimeInterval = 8 * 3600
     static let defaultClassPreparingLeadTime: TimeInterval = 15 * 60
     /// Spec invariant: Live Activity lead time must not exceed 8 hours to fit the activity lifecycle.
