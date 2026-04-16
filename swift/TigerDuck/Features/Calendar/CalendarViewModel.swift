@@ -75,6 +75,7 @@ final class CalendarViewModel {
 
     func refresh(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
+        let startGeneration = authService.loginGeneration
         await MainActor.run { manager.loadingState = .loading }
 
         async let moodleEvents = fetchMoodleEvents(authService: authService)
@@ -82,6 +83,13 @@ final class CalendarViewModel {
         let (moodle, school) = await (moodleEvents, schoolEvents)
 
         await MainActor.run {
+            // Bail out if logout happened mid-fetch — otherwise the previous
+            // user's moodle events would be saved back into the calendar
+            // cache after AppState.clearUserScopedData() already purged it.
+            guard authService.loginGeneration == startGeneration else {
+                manager.loadingState = .loaded
+                return
+            }
             // Preserve system events (from EventKit); only replace network-sourced events
             let systemEvents = events.filter { $0.source == .system }
             var updated = systemEvents

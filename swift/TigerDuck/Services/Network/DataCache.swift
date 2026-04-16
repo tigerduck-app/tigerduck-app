@@ -90,6 +90,26 @@ final class DataCache {
         load(from: "course_custom_names.json", in: persistentDir) ?? [:]
     }
 
+    // MARK: - User-scoped cleanup
+
+    /// Remove every file that is scoped to the currently signed-in NTUST user.
+    /// Called on logout so the next user never sees the previous user's data
+    /// on the home screen, in the Live Activity, or in pending reminders.
+    func clearUserScopedData() {
+        let filenames: [(String, URL)] = [
+            ("courses.json", cacheDir),
+            ("assignments.json", cacheDir),
+            ("calendar_events.json", cacheDir),
+            ("user_added_courses.json", persistentDir),
+            ("deleted_courses.json", persistentDir),
+            ("course_custom_names.json", persistentDir),
+        ]
+        for (name, dir) in filenames {
+            let url = dir.appendingPathComponent(name)
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     // MARK: - Private helpers
 
     private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {
@@ -119,6 +139,10 @@ private struct CachedCourse: Codable {
     let scheduleJSON: String
     let moodleIdNumber: String?
     let classroomMapJSON: String?
+    /// Persisted skip state for the course. Optional so older cache files
+    /// written before this field existed continue to decode cleanly; falls
+    /// back to "[]" (no skipped dates) when absent.
+    let skippedDatesJSON: String?
 
     init(from course: SDCourse) {
         courseNo = course.courseNo
@@ -131,6 +155,7 @@ private struct CachedCourse: Codable {
         scheduleJSON = course.scheduleJSON
         moodleIdNumber = course.moodleIdNumber
         classroomMapJSON = course.classroomMapJSON
+        skippedDatesJSON = course.skippedDatesJSON
     }
 
     func toSDCourse() -> SDCourse {
@@ -155,7 +180,7 @@ private struct CachedCourse: Codable {
             classroomMap = [:]
         }
 
-        return SDCourse(
+        let course = SDCourse(
             courseNo: courseNo,
             courseName: courseName,
             instructor: instructor,
@@ -167,6 +192,8 @@ private struct CachedCourse: Codable {
             moodleIdNumber: moodleIdNumber,
             classroomMap: classroomMap
         )
+        course.skippedDatesJSON = skippedDatesJSON ?? "[]"
+        return course
     }
 }
 

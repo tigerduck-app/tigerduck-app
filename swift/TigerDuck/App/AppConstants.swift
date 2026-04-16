@@ -4,6 +4,7 @@ enum AppConstants {
     static let appName = "TigerDuck"
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
+    static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
 
     enum KeychainKeys {
         static let studentId = "ntust_student_id"
@@ -27,6 +28,15 @@ enum AppConstants {
         static let invertSliderDirection = "invertSliderDirection"
         static let libraryFeatureEnabled = "libraryFeatureEnabled"
         static let homeSectionLayout = "homeSectionLayout"
+
+        // MARK: Live Activity / reminders
+        static let assignmentReminderOffsets = "assignmentReminderOffsets"
+        static let isLiveActivityEnabled = "isLiveActivityEnabled"
+        static let assignmentLiveActivityLeadTime = "assignmentLiveActivityLeadTime"
+        static let classPreparingLeadTime = "classPreparingLeadTime"
+        static let showAssignmentScenario = "showAssignmentScenario"
+        static let showClassPreparingScenario = "showClassPreparingScenario"
+        static let showInClassScenario = "showInClassScenario"
     }
 
     enum Periods {
