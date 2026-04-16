@@ -12,7 +12,7 @@ struct LiveActivitySettingsView: View {
             Section {
                 Toggle("啟用動態靈動 (Live Activity)", isOn: $store.isLiveActivityEnabled)
             } footer: {
-                Text("會在鎖定畫面與 Dynamic Island 顯示當前課程或緊急作業。")
+                Text("會在鎖定畫面與 Dynamic Island 顯示當前課程或緊急作業。\n\n情境切換目前需 App 在前景才會即時更新；若 App 在背景或裝置鎖定，要等下次回到前景才會跟上時段。")
             }
 
             Section("顯示情境") {
