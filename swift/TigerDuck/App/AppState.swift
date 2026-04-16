@@ -89,6 +89,20 @@ final class AppState {
         _libraryRevision += 1
     }
 
+    /// Full NTUST logout: invalidate credentials, tear down the Live Activity,
+    /// cancel any pending assignment reminders, and purge user-scoped caches so
+    /// a subsequent login (possibly a different user) never inherits previous
+    /// state on the lock screen or in notifications.
+    func logoutNTUST() {
+        authService.logout()
+        DataCache.shared.clearUserScopedData()
+        Task { @MainActor in
+            await liveActivityCoordinator.endAll()
+            await reminderScheduler.cancelAllOwnedRequests()
+            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        }
+    }
+
     func notifyLibraryStateChanged() {
         _libraryRevision += 1
     }

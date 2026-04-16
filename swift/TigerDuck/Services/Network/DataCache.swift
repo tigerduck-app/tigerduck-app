@@ -90,6 +90,26 @@ final class DataCache {
         load(from: "course_custom_names.json", in: persistentDir) ?? [:]
     }
 
+    // MARK: - User-scoped cleanup
+
+    /// Remove every file that is scoped to the currently signed-in NTUST user.
+    /// Called on logout so the next user never sees the previous user's data
+    /// on the home screen, in the Live Activity, or in pending reminders.
+    func clearUserScopedData() {
+        let filenames: [(String, URL)] = [
+            ("courses.json", cacheDir),
+            ("assignments.json", cacheDir),
+            ("calendar_events.json", cacheDir),
+            ("user_added_courses.json", persistentDir),
+            ("deleted_courses.json", persistentDir),
+            ("course_custom_names.json", persistentDir),
+        ]
+        for (name, dir) in filenames {
+            let url = dir.appendingPathComponent(name)
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     // MARK: - Private helpers
 
     private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {

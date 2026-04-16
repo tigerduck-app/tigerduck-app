@@ -303,7 +303,7 @@ struct SettingsView: View {
             Spacer()
             if appState.isNTUSTLoggedIn {
                 Button("登出", role: .destructive) {
-                    appState.authService.logout()
+                    appState.logoutNTUST()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
