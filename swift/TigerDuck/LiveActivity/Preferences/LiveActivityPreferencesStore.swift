@@ -8,7 +8,7 @@ import SwiftUI
 /// - `isLiveActivityEnabled`: true
 /// - `assignmentLiveActivityLeadTime`: 8 hours (also the spec cap)
 /// - `classPreparingLeadTime`: 15 minutes
-/// - All scenario toggles on, privacy mode off
+/// - All scenario toggles on
 @Observable
 final class LiveActivityPreferencesStore {
     static let defaultOffsets: Set<AssignmentReminderOffset> = Set(AssignmentReminderOffset.allCases)
@@ -68,14 +68,6 @@ final class LiveActivityPreferencesStore {
             )
         }
     }
-    var privacyMode: Bool {
-        didSet {
-            UserDefaults.standard.set(
-                privacyMode,
-                forKey: AppConstants.UserDefaultsKeys.liveActivityPrivacyMode
-            )
-        }
-    }
 
     init() {
         if let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.assignmentReminderOffsets),
@@ -108,9 +100,6 @@ final class LiveActivityPreferencesStore {
         showInClassScenario = UserDefaults.standard.object(
             forKey: AppConstants.UserDefaultsKeys.showInClassScenario
         ) as? Bool ?? true
-        privacyMode = UserDefaults.standard.object(
-            forKey: AppConstants.UserDefaultsKeys.liveActivityPrivacyMode
-        ) as? Bool ?? false
     }
 
     /// Reset everything to defaults. Exposed for settings UI.
@@ -122,7 +111,6 @@ final class LiveActivityPreferencesStore {
         showAssignmentScenario = true
         showClassPreparingScenario = true
         showInClassScenario = true
-        privacyMode = false
     }
 
     private func persistOffsets() {

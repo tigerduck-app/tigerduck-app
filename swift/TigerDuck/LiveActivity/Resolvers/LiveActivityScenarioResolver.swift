@@ -14,8 +14,6 @@ import Foundation
 /// - inClass:          earliest start (handled implicitly since we keep the
 ///                     first matching slot in the sorted timeline)
 struct LiveActivityScenarioResolver {
-    private static let privacyTitle = "（隱藏中）"
-
     let timelineResolver: CourseTimelineResolver
 
     init(timelineResolver: CourseTimelineResolver = CourseTimelineResolver()) {
@@ -35,22 +33,13 @@ struct LiveActivityScenarioResolver {
 
         if preferences.showInClassScenario,
            case .inClass(let slot) = timelineResolver.nonSkippedState(at: now, in: timeline) {
-            return Self.inClassSnapshot(
-                slot: slot,
-                now: now,
-                accentHex: accentHex,
-                privacyMode: preferences.privacyMode
-            )
+            return Self.inClassSnapshot(slot: slot, now: now, accentHex: accentHex)
         }
 
         if preferences.showClassPreparingScenario,
            let nextSlot = Self.nextNonSkippedSlot(in: timeline, after: now),
            nextSlot.start.timeIntervalSince(now) <= preferences.classPreparingLeadTime {
-            return Self.classPreparingSnapshot(
-                slot: nextSlot,
-                accentHex: accentHex,
-                privacyMode: preferences.privacyMode
-            )
+            return Self.classPreparingSnapshot(slot: nextSlot, accentHex: accentHex)
         }
 
         if preferences.showAssignmentScenario,
@@ -59,11 +48,7 @@ struct LiveActivityScenarioResolver {
                leadTime: preferences.assignmentLiveActivityLeadTime,
                now: now
            ) {
-            return Self.assignmentSnapshot(
-                assignment: urgent,
-                accentHex: accentHex,
-                privacyMode: preferences.privacyMode
-            )
+            return Self.assignmentSnapshot(assignment: urgent, accentHex: accentHex)
         }
 
         return nil
@@ -71,68 +56,46 @@ struct LiveActivityScenarioResolver {
 
     // MARK: - Snapshot factories (static, pure — easy to unit test)
 
-    static func inClassSnapshot(
-        slot: CourseTimeSlot,
-        now: Date,
-        accentHex: Int,
-        privacyMode: Bool
-    ) -> LiveActivitySnapshot {
+    static func inClassSnapshot(slot: CourseTimeSlot, now: Date, accentHex: Int) -> LiveActivitySnapshot {
         let weekday = slot.date.scheduleWeekday
-        let title = privacyMode ? privacyTitle : slot.course.courseName
-        let subtitle = slot.course.timeRange(for: weekday) ?? ""
         return LiveActivitySnapshot(
             scenario: .inClass,
-            title: title,
-            subtitle: subtitle,
-            locationText: privacyMode ? nil : slot.course.classroom(for: weekday),
+            title: slot.course.courseName,
+            subtitle: slot.course.timeRange(for: weekday) ?? "",
+            locationText: slot.course.classroom(for: weekday),
             countdownTarget: slot.end,
             progress: progress(from: slot.start, to: slot.end, at: now),
             accentHex: accentHex,
             deepLink: URL(string: "tigerduck://class/\(slot.course.courseNo)"),
-            privacyMode: privacyMode,
             sourceId: slot.id
         )
     }
 
-    static func classPreparingSnapshot(
-        slot: CourseTimeSlot,
-        accentHex: Int,
-        privacyMode: Bool
-    ) -> LiveActivitySnapshot {
+    static func classPreparingSnapshot(slot: CourseTimeSlot, accentHex: Int) -> LiveActivitySnapshot {
         let weekday = slot.date.scheduleWeekday
-        let title = privacyMode ? privacyTitle : "即將上課：\(slot.course.courseName)"
-        let subtitle = slot.course.timeRange(for: weekday) ?? ""
         return LiveActivitySnapshot(
             scenario: .classPreparing,
-            title: title,
-            subtitle: subtitle,
-            locationText: privacyMode ? nil : slot.course.classroom(for: weekday),
+            title: slot.course.courseName,
+            subtitle: slot.course.timeRange(for: weekday) ?? "",
+            locationText: slot.course.classroom(for: weekday),
             countdownTarget: slot.start,
             progress: nil,
             accentHex: accentHex,
             deepLink: URL(string: "tigerduck://class/\(slot.course.courseNo)"),
-            privacyMode: privacyMode,
             sourceId: slot.id
         )
     }
 
-    static func assignmentSnapshot(
-        assignment: SDAssignment,
-        accentHex: Int,
-        privacyMode: Bool
-    ) -> LiveActivitySnapshot {
-        let title = privacyMode ? privacyTitle : assignment.title
-        let subtitle = privacyMode ? "作業即將到期" : assignment.courseName
-        return LiveActivitySnapshot(
+    static func assignmentSnapshot(assignment: SDAssignment, accentHex: Int) -> LiveActivitySnapshot {
+        LiveActivitySnapshot(
             scenario: .assignmentUrgent,
-            title: title,
-            subtitle: subtitle,
+            title: assignment.title,
+            subtitle: assignment.courseName,
             locationText: nil,
             countdownTarget: assignment.dueDate,
             progress: nil,
             accentHex: accentHex,
             deepLink: assignment.moodleDeepLink,
-            privacyMode: privacyMode,
             sourceId: assignment.assignmentId
         )
     }

@@ -15,7 +15,6 @@ nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable 
     /// Accent color as hex (matches AppState.accentColorHex format).
     let accentHex: Int
     let deepLink: URL?
-    let privacyMode: Bool
     /// Stable id used for tie-breaks and `update` vs `end` decisions.
     let sourceId: String
 }

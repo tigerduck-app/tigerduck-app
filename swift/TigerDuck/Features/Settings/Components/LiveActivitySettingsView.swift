@@ -54,10 +54,6 @@ struct LiveActivitySettingsView: View {
             }
             .disabled(!store.isLiveActivityEnabled)
 
-            Section("隱私") {
-                Toggle("隱私模式（模糊文案）", isOn: $store.privacyMode)
-            }
-
             Section {
                 ForEach(AssignmentReminderOffset.allCases) { offset in
                     Toggle(offset.label, isOn: bindingForOffset(offset))

@@ -36,7 +36,6 @@ enum AppConstants {
         static let showAssignmentScenario = "showAssignmentScenario"
         static let showClassPreparingScenario = "showClassPreparingScenario"
         static let showInClassScenario = "showInClassScenario"
-        static let liveActivityPrivacyMode = "liveActivityPrivacyMode"
     }
 
     enum Periods {
