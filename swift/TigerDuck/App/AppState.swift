@@ -129,7 +129,10 @@ final class AppState {
     var accentColorHex: Int = UserDefaults.standard.object(forKey: AppConstants.UserDefaultsKeys.accentColorHex) as? Int ?? 0x007AFF {
         didSet {
             UserDefaults.standard.set(accentColorHex, forKey: AppConstants.UserDefaultsKeys.accentColorHex)
-            scheduleLiveActivityRefresh()
+            // Accent color only affects the Live Activity snapshot — reminder
+            // notifications are content-identical, so skip rescheduling to
+            // avoid thrashing UNUserNotificationCenter on slider drags.
+            scheduleLiveActivityRefresh(rescheduleReminderNotifications: false)
         }
     }
 
@@ -340,13 +343,21 @@ final class AppState {
 
     /// Debounces multiple change events (e.g. slider drags or quick toggles)
     /// into a single refresh pass so the scheduler is not thrashed.
-    private func scheduleLiveActivityRefresh() {
+    ///
+    /// - Parameter rescheduleReminderNotifications: pass `false` when the
+    ///   trigger only affects the Live Activity snapshot (e.g. accent color).
+    ///   Reminder notifications carry only title / course / due date, so
+    ///   re-enqueuing them for visual-only changes does no user-visible work
+    ///   and just thrashes `UNUserNotificationCenter`.
+    private func scheduleLiveActivityRefresh(rescheduleReminderNotifications: Bool = true) {
         pendingRefreshTask?.cancel()
         pendingRefreshTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
             await refreshLiveActivity()
-            await rescheduleReminders()
+            if rescheduleReminderNotifications {
+                await rescheduleReminders()
+            }
         }
     }
 
