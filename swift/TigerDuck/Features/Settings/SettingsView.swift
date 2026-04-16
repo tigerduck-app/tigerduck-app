@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var showLicense = false
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
+    @State private var showSourceCode = false
     @State private var showNTUSTLogin = false
     @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
@@ -25,6 +26,7 @@ struct SettingsView: View {
     private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
     private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
     private static let licenseURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/blob/main/LICENSE")!
+    private static let sourceCodeURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app")!
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -130,6 +132,13 @@ struct SettingsView: View {
                         UIApplication.shared.open(Self.licenseURL)
                     }
                 }
+                Button("查看原始碼") {
+                    if appState.browserPreference == .inApp {
+                        showSourceCode = true
+                    } else {
+                        UIApplication.shared.open(Self.sourceCodeURL)
+                    }
+                }
             }
         }
         .navigationTitle("設定")
@@ -146,6 +155,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showLicense) {
             InAppBrowserView(url: Self.licenseURL)
+                .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showSourceCode) {
+            InAppBrowserView(url: Self.sourceCodeURL)
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showNTUSTLogin) {
