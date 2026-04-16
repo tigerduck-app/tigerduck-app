@@ -27,6 +27,16 @@ enum AppConstants {
         static let invertSliderDirection = "invertSliderDirection"
         static let libraryFeatureEnabled = "libraryFeatureEnabled"
         static let homeSectionLayout = "homeSectionLayout"
+
+        // MARK: Live Activity / reminders
+        static let assignmentReminderOffsets = "assignmentReminderOffsets"
+        static let isLiveActivityEnabled = "isLiveActivityEnabled"
+        static let assignmentLiveActivityLeadTime = "assignmentLiveActivityLeadTime"
+        static let classPreparingLeadTime = "classPreparingLeadTime"
+        static let showAssignmentScenario = "showAssignmentScenario"
+        static let showClassPreparingScenario = "showClassPreparingScenario"
+        static let showInClassScenario = "showInClassScenario"
+        static let liveActivityPrivacyMode = "liveActivityPrivacyMode"
     }
 
     enum Periods {
