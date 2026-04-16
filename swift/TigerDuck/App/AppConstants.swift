@@ -4,6 +4,7 @@ enum AppConstants {
     static let appName = "TigerDuck"
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
+    static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
 
     enum KeychainKeys {
         static let studentId = "ntust_student_id"

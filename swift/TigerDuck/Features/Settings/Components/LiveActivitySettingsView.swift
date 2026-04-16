@@ -4,7 +4,6 @@ import SwiftUI
 /// Lives behind a NavigationLink in SettingsView so the top-level list
 /// stays short.
 struct LiveActivitySettingsView: View {
-    @Environment(AppState.self) private var appState
     @Bindable var store: LiveActivityPreferencesStore
 
     var body: some View {
@@ -71,12 +70,6 @@ struct LiveActivitySettingsView: View {
             }
         }
         .navigationTitle("通知與動態靈動")
-        .onDisappear {
-            Task {
-                await appState.refreshLiveActivity()
-                await appState.rescheduleReminders()
-            }
-        }
     }
 
     private func bindingForOffset(_ offset: AssignmentReminderOffset) -> Binding<Bool> {

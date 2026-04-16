@@ -18,7 +18,7 @@ final class LiveActivityPreferencesStore {
     static let maximumAssignmentLeadTime: TimeInterval = 8 * 3600
 
     var assignmentReminderOffsets: Set<AssignmentReminderOffset> {
-        didSet { persistOffsets() }
+        didSet { persistOffsets(); notifyChange() }
     }
     var isLiveActivityEnabled: Bool {
         didSet {
@@ -26,6 +26,7 @@ final class LiveActivityPreferencesStore {
                 isLiveActivityEnabled,
                 forKey: AppConstants.UserDefaultsKeys.isLiveActivityEnabled
             )
+            notifyChange()
         }
     }
     var assignmentLiveActivityLeadTime: TimeInterval {
@@ -34,6 +35,7 @@ final class LiveActivityPreferencesStore {
                 assignmentLiveActivityLeadTime,
                 forKey: AppConstants.UserDefaultsKeys.assignmentLiveActivityLeadTime
             )
+            notifyChange()
         }
     }
     var classPreparingLeadTime: TimeInterval {
@@ -42,6 +44,7 @@ final class LiveActivityPreferencesStore {
                 classPreparingLeadTime,
                 forKey: AppConstants.UserDefaultsKeys.classPreparingLeadTime
             )
+            notifyChange()
         }
     }
     var showAssignmentScenario: Bool {
@@ -50,6 +53,7 @@ final class LiveActivityPreferencesStore {
                 showAssignmentScenario,
                 forKey: AppConstants.UserDefaultsKeys.showAssignmentScenario
             )
+            notifyChange()
         }
     }
     var showClassPreparingScenario: Bool {
@@ -58,6 +62,7 @@ final class LiveActivityPreferencesStore {
                 showClassPreparingScenario,
                 forKey: AppConstants.UserDefaultsKeys.showClassPreparingScenario
             )
+            notifyChange()
         }
     }
     var showInClassScenario: Bool {
@@ -66,6 +71,7 @@ final class LiveActivityPreferencesStore {
                 showInClassScenario,
                 forKey: AppConstants.UserDefaultsKeys.showInClassScenario
             )
+            notifyChange()
         }
     }
 
@@ -118,5 +124,15 @@ final class LiveActivityPreferencesStore {
         if let data = try? JSONEncoder().encode(raws) {
             UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.assignmentReminderOffsets)
         }
+    }
+
+    /// Broadcasts that one or more preferences changed. AppState debounces
+    /// the resulting refresh so rapid changes (e.g. dragging a slider) do
+    /// not trigger many back-to-back Live Activity / notification reschedules.
+    private func notifyChange() {
+        NotificationCenter.default.post(
+            name: AppConstants.liveActivityPreferencesDidChange,
+            object: nil
+        )
     }
 }

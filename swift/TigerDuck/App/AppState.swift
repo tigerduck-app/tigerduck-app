@@ -36,16 +36,24 @@ final class AppState {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                await self.refreshLiveActivity()
-                await self.rescheduleReminders()
-            }
+            self?.scheduleLiveActivityRefresh()
+        }
+
+        preferencesObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.liveActivityPreferencesDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleLiveActivityRefresh()
         }
     }
 
     deinit {
+        pendingRefreshTask?.cancel()
         if let observer = liveActivityObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = preferencesObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -61,6 +69,8 @@ final class AppState {
     private let scenarioResolver = LiveActivityScenarioResolver()
     private let courseProvider = CanonicalCourseProvider()
     private var liveActivityObserver: Any?
+    private var preferencesObserver: Any?
+    private var pendingRefreshTask: Task<Void, Never>?
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
@@ -211,6 +221,18 @@ final class AppState {
             assignments: assignments,
             offsets: liveActivityPreferences.assignmentReminderOffsets
         )
+    }
+
+    /// Debounces multiple change events (e.g. slider drags or quick toggles)
+    /// into a single refresh pass so the scheduler is not thrashed.
+    private func scheduleLiveActivityRefresh() {
+        pendingRefreshTask?.cancel()
+        pendingRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            await refreshLiveActivity()
+            await rescheduleReminders()
+        }
     }
 
     /// Background sync all data on app launch
