@@ -5,7 +5,7 @@ import Foundation
 /// Both sides must compile this file; once the extension target exists, add
 /// this same source file to its Compile Sources list (handoff doc step 3).
 nonisolated struct TigerDuckActivityAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
+    struct ContentState: Codable, Hashable {
         let snapshot: LiveActivitySnapshot
     }
 
