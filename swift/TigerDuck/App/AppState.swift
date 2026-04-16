@@ -97,7 +97,10 @@ final class AppState {
 
     /// Accent color hex stored as Int (default system blue 0x007AFF)
     var accentColorHex: Int = UserDefaults.standard.object(forKey: AppConstants.UserDefaultsKeys.accentColorHex) as? Int ?? 0x007AFF {
-        didSet { UserDefaults.standard.set(accentColorHex, forKey: AppConstants.UserDefaultsKeys.accentColorHex) }
+        didSet {
+            UserDefaults.standard.set(accentColorHex, forKey: AppConstants.UserDefaultsKeys.accentColorHex)
+            scheduleLiveActivityRefresh()
+        }
     }
 
     var accentColor: Color {
