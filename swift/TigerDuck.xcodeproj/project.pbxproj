@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		42B9BC012F90EBFA00D3B5A1 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */; };
+		42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
+		42B9BC142F90EBFB00D3B5A1 /* TigerDuckLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42D2EEAD2F73B4B300973752 /* tigerduck.icon in Resources */ = {isa = PBXBuildFile; fileRef = 42D2EEAC2F73B4B300973752 /* tigerduck.icon */; };
 /* End PBXBuildFile section */
 
@@ -25,18 +28,66 @@
 			remoteGlobalIDString = 424C46552F6E763C009D1DDA;
 			remoteInfo = TigerDuck;
 		};
+		42B9BC122F90EBFB00D3B5A1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 424C464E2F6E763C009D1DDA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 42B9BBFD2F90EBFA00D3B5A1;
+			remoteInfo = TigerDuckLiveActivityExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		42B9BC192F90EBFB00D3B5A1 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				42B9BC142F90EBFB00D3B5A1 /* TigerDuckLiveActivityExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		424C46562F6E763C009D1DDA /* TigerDuck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TigerDuck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		424C46652F6E763E009D1DDA /* TigerDuckTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TigerDuckTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		424C466F2F6E763E009D1DDA /* TigerDuckUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TigerDuckUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TigerDuckLiveActivityExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		42B9BC8A2F90EDD100D3B5A1 /* TigerDuckLiveActivityExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TigerDuckLiveActivityExtension.entitlements; sourceTree = "<group>"; };
 		42D2EEAC2F73B4B300973752 /* tigerduck.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = tigerduck.icon; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		42B9BC152F90EBFB00D3B5A1 /* Exceptions for "TigerDuckLiveActivity" folder in "TigerDuckLiveActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
+		};
+		42B9BC852F90EC9D00D3B5A1 /* Exceptions for "TigerDuck" folder in "TigerDuckLiveActivityExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				LiveActivity/Models/LiveActivityScenarioKind.swift,
+				LiveActivity/Models/LiveActivitySnapshot.swift,
+				LiveActivity/Runtime/SharedSnapshotStore.swift,
+				LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
+			);
+			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		424C46582F6E763C009D1DDA /* TigerDuck */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				42B9BC852F90EC9D00D3B5A1 /* Exceptions for "TigerDuck" folder in "TigerDuckLiveActivityExtension" target */,
+			);
 			path = TigerDuck;
 			sourceTree = "<group>";
 		};
@@ -48,6 +99,14 @@
 		424C46722F6E763E009D1DDA /* TigerDuckUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = TigerDuckUITests;
+			sourceTree = "<group>";
+		};
+		42B9BC042F90EBFA00D3B5A1 /* TigerDuckLiveActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				42B9BC152F90EBFB00D3B5A1 /* Exceptions for "TigerDuckLiveActivity" folder in "TigerDuckLiveActivityExtension" target */,
+			);
+			path = TigerDuckLiveActivity;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -74,15 +133,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		42B9BBFB2F90EBFA00D3B5A1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */,
+				42B9BC012F90EBFA00D3B5A1 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		424C464D2F6E763C009D1DDA = {
 			isa = PBXGroup;
 			children = (
+				42B9BC8A2F90EDD100D3B5A1 /* TigerDuckLiveActivityExtension.entitlements */,
 				424C46582F6E763C009D1DDA /* TigerDuck */,
 				424C46682F6E763E009D1DDA /* TigerDuckTests */,
 				424C46722F6E763E009D1DDA /* TigerDuckUITests */,
+				42B9BC042F90EBFA00D3B5A1 /* TigerDuckLiveActivity */,
+				42B9BBFF2F90EBFA00D3B5A1 /* Frameworks */,
 				424C46572F6E763C009D1DDA /* Products */,
 				42D2EEAC2F73B4B300973752 /* tigerduck.icon */,
 			);
@@ -94,8 +165,18 @@
 				424C46562F6E763C009D1DDA /* TigerDuck.app */,
 				424C46652F6E763E009D1DDA /* TigerDuckTests.xctest */,
 				424C466F2F6E763E009D1DDA /* TigerDuckUITests.xctest */,
+				42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		42B9BBFF2F90EBFA00D3B5A1 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */,
+				42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -108,10 +189,12 @@
 				424C46522F6E763C009D1DDA /* Sources */,
 				424C46532F6E763C009D1DDA /* Frameworks */,
 				424C46542F6E763C009D1DDA /* Resources */,
+				42B9BC192F90EBFB00D3B5A1 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				42B9BC132F90EBFB00D3B5A1 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				424C46582F6E763C009D1DDA /* TigerDuck */,
@@ -169,6 +252,28 @@
 			productReference = 424C466F2F6E763E009D1DDA /* TigerDuckUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 42B9BC162F90EBFB00D3B5A1 /* Build configuration list for PBXNativeTarget "TigerDuckLiveActivityExtension" */;
+			buildPhases = (
+				42B9BBFA2F90EBFA00D3B5A1 /* Sources */,
+				42B9BBFB2F90EBFA00D3B5A1 /* Frameworks */,
+				42B9BBFC2F90EBFA00D3B5A1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				42B9BC042F90EBFA00D3B5A1 /* TigerDuckLiveActivity */,
+			);
+			name = TigerDuckLiveActivityExtension;
+			packageProductDependencies = (
+			);
+			productName = TigerDuckLiveActivityExtension;
+			productReference = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -190,6 +295,9 @@
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = 424C46552F6E763C009D1DDA;
 					};
+					42B9BBFD2F90EBFA00D3B5A1 = {
+						CreatedOnToolsVersion = 26.3;
+					};
 				};
 			};
 			buildConfigurationList = 424C46512F6E763C009D1DDA /* Build configuration list for PBXProject "TigerDuck" */;
@@ -210,6 +318,7 @@
 				424C46552F6E763C009D1DDA /* TigerDuck */,
 				424C46642F6E763E009D1DDA /* TigerDuckTests */,
 				424C466E2F6E763E009D1DDA /* TigerDuckUITests */,
+				42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -231,6 +340,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		424C466D2F6E763E009D1DDA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		42B9BBFC2F90EBFA00D3B5A1 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -261,6 +377,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		42B9BBFA2F90EBFA00D3B5A1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -273,6 +396,11 @@
 			isa = PBXTargetDependency;
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 			targetProxy = 424C46702F6E763E009D1DDA /* PBXContainerItemProxy */;
+		};
+		42B9BC132F90EBFB00D3B5A1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
+			targetProxy = 42B9BC122F90EBFB00D3B5A1 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -399,6 +527,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = tigerduck;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = TigerDuck/TigerDuck.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -409,6 +538,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -447,6 +577,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = tigerduck;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = TigerDuck/TigerDuck.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -457,6 +588,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -595,6 +727,73 @@
 			};
 			name = Release;
 		};
+		42B9BC172F90EBFB00D3B5A1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = TigerDuckLiveActivityExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 43UV8F72V6;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TigerDuckLiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TigerDuckLiveActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		42B9BC182F90EBFB00D3B5A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = TigerDuckLiveActivityExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 43UV8F72V6;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TigerDuckLiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TigerDuckLiveActivity;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -630,6 +829,15 @@
 			buildConfigurations = (
 				424C46802F6E763E009D1DDA /* Debug */,
 				424C46812F6E763E009D1DDA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		42B9BC162F90EBFB00D3B5A1 /* Build configuration list for PBXNativeTarget "TigerDuckLiveActivityExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				42B9BC172F90EBFB00D3B5A1 /* Debug */,
+				42B9BC182F90EBFB00D3B5A1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
