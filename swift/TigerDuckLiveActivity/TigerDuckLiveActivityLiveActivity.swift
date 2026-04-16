@@ -73,6 +73,15 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
 
 private struct LockScreenView: View {
     let snapshot: LiveActivitySnapshot
+    private let iconVerticalOffset: CGFloat = 11
+    private let countdownHorizontalOffset: CGFloat = 20
+    private let countdownVerticalOffset: CGFloat = 0
+    private let countdownColumnWidth: CGFloat = 178
+    private let countdownFontSize: CGFloat = 44
+    private let countdownCaptionFontSize: CGFloat = 13
+    private let metadataRowHeight: CGFloat = 18
+    private let titleMinimumScale: CGFloat = 0.8
+    private let secondaryMinimumScale: CGFloat = 0.82
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -82,37 +91,67 @@ private struct LockScreenView: View {
                     .foregroundStyle(hexColor(snapshot.accentHex))
                     .frame(width: 48, height: 48)
                     .background(hexColor(snapshot.accentHex).opacity(0.18), in: Circle())
+                    .offset(y: iconVerticalOffset)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(snapshot.title)
-                        .font(.title3.bold())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                HStack(alignment: .bottom, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(snapshot.title)
+                            .font(.title3.bold())
+                            .lineLimit(1)
+                            .minimumScaleFactor(titleMinimumScale)
+                            .truncationMode(.tail)
+                            .allowsTightening(true)
+                            .layoutPriority(2)
 
-                    Text(snapshot.subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    if let loc = snapshot.locationText, !loc.isEmpty {
-                        Label(loc, systemImage: "mappin.and.ellipse")
-                            .font(.caption)
+                        Text(snapshot.subtitle)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .labelStyle(.titleAndIcon)
-                    }
-                }
+                            .lineLimit(1)
+                            .minimumScaleFactor(secondaryMinimumScale)
+                            .truncationMode(.tail)
+                            .allowsTightening(true)
+                            .layoutPriority(1)
 
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    countdownLabel(snapshot)
-                        .font(.largeTitle.monospacedDigit().bold())
-                        .foregroundStyle(hexColor(snapshot.accentHex))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                    Text(countdownCaption(for: snapshot.scenario))
+                        Group {
+                            if let loc = snapshot.locationText, !loc.isEmpty {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "mappin.and.ellipse")
+                                    Text(loc)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(secondaryMinimumScale)
+                                        .truncationMode(.tail)
+                                        .allowsTightening(true)
+                                }
+                            } else {
+                                Color.clear
+                            }
+                        }
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .frame(height: metadataRowHeight, alignment: .center)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .trailing, spacing: 0) {
+                        countdownLabel(snapshot)
+                            .font(.system(size: countdownFontSize, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(hexColor(snapshot.accentHex))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .offset(x: countdownHorizontalOffset, y: countdownVerticalOffset)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        Text(countdownCaption(for: snapshot.scenario))
+                            .font(.system(size: countdownCaptionFontSize))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(secondaryMinimumScale)
+                            .truncationMode(.tail)
+                            .frame(height: metadataRowHeight, alignment: .center)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .frame(width: countdownColumnWidth, alignment: .bottomTrailing)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if let progress = snapshot.progress {
