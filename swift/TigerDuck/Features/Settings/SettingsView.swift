@@ -97,7 +97,7 @@ struct SettingsView: View {
 
             // MARK: - Notifications & Live Activity
             Section("通知") {
-                NavigationLink("通知與動態靈動") {
+                NavigationLink("即時動態 Live Activity（實驗性）") {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }
             }

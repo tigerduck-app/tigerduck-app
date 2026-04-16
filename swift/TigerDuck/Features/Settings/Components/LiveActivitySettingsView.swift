@@ -10,22 +10,22 @@ struct LiveActivitySettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("啟用動態靈動 (Live Activity)", isOn: $store.isLiveActivityEnabled)
+                Toggle("啟用即時動態 Live Activity", isOn: $store.isLiveActivityEnabled)
             } footer: {
-                Text("會在鎖定畫面與 Dynamic Island 顯示當前課程或緊急作業。\n\n情境切換目前需 App 在前景才會即時更新；若 App 在背景或裝置鎖定，要等下次回到前景才會跟上時段。")
+                Text("會在鎖定畫面或動態島顯示當前課程和作業。\n\n需 App 在開啟才會即時更新")
             }
 
             Section("顯示情境") {
                 Toggle("上課中", isOn: $store.showInClassScenario)
                 Toggle("即將上課", isOn: $store.showClassPreparingScenario)
-                Toggle("作業緊急", isOn: $store.showAssignmentScenario)
+                Toggle("作業", isOn: $store.showAssignmentScenario)
             }
             .disabled(!store.isLiveActivityEnabled)
 
             Section("顯示時機") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("作業進入 Live Activity")
+                        Text("作業警告")
                         Spacer()
                         Text(formatHours(store.assignmentLiveActivityLeadTime))
                             .foregroundStyle(.secondary)
@@ -39,7 +39,7 @@ struct LiveActivitySettingsView: View {
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("下一節課提前視窗")
+                        Text("即將上課")
                         Spacer()
                         Text(formatMinutes(store.classPreparingLeadTime))
                             .foregroundStyle(.secondary)
@@ -59,9 +59,9 @@ struct LiveActivitySettingsView: View {
                     Toggle(offset.label, isOn: bindingForOffset(offset))
                 }
             } header: {
-                Text("作業提醒時機")
+                Text("作業通知")
             } footer: {
-                Text("每個時機會在作業截止前透過本機通知提醒。")
+                Text("作業截止前會發通知敲您")
             }
 
             Section {
@@ -70,7 +70,7 @@ struct LiveActivitySettingsView: View {
                 }
             }
         }
-        .navigationTitle("通知與動態靈動")
+        .navigationTitle("即時動態 Live Activity（實驗性）")
         .task {
             // Request notification permission only at this explicit entry
             // point. Refresh paths (theme tweaks, foreground transitions,
