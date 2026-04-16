@@ -80,6 +80,14 @@ final class ClassTableViewModel {
     }
 
     private func reloadFromCache() {
+        // Re-read the per-user customization sets from disk on every reload
+        // so that a logout (which deletes the backing files and posts
+        // dataDidUpdate) actually clears the in-memory state. Loading from
+        // disk just once at init left the previous account's deletions and
+        // renames applied to the next user's class table for the rest of
+        // the app session.
+        deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
+        courseCustomNames = DataCache.shared.loadCourseCustomNames()
         courses = buildCourseList(
             DataCache.shared.loadCourses(),
             DataCache.shared.loadUserAddedCourses()
