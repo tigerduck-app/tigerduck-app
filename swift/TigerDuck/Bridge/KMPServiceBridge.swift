@@ -16,6 +16,12 @@ private struct CourseData: Sendable {
 enum KMPServiceBridge {
 
     static func fetchCourses(authService: AuthService) async -> [SDCourse] {
+        // Snapshot the login generation before issuing the network call.
+        // Any logout that happens while we are awaiting will bump this
+        // counter, and the post-fetch save below skips the write so the
+        // previous user's data does not land in DataCache after
+        // `clearUserScopedData()` has already run.
+        let startGeneration = authService.loginGeneration
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
             return DataCache.shared.loadCourses()
@@ -108,11 +114,14 @@ enum KMPServiceBridge {
                 )
             }
 
-            // Skip the cache write if logout cancelled this sync while the
-            // network call was in flight — otherwise the previous user's
-            // course list lands on disk after `clearUserScopedData()` has
-            // already run and the next account inherits stale data.
-            if !courses.isEmpty, !Task.isCancelled {
+            // Drop the cache write when either the calling Task was
+            // cancelled (covers AppState.syncTask in the background sync
+            // path) or the login generation moved on (covers Home /
+            // ClassTable / Calendar refresh paths whose Task is not owned
+            // by AppState and therefore is not reached by syncTask?.cancel()).
+            if !courses.isEmpty,
+               !Task.isCancelled,
+               authService.loginGeneration == startGeneration {
                 DataCache.shared.saveCourses(courses)
             }
             return courses
@@ -122,6 +131,7 @@ enum KMPServiceBridge {
     }
 
     static func fetchAssignments(authService: AuthService) async -> [SDAssignment] {
+        let startGeneration = authService.loginGeneration
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
             return DataCache.shared.loadAssignments()
@@ -134,8 +144,10 @@ enum KMPServiceBridge {
                 studentId: studentId,
                 password: password
             )
-            // Same logout-race guard as fetchCourses above.
-            if !Task.isCancelled {
+            // Same dual guard as fetchCourses above: cancellation OR a
+            // logout that bumped loginGeneration must drop the save.
+            if !Task.isCancelled,
+               authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignments)
             }
             return assignments
