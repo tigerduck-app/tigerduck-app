@@ -50,6 +50,7 @@ final class AppState {
 
     deinit {
         pendingRefreshTask?.cancel()
+        boundaryRefreshTask?.cancel()
         if let observer = liveActivityObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -67,10 +68,12 @@ final class AppState {
     private let liveActivityCoordinator = LiveActivityCoordinator()
     private let reminderScheduler = AssignmentReminderScheduler()
     private let scenarioResolver = LiveActivityScenarioResolver()
+    private let timelineResolver = CourseTimelineResolver()
     private let courseProvider = CanonicalCourseProvider()
     private var liveActivityObserver: Any?
     private var preferencesObserver: Any?
     private var pendingRefreshTask: Task<Void, Never>?
+    private var boundaryRefreshTask: Task<Void, Never>?
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
@@ -219,15 +222,83 @@ final class AppState {
     /// frequently — the coordinator only issues ActivityKit calls when the
     /// snapshot actually changes.
     func refreshLiveActivity() async {
+        let now = Date()
         let courses = courseProvider.currentCourses()
         let assignments = DataCache.shared.loadAssignments()
         let snapshot = scenarioResolver.resolve(
             courses: courses,
             assignments: assignments,
             preferences: liveActivityPreferences,
-            accentHex: accentColorHex
+            accentHex: accentColorHex,
+            now: now
         )
         await liveActivityCoordinator.apply(snapshot: snapshot)
+        scheduleBoundaryRefresh(
+            snapshot: snapshot,
+            courses: courses,
+            assignments: assignments,
+            now: now
+        )
+    }
+
+    /// While the app is in the foreground, fire a one-shot refresh as soon as
+    /// the next meaningful scenario boundary elapses so the Live Activity does
+    /// not sit on a stale scenario. When the app is backgrounded the Task is
+    /// suspended by iOS; `scenePhase == .active` on return triggers another
+    /// refresh, which reschedules this task. This is a best-effort foreground
+    /// improvement — true background correctness needs push updates.
+    private func scheduleBoundaryRefresh(
+        snapshot: LiveActivitySnapshot?,
+        courses: [SDCourse],
+        assignments: [SDAssignment],
+        now: Date
+    ) {
+        boundaryRefreshTask?.cancel()
+        guard let boundary = nextScenarioBoundary(
+            snapshot: snapshot,
+            courses: courses,
+            assignments: assignments,
+            now: now
+        ) else { return }
+        let delay = boundary.timeIntervalSince(now) + 1
+        guard delay > 0 else { return }
+        boundaryRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            await self?.refreshLiveActivity()
+        }
+    }
+
+    private func nextScenarioBoundary(
+        snapshot: LiveActivitySnapshot?,
+        courses: [SDCourse],
+        assignments: [SDAssignment],
+        now: Date
+    ) -> Date? {
+        var candidates: [Date] = []
+
+        if let target = snapshot?.countdownTarget {
+            candidates.append(target)
+        }
+
+        let classPrep = liveActivityPreferences.classPreparingLeadTime
+        if let nextClassStart = timelineResolver
+            .timeline(for: courses, around: now)
+            .filter({ $0.start > now })
+            .min(by: { $0.start < $1.start })?.start {
+            candidates.append(nextClassStart.addingTimeInterval(-classPrep))
+            candidates.append(nextClassStart)
+        }
+
+        let assignmentLead = liveActivityPreferences.assignmentLiveActivityLeadTime
+        if let nextDue = assignments
+            .filter({ !$0.isCompleted && $0.dueDate > now })
+            .min(by: { $0.dueDate < $1.dueDate })?.dueDate {
+            candidates.append(nextDue.addingTimeInterval(-assignmentLead))
+            candidates.append(nextDue)
+        }
+
+        return candidates.filter { $0 > now }.min()
     }
 
     /// Rebuilds all reminder notifications from the current cached assignments
