@@ -12,50 +12,46 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
             let snapshot = context.state.snapshot
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: iconName(for: snapshot.scenario))
-                        .font(.title3)
-                        .foregroundStyle(hexColor(snapshot.accentHex))
-                        .frame(width: 36, height: 36)
-                        .background(hexColor(snapshot.accentHex).opacity(0.18), in: Circle())
-                        .padding(.leading, 4)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(hexColor(snapshot.accentHex))
+                            .frame(width: 8, height: 8)
+                        Text(statusLabel(for: snapshot.scenario))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 1) {
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
                         countdownLabel(snapshot)
-                            .font(.title2.monospacedDigit().bold())
-                            .foregroundStyle(hexColor(snapshot.accentHex))
+                            .font(.footnote.monospacedDigit().bold())
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .multilineTextAlignment(.trailing)
                     }
-                    .padding(.trailing, 4)
+                    .padding(.trailing, 8)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(snapshot.title)
-                            .font(.headline)
-                            .lineLimit(1)
-                        HStack(spacing: 6) {
-                            Text(snapshot.subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            if let loc = snapshot.locationText, !loc.isEmpty {
-                                Text("·")
-                                    .foregroundStyle(.secondary)
-                                Label(loc, systemImage: "mappin.and.ellipse")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .labelStyle(.titleAndIcon)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 4)
+                    ExpandedBottomView(snapshot: snapshot)
                 }
             } compactLeading: {
-                Image(systemName: iconName(for: snapshot.scenario))
-                    .foregroundStyle(hexColor(snapshot.accentHex))
+                if let loc = snapshot.locationText, !loc.isEmpty {
+                    Text(loc)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(hexColor(snapshot.accentHex))
+                        .lineLimit(1)
+                } else {
+                    Image(systemName: iconName(for: snapshot.scenario))
+                        .foregroundStyle(hexColor(snapshot.accentHex))
+                }
             } compactTrailing: {
                 countdownLabel(snapshot)
                     .font(.caption.monospacedDigit().bold())
                     .foregroundStyle(hexColor(snapshot.accentHex))
+                    .frame(width: 60, alignment: .leading)
             } minimal: {
                 Image(systemName: iconName(for: snapshot.scenario))
                     .foregroundStyle(hexColor(snapshot.accentHex))
@@ -150,6 +146,66 @@ private struct LockScreenView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Dynamic Island expanded bottom (mirrors LockScreen rows 2-4)
+
+private struct ExpandedBottomView: View {
+    let snapshot: LiveActivitySnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(snapshot.title)
+                .font(.title2.bold())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .truncationMode(.tail)
+                .allowsTightening(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let progress = snapshot.progress {
+                ProgressView(value: max(0, min(1, progress)))
+                    .tint(hexColor(snapshot.accentHex))
+                    .scaleEffect(x: 1, y: 1.2, anchor: .center)
+                    .padding(.vertical, 6)
+            }
+
+            HStack(spacing: 0) {
+                HStack(spacing: 4) {
+                    if let loc = snapshot.locationText, !loc.isEmpty {
+                        Image(systemName: "mappin.and.ellipse")
+                        Text(loc)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    if !snapshot.subtitle.isEmpty {
+                        Image(systemName: "clock.fill")
+                        Text(snapshot.subtitle)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    if let ins = snapshot.instructor, !ins.isEmpty {
+                        Image(systemName: "person.fill")
+                        Text(ins)
+                    }
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
+        .padding(.bottom, 4)
     }
 }
 
