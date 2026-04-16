@@ -95,13 +95,12 @@ struct SettingsView: View {
                 Toggle("圖書館及相關功能", isOn: libraryToggleBinding)
             }
 
-            // MARK: - Notifications (hidden — not yet implemented)
-//            Section("通知") {
-//                Toggle("作業到期提醒", isOn: $notifyAssignments)
-//                Toggle("公告通知", isOn: $notifyAnnouncements)
-//                Toggle("免費便當通知", isOn: $notifyFreeLunch)
-//                Toggle("社團活動通知", isOn: $notifyClubs)
-//            }
+            // MARK: - Notifications & Live Activity
+            Section("通知") {
+                NavigationLink("通知與動態靈動") {
+                    LiveActivitySettingsView(store: appState.liveActivityPreferences)
+                }
+            }
 
             // MARK: - About
             Section("關於") {
