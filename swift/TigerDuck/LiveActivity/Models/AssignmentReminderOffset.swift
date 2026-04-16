@@ -55,12 +55,20 @@ nonisolated enum AssignmentReminderOffset: String, CaseIterable, Identifiable, C
     /// the first cut; can be extracted to Localizable.xcstrings later.
     func notificationBody(assignmentTitle: String, courseName: String) -> String {
         switch self {
-        case .hr48, .hr24, .hr16:
+        case .hr48:
             return "\(courseName)「\(assignmentTitle)」還有一段時間就到期"
+        case .hr24:
+            return "還剩下 24 小時！\(courseName)「\(assignmentTitle)」"
+        case .hr16:
+            return "準備繳交作業！\(courseName)「\(assignmentTitle)」"
         case .hr8, .hr4, .hr2, .hr1:
-            return "\(courseName)「\(assignmentTitle)」即將到期"
-        case .min30, .min15, .min10, .min5:
-            return "\(courseName)「\(assignmentTitle)」快要到期了"
+            return "還來得及補救！\(courseName)「\(assignmentTitle)」"
+        case .min30:
+            return "快來不及了！\(courseName)「\(assignmentTitle)」"
+        case .min15, .min10:
+            return "拜託做一下作業... \(courseName)「\(assignmentTitle)」"
+        case .min5:
+            return "涼了... \(courseName)「\(assignmentTitle)」"
         }
     }
 }
