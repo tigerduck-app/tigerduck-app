@@ -206,6 +206,7 @@ final class ClassTableViewModel {
         }
         courses.append(course)
         persistUserAddedCourses()
+        broadcastLocalChange()
     }
 
     private func persistUserAddedCourses() {
@@ -227,6 +228,7 @@ final class ClassTableViewModel {
         deletedCourseNos.insert(course.courseNo)
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         persistUserAddedCourses()
+        broadcastLocalChange()
     }
 
     func startRename(_ course: SDCourse) {
@@ -244,6 +246,19 @@ final class ClassTableViewModel {
         rebuildLookup()
         persistUserAddedCourses()
         courseToRename = nil
+        broadcastLocalChange()
+    }
+
+    /// Wakes Home, the Live Activity coordinator, and any other observer
+    /// that subscribes to `dataDidUpdate`. Local Class Table edits used to
+    /// only update Class Table itself, so renamed/added/deleted courses
+    /// would stay stale on Home and on the lock screen until an unrelated
+    /// network sync or scene reactivation happened to fire the same
+    /// notification. The self-observer guards against the resulting
+    /// reload pulling stale persisted state — addCourse / deleteCourse /
+    /// confirmRename always write through to DataCache before posting.
+    private func broadcastLocalChange() {
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
     func load(authService: AuthService) {
