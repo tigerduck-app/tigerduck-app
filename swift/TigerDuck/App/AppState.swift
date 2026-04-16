@@ -105,6 +105,10 @@ final class AppState {
     func logoutNTUST() {
         syncTask?.cancel()
         syncTask = nil
+        pendingRefreshTask?.cancel()
+        pendingRefreshTask = nil
+        boundaryRefreshTask?.cancel()
+        boundaryRefreshTask = nil
 
         authService.logout()
         DataCache.shared.clearUserScopedData()
