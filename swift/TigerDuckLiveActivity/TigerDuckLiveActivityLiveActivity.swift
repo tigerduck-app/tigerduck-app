@@ -6,44 +6,59 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TigerDuckActivityAttributes.self) { context in
             LockScreenView(snapshot: context.state.snapshot)
-                .activityBackgroundTint(hexColor(context.state.snapshot.accentHex).opacity(0.15))
+                .activityBackgroundTint(hexColor(context.state.snapshot.accentHex).opacity(0.12))
                 .activitySystemActionForegroundColor(.primary)
         } dynamicIsland: { context in
             let snapshot = context.state.snapshot
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    HStack(spacing: 6) {
-                        Image(systemName: iconName(for: snapshot.scenario))
+                    Image(systemName: iconName(for: snapshot.scenario))
+                        .font(.title3)
+                        .foregroundStyle(hexColor(snapshot.accentHex))
+                        .frame(width: 36, height: 36)
+                        .background(hexColor(snapshot.accentHex).opacity(0.18), in: Circle())
+                        .padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        countdownLabel(snapshot)
+                            .font(.title2.monospacedDigit().bold())
                             .foregroundStyle(hexColor(snapshot.accentHex))
+                        Text(countdownCaption(for: snapshot.scenario))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.trailing, 4)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(snapshot.title)
                             .font(.headline)
                             .lineLimit(1)
-                    }
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    countdownLabel(snapshot)
-                        .font(.headline.monospacedDigit())
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    HStack(spacing: 8) {
-                        if let loc = snapshot.locationText, !loc.isEmpty {
-                            Label(loc, systemImage: "mappin.and.ellipse")
+                        HStack(spacing: 6) {
+                            Text(snapshot.subtitle)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            if let loc = snapshot.locationText, !loc.isEmpty {
+                                Text("·")
+                                    .foregroundStyle(.secondary)
+                                Label(loc, systemImage: "mappin.and.ellipse")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .labelStyle(.titleAndIcon)
+                            }
                         }
-                        Spacer()
-                        Text(snapshot.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
                 }
             } compactLeading: {
                 Image(systemName: iconName(for: snapshot.scenario))
                     .foregroundStyle(hexColor(snapshot.accentHex))
             } compactTrailing: {
                 countdownLabel(snapshot)
-                    .font(.caption2.monospacedDigit())
+                    .font(.caption.monospacedDigit().bold())
+                    .foregroundStyle(hexColor(snapshot.accentHex))
             } minimal: {
                 Image(systemName: iconName(for: snapshot.scenario))
                     .foregroundStyle(hexColor(snapshot.accentHex))
@@ -60,46 +75,55 @@ private struct LockScreenView: View {
     let snapshot: LiveActivitySnapshot
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: iconName(for: snapshot.scenario))
-                .font(.title2)
-                .foregroundStyle(hexColor(snapshot.accentHex))
-                .frame(width: 40, height: 40)
-                .background(hexColor(snapshot.accentHex).opacity(0.15), in: Circle())
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: iconName(for: snapshot.scenario))
+                    .font(.title2.bold())
+                    .foregroundStyle(hexColor(snapshot.accentHex))
+                    .frame(width: 48, height: 48)
+                    .background(hexColor(snapshot.accentHex).opacity(0.18), in: Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(snapshot.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                Text(snapshot.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                if let loc = snapshot.locationText, !loc.isEmpty {
-                    Label(loc, systemImage: "mappin.and.ellipse")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(snapshot.title)
+                        .font(.title3.bold())
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Text(snapshot.subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    if let loc = snapshot.locationText, !loc.isEmpty {
+                        Label(loc, systemImage: "mappin.and.ellipse")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    countdownLabel(snapshot)
+                        .font(.largeTitle.monospacedDigit().bold())
+                        .foregroundStyle(hexColor(snapshot.accentHex))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(countdownCaption(for: snapshot.scenario))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            Spacer(minLength: 8)
 
-            VStack(alignment: .trailing, spacing: 4) {
-                countdownLabel(snapshot)
-                    .font(.title3.monospacedDigit().bold())
-                if let progress = snapshot.progress {
-                    ProgressView(value: progress)
-                        .frame(width: 72)
-                        .tint(hexColor(snapshot.accentHex))
-                } else {
-                    Text(countdownCaption(for: snapshot.scenario))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+            if let progress = snapshot.progress {
+                ProgressView(value: progress)
+                    .tint(hexColor(snapshot.accentHex))
+                    .scaleEffect(x: 1, y: 1.4, anchor: .center)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
