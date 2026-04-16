@@ -26,7 +26,13 @@ struct CanonicalCourseProvider {
         )
     }
 
-    /// Pure merge function, exposed for unit testing.
+    /// Merge function, exposed for unit testing.
+    ///
+    /// NOTE: `SDCourse` is a SwiftData `@Model` (reference type). The custom-name
+    /// overlay step mutates `courseName` in place on the passed-in instances, so
+    /// callers MUST pass fresh, unmanaged `SDCourse` objects (as `DataCache` does)
+    /// — passing SwiftData-managed instances would silently persist the renamed
+    /// value back to the store and bypass the rename mechanism.
     static func merge(
         primary: [SDCourse],
         userAdded: [SDCourse],
