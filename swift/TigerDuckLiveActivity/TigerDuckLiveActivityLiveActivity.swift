@@ -24,9 +24,6 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                         countdownLabel(snapshot)
                             .font(.title2.monospacedDigit().bold())
                             .foregroundStyle(hexColor(snapshot.accentHex))
-                        Text(countdownCaption(for: snapshot.scenario))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
                     }
                     .padding(.trailing, 4)
                 }
@@ -74,11 +71,8 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
 private struct LockScreenView: View {
     let snapshot: LiveActivitySnapshot
     private let iconVerticalOffset: CGFloat = 11
-    private let countdownHorizontalOffset: CGFloat = 20
-    private let countdownVerticalOffset: CGFloat = 0
-    private let countdownColumnWidth: CGFloat = 178
     private let countdownFontSize: CGFloat = 44
-    private let countdownCaptionFontSize: CGFloat = 13
+    private let countdownVerticalOffset: CGFloat = -6
     private let metadataRowHeight: CGFloat = 18
     private let titleMinimumScale: CGFloat = 0.8
     private let secondaryMinimumScale: CGFloat = 0.82
@@ -93,63 +87,52 @@ private struct LockScreenView: View {
                     .background(hexColor(snapshot.accentHex).opacity(0.18), in: Circle())
                     .offset(y: iconVerticalOffset)
 
-                HStack(alignment: .bottom, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(snapshot.title)
-                            .font(.title3.bold())
-                            .lineLimit(1)
-                            .minimumScaleFactor(titleMinimumScale)
-                            .truncationMode(.tail)
-                            .allowsTightening(true)
-                            .layoutPriority(2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(snapshot.title)
+                        .font(.title3.bold())
+                        .lineLimit(1)
+                        .minimumScaleFactor(titleMinimumScale)
+                        .truncationMode(.tail)
+                        .allowsTightening(true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                        Text(snapshot.subtitle)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(secondaryMinimumScale)
-                            .truncationMode(.tail)
-                            .allowsTightening(true)
-                            .layoutPriority(1)
+                    HStack(alignment: .top, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(snapshot.subtitle)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(secondaryMinimumScale)
+                                .truncationMode(.tail)
+                                .allowsTightening(true)
 
-                        Group {
-                            if let loc = snapshot.locationText, !loc.isEmpty {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "mappin.and.ellipse")
-                                    Text(loc)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(secondaryMinimumScale)
-                                        .truncationMode(.tail)
-                                        .allowsTightening(true)
+                            Group {
+                                if let loc = snapshot.locationText, !loc.isEmpty {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "mappin.and.ellipse")
+                                        Text(loc)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(secondaryMinimumScale)
+                                            .truncationMode(.tail)
+                                            .allowsTightening(true)
+                                    }
+                                } else {
+                                    Color.clear
                                 }
-                            } else {
-                                Color.clear
                             }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(height: metadataRowHeight, alignment: .center)
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(height: metadataRowHeight, alignment: .center)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                    VStack(alignment: .trailing, spacing: 0) {
                         countdownLabel(snapshot)
                             .font(.system(size: countdownFontSize, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundStyle(hexColor(snapshot.accentHex))
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
-                            .offset(x: countdownHorizontalOffset, y: countdownVerticalOffset)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        Text(countdownCaption(for: snapshot.scenario))
-                            .font(.system(size: countdownCaptionFontSize))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(secondaryMinimumScale)
-                            .truncationMode(.tail)
-                            .frame(height: metadataRowHeight, alignment: .center)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .offset(y: countdownVerticalOffset)
                     }
-                    .frame(width: countdownColumnWidth, alignment: .bottomTrailing)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -160,8 +143,8 @@ private struct LockScreenView: View {
                     .scaleEffect(x: 1, y: 1.4, anchor: .center)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -173,14 +156,6 @@ private func iconName(for scenario: LiveActivityScenarioKind) -> String {
     case .inClass: return "graduationcap.fill"
     case .classPreparing: return "clock.arrow.circlepath"
     case .assignmentUrgent: return "doc.text.fill"
-    }
-}
-
-private func countdownCaption(for scenario: LiveActivityScenarioKind) -> String {
-    switch scenario {
-    case .inClass: return "下課倒數"
-    case .classPreparing: return "上課倒數"
-    case .assignmentUrgent: return "截止倒數"
     }
 }
 
