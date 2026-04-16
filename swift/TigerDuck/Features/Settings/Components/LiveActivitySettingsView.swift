@@ -8,6 +8,14 @@ struct LiveActivitySettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var showResetConfirmation = false
     @State private var resetFeedbackTrigger = 0
+    // Transient drag values: while the user is dragging a slider we keep the
+    // value in local state so each step does not thrash the store (which would
+    // post a NotificationCenter event, spawn a debounced refresh task, and
+    // invalidate any @Observable consumer — all of which can interrupt the
+    // in-flight gesture and animate the thumb after release). We commit once
+    // on onEditingChanged(false).
+    @State private var draftAssignmentLead: TimeInterval?
+    @State private var draftClassPreparingLead: TimeInterval?
 
     var body: some View {
         Form {
@@ -25,32 +33,52 @@ struct LiveActivitySettingsView: View {
             .disabled(!store.isLiveActivityEnabled)
 
             Section("顯示時機") {
+                let assignmentLead = draftAssignmentLead ?? store.assignmentLiveActivityLeadTime
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("作業警告")
                         Spacer()
-                        Text(formatHours(store.assignmentLiveActivityLeadTime))
+                        Text(formatHours(assignmentLead))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
                     Slider(
-                        value: $store.assignmentLiveActivityLeadTime,
+                        value: Binding(
+                            get: { assignmentLead },
+                            set: { draftAssignmentLead = $0 }
+                        ),
                         in: 3600 ... LiveActivityPreferencesStore.maximumAssignmentLeadTime,
-                        step: 3600
+                        step: 3600,
+                        onEditingChanged: { editing in
+                            if !editing, let value = draftAssignmentLead {
+                                store.assignmentLiveActivityLeadTime = value
+                                draftAssignmentLead = nil
+                            }
+                        }
                     )
                 }
+                let classLead = draftClassPreparingLead ?? store.classPreparingLeadTime
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("即將上課")
                         Spacer()
-                        Text(formatMinutes(store.classPreparingLeadTime))
+                        Text(formatMinutes(classLead))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
                     Slider(
-                        value: $store.classPreparingLeadTime,
+                        value: Binding(
+                            get: { classLead },
+                            set: { draftClassPreparingLead = $0 }
+                        ),
                         in: 5 * 60 ... 60 * 60,
-                        step: 5 * 60
+                        step: 5 * 60,
+                        onEditingChanged: { editing in
+                            if !editing, let value = draftClassPreparingLead {
+                                store.classPreparingLeadTime = value
+                                draftClassPreparingLead = nil
+                            }
+                        }
                     )
                 }
             }
