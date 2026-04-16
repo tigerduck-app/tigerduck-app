@@ -302,13 +302,27 @@ final class AppState {
     }
 
     /// Rebuilds all reminder notifications from the current cached assignments
-    /// and the user's selected offsets.
+    /// and the user's selected offsets. The scheduler silently no-ops when
+    /// notifications are not authorized, so this never triggers a permission
+    /// prompt — call `requestNotificationAuthorization()` from explicit user
+    /// intent instead (e.g. when the notifications settings page appears).
     func rescheduleReminders() async {
         let assignments = DataCache.shared.loadAssignments()
         await reminderScheduler.reschedule(
             assignments: assignments,
             offsets: liveActivityPreferences.assignmentReminderOffsets
         )
+    }
+
+    /// Prompts the user for notification authorization when, and only when,
+    /// they reach an explicit notification-related entry point. After a fresh
+    /// grant, immediately rebuild the reminder schedule so the toggles the
+    /// user just saw take effect.
+    func requestNotificationAuthorization() async {
+        let granted = await reminderScheduler.requestAuthorizationIfNeeded()
+        if granted {
+            await rescheduleReminders()
+        }
     }
 
     /// Debounces multiple change events (e.g. slider drags or quick toggles)

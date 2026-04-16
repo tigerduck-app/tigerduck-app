@@ -5,6 +5,7 @@ import SwiftUI
 /// stays short.
 struct LiveActivitySettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
+    @Environment(AppState.self) private var appState
 
     var body: some View {
         Form {
@@ -70,6 +71,12 @@ struct LiveActivitySettingsView: View {
             }
         }
         .navigationTitle("通知與動態靈動")
+        .task {
+            // Request notification permission only at this explicit entry
+            // point. Refresh paths (theme tweaks, foreground transitions,
+            // background syncs) intentionally never prompt.
+            await appState.requestNotificationAuthorization()
+        }
     }
 
     private func bindingForOffset(_ offset: AssignmentReminderOffset) -> Binding<Bool> {

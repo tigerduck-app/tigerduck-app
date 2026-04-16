@@ -20,10 +20,27 @@ final class AssignmentReminderScheduler {
         self.center = center
     }
 
-    /// Returns true if the user has (or just granted) alert authorization.
-    func ensureAuthorization() async -> Bool {
-        let settings = await center.notificationSettings()
-        switch settings.authorizationStatus {
+    /// Returns whether notifications are currently authorized for the app.
+    /// Never prompts the user — safe to call from any code path, including
+    /// background syncs, preference refreshes, and theme tweaks.
+    func isAuthorized() async -> Bool {
+        switch await center.notificationSettings().authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .denied, .notDetermined:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    /// Prompts for notification authorization only when the user has not yet
+    /// decided. Must only be called from explicit user intent (e.g. opening
+    /// the notification settings page) — never from a refresh path, otherwise
+    /// the system permission alert appears at unrelated moments such as a
+    /// theme color change or a background data sync.
+    func requestAuthorizationIfNeeded() async -> Bool {
+        switch await center.notificationSettings().authorizationStatus {
         case .authorized, .provisional, .ephemeral:
             return true
         case .denied:
@@ -49,8 +66,8 @@ final class AssignmentReminderScheduler {
         await cancelAllOwnedRequests()
 
         guard !offsets.isEmpty else { return }
-        guard await ensureAuthorization() else {
-            logger.info("Skipping reschedule — notifications not authorized")
+        guard await isAuthorized() else {
+            logger.info("Skipping reschedule — notifications not authorized (no prompt issued)")
             return
         }
 
