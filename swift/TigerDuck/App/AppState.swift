@@ -92,11 +92,20 @@ final class AppState {
         _libraryRevision += 1
     }
 
-    /// Full NTUST logout: invalidate credentials, tear down the Live Activity,
-    /// cancel any pending assignment reminders, and purge user-scoped caches so
-    /// a subsequent login (possibly a different user) never inherits previous
-    /// state on the lock screen or in notifications.
+    /// Full NTUST logout: cancel any in-flight background sync, invalidate
+    /// credentials, tear down the Live Activity, cancel pending assignment
+    /// reminders, and purge user-scoped caches so a subsequent login (possibly
+    /// a different user) never inherits previous state on the lock screen or
+    /// in notifications.
+    ///
+    /// `syncTask` is cancelled first so that `KMPServiceBridge` and the
+    /// `backgroundSync` finalize block — both of which check
+    /// `Task.isCancelled` before writing — abort cleanly rather than racing
+    /// the cache purge below and resurrecting the previous user's data.
     func logoutNTUST() {
+        syncTask?.cancel()
+        syncTask = nil
+
         authService.logout()
         DataCache.shared.clearUserScopedData()
         Task { @MainActor in
@@ -370,6 +379,12 @@ final class AppState {
             let moodleEvents = fetchedAssignments.map {
                 SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.title, date: $0.dueDate, source: .moodle)
             }
+            // Bail out before persisting if logout cancelled this sync while
+            // the network calls were in flight. Without the guard the merged
+            // calendar would be written back on top of a freshly purged cache
+            // and the previous user's events would resurface.
+            guard !Task.isCancelled else { return }
+
             var calendarCache = DataCache.shared.loadCalendarEvents()
             calendarCache.removeAll { $0.source == .school || $0.source == .moodle }
             calendarCache.append(contentsOf: fetchedSchoolEvents)
@@ -377,6 +392,7 @@ final class AppState {
             DataCache.shared.saveCalendarEvents(calendarCache)
 
             await MainActor.run {
+                guard !Task.isCancelled else { return }
                 sessionManager.loadingState = .loaded
                 NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             }

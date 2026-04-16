@@ -108,7 +108,11 @@ enum KMPServiceBridge {
                 )
             }
 
-            if !courses.isEmpty {
+            // Skip the cache write if logout cancelled this sync while the
+            // network call was in flight — otherwise the previous user's
+            // course list lands on disk after `clearUserScopedData()` has
+            // already run and the next account inherits stale data.
+            if !courses.isEmpty, !Task.isCancelled {
                 DataCache.shared.saveCourses(courses)
             }
             return courses
@@ -130,7 +134,10 @@ enum KMPServiceBridge {
                 studentId: studentId,
                 password: password
             )
-            DataCache.shared.saveAssignments(assignments)
+            // Same logout-race guard as fetchCourses above.
+            if !Task.isCancelled {
+                DataCache.shared.saveAssignments(assignments)
+            }
             return assignments
         } catch {
             return DataCache.shared.loadAssignments()
