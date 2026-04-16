@@ -67,7 +67,7 @@ struct LiveActivityScenarioResolver {
             countdownTarget: slot.end,
             progress: progress(from: slot.start, to: slot.end, at: now),
             accentHex: accentHex,
-            deepLink: URL(string: "tigerduck://class/\(slot.course.courseNo)"),
+            deepLink: nil,
             sourceId: slot.id
         )
     }
@@ -83,7 +83,7 @@ struct LiveActivityScenarioResolver {
             countdownTarget: slot.start,
             progress: nil,
             accentHex: accentHex,
-            deepLink: URL(string: "tigerduck://class/\(slot.course.courseNo)"),
+            deepLink: nil,
             sourceId: slot.id
         )
     }
