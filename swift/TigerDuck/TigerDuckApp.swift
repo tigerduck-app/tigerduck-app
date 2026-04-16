@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct TigerDuckApp: App {
     @State private var appState = AppState()
+    @State private var sceneRefreshTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
     var sharedModelContainer: ModelContainer = {
@@ -48,8 +49,14 @@ struct TigerDuckApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
-                        Task {
+                        // Cancel any still-running refresh from a previous
+                        // .active transition so rapid scene toggles do not
+                        // interleave through cancelAllOwnedRequests()'s
+                        // await suspension point and double the reschedule.
+                        sceneRefreshTask?.cancel()
+                        sceneRefreshTask = Task {
                             await appState.refreshLiveActivity()
+                            guard !Task.isCancelled else { return }
                             await appState.rescheduleReminders()
                         }
                     }
