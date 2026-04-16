@@ -3,7 +3,7 @@ import Foundation
 /// Fixed reminder points before an assignment's due date.
 /// Ordered from longest lead time to shortest so UI rendering and
 /// scheduling iterate in a stable direction.
-enum AssignmentReminderOffset: String, CaseIterable, Identifiable, Codable, Sendable {
+nonisolated enum AssignmentReminderOffset: String, CaseIterable, Identifiable, Codable, Sendable {
     case hr48
     case hr24
     case hr16

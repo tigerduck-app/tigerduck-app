@@ -3,7 +3,7 @@ import Foundation
 /// Minimum payload the Live Activity extension needs to render.
 /// Intentionally decoupled from SwiftData models so the extension target
 /// never depends on `SDCourse` / `SDAssignment`.
-struct LiveActivitySnapshot: Codable, Equatable, Sendable {
+nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable {
     let scenario: LiveActivityScenarioKind
     let title: String
     let subtitle: String
