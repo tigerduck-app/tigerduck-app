@@ -6,6 +6,8 @@ import SwiftUI
 struct LiveActivitySettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
     @Environment(AppState.self) private var appState
+    @State private var showResetConfirmation = false
+    @State private var resetFeedbackTrigger = 0
 
     var body: some View {
         Form {
@@ -66,11 +68,25 @@ struct LiveActivitySettingsView: View {
 
             Section {
                 Button("重置為預設值", role: .destructive) {
-                    store.resetToDefaults()
+                    showResetConfirmation = true
                 }
             }
         }
         .navigationTitle("即時動態 Live Activity（實驗性）")
+        .confirmationDialog(
+            "重置所有即時動態設定？",
+            isPresented: $showResetConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("重置", role: .destructive) {
+                store.resetToDefaults()
+                resetFeedbackTrigger &+= 1
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("所有情境、提醒時機、顯示時機將還原為預設值。")
+        }
+        .sensoryFeedback(.success, trigger: resetFeedbackTrigger)
         .task {
             // Request notification permission only at this explicit entry
             // point. Refresh paths (theme tweaks, foreground transitions,
