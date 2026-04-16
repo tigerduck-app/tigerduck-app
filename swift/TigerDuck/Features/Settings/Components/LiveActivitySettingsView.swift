@@ -33,6 +33,12 @@ struct LiveActivitySettingsView: View {
             .disabled(!store.isLiveActivityEnabled)
 
             Section("顯示時機") {
+                // Both sliders drop the `step:` parameter — it enables SwiftUI's
+                // built-in step-crossing haptic, which turns into rapid-fire
+                // vibration when the user hovers at an extreme value (tiny
+                // finger jitter crosses the final step boundary repeatedly).
+                // We snap the value ourselves inside the binding setter so the
+                // thumb still lands on discrete positions without the haptic.
                 let assignmentLead = draftAssignmentLead ?? store.assignmentLiveActivityLeadTime
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -45,10 +51,14 @@ struct LiveActivitySettingsView: View {
                     Slider(
                         value: Binding(
                             get: { assignmentLead },
-                            set: { draftAssignmentLead = $0 }
+                            set: { raw in
+                                let snapped = Self.snap(raw, step: 3600)
+                                if draftAssignmentLead != snapped {
+                                    draftAssignmentLead = snapped
+                                }
+                            }
                         ),
                         in: 3600 ... LiveActivityPreferencesStore.maximumAssignmentLeadTime,
-                        step: 3600,
                         onEditingChanged: { editing in
                             if !editing, let value = draftAssignmentLead {
                                 store.assignmentLiveActivityLeadTime = value
@@ -69,10 +79,14 @@ struct LiveActivitySettingsView: View {
                     Slider(
                         value: Binding(
                             get: { classLead },
-                            set: { draftClassPreparingLead = $0 }
+                            set: { raw in
+                                let snapped = Self.snap(raw, step: 5 * 60)
+                                if draftClassPreparingLead != snapped {
+                                    draftClassPreparingLead = snapped
+                                }
+                            }
                         ),
                         in: 5 * 60 ... 60 * 60,
-                        step: 5 * 60,
                         onEditingChanged: { editing in
                             if !editing, let value = draftClassPreparingLead {
                                 store.classPreparingLeadTime = value
@@ -144,5 +158,10 @@ struct LiveActivitySettingsView: View {
     private func formatMinutes(_ interval: TimeInterval) -> String {
         let minutes = Int(interval / 60)
         return "\(minutes) 分鐘"
+    }
+
+    /// Snap a raw slider value to the nearest multiple of `step`.
+    private static func snap(_ value: TimeInterval, step: TimeInterval) -> TimeInterval {
+        (value / step).rounded() * step
     }
 }
