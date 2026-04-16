@@ -119,7 +119,7 @@ private struct LockScreenView: View {
             HStack(spacing: 0) {
                 HStack(spacing: 4) {
                     if let loc = snapshot.locationText, !loc.isEmpty {
-                        Image(systemName: "paperplane.fill")
+                        Image(systemName: "mappin.and.ellipse")
                         Text(loc)
                     }
                 }
