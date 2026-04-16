@@ -4,6 +4,7 @@ import SwiftData
 @main
 struct TigerDuckApp: App {
     @State private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -44,6 +45,14 @@ struct TigerDuckApp: App {
                 .preferredColorScheme(.dark)
                 .onAppear {
                     appState.backgroundSync()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        Task {
+                            await appState.refreshLiveActivity()
+                            await appState.rescheduleReminders()
+                        }
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)

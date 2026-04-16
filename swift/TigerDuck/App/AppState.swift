@@ -30,10 +30,37 @@ final class AppState {
             KeychainManager.delete(key: AppConstants.KeychainKeys.libraryTokenExpiry)
             UserDefaults.standard.set(true, forKey: key)
         }
+
+        liveActivityObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.dataDidUpdate,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.refreshLiveActivity()
+                await self.rescheduleReminders()
+            }
+        }
+    }
+
+    deinit {
+        if let observer = liveActivityObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     private var _libraryRevision = 0
     private var syncTask: Task<Void, Never>?
+
+    // MARK: - Live Activity
+
+    let liveActivityPreferences = LiveActivityPreferencesStore()
+    private let liveActivityCoordinator = LiveActivityCoordinator()
+    private let reminderScheduler = AssignmentReminderScheduler()
+    private let scenarioResolver = LiveActivityScenarioResolver()
+    private let courseProvider = CanonicalCourseProvider()
+    private var liveActivityObserver: Any?
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
@@ -157,6 +184,33 @@ final class AppState {
         hasCompletedOnboarding = true
         UserDefaults.standard.set(true, forKey: AppConstants.UserDefaultsKeys.hasCompletedOnboarding)
         backgroundSync()
+    }
+
+    // MARK: - Live Activity / reminder refresh
+
+    /// Recomputes the scenario and pushes it to the coordinator. Safe to call
+    /// frequently — the coordinator only issues ActivityKit calls when the
+    /// snapshot actually changes.
+    func refreshLiveActivity() async {
+        let courses = courseProvider.currentCourses()
+        let assignments = DataCache.shared.loadAssignments()
+        let snapshot = scenarioResolver.resolve(
+            courses: courses,
+            assignments: assignments,
+            preferences: liveActivityPreferences,
+            accentHex: accentColorHex
+        )
+        await liveActivityCoordinator.apply(snapshot: snapshot)
+    }
+
+    /// Rebuilds all reminder notifications from the current cached assignments
+    /// and the user's selected offsets.
+    func rescheduleReminders() async {
+        let assignments = DataCache.shared.loadAssignments()
+        await reminderScheduler.reschedule(
+            assignments: assignments,
+            offsets: liveActivityPreferences.assignmentReminderOffsets
+        )
     }
 
     /// Background sync all data on app launch
