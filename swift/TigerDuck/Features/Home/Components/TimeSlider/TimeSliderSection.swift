@@ -51,14 +51,16 @@ struct TimeSliderSection: View {
     }
 
     private var sliderContent: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        let policy = appState.visualStylePolicy
+        return TimelineView(.periodic(from: .now, by: 1)) { context in
             let _ = viewModel.tick(context.date)
 
             VStack(spacing: 12) {
                 // Course card
                 CourseTimeCard(
                     state: viewModel.currentCourseState,
-                    onSelect: onSelectCourse
+                    onSelect: onSelectCourse,
+                    policy: policy
                 )
 
                 // Time label + track
@@ -68,12 +70,14 @@ struct TimeSliderSection: View {
                     case .fluidTrack:
                         FluidGlassTrackView(
                             viewModel: viewModel,
-                            invertDirection: appState.invertSliderDirection
+                            invertDirection: appState.invertSliderDirection,
+                            policy: policy
                         )
                     case .segmentedBar:
                         SegmentedGlassBarView(
                             viewModel: viewModel,
-                            invertDirection: appState.invertSliderDirection
+                            invertDirection: appState.invertSliderDirection,
+                            policy: policy
                         )
                     }
                 }

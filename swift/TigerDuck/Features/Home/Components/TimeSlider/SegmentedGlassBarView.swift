@@ -3,6 +3,7 @@ import SwiftUI
 struct SegmentedGlassBarView: View {
     var viewModel: TimeSliderViewModel
     var invertDirection: Bool = false
+    var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
     @Namespace private var segmentNamespace
     @State private var lastDragX: CGFloat = 0
 
@@ -69,7 +70,9 @@ struct SegmentedGlassBarView: View {
     @ViewBuilder
     private func segmentButton(slot: CourseTimeSlot, isSelected: Bool, segWidth: CGFloat, segCenterX: CGFloat) -> some View {
         let shape = RoundedRectangle(cornerRadius: 12)
-        let tint = slot.course.color.opacity(isSelected ? 0.4 : 0.15)
+        let tint = slot.course.color.opacity(
+            policy.segmentedBarTintOpacity(isSelected: isSelected)
+        )
 
         Button {
             viewModel.onDragStarted()
@@ -79,9 +82,7 @@ struct SegmentedGlassBarView: View {
         } label: {
             Text(slot.course.courseName)
                 .font(isSelected ? .caption.bold() : .caption2)
-                .foregroundStyle(
-                    slot.course.color.opacity(isSelected ? 1.0 : 0.7)
-                )
+                .foregroundStyle(labelColor(for: slot, isSelected: isSelected))
                 .lineLimit(1)
                 .frame(width: segWidth, height: barHeight - 4)
         }
@@ -90,6 +91,22 @@ struct SegmentedGlassBarView: View {
         .scaleEffect(isSelected ? 1.05 : 1.0)
         .animation(.smooth(duration: 0.3), value: isSelected)
         .position(x: segCenterX, y: barHeight / 2)
+    }
+
+    private func labelColor(for slot: CourseTimeSlot, isSelected: Bool) -> Color {
+        switch policy.preset {
+        case .default:
+            return slot.course.color.opacity(isSelected ? 1.0 : 0.7)
+        case .iosInspired:
+            // iOS preset: label stays neutral when inactive, uses course
+            // color only when selected, and even then at reduced saturation
+            // so the overall bar reads system-y.
+            if isSelected {
+                return slot.course.color.opacity(0.95)
+            } else {
+                return .secondary
+            }
+        }
     }
 }
 
