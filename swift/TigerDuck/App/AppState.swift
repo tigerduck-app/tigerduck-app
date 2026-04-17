@@ -183,17 +183,6 @@ final class AppState {
         didSet { UserDefaults.standard.set(browserPreference.rawValue, forKey: AppConstants.UserDefaultsKeys.browserPreference) }
     }
 
-    /// Time slider style preference
-    var timeSliderStyle: TimeSliderStyle = {
-        if let raw = UserDefaults.standard.string(forKey: AppConstants.UserDefaultsKeys.timeSliderStyle),
-           let style = TimeSliderStyle(rawValue: raw) {
-            return style
-        }
-        return .fluidTrack
-    }() {
-        didSet { UserDefaults.standard.set(timeSliderStyle.rawValue, forKey: AppConstants.UserDefaultsKeys.timeSliderStyle) }
-    }
-
     /// Invert slider scroll direction: false = natural scroll (drag right → past), true = reversed
     var invertSliderDirection: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) {
         didSet { UserDefaults.standard.set(invertSliderDirection, forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) }

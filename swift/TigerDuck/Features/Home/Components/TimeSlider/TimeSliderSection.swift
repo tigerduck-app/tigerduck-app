@@ -66,20 +66,11 @@ struct TimeSliderSection: View {
                 // Time label + track
                 VStack(spacing: 6) {
                     timeLabel
-                    switch appState.timeSliderStyle {
-                    case .fluidTrack:
-                        FluidGlassTrackView(
-                            viewModel: viewModel,
-                            invertDirection: appState.invertSliderDirection,
-                            policy: policy
-                        )
-                    case .segmentedBar:
-                        SegmentedGlassBarView(
-                            viewModel: viewModel,
-                            invertDirection: appState.invertSliderDirection,
-                            policy: policy
-                        )
-                    }
+                    FluidGlassTrackView(
+                        viewModel: viewModel,
+                        invertDirection: appState.invertSliderDirection,
+                        policy: policy
+                    )
                 }
             }
         }

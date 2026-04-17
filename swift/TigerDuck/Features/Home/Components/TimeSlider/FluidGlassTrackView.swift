@@ -31,7 +31,7 @@ struct FluidGlassTrackView: View {
                 ForEach(viewModel.timeSlots) { slot in
                     let startOffset = viewModel.xOffset(for: slot.start)
                     let endOffset = viewModel.xOffset(for: slot.end)
-                    let segWidth = max(TimeSliderMetrics.minimumSegmentedBlockWidth, endOffset - startOffset)
+                    let segWidth = max(TimeSliderMetrics.minimumFluidBlockWidth, endOffset - startOffset)
                     let segCenterX = centerX + (startOffset + endOffset) / 2
 
                     // Only render if visible

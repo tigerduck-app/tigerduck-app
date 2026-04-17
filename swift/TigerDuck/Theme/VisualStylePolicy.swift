@@ -109,18 +109,6 @@ struct VisualStylePolicy: Sendable {
         }
     }
 
-    /// Opacity of the course-color tint applied to segmented-bar buttons.
-    /// In iOS preset we almost remove the tint so the bar reads as a row
-    /// of neutral capsules with colored *labels*, not colored *surfaces*.
-    func segmentedBarTintOpacity(isSelected: Bool) -> Double {
-        switch preset {
-        case .default:
-            return isSelected ? 0.4 : 0.15
-        case .iosInspired:
-            return isSelected ? 0.18 : 0.06
-        }
-    }
-
     // MARK: - Search-bar surface (announcements)
 
     enum SearchBarSurface: Sendable {

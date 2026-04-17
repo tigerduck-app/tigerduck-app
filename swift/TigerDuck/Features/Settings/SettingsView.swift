@@ -89,11 +89,6 @@ struct SettingsView: View {
                     Text("系統預設瀏覽器").tag(BrowserPreference.system)
                     Text("App 內瀏覽器").tag(BrowserPreference.inApp)
                 }
-                Picker("時間滑條樣式", selection: $appState.timeSliderStyle) {
-                    ForEach(TimeSliderStyle.allCases, id: \.self) { style in
-                        Text(style.displayName).tag(style)
-                    }
-                }
                 Toggle("反轉滑條方向", isOn: $appState.invertSliderDirection)
             }
 

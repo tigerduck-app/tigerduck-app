@@ -5,7 +5,6 @@ import Foundation
 /// This is intentionally a presentation concern only — it decides which
 /// rendering policy the UI applies, not which features exist, which data
 /// flows, or which tint the user picks. It is a different dimension from
-/// ``TimeSliderStyle`` (functional choice of slider) and from
 /// `AppState.accentColorHex` (the user's theme accent color).
 ///
 /// Designed to grow: adding a new preset only requires adding a case here
