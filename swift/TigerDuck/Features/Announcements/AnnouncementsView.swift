@@ -45,8 +45,7 @@ struct AnnouncementsView: View {
                         TextField("搜尋公告", text: $viewModel.searchText)
                             .foregroundStyle(Color.textPrimary)
                     }
-                    .padding(TigerDuckTheme.Spacing.sm)
-                    .glassCard(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                    .presetSearchBarSurface(policy: appState.visualStylePolicy)
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
