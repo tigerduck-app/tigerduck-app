@@ -28,6 +28,7 @@ enum AppConstants {
         static let invertSliderDirection = "invertSliderDirection"
         static let libraryFeatureEnabled = "libraryFeatureEnabled"
         static let homeSectionLayout = "homeSectionLayout"
+        static let visualPreset = "visualPreset"
 
         // MARK: Live Activity / reminders
         static let assignmentReminderOffsets = "assignmentReminderOffsets"

@@ -78,6 +78,11 @@ struct SettingsView: View {
 
             // MARK: - Display
             Section("顯示") {
+                Picker("介面風格", selection: $appState.visualPreset) {
+                    ForEach(VisualPreset.allCases) { preset in
+                        Text(preset.displayName).tag(preset)
+                    }
+                }
                 Toggle("作業截止時間顯示完整日期", isOn: $appState.showAbsoluteAssignmentTime)
                 Toggle("記住公告篩選條件", isOn: $appState.rememberAnnouncementFilter)
                 Picker("開啟連結方式", selection: $appState.browserPreference) {

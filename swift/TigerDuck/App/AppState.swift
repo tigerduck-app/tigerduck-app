@@ -209,6 +209,27 @@ final class AppState {
         didSet { UserDefaults.standard.set(libraryFeatureEnabled, forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) }
     }
 
+    /// User-selected visual preset controlling presentation-layer decisions
+    /// (card surfaces, accent usage, slider color prominence, etc). This is
+    /// a pure UI concern — changes MUST NOT trigger Live Activity refreshes,
+    /// reminder reschedules, or notification authorization prompts.
+    var visualPreset: VisualPreset = {
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.UserDefaultsKeys.visualPreset),
+           let preset = VisualPreset(rawValue: raw) {
+            return preset
+        }
+        return .default
+    }() {
+        didSet { UserDefaults.standard.set(visualPreset.rawValue, forKey: AppConstants.UserDefaultsKeys.visualPreset) }
+    }
+
+    /// Resolved presentation policy for the current preset. Views read
+    /// from this instead of switching on ``visualPreset`` directly, so
+    /// adding new presets stays contained to ``VisualStylePolicy``.
+    var visualStylePolicy: VisualStylePolicy {
+        VisualStylePolicy(preset: visualPreset)
+    }
+
     // MARK: - Tab Configuration
 
     var configuredTabs: [AppFeature] = {
