@@ -77,5 +77,5 @@ extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.showInClassScenario,
         default: true
     )
-    static let ssoLoginTimestamp = Key<Double?>("ssoLoginTimestamp")
+    static let ssoLoginTimestamp = Key<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
 }
