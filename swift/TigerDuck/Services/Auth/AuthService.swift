@@ -91,7 +91,12 @@ final class AuthService {
             isLoggingIn = false
             return success
         } catch {
-            AppLogger.captureError(error, context: ["flow": "ntustLogin"])
+            // SSOLoginError.loginFailed is a user-facing outcome (wrong
+            // credentials); reporting it would inflate Sentry counts and
+            // drown out real infrastructure failures.
+            if case SSOLoginError.loginFailed = error {} else {
+                AppLogger.captureError(error, context: ["flow": "ntustLogin"])
+            }
             loginError = error.localizedDescription
             isLoggingIn = false
             return false

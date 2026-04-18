@@ -105,6 +105,8 @@ enum SSOLoginService {
 
             NTUSTSessionManager.shared.markLoginSuccess()
             return true
+        } catch SSOLoginError.loginFailed {
+            throw SSOLoginError.loginFailed
         } catch {
             AppLogger.captureError(error, context: ["service": "ssoEnsureServiceLogin"])
             throw error
