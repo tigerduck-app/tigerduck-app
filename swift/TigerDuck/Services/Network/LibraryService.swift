@@ -72,24 +72,31 @@ enum LibraryService {
     /// Login with explicit credentials and save them on success.
     @discardableResult
     static func login(username: String, password: String) async throws -> String {
-        let url = URL(string: "\(baseURL)/passport/login")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(
-            LibraryLoginRequest(username: username, password: password)
-        )
+        do {
+            let url = URL(string: "\(baseURL)/passport/login")!
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(
+                LibraryLoginRequest(username: username, password: password)
+            )
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let response = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
 
-        guard response.error.code == 0, let loginData = response.data else {
-            throw LibraryServiceError.loginFailed(response.error.message)
+            guard response.error.code == 0, let loginData = response.data else {
+                let error = LibraryServiceError.loginFailed(response.error.message)
+                AppLogger.captureError(error, context: ["service": "libraryLogin"])
+                throw error
+            }
+
+            saveCredentials(username: username, password: password)
+            saveToken(loginData.token, expirationMs: loginData.expirationTimeStamp)
+            return loginData.token
+        } catch {
+            AppLogger.captureError(error, context: ["service": "libraryLogin"])
+            throw error
         }
-
-        saveCredentials(username: username, password: password)
-        saveToken(loginData.token, expirationMs: loginData.expirationTimeStamp)
-        return loginData.token
     }
 
     /// Returns a valid token, re-logging in with stored library credentials if expired.
@@ -100,7 +107,9 @@ enum LibraryService {
 
         guard let username = storedUsername,
               let password = storedPassword else {
-            throw LibraryServiceError.credentialsNotFound
+            let error = LibraryServiceError.credentialsNotFound
+            AppLogger.captureError(error, context: ["service": "libraryEnsureToken"])
+            throw error
         }
 
         return try await login(username: username, password: password)
@@ -108,23 +117,30 @@ enum LibraryService {
 
     /// Generates a QR code payload string. Auto-ensures a valid token first.
     static func generateQRCode() async throws -> String {
-        let token = try await ensureToken()
+        do {
+            let token = try await ensureToken()
 
-        let url = URL(string: "\(baseURL)/virtual-code/generate")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(
-            LibraryQRRequest(token: token)
-        )
+            let url = URL(string: "\(baseURL)/virtual-code/generate")!
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(
+                LibraryQRRequest(token: token)
+            )
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
 
-        guard response.error.code == 0, let qrData = response.data else {
-            throw LibraryServiceError.qrGenerationFailed(response.error.message)
+            guard response.error.code == 0, let qrData = response.data else {
+                let error = LibraryServiceError.qrGenerationFailed(response.error.message)
+                AppLogger.captureError(error, context: ["service": "libraryGenerateQRCode"])
+                throw error
+            }
+
+            return qrData
+        } catch {
+            AppLogger.captureError(error, context: ["service": "libraryGenerateQRCode"])
+            throw error
         }
-
-        return qrData
     }
 }

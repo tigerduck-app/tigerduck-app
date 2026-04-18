@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Defaults
 
 enum BrowserPreference: String, CaseIterable {
     case system
@@ -8,7 +9,7 @@ enum BrowserPreference: String, CaseIterable {
 
 @Observable
 final class AppState {
-    var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.hasCompletedOnboarding)
+    var hasCompletedOnboarding = Defaults[.hasCompletedOnboarding]
 
     /// App-level presenter flag for the NTUST login sheet. Owned by
     /// ``AppState`` so Home, Class Table, and Settings can all request the
@@ -25,8 +26,7 @@ final class AppState {
     /// Detect fresh install (no UserDefaults marker) and clear stale Keychain data
     /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
-        let key = AppConstants.UserDefaultsKeys.appHasBeenInstalled
-        if !UserDefaults.standard.bool(forKey: key) {
+        if !Defaults[.appHasBeenInstalled] {
             // Fresh install — purge any leftover Keychain items
             KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
             KeychainManager.delete(key: AppConstants.KeychainKeys.password)
@@ -34,7 +34,7 @@ final class AppState {
             KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
             KeychainManager.delete(key: AppConstants.KeychainKeys.libraryToken)
             KeychainManager.delete(key: AppConstants.KeychainKeys.libraryTokenExpiry)
-            UserDefaults.standard.set(true, forKey: key)
+            Defaults[.appHasBeenInstalled] = true
         }
 
         liveActivityObserver = NotificationCenter.default.addObserver(
@@ -166,9 +166,9 @@ final class AppState {
     // MARK: - Theme
 
     /// Accent color hex stored as Int (default system blue 0x007AFF)
-    var accentColorHex: Int = UserDefaults.standard.object(forKey: AppConstants.UserDefaultsKeys.accentColorHex) as? Int ?? 0x007AFF {
+    var accentColorHex: Int = Defaults[.accentColorHex] {
         didSet {
-            UserDefaults.standard.set(accentColorHex, forKey: AppConstants.UserDefaultsKeys.accentColorHex)
+            Defaults[.accentColorHex] = accentColorHex
             // Accent color only affects the Live Activity snapshot — reminder
             // notifications are content-identical, so skip rescheduling to
             // avoid thrashing UNUserNotificationCenter on slider drags.
@@ -194,62 +194,52 @@ final class AppState {
     // MARK: - Settings
 
     /// Whether to persist announcement filter selection across sessions
-    var rememberAnnouncementFilter: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.rememberAnnouncementFilter) {
-        didSet { UserDefaults.standard.set(rememberAnnouncementFilter, forKey: AppConstants.UserDefaultsKeys.rememberAnnouncementFilter) }
+    var rememberAnnouncementFilter: Bool = Defaults[.rememberAnnouncementFilter] {
+        didSet { Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter }
     }
 
     /// Saved announcement filter departments (JSON array)
     var savedAnnouncementDepartments: Set<String> {
         get {
-            guard let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.savedAnnouncementDepartments),
+            guard let data = Defaults[.savedAnnouncementDepartmentsData],
                   let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
             return Set(arr)
         }
         set {
             if let data = try? JSONEncoder().encode(Array(newValue)) {
-                UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.savedAnnouncementDepartments)
+                Defaults[.savedAnnouncementDepartmentsData] = data
+            } else {
+                Defaults[.savedAnnouncementDepartmentsData] = nil
             }
         }
     }
 
     /// Browser preference for opening links
-    var browserPreference: BrowserPreference = {
-        if let raw = UserDefaults.standard.string(forKey: AppConstants.UserDefaultsKeys.browserPreference),
-           let pref = BrowserPreference(rawValue: raw) {
-            return pref
-        }
-        return .system
-    }() {
-        didSet { UserDefaults.standard.set(browserPreference.rawValue, forKey: AppConstants.UserDefaultsKeys.browserPreference) }
+    var browserPreference: BrowserPreference = Defaults[.browserPreference] {
+        didSet { Defaults[.browserPreference] = browserPreference }
     }
 
     /// Invert slider scroll direction: false = natural scroll (drag right → past), true = reversed
-    var invertSliderDirection: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) {
-        didSet { UserDefaults.standard.set(invertSliderDirection, forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) }
+    var invertSliderDirection: Bool = Defaults[.invertSliderDirection] {
+        didSet { Defaults[.invertSliderDirection] = invertSliderDirection }
     }
 
     /// Assignment time display: true = absolute (2026/3/24 23:59:00), false = relative (5 天後)
-    var showAbsoluteAssignmentTime: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime) {
-        didSet { UserDefaults.standard.set(showAbsoluteAssignmentTime, forKey: AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime) }
+    var showAbsoluteAssignmentTime: Bool = Defaults[.showAbsoluteAssignmentTime] {
+        didSet { Defaults[.showAbsoluteAssignmentTime] = showAbsoluteAssignmentTime }
     }
 
     /// Whether library-related features are enabled (requires explicit user consent)
-    var libraryFeatureEnabled: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) {
-        didSet { UserDefaults.standard.set(libraryFeatureEnabled, forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) }
+    var libraryFeatureEnabled: Bool = Defaults[.libraryFeatureEnabled] {
+        didSet { Defaults[.libraryFeatureEnabled] = libraryFeatureEnabled }
     }
 
     /// User-selected visual preset controlling presentation-layer decisions
     /// (card surfaces, accent usage, slider color prominence, etc). This is
     /// a pure UI concern — changes MUST NOT trigger Live Activity refreshes,
     /// reminder reschedules, or notification authorization prompts.
-    var visualPreset: VisualPreset = {
-        if let raw = UserDefaults.standard.string(forKey: AppConstants.UserDefaultsKeys.visualPreset),
-           let preset = VisualPreset(rawValue: raw) {
-            return preset
-        }
-        return .default
-    }() {
-        didSet { UserDefaults.standard.set(visualPreset.rawValue, forKey: AppConstants.UserDefaultsKeys.visualPreset) }
+    var visualPreset: VisualPreset = Defaults[.visualPreset] {
+        didSet { Defaults[.visualPreset] = visualPreset }
     }
 
     /// Resolved presentation policy for the current preset. Views read
@@ -262,7 +252,7 @@ final class AppState {
     // MARK: - Tab Configuration
 
     var configuredTabs: [AppFeature] = {
-        if let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.configuredTabs),
+        if let data = Defaults[.configuredTabsData],
            let rawValues = try? JSONDecoder().decode([String].self, from: data) {
             let features = rawValues.compactMap { AppFeature(rawValue: $0) }
             return features.isEmpty ? AppFeature.defaultTabs : features
@@ -271,14 +261,16 @@ final class AppState {
     }() {
         didSet {
             if let data = try? JSONEncoder().encode(configuredTabs.map(\.rawValue)) {
-                UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.configuredTabs)
+                Defaults[.configuredTabsData] = data
+            } else {
+                Defaults[.configuredTabsData] = nil
             }
         }
     }
 
     func completeOnboarding() {
         hasCompletedOnboarding = true
-        UserDefaults.standard.set(true, forKey: AppConstants.UserDefaultsKeys.hasCompletedOnboarding)
+        Defaults[.hasCompletedOnboarding] = true
         backgroundSync()
     }
 

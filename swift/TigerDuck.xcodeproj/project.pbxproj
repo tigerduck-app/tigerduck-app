@@ -11,6 +11,10 @@
 		42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
 		42B9BC142F90EBFB00D3B5A1 /* TigerDuckLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42D2EEAD2F73B4B300973752 /* tigerduck.icon in Resources */ = {isa = PBXBuildFile; fileRef = 42D2EEAC2F73B4B300973752 /* tigerduck.icon */; };
+		60A0A00130AA000100000001 /* Valet in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20130AA000100000001 /* Valet */; };
+		60A0A00230AA000100000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20230AA000100000001 /* SwiftSoup */; };
+		60A0A00330AA000100000001 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20330AA000100000001 /* Sentry */; };
+		60A0A00430AA000100000001 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20430AA000100000001 /* Defaults */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -116,6 +120,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				60A0A00430AA000100000001 /* Defaults in Frameworks */,
+				60A0A00330AA000100000001 /* Sentry in Frameworks */,
+				60A0A00230AA000100000001 /* SwiftSoup in Frameworks */,
+				60A0A00130AA000100000001 /* Valet in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -201,6 +209,10 @@
 			);
 			name = TigerDuck;
 			packageProductDependencies = (
+				60A0A20130AA000100000001 /* Valet */,
+				60A0A20230AA000100000001 /* SwiftSoup */,
+				60A0A20330AA000100000001 /* Sentry */,
+				60A0A20430AA000100000001 /* Defaults */,
 			);
 			productName = TigerDuck;
 			productReference = 424C46562F6E763C009D1DDA /* TigerDuck.app */;
@@ -310,6 +322,12 @@
 			);
 			mainGroup = 424C464D2F6E763C009D1DDA;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				60A0A10130AA000100000001 /* XCRemoteSwiftPackageReference "Valet" */,
+				60A0A10230AA000100000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
+				60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+				60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 424C46572F6E763C009D1DDA /* Products */;
 			projectDirPath = "";
@@ -539,6 +557,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_SENTRY_DSN = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -589,6 +608,7 @@
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_SENTRY_DSN = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -843,6 +863,64 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		60A0A10130AA000100000001 /* XCRemoteSwiftPackageReference "Valet" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/square/Valet";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.1.0;
+			};
+		};
+		60A0A10230AA000100000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/scinfu/SwiftSoup";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.13.4;
+			};
+		};
+		60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.58.1;
+			};
+		};
+		60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/Defaults";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.8;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		60A0A20130AA000100000001 /* Valet */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 60A0A10130AA000100000001 /* XCRemoteSwiftPackageReference "Valet" */;
+			productName = Valet;
+		};
+		60A0A20230AA000100000001 /* SwiftSoup */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 60A0A10230AA000100000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
+			productName = SwiftSoup;
+		};
+		60A0A20330AA000100000001 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+		60A0A20430AA000100000001 /* Defaults */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */;
+			productName = Defaults;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 424C464E2F6E763C009D1DDA /* Project object */;
 }

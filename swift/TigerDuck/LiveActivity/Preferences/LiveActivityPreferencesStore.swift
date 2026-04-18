@@ -1,4 +1,5 @@
 import SwiftUI
+import Defaults
 
 /// Centralizes Live Activity / reminder related preferences so `AppState`
 /// does not keep accumulating unrelated toggles.
@@ -27,90 +28,60 @@ final class LiveActivityPreferencesStore {
     }
     var isLiveActivityEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(
-                isLiveActivityEnabled,
-                forKey: AppConstants.UserDefaultsKeys.isLiveActivityEnabled
-            )
+            Defaults[.isLiveActivityEnabled] = isLiveActivityEnabled
             notifyChange()
         }
     }
     var assignmentLiveActivityLeadTime: TimeInterval {
         didSet {
-            UserDefaults.standard.set(
-                assignmentLiveActivityLeadTime,
-                forKey: AppConstants.UserDefaultsKeys.assignmentLiveActivityLeadTime
-            )
+            Defaults[.assignmentLiveActivityLeadTime] = assignmentLiveActivityLeadTime
             notifyChange()
         }
     }
     var classPreparingLeadTime: TimeInterval {
         didSet {
-            UserDefaults.standard.set(
-                classPreparingLeadTime,
-                forKey: AppConstants.UserDefaultsKeys.classPreparingLeadTime
-            )
+            Defaults[.classPreparingLeadTime] = classPreparingLeadTime
             notifyChange()
         }
     }
     var showAssignmentScenario: Bool {
         didSet {
-            UserDefaults.standard.set(
-                showAssignmentScenario,
-                forKey: AppConstants.UserDefaultsKeys.showAssignmentScenario
-            )
+            Defaults[.showAssignmentScenario] = showAssignmentScenario
             notifyChange()
         }
     }
     var showClassPreparingScenario: Bool {
         didSet {
-            UserDefaults.standard.set(
-                showClassPreparingScenario,
-                forKey: AppConstants.UserDefaultsKeys.showClassPreparingScenario
-            )
+            Defaults[.showClassPreparingScenario] = showClassPreparingScenario
             notifyChange()
         }
     }
     var showInClassScenario: Bool {
         didSet {
-            UserDefaults.standard.set(
-                showInClassScenario,
-                forKey: AppConstants.UserDefaultsKeys.showInClassScenario
-            )
+            Defaults[.showInClassScenario] = showInClassScenario
             notifyChange()
         }
     }
 
     init() {
-        if let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.assignmentReminderOffsets),
+        if let data = Defaults[.assignmentReminderOffsetsData],
            let raws = try? JSONDecoder().decode([String].self, from: data) {
             assignmentReminderOffsets = Set(raws.compactMap { AssignmentReminderOffset(rawValue: $0) })
         } else {
             assignmentReminderOffsets = Self.defaultOffsets
         }
 
-        isLiveActivityEnabled = UserDefaults.standard.object(
-            forKey: AppConstants.UserDefaultsKeys.isLiveActivityEnabled
-        ) as? Bool ?? true
+        isLiveActivityEnabled = Defaults[.isLiveActivityEnabled]
 
-        let rawAssignmentLead = UserDefaults.standard.double(
-            forKey: AppConstants.UserDefaultsKeys.assignmentLiveActivityLeadTime
-        )
+        let rawAssignmentLead = Defaults[.assignmentLiveActivityLeadTime]
         assignmentLiveActivityLeadTime = rawAssignmentLead > 0 ? rawAssignmentLead : Self.defaultAssignmentLeadTime
 
-        let rawClassLead = UserDefaults.standard.double(
-            forKey: AppConstants.UserDefaultsKeys.classPreparingLeadTime
-        )
+        let rawClassLead = Defaults[.classPreparingLeadTime]
         classPreparingLeadTime = rawClassLead > 0 ? rawClassLead : Self.defaultClassPreparingLeadTime
 
-        showAssignmentScenario = UserDefaults.standard.object(
-            forKey: AppConstants.UserDefaultsKeys.showAssignmentScenario
-        ) as? Bool ?? true
-        showClassPreparingScenario = UserDefaults.standard.object(
-            forKey: AppConstants.UserDefaultsKeys.showClassPreparingScenario
-        ) as? Bool ?? true
-        showInClassScenario = UserDefaults.standard.object(
-            forKey: AppConstants.UserDefaultsKeys.showInClassScenario
-        ) as? Bool ?? true
+        showAssignmentScenario = Defaults[.showAssignmentScenario]
+        showClassPreparingScenario = Defaults[.showClassPreparingScenario]
+        showInClassScenario = Defaults[.showInClassScenario]
     }
 
     /// Reset everything to defaults. Exposed for settings UI.
@@ -127,7 +98,9 @@ final class LiveActivityPreferencesStore {
     private func persistOffsets() {
         let raws = assignmentReminderOffsets.map(\.rawValue).sorted()
         if let data = try? JSONEncoder().encode(raws) {
-            UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.assignmentReminderOffsets)
+            Defaults[.assignmentReminderOffsetsData] = data
+        } else {
+            Defaults[.assignmentReminderOffsetsData] = nil
         }
     }
 

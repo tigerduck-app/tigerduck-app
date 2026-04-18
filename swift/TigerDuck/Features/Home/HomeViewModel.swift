@@ -1,4 +1,5 @@
 import SwiftUI
+import Defaults
 
 @Observable
 final class HomeViewModel {
@@ -207,12 +208,14 @@ final class HomeViewModel {
     func saveSectionLayout() {
         reindexSections()
         if let data = try? JSONEncoder().encode(sections) {
-            UserDefaults.standard.set(data, forKey: AppConstants.UserDefaultsKeys.homeSectionLayout)
+            Defaults[.homeSectionLayoutData] = data
+        } else {
+            Defaults[.homeSectionLayoutData] = nil
         }
     }
 
     private func loadSectionLayout() -> [HomeSection]? {
-        guard let data = UserDefaults.standard.data(forKey: AppConstants.UserDefaultsKeys.homeSectionLayout),
+        guard let data = Defaults[.homeSectionLayoutData],
               let saved = try? JSONDecoder().decode([HomeSection].self, from: data),
               !saved.isEmpty else { return nil }
         return saved

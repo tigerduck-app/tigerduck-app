@@ -80,13 +80,18 @@ final class AuthService {
 
                 // Auto-attempt library login with same credentials (best-effort)
                 if !LibraryService.isTokenValid {
-                    _ = try? await LibraryService.login(username: normalizedId, password: password)
+                    do {
+                        _ = try await LibraryService.login(username: normalizedId, password: password)
+                    } catch {
+                        AppLogger.captureError(error, context: ["flow": "libraryAutoLogin"])
+                    }
                 }
             }
 
             isLoggingIn = false
             return success
         } catch {
+            AppLogger.captureError(error, context: ["flow": "ntustLogin"])
             loginError = error.localizedDescription
             isLoggingIn = false
             return false
