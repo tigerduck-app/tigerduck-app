@@ -109,6 +109,22 @@ struct VisualStylePolicy: Sendable {
         }
     }
 
+    // MARK: - Text colors
+
+    var primaryTextColor: Color {
+        switch preset {
+        case .default: return Color.textPrimary
+        case .iosInspired: return .primary
+        }
+    }
+
+    var secondaryTextColor: Color {
+        switch preset {
+        case .default: return Color.textSecondary
+        case .iosInspired: return .secondary
+        }
+    }
+
     // MARK: - Search-bar surface (announcements)
 
     enum SearchBarSurface: Sendable {

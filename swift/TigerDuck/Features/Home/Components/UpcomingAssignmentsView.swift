@@ -69,36 +69,22 @@ struct UpcomingAssignmentsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(assignment.title)
                     .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(primaryTextColor(policy: policy))
+                    .foregroundStyle(policy.primaryTextColor)
                     .lineLimit(1)
                 Text(assignment.courseName)
                     .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(secondaryTextColor(policy: policy))
+                    .foregroundStyle(policy.secondaryTextColor)
             }
             Spacer()
             Text(timeLabel(for: assignment, now: now))
                 .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(assignment.dueDate < now ? Color.badgeRed : secondaryTextColor(policy: policy))
+                .foregroundStyle(assignment.dueDate < now ? Color.badgeRed : policy.secondaryTextColor)
 
             if policy.assignmentRowStyle == .groupedList {
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
-        }
-    }
-
-    private func primaryTextColor(policy: VisualStylePolicy) -> Color {
-        switch policy.preset {
-        case .default: return Color.textPrimary
-        case .iosInspired: return .primary
-        }
-    }
-
-    private func secondaryTextColor(policy: VisualStylePolicy) -> Color {
-        switch policy.preset {
-        case .default: return Color.textSecondary
-        case .iosInspired: return .secondary
         }
     }
 

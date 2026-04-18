@@ -15,25 +15,25 @@ struct AnnouncementCardView: View {
                 Spacer()
                 Text(announcement.publishDate.shortDateString)
                     .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(secondaryTextColor(policy: policy))
+                    .foregroundStyle(policy.secondaryTextColor)
             }
 
             Text(announcement.title)
                 .font(TigerDuckTheme.Typography.headline)
-                .foregroundStyle(primaryTextColor(policy: policy))
+                .foregroundStyle(policy.primaryTextColor)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
 
             HStack(alignment: .top) {
                 Text(announcement.summary)
                     .font(summaryFont(policy: policy))
-                    .foregroundStyle(secondaryTextColor(policy: policy))
+                    .foregroundStyle(policy.secondaryTextColor)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundStyle(secondaryTextColor(policy: policy))
+                    .foregroundStyle(policy.secondaryTextColor)
             }
         }
         .cardPadding()
@@ -46,20 +46,6 @@ struct AnnouncementCardView: View {
         switch policy.preset {
         case .default: return TigerDuckTheme.Typography.body
         case .iosInspired: return .subheadline
-        }
-    }
-
-    private func primaryTextColor(policy: VisualStylePolicy) -> Color {
-        switch policy.preset {
-        case .default: return Color.textPrimary
-        case .iosInspired: return .primary
-        }
-    }
-
-    private func secondaryTextColor(policy: VisualStylePolicy) -> Color {
-        switch policy.preset {
-        case .default: return Color.textSecondary
-        case .iosInspired: return .secondary
         }
     }
 
