@@ -104,12 +104,7 @@ private struct LockScreenView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Row 3: progress bar (only when provided)
-            if let progress = snapshot.progress {
-                ProgressView(value: max(0, min(1, progress)))
-                    .tint(hexColor(snapshot.accentHex))
-                    .scaleEffect(x: 1, y: 1.2, anchor: .center)
-                    .padding(.vertical, 6)
-            }
+            AutoProgressBar(snapshot: snapshot)
 
             // Row 4: metadata — layout depends on scenario
             MetadataRowView(snapshot: snapshot)
@@ -136,18 +131,43 @@ private struct ExpandedBottomView: View {
                 .allowsTightening(true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let progress = snapshot.progress {
-                ProgressView(value: max(0, min(1, progress)))
-                    .tint(hexColor(snapshot.accentHex))
-                    .scaleEffect(x: 1, y: 1.2, anchor: .center)
-                    .padding(.vertical, 6)
-            }
+            AutoProgressBar(snapshot: snapshot)
 
             MetadataRowView(snapshot: snapshot)
         }
         .padding(.horizontal, 4)
         .padding(.top, 2)
         .padding(.bottom, 4)
+    }
+}
+
+// MARK: - Progress bar (system-driven auto-interpolation)
+
+/// OS-driven progress bar.
+///
+/// 底層邏輯：Live Activity 的 View 是快照型——`ProgressView(value:)` 只會在
+/// 每次 push `Activity.update(...)` 時重繪。若僅靠 push 更新，既耗電又會被
+/// 系統節流，使用者會看到「進度條卡住不動」。
+///
+/// 正確作法：用 `ProgressView(timerInterval:countsDown:)`——告訴系統這是
+/// 一個時間區間，OS 在 widget extension 內部自動補間、零 CPU、零 push。
+/// 這跟 `Text(timerInterval:)` 自動倒數文字是同一套機制。
+private struct AutoProgressBar: View {
+    let snapshot: LiveActivitySnapshot
+
+    var body: some View {
+        if let start = snapshot.progressStart,
+           let target = snapshot.countdownTarget,
+           start < target {
+            ProgressView(timerInterval: start...target, countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .tint(hexColor(snapshot.accentHex))
+            .scaleEffect(x: 1, y: 1.2, anchor: .center)
+            .padding(.vertical, 6)
+        }
     }
 }
 

@@ -11,8 +11,11 @@ nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable 
     let instructor: String?
     /// Target date for countdown timers (e.g. class end, assignment due).
     let countdownTarget: Date?
-    /// 0.0 ... 1.0 for progress bars (nil when N/A).
-    let progress: Double?
+    /// Start date for progress bars. When paired with `countdownTarget` the
+    /// widget renders `ProgressView(timerInterval:)`, which the system animates
+    /// on-device for free. `nil` hides the bar. Must satisfy
+    /// `progressStart < countdownTarget` when set.
+    let progressStart: Date?
     /// Accent color as hex (matches AppState.accentColorHex format).
     let accentHex: Int
     let deepLink: URL?

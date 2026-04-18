@@ -52,7 +52,6 @@ struct LiveActivityScenarioResolver {
                 assignment: urgent,
                 courses: courses,
                 leadTime: preferences.assignmentLiveActivityLeadTime,
-                now: now,
                 accentHex: accentHex
             )
         }
@@ -71,7 +70,7 @@ struct LiveActivityScenarioResolver {
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.end,
-            progress: progress(from: slot.start, to: slot.end, at: now),
+            progressStart: slot.start < slot.end ? slot.start : nil,
             accentHex: accentHex,
             deepLink: nil,
             sourceId: slot.id
@@ -87,7 +86,7 @@ struct LiveActivityScenarioResolver {
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.start,
-            progress: nil,
+            progressStart: nil,
             accentHex: accentHex,
             deepLink: nil,
             sourceId: slot.id
@@ -98,12 +97,14 @@ struct LiveActivityScenarioResolver {
         assignment: SDAssignment,
         courses: [SDCourse] = [],
         leadTime: TimeInterval,
-        now: Date = Date(),
         accentHex: Int
     ) -> LiveActivitySnapshot {
         let instructor = courses
             .first { $0.courseNo == assignment.courseNo }
             .flatMap { nonEmpty($0.instructor) }
+        let progressStart: Date? = leadTime > 0
+            ? assignment.dueDate.addingTimeInterval(-leadTime)
+            : nil
         return LiveActivitySnapshot(
             scenario: .assignmentUrgent,
             title: assignment.title,
@@ -111,20 +112,11 @@ struct LiveActivityScenarioResolver {
             locationText: nil,
             instructor: instructor,
             countdownTarget: assignment.dueDate,
-            progress: assignmentProgress(dueDate: assignment.dueDate, leadTime: leadTime, now: now),
+            progressStart: progressStart,
             accentHex: accentHex,
             deepLink: assignment.moodleDeepLink,
             sourceId: assignment.assignmentId
         )
-    }
-
-    /// 作業進度條：以 `leadTime` 為分母，距離截止越近進度越滿。
-    /// start = dueDate - leadTime；elapsed = now - start；progress = elapsed / leadTime。
-    static func assignmentProgress(dueDate: Date, leadTime: TimeInterval, now: Date) -> Double? {
-        guard leadTime > 0 else { return nil }
-        let start = dueDate.addingTimeInterval(-leadTime)
-        let elapsed = now.timeIntervalSince(start)
-        return max(0, min(1, elapsed / leadTime))
     }
 
     private static func nonEmpty(_ value: String) -> String? {
@@ -151,10 +143,4 @@ struct LiveActivityScenarioResolver {
             .min { $0.dueDate < $1.dueDate }
     }
 
-    static func progress(from start: Date, to end: Date, at now: Date) -> Double? {
-        let total = end.timeIntervalSince(start)
-        guard total > 0 else { return nil }
-        let elapsed = now.timeIntervalSince(start)
-        return max(0, min(1, elapsed / total))
-    }
 }
