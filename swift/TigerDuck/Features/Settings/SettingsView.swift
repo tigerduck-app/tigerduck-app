@@ -163,9 +163,8 @@ struct SettingsView: View {
         .sheet(isPresented: $showLibraryLogin) {
             LoginSheet(
                 title: "圖書館系統",
-                subtitle: "帳號密碼可能與校務系統不同",
-                usernamePlaceholder: "圖書館帳號",
-                passwordPlaceholder: "圖書館密碼",
+                usernamePlaceholder: "學號",
+                passwordPlaceholder: "密碼",
                 initialUsername: appState.authService.storedStudentId ?? "",
                 isLoggingIn: libIsLoggingIn,
                 loginError: libLoginError,
@@ -276,60 +275,71 @@ struct SettingsView: View {
     }
 
     private var ntustAccountRow: some View {
-        HStack {
-            Circle()
-                .fill(appState.isNTUSTLoggedIn ? Color.green : Color.red)
-                .frame(width: 10, height: 10)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("NTUST 校務系統")
-                    .font(.body)
-                if appState.isNTUSTLoggedIn, let studentId = appState.authService.storedStudentId {
-                    Text(studentId)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if appState.isNTUSTLoggedIn {
-                Button("登出", role: .destructive) {
-                    appState.logoutNTUST()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            } else {
-                Button("登入") { appState.presentNTUSTLogin() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-            }
-        }
+        accountRow(
+            title: "校務系統",
+            isLoggedIn: appState.isNTUSTLoggedIn,
+            detail: appState.authService.storedStudentId,
+            onLogin: { appState.presentNTUSTLogin() },
+            onLogout: { appState.logoutNTUST() }
+        )
     }
 
     private var libraryAccountRow: some View {
+        accountRow(
+            title: "圖書館系統",
+            isLoggedIn: appState.isLibraryLoggedIn,
+            detail: appState.libraryUsername,
+            onLogin: { showLibraryLogin = true },
+            onLogout: { appState.logoutLibrary() }
+        )
+    }
+
+    @ViewBuilder
+    private func accountRow(
+        title: String,
+        isLoggedIn: Bool,
+        detail: String?,
+        onLogin: @escaping () -> Void,
+        onLogout: @escaping () -> Void
+    ) -> some View {
         HStack {
             Circle()
-                .fill(appState.isLibraryLoggedIn ? Color.green : Color.red)
+                .fill(isLoggedIn ? Color.green : Color.red)
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 2) {
-                Text("圖書館系統")
+                Text(title)
                     .font(.body)
-                if appState.isLibraryLoggedIn, let username = appState.libraryUsername {
-                    Text(username)
+                if isLoggedIn, let detail {
+                    Text(detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer()
-            if appState.isLibraryLoggedIn {
-                Button("登出", role: .destructive) {
-                    appState.logoutLibrary()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            } else {
-                Button("登入") { showLibraryLogin = true }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+            accountActionButton(isLoggedIn: isLoggedIn, onLogin: onLogin, onLogout: onLogout)
+        }
+    }
+
+    @ViewBuilder
+    private func accountActionButton(
+        isLoggedIn: Bool,
+        onLogin: @escaping () -> Void,
+        onLogout: @escaping () -> Void
+    ) -> some View {
+        if isLoggedIn {
+            Button(role: .destructive, action: onLogout) {
+                Text("登出")
+                    .font(.callout.weight(.semibold))
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        } else {
+            Button(action: onLogin) {
+                Text("登入")
+                    .font(.callout.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
         }
     }
 }

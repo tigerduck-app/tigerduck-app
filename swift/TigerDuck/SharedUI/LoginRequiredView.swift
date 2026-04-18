@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Presents a login-required prompt on surfaces that require an NTUST SSO
+/// Presents a login-required prompt on surfaces that require a 校務系統
 /// session. Supports two layouts:
 ///
 /// - ``Layout/page``: full-page placeholder used when an entire screen is
@@ -16,7 +16,7 @@ struct LoginRequiredView: View {
     let layout: Layout
     let title: String
     let message: String
-    var primaryTitle: String = "登入 NTUST"
+    var primaryTitle: String = "登入校務系統"
     var secondaryTitle: String? = nil
     let onPrimary: () -> Void
     var onSecondary: (() -> Void)? = nil

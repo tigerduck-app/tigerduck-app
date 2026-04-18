@@ -13,8 +13,8 @@ struct NTUSTLoginSheetHost: ViewModifier {
 
         content.sheet(isPresented: $appState.isShowingNTUSTLoginSheet) {
             LoginSheet(
-                title: "NTUST 校務系統",
-                subtitle: "使用 NTUST SSO 登入以存取課表、Moodle 等功能",
+                title: "校務系統",
+                subtitle: "使用校務系統帳號登入以存取課表、Moodle 等功能",
                 usernamePlaceholder: "學號",
                 passwordPlaceholder: "密碼",
                 isLoggingIn: appState.authService.isLoggingIn,
