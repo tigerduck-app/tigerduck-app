@@ -21,6 +21,17 @@ struct ClassTableView: View {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     titleBar
 
+                    if let reauthError = appState.ntustReauthErrorMessage {
+                        NTUSTReauthErrorBanner(
+                            message: reauthError,
+                            onRetry: {
+                                appState.clearNTUSTReauthError()
+                                appState.presentNTUSTLogin()
+                            },
+                            onDismiss: { appState.clearNTUSTReauthError() }
+                        )
+                    }
+
                     switch pageAccessState {
                     case .loginRequired:
                         LoginRequiredView(
@@ -29,7 +40,14 @@ struct ClassTableView: View {
                             message: "尚未登入，無法查看課表",
                             onPrimary: { appState.presentNTUSTLogin() }
                         )
-                    case .content, .empty, .loading, .error:
+                    case .empty:
+                        EmptyStateView(
+                            icon: "book.closed",
+                            title: "目前沒有課程",
+                            message: "下拉以重新整理，或使用右上角的 + 新增課程"
+                        )
+                        .padding(.vertical, TigerDuckTheme.Spacing.xxl)
+                    case .content:
                         authenticatedContent
                     }
                 }
@@ -69,15 +87,13 @@ struct ClassTableView: View {
             }
     }
 
-    /// Page-level access gate. The Class Table screen only makes sense when
-    /// an NTUST session exists — the grid, credit total, and add-course
-    /// action all assume authenticated data. Render a login prompt otherwise
-    /// rather than a deceptively empty timetable.
+    /// Page-level access gate for the Class Table screen. Delegates to the
+    /// canonical ``AppState/ntustProtectedAccessState(isEmpty:)`` so the
+    /// cached-first rule stays consistent with Home — a returning user
+    /// with stored credentials and an expired cookie sees cached data (or
+    /// an empty-state placeholder), never the interactive login prompt.
     private var pageAccessState: NTUSTProtectedAccessState {
-        NTUSTProtectedAccessState(
-            isLoggedIn: appState.isNTUSTLoggedIn,
-            isEmpty: viewModel.courses.isEmpty
-        )
+        appState.ntustProtectedAccessState(isEmpty: viewModel.courses.isEmpty)
     }
 
     private var titleBar: some View {
@@ -87,7 +103,7 @@ struct ClassTableView: View {
                 .foregroundStyle(Color.textPrimary)
             Spacer()
             NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
-            if appState.isNTUSTLoggedIn {
+            if pageAccessState != .loginRequired {
                 Button {
                     viewModel.showAddCourse = true
                 } label: {

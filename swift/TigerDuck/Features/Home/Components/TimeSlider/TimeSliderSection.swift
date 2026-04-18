@@ -21,12 +21,7 @@ struct TimeSliderSection: View {
 
     @ViewBuilder
     private var contentArea: some View {
-        let state = NTUSTProtectedAccessState(
-            isLoggedIn: appState.isNTUSTLoggedIn,
-            isEmpty: !viewModel.hasCourses
-        )
-
-        switch state {
+        switch appState.ntustProtectedAccessState(isEmpty: !viewModel.hasCourses) {
         case .loginRequired:
             LoginRequiredView(
                 layout: .section,
@@ -34,15 +29,15 @@ struct TimeSliderSection: View {
                 message: "尚未登入，無法顯示今日課程",
                 onPrimary: { appState.presentNTUSTLogin() }
             )
-        case .content, .empty, .loading, .error:
-            Group {
-                if viewModel.hasCourses {
-                    sliderContent
-                } else {
-                    emptyState
-                }
-            }
-            .padding(.horizontal, 16)
+        case .content:
+            sliderContent
+                .padding(.horizontal, 16)
+        case .empty:
+            // Logged in (or has credentials pending re-auth) but currently
+            // no cached courses — keep the existing in-surface hint rather
+            // than the login gate.
+            emptyState
+                .padding(.horizontal, 16)
         }
     }
 

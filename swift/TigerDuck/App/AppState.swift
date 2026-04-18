@@ -83,6 +83,28 @@ final class AppState {
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
+    /// Canonical gating decision for 校務系統-protected surfaces. Protected
+    /// screens render this state instead of re-deriving from
+    /// ``isNTUSTLoggedIn``. The difference matters: ``isNTUSTLoggedIn``
+    /// flips to `false` the moment session cookies TTL, even when the
+    /// keychain still holds credentials and the next fetch will silently
+    /// re-authenticate. Gating on ``hasStoredCredentials`` implements the
+    /// cached-first UX — cached content keeps rendering during a silent
+    /// re-auth, and the interactive login prompt is reserved for users
+    /// who truly have nothing stored.
+    func ntustProtectedAccessState(isEmpty: Bool) -> NTUSTProtectedAccessState {
+        if !authService.hasStoredCredentials { return .loginRequired }
+        return isEmpty ? .empty : .content
+    }
+
+    /// Pass-through so views can surface silent re-auth failures without
+    /// reaching into ``authService`` directly.
+    var ntustReauthErrorMessage: String? { authService.reauthErrorMessage }
+
+    func clearNTUSTReauthError() {
+        authService.clearReauthError()
+    }
+
     /// Entry point for any surface that wants to funnel the user into the
     /// NTUST SSO login flow. Idempotent — repeated calls while the sheet is
     /// already up no-op.

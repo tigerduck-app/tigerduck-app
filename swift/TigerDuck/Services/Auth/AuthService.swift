@@ -20,6 +20,29 @@ final class AuthService {
         return NTUSTSessionManager.shared.cookiesValid && storedStudentId != nil
     }
 
+    /// True when the keychain still holds credentials. Protected surfaces
+    /// gate on this rather than on ``isNTUSTAuthenticated`` so that a
+    /// returning user whose cookies have simply TTL'd does NOT see the
+    /// interactive login prompt — ``ensureAuthenticated()`` will silently
+    /// re-authenticate on the next fetch.
+    var hasStoredCredentials: Bool {
+        _ = _revision
+        return storedStudentId != nil && storedPassword != nil
+    }
+
+    /// True while a silent re-authentication (triggered by
+    /// ``ensureAuthenticated()``) is in flight. Distinct from
+    /// ``isLoggingIn`` which covers both interactive and silent paths —
+    /// consumers that want to distinguish "user is typing into the login
+    /// sheet" from "background re-auth" read this instead.
+    var isReauthenticating = false
+
+    /// Last silent re-auth failure (e.g. password was changed on the
+    /// portal). Credentials are intentionally retained — the user decides
+    /// whether to retry interactively. Cleared on the next successful
+    /// login or logout.
+    var reauthErrorMessage: String?
+
     var isLoggingIn = false
     var loginError: String?
 
@@ -52,6 +75,7 @@ final class AuthService {
             if success {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
+                reauthErrorMessage = nil
                 _revision += 1
 
                 // Auto-attempt library login with same credentials (best-effort)
@@ -69,17 +93,33 @@ final class AuthService {
         }
     }
 
-    /// Re-authenticate using stored credentials
+    /// Silent re-authenticate using stored credentials. Distinct from
+    /// ``login(studentId:password:)`` in that it manages
+    /// ``isReauthenticating`` / ``reauthErrorMessage`` around the attempt,
+    /// so UI surfaces can distinguish a background refresh from the user
+    /// interactively typing into the login sheet.
     func ensureAuthenticated() async -> Bool {
         guard let studentId = storedStudentId, let password = storedPassword else {
             return false
         }
 
         if NTUSTSessionManager.shared.cookiesValid {
+            reauthErrorMessage = nil
             return true
         }
 
-        return await login(studentId: studentId, password: password)
+        isReauthenticating = true
+        reauthErrorMessage = nil
+        let success = await login(studentId: studentId, password: password)
+        isReauthenticating = false
+
+        if !success {
+            // Keep credentials so the user can retry interactively — they
+            // are the only party who can tell "cookie TTL" apart from
+            // "password was changed on the portal".
+            reauthErrorMessage = loginError ?? "自動登入失敗"
+        }
+        return success
     }
 
     func logout() {
@@ -87,7 +127,13 @@ final class AuthService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
         NTUSTSessionManager.shared.invalidateSession()
         loginError = nil
+        reauthErrorMessage = nil
+        isReauthenticating = false
         loginGeneration &+= 1
         _revision += 1
+    }
+
+    func clearReauthError() {
+        reauthErrorMessage = nil
     }
 }

@@ -39,6 +39,17 @@ struct HomeView: View {
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
 
+                    if let reauthError = appState.ntustReauthErrorMessage {
+                        NTUSTReauthErrorBanner(
+                            message: reauthError,
+                            onRetry: {
+                                appState.clearNTUSTReauthError()
+                                appState.presentNTUSTLogin()
+                            },
+                            onDismiss: { appState.clearNTUSTReauthError() }
+                        )
+                    }
+
                     // Sections
                     ForEach(viewModel.sections) { section in
                         sectionCell(section)
@@ -285,12 +296,7 @@ private struct HomeSectionView: View {
 
     @ViewBuilder
     private var upcomingAssignmentsContent: some View {
-        let state = NTUSTProtectedAccessState(
-            isLoggedIn: appState.isNTUSTLoggedIn,
-            isEmpty: viewModel.upcomingAssignments.isEmpty
-        )
-
-        switch state {
+        switch appState.ntustProtectedAccessState(isEmpty: viewModel.upcomingAssignments.isEmpty) {
         case .loginRequired:
             LoginRequiredView(
                 layout: .section,
@@ -304,7 +310,7 @@ private struct HomeSectionView: View {
                 title: "一切順利",
                 message: "沒有待辦作業"
             )
-        case .content, .loading, .error:
+        case .content:
             UpcomingAssignmentsView(
                 assignments: viewModel.upcomingAssignments,
                 showAbsoluteTime: appState.showAbsoluteAssignmentTime
