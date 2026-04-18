@@ -1,11 +1,21 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 @main
 struct TigerDuckApp: App {
     @State private var appState = AppState()
     @State private var sceneRefreshTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        // Pull-to-refresh on Home / Class Table acts as a gesture only —
+        // the visual status lives in the top-right NetworkStatusOverlay
+        // (orange spinner while loading, green check on success). Hiding
+        // the UIRefreshControl glyph app-wide prevents double spinners
+        // from competing for the user's attention.
+        UIRefreshControl.appearance().tintColor = .clear
+    }
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
