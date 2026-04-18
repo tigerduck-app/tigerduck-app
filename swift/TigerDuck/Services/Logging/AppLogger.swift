@@ -30,6 +30,23 @@ enum AppLogger {
 
                 return event
             }
+            // Performance spans auto-instrumented from URLSession store the
+            // request URL under `url` and the query string under `http.query`;
+            // without this hook session-scoped params bypass beforeSend.
+            options.beforeSendSpan = { span in
+                for key in ["url", "http.url", "http.query"] {
+                    guard let value = span.data[key] as? String else { continue }
+                    let scrubbed = value.replacingOccurrences(
+                        of: #"token=[^&]+"#,
+                        with: "token=***",
+                        options: .regularExpression
+                    )
+                    if scrubbed != value {
+                        span.setData(value: scrubbed, key: key)
+                    }
+                }
+                return span
+            }
         }
     }
 
