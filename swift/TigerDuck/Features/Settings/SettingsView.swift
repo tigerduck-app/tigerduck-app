@@ -163,6 +163,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showLibraryLogin) {
             LoginSheet(
                 title: "圖書館系統",
+                subtitle: "密碼可能與校務系統不同",
                 usernamePlaceholder: "學號",
                 passwordPlaceholder: "密碼",
                 initialUsername: appState.authService.storedStudentId ?? "",
