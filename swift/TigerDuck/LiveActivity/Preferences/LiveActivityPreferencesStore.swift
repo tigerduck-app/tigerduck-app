@@ -10,13 +10,15 @@ import SwiftUI
 ///   denser coverage in Settings.
 /// - `isLiveActivityEnabled`: true
 /// - `assignmentLiveActivityLeadTime`: 8 hours (also the spec cap)
-/// - `classPreparingLeadTime`: 15 minutes
+/// - `classPreparingLeadTime`: 1 hour (range 5 minutes ... 4 hours)
 /// - All scenario toggles on
 @Observable
 final class LiveActivityPreferencesStore {
     static let defaultOffsets: Set<AssignmentReminderOffset> = [.hr48, .hr24, .hr8, .hr2, .hr1, .min30]
     static let defaultAssignmentLeadTime: TimeInterval = 8 * 3600
-    static let defaultClassPreparingLeadTime: TimeInterval = 15 * 60
+    static let defaultClassPreparingLeadTime: TimeInterval = 60 * 60
+    static let minimumClassPreparingLeadTime: TimeInterval = 5 * 60
+    static let maximumClassPreparingLeadTime: TimeInterval = 4 * 3600
     /// Spec invariant: Live Activity lead time must not exceed 8 hours to fit the activity lifecycle.
     static let maximumAssignmentLeadTime: TimeInterval = 8 * 3600
 
