@@ -104,44 +104,10 @@ private struct LockScreenView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Row 3: progress bar (only when provided)
-            if let progress = snapshot.progress {
-                ProgressView(value: max(0, min(1, progress)))
-                    .tint(hexColor(snapshot.accentHex))
-                    .scaleEffect(x: 1, y: 1.2, anchor: .center)
-                    .padding(.vertical, 6)
-            }
+            AutoProgressBar(snapshot: snapshot)
 
-            // Row 4: metadata — 地點 | Spacer | 時間 | Spacer | 老師
-            HStack(spacing: 0) {
-                HStack(spacing: 4) {
-                    if let loc = snapshot.locationText, !loc.isEmpty {
-                        Image(systemName: "mappin.and.ellipse")
-                        Text(loc)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 4) {
-                    if !snapshot.subtitle.isEmpty {
-                        Image(systemName: "clock.fill")
-                        Text(snapshot.subtitle)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 4) {
-                    if let ins = snapshot.instructor, !ins.isEmpty {
-                        Image(systemName: "person.fill")
-                        Text(ins)
-                    }
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
+            // Row 4: metadata — layout depends on scenario
+            MetadataRowView(snapshot: snapshot)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -165,14 +131,78 @@ private struct ExpandedBottomView: View {
                 .allowsTightening(true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let progress = snapshot.progress {
-                ProgressView(value: max(0, min(1, progress)))
-                    .tint(hexColor(snapshot.accentHex))
-                    .scaleEffect(x: 1, y: 1.2, anchor: .center)
-                    .padding(.vertical, 6)
-            }
+            AutoProgressBar(snapshot: snapshot)
 
-            HStack(spacing: 0) {
+            MetadataRowView(snapshot: snapshot)
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
+        .padding(.bottom, 4)
+    }
+}
+
+// MARK: - Progress bar (system-driven auto-interpolation)
+
+/// OS-driven progress bar.
+///
+/// 底層邏輯：Live Activity 的 View 是快照型——`ProgressView(value:)` 只會在
+/// 每次 push `Activity.update(...)` 時重繪。若僅靠 push 更新，既耗電又會被
+/// 系統節流，使用者會看到「進度條卡住不動」。
+///
+/// 正確作法：用 `ProgressView(timerInterval:countsDown:)`——告訴系統這是
+/// 一個時間區間，OS 在 widget extension 內部自動補間、零 CPU、零 push。
+/// 這跟 `Text(timerInterval:)` 自動倒數文字是同一套機制。
+private struct AutoProgressBar: View {
+    let snapshot: LiveActivitySnapshot
+
+    var body: some View {
+        if let start = snapshot.progressStart,
+           let target = snapshot.countdownTarget,
+           start < target {
+            ProgressView(timerInterval: start...target, countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .tint(hexColor(snapshot.accentHex))
+            .scaleEffect(x: 1, y: 1.2, anchor: .center)
+            .padding(.vertical, 6)
+        }
+    }
+}
+
+// MARK: - Metadata row (shared by lock screen + dynamic island)
+
+/// Scenario-aware bottom metadata row.
+///
+/// - inClass / classPreparing: 地點 | 時間 | 老師
+/// - assignmentUrgent:         課程名稱(課本) |    | 指導老師
+///   `subtitle` 對作業場景存放課程名稱；instructor 目前 resolver 恆為 nil，
+///   故右側通常為空白（符合需求允許右側空白的備案）。
+private struct MetadataRowView: View {
+    let snapshot: LiveActivitySnapshot
+
+    var body: some View {
+        HStack(spacing: 0) {
+            switch snapshot.scenario {
+            case .assignmentUrgent:
+                HStack(spacing: 4) {
+                    if !snapshot.subtitle.isEmpty {
+                        Image(systemName: "text.book.closed.fill")
+                        Text(snapshot.subtitle)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    if let ins = snapshot.instructor, !ins.isEmpty {
+                        Image(systemName: "person.fill")
+                        Text(ins)
+                    }
+                }
+
+            case .inClass, .classPreparing:
                 HStack(spacing: 4) {
                     if let loc = snapshot.locationText, !loc.isEmpty {
                         Image(systemName: "mappin.and.ellipse")
@@ -198,14 +228,11 @@ private struct ExpandedBottomView: View {
                     }
                 }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 4)
-        .padding(.top, 2)
-        .padding(.bottom, 4)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .frame(maxWidth: .infinity)
     }
 }
 

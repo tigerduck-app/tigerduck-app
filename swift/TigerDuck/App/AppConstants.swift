@@ -24,10 +24,10 @@ enum AppConstants {
         static let browserPreference = "browserPreference"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let configuredTabs = "configuredTabs"
-        static let timeSliderStyle = "timeSliderStyle"
         static let invertSliderDirection = "invertSliderDirection"
         static let libraryFeatureEnabled = "libraryFeatureEnabled"
         static let homeSectionLayout = "homeSectionLayout"
+        static let visualPreset = "visualPreset"
 
         // MARK: Live Activity / reminders
         static let assignmentReminderOffsets = "assignmentReminderOffsets"
@@ -37,6 +37,7 @@ enum AppConstants {
         static let showAssignmentScenario = "showAssignmentScenario"
         static let showClassPreparingScenario = "showClassPreparingScenario"
         static let showInClassScenario = "showInClassScenario"
+        static let ssoLoginTimestamp = "ssoLoginTimestamp"
     }
 
     enum Periods {

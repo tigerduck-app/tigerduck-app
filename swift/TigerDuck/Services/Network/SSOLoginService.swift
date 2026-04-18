@@ -26,88 +26,91 @@ enum SSOLoginService {
         studentId: String,
         password: String
     ) async throws -> Bool {
-        // Step 1: Visit service URL (follows redirects automatically)
-        let (data, response) = try await session.data(from: serviceURL)
-        guard let httpResp = response as? HTTPURLResponse,
-              let html = String(data: data, encoding: .utf8) else {
-            throw SSOLoginError.invalidResponse
-        }
-        let finalURL = httpResp.url ?? serviceURL
+        do {
+            // Step 1: Visit service URL (follows redirects automatically)
+            let (data, response) = try await session.data(from: serviceURL)
+            guard let httpResp = response as? HTTPURLResponse,
+                  let html = String(data: data, encoding: .utf8) else {
+                throw SSOLoginError.invalidResponse
+            }
+            let finalURL = httpResp.url ?? serviceURL
 
-        // Step 2: Resolve any OIDC bridge forms
-        var currentHTML = html
-        var currentURL = finalURL
-        (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-            session: session, html: currentHTML, baseURL: currentURL
-        )
-
-        // Step 3: Check if we're on the SSO login page
-        if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-            // Already logged in
-            NTUSTSessionManager.shared.markLoginSuccess()
-            return true
-        }
-
-        // Step 4: Clear SSO cookies only (preserve Moodle/service cookies to avoid device-change warnings)
-        HTTPCookieStorage.shared.cookies?
-            .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }
-            .forEach { HTTPCookieStorage.shared.deleteCookie($0) }
-
-        // Re-visit service URL
-        let (data2, response2) = try await session.data(from: serviceURL)
-        guard let html2 = String(data: data2, encoding: .utf8),
-              let resp2 = response2 as? HTTPURLResponse else {
-            throw SSOLoginError.invalidResponse
-        }
-        currentURL = resp2.url ?? serviceURL
-        currentHTML = html2
-
-        if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
-            // Resolved after clearing cookies (unlikely but handle it)
+            // Step 2: Resolve any OIDC bridge forms
+            var currentHTML = html
+            var currentURL = finalURL
             (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
                 session: session, html: currentHTML, baseURL: currentURL
             )
+
+            // Step 3: Check if we're on the SSO login page
+            if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+                NTUSTSessionManager.shared.markLoginSuccess()
+                return true
+            }
+
+            // Step 4: Clear SSO cookies only (preserve Moodle/service cookies to avoid device-change warnings)
+            HTTPCookieStorage.shared.cookies?
+                .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }
+                .forEach { HTTPCookieStorage.shared.deleteCookie($0) }
+
+            // Re-visit service URL
+            let (data2, response2) = try await session.data(from: serviceURL)
+            guard let html2 = String(data: data2, encoding: .utf8),
+                  let resp2 = response2 as? HTTPURLResponse else {
+                throw SSOLoginError.invalidResponse
+            }
+            currentURL = resp2.url ?? serviceURL
+            currentHTML = html2
+
+            if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+                (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
+                    session: session, html: currentHTML, baseURL: currentURL
+                )
+                NTUSTSessionManager.shared.markLoginSuccess()
+                return true
+            }
+
+            // Step 5: Submit SSO login form
+            guard let form = HTMLParser.findFormById(currentHTML, id: "loginForm") else {
+                throw SSOLoginError.loginFormNotFound
+            }
+
+            var payload: [(String, String)] = form.inputs
+            replaceOrAppend(&payload, name: "Username", value: studentId)
+            replaceOrAppend(&payload, name: "Password", value: password)
+            if !payload.contains(where: { $0.0 == "captcha" }) {
+                payload.append(("captcha", ""))
+            }
+
+            let actionURL = resolveURL(form.action, base: currentURL)
+            let (loginData, loginResponse) = try await postForm(
+                session: session, url: actionURL, fields: payload
+            )
+            guard let loginHTML = String(data: loginData, encoding: .utf8),
+                  let loginResp = loginResponse as? HTTPURLResponse else {
+                throw SSOLoginError.invalidResponse
+            }
+            currentURL = loginResp.url ?? actionURL
+            currentHTML = loginHTML
+
+            // Step 6: Resolve OIDC bridge forms after login
+            (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
+                session: session, html: currentHTML, baseURL: currentURL
+            )
+
+            // Step 7: Check if still on SSO page → login failed
+            if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+                throw SSOLoginError.loginFailed
+            }
+
             NTUSTSessionManager.shared.markLoginSuccess()
             return true
-        }
-
-        // Step 5: Submit SSO login form
-        guard let form = HTMLParser.findFormById(currentHTML, id: "loginForm") else {
-            throw SSOLoginError.loginFormNotFound
-        }
-
-        var payload: [(String, String)] = form.inputs
-        // Replace/set username and password
-        replaceOrAppend(&payload, name: "Username", value: studentId)
-        replaceOrAppend(&payload, name: "Password", value: password)
-        // Ensure captcha field exists
-        if !payload.contains(where: { $0.0 == "captcha" }) {
-            payload.append(("captcha", ""))
-        }
-
-        let actionURL = resolveURL(form.action, base: currentURL)
-        let (loginData, loginResponse) = try await postForm(
-            session: session, url: actionURL, fields: payload
-        )
-        guard let loginHTML = String(data: loginData, encoding: .utf8),
-              let loginResp = loginResponse as? HTTPURLResponse else {
-            throw SSOLoginError.invalidResponse
-        }
-        currentURL = loginResp.url ?? actionURL
-        currentHTML = loginHTML
-
-        // Step 6: Resolve OIDC bridge forms after login
-        (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-            session: session, html: currentHTML, baseURL: currentURL
-        )
-
-        // Step 7: Check if still on SSO page → login failed
-        if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+        } catch SSOLoginError.loginFailed {
             throw SSOLoginError.loginFailed
+        } catch {
+            AppLogger.captureError(error, context: ["service": "ssoEnsureServiceLogin"])
+            throw error
         }
-
-        NTUSTSessionManager.shared.markLoginSuccess()
-        return true
     }
 
     /// Follow OIDC bridge form chain (max 3 steps), mirroring Python's _resolve_oidc_bridge_forms

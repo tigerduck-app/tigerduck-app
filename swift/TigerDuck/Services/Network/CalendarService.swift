@@ -75,6 +75,10 @@ enum CalendarService {
 
             return parseICS(icsString)
         } catch {
+            AppLogger.captureError(error, context: [
+                "service": "calendarFetchAndParseICS",
+                "rocYear": String(currentROCYear),
+            ])
             return []
         }
     }

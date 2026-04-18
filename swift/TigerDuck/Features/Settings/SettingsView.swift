@@ -12,7 +12,6 @@ struct SettingsView: View {
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
     @State private var showSourceCode = false
-    @State private var showNTUSTLogin = false
     @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
@@ -78,16 +77,16 @@ struct SettingsView: View {
 
             // MARK: - Display
             Section("顯示") {
+                Picker("介面風格", selection: $appState.visualPreset) {
+                    ForEach(VisualPreset.allCases) { preset in
+                        Text(preset.displayName).tag(preset)
+                    }
+                }
                 Toggle("作業截止時間顯示完整日期", isOn: $appState.showAbsoluteAssignmentTime)
                 Toggle("記住公告篩選條件", isOn: $appState.rememberAnnouncementFilter)
                 Picker("開啟連結方式", selection: $appState.browserPreference) {
                     Text("系統預設瀏覽器").tag(BrowserPreference.system)
                     Text("App 內瀏覽器").tag(BrowserPreference.inApp)
-                }
-                Picker("時間滑條樣式", selection: $appState.timeSliderStyle) {
-                    ForEach(TimeSliderStyle.allCases, id: \.self) { style in
-                        Text(style.displayName).tag(style)
-                    }
                 }
                 Toggle("反轉滑條方向", isOn: $appState.invertSliderDirection)
             }
@@ -161,35 +160,12 @@ struct SettingsView: View {
             InAppBrowserView(url: Self.sourceCodeURL)
                 .ignoresSafeArea()
         }
-        .sheet(isPresented: $showNTUSTLogin) {
-            LoginSheet(
-                title: "NTUST 校務系統",
-                usernamePlaceholder: "學號",
-                passwordPlaceholder: "密碼",
-                isLoggingIn: appState.authService.isLoggingIn,
-                loginError: appState.authService.loginError,
-                onLogin: { studentId, password in
-                    Task {
-                        _ = await appState.authService.login(
-                            studentId: studentId,
-                            password: password
-                        )
-                        if appState.isNTUSTLoggedIn {
-                            showNTUSTLogin = false
-                            appState.notifyLibraryStateChanged()
-                            appState.backgroundSync()
-                        }
-                    }
-                },
-                onDismiss: { showNTUSTLogin = false }
-            )
-        }
         .sheet(isPresented: $showLibraryLogin) {
             LoginSheet(
                 title: "圖書館系統",
-                subtitle: "帳號密碼可能與校務系統不同",
-                usernamePlaceholder: "圖書館帳號",
-                passwordPlaceholder: "圖書館密碼",
+                subtitle: "密碼可能與校務系統不同，預設為身分證字號",
+                usernamePlaceholder: "學號",
+                passwordPlaceholder: "密碼",
                 initialUsername: appState.authService.storedStudentId ?? "",
                 isLoggingIn: libIsLoggingIn,
                 loginError: libLoginError,
@@ -300,60 +276,71 @@ struct SettingsView: View {
     }
 
     private var ntustAccountRow: some View {
-        HStack {
-            Circle()
-                .fill(appState.isNTUSTLoggedIn ? Color.green : Color.red)
-                .frame(width: 10, height: 10)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("NTUST 校務系統")
-                    .font(.body)
-                if appState.isNTUSTLoggedIn, let studentId = appState.authService.storedStudentId {
-                    Text(studentId)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if appState.isNTUSTLoggedIn {
-                Button("登出", role: .destructive) {
-                    appState.logoutNTUST()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            } else {
-                Button("登入") { showNTUSTLogin = true }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-            }
-        }
+        accountRow(
+            title: "校務系統",
+            isLoggedIn: appState.isNTUSTLoggedIn,
+            detail: appState.authService.storedStudentId,
+            onLogin: { appState.presentNTUSTLogin() },
+            onLogout: { appState.logoutNTUST() }
+        )
     }
 
     private var libraryAccountRow: some View {
+        accountRow(
+            title: "圖書館系統",
+            isLoggedIn: appState.isLibraryLoggedIn,
+            detail: appState.libraryUsername,
+            onLogin: { showLibraryLogin = true },
+            onLogout: { appState.logoutLibrary() }
+        )
+    }
+
+    @ViewBuilder
+    private func accountRow(
+        title: String,
+        isLoggedIn: Bool,
+        detail: String?,
+        onLogin: @escaping () -> Void,
+        onLogout: @escaping () -> Void
+    ) -> some View {
         HStack {
             Circle()
-                .fill(appState.isLibraryLoggedIn ? Color.green : Color.red)
+                .fill(isLoggedIn ? Color.green : Color.red)
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 2) {
-                Text("圖書館系統")
+                Text(title)
                     .font(.body)
-                if appState.isLibraryLoggedIn, let username = appState.libraryUsername {
-                    Text(username)
+                if isLoggedIn, let detail {
+                    Text(detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer()
-            if appState.isLibraryLoggedIn {
-                Button("登出", role: .destructive) {
-                    appState.logoutLibrary()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            } else {
-                Button("登入") { showLibraryLogin = true }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+            accountActionButton(isLoggedIn: isLoggedIn, onLogin: onLogin, onLogout: onLogout)
+        }
+    }
+
+    @ViewBuilder
+    private func accountActionButton(
+        isLoggedIn: Bool,
+        onLogin: @escaping () -> Void,
+        onLogout: @escaping () -> Void
+    ) -> some View {
+        if isLoggedIn {
+            Button(role: .destructive, action: onLogout) {
+                Text("登出")
+                    .font(.callout.weight(.semibold))
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        } else {
+            Button(action: onLogin) {
+                Text("登入")
+                    .font(.callout.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
         }
     }
 }

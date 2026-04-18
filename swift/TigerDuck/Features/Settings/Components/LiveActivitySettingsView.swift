@@ -43,13 +43,14 @@ struct LiveActivitySettingsView: View {
                     HStack {
                         Text("即將上課")
                         Spacer()
-                        Text(formatMinutes(store.classPreparingLeadTime))
+                        Text(formatHoursAndMinutes(store.classPreparingLeadTime))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
                     Slider(
                         value: $store.classPreparingLeadTime,
-                        in: 5 * 60 ... 60 * 60,
+                        in: LiveActivityPreferencesStore.minimumClassPreparingLeadTime
+                            ... LiveActivityPreferencesStore.maximumClassPreparingLeadTime,
                         step: 5 * 60
                     )
                 }
@@ -113,8 +114,12 @@ struct LiveActivitySettingsView: View {
         return "\(hours) 小時"
     }
 
-    private func formatMinutes(_ interval: TimeInterval) -> String {
-        let minutes = Int(interval / 60)
-        return "\(minutes) 分鐘"
+    private func formatHoursAndMinutes(_ interval: TimeInterval) -> String {
+        let totalMinutes = Int(interval / 60)
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        if hours == 0 { return "\(minutes) 分鐘" }
+        if minutes == 0 { return "\(hours) 小時" }
+        return "\(hours) 小時 \(minutes) 分鐘"
     }
 }

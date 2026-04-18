@@ -13,12 +13,20 @@ final class DataCache {
     private init() {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("TigerDuckCache", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "dataCache.createCacheDir"])
+        }
         cacheDir = dir
 
         let persistent = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("TigerDuckData", isDirectory: true)
-        try? FileManager.default.createDirectory(at: persistent, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: persistent, withIntermediateDirectories: true)
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "dataCache.createPersistentDir"])
+        }
         persistentDir = persistent
     }
 
@@ -106,7 +114,18 @@ final class DataCache {
         ]
         for (name, dir) in filenames {
             let url = dir.appendingPathComponent(name)
-            try? FileManager.default.removeItem(at: url)
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                let nsError = error as NSError
+                // File not existing is expected — only report real failures.
+                if !(nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileNoSuchFileError) {
+                    AppLogger.captureError(error, context: [
+                        "phase": "dataCache.clearUserScopedData",
+                        "filename": name,
+                    ])
+                }
+            }
         }
     }
 
@@ -114,15 +133,44 @@ final class DataCache {
 
     private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {
         let url = (directory ?? cacheDir).appendingPathComponent(filename)
-        if let data = try? encoder.encode(value) {
-            try? data.write(to: url, options: .atomic)
+        do {
+            let data = try encoder.encode(value)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            AppLogger.captureError(error, context: [
+                "phase": "dataCache.save",
+                "filename": filename,
+            ])
         }
     }
 
     private func load<T: Decodable>(from filename: String, in directory: URL? = nil) -> T? {
         let url = (directory ?? cacheDir).appendingPathComponent(filename)
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? decoder.decode(T.self, from: data)
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            let nsError = error as NSError
+            // First-run and post-logout reads on missing files are expected;
+            // only report decode failures and unexpected IO errors.
+            if !(nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoSuchFileError) {
+                AppLogger.captureError(error, context: [
+                    "phase": "dataCache.load.read",
+                    "filename": filename,
+                ])
+            }
+            return nil
+        }
+
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            AppLogger.captureError(error, context: [
+                "phase": "dataCache.load.decode",
+                "filename": filename,
+            ])
+            return nil
+        }
     }
 }
 

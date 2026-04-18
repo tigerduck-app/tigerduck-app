@@ -3,10 +3,14 @@ import Foundation
 /// Selects the single Live Activity snapshot that should be shown right now,
 /// or nil if no scenario qualifies under current preferences.
 ///
-/// Priority (spec section 8):
-/// 1. inClass         — current course not skipped
-/// 2. classPreparing  — next non-skipped course within `classPreparingLeadTime`
-/// 3. assignmentUrgent — earliest uncompleted assignment due within `assignmentLiveActivityLeadTime`
+/// Priority:
+/// 1. assignmentUrgent — earliest uncompleted assignment due within `assignmentLiveActivityLeadTime`
+/// 2. inClass         — current course not skipped
+/// 3. classPreparing  — next non-skipped course within `classPreparingLeadTime`
+///
+/// 作業放最高級是產品決策：未完成作業進入 lead time 時要優先蓋掉課堂，
+/// 讓學生在上課時仍然看得到「快遲交」警示。使用者可在設定裡關閉
+/// `showAssignmentScenario` 退回到原本「上課優先」的行為。
 ///
 /// Tie-breakers:
 /// - assignmentUrgent: earliest due date
@@ -31,6 +35,20 @@ struct LiveActivityScenarioResolver {
 
         let timeline = timelineResolver.timeline(for: courses, around: now)
 
+        if preferences.showAssignmentScenario,
+           let urgent = Self.earliestUrgentAssignment(
+               assignments: assignments,
+               leadTime: preferences.assignmentLiveActivityLeadTime,
+               now: now
+           ) {
+            return Self.assignmentSnapshot(
+                assignment: urgent,
+                courses: courses,
+                leadTime: preferences.assignmentLiveActivityLeadTime,
+                accentHex: accentHex
+            )
+        }
+
         if preferences.showInClassScenario,
            case .inClass(let slot) = timelineResolver.nonSkippedState(at: now, in: timeline) {
             return Self.inClassSnapshot(slot: slot, now: now, accentHex: accentHex)
@@ -40,15 +58,6 @@ struct LiveActivityScenarioResolver {
            let nextSlot = Self.nextNonSkippedSlot(in: timeline, after: now),
            nextSlot.start.timeIntervalSince(now) <= preferences.classPreparingLeadTime {
             return Self.classPreparingSnapshot(slot: nextSlot, accentHex: accentHex)
-        }
-
-        if preferences.showAssignmentScenario,
-           let urgent = Self.earliestUrgentAssignment(
-               assignments: assignments,
-               leadTime: preferences.assignmentLiveActivityLeadTime,
-               now: now
-           ) {
-            return Self.assignmentSnapshot(assignment: urgent, accentHex: accentHex)
         }
 
         return nil
@@ -65,7 +74,7 @@ struct LiveActivityScenarioResolver {
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.end,
-            progress: progress(from: slot.start, to: slot.end, at: now),
+            progressStart: slot.start < slot.end ? slot.start : nil,
             accentHex: accentHex,
             deepLink: nil,
             sourceId: slot.id
@@ -81,22 +90,33 @@ struct LiveActivityScenarioResolver {
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.start,
-            progress: nil,
+            progressStart: nil,
             accentHex: accentHex,
             deepLink: nil,
             sourceId: slot.id
         )
     }
 
-    static func assignmentSnapshot(assignment: SDAssignment, accentHex: Int) -> LiveActivitySnapshot {
-        LiveActivitySnapshot(
+    static func assignmentSnapshot(
+        assignment: SDAssignment,
+        courses: [SDCourse] = [],
+        leadTime: TimeInterval,
+        accentHex: Int
+    ) -> LiveActivitySnapshot {
+        let instructor = courses
+            .first { $0.courseNo == assignment.courseNo }
+            .flatMap { nonEmpty($0.instructor) }
+        let progressStart: Date? = leadTime > 0
+            ? assignment.dueDate.addingTimeInterval(-leadTime)
+            : nil
+        return LiveActivitySnapshot(
             scenario: .assignmentUrgent,
             title: assignment.title,
             subtitle: assignment.courseName,
             locationText: nil,
-            instructor: nil,
+            instructor: instructor,
             countdownTarget: assignment.dueDate,
-            progress: nil,
+            progressStart: progressStart,
             accentHex: accentHex,
             deepLink: assignment.moodleDeepLink,
             sourceId: assignment.assignmentId
@@ -127,10 +147,4 @@ struct LiveActivityScenarioResolver {
             .min { $0.dueDate < $1.dueDate }
     }
 
-    static func progress(from start: Date, to end: Date, at now: Date) -> Double? {
-        let total = end.timeIntervalSince(start)
-        guard total > 0 else { return nil }
-        let elapsed = now.timeIntervalSince(start)
-        return max(0, min(1, elapsed / total))
-    }
 }

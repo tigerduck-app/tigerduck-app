@@ -128,6 +128,7 @@ final class CalendarViewModel {
                     loadSystemCalendarEvents()
                 }
             } catch {
+                AppLogger.captureError(error, context: ["feature": "calendar.requestAccess"])
                 calendarAccessGranted = false
             }
         }

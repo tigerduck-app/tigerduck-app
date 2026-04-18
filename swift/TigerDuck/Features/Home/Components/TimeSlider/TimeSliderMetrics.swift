@@ -30,6 +30,7 @@ enum TimeSliderMetrics {
 
     static let fluidTrackHeight: CGFloat = 36
     static let fluidSegmentHeight: CGFloat = 20
+    static let minimumFluidBlockWidth: CGFloat = 28
 
     // MARK: - Tick Marks
 
@@ -52,9 +53,4 @@ enum TimeSliderMetrics {
     static let selectionThumbWidth: CGFloat = 2
     static let selectionThumbHeight: CGFloat = 28
     static let glowDotSize: CGFloat = 8
-
-    // MARK: - Segmented Bar
-
-    static let segmentedBarHeight: CGFloat = 44
-    static let minimumSegmentedBlockWidth: CGFloat = 28
 }

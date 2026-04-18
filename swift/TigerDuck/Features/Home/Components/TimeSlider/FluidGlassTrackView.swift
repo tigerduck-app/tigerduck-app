@@ -3,6 +3,7 @@ import SwiftUI
 struct FluidGlassTrackView: View {
     var viewModel: TimeSliderViewModel
     var invertDirection: Bool = false
+    var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
     @State private var lastDragX: CGFloat = 0
 
     private let trackHeight = TimeSliderMetrics.fluidTrackHeight
@@ -30,15 +31,18 @@ struct FluidGlassTrackView: View {
                 ForEach(viewModel.timeSlots) { slot in
                     let startOffset = viewModel.xOffset(for: slot.start)
                     let endOffset = viewModel.xOffset(for: slot.end)
-                    let segWidth = max(TimeSliderMetrics.minimumSegmentedBlockWidth, endOffset - startOffset)
+                    let segWidth = max(TimeSliderMetrics.minimumFluidBlockWidth, endOffset - startOffset)
                     let segCenterX = centerX + (startOffset + endOffset) / 2
 
                     // Only render if visible
                     if segCenterX + segWidth / 2 > -50 && segCenterX - segWidth / 2 < width + 50 {
                         let isActive = viewModel.selectedTime >= slot.start && viewModel.selectedTime <= slot.end
+                        let segOpacity = isActive
+                            ? policy.timeSliderActiveSegmentOpacity
+                            : policy.timeSliderInactiveSegmentOpacity
 
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(slot.course.color.opacity(isActive ? 0.5 : 0.3))
+                            .fill(slot.course.color.opacity(segOpacity))
                             .frame(width: segWidth, height: TimeSliderMetrics.fluidSegmentHeight)
                             .position(x: segCenterX, y: trackHeight / 2)
                             .animation(.smooth(duration: 0.2), value: isActive)
@@ -129,6 +133,9 @@ struct FluidGlassTrackView: View {
     }
 
     private var thumbGlowColor: Color {
+        guard policy.timeSliderUsesCourseColoredThumb else {
+            return .white
+        }
         if case .inClass(let slot) = viewModel.currentCourseState {
             return slot.course.color
         }

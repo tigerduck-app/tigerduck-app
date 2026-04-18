@@ -65,14 +65,14 @@ extension Date {
         Self.absoluteFormatter.string(from: self)
     }
 
-    /// Relative time: "5 天後", "3 小時後", "已逾期"
+    /// Relative time: "5 天後", "30 小時後", "3 小時後", "已逾期"
     func relativeTimeString(from now: Date) -> String {
         let interval = timeIntervalSince(now)
         if interval < 0 {
             return "已逾期"
         }
         let days = Int(interval / 86400)
-        if days > 0 {
+        if days > 3 {
             return "\(days) 天後"
         }
         let hours = Int(interval / 3600)
@@ -80,6 +80,9 @@ extension Date {
             return "\(hours) 小時後"
         }
         let minutes = Int(interval / 60)
-        return "\(max(1, minutes)) 分鐘後"
+        if minutes > 0 {
+            return "\(minutes) 分鐘後"
+        }
+        return "\(interval) 秒鐘後"
     }
 }

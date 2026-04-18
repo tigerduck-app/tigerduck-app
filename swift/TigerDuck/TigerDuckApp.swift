@@ -7,6 +7,10 @@ struct TigerDuckApp: App {
     @State private var sceneRefreshTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        AppLogger.start()
+    }
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             SDCourse.self,
@@ -19,6 +23,7 @@ struct TigerDuckApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
+            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
             // Schema incompatible with existing store (e.g. upgrade from early version).
             // Delete the old store and retry.
             let storeURL = modelConfiguration.url
@@ -33,6 +38,7 @@ struct TigerDuckApp: App {
             do {
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
             } catch {
+                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
                 fatalError("Could not create ModelContainer after reset: \(error)")
             }
         }

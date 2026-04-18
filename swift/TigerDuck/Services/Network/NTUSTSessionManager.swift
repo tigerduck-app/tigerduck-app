@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Defaults
 
 enum LoadingState: Equatable {
     case idle
@@ -24,17 +25,16 @@ final class NTUSTSessionManager {
     private(set) var session: URLSession
 
     private static let cookieTTL: TimeInterval = 3600 // 1 hour
-    private static let timestampKey = "ssoLoginTimestamp"
 
     var cookiesValid: Bool {
-        guard let timestamp = UserDefaults.standard.object(forKey: Self.timestampKey) as? Double else {
+        guard let timestamp = Defaults[.ssoLoginTimestamp] else {
             return false
         }
         return Date().timeIntervalSince1970 - timestamp < Self.cookieTTL
     }
 
     var loginTimestamp: Date? {
-        guard let ts = UserDefaults.standard.object(forKey: Self.timestampKey) as? Double else { return nil }
+        guard let ts = Defaults[.ssoLoginTimestamp] else { return nil }
         return Date(timeIntervalSince1970: ts)
     }
 
@@ -53,11 +53,11 @@ final class NTUSTSessionManager {
     }
 
     func markLoginSuccess() {
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.timestampKey)
+        Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
     }
 
     func invalidateSession() {
         HTTPCookieStorage.shared.cookies?.forEach { HTTPCookieStorage.shared.deleteCookie($0) }
-        UserDefaults.standard.removeObject(forKey: Self.timestampKey)
+        Defaults[.ssoLoginTimestamp] = nil
     }
 }

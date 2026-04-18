@@ -29,7 +29,7 @@ struct OnboardingView: View {
             OnboardingPageView(
                 icon: "person.badge.key.fill",
                 title: "登入帳號",
-                subtitle: "使用 NTUST SSO 登入以存取課表、Moodle 等功能",
+                subtitle: "使用校務系統帳號登入以存取課表、Moodle 等功能",
                 accentColor: .green
             ) {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
@@ -106,7 +106,8 @@ struct OnboardingView: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Text("登入 NTUST SSO")
+                            Text("登入校務系統")
+                                .font(.callout.weight(.semibold))
                         }
                     }
                     .buttonStyle(.borderedProminent)

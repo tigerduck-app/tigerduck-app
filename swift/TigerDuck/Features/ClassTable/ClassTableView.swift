@@ -19,54 +19,48 @@ struct ClassTableView: View {
     private var content: some View {
         ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    // Title
-                    HStack {
-                        Text("課表")
-                            .font(TigerDuckTheme.Typography.title)
-                            .foregroundStyle(Color.textPrimary)
-                        Spacer()
-                        NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
-                        Button {
-                            viewModel.showAddCourse = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .foregroundStyle(Color.textSecondary)
-                        }
-                    }
-                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                    .padding(.top, TigerDuckTheme.Spacing.md)
+                    titleBar
 
-                    // Today's course cards
-                    if !viewModel.todayCourses.isEmpty {
-                        VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                            SectionHeader(title: "今日課程")
-                            TodayCourseCarousel(
-                                courses: viewModel.todayCourses,
-                                hasAssignment: viewModel.hasAssignment,
-                                showProgress: false,
-                                onSelect: { viewModel.selectedCourse = $0 }
-                            )
-                        }
+                    if let reauthError = appState.ntustReauthErrorMessage {
+                        NTUSTReauthErrorBanner(
+                            message: reauthError,
+                            onRetry: {
+                                appState.clearNTUSTReauthError()
+                                appState.presentNTUSTLogin()
+                            },
+                            onDismiss: { appState.clearNTUSTReauthError() }
+                        )
                     }
 
-                    // TODO: Implement semester picker (學年度 selection) once backend supports it
-                    HStack {
-                        Spacer()
-
-                        Text("\(viewModel.totalCredits) 學分")
-                            .font(TigerDuckTheme.Typography.body)
-                            .foregroundStyle(Color.textSecondary)
+                    switch pageAccessState {
+                    case .loginRequired:
+                        LoginRequiredView(
+                            layout: .page,
+                            title: "尚未登入",
+                            message: "尚未登入，無法查看課表",
+                            onPrimary: { appState.presentNTUSTLogin() }
+                        )
+                    case .empty:
+                        EmptyStateView(
+                            icon: "book.closed",
+                            title: "目前沒有課程",
+                            message: "下拉以重新整理，或使用右上角的 + 新增課程"
+                        )
+                        .padding(.vertical, TigerDuckTheme.Spacing.xxl)
+                    case .content:
+                        authenticatedContent
                     }
-                    .padding(.horizontal)
-
-                    // Timetable grid
-                    TimetableGridView(viewModel: viewModel)
                 }
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
             .scrollIndicators(.hidden)
             .refreshable {
-                await viewModel.refresh(authService: appState.authService)
+                // Fire-and-forget: the pull gesture should dismiss the
+                // UIRefreshControl spinner immediately once released.
+                // `triggerRefresh` coalesces rapid repeated pulls into a
+                // single in-flight fetch; status lives in the top-right
+                // NetworkStatusOverlay.
+                viewModel.triggerRefresh(authService: appState.authService)
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -96,5 +90,62 @@ struct ClassTableView: View {
                     viewModel.courseToRename = nil
                 }
             }
+    }
+
+    /// Page-level access gate for the Class Table screen. Delegates to the
+    /// canonical ``AppState/ntustProtectedAccessState(isEmpty:)`` so the
+    /// cached-first rule stays consistent with Home — a returning user
+    /// with stored credentials and an expired cookie sees cached data (or
+    /// an empty-state placeholder), never the interactive login prompt.
+    private var pageAccessState: NTUSTProtectedAccessState {
+        appState.ntustProtectedAccessState(isEmpty: viewModel.courses.isEmpty)
+    }
+
+    private var titleBar: some View {
+        HStack {
+            Text("課表")
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
+            if pageAccessState != .loginRequired {
+                Button {
+                    viewModel.showAddCourse = true
+                } label: {
+                    Image(systemName: "plus")
+                        .foregroundStyle(Color.textSecondary)
+                }
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.top, TigerDuckTheme.Spacing.md)
+    }
+
+    private var authenticatedContent: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.lg) {
+            if !viewModel.todayCourses.isEmpty {
+                VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                    SectionHeader(title: "今日課程")
+                    TodayCourseCarousel(
+                        courses: viewModel.todayCourses,
+                        hasAssignment: viewModel.hasAssignment,
+                        showProgress: false,
+                        onSelect: { viewModel.selectedCourse = $0 }
+                    )
+                }
+            }
+
+            // TODO: Implement semester picker (學年度 selection) once backend supports it
+            HStack {
+                Spacer()
+
+                Text("\(viewModel.totalCredits) 學分")
+                    .font(TigerDuckTheme.Typography.body)
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .padding(.horizontal)
+
+            TimetableGridView(viewModel: viewModel)
+        }
     }
 }

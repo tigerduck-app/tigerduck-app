@@ -39,6 +39,17 @@ struct HomeView: View {
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
 
+                    if let reauthError = appState.ntustReauthErrorMessage {
+                        NTUSTReauthErrorBanner(
+                            message: reauthError,
+                            onRetry: {
+                                appState.clearNTUSTReauthError()
+                                appState.presentNTUSTLogin()
+                            },
+                            onDismiss: { appState.clearNTUSTReauthError() }
+                        )
+                    }
+
                     // Sections
                     ForEach(viewModel.sections) { section in
                         sectionCell(section)
@@ -58,7 +69,12 @@ struct HomeView: View {
                 }
             }
             .refreshable {
-                await viewModel.refresh(authService: appState.authService)
+                // Fire-and-forget: the pull gesture should dismiss the
+                // UIRefreshControl spinner immediately once released.
+                // `triggerRefresh` coalesces rapid repeated pulls into a
+                // single in-flight fetch; status lives in the top-right
+                // NetworkStatusOverlay.
+                viewModel.triggerRefresh(authService: appState.authService)
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -283,6 +299,31 @@ private struct HomeSectionView: View {
     let appState: AppState
     var onFeatureTap: ((AppFeature) -> Void)? = nil
 
+    @ViewBuilder
+    private var upcomingAssignmentsContent: some View {
+        switch appState.ntustProtectedAccessState(isEmpty: viewModel.upcomingAssignments.isEmpty) {
+        case .loginRequired:
+            LoginRequiredView(
+                layout: .section,
+                title: "尚未登入",
+                message: "尚未登入，無法顯示待辦作業",
+                onPrimary: { appState.presentNTUSTLogin() }
+            )
+        case .empty:
+            EmptyStateView(
+                icon: "checkmark.circle",
+                title: "一切順利",
+                message: "沒有待辦作業"
+            )
+        case .content:
+            UpcomingAssignmentsView(
+                assignments: viewModel.upcomingAssignments,
+                showAbsoluteTime: appState.showAbsoluteAssignmentTime
+            )
+            .allowsHitTesting(!viewModel.isEditingHome)
+        }
+    }
+
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             if section.type != .todayCourses {
@@ -299,19 +340,7 @@ private struct HomeSectionView: View {
                     }
                 )
             case .upcomingAssignments:
-                if viewModel.upcomingAssignments.isEmpty {
-                    EmptyStateView(
-                        icon: "checkmark.circle",
-                        title: "一切順利",
-                        message: "沒有待辦作業"
-                    )
-                } else {
-                    UpcomingAssignmentsView(
-                        assignments: viewModel.upcomingAssignments,
-                        showAbsoluteTime: appState.showAbsoluteAssignmentTime
-                    )
-                    .allowsHitTesting(!viewModel.isEditingHome)
-                }
+                upcomingAssignmentsContent
             case .quickWidgets, .custom:
                 WidgetGridView(
                     widgets: Binding(
