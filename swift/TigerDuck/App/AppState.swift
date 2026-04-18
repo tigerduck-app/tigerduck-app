@@ -183,17 +183,6 @@ final class AppState {
         didSet { UserDefaults.standard.set(browserPreference.rawValue, forKey: AppConstants.UserDefaultsKeys.browserPreference) }
     }
 
-    /// Time slider style preference
-    var timeSliderStyle: TimeSliderStyle = {
-        if let raw = UserDefaults.standard.string(forKey: AppConstants.UserDefaultsKeys.timeSliderStyle),
-           let style = TimeSliderStyle(rawValue: raw) {
-            return style
-        }
-        return .fluidTrack
-    }() {
-        didSet { UserDefaults.standard.set(timeSliderStyle.rawValue, forKey: AppConstants.UserDefaultsKeys.timeSliderStyle) }
-    }
-
     /// Invert slider scroll direction: false = natural scroll (drag right → past), true = reversed
     var invertSliderDirection: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) {
         didSet { UserDefaults.standard.set(invertSliderDirection, forKey: AppConstants.UserDefaultsKeys.invertSliderDirection) }
@@ -207,6 +196,27 @@ final class AppState {
     /// Whether library-related features are enabled (requires explicit user consent)
     var libraryFeatureEnabled: Bool = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) {
         didSet { UserDefaults.standard.set(libraryFeatureEnabled, forKey: AppConstants.UserDefaultsKeys.libraryFeatureEnabled) }
+    }
+
+    /// User-selected visual preset controlling presentation-layer decisions
+    /// (card surfaces, accent usage, slider color prominence, etc). This is
+    /// a pure UI concern — changes MUST NOT trigger Live Activity refreshes,
+    /// reminder reschedules, or notification authorization prompts.
+    var visualPreset: VisualPreset = {
+        if let raw = UserDefaults.standard.string(forKey: AppConstants.UserDefaultsKeys.visualPreset),
+           let preset = VisualPreset(rawValue: raw) {
+            return preset
+        }
+        return .default
+    }() {
+        didSet { UserDefaults.standard.set(visualPreset.rawValue, forKey: AppConstants.UserDefaultsKeys.visualPreset) }
+    }
+
+    /// Resolved presentation policy for the current preset. Views read
+    /// from this instead of switching on ``visualPreset`` directly, so
+    /// adding new presets stays contained to ``VisualStylePolicy``.
+    var visualStylePolicy: VisualStylePolicy {
+        VisualStylePolicy(preset: visualPreset)
     }
 
     // MARK: - Tab Configuration

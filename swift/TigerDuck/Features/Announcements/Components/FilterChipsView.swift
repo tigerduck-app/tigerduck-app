@@ -5,8 +5,11 @@ struct FilterChipsView: View {
     let selected: Set<String>
     let onToggle: (String) -> Void
 
+    @Environment(AppState.self) private var appState
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let policy = appState.visualStylePolicy
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: TigerDuckTheme.Spacing.sm) {
                 ForEach(departments, id: \.self) { dept in
                     Button {
@@ -14,13 +17,25 @@ struct FilterChipsView: View {
                     } label: {
                         Text(dept)
                             .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(selected.contains(dept) ? .white : .textPrimary)
-                            .glassChip(isSelected: selected.contains(dept))
+                            .foregroundStyle(chipLabelColor(
+                                isSelected: selected.contains(dept),
+                                policy: policy
+                            ))
+                            .presetChip(policy: policy, isSelected: selected.contains(dept))
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        }
+    }
+
+    private func chipLabelColor(isSelected: Bool, policy: VisualStylePolicy) -> Color {
+        switch policy.chipStyle {
+        case .glass:
+            return isSelected ? .white : .textPrimary
+        case .filledCapsule:
+            return isSelected ? .white : .primary
         }
     }
 }
