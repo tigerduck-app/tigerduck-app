@@ -3,10 +3,14 @@ import Foundation
 /// Selects the single Live Activity snapshot that should be shown right now,
 /// or nil if no scenario qualifies under current preferences.
 ///
-/// Priority (spec section 8):
-/// 1. inClass         — current course not skipped
-/// 2. classPreparing  — next non-skipped course within `classPreparingLeadTime`
-/// 3. assignmentUrgent — earliest uncompleted assignment due within `assignmentLiveActivityLeadTime`
+/// Priority:
+/// 1. assignmentUrgent — earliest uncompleted assignment due within `assignmentLiveActivityLeadTime`
+/// 2. inClass         — current course not skipped
+/// 3. classPreparing  — next non-skipped course within `classPreparingLeadTime`
+///
+/// 作業放最高級是產品決策：未完成作業進入 lead time 時要優先蓋掉課堂，
+/// 讓學生在上課時仍然看得到「快遲交」警示。使用者可在設定裡關閉
+/// `showAssignmentScenario` 退回到原本「上課優先」的行為。
 ///
 /// Tie-breakers:
 /// - assignmentUrgent: earliest due date
@@ -31,17 +35,6 @@ struct LiveActivityScenarioResolver {
 
         let timeline = timelineResolver.timeline(for: courses, around: now)
 
-        if preferences.showInClassScenario,
-           case .inClass(let slot) = timelineResolver.nonSkippedState(at: now, in: timeline) {
-            return Self.inClassSnapshot(slot: slot, now: now, accentHex: accentHex)
-        }
-
-        if preferences.showClassPreparingScenario,
-           let nextSlot = Self.nextNonSkippedSlot(in: timeline, after: now),
-           nextSlot.start.timeIntervalSince(now) <= preferences.classPreparingLeadTime {
-            return Self.classPreparingSnapshot(slot: nextSlot, accentHex: accentHex)
-        }
-
         if preferences.showAssignmentScenario,
            let urgent = Self.earliestUrgentAssignment(
                assignments: assignments,
@@ -54,6 +47,17 @@ struct LiveActivityScenarioResolver {
                 leadTime: preferences.assignmentLiveActivityLeadTime,
                 accentHex: accentHex
             )
+        }
+
+        if preferences.showInClassScenario,
+           case .inClass(let slot) = timelineResolver.nonSkippedState(at: now, in: timeline) {
+            return Self.inClassSnapshot(slot: slot, now: now, accentHex: accentHex)
+        }
+
+        if preferences.showClassPreparingScenario,
+           let nextSlot = Self.nextNonSkippedSlot(in: timeline, after: now),
+           nextSlot.start.timeIntervalSince(now) <= preferences.classPreparingLeadTime {
+            return Self.classPreparingSnapshot(slot: nextSlot, accentHex: accentHex)
         }
 
         return nil
