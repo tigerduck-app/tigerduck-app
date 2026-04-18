@@ -9,6 +9,32 @@ struct TimeSliderSection: View {
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             sectionHeader
+            contentArea
+        }
+        .onAppear {
+            viewModel.configure(courses: courses)
+        }
+        .onChange(of: courses.map(\.courseNo)) {
+            viewModel.configure(courses: courses)
+        }
+    }
+
+    @ViewBuilder
+    private var contentArea: some View {
+        let state = NTUSTProtectedAccessState(
+            isLoggedIn: appState.isNTUSTLoggedIn,
+            isEmpty: !viewModel.hasCourses
+        )
+
+        switch state {
+        case .loginRequired:
+            LoginRequiredView(
+                layout: .section,
+                title: "尚未登入",
+                message: "尚未登入，無法顯示今日課程",
+                onPrimary: { appState.presentNTUSTLogin() }
+            )
+        case .content, .empty, .loading, .error:
             Group {
                 if viewModel.hasCourses {
                     sliderContent
@@ -17,12 +43,6 @@ struct TimeSliderSection: View {
                 }
             }
             .padding(.horizontal, 16)
-        }
-        .onAppear {
-            viewModel.configure(courses: courses)
-        }
-        .onChange(of: courses.map(\.courseNo)) {
-            viewModel.configure(courses: courses)
         }
     }
 

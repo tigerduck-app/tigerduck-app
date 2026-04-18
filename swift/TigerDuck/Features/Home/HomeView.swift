@@ -283,6 +283,36 @@ private struct HomeSectionView: View {
     let appState: AppState
     var onFeatureTap: ((AppFeature) -> Void)? = nil
 
+    @ViewBuilder
+    private var upcomingAssignmentsContent: some View {
+        let state = NTUSTProtectedAccessState(
+            isLoggedIn: appState.isNTUSTLoggedIn,
+            isEmpty: viewModel.upcomingAssignments.isEmpty
+        )
+
+        switch state {
+        case .loginRequired:
+            LoginRequiredView(
+                layout: .section,
+                title: "尚未登入",
+                message: "尚未登入，無法顯示待辦作業",
+                onPrimary: { appState.presentNTUSTLogin() }
+            )
+        case .empty:
+            EmptyStateView(
+                icon: "checkmark.circle",
+                title: "一切順利",
+                message: "沒有待辦作業"
+            )
+        case .content, .loading, .error:
+            UpcomingAssignmentsView(
+                assignments: viewModel.upcomingAssignments,
+                showAbsoluteTime: appState.showAbsoluteAssignmentTime
+            )
+            .allowsHitTesting(!viewModel.isEditingHome)
+        }
+    }
+
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             if section.type != .todayCourses {
@@ -299,19 +329,7 @@ private struct HomeSectionView: View {
                     }
                 )
             case .upcomingAssignments:
-                if viewModel.upcomingAssignments.isEmpty {
-                    EmptyStateView(
-                        icon: "checkmark.circle",
-                        title: "一切順利",
-                        message: "沒有待辦作業"
-                    )
-                } else {
-                    UpcomingAssignmentsView(
-                        assignments: viewModel.upcomingAssignments,
-                        showAbsoluteTime: appState.showAbsoluteAssignmentTime
-                    )
-                    .allowsHitTesting(!viewModel.isEditingHome)
-                }
+                upcomingAssignmentsContent
             case .quickWidgets, .custom:
                 WidgetGridView(
                     widgets: Binding(
