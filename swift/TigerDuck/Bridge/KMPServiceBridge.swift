@@ -40,9 +40,21 @@ enum KMPServiceBridge {
             let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
                 for courseNo in courseNos {
                     group.addTask {
-                        guard let results = try? await CourseService.lookupCourse(
-                            semester: semester, courseNo: courseNo
-                        ), let first = results.first else { return nil }
+                        let results: [CourseSearchResult]
+                        do {
+                            results = try await CourseService.lookupCourse(
+                                semester: semester, courseNo: courseNo
+                            )
+                        } catch {
+                            AppLogger.captureError(error, context: [
+                                "service": "courseLookup",
+                                "semester": semester,
+                                "courseNo": courseNo,
+                            ])
+                            return nil
+                        }
+
+                        guard let first = results.first else { return nil }
 
                         // Merge schedules and classrooms from all rows
                         // (same course can have multiple time slots / classrooms)
@@ -126,6 +138,7 @@ enum KMPServiceBridge {
             }
             return courses
         } catch {
+            AppLogger.captureError(error, context: ["bridge": "fetchCourses"])
             return DataCache.shared.loadCourses()
         }
     }
@@ -152,6 +165,7 @@ enum KMPServiceBridge {
             }
             return assignments
         } catch {
+            AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             return DataCache.shared.loadAssignments()
         }
     }

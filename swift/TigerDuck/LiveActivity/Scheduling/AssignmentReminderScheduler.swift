@@ -50,6 +50,7 @@ final class AssignmentReminderScheduler {
                 return try await center.requestAuthorization(options: [.alert, .sound, .badge])
             } catch {
                 logger.error("Notification authorization request failed: \(error.localizedDescription, privacy: .public)")
+                AppLogger.captureError(error, context: ["phase": "reminder.requestAuthorization"])
                 return false
             }
         @unknown default:
@@ -100,6 +101,10 @@ final class AssignmentReminderScheduler {
                 try await center.add(request)
             } catch {
                 logger.error("Failed to schedule reminder \(payload.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                AppLogger.captureError(error, context: [
+                    "phase": "reminder.add",
+                    "payloadId": payload.id,
+                ])
             }
         }
     }

@@ -54,6 +54,10 @@ final class LiveActivityCoordinator {
                 )
             } catch {
                 logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
+                AppLogger.captureError(error, context: [
+                    "phase": "liveActivity.requestStart",
+                    "sourceId": snapshot.sourceId,
+                ])
             }
         }
     }

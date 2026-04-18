@@ -167,6 +167,10 @@ struct AddCourseSheet: View {
                     }
                 }
             } catch {
+                AppLogger.captureError(error, context: [
+                    "feature": "addCourseSheet.search",
+                    "mode": String(describing: searchMode),
+                ])
                 await MainActor.run {
                     isSearching = false
                     errorMessage = "搜尋失敗：\(error.localizedDescription)"
