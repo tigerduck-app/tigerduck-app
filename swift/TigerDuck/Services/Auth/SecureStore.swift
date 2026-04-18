@@ -35,8 +35,10 @@ enum SecureStore {
             return nil
         }
 
-        try? save(legacyValue, forKey: key)
-        legacyDelete(key: key)
+        let migrated = (try? save(legacyValue, forKey: key)) != nil
+        if migrated {
+            legacyDelete(key: key)
+        }
         return legacyValue
     }
 
