@@ -48,7 +48,13 @@ struct LiveActivityScenarioResolver {
                leadTime: preferences.assignmentLiveActivityLeadTime,
                now: now
            ) {
-            return Self.assignmentSnapshot(assignment: urgent, accentHex: accentHex)
+            return Self.assignmentSnapshot(
+                assignment: urgent,
+                courses: courses,
+                leadTime: preferences.assignmentLiveActivityLeadTime,
+                now: now,
+                accentHex: accentHex
+            )
         }
 
         return nil
@@ -88,19 +94,37 @@ struct LiveActivityScenarioResolver {
         )
     }
 
-    static func assignmentSnapshot(assignment: SDAssignment, accentHex: Int) -> LiveActivitySnapshot {
-        LiveActivitySnapshot(
+    static func assignmentSnapshot(
+        assignment: SDAssignment,
+        courses: [SDCourse] = [],
+        leadTime: TimeInterval,
+        now: Date = Date(),
+        accentHex: Int
+    ) -> LiveActivitySnapshot {
+        let instructor = courses
+            .first { $0.courseNo == assignment.courseNo }
+            .flatMap { nonEmpty($0.instructor) }
+        return LiveActivitySnapshot(
             scenario: .assignmentUrgent,
             title: assignment.title,
             subtitle: assignment.courseName,
             locationText: nil,
-            instructor: nil,
+            instructor: instructor,
             countdownTarget: assignment.dueDate,
-            progress: nil,
+            progress: assignmentProgress(dueDate: assignment.dueDate, leadTime: leadTime, now: now),
             accentHex: accentHex,
             deepLink: assignment.moodleDeepLink,
             sourceId: assignment.assignmentId
         )
+    }
+
+    /// 作業進度條：以 `leadTime` 為分母，距離截止越近進度越滿。
+    /// start = dueDate - leadTime；elapsed = now - start；progress = elapsed / leadTime。
+    static func assignmentProgress(dueDate: Date, leadTime: TimeInterval, now: Date) -> Double? {
+        guard leadTime > 0 else { return nil }
+        let start = dueDate.addingTimeInterval(-leadTime)
+        let elapsed = now.timeIntervalSince(start)
+        return max(0, min(1, elapsed / leadTime))
     }
 
     private static func nonEmpty(_ value: String) -> String? {
