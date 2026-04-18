@@ -111,37 +111,8 @@ private struct LockScreenView: View {
                     .padding(.vertical, 6)
             }
 
-            // Row 4: metadata — 地點 | Spacer | 時間 | Spacer | 老師
-            HStack(spacing: 0) {
-                HStack(spacing: 4) {
-                    if let loc = snapshot.locationText, !loc.isEmpty {
-                        Image(systemName: "mappin.and.ellipse")
-                        Text(loc)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 4) {
-                    if !snapshot.subtitle.isEmpty {
-                        Image(systemName: "clock.fill")
-                        Text(snapshot.subtitle)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 4) {
-                    if let ins = snapshot.instructor, !ins.isEmpty {
-                        Image(systemName: "person.fill")
-                        Text(ins)
-                    }
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
+            // Row 4: metadata — layout depends on scenario
+            MetadataRowView(snapshot: snapshot)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -172,7 +143,46 @@ private struct ExpandedBottomView: View {
                     .padding(.vertical, 6)
             }
 
-            HStack(spacing: 0) {
+            MetadataRowView(snapshot: snapshot)
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
+        .padding(.bottom, 4)
+    }
+}
+
+// MARK: - Metadata row (shared by lock screen + dynamic island)
+
+/// Scenario-aware bottom metadata row.
+///
+/// - inClass / classPreparing: 地點 | 時間 | 老師
+/// - assignmentUrgent:         課程名稱(課本) |    | 指導老師
+///   `subtitle` 對作業場景存放課程名稱；instructor 目前 resolver 恆為 nil，
+///   故右側通常為空白（符合需求允許右側空白的備案）。
+private struct MetadataRowView: View {
+    let snapshot: LiveActivitySnapshot
+
+    var body: some View {
+        HStack(spacing: 0) {
+            switch snapshot.scenario {
+            case .assignmentUrgent:
+                HStack(spacing: 4) {
+                    if !snapshot.subtitle.isEmpty {
+                        Image(systemName: "text.book.closed.fill")
+                        Text(snapshot.subtitle)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    if let ins = snapshot.instructor, !ins.isEmpty {
+                        Image(systemName: "person.fill")
+                        Text(ins)
+                    }
+                }
+
+            case .inClass, .classPreparing:
                 HStack(spacing: 4) {
                     if let loc = snapshot.locationText, !loc.isEmpty {
                         Image(systemName: "mappin.and.ellipse")
@@ -198,14 +208,11 @@ private struct ExpandedBottomView: View {
                     }
                 }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 4)
-        .padding(.top, 2)
-        .padding(.bottom, 4)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .frame(maxWidth: .infinity)
     }
 }
 
