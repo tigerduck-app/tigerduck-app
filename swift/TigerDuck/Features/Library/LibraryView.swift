@@ -117,7 +117,7 @@ struct LibraryView: View {
                 .multilineTextAlignment(.center)
 
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                TextField("圖書館帳號", text: $viewModel.libUsername)
+                TextField("學號", text: $viewModel.libUsername)
                     .textContentType(.username)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.characters)
