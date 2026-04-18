@@ -70,10 +70,11 @@ struct HomeView: View {
             }
             .refreshable {
                 // Fire-and-forget: the pull gesture should dismiss the
-                // UIRefreshControl spinner immediately once released. The
-                // actual refresh continues in the background; status lives
-                // in the top-right NetworkStatusOverlay.
-                Task { await viewModel.refresh(authService: appState.authService) }
+                // UIRefreshControl spinner immediately once released.
+                // `triggerRefresh` coalesces rapid repeated pulls into a
+                // single in-flight fetch; status lives in the top-right
+                // NetworkStatusOverlay.
+                viewModel.triggerRefresh(authService: appState.authService)
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)

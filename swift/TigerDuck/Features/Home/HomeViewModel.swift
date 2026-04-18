@@ -11,6 +11,13 @@ final class HomeViewModel {
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
+
+    /// Guards the fire-and-forget pull-to-refresh path against overlapping
+    /// fetches. ``triggerRefresh(authService:)`` flips this to `true` while
+    /// a fetch is running; additional pulls within that window coalesce
+    /// into a no-op instead of stacking concurrent Tasks that would race
+    /// on DataCache writes and `dataDidUpdate` notifications.
+    private var isRefreshing = false
     /// Single source of truth for the merged course list (portal + user-added,
     /// minus deletions, with custom names overlaid). Sharing this with the
     /// Live Activity stack keeps Home, Class Table, and lock screen aligned.
@@ -66,6 +73,23 @@ final class HomeViewModel {
 
     func refresh(authService: AuthService) async {
         await fetchData(authService: authService)
+    }
+
+    /// Coalesced fire-and-forget refresh. Designed for pull-to-refresh
+    /// where the caller returns immediately (so UIRefreshControl dismisses
+    /// its spinner) and the actual fetch continues on a detached Task.
+    /// Repeated pulls while a refresh is already in flight are dropped to
+    /// prevent two fetches racing on the same caches.
+    func triggerRefresh(authService: AuthService) {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        Task { [weak self] in
+            guard let self else { return }
+            await self.fetchData(authService: authService)
+            await MainActor.run { [weak self] in
+                self?.isRefreshing = false
+            }
+        }
     }
 
     private func fetchData(authService: AuthService) async {
