@@ -12,7 +12,6 @@ struct SettingsView: View {
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
     @State private var showSourceCode = false
-    @State private var showNTUSTLogin = false
     @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
@@ -161,29 +160,6 @@ struct SettingsView: View {
             InAppBrowserView(url: Self.sourceCodeURL)
                 .ignoresSafeArea()
         }
-        .sheet(isPresented: $showNTUSTLogin) {
-            LoginSheet(
-                title: "NTUST 校務系統",
-                usernamePlaceholder: "學號",
-                passwordPlaceholder: "密碼",
-                isLoggingIn: appState.authService.isLoggingIn,
-                loginError: appState.authService.loginError,
-                onLogin: { studentId, password in
-                    Task {
-                        _ = await appState.authService.login(
-                            studentId: studentId,
-                            password: password
-                        )
-                        if appState.isNTUSTLoggedIn {
-                            showNTUSTLogin = false
-                            appState.notifyLibraryStateChanged()
-                            appState.backgroundSync()
-                        }
-                    }
-                },
-                onDismiss: { showNTUSTLogin = false }
-            )
-        }
         .sheet(isPresented: $showLibraryLogin) {
             LoginSheet(
                 title: "圖書館系統",
@@ -321,7 +297,7 @@ struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             } else {
-                Button("登入") { showNTUSTLogin = true }
+                Button("登入") { appState.presentNTUSTLogin() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
             }
