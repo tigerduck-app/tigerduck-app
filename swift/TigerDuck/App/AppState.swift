@@ -10,6 +10,12 @@ enum BrowserPreference: String, CaseIterable {
 final class AppState {
     var hasCompletedOnboarding = UserDefaults.standard.bool(forKey: AppConstants.UserDefaultsKeys.hasCompletedOnboarding)
 
+    /// App-level presenter flag for the NTUST login sheet. Owned by
+    /// ``AppState`` so Home, Class Table, and Settings can all request the
+    /// same login flow without each duplicating a local `@State` and a
+    /// separate `.sheet` modifier.
+    var isShowingNTUSTLoginSheet = false
+
     let authService = AuthService()
     let sessionManager = NTUSTSessionManager.shared
 
@@ -76,6 +82,18 @@ final class AppState {
     private var boundaryRefreshTask: Task<Void, Never>?
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
+
+    /// Entry point for any surface that wants to funnel the user into the
+    /// NTUST SSO login flow. Idempotent — repeated calls while the sheet is
+    /// already up no-op.
+    func presentNTUSTLogin() {
+        guard !isShowingNTUSTLoginSheet else { return }
+        isShowingNTUSTLoginSheet = true
+    }
+
+    func dismissNTUSTLogin() {
+        isShowingNTUSTLoginSheet = false
+    }
 
     var isLibraryLoggedIn: Bool {
         _ = _libraryRevision
