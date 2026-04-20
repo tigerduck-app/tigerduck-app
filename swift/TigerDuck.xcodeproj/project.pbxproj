@@ -73,6 +73,7 @@
 				AGENTS.md,
 				LiveActivity/AGENTS.md,
 				Services/AGENTS.md,
+				Services/Migrations/AGENTS.md,
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};

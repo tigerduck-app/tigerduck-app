@@ -15,7 +15,15 @@ private struct CourseData: Sendable {
 
 enum KMPServiceBridge {
 
-    static func fetchCourses(authService: AuthService) async -> [SDCourse] {
+    /// Fetch and enrich enrolled courses.
+    ///
+    /// Pass `forceRefresh: true` to bust the `CourseService`
+    /// enrolled-course-nos cache (ClassTable pull-to-refresh does this);
+    /// default `false` lets the 24h cache absorb cheap refreshes.
+    static func fetchCourses(
+        authService: AuthService,
+        forceRefresh: Bool = false
+    ) async -> [SDCourse] {
         // Snapshot the login generation before issuing the network call.
         // Any logout that happens while we are awaiting will bump this
         // counter, and the post-fetch save below skips the write so the
@@ -32,7 +40,8 @@ enum KMPServiceBridge {
             let courseNos = try await CourseService.fetchEnrolledCourseNos(
                 session: session,
                 studentId: studentId,
-                password: password
+                password: password,
+                forceRefresh: forceRefresh
             )
 
             let semester = CourseService.currentSemesterCode()
@@ -46,11 +55,13 @@ enum KMPServiceBridge {
                                 semester: semester, courseNo: courseNo
                             )
                         } catch {
-                            AppLogger.captureError(error, context: [
-                                "service": "courseLookup",
-                                "semester": semester,
-                                "courseNo": courseNo,
-                            ])
+                            await MainActor.run {
+                                AppLogger.captureError(error, context: [
+                                    "service": "courseLookup",
+                                    "semester": semester,
+                                    "courseNo": courseNo,
+                                ])
+                            }
                             return nil
                         }
 
@@ -138,25 +149,25 @@ enum KMPServiceBridge {
             }
             return courses
         } catch {
-            AppLogger.captureError(error, context: ["bridge": "fetchCourses"])
+            await MainActor.run {
+                AppLogger.captureError(error, context: ["bridge": "fetchCourses"])
+            }
             return DataCache.shared.loadCourses()
         }
     }
 
     static func fetchAssignments(authService: AuthService) async -> [SDAssignment] {
         let startGeneration = authService.loginGeneration
-        guard let studentId = authService.storedStudentId,
-              let password = authService.storedPassword else {
+        // MoodleAssignmentBridgeService runs on its own long-lived OIDC
+        // token; credentials are only needed so that a token refresh can
+        // reach Keychain. If the user logged out, fall back to cache.
+        guard authService.storedStudentId != nil,
+              authService.storedPassword != nil else {
             return DataCache.shared.loadAssignments()
         }
 
         do {
-            let session = NTUSTSessionManager.shared.session
-            let assignments = try await MoodleService.fetchAssignments(
-                session: session,
-                studentId: studentId,
-                password: password
-            )
+            let assignments = try await MoodleAssignmentBridgeService.fetchAssignments()
             // Same dual guard as fetchCourses above: cancellation OR a
             // logout that bumped loginGeneration must drop the save.
             if !Task.isCancelled,
@@ -165,7 +176,9 @@ enum KMPServiceBridge {
             }
             return assignments
         } catch {
-            AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
+            await MainActor.run {
+                AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
+            }
             return DataCache.shared.loadAssignments()
         }
     }

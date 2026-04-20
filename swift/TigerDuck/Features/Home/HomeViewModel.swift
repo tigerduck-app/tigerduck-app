@@ -103,29 +103,18 @@ final class HomeViewModel {
 
         await MainActor.run { manager.loadingState = .loading }
 
-        // Authenticate once upfront so parallel tasks reuse the SSO session
-        let isAuthenticated = await authService.ensureAuthenticated()
+        // Per product spec, Home pull-to-refresh only re-fetches Moodle
+        // assignments. The course list is populated by
+        // AppState.backgroundSync on cold launch and refreshed on demand
+        // from ClassTable pull-to-refresh (which passes
+        // `forceRefresh: true`); Home reads it via courseProvider. This
+        // avoids paying the 3–5s NTUST SSO round-trip whenever the user
+        // just wants to see if any new assignments landed.
+        let fetchedAssignments = await KMPServiceBridge.fetchAssignments(authService: authService)
+        let upcoming = fetchedAssignments.upcomingSorted()
 
-        let allCourses: [SDCourse]
-        let allAssignments: [SDAssignment]
-        if isAuthenticated {
-            async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
-            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
-            // Discard the raw fetched courses — fetchCourses already wrote
-            // them to DataCache, so currentCourses() returns the same list
-            // merged with user-added entries, deletions, and custom names.
-            // Reading via the provider keeps Home in lockstep with Class
-            // Table and the Live Activity scenario resolver.
-            let (_, fetchedAssignments) = await (coursesTask, assignmentsTask)
-            allCourses = courseProvider.currentCourses()
-            allAssignments = fetchedAssignments
-        } else {
-            allCourses = courseProvider.currentCourses()
-            allAssignments = DataCache.shared.loadAssignments()
-        }
-
+        let allCourses = courseProvider.currentCourses()
         let todayFiltered = allCourses.coursesForToday()
-        let upcoming = allAssignments.upcomingSorted()
 
         await MainActor.run {
             isUpdatingFromNetwork = true
