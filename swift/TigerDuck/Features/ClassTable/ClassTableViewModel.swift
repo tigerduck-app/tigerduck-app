@@ -310,7 +310,14 @@ final class ClassTableViewModel {
         let manager = NTUSTSessionManager.shared
         await MainActor.run { manager.loadingState = .loading }
 
-        async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
+        // ClassTable pull-to-refresh is the explicit "show me the
+        // latest enrolment" gesture — bust the CourseService cache so
+        // add/drop shows up immediately instead of waiting out the 24h
+        // TTL that absorbs cheaper background refreshes.
+        async let coursesTask = KMPServiceBridge.fetchCourses(
+            authService: authService,
+            forceRefresh: true,
+        )
         async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
 
         let fetchedCourses = await coursesTask

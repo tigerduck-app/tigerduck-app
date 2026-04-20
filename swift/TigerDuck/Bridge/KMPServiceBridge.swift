@@ -15,7 +15,15 @@ private struct CourseData: Sendable {
 
 enum KMPServiceBridge {
 
-    static func fetchCourses(authService: AuthService) async -> [SDCourse] {
+    /// Fetch and enrich enrolled courses.
+    ///
+    /// Pass `forceRefresh: true` to bust the `CourseService`
+    /// enrolled-course-nos cache (ClassTable pull-to-refresh does this);
+    /// default `false` lets the 24h cache absorb cheap refreshes.
+    static func fetchCourses(
+        authService: AuthService,
+        forceRefresh: Bool = false
+    ) async -> [SDCourse] {
         // Snapshot the login generation before issuing the network call.
         // Any logout that happens while we are awaiting will bump this
         // counter, and the post-fetch save below skips the write so the
@@ -32,7 +40,8 @@ enum KMPServiceBridge {
             let courseNos = try await CourseService.fetchEnrolledCourseNos(
                 session: session,
                 studentId: studentId,
-                password: password
+                password: password,
+                forceRefresh: forceRefresh
             )
 
             let semester = CourseService.currentSemesterCode()

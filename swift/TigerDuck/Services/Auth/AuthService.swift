@@ -75,6 +75,11 @@ final class AuthService {
             if success {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
+                // Drop any cached enrolled course list for this account
+                // so the first post-login fetch scrapes fresh data;
+                // prevents showing stale courses after e.g. an end-of-
+                // semester crossover.
+                CourseService.invalidateEnrolledCoursesCache(for: normalizedId)
                 reauthErrorMessage = nil
                 _revision += 1
 
@@ -140,10 +145,15 @@ final class AuthService {
     }
 
     func logout() {
+        let loggingOutStudentId = storedStudentId
         KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
         Task { await MoodleTokenService.shared.clearToken() }
         NTUSTSessionManager.shared.invalidateSession()
+        // Drop the enrolled-courses cache so the next user does not see
+        // the previous account's course list while their own data is
+        // still in flight.
+        CourseService.invalidateEnrolledCoursesCache(for: loggingOutStudentId)
         loginError = nil
         reauthErrorMessage = nil
         isReauthenticating = false
