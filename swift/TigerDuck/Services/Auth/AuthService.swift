@@ -86,6 +86,13 @@ final class AuthService {
                         AppLogger.captureError(error, context: ["flow": "libraryAutoLogin"])
                     }
                 }
+
+                // Obtain Moodle webservice token — non-fatal, never blocks NTUST login result
+                do {
+                    _ = try await MoodleTokenService.shared.obtainToken(studentId: normalizedId, password: password)
+                } catch {
+                    AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
+                }
             }
 
             isLoggingIn = false
@@ -135,6 +142,7 @@ final class AuthService {
     func logout() {
         KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
+        Task { await MoodleTokenService.shared.clearToken() }
         NTUSTSessionManager.shared.invalidateSession()
         loginError = nil
         reauthErrorMessage = nil
