@@ -1,1 +1,4 @@
-api/ntust_cookies.sqlite3
+api/runtime/*
+!api/runtime/.gitkeep
+api/.env
+__pycache__/
