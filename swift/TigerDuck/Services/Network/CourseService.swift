@@ -45,9 +45,12 @@ enum CourseService {
             return cached
         }
 
-        // Try fetching directly when cookies are still valid (caller pre-authenticates via ensureAuthenticated).
-        // Fall back to ensureServiceLogin only if the server rejects us.
-        if !NTUSTSessionManager.shared.cookiesValid {
+        // Ask the server whether our SSO cookies are still good (~30ms).
+        // Only pay the full login cost when the probe says expired —
+        // more accurate than the 1h local-timestamp cache used to be,
+        // and avoids walking the whole redirect chain to discover the
+        // login form ourselves.
+        if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,

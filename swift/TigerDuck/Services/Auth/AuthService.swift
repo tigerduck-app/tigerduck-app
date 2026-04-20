@@ -125,7 +125,13 @@ final class AuthService {
             return false
         }
 
-        if NTUSTSessionManager.shared.cookiesValid {
+        // Ask the server directly whether our cookies still unlock the
+        // SSO home (~30ms warm). Obsoletes the local 1h TTL check which
+        // was both paranoid (kicked fresh cookies off the cliff after
+        // an hour) and optimistic (could trust cookies the server had
+        // already evicted).
+        if await NTUSTSessionManager.shared.probeCookiesValid() {
+            NTUSTSessionManager.shared.markLoginSuccess()
             reauthErrorMessage = nil
             return true
         }

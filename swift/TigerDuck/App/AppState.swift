@@ -419,7 +419,12 @@ final class AppState {
         }
     }
 
-    /// Background sync all data on app launch
+    /// Background sync all data on app launch.
+    ///
+    /// Three independent tracks run in parallel. Moodle rides a long-
+    /// lived OIDC token (no NTUST SSO dependency), the ICS calendar is
+    /// public, and the courses track owns its own auth check so Moodle
+    /// and ICS are never held up behind `ensureAuthenticated()`.
     func backgroundSync() {
         guard hasCompletedOnboarding else { return }
         syncTask?.cancel()
@@ -433,20 +438,13 @@ final class AppState {
 
             sessionManager.loadingState = .loading
 
-            // Authenticate once upfront so parallel tasks reuse the SSO session
-            let isAuthenticated = await authService.ensureAuthenticated()
-
-            // School events are public — always fetch. Courses/assignments need auth.
+            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
-            let fetchedAssignments: [SDAssignment]
-            if isAuthenticated {
-                async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
-                async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
-                (_, fetchedAssignments) = await (coursesTask, assignmentsTask)
-            } else {
-                fetchedAssignments = DataCache.shared.loadAssignments()
-            }
+            async let coursesTask: Bool = syncCoursesIfAuthenticated()
+
+            let fetchedAssignments = await assignmentsTask
             let fetchedSchoolEvents = await schoolEventsTask
+            _ = await coursesTask
 
             // Build moodle calendar events from assignments and merge with school events
             let moodleEvents = fetchedAssignments.map {
@@ -470,5 +468,16 @@ final class AppState {
                 NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             }
         }
+    }
+
+    /// Runs the NTUST-SSO-authenticated portion of background sync
+    /// (course list refresh). Factored out so `backgroundSync` can
+    /// launch it via `async let` alongside the independent Moodle and
+    /// ICS fetches. Returns the auth result purely so the call site
+    /// can use it as an `async let` value.
+    private func syncCoursesIfAuthenticated() async -> Bool {
+        guard await authService.ensureAuthenticated() else { return false }
+        _ = await KMPServiceBridge.fetchCourses(authService: authService)
+        return true
     }
 }
