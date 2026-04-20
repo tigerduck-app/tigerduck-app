@@ -46,11 +46,13 @@ enum KMPServiceBridge {
                                 semester: semester, courseNo: courseNo
                             )
                         } catch {
-                            AppLogger.captureError(error, context: [
-                                "service": "courseLookup",
-                                "semester": semester,
-                                "courseNo": courseNo,
-                            ])
+                            await MainActor.run {
+                                AppLogger.captureError(error, context: [
+                                    "service": "courseLookup",
+                                    "semester": semester,
+                                    "courseNo": courseNo,
+                                ])
+                            }
                             return nil
                         }
 
@@ -138,7 +140,9 @@ enum KMPServiceBridge {
             }
             return courses
         } catch {
-            AppLogger.captureError(error, context: ["bridge": "fetchCourses"])
+            await MainActor.run {
+                AppLogger.captureError(error, context: ["bridge": "fetchCourses"])
+            }
             return DataCache.shared.loadCourses()
         }
     }
@@ -152,7 +156,7 @@ enum KMPServiceBridge {
 
         do {
             let session = NTUSTSessionManager.shared.session
-            let assignments = try await MoodleService.fetchAssignments(
+            let assignments = try await MoodleAssignmentBridgeService.fetchAssignments(
                 session: session,
                 studentId: studentId,
                 password: password
@@ -165,7 +169,9 @@ enum KMPServiceBridge {
             }
             return assignments
         } catch {
-            AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
+            await MainActor.run {
+                AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
+            }
             return DataCache.shared.loadAssignments()
         }
     }

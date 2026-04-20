@@ -78,4 +78,8 @@ extension Defaults.Keys {
         default: true
     )
     static let ssoLoginTimestamp = Key<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
+    static let moodleTokenMigrationDone = Key<Bool>(
+        "moodleTokenMigrationDone",
+        default: false
+    )
 }

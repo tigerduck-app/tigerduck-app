@@ -54,6 +54,20 @@ final class AppState {
         ) { [weak self] _ in
             self?.scheduleLiveActivityRefresh()
         }
+
+        runPendingMigrations()
+    }
+
+    // MARK: - Migrations
+
+    /// Trigger all pending one-time compatibility migrations.
+    /// Called once per app launch from init(). Runs in a detached background
+    /// task so it never blocks the main thread or app startup.
+    func runPendingMigrations() {
+        Task.detached(priority: .utility) {
+            await MoodleTokenMigration.runIfNeeded()
+            // Add future migrations here in sequence.
+        }
     }
 
     deinit {
