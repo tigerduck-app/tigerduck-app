@@ -5,6 +5,7 @@ enum AppConstants {
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
+    static let moodleBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
 
     enum KeychainKeys {
         static let studentId = "ntust_student_id"
@@ -13,6 +14,8 @@ enum AppConstants {
         static let libraryPassword = "library_password"
         static let libraryToken = "library_token"
         static let libraryTokenExpiry = "library_token_expiry"
+        static let moodleToken = "moodle_token"
+        static let moodlePrivateToken = "moodle_private_token"
     }
 
     enum UserDefaultsKeys {

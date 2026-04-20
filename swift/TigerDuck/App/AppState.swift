@@ -34,6 +34,8 @@ final class AppState {
             KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
             KeychainManager.delete(key: AppConstants.KeychainKeys.libraryToken)
             KeychainManager.delete(key: AppConstants.KeychainKeys.libraryTokenExpiry)
+            KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
+            KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
             Defaults[.appHasBeenInstalled] = true
         }
 
