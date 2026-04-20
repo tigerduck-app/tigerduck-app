@@ -103,36 +103,49 @@ final class HomeViewModel {
 
         await MainActor.run { manager.loadingState = .loading }
 
-        // Authenticate once upfront so parallel tasks reuse the SSO session
-        let isAuthenticated = await authService.ensureAuthenticated()
+        // Moodle assignments ride on a long-lived OIDC token and do not
+        // depend on NTUST SSO cookies — kick them off immediately in
+        // parallel with the NTUST auth check, then paint them as soon
+        // as they arrive. Previously this task was gated behind
+        // `ensureAuthenticated()`, which forced the Moodle refresh
+        // (~300ms warm) to wait out the NTUST SSO re-auth (~3–5s when
+        // cookies have TTL'd), making pull-to-refresh feel laggy even
+        // after we migrated homework fetch to the long-lived token flow.
+        // `KMPServiceBridge.fetchAssignments` already returns cached
+        // data when credentials are missing, so it is safe to fire
+        // unconditionally.
+        async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
 
-        let allCourses: [SDCourse]
-        let allAssignments: [SDAssignment]
+        // Render Moodle assignments as soon as the REST call completes,
+        // without blocking on the NTUST SSO path. The course list
+        // continues loading in the background below.
+        let fetchedAssignments = await assignmentsTask
+        let upcoming = fetchedAssignments.upcomingSorted()
+        await MainActor.run {
+            isUpdatingFromNetwork = true
+            upcomingAssignments = upcoming
+            isUpdatingFromNetwork = false
+        }
+
+        // Course list requires an authenticated NTUST SSO session
+        // against courseselection.ntust.edu.tw.
+        let isAuthenticated = await authService.ensureAuthenticated()
         if isAuthenticated {
-            async let coursesTask = KMPServiceBridge.fetchCourses(authService: authService)
-            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
             // Discard the raw fetched courses — fetchCourses already wrote
             // them to DataCache, so currentCourses() returns the same list
             // merged with user-added entries, deletions, and custom names.
             // Reading via the provider keeps Home in lockstep with Class
             // Table and the Live Activity scenario resolver.
-            let (_, fetchedAssignments) = await (coursesTask, assignmentsTask)
-            allCourses = courseProvider.currentCourses()
-            allAssignments = fetchedAssignments
-        } else {
-            allCourses = courseProvider.currentCourses()
-            allAssignments = DataCache.shared.loadAssignments()
+            _ = await KMPServiceBridge.fetchCourses(authService: authService)
         }
-
+        let allCourses = courseProvider.currentCourses()
         let todayFiltered = allCourses.coursesForToday()
-        let upcoming = allAssignments.upcomingSorted()
 
         await MainActor.run {
             isUpdatingFromNetwork = true
             TigerDuckTheme.buildCourseColorMap(courseNos: allCourses.map(\.courseNo))
             self.allCourses = allCourses
             todayCourses = todayFiltered
-            upcomingAssignments = upcoming
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             isUpdatingFromNetwork = false
