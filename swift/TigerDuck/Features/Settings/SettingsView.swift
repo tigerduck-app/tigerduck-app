@@ -278,7 +278,7 @@ struct SettingsView: View {
     private var ntustAccountRow: some View {
         accountRow(
             title: "校務系統",
-            isLoggedIn: appState.isNTUSTLoggedIn,
+        isLoggedIn: appState.authService.hasStoredCredentials,
             detail: appState.authService.storedStudentId,
             onLogin: { appState.presentNTUSTLogin() },
             onLogout: { appState.logoutNTUST() }
