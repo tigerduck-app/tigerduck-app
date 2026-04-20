@@ -107,8 +107,9 @@ private final class NoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate,
         _ session: URLSession,
         task: URLSessionTask,
         willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest
-    ) async -> URLRequest? {
-        nil
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
