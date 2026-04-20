@@ -1,121 +1,113 @@
 import Foundation
 
-enum MoodleServiceError: LocalizedError {
-    case notAuthenticated
-    case sesskeyNotFound
-    case invalidResponse
-    case networkError(Error)
-
-    var errorDescription: String? {
-        switch self {
-        case .notAuthenticated: return "Moodle 未登入"
-        case .sesskeyNotFound: return "無法取得 Moodle sesskey"
-        case .invalidResponse: return "Moodle 回應異常"
-        case .networkError(let e): return "網路錯誤：\(e.localizedDescription)"
-        }
-    }
-}
-
 enum MoodleService {
 
-    private static let moodleLoginURL = URL(string: "https://moodle2.ntust.edu.tw/login/index.php")!
-    private static let moodleAPITemplate = "https://moodle2.ntust.edu.tw/lib/ajax/service.php?sesskey=%@&info=core_calendar_get_action_events_by_timesort"
-    private static let sesskeyRegex = try! NSRegularExpression(pattern: "\"sesskey\":\"([^\"]+)\"")
+    private static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
+    private static let actionEventsFunction = "core_calendar_get_action_events_by_timesort"
 
-    /// Fetch upcoming assignments from Moodle via SSO
+    /// Fetch upcoming assignments from Moodle webservice.
     static func fetchAssignments(
         session: URLSession,
         studentId: String,
         password: String
     ) async throws -> [SDAssignment] {
-        // Try fetching directly when cookies are valid (SSO session transfers across services).
-        // Fall back to ensureServiceLogin if Moodle rejects us (no sesskey found).
-        if !NTUSTSessionManager.shared.cookiesValid {
-            let loggedIn = try await SSOLoginService.ensureServiceLogin(
-                session: session,
-                serviceURL: moodleLoginURL,
-                studentId: studentId,
-                password: password
-            )
-            guard loggedIn else { throw MoodleServiceError.notAuthenticated }
-        }
+        _ = (studentId, password)
 
-        // Step 1: Visit Moodle to get sesskey
-        let (pageData, _) = try await session.data(from: moodleLoginURL)
-        guard let pageHTML = String(data: pageData, encoding: .utf8) else {
-            throw MoodleServiceError.invalidResponse
-        }
-
-        // Extract sesskey — if missing, session is invalid; retry with full login
-        var sesskey: String
-        if let match = sesskeyRegex.firstMatch(in: pageHTML, range: NSRange(pageHTML.startIndex..., in: pageHTML)),
-           let range = Range(match.range(at: 1), in: pageHTML) {
-            sesskey = String(pageHTML[range])
+        let tokenService = MoodleTokenService.shared
+        let token: String
+        if let currentToken = await tokenService.currentToken() {
+            token = currentToken
         } else {
-            // Session expired — re-authenticate to Moodle
-            let loggedIn = try await SSOLoginService.ensureServiceLogin(
+            token = try await tokenService.refreshTokenIfNeeded()
+        }
+
+        do {
+            let response = try await fetchActionEvents(
+                using: token,
                 session: session,
-                serviceURL: moodleLoginURL,
-                studentId: studentId,
-                password: password
+                timesortFrom: Int(Date().timeIntervalSince1970)
             )
-            guard loggedIn else { throw MoodleServiceError.notAuthenticated }
+            return mapAssignments(from: response.events)
+        } catch MoodleWebserviceError.invalidToken {
+            await tokenService.clearToken()
+            let refreshedToken = try await tokenService.refreshTokenIfNeeded()
+            let response = try await fetchActionEvents(
+                using: refreshedToken,
+                session: session,
+                timesortFrom: Int(Date().timeIntervalSince1970)
+            )
+            return mapAssignments(from: response.events)
+        }
+    }
 
-            let (retryData, _) = try await session.data(from: moodleLoginURL)
-            guard let retryHTML = String(data: retryData, encoding: .utf8) else {
-                throw MoodleServiceError.invalidResponse
-            }
-            guard let retryMatch = sesskeyRegex.firstMatch(in: retryHTML, range: NSRange(retryHTML.startIndex..., in: retryHTML)),
-                  let retryRange = Range(retryMatch.range(at: 1), in: retryHTML) else {
-                throw MoodleServiceError.sesskeyNotFound
-            }
-            sesskey = String(retryHTML[retryRange])
+    private static func fetchActionEvents(
+        using token: String,
+        session: URLSession,
+        timesortFrom: Int
+    ) async throws -> MoodleCalendarResponse {
+        let request = try makeActionEventsRequest(token: token, timesortFrom: timesortFrom)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError {
+            throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
+        } catch {
+            throw error
         }
 
-        // Step 3: Call Moodle calendar API
-        let startOfToday = Int(Calendar.current.startOfDay(for: Date()).timeIntervalSince1970)
-        let apiURL = URL(string: String(format: moodleAPITemplate, sesskey))!
-
-        var request = URLRequest(url: apiURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let payload = [MoodleCalendarRequest.upcoming(from: startOfToday)]
-        request.httpBody = try JSONEncoder().encode(payload)
-
-        let (data, _) = try await session.data(for: request)
-        let wrappers = try JSONDecoder().decode([MoodleCalendarWrapper].self, from: data)
-
-        guard let first = wrappers.first, !first.error, let calData = first.data else {
-            throw MoodleServiceError.invalidResponse
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw MoodleWebserviceError.malformedResponse(detail: "No HTTP response")
         }
 
-        // Step 4: Map events to SDAssignment
-        return calData.events.compactMap { event -> SDAssignment? in
+        guard httpResponse.statusCode == 200 else {
+            if let moodleError = MoodleWebserviceError.from(jsonData: data) {
+                throw moodleError
+            }
+            throw MoodleWebserviceError.httpStatus(code: httpResponse.statusCode)
+        }
+
+        if let moodleError = MoodleWebserviceError.from(jsonData: data) {
+            throw moodleError
+        }
+
+        do {
+            return try JSONDecoder().decode(MoodleCalendarResponse.self, from: data)
+        } catch {
+            throw MoodleWebserviceError.malformedResponse(detail: "Unable to decode action events response")
+        }
+    }
+
+    private static func makeActionEventsRequest(token: String, timesortFrom: Int) throws -> URLRequest {
+        guard var components = URLComponents(url: siteBaseURL, resolvingAgainstBaseURL: false) else {
+            throw MoodleWebserviceError.malformedResponse(detail: "invalid base URL")
+        }
+
+        components.path = "/webservice/rest/server.php"
+        components.queryItems = [
+            URLQueryItem(name: "wstoken", value: token),
+            URLQueryItem(name: "wsfunction", value: actionEventsFunction),
+            URLQueryItem(name: "moodlewsrestformat", value: "json"),
+            URLQueryItem(name: "limitnum", value: "50"),
+            URLQueryItem(name: "timesortfrom", value: String(timesortFrom)),
+        ]
+
+        guard let url = components.url else {
+            throw MoodleWebserviceError.malformedResponse(detail: "invalid action events URL")
+        }
+
+        return URLRequest(url: url)
+    }
+
+    private static func mapAssignments(from events: [MoodleCalendarEvent]) -> [SDAssignment] {
+        events.compactMap { event in
             guard event.modulename == "assign" else { return nil }
 
             let courseNo = event.course.map { SDCourse.courseNoFromMoodleId($0.idnumber ?? "") } ?? ""
-
-            let courseName: String
-            if let fullname = event.course?.fullname {
-                // Extract Chinese course name from format like "114.2【資工系】CS2006301 計算機組織 Computer Organization"
-                let parts = fullname.components(separatedBy: " ")
-                if parts.count >= 2 {
-                    // Find the part after the course number
-                    if let idx = parts.firstIndex(where: { $0.range(of: "3?[A-Z]{2}[A-Z0-9]{6,7}", options: .regularExpression) != nil }),
-                       idx + 1 < parts.count {
-                        courseName = parts[idx + 1]
-                    } else {
-                        courseName = fullname
-                    }
-                } else {
-                    courseName = fullname
-                }
-            } else {
-                courseName = ""
-            }
-
-            let dueDate = Date(timeIntervalSince1970: TimeInterval(event.timestart))
+            let courseName = courseName(from: event.course?.fullname)
+            let dueDate = Date(timeIntervalSince1970: TimeInterval(event.timestart ?? event.timeusermidnight ?? 0))
+            let moodleURL = event.url ?? event.action?.url
 
             return SDAssignment(
                 assignmentId: "\(event.instance ?? event.id)",
@@ -124,8 +116,40 @@ enum MoodleService {
                 title: event.activityname ?? event.name,
                 dueDate: dueDate,
                 isCompleted: false,
-                moodleUrl: event.url
+                moodleUrl: moodleURL
             )
         }
     }
+
+    private static func courseName(from fullname: String?) -> String {
+        guard let fullname else { return "" }
+
+        let parts = fullname.components(separatedBy: " ")
+        guard parts.count >= 2 else { return fullname }
+
+        if let index = parts.firstIndex(where: {
+            $0.range(of: "3?[A-Z]{2}[A-Z0-9]{6,7}", options: .regularExpression) != nil
+        }), index + 1 < parts.count {
+            return parts[index + 1]
+        }
+
+        return fullname
+    }
+}
+
+private struct MoodleCalendarResponse: Decodable {
+    let events: [MoodleCalendarEvent]
+}
+
+private struct MoodleCalendarEvent: Decodable {
+    let id: Int
+    let name: String
+    let modulename: String?
+    let activityname: String?
+    let instance: Int?
+    let timestart: Int?
+    let timeusermidnight: Int?
+    let course: MoodleCourseInfo?
+    let action: MoodleAction?
+    let url: String?
 }
