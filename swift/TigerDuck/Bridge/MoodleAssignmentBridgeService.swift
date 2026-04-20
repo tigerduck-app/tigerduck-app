@@ -4,17 +4,15 @@ enum MoodleAssignmentBridgeService {
     private static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
     private static let actionEventsFunction = "core_calendar_get_action_events_by_timesort"
 
-    static func fetchAssignments(
-        session: URLSession,
-        studentId: String,
-        password: String
-    ) async throws -> [SDAssignment] {
-        _ = (studentId, password)
-
+    /// Fetch upcoming assignments via Moodle webservice.
+    ///
+    /// Runs on a long-lived Moodle Mobile App token — no NTUST session
+    /// or credentials needed.
+    static func fetchAssignments() async throws -> [SDAssignment] {
         let tokenService = MoodleTokenService.shared
         let token: String
-        if let currentToken = await tokenService.currentToken() {
-            token = currentToken
+        if let cached = await tokenService.currentToken() {
+            token = cached
         } else {
             token = try await tokenService.refreshTokenIfNeeded()
         }
@@ -22,8 +20,7 @@ enum MoodleAssignmentBridgeService {
         do {
             let response = try await fetchActionEvents(
                 using: token,
-                session: session,
-                timesortFrom: Int(Date().timeIntervalSince1970)
+                timesortFrom: Int(Date().timeIntervalSince1970),
             )
             return mapAssignments(from: response.events)
         } catch MoodleWebserviceError.invalidToken {
@@ -31,8 +28,7 @@ enum MoodleAssignmentBridgeService {
             let refreshedToken = try await tokenService.refreshTokenIfNeeded()
             let response = try await fetchActionEvents(
                 using: refreshedToken,
-                session: session,
-                timesortFrom: Int(Date().timeIntervalSince1970)
+                timesortFrom: Int(Date().timeIntervalSince1970),
             )
             return mapAssignments(from: response.events)
         }
@@ -40,7 +36,6 @@ enum MoodleAssignmentBridgeService {
 
     private static func fetchActionEvents(
         using token: String,
-        session: URLSession,
         timesortFrom: Int
     ) async throws -> BridgeMoodleCalendarResponse {
         let request = try makeActionEventsRequest(token: token, timesortFrom: timesortFrom)
@@ -48,7 +43,7 @@ enum MoodleAssignmentBridgeService {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await URLSession.shared.data(for: request)
         } catch let urlError as URLError {
             throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
         } catch {

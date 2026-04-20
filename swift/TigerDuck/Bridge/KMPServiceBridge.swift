@@ -149,18 +149,16 @@ enum KMPServiceBridge {
 
     static func fetchAssignments(authService: AuthService) async -> [SDAssignment] {
         let startGeneration = authService.loginGeneration
-        guard let studentId = authService.storedStudentId,
-              let password = authService.storedPassword else {
+        // MoodleAssignmentBridgeService runs on its own long-lived OIDC
+        // token; credentials are only needed so that a token refresh can
+        // reach Keychain. If the user logged out, fall back to cache.
+        guard authService.storedStudentId != nil,
+              authService.storedPassword != nil else {
             return DataCache.shared.loadAssignments()
         }
 
         do {
-            let session = NTUSTSessionManager.shared.session
-            let assignments = try await MoodleAssignmentBridgeService.fetchAssignments(
-                session: session,
-                studentId: studentId,
-                password: password
-            )
+            let assignments = try await MoodleAssignmentBridgeService.fetchAssignments()
             // Same dual guard as fetchCourses above: cancellation OR a
             // logout that bumped loginGeneration must drop the save.
             if !Task.isCancelled,
