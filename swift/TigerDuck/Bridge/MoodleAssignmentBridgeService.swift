@@ -78,24 +78,47 @@ enum MoodleAssignmentBridgeService {
     }
 
     private static func makeActionEventsRequest(token: String, timesortFrom: Int) throws -> URLRequest {
+        // Aligned 1:1 with backend/api/moodle/homework.py:
+        //   POST /webservice/rest/server.php
+        //     ?moodlewsrestformat=json&wsfunction=...&wstoken=...
+        //   body: limitnum=50&timesortfrom=<now>&limittononsuspendedevents=1
         guard var components = URLComponents(url: siteBaseURL, resolvingAgainstBaseURL: false) else {
             throw MoodleWebserviceError.malformedResponse(detail: "invalid base URL")
         }
-
         components.path = "/webservice/rest/server.php"
         components.queryItems = [
-            URLQueryItem(name: "wstoken", value: token),
-            URLQueryItem(name: "wsfunction", value: actionEventsFunction),
             URLQueryItem(name: "moodlewsrestformat", value: "json"),
-            URLQueryItem(name: "limitnum", value: "50"),
-            URLQueryItem(name: "timesortfrom", value: String(timesortFrom)),
+            URLQueryItem(name: "wsfunction", value: actionEventsFunction),
+            URLQueryItem(name: "wstoken", value: token),
         ]
-
         guard let url = components.url else {
             throw MoodleWebserviceError.malformedResponse(detail: "invalid action events URL")
         }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = wsFormBody([
+            "limitnum": "50",
+            "timesortfrom": String(timesortFrom),
+            "limittononsuspendedevents": "1",
+        ])
+        return request
+    }
 
-        return URLRequest(url: url)
+    private static func wsFormBody(_ fields: [String: String]) -> Data? {
+        // RFC-3986 unreserved only — safe for any value.
+        let unreserved = CharacterSet(
+            charactersIn:
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~",
+        )
+        return fields
+            .map { key, value in
+                let k = key.addingPercentEncoding(withAllowedCharacters: unreserved) ?? key
+                let v = value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
+                return "\(k)=\(v)"
+            }
+            .joined(separator: "&")
+            .data(using: .utf8)
     }
 
     private static func mapAssignments(from events: [BridgeMoodleCalendarEvent]) -> [SDAssignment] {
