@@ -53,12 +53,18 @@ struct ClassTableView: View {
                             onPrimary: { appState.presentNTUSTLogin() }
                         )
                     case .empty:
-                        EmptyStateView(
-                            icon: "book.closed",
-                            title: "目前沒有課程",
-                            message: "下拉以重新整理，或使用右上角的 + 新增課程"
-                        )
-                        .padding(.vertical, TigerDuckTheme.Spacing.xxl)
+                        // Keep the semester picker visible so the user can
+                        // switch to a semester that does have courses even
+                        // when the current semester's roster is empty.
+                        VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                            semesterPickerBar
+                            EmptyStateView(
+                                icon: "book.closed",
+                                title: "目前沒有課程",
+                                message: "下拉以重新整理，或使用右上角的 + 新增課程，或切換到其他學期"
+                            )
+                            .padding(.vertical, TigerDuckTheme.Spacing.xxl)
+                        }
                     case .content:
                         authenticatedContent
                     }
@@ -147,24 +153,31 @@ struct ClassTableView: View {
                 }
             }
 
-            HStack {
-                Picker("學期", selection: $viewModel.currentSemester) {
-                    ForEach(viewModel.availableSemesters, id: \.self) { code in
-                        Text(viewModel.displayLabel(for: code)).tag(code)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-
-                Spacer()
-
-                Text("\(viewModel.totalCredits) 學分")
-                    .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(Color.textSecondary)
-            }
-            .padding(.horizontal)
+            semesterPickerBar
 
             TimetableGridView(viewModel: viewModel)
         }
+    }
+
+    /// Semester picker + credit total row. Extracted so it can be shown
+    /// even when the current semester has no courses — otherwise the user
+    /// has no way to pivot to a semester that does have data.
+    private var semesterPickerBar: some View {
+        HStack {
+            Picker("學期", selection: $viewModel.currentSemester) {
+                ForEach(viewModel.availableSemesters, id: \.self) { code in
+                    Text(viewModel.displayLabel(for: code)).tag(code)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+
+            Spacer()
+
+            Text("\(viewModel.totalCredits) 學分")
+                .font(TigerDuckTheme.Typography.body)
+                .foregroundStyle(Color.textSecondary)
+        }
+        .padding(.horizontal)
     }
 }
