@@ -1,7 +1,18 @@
+import ActivityKit
 import Defaults
 import Foundation
 import UIKit
+import UserNotifications
 import os
+
+struct PushDiagnostic: Sendable {
+    let enabled: Bool
+    let isStarted: Bool
+    let liveActivitiesEnabled: Bool
+    let notificationAuthStatus: UNAuthorizationStatus
+    let registration: PushRegistrationSnapshot
+    let resolvedServerURL: URL
+}
 
 /// Owns the push-server lifecycle for the app.
 ///
@@ -70,8 +81,34 @@ final class PushCoordinator {
         isStarted = true
         logger.info("enabling push stack")
 
-        UIApplication.shared.registerForRemoteNotifications()
+        // Request user-visible notification permission first so the user gets
+        // an iOS system prompt as visible feedback that the toggle "did
+        // something". PTS (Push-to-Start) tokens don't strictly require this
+        // permission, but it unblocks standard-alert push later AND avoids
+        // the silent-toggle-does-nothing UX.
+        Task { @MainActor in
+            let granted = (try? await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+            logger.info("notification authorization granted=\(granted, privacy: .public)")
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+
         relay.start()
+    }
+
+    /// Returns the latest diagnostic snapshot for the settings view.
+    func currentSnapshot() async -> PushDiagnostic {
+        let reg = await registration.snapshot()
+        let liveActivitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
+        let notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        return PushDiagnostic(
+            enabled: Defaults[.pushServerEnabled],
+            isStarted: isStarted,
+            liveActivitiesEnabled: liveActivitiesEnabled,
+            notificationAuthStatus: notificationStatus,
+            registration: reg,
+            resolvedServerURL: Self.resolveServerURL()
+        )
     }
 
     /// Disable and inform the server. Safe to call repeatedly.
@@ -105,7 +142,7 @@ final class PushCoordinator {
 
     // MARK: - Helpers
 
-    private static func resolveServerURL() -> URL {
+    static func resolveServerURL() -> URL {
         if let override = Defaults[.pushServerURLOverride],
            !override.isEmpty,
            let url = URL(string: override) {

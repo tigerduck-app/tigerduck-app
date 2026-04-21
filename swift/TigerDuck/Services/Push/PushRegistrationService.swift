@@ -9,6 +9,13 @@ import os
 /// registration record to the server. The server is tolerant of partial
 /// state (either token may be nil) so early packets arrive safely before
 /// both tokens are known.
+struct PushRegistrationSnapshot: Sendable {
+    let ptsTokenLength: Int
+    let deviceTokenLength: Int
+    let lastError: String?
+    let lastRegisteredAt: Date?
+}
+
 actor PushRegistrationService {
     private let identity: PushIdentity
     private let apiClient: PushAPIClient
@@ -20,6 +27,8 @@ actor PushRegistrationService {
     private var deviceTokenHex: String?
     private var ptsTokenHex: String?
     private var lastAttempt: Task<Void, Never>?
+    private var lastError: String?
+    private var lastRegisteredAt: Date?
 
     init(
         identity: PushIdentity,
@@ -53,7 +62,18 @@ actor PushRegistrationService {
     }
 
     func registrationFailed(_ error: Error) {
+        lastError = "APNs register failed: \(error.localizedDescription)"
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+    }
+
+    /// Snapshot of internal state for UI display. Safe to call from any isolation.
+    func snapshot() -> PushRegistrationSnapshot {
+        PushRegistrationSnapshot(
+            ptsTokenLength: ptsTokenHex?.count ?? 0,
+            deviceTokenLength: deviceTokenHex?.count ?? 0,
+            lastError: lastError,
+            lastRegisteredAt: lastRegisteredAt
+        )
     }
 
     // MARK: - Unregister
@@ -98,13 +118,20 @@ actor PushRegistrationService {
                 await self?.noteSuccessfulRegistration()
             } catch {
                 logger.error("register failed: \(error.localizedDescription, privacy: .public)")
+                await self?.noteRegistrationError(error)
             }
         }
     }
 
     private func noteSuccessfulRegistration() async {
+        lastRegisteredAt = Date()
+        lastError = nil
         await MainActor.run {
             Defaults[.pushLastRegistrationAt] = Date()
         }
+    }
+
+    private func noteRegistrationError(_ error: Error) async {
+        lastError = "register: \(error.localizedDescription)"
     }
 }
