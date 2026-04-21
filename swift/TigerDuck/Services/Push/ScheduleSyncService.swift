@@ -93,8 +93,12 @@ final class ScheduleSyncService {
 
         for slot in futureSlots {
             if inputs.showClassPreparing {
-                let fireAt = slot.start.addingTimeInterval(-inputs.classPreparingLeadTime)
-                if fireAt > now {
+                let fireAt = leadTimeFireAt(
+                    desired: slot.start.addingTimeInterval(-inputs.classPreparingLeadTime),
+                    event: slot.start,
+                    now: now
+                )
+                if let fireAt {
                     let snapshot = LiveActivityScenarioResolver.classPreparingSnapshot(
                         slot: slot,
                         accentHex: inputs.accentHex
@@ -126,8 +130,12 @@ final class ScheduleSyncService {
         if inputs.showAssignmentScenario {
             for assignment in inputs.assignments
                 where !assignment.isCompleted && assignment.dueDate > now && assignment.dueDate <= horizonEnd {
-                let fireAt = assignment.dueDate.addingTimeInterval(-inputs.assignmentLeadTime)
-                guard fireAt > now else { continue }
+                let fireAt = leadTimeFireAt(
+                    desired: assignment.dueDate.addingTimeInterval(-inputs.assignmentLeadTime),
+                    event: assignment.dueDate,
+                    now: now
+                )
+                guard let fireAt else { continue }
                 let snapshot = LiveActivityScenarioResolver.assignmentSnapshot(
                     assignment: assignment,
                     courses: inputs.courses,
@@ -144,6 +152,31 @@ final class ScheduleSyncService {
         }
 
         return events
+    }
+
+    /// Decide when a lead-time-driven scenario (classPreparing / assignmentUrgent)
+    /// should actually fire.
+    ///
+    /// - `desired` is `event - leadTime`. When it's in the future we use it.
+    /// - When it's already past but the underlying event is still in the
+    ///   future, we fire immediately (`now + 5s` — small offset so dispatcher
+    ///   sees it on its very next tick rather than skipping for being
+    ///   microseconds in the past). User still gets the "即將上課 / 作業將到期"
+    ///   heads-up, just later than the user's ideal lead time.
+    /// - When the event itself is past or within 60s, we skip — there's no
+    ///   useful warning left to deliver.
+    private static func leadTimeFireAt(
+        desired: Date,
+        event: Date,
+        now: Date
+    ) -> Date? {
+        if desired > now {
+            return desired
+        }
+        if event > now.addingTimeInterval(60) {
+            return now.addingTimeInterval(5)
+        }
+        return nil
     }
 
     private func markSuccess() {
