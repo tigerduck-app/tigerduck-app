@@ -139,6 +139,7 @@ struct RankingsTrendCard: View {
         }
         .contentTransition(.numericText())
         .animation(.smoothSpring, value: selectedTerm)
+        .animation(.smoothSpring, value: scope)
     }
 
     private func summaryCell(title: String, value: String) -> some View {
