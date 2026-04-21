@@ -183,6 +183,9 @@ private struct RawAssignmentsResponse: Decodable {
                     dueDate: assignment.duedate > 0
                         ? Date(timeIntervalSince1970: TimeInterval(assignment.duedate))
                         : nil,
+                    cutoffDate: (assignment.cutoffdate ?? 0) > 0
+                        ? Date(timeIntervalSince1970: TimeInterval(assignment.cutoffdate!))
+                        : nil,
                     allowSubmissionsFromDate: assignment.allowsubmissionsfromdate > 0
                         ? Date(timeIntervalSince1970: TimeInterval(assignment.allowsubmissionsfromdate))
                         : nil,
@@ -201,16 +204,22 @@ private struct RawSubmissionStatusResponse: Decodable {
 
         struct Submission: Decodable {
             let status: String?
+            let timemodified: Int?
         }
     }
 
     let lastattempt: LastAttempt?
 
     func toMoodleSubmissionStatus(assignId: Int) -> MoodleSubmissionStatus {
-        MoodleSubmissionStatus(
+        let rawTime = lastattempt?.submission?.timemodified ?? 0
+        let submittedAt: Date? = rawTime > 0
+            ? Date(timeIntervalSince1970: TimeInterval(rawTime))
+            : nil
+        return MoodleSubmissionStatus(
             assignId: assignId,
             submissionStatus: lastattempt?.submission?.status,
-            gradingStatus: lastattempt?.gradingstatus
+            gradingStatus: lastattempt?.gradingstatus,
+            submittedAt: submittedAt
         )
     }
 }

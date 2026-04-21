@@ -37,6 +37,10 @@ struct MoodleAssignmentRecord: Sendable {
     let courseId: Int
     let name: String
     let dueDate: Date?
+    /// Final cutoff after which submissions are rejected. `nil` when Moodle
+    /// sets `cutoffdate == 0`, meaning the assignment keeps accepting late
+    /// submissions indefinitely.
+    let cutoffDate: Date?
     let allowSubmissionsFromDate: Date?
     let intro: String
     let noSubmissions: Bool
@@ -48,6 +52,9 @@ struct MoodleSubmissionStatus: Sendable {
     let assignId: Int
     let submissionStatus: String?
     let gradingStatus: String?
+    /// Time the submission was last modified (Moodle `submission.timemodified`).
+    /// Used to distinguish on-time vs late submissions.
+    let submittedAt: Date?
 
     /// True if this assignment has been submitted (not just saved as draft).
     var isSubmitted: Bool {

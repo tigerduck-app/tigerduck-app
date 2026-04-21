@@ -10,6 +10,14 @@ final class SDAssignment {
     var dueDate: Date
     var isCompleted: Bool
     var moodleUrl: String?
+    /// Final cutoff from Moodle. When `nil`, the assignment keeps accepting
+    /// late submissions indefinitely; when non-`nil`, submissions past this
+    /// instant are rejected ("逾期拒收").
+    var cutoffDate: Date?
+    /// Time the submission was last modified on Moodle. When `isCompleted`
+    /// is true and this is greater than `dueDate`, the submission was late
+    /// ("已遲交").
+    var submittedAt: Date?
 
     init(
         assignmentId: String,
@@ -18,7 +26,9 @@ final class SDAssignment {
         title: String,
         dueDate: Date,
         isCompleted: Bool = false,
-        moodleUrl: String? = nil
+        moodleUrl: String? = nil,
+        cutoffDate: Date? = nil,
+        submittedAt: Date? = nil
     ) {
         self.assignmentId = assignmentId
         self.courseNo = courseNo
@@ -27,10 +37,30 @@ final class SDAssignment {
         self.dueDate = dueDate
         self.isCompleted = isCompleted
         self.moodleUrl = moodleUrl
+        self.cutoffDate = cutoffDate
+        self.submittedAt = submittedAt
     }
 
     var isOverdue: Bool {
         !isCompleted && dueDate < Date()
+    }
+
+    /// Resolves the presentation status against a given reference time.
+    /// Centralising this rule here keeps the UI, tests, and Live Activity
+    /// views consistent; they all read the same enum instead of each
+    /// re-deriving rules from raw dates.
+    func status(now: Date = Date()) -> AssignmentStatus {
+        if isCompleted {
+            if let submittedAt, submittedAt > dueDate {
+                return .submittedLate
+            }
+            return .submitted
+        }
+        guard dueDate < now else { return .pending }
+        if let cutoffDate, now > cutoffDate {
+            return .overdueRejected
+        }
+        return .overdueAcceptable
     }
 
     var moodleDeepLink: URL? {
