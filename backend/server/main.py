@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from server.config import Settings, get_settings
 from server.db import build_engine, build_session_factory
 from server.logging_setup import configure as configure_logging
+from server.routes import devices as devices_routes
+from server.routes import schedule as schedule_routes
 
 logger = structlog.get_logger(__name__)
 
@@ -55,6 +57,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get(f"{settings.api_base_path}/ping", tags=["meta"])
     async def ping() -> dict[str, str]:
         return {"pong": "tigerduck"}
+
+    app.include_router(devices_routes.router, prefix=settings.api_base_path)
+    app.include_router(schedule_routes.router, prefix=settings.api_base_path)
 
     return app
 
