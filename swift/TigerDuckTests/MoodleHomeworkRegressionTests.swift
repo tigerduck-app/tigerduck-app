@@ -86,15 +86,115 @@ struct MoodleHomeworkRegressionTests {
     }
 
     @Test func moodleSubmissionStatus_isSubmittedReflectsServerStatus() {
-        let submitted = MoodleSubmissionStatus(assignId: 1, submissionStatus: "submitted", gradingStatus: "graded")
-        let draft = MoodleSubmissionStatus(assignId: 2, submissionStatus: "draft", gradingStatus: nil)
-        let new = MoodleSubmissionStatus(assignId: 3, submissionStatus: "new", gradingStatus: nil)
-        let absent = MoodleSubmissionStatus(assignId: 4, submissionStatus: nil, gradingStatus: nil)
+        let submitted = MoodleSubmissionStatus(assignId: 1, submissionStatus: "submitted", gradingStatus: "graded", submittedAt: nil)
+        let draft = MoodleSubmissionStatus(assignId: 2, submissionStatus: "draft", gradingStatus: nil, submittedAt: nil)
+        let new = MoodleSubmissionStatus(assignId: 3, submissionStatus: "new", gradingStatus: nil, submittedAt: nil)
+        let absent = MoodleSubmissionStatus(assignId: 4, submissionStatus: nil, gradingStatus: nil, submittedAt: nil)
 
         #expect(submitted.isSubmitted)
         #expect(!draft.isSubmitted)
         #expect(!new.isSubmitted)
         #expect(!absent.isSubmitted)
+    }
+
+    // MARK: - AssignmentStatus
+
+    @Test func assignmentStatus_pendingWhenFutureAndNotSubmitted() {
+        let now = Date()
+        let assignment = SDAssignment(
+            assignmentId: "p1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: now.addingTimeInterval(3600), isCompleted: false
+        )
+        #expect(assignment.status(now: now) == .pending)
+    }
+
+    @Test func assignmentStatus_submittedOnTimeWhenSubmittedAtBeforeDue() {
+        let due = Date()
+        let assignment = SDAssignment(
+            assignmentId: "s1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: due, isCompleted: true,
+            submittedAt: due.addingTimeInterval(-60)
+        )
+        #expect(assignment.status(now: due.addingTimeInterval(120)) == .submitted)
+    }
+
+    @Test func assignmentStatus_submittedOnTimeWhenSubmittedAtMissing() {
+        // When Moodle did not give us timemodified, default to .submitted
+        // rather than mis-flagging the row as late.
+        let due = Date()
+        let assignment = SDAssignment(
+            assignmentId: "s2", courseNo: "C", courseName: "C", title: "T",
+            dueDate: due, isCompleted: true,
+            submittedAt: nil
+        )
+        #expect(assignment.status(now: due.addingTimeInterval(86400)) == .submitted)
+    }
+
+    @Test func assignmentStatus_submittedLateWhenSubmittedAfterDue() {
+        let due = Date()
+        let assignment = SDAssignment(
+            assignmentId: "l1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: due, isCompleted: true,
+            submittedAt: due.addingTimeInterval(3600)
+        )
+        #expect(assignment.status(now: due.addingTimeInterval(7200)) == .submittedLate)
+    }
+
+    @Test func assignmentStatus_overdueAcceptableWhenPastDueAndWithinCutoff() {
+        let due = Date().addingTimeInterval(-3600)
+        let cutoff = Date().addingTimeInterval(3600)
+        let assignment = SDAssignment(
+            assignmentId: "o1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: due, isCompleted: false,
+            cutoffDate: cutoff
+        )
+        #expect(assignment.status(now: Date()) == .overdueAcceptable)
+    }
+
+    @Test func assignmentStatus_overdueAcceptableWhenPastDueAndNoCutoff() {
+        let due = Date().addingTimeInterval(-3600)
+        let assignment = SDAssignment(
+            assignmentId: "o2", courseNo: "C", courseName: "C", title: "T",
+            dueDate: due, isCompleted: false,
+            cutoffDate: nil
+        )
+        #expect(assignment.status(now: Date()) == .overdueAcceptable)
+    }
+
+    @Test func assignmentStatus_overdueRejectedWhenPastCutoff() {
+        let now = Date()
+        let assignment = SDAssignment(
+            assignmentId: "o3", courseNo: "C", courseName: "C", title: "T",
+            dueDate: now.addingTimeInterval(-7200), isCompleted: false,
+            cutoffDate: now.addingTimeInterval(-3600)
+        )
+        #expect(assignment.status(now: now) == .overdueRejected)
+    }
+
+    @Test func assignmentStatus_lateSubmissionBeatsCutoff() {
+        // A late but accepted submission should render as 已遲交 (orange),
+        // not 逾期拒收, even when now is past the cutoff.
+        let due = Date().addingTimeInterval(-86400)
+        let cutoff = Date().addingTimeInterval(-3600)
+        let submittedAt = Date().addingTimeInterval(-7200)
+        let assignment = SDAssignment(
+            assignmentId: "m1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: due, isCompleted: true,
+            cutoffDate: cutoff,
+            submittedAt: submittedAt
+        )
+        #expect(assignment.status(now: Date()) == .submittedLate)
+    }
+
+    @Test func assignmentStatus_badgeMetadataMatchesCase() {
+        #expect(AssignmentStatus.pending.badgeLabel == nil)
+        #expect(AssignmentStatus.submitted.badgeLabel == "已繳交")
+        #expect(AssignmentStatus.submittedLate.badgeLabel == "已遲交")
+        #expect(AssignmentStatus.overdueAcceptable.badgeLabel == "逾期")
+        #expect(AssignmentStatus.overdueRejected.badgeLabel == "逾期拒收")
+
+        #expect(!AssignmentStatus.overdueAcceptable.usesEmphasis)
+        #expect(AssignmentStatus.overdueRejected.usesEmphasis)
     }
 
     @Test func arrayUpcomingSorted_excludesCompletedAndOrdersByDueDateAscending() {
