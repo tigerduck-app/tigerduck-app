@@ -362,14 +362,17 @@ enum AppServiceBridge {
                 guard let dueDate = record.dueDate else { return nil }
 
                 let moodleCourse = moodleCoursesById[record.courseId]
+                let status = statuses[record.assignId]
                 return SDAssignment(
                     assignmentId: String(record.assignId),
                     courseNo: moodleCourse?.courseNo ?? "",
                     courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
                     title: record.name,
                     dueDate: dueDate,
-                    isCompleted: statuses[record.assignId]?.isSubmitted ?? false,
-                    moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(record.cmId)"
+                    isCompleted: status?.isSubmitted ?? false,
+                    moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(record.cmId)",
+                    cutoffDate: record.cutoffDate,
+                    submittedAt: status?.submittedAt
                 )
             }
 
@@ -400,14 +403,22 @@ enum AppServiceBridge {
         freshAssignments: [SDAssignment],
         cachedAssignments: [SDAssignment]
     ) -> [SDAssignment] {
-        let completedIds = Set(
-            cachedAssignments
-                .filter(\.isCompleted)
-                .map(\.assignmentId)
+        // When the per-assignment submission-status fetch partially fails,
+        // we keep the previously known isCompleted so the UI does not
+        // regress from "已繳交" back to "未繳交". Preserve submittedAt too:
+        // without it we could not distinguish 已繳交 from 已遲交 after the
+        // transient failure.
+        let previousById = Dictionary(
+            uniqueKeysWithValues: cachedAssignments.map { ($0.assignmentId, $0) }
         )
 
-        for assignment in freshAssignments where completedIds.contains(assignment.assignmentId) {
+        for assignment in freshAssignments {
+            guard let previous = previousById[assignment.assignmentId],
+                  previous.isCompleted else { continue }
             assignment.isCompleted = true
+            if assignment.submittedAt == nil {
+                assignment.submittedAt = previous.submittedAt
+            }
         }
 
         return freshAssignments

@@ -288,6 +288,11 @@ private struct CachedAssignment: Codable {
     let dueDate: Date
     let isCompleted: Bool
     let moodleUrl: String?
+    /// Optional so cache files written before the field existed continue
+    /// to decode; `nil` just means we have not yet learned the cutoff.
+    let cutoffDate: Date?
+    /// Optional for the same back-compat reason as `cutoffDate`.
+    let submittedAt: Date?
 
     init(from assignment: SDAssignment) {
         assignmentId = assignment.assignmentId
@@ -297,6 +302,8 @@ private struct CachedAssignment: Codable {
         dueDate = assignment.dueDate
         isCompleted = assignment.isCompleted
         moodleUrl = assignment.moodleUrl
+        cutoffDate = assignment.cutoffDate
+        submittedAt = assignment.submittedAt
     }
 
     func toSDAssignment() -> SDAssignment {
@@ -307,7 +314,9 @@ private struct CachedAssignment: Codable {
             title: title,
             dueDate: dueDate,
             isCompleted: isCompleted,
-            moodleUrl: moodleUrl
+            moodleUrl: moodleUrl,
+            cutoffDate: cutoffDate,
+            submittedAt: submittedAt
         )
     }
 }
