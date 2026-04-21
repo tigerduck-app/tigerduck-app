@@ -41,6 +41,7 @@ enum AppConstants {
         static let showClassPreparingScenario = "showClassPreparingScenario"
         static let showInClassScenario = "showInClassScenario"
         static let ssoLoginTimestamp = "ssoLoginTimestamp"
+        static let classTableSelectedSemester = "classTableSelectedSemester"
     }
 
     enum Periods {

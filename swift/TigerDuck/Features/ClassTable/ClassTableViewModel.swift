@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 @Observable
@@ -11,7 +12,13 @@ final class ClassTableViewModel {
     var selectedWeekday: Int? = nil
     var selectedPeriodId: String? = nil
 
-    var currentSemester: String = CourseSelectionService.currentSemesterCode()
+    var currentSemester: String = Defaults[.classTableSelectedSemester] {
+        didSet {
+            guard currentSemester != oldValue else { return }
+            Defaults[.classTableSelectedSemester] = currentSemester
+            reloadFromCache()
+        }
+    }
     let availableSemesters: [String] = {
         let code = CourseSelectionService.currentSemesterCode()
         let yearStr = String(code.dropLast())
@@ -27,6 +34,42 @@ final class ClassTableViewModel {
         }
         return semesters
     }()
+
+    /// Format semester code for display: "1142" → "114-2"
+    func displayLabel(for code: String) -> String {
+        guard code.count >= 2 else { return code }
+        return String(code.dropLast()) + "-" + String(code.last!)
+    }
+
+    private var hasWarmedCaches = false
+
+    func warmCachesIfNeeded(authService: AuthService) async {
+        guard !hasWarmedCaches else { return }
+        hasWarmedCaches = true
+        await AppServiceBridge.warmAllSemesterCaches(authService: authService)
+    }
+
+    /// Silent background refresh for the currently-selected semester.
+    /// Fires after the user picks a new semester from the dropdown so the
+    /// cached snapshot we just rendered gets reconciled with the latest
+    /// server state without blocking UI.
+    func refreshSelectedSemester(authService: AuthService) async {
+        let target = currentSemester
+        let fresh = await AppServiceBridge.fetchCourses(
+            authService: authService,
+            semester: target
+        )
+        await MainActor.run { [weak self] in
+            guard let self, self.currentSemester == target else { return }
+            let userAdded = DataCache.shared.loadUserAddedCourses()
+            let merged = self.buildCourseList(fresh, userAdded)
+            // Silent overwrite: only swap in-memory list when content actually
+            // changed, so SwiftUI doesn't churn on identical data.
+            if merged.map(\.courseNo).sorted() != self.courses.map(\.courseNo).sorted() {
+                self.courses = merged
+            }
+        }
+    }
 
     var showAddCourse = false
     var courseToRename: SDCourse? = nil
@@ -96,7 +139,7 @@ final class ClassTableViewModel {
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
         courses = buildCourseList(
-            DataCache.shared.loadCourses(semester: CourseSelectionService.currentSemesterCode()),
+            DataCache.shared.loadCourses(semester: currentSemester),
             DataCache.shared.loadUserAddedCourses()
         )
         assignments = DataCache.shared.loadAssignments()
@@ -274,7 +317,7 @@ final class ClassTableViewModel {
 
         let cachedAssignments = DataCache.shared.loadAssignments()
         let merged = buildCourseList(
-            DataCache.shared.loadCourses(semester: CourseSelectionService.currentSemesterCode()),
+            DataCache.shared.loadCourses(semester: currentSemester),
             DataCache.shared.loadUserAddedCourses()
         )
 
@@ -300,6 +343,10 @@ final class ClassTableViewModel {
         Task { [weak self] in
             guard let self else { return }
             await self.fetchData(authService: authService)
+            let latestSemester = CourseSelectionService.currentSemesterCode()
+            if latestSemester != self.currentSemester {
+                let _ = await AppServiceBridge.fetchCourses(authService: authService, semester: latestSemester)
+            }
             await MainActor.run { [weak self] in
                 self?.isRefreshing = false
             }
@@ -316,6 +363,7 @@ final class ClassTableViewModel {
         // TTL that absorbs cheaper background refreshes.
         async let coursesTask = AppServiceBridge.fetchCourses(
             authService: authService,
+            semester: currentSemester,
             forceRefresh: true,
         )
         async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService)

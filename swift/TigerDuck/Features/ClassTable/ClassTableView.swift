@@ -9,10 +9,22 @@ struct ClassTableView: View {
     var body: some View {
         if embedded {
             content
-                .onAppear { viewModel.load(authService: appState.authService) }
+                .onAppear {
+                    viewModel.load(authService: appState.authService)
+                    Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
+                }
+                .onChange(of: viewModel.currentSemester) { _, _ in
+                    Task { await viewModel.refreshSelectedSemester(authService: appState.authService) }
+                }
         } else {
             NavigationStack { content }
-                .onAppear { viewModel.load(authService: appState.authService) }
+                .onAppear {
+                    viewModel.load(authService: appState.authService)
+                    Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
+                }
+                .onChange(of: viewModel.currentSemester) { _, _ in
+                    Task { await viewModel.refreshSelectedSemester(authService: appState.authService) }
+                }
         }
     }
 
@@ -135,8 +147,15 @@ struct ClassTableView: View {
                 }
             }
 
-            // TODO: Implement semester picker (學年度 selection) once backend supports it
             HStack {
+                Picker("學期", selection: $viewModel.currentSemester) {
+                    ForEach(viewModel.availableSemesters, id: \.self) { code in
+                        Text(viewModel.displayLabel(for: code)).tag(code)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+
                 Spacer()
 
                 Text("\(viewModel.totalCredits) 學分")

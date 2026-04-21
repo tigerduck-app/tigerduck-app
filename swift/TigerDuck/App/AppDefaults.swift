@@ -82,4 +82,8 @@ extension Defaults.Keys {
         "moodleTokenMigrationDone",
         default: false
     )
+    static let classTableSelectedSemester = Key<String>(
+        AppConstants.UserDefaultsKeys.classTableSelectedSemester,
+        default: CourseSelectionService.currentSemesterCode()
+    )
 }
