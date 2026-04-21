@@ -52,7 +52,7 @@ struct LibraryView: View {
     private var headerSection: some View {
         HStack {
             Text("圖書館")
-                .font(TigerDuckTheme.Typography.largeTitle)
+                .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
             HStack(spacing: TigerDuckTheme.Spacing.xs) {

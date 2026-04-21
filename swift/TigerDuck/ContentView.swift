@@ -55,7 +55,7 @@ struct MainTabView: View {
         case .classTable: ClassTableView()
         case .calendar: CalendarTabView()
         case .announcements: AnnouncementsView()
-        case .gpa: PlaceholderFeatureView(feature: feature)
+        case .gpa: ScoreView()
         case .courseSelection: PlaceholderFeatureView(feature: feature)
         case .graduationRequirements: PlaceholderFeatureView(feature: feature)
         case .library: LibraryView()
