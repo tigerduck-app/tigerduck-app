@@ -164,6 +164,7 @@ private struct RawAssignmentsResponse: Decodable {
             let cmid: Int
             let name: String
             let duedate: Int
+            let cutoffdate: Int?
             let allowsubmissionsfromdate: Int
             let intro: String?
             let nosubmissions: Int
