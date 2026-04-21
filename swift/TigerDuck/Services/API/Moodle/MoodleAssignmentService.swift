@@ -1,6 +1,6 @@
 import Foundation
 
-enum MoodleAssignmentBridgeService {
+enum MoodleAssignmentService {
     private static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
     private static let webservicePath = "/webservice/rest/server.php"
     private static let webserviceUserAgent = (
@@ -62,18 +62,25 @@ enum MoodleAssignmentBridgeService {
 
     static func fetchSubmissionStatus(assignId: Int) async throws -> MoodleSubmissionStatus {
         let tokenService = MoodleTokenService.shared
-        let userId = try await MoodleSiteInfoService.shared.userId()
-        if let token = await tokenService.currentToken() {
-            do {
-                return try await doFetchSubmissionStatus(token: token, assignId: assignId, userId: userId)
-            } catch MoodleWebserviceError.invalidToken {
-                await tokenService.clearToken()
-                let refreshed = try await tokenService.refreshTokenIfNeeded()
-                return try await doFetchSubmissionStatus(token: refreshed, assignId: assignId, userId: userId)
+
+        func attempt(forceFreshToken: Bool) async throws -> MoodleSubmissionStatus {
+            let token: String
+            if forceFreshToken {
+                token = try await tokenService.refreshTokenIfNeeded()
+            } else if let cached = await tokenService.currentToken() {
+                token = cached
+            } else {
+                token = try await tokenService.refreshTokenIfNeeded()
             }
-        } else {
-            let token = try await tokenService.refreshTokenIfNeeded()
+            let userId = try await MoodleSiteInfoService.shared.userId()
             return try await doFetchSubmissionStatus(token: token, assignId: assignId, userId: userId)
+        }
+
+        do {
+            return try await attempt(forceFreshToken: false)
+        } catch MoodleWebserviceError.invalidToken {
+            await tokenService.clearToken()
+            return try await attempt(forceFreshToken: true)
         }
     }
 

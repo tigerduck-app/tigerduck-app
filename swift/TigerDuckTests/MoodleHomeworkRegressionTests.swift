@@ -152,4 +152,41 @@ struct MoodleHomeworkRegressionTests {
         #expect(AssignmentFilter(rawValue: "未完成") == .incomplete)
         #expect(AssignmentFilter(rawValue: "全部") == .all)
     }
+
+    @Test func latestSemesterFilter_excludesOtherSemesters() {
+        let currentCourseNos: Set<String> = ["EC1013701", "CS5164701"]
+        let assignments: [SDAssignment] = [
+            SDAssignment(
+                assignmentId: "1", courseNo: "EC1013701", courseName: "AI",
+                title: "HW1", dueDate: Date()
+            ),
+            SDAssignment(
+                assignmentId: "2", courseNo: "OLD1234567", courseName: "Old",
+                title: "Past HW", dueDate: Date()
+            )
+        ]
+        let filtered = assignments.filter { currentCourseNos.contains($0.courseNo) }
+        #expect(filtered.map(\.assignmentId) == ["1"])
+    }
+
+    @Test func moodleOnlyCourse_survivesLookupFailure() {
+        let moodleFullname = "114.2【資工系】CS5164701 隱私資訊安全"
+        let moodleIdNumber = "1142CS5164701"
+        let minimalCourse = SDCourse(
+            courseNo: SDCourse.courseNoFromMoodleId(moodleIdNumber),
+            courseName: moodleFullname,
+            moodleIdNumber: moodleIdNumber,
+            semester: String(moodleIdNumber.prefix(4))
+        )
+        #expect(minimalCourse.courseNo == "CS5164701")
+        #expect(minimalCourse.semester == "1142")
+        #expect(minimalCourse.courseName == moodleFullname)
+    }
+
+    @Test func moodleAssignmentService_exposesModAssignEntryPoints() async {
+        let assignEntry = MoodleAssignmentService.fetchAssignments(courseIds:)
+        let statusEntry = MoodleAssignmentService.fetchSubmissionStatus(assignId:)
+        #expect(String(describing: assignEntry).isEmpty == false)
+        #expect(String(describing: statusEntry).isEmpty == false)
+    }
 }

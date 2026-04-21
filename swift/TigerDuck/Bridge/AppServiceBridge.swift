@@ -304,7 +304,7 @@ enum AppServiceBridge {
                 return DataCache.shared.loadAssignments()
             }
 
-            let records = try await MoodleAssignmentBridgeService.fetchAssignments(
+            let records = try await MoodleAssignmentService.fetchAssignments(
                 courseIds: relevantMoodleCourseIds
             )
             let moodleCoursesById = Dictionary(
@@ -317,7 +317,7 @@ enum AppServiceBridge {
             ) { group in
                 for record in records {
                     group.addTask {
-                        guard let status = try? await MoodleAssignmentBridgeService.fetchSubmissionStatus(
+                        guard let status = try? await MoodleAssignmentService.fetchSubmissionStatus(
                             assignId: record.assignId
                         ) else {
                             return nil
