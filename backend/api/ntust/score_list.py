@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import re
+import json
 
 from api import load_creds
+from api.ntust import html_score_parser
 from api.ntust.sso import DEFAULT_DB_PATH, NtustSsoBridge
 
-COURSE_SELECTION_ROOT_URL = "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/"
-COURSE_LIST_URL = "https://courseselection.ntust.edu.tw/ChooseList/D01/D01"
-COURSE_NO_PATTERN = re.compile(r"<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*</td>")
+SCORE_LIST_ROOT_URL = "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/"
+SCORE_LIST_URL = (
+    "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery/DisplayAll"
+)
 
 
 class NtustCourseSelectionClient:
@@ -31,16 +33,16 @@ class NtustCourseSelectionClient:
     def login(self) -> bool:
         if not self._logged_in:
             self._logged_in = self._bridge.ensure_service_login(
-                COURSE_SELECTION_ROOT_URL,
+                SCORE_LIST_ROOT_URL,
             )
         return self._logged_in
 
-    def get_class_table(self) -> str:
+    def get_score_list(self) -> str:
         if not self.login():
             raise RuntimeError("Login failed")
-        resp = self._bridge.open(COURSE_LIST_URL)
+        resp = self._bridge.open(SCORE_LIST_URL)
         if "ssoam2.ntust.edu.tw" in str(resp.url):
-            raise RuntimeError("Redirected back to SSO while fetching class table")
+            raise RuntimeError("Redirected back to SSO while fetching score list")
         return resp.text
 
     def cookie_dict(self) -> dict[str, str]:
@@ -54,4 +56,10 @@ if __name__ == "__main__":
     sid, pwd = load_creds()
     with NtustCourseSelectionClient(sid, pwd) as client:
         print("login =", client.login())
-        print(COURSE_NO_PATTERN.findall(client.get_class_table()))
+        print(
+            json.dumps(
+                html_score_parser.parse(client.get_score_list()),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )

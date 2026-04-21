@@ -6,9 +6,9 @@ NTUST 成績查詢系統 HTML → JSON 解析器
 
 使用方式：
     # 以 CLI 使用
-    python ntust_score_parser.py input.html -o output.json
-    python ntust_score_parser.py input.html           # 直接印到 stdout
-    cat input.html | python ntust_score_parser.py -   # 從 stdin 讀取
+    python html_score_parser.py input.html -o output.json
+    python html_score_parser.py input.html           # 直接印到 stdout
+    cat input.html | python html_score_parser.py -   # 從 stdin 讀取
 
     # 以模組 import
     from ntust_score_parser import parse
