@@ -104,6 +104,7 @@ actor MoodleTokenService {
             KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
             KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
         }
+        await MoodleSiteInfoService.shared.invalidateCache()
     }
 
     /// Return the currently stored token, or nil if none.
