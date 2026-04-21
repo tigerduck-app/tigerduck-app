@@ -7,12 +7,11 @@ struct AddCourseSheet: View {
     let existingCourseNos: Set<String>
     let onAdd: (SDCourse) -> Void
 
-    enum SearchMode: String, CaseIterable {
-        case courseCode = "課程代碼"
-        case courseName = "課名搜尋"
-    }
+    /// Course codes are ASCII alphanumeric and always contain at least one digit
+    /// (e.g., "EC1013701", "GE1002101"). Anything else is treated as a name or
+    /// teacher query.
+    private static let courseCodePattern = #"^[A-Za-z0-9]+$"#
 
-    @State private var searchMode: SearchMode = .courseCode
     @State private var searchText = ""
     @State private var searchResults: [CourseSearchResult] = []
     @State private var isSearching = false
@@ -23,16 +22,8 @@ struct AddCourseSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: TigerDuckTheme.Spacing.md) {
-                Picker("搜尋方式", selection: $searchMode) {
-                    ForEach(SearchMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
                 HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                    TextField(placeholder, text: $searchText)
+                    TextField("輸入課程代碼、課名或老師", text: $searchText)
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
@@ -63,9 +54,14 @@ struct AddCourseSheet: View {
                     Spacer()
                 } else if searchResults.isEmpty && addedCourseNo == nil {
                     Spacer()
-                    Text("輸入課程代碼或課名後搜尋")
-                        .font(TigerDuckTheme.Typography.body)
-                        .foregroundStyle(Color.textSecondary)
+                    VStack(spacing: TigerDuckTheme.Spacing.xs) {
+                        Text("輸入課程代碼、課名或老師")
+                            .font(TigerDuckTheme.Typography.body)
+                            .foregroundStyle(Color.textSecondary)
+                        Text("例如：EC1013701、微積分、王小明")
+                            .font(TigerDuckTheme.Typography.caption)
+                            .foregroundStyle(Color.textSecondary)
+                    }
                     Spacer()
                 } else {
                     resultsList
@@ -83,11 +79,9 @@ struct AddCourseSheet: View {
         }
     }
 
-    private var placeholder: String {
-        switch searchMode {
-        case .courseCode: "例如：EC1013701"
-        case .courseName: "例如：微積分"
-        }
+    private func looksLikeCourseCode(_ text: String) -> Bool {
+        guard text.range(of: Self.courseCodePattern, options: .regularExpression) != nil else { return false }
+        return text.contains(where: { $0.isNumber })
     }
 
     private var resultsList: some View {
@@ -146,18 +140,24 @@ struct AddCourseSheet: View {
         addedCourseNo = nil
         searchTask?.cancel()
 
+        let isCourseCode = looksLikeCourseCode(trimmed)
+
         searchTask = Task {
             do {
                 let results: [CourseSearchResult]
-                switch searchMode {
-                case .courseCode:
+                if isCourseCode {
                     results = try await CourseLookupService.lookupCourse(
                         semester: semester, courseNo: trimmed
                     )
-                case .courseName:
-                    results = try await CourseLookupService.searchCourses(
+                } else {
+                    async let byName = CourseLookupService.searchCourses(
                         semester: semester, courseName: trimmed
                     )
+                    async let byTeacher = CourseLookupService.searchByTeacher(
+                        semester: semester, teacher: trimmed
+                    )
+                    let (nameResults, teacherResults) = try await (byName, byTeacher)
+                    results = Self.merge(nameResults, teacherResults)
                 }
                 await MainActor.run {
                     searchResults = results
@@ -169,7 +169,7 @@ struct AddCourseSheet: View {
             } catch {
                 AppLogger.captureError(error, context: [
                     "feature": "addCourseSheet.search",
-                    "mode": String(describing: searchMode),
+                    "mode": isCourseCode ? "courseCode" : "nameOrTeacher",
                 ])
                 await MainActor.run {
                     isSearching = false
@@ -177,6 +177,23 @@ struct AddCourseSheet: View {
                 }
             }
         }
+    }
+
+    /// Merge name and teacher results preserving order; name results come first,
+    /// teacher-only results appear after, deduped by `(CourseNo, Node)`.
+    private static func merge(
+        _ primary: [CourseSearchResult],
+        _ secondary: [CourseSearchResult]
+    ) -> [CourseSearchResult] {
+        var seen = Set<String>()
+        var merged: [CourseSearchResult] = []
+        for result in primary + secondary {
+            let key = "\(result.CourseNo)#\(result.Node ?? "")"
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            merged.append(result)
+        }
+        return merged
     }
 
     // MARK: - Group & Add
