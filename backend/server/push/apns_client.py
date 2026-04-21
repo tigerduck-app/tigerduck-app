@@ -44,8 +44,13 @@ class AioApnsSender:
         if not key_path.exists():
             raise FileNotFoundError(f"APNs auth key not found: {key_path}")
 
+        # aioapns' `key` parameter wants the PEM *content*, not a file path.
+        # Passing the path makes PyJWT try to parse the path string as PEM
+        # and fail with MalformedFraming.
+        key_pem = key_path.read_text(encoding="utf-8")
+
         self._client = APNs(
-            key=str(key_path),
+            key=key_pem,
             key_id=settings.apns_key_id,
             team_id=settings.apns_team_id,
             # per-request topic overrides this default
