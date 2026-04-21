@@ -78,7 +78,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard to
 - [x] **Class Table++** — Dynamic Island course status
 - [x] **Calendar** — Aggregated events from school announcements, Moodle, etc.
 - [ ] **Calendar+** — Track study room bookings, lectures, and club events
-- [ ] **Historical GPA & Rankings** — Quick lookup of past academic performance and rankings
+- [x] **Historical GPA & Rankings** — Quick lookup of past academic performance and rankings
 - [ ] **Graduation Credit Calculator** — Check completion status for general education categories, college credits, department credits, PE, Chinese, English, and other requirements
 
 ### 📝 Course Enrollment
