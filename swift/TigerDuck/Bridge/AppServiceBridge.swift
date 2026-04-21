@@ -36,16 +36,17 @@ enum AppServiceBridge {
     static func warmAllSemesterCaches(authService: AuthService) async {
         let moodleEnrolledCourses = (try? await MoodleEnrolledCoursesService.fetchEnrolled()) ?? []
 
-        for semester in computeAvailableSemesters() {
-            guard DataCache.shared.loadCourses(semester: semester).isEmpty else { continue }
-
-            Task {
-                _ = await fetchCourses(
-                    authService: authService,
-                    semester: semester,
-                    forceRefresh: false,
-                    moodleEnrolledCourses: moodleEnrolledCourses
-                )
+        await withTaskGroup(of: Void.self) { group in
+            for semester in computeAvailableSemesters() {
+                guard DataCache.shared.loadCourses(semester: semester).isEmpty else { continue }
+                group.addTask {
+                    _ = await fetchCourses(
+                        authService: authService,
+                        semester: semester,
+                        forceRefresh: false,
+                        moodleEnrolledCourses: moodleEnrolledCourses
+                    )
+                }
             }
         }
     }
