@@ -19,7 +19,7 @@ struct CanonicalCourseProvider {
     /// Returns the canonical course list from the current cache.
     func currentCourses() -> [SDCourse] {
         Self.merge(
-            primary: cache.loadCourses(),
+            primary: cache.loadCourses(semester: CourseSelectionService.currentSemesterCode()),
             userAdded: cache.loadUserAddedCourses(),
             deletedCourseNos: Set(cache.loadDeletedCourseNos()),
             customNames: cache.loadCourseCustomNames()

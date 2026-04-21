@@ -1,0 +1,4 @@
+swift/TigerDuck/Services/Auth/AuthService.swift:145:        Task { await MoodleTokenService.shared.clearToken() }
+swift/TigerDuck/App/AppState.swift:161:    func logoutNTUST() {
+swift/TigerDuck/App/AppState.swift:169:        authService.logout()
+swift/TigerDuck/App/AppState.swift:170:        DataCache.shared.clearUserScopedData()

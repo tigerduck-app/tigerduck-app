@@ -1,0 +1,32 @@
+# isNTUSTLoggedIn Callers
+# Generated: 2026-04-21
+# Format: file:line | snippet | decision
+
+## DEFINITION
+swift/TigerDuck/App/AppState.swift:84 | var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated } | DEFINITION (pass-through to cookie-based isNTUSTAuthenticated)
+
+## CALLERS
+
+swift/TigerDuck/Features/Settings/SettingsView.swift:281 | isLoggedIn: appState.isNTUSTLoggedIn, | MIGRATE_TO_hasStoredCredentials
+# Context: ntustAccountRow passes isNTUSTLoggedIn to accountRow(title:isLoggedIn:detail:onLogin:onLogout:)
+# This is the #57 fix target — the Settings row showing login state should reflect
+# whether credentials are stored (stable), not whether the session cookie is live.
+# Fix: replace appState.isNTUSTLoggedIn with appState.authService.hasStoredCredentials
+
+swift/TigerDuck/App/NTUSTLoginSheetHost.swift:28 | if appState.isNTUSTLoggedIn { | KEEP
+# Context: Post-login callback — checks if login() succeeded before dismissing the sheet
+# and triggering backgroundSync. This is a post-action check immediately after
+# authService.login() completes, so cookie-based truth is correct here.
+# Changing to hasStoredCredentials would be wrong: credentials could be stored even
+# if login failed (stale keychain). The cookie check is the right signal here.
+
+## SUMMARY
+Total callers: 2
+- MIGRATE_TO_hasStoredCredentials: 1 (SettingsView.swift:281)
+- KEEP: 1 (NTUSTLoginSheetHost.swift:28)
+- MIGRATE_TO_ntustProtectedAccessState: 0
+- OUT_OF_SCOPE: 0
+
+## isNTUSTAuthenticated (underlying property)
+swift/TigerDuck/Services/Auth/AuthService.swift:18 | var isNTUSTAuthenticated: Bool { | DEFINITION (cookie-based)
+# Only consumed via AppState.isNTUSTLoggedIn — no direct callers outside AppState.

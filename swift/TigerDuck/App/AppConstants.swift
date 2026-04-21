@@ -1,13 +1,13 @@
 import Foundation
 
-enum AppConstants {
+nonisolated enum AppConstants {
     static let appName = "TigerDuck"
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     static let moodleBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
 
-    enum KeychainKeys {
+    nonisolated enum KeychainKeys {
         static let studentId = "ntust_student_id"
         static let password = "ntust_password"
         static let libraryUsername = "library_username"
@@ -41,6 +41,8 @@ enum AppConstants {
         static let showClassPreparingScenario = "showClassPreparingScenario"
         static let showInClassScenario = "showInClassScenario"
         static let ssoLoginTimestamp = "ssoLoginTimestamp"
+        static let classTableSelectedSemester = "classTableSelectedSemester"
+        static let homeAssignmentFilter = "homeAssignmentFilter"
     }
 
     enum Periods {

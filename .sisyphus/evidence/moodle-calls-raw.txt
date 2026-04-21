@@ -1,0 +1,33 @@
+swift/TigerDuck/Services/Network/MoodleService.swift:44:        let (pageData, _) = try await session.data(from: moodleLoginURL)
+swift/TigerDuck/Services/Network/MoodleService.swift:64:            let (retryData, _) = try await session.data(from: moodleLoginURL)
+swift/TigerDuck/Services/Network/MoodleService.swift:79:        var request = URLRequest(url: apiURL)
+swift/TigerDuck/Services/Network/MoodleService.swift:86:        let (data, _) = try await session.data(for: request)
+swift/TigerDuck/Services/Network/SSOLoginService.swift:31:            let (data, response) = try await session.data(from: serviceURL)
+swift/TigerDuck/Services/Network/SSOLoginService.swift:57:            let (data2, response2) = try await session.data(from: serviceURL)
+swift/TigerDuck/Services/Network/SSOLoginService.swift:156:        var request = URLRequest(url: url)
+swift/TigerDuck/Services/Network/SSOLoginService.swift:165:        return try await session.data(for: request)
+swift/TigerDuck/Services/Network/LibraryService.swift:77:            var request = URLRequest(url: url)
+swift/TigerDuck/Services/Network/LibraryService.swift:84:            let (data, _) = try await URLSession.shared.data(for: request)
+swift/TigerDuck/Services/Network/LibraryService.swift:124:            var request = URLRequest(url: url)
+swift/TigerDuck/Services/Network/LibraryService.swift:131:            let (data, _) = try await URLSession.shared.data(for: request)
+swift/TigerDuck/Services/Network/CourseService.swift:48:        let (data, response) = try await session.data(from: courseListURL)
+swift/TigerDuck/Services/Network/CourseService.swift:65:            let (retryData, retryResponse) = try await session.data(from: courseListURL)
+swift/TigerDuck/Services/Network/CourseService.swift:91:        var request = URLRequest(url: courseSearchAPI)
+swift/TigerDuck/Services/Network/CourseService.swift:96:        let (data, _) = try await URLSession.shared.data(for: request)
+swift/TigerDuck/Services/Network/MoodleService.swift:5:    case sesskeyNotFound
+swift/TigerDuck/Services/Network/MoodleService.swift:12:        case .sesskeyNotFound: return "無法取得 Moodle sesskey"
+swift/TigerDuck/Services/Network/MoodleService.swift:21:    private static let moodleLoginURL = URL(string: "https://moodle2.ntust.edu.tw/login/index.php")!
+swift/TigerDuck/Services/Network/MoodleService.swift:22:    private static let moodleAPITemplate = "https://moodle2.ntust.edu.tw/lib/ajax/service.php?sesskey=%@&info=core_calendar_get_action_events_by_timesort"
+swift/TigerDuck/Services/Network/MoodleService.swift:23:    private static let sesskeyRegex = try! NSRegularExpression(pattern: "\"sesskey\":\"([^\"]+)\"")
+swift/TigerDuck/Services/Network/MoodleService.swift:32:        // Fall back to ensureServiceLogin if Moodle rejects us (no sesskey found).
+swift/TigerDuck/Services/Network/MoodleService.swift:43:        // Step 1: Visit Moodle to get sesskey
+swift/TigerDuck/Services/Network/MoodleService.swift:49:        // Extract sesskey — if missing, session is invalid; retry with full login
+swift/TigerDuck/Services/Network/MoodleService.swift:50:        var sesskey: String
+swift/TigerDuck/Services/Network/MoodleService.swift:51:        if let match = sesskeyRegex.firstMatch(in: pageHTML, range: NSRange(pageHTML.startIndex..., in: pageHTML)),
+swift/TigerDuck/Services/Network/MoodleService.swift:53:            sesskey = String(pageHTML[range])
+swift/TigerDuck/Services/Network/MoodleService.swift:68:            guard let retryMatch = sesskeyRegex.firstMatch(in: retryHTML, range: NSRange(retryHTML.startIndex..., in: retryHTML)),
+swift/TigerDuck/Services/Network/MoodleService.swift:70:                throw MoodleServiceError.sesskeyNotFound
+swift/TigerDuck/Services/Network/MoodleService.swift:72:            sesskey = String(retryHTML[retryRange])
+swift/TigerDuck/Services/Network/MoodleService.swift:77:        let apiURL = URL(string: String(format: moodleAPITemplate, sesskey))!
+--- Moodle refs in SSOLoginService ---
+51:            // Step 4: Clear SSO cookies only (preserve Moodle/service cookies to avoid device-change warnings)

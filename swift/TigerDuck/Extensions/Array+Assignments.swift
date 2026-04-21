@@ -13,4 +13,13 @@ extension Array where Element == SDAssignment {
     func upcomingSorted() -> [SDAssignment] {
         filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate }
     }
+
+    /// Returns all assignments with incomplete-first ordering: pending items
+    /// sorted by due date ascending, followed by completed items sorted by
+    /// due date descending (most recently due first).
+    func allSorted() -> [SDAssignment] {
+        let incomplete = filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate }
+        let completed = filter { $0.isCompleted }.sorted { $0.dueDate > $1.dueDate }
+        return incomplete + completed
+    }
 }

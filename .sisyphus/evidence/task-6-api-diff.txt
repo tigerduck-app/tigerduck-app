@@ -1,0 +1,5 @@
+24:        let startGeneration = authService.loginGeneration
+136:               authService.loginGeneration == startGeneration {
+147:        let startGeneration = authService.loginGeneration
+161:            // logout that bumped loginGeneration must drop the save.
+163:               authService.loginGeneration == startGeneration {
