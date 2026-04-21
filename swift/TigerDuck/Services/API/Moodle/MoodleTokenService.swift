@@ -58,10 +58,7 @@ actor MoodleTokenService {
             return triple.wstoken
         }
         inFlightTokenTask = task
-        defer {
-            task.cancel()
-            inFlightTokenTask = nil
-        }
+        defer { inFlightTokenTask = nil }
         return try await task.value
     }
 
@@ -89,10 +86,7 @@ actor MoodleTokenService {
             return triple.wstoken
         }
         inFlightRefreshTask = task
-        defer {
-            task.cancel()
-            inFlightRefreshTask = nil
-        }
+        defer { inFlightRefreshTask = nil }
         return try await task.value
     }
 
@@ -100,6 +94,11 @@ actor MoodleTokenService {
     func clearToken() async {
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
+        // Purge NTUST SSO cookies from the shared jar so stale anti-forgery /
+        // session cookies from this session don't bleed into the next login.
+        HTTPCookieStorage.shared.cookies?
+            .filter { $0.domain.hasSuffix(".ntust.edu.tw") || $0.domain == "ntust.edu.tw" }
+            .forEach { HTTPCookieStorage.shared.deleteCookie($0) }
         await MoodleSiteInfoService.shared.invalidateCache()
     }
 

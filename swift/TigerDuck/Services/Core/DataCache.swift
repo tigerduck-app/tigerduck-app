@@ -106,6 +106,19 @@ final class DataCache {
         load(from: "course_custom_names.json", in: persistentDir) ?? [:]
     }
 
+    // MARK: - Course Custom Colors
+
+    /// Per-course palette-index overrides keyed by courseNo. Values index into
+    /// `TigerDuckTheme.courseColors`; consumers must tolerate out-of-range
+    /// indices (e.g. after the palette shrinks between releases).
+    func saveCourseCustomColors(_ colors: [String: Int]) {
+        save(colors, to: "course_custom_colors.json", in: persistentDir)
+    }
+
+    func loadCourseCustomColors() -> [String: Int] {
+        load(from: "course_custom_colors.json", in: persistentDir) ?? [:]
+    }
+
     // MARK: - User-scoped cleanup
 
     /// Remove every file that is scoped to the currently signed-in NTUST user.
@@ -118,6 +131,7 @@ final class DataCache {
             ("user_added_courses.json", persistentDir),
             ("deleted_courses.json", persistentDir),
             ("course_custom_names.json", persistentDir),
+            ("course_custom_colors.json", persistentDir),
         ]
         for (name, dir) in filenames {
             let url = dir.appendingPathComponent(name)

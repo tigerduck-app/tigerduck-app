@@ -76,6 +76,11 @@ final class ClassTableViewModel {
     var renameText: String = ""
     var showRenameAlert = false
 
+    /// Non-nil while the color picker sheet is presented. SwiftUI's
+    /// `sheet(item:)` binding drives both presentation and dismissal, so
+    /// setting this to nil closes the sheet.
+    var courseToRecolor: SDCourse? = nil
+
     private var deletedCourseNos: Set<String> = []
     private var courseCustomNames: [String: String] = [:]
 
@@ -138,6 +143,7 @@ final class ClassTableViewModel {
         // the app session.
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
+        TigerDuckTheme.reloadCustomColors()
         courses = buildCourseList(
             DataCache.shared.loadCourses(semester: currentSemester),
             DataCache.shared.loadUserAddedCourses()
@@ -296,6 +302,27 @@ final class ClassTableViewModel {
         rebuildLookup()
         persistUserAddedCourses()
         courseToRename = nil
+        broadcastLocalChange()
+    }
+
+    func startRecolor(_ course: SDCourse) {
+        courseToRecolor = course
+    }
+
+    /// Apply a palette index override for this course. Writes through
+    /// TigerDuckTheme (which handles persistence) and broadcasts so Home,
+    /// Class Table, and the Live Activity all refresh.
+    func setCustomColor(paletteIndex: Int, for course: SDCourse) {
+        TigerDuckTheme.setCustomColor(index: paletteIndex, for: course.courseNo)
+        courseToRecolor = nil
+        broadcastLocalChange()
+    }
+
+    /// Remove the user override so the course returns to its deterministic
+    /// default color.
+    func clearCustomColor(for course: SDCourse) {
+        TigerDuckTheme.clearCustomColor(for: course.courseNo)
+        courseToRecolor = nil
         broadcastLocalChange()
     }
 

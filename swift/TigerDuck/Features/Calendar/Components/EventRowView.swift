@@ -12,7 +12,8 @@ struct EventRowView: View {
             Text(event.date.timeString)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
-                .frame(width: 50, alignment: .leading)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             Text(event.title)
                 .font(TigerDuckTheme.Typography.body)

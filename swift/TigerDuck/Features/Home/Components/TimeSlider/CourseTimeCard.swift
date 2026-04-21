@@ -63,7 +63,7 @@ struct CourseTimeCard: View {
                     .font(.headline)
                     .foregroundStyle(courseNameColor(for: course))
                     .lineLimit(1)
-                Text("\(course.classroom(for: weekday)) · \(course.instructor)")
+                Text(subtitle(for: course, weekday: weekday))
                     .font(.caption)
                     .foregroundStyle(subtitleColor)
                     .lineLimit(1)
@@ -75,6 +75,17 @@ struct CourseTimeCard: View {
         .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
         .opacity(opacity)
         .onTapGesture { onSelect?(course) }
+    }
+
+    private func subtitle(for course: SDCourse, weekday: Int) -> String {
+        let classroom = course.classroom(for: weekday).trimmingCharacters(in: .whitespaces)
+        let instructor = course.instructor.trimmingCharacters(in: .whitespaces)
+        switch (classroom.isEmpty, instructor.isEmpty) {
+        case (true, true): return ""
+        case (false, true): return classroom
+        case (true, false): return instructor
+        case (false, false): return "\(classroom) · \(instructor)"
+        }
     }
 
     private var timeRangeColor: Color {

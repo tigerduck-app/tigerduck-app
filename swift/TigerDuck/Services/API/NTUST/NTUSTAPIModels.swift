@@ -76,4 +76,23 @@ struct CourseSearchRequest: Codable {
             Language: "zh"
         )
     }
+
+    static func forCourseTeacher(_ teacher: String, semester: String) -> CourseSearchRequest {
+        CourseSearchRequest(
+            Semester: semester,
+            CourseNo: "",
+            CourseName: "",
+            CourseTeacher: teacher,
+            Dimension: "",
+            CourseNotes: "",
+            CampusNotes: "",
+            ForeignLanguage: 0,
+            OnlyGeneral: 0,
+            OnleyNTUST: 0,
+            OnlyMaster: 0,
+            OnlyUnderGraduate: 0,
+            OnlyNode: 0,
+            Language: "zh"
+        )
+    }
 }
