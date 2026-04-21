@@ -5,10 +5,10 @@ import Charts
 /// toggles between the per-semester and cumulative views since they answer
 /// different questions ("how did I do last term" vs. "how am I trending").
 ///
-/// Tapping or dragging across the chart selects the nearest term and surfaces
-/// the full rank stat line (GPA + class rank + dept rank) in a summary row
-/// beneath the plot; the selection marker is a vertical `RuleMark` so users
-/// never lose track of which point they're inspecting.
+/// Selection is sticky — tapping or dragging picks the nearest term and the
+/// highlight survives after the finger lifts, so users can freely compare
+/// the chart with other cards on the page. The summary row below the plot
+/// renders the GPA / class rank / dept rank of whichever point is pinned.
 struct RankingsTrendCard: View {
     @Environment(AppState.self) private var appState
 
@@ -35,10 +35,6 @@ struct RankingsTrendCard: View {
         .padding(TigerDuckTheme.Spacing.md)
         .presetCard(policy: appState.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .onChange(of: scope) { _, _ in
-            // Re-pin selection; the highlighted term stays the same but its
-            // stat line changes when switching semester↔cumulative.
-        }
     }
 
     private var header: some View {
@@ -97,7 +93,29 @@ struct RankingsTrendCard: View {
         .chartYAxis {
             AxisMarks(position: .leading)
         }
-        .chartXSelection(value: $selectedTerm)
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        // minimumDistance: 0 promotes a single tap into the
+                        // same handler used for drags, so the card reacts to
+                        // either input style without a separate
+                        // SpatialTapGesture. The absence of an onEnded
+                        // handler is intentional: the last-known selection
+                        // stays pinned after the finger lifts.
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { drag in
+                                selectTerm(
+                                    at: drag.location,
+                                    proxy: proxy,
+                                    geometry: geo
+                                )
+                            }
+                    )
+            }
+        }
         .frame(height: 160)
     }
 
@@ -136,8 +154,25 @@ struct RankingsTrendCard: View {
 
     // MARK: - Selection resolution
 
-    /// Ranking row matching the term the user dragged to, falling back to the
-    /// most recent entry so the summary row is never blank.
+    /// Map a tap/drag location to the closest ranking term by plot-area
+    /// proportion. Using index math instead of `proxy.value(atX:)` keeps this
+    /// robust against Swift Charts' categorical-axis quirks (which return
+    /// nil at the padding edges and the zero-midpoint between points).
+    private func selectTerm(at point: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
+        guard !rankings.isEmpty else { return }
+        guard let plotFrame = proxy.plotFrame else { return }
+
+        let plotRect = geometry[plotFrame]
+        let relativeX = point.x - plotRect.origin.x
+        let clampedX = max(0, min(plotRect.width, relativeX))
+        let ratio = plotRect.width > 0 ? clampedX / plotRect.width : 0
+        let index = Int((ratio * CGFloat(rankings.count - 1)).rounded())
+        let clampedIndex = max(0, min(rankings.count - 1, index))
+        selectedTerm = rankings[clampedIndex].term
+    }
+
+    /// Ranking row matching the selected term, falling back to the most
+    /// recent entry so the summary row is never blank before first tap.
     private var resolvedSelection: SemesterRanking? {
         if let term = selectedTerm,
            let match = rankings.first(where: { $0.term == term }) {

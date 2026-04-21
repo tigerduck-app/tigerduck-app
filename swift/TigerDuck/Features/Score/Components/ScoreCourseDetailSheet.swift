@@ -7,7 +7,6 @@ import SwiftUI
 /// fields (status / credit type / delivery mode) have been dropped in favor
 /// of this richer roster context.
 struct ScoreCourseDetailSheet: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
 
     let course: CourseGrade
@@ -34,21 +33,16 @@ struct ScoreCourseDetailSheet: View {
                         remarkSection
                     }
                 }
-                .padding(TigerDuckTheme.Spacing.lg)
+                .padding(.vertical, TigerDuckTheme.Spacing.lg)
             }
             .background(Color.backgroundPrimary)
             .navigationTitle(course.name)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
-                }
-            }
         }
         .onAppear(perform: resolveRosterCourse)
     }
 
-    // MARK: - Header
+    // MARK: - Header (unchanged card-style)
 
     private var headerCard: some View {
         HStack(alignment: .center, spacing: TigerDuckTheme.Spacing.md) {
@@ -70,42 +64,30 @@ struct ScoreCourseDetailSheet: View {
         }
         .padding(TigerDuckTheme.Spacing.md)
         .presetCard(policy: appState.visualStylePolicy)
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    // MARK: - Roster section
+    // MARK: - Roster section (ClassTable-style flat InfoRow list)
 
     @ViewBuilder
     private func rosterSection(_ roster: SDCourse) -> some View {
-        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            SectionHeader(title: "課程資訊")
-            VStack(spacing: 0) {
-                if !roster.instructor.isEmpty {
-                    metaRow(label: "授課教師", value: roster.instructor)
-                    rowDivider
-                }
-                if roster.maxCount > 0 {
-                    metaRow(
-                        label: "修課人數",
-                        value: "\(roster.enrolledCount) / \(roster.maxCount)"
-                    )
-                    rowDivider
-                }
-                let classroomText = SDCourse.dedup(roster.classroom)
-                if !classroomText.isEmpty {
-                    metaRow(label: "教室", value: classroomText)
-                    rowDivider
-                }
-                if !roster.schedule.isEmpty {
-                    ForEach(orderedScheduleLines(for: roster), id: \.self) { line in
-                        metaRow(label: line.label, value: line.value)
-                        if line != orderedScheduleLines(for: roster).last {
-                            rowDivider
-                        }
-                    }
-                }
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
+            if !roster.instructor.isEmpty {
+                InfoRow(label: "授課教師", value: roster.instructor)
             }
-            .presetCard(policy: appState.visualStylePolicy)
+            if roster.maxCount > 0 {
+                InfoRow(label: "修課人數", value: "\(roster.enrolledCount) / \(roster.maxCount)")
+            }
+            let classroomText = SDCourse.dedup(roster.classroom)
+            if !classroomText.isEmpty {
+                InfoRow(label: "教室", value: classroomText)
+            }
+            let scheduleCode = formatScheduleCode(roster.schedule)
+            if !scheduleCode.isEmpty {
+                InfoRow(label: "上課時段", value: scheduleCode)
+            }
         }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
     private var unavailableCard: some View {
@@ -119,6 +101,7 @@ struct ScoreCourseDetailSheet: View {
         }
         .padding(TigerDuckTheme.Spacing.md)
         .presetCard(policy: appState.visualStylePolicy)
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
     // MARK: - Remark
@@ -126,34 +109,15 @@ struct ScoreCourseDetailSheet: View {
     private var remarkSection: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             SectionHeader(title: "備註")
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             Text(course.remark)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(TigerDuckTheme.Spacing.md)
                 .presetCard(policy: appState.visualStylePolicy)
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
-    }
-
-    // MARK: - Row primitives
-
-    private func metaRow(label: String, value: String) -> some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textSecondary)
-            Spacer()
-            Text(value)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .multilineTextAlignment(.trailing)
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.md)
-        .padding(.vertical, TigerDuckTheme.Spacing.sm)
-    }
-
-    private var rowDivider: some View {
-        Divider().background(Color.white.opacity(0.05))
     }
 
     // MARK: - Resolution
@@ -175,51 +139,35 @@ struct ScoreCourseDetailSheet: View {
 
     // MARK: - Schedule formatting
 
-    private struct ScheduleLine: Hashable {
-        let label: String
-        let value: String
-    }
+    /// Day-code mapping aligned with `CourseLookupService.parseNodeToSchedule`:
+    ///   M=Mon · T=Tue · W=Wed · R=Thu · F=Fri · S=Sat · U=Sun
+    /// Inverse direction here — turn `[weekday: [periods]]` back into the
+    /// NTUST course-selection node string the school uses on its own pages.
+    private static let dayCodes: [Int: String] = [
+        1: "M", 2: "T", 3: "W", 4: "R", 5: "F", 6: "S", 7: "U"
+    ]
 
-    /// Converts `SDCourse.schedule` into one row per weekday. Rows are sorted
-    /// by weekday so the list reads Mon→Fri→weekend; periods are ordered by
-    /// the canonical chronological order (accounting for A/B/C/D evening
-    /// slots) and condensed into a single time range when they are
-    /// contiguous.
-    private func orderedScheduleLines(for roster: SDCourse) -> [ScheduleLine] {
+    /// Renders the schedule as the original NTUST node code, e.g.
+    /// `"M3, M4, T1, W5, MA, MB"`. Periods within a weekday follow the
+    /// chronological order (handling A/B/C/D evening slots after 10), and
+    /// weekdays are emitted Mon→Sun so the string reads naturally.
+    private func formatScheduleCode(_ schedule: [Int: [String]]) -> String {
         let order = AppConstants.Periods.chronologicalOrder
-        let weekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
-
-        return roster.schedule
+        let entries = schedule
             .sorted { $0.key < $1.key }
-            .compactMap { weekday, periods -> ScheduleLine? in
-                guard weekday >= 1, weekday - 1 < weekdayLabels.count else { return nil }
-                let sortedPeriods = periods.sorted {
-                    (order.firstIndex(of: $0) ?? Int.max) <
-                    (order.firstIndex(of: $1) ?? Int.max)
-                }
-                guard let first = sortedPeriods.first,
-                      let last = sortedPeriods.last else { return nil }
-
-                let label = "週\(weekdayLabels[weekday - 1])"
-                let periodLabel = sortedPeriods.count == 1 ? first : "\(first)-\(last)"
-                let timeRange = timeRange(from: first, to: last)
-                let value = timeRange.isEmpty
-                    ? "第 \(periodLabel) 節"
-                    : "第 \(periodLabel) 節 · \(timeRange)"
-                return ScheduleLine(label: label, value: value)
+            .flatMap { weekday, periods -> [String] in
+                guard let dayCode = Self.dayCodes[weekday] else { return [] }
+                return periods
+                    .sorted {
+                        (order.firstIndex(of: $0) ?? Int.max) <
+                        (order.firstIndex(of: $1) ?? Int.max)
+                    }
+                    .map { "\(dayCode)\($0)" }
             }
+        return entries.joined(separator: ", ")
     }
 
-    private func timeRange(from firstPeriod: String, to lastPeriod: String) -> String {
-        let mapping = AppConstants.PeriodTimes.mapping
-        guard let startTime = mapping[firstPeriod]?.start,
-              let endTime = mapping[lastPeriod]?.end else {
-            return ""
-        }
-        return "\(startTime)-\(endTime)"
-    }
-
-    // MARK: - Display formatters
+    // MARK: - Display formatters (grade chip + term label)
 
     private var displayTerm: String {
         guard course.term.count == 4 else { return course.term }
@@ -257,6 +205,27 @@ struct ScoreCourseDetailSheet: View {
                 return Color(hex: 0xFF6B6B)
             }
             return Color.textPrimary
+        }
+    }
+}
+
+/// Label / value row matching the ClassTable detail sheet style — flat layout
+/// with no surface background so multiple rows stack into a clean vertical
+/// rhythm controlled by the parent's VStack spacing.
+private struct InfoRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(TigerDuckTheme.Typography.body)
+                .foregroundStyle(Color.textSecondary)
+            Spacer()
+            Text(value)
+                .font(TigerDuckTheme.Typography.body)
+                .foregroundStyle(Color.textPrimary)
+                .multilineTextAlignment(.trailing)
         }
     }
 }

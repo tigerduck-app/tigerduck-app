@@ -79,6 +79,17 @@ final class ScoreViewModel {
         Task { await self.refresh(authService: authService, force: false) }
     }
 
+    /// Coalesced fire-and-forget refresh. Designed for pull-to-refresh
+    /// where the caller returns immediately (so UIRefreshControl dismisses
+    /// its spinner) and the actual fetch continues on a detached Task;
+    /// live progress lives in the top-right ``NetworkStatusOverlay`` instead.
+    func triggerRefresh(authService: AuthService, force: Bool = true) {
+        guard !isRefreshing else { return }
+        Task { [weak self] in
+            await self?.refresh(authService: authService, force: force)
+        }
+    }
+
     func refresh(authService: AuthService, force: Bool = true) async {
         guard !isRefreshing else { return }
         guard let studentId = authService.storedStudentId,
