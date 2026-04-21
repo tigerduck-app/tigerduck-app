@@ -27,6 +27,51 @@ SCENARIO_CLASS_PREPARING = "classPreparing"
 SCENARIO_IN_CLASS = "inClass"
 SCENARIO_ASSIGNMENT_URGENT = "assignmentUrgent"
 
+# Swift's JSONDecoder uses `.deferredToDate` by default, which encodes/
+# decodes `Date` as `timeIntervalSinceReferenceDate` — seconds since
+# 2001-01-01T00:00:00Z. iOS's ActivityKit uses this decoder when turning
+# a PTS payload into `ContentState`, so any Date field we send as an
+# ISO8601 string silently fails to decode and iOS drops the push.
+#
+# Reference epoch in Unix seconds:
+_SWIFT_REFERENCE_EPOCH = 978307200  # 2001-01-01T00:00:00Z
+
+# Snapshot fields typed as `Date?` on the Swift side. Must be encoded as
+# Double (seconds since reference date) or null.
+_DATE_FIELDS = ("countdownTarget", "progressStart")
+
+
+def _to_swift_reference_seconds(value: Any) -> Any:
+    """Convert ISO8601 strings or Unix-second numbers into Swift's
+    `timeIntervalSinceReferenceDate` Double. Pass through None/invalid
+    shapes untouched so we never crash the dispatcher on bad data."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        # Assume already in Swift reference seconds. If you later decide
+        # to pass Unix seconds instead, convert with value - _SWIFT_REFERENCE_EPOCH.
+        return float(value)
+    if isinstance(value, str):
+        # Accept both "...Z" and "...+00:00" forms.
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp() - _SWIFT_REFERENCE_EPOCH
+    return value
+
+
+def _normalize_snapshot_for_apns(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of the snapshot with Date fields converted to the
+    format Swift's default JSONDecoder expects. Non-destructive."""
+    out = dict(snapshot)
+    for field in _DATE_FIELDS:
+        if field in out:
+            out[field] = _to_swift_reference_seconds(out[field])
+    return out
+
 
 @dataclass(frozen=True)
 class ApnsRequest:
@@ -65,13 +110,14 @@ def build_pts_payload(
 ) -> dict[str, Any]:
     """Construct the `aps` payload for a Push-to-Start."""
     timestamp = int((now or datetime.now(timezone.utc)).timestamp())
+    normalized_snapshot = _normalize_snapshot_for_apns(snapshot)
     return {
         "aps": {
             "timestamp": timestamp,
             "event": "start",
             "attributes-type": attrs_type,
             "attributes": {"activityId": source_id},
-            "content-state": {"snapshot": snapshot},
+            "content-state": {"snapshot": normalized_snapshot},
             "alert": _alert_for(scenario, snapshot),
         }
     }

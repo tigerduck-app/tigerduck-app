@@ -47,7 +47,13 @@ def test_build_pts_payload_minimum_shape():
     assert aps["event"] == "start"
     assert aps["attributes-type"] == "TigerDuckActivityAttributes"
     assert aps["attributes"] == {"activityId": "slot-123"}
-    assert aps["content-state"] == {"snapshot": snapshot}
+    # Non-date fields pass through unchanged
+    state = aps["content-state"]["snapshot"]
+    assert state["title"] == snapshot["title"]
+    assert state["sourceId"] == snapshot["sourceId"]
+    assert state["accentHex"] == snapshot["accentHex"]
+    # Date fields are normalized to Swift reference-date seconds
+    assert isinstance(state["countdownTarget"], float)
     assert aps["timestamp"] == int(FIXED_NOW.timestamp())
     assert "alert" in aps
 
@@ -106,6 +112,54 @@ def test_expiration_slack_customizable():
         now=FIXED_NOW,
     )
     assert request.expiration == int(fire_at.timestamp()) + 300
+
+
+def test_date_fields_normalized_to_swift_reference_seconds():
+    """Swift's default JSONDecoder expects Date as seconds-since-2001
+    (Double). ISO8601 strings silently fail to decode in ActivityKit and
+    the push vanishes. Confirm the builder converts before sending."""
+    snapshot = _sample_snapshot(
+        countdownTarget="2026-04-22T02:00:00Z",
+        progressStart="2026-04-22T01:10:00Z",
+    )
+    payload = build_pts_payload(
+        scenario=SCENARIO_IN_CLASS,
+        source_id="slot-1",
+        snapshot=snapshot,
+        now=FIXED_NOW,
+    )
+    state = payload["aps"]["content-state"]["snapshot"]
+    assert isinstance(state["countdownTarget"], float)
+    assert isinstance(state["progressStart"], float)
+    # 2026-04-22T02:00:00Z - 2001-01-01T00:00:00Z = 798516000 seconds
+    assert state["countdownTarget"] == 798516000.0
+    assert state["progressStart"] == 798513000.0
+
+
+def test_null_date_fields_stay_null():
+    snapshot = _sample_snapshot(countdownTarget=None, progressStart=None)
+    payload = build_pts_payload(
+        scenario=SCENARIO_IN_CLASS,
+        source_id="slot-1",
+        snapshot=snapshot,
+        now=FIXED_NOW,
+    )
+    state = payload["aps"]["content-state"]["snapshot"]
+    assert state["countdownTarget"] is None
+    assert state["progressStart"] is None
+
+
+def test_snapshot_input_is_not_mutated():
+    """Normalization must be non-destructive so the caller's dict is safe."""
+    snapshot = _sample_snapshot(countdownTarget="2026-04-22T02:00:00Z")
+    before = snapshot["countdownTarget"]
+    _ = build_pts_payload(
+        scenario=SCENARIO_IN_CLASS,
+        source_id="slot-1",
+        snapshot=snapshot,
+        now=FIXED_NOW,
+    )
+    assert snapshot["countdownTarget"] == before
 
 
 def test_custom_attrs_type_reflected():
