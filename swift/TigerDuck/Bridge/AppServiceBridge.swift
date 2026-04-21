@@ -115,6 +115,22 @@ enum AppServiceBridge {
                 uniquingKeysWith: { first, _ in first }
             )
 
+            // Third enrollment source: historical transcript. The score
+            // report is the authoritative list for past semesters (選課
+            // system is current-semester-only and Moodle only covers
+            // Moodle-enabled classes), and for the current term it absorbs
+            // pending/exempted rows that the other sources may miss.
+            // Withdrew (二次退選) is excluded — those are cancelled
+            // enrollments and shouldn't render in the class table.
+            let scoreCoursesForSemester: [CourseGrade] = DataCache.shared
+                .loadScoreReport(studentId: studentId)?
+                .report.courses
+                .filter { $0.term == semester && $0.status != .withdrew && !$0.code.isEmpty } ?? []
+            let scoreByNo = Dictionary(
+                scoreCoursesForSemester.map { ($0.code, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+
             var orderedCourseNos: [String] = []
             var seenCourseNos = Set<String>()
 
@@ -128,6 +144,11 @@ enum AppServiceBridge {
                 orderedCourseNos.append(courseNo)
             }
 
+            for grade in scoreCoursesForSemester
+                where seenCourseNos.insert(grade.code).inserted {
+                orderedCourseNos.append(grade.code)
+            }
+
             let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
                 for courseNo in orderedCourseNos {
                     group.addTask {
@@ -137,20 +158,11 @@ enum AppServiceBridge {
                             )
 
                             guard !results.isEmpty else {
-                                return moodleByNo[courseNo].map {
-                                    CourseData(
-                                        courseNo: courseNo,
-                                        courseName: $0.fullname,
-                                        instructor: "",
-                                        credits: 0,
-                                        classroom: "",
-                                        enrolledCount: 0,
-                                        maxCount: 0,
-                                        schedule: [:],
-                                        moodleIdNumber: $0.idnumber,
-                                        classroomMap: [:]
-                                    )
-                                }
+                                return fallbackCourseData(
+                                    courseNo: courseNo,
+                                    moodle: moodleByNo[courseNo],
+                                    grade: scoreByNo[courseNo]
+                                )
                             }
 
                             let course = buildSDCourse(
@@ -178,20 +190,11 @@ enum AppServiceBridge {
                                     "courseNo": courseNo,
                                 ])
                             }
-                            return moodleByNo[courseNo].map {
-                                CourseData(
-                                    courseNo: courseNo,
-                                    courseName: $0.fullname,
-                                    instructor: "",
-                                    credits: 0,
-                                    classroom: "",
-                                    enrolledCount: 0,
-                                    maxCount: 0,
-                                    schedule: [:],
-                                    moodleIdNumber: $0.idnumber,
-                                    classroomMap: [:]
-                                )
-                            }
+                            return fallbackCourseData(
+                                courseNo: courseNo,
+                                moodle: moodleByNo[courseNo],
+                                grade: scoreByNo[courseNo]
+                            )
                         }
                     }
                 }
@@ -236,6 +239,49 @@ enum AppServiceBridge {
             }
             return DataCache.shared.loadCourses(semester: semester)
         }
+    }
+
+    /// Build a minimal `CourseData` when the QueryCourse API returns empty
+    /// (common for historical semesters — NTUST only keeps the latest term
+    /// or two indexed). Prefers Moodle's course-fullname because it usually
+    /// carries the section suffix students recognize; falls back to the
+    /// transcript's course name + credits as a last resort so the class
+    /// table still lists every term the student was graded in. Returns nil
+    /// only when both auxiliary sources are missing.
+    nonisolated private static func fallbackCourseData(
+        courseNo: String,
+        moodle: MoodleEnrolledCourse?,
+        grade: CourseGrade?
+    ) -> CourseData? {
+        if let moodle {
+            return CourseData(
+                courseNo: courseNo,
+                courseName: moodle.fullname,
+                instructor: "",
+                credits: grade?.credits ?? 0,
+                classroom: "",
+                enrolledCount: 0,
+                maxCount: 0,
+                schedule: [:],
+                moodleIdNumber: moodle.idnumber,
+                classroomMap: [:]
+            )
+        }
+        if let grade {
+            return CourseData(
+                courseNo: courseNo,
+                courseName: grade.name,
+                instructor: "",
+                credits: grade.credits ?? 0,
+                classroom: "",
+                enrolledCount: 0,
+                maxCount: 0,
+                schedule: [:],
+                moodleIdNumber: nil,
+                classroomMap: [:]
+            )
+        }
+        return nil
     }
 
     nonisolated private static func buildSDCourse(
