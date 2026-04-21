@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct HomeView: View {
+    private static let sectionDragContainerID = "home-sections"
+
     var embedded = false
 
     @Environment(AppState.self) private var appState
@@ -8,12 +10,8 @@ struct HomeView: View {
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
     @State private var selectedFeature: AppFeature?
-
-    // Section drag state
-    @State private var draggingSection: HomeSection?
-    @State private var sectionDragLocation: CGPoint = .zero
-    @State private var sectionFingerOffset: CGSize = .zero
-    @State private var sectionFrames: [String: CGRect] = [:]
+    @State private var activeSectionDrag: ReorderDragPayload?
+    @State private var didReorderSection = false
 
     var body: some View {
         if embedded {
@@ -27,131 +25,143 @@ struct HomeView: View {
 
     private var content: some View {
         ScrollView {
-                VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    // Greeting
-                    HStack {
-                        Text(Date().greetingText())
-                            .font(TigerDuckTheme.Typography.title)
-                            .foregroundStyle(Color.textPrimary)
-                        Spacer()
-                        NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
-                    }
-                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                    .padding(.top, TigerDuckTheme.Spacing.md)
+            VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                // Greeting
+                HStack {
+                    Text(Date().greetingText())
+                        .font(TigerDuckTheme.Typography.title)
+                        .foregroundStyle(Color.textPrimary)
+                    Spacer()
+                    NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
+                }
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                .padding(.top, TigerDuckTheme.Spacing.md)
 
-                    if let reauthError = appState.ntustReauthErrorMessage {
-                        NTUSTReauthErrorBanner(
-                            message: reauthError,
-                            onRetry: {
-                                appState.clearNTUSTReauthError()
-                                appState.presentNTUSTLogin()
-                            },
-                            onDismiss: { appState.clearNTUSTReauthError() }
-                        )
-                    }
+                if let reauthError = appState.ntustReauthErrorMessage {
+                    NTUSTReauthErrorBanner(
+                        message: reauthError,
+                        onRetry: {
+                            appState.clearNTUSTReauthError()
+                            appState.presentNTUSTLogin()
+                        },
+                        onDismiss: { appState.clearNTUSTReauthError() }
+                    )
+                }
 
-                    // Sections
-                    ForEach(viewModel.sections) { section in
-                        sectionCell(section)
-                    }
-                }
-                .padding(.bottom, TigerDuckTheme.Spacing.xxl)
-                .coordinateSpace(name: "sectionList")
-                .onPreferenceChange(SectionFrameKey.self) { sectionFrames = $0 }
-                .overlay { floatingSectionPreview }
-                .contentShape(Rectangle())
-                .onLongPressGesture {
-                    if !viewModel.isEditingHome {
-                        withAnimation(.smoothSpring) {
-                            viewModel.isEditingHome = true
-                        }
-                    }
+                // Sections
+                ForEach(viewModel.sections) { section in
+                    sectionCell(section)
                 }
             }
-            .refreshable {
-                // Fire-and-forget: the pull gesture should dismiss the
-                // UIRefreshControl spinner immediately once released.
-                // `triggerRefresh` coalesces rapid repeated pulls into a
-                // single in-flight fetch; status lives in the top-right
-                // NetworkStatusOverlay.
-                viewModel.triggerRefresh(authService: appState.authService)
-            }
-            .background(Color.backgroundPrimary)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if viewModel.isEditingHome {
-                        if #available(iOS 26, *) {
-                            Button { showAddSection = true } label: {
-                                Image(systemName: "plus")
-                                    .font(.body.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                    .frame(width: 28, height: 28)
-                                    .glassEffect(.regular.interactive(), in: .circle)
-                            }
-                        } else {
-                            Button { showAddSection = true } label: {
-                                Image(systemName: "plus")
-                            }
-                        }
-                        Button("完成") {
-                            withAnimation(.smoothSpring) {
-                                draggingSection = nil
-                                viewModel.isEditingHome = false
-                            }
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showAddSection) {
-                AddSectionSheet(viewModel: viewModel)
-                    .presentationDetents([.medium])
-            }
-            .notImplementedAlert(isPresented: $showNotImplementedAlert)
-            .navigationDestination(item: $selectedFeature) { feature in
-                homeDestination(for: feature)
-            }
-            .sheet(item: $viewModel.selectedCourse) { course in
-                CourseDetailSheet(
-                    course: course,
-                    assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
-                    weekday: Date().scheduleWeekday
+            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+            .onDrop(
+                of: [.tigerDuckReorderPayload],
+                delegate: ReorderContainerDropDelegate(
+                    expectedKind: .homeSection,
+                    containerID: Self.sectionDragContainerID,
+                    activePayload: $activeSectionDrag,
+                    didReorder: $didReorderSection,
+                    onPersist: viewModel.saveSectionLayout
                 )
-                .presentationDetents([.medium, .large])
+            )
+            .contentShape(Rectangle())
+            .onLongPressGesture {
+                if !viewModel.isEditingHome {
+                    withAnimation(.smoothSpring) {
+                        viewModel.isEditingHome = true
+                    }
+                }
             }
+        }
+        .refreshable {
+            // Fire-and-forget: the pull gesture should dismiss the
+            // UIRefreshControl spinner immediately once released.
+            // `triggerRefresh` coalesces rapid repeated pulls into a
+            // single in-flight fetch; status lives in the top-right
+            // NetworkStatusOverlay.
+            viewModel.triggerRefresh(authService: appState.authService)
+        }
+        .background(Color.backgroundPrimary)
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if viewModel.isEditingHome {
+                    if #available(iOS 26, *) {
+                        Button { showAddSection = true } label: {
+                            Image(systemName: "plus")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: 28, height: 28)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                        }
+                    } else {
+                        Button { showAddSection = true } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+                    Button("完成") {
+                        withAnimation(.smoothSpring) {
+                            finishSectionDrag()
+                            viewModel.isEditingHome = false
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showAddSection) {
+            AddSectionSheet(viewModel: viewModel)
+                .presentationDetents([.medium])
+        }
+        .notImplementedAlert(isPresented: $showNotImplementedAlert)
+        .navigationDestination(item: $selectedFeature) { feature in
+            homeDestination(for: feature)
+        }
+        .sheet(item: $viewModel.selectedCourse) { course in
+            CourseDetailSheet(
+                course: course,
+                assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
+                weekday: Date().scheduleWeekday
+            )
+            .presentationDetents([.medium, .large])
+        }
+        .onChange(of: viewModel.isEditingHome) { _, isEditing in
+            if !isEditing {
+                finishSectionDrag()
+            }
+        }
+        .onDisappear {
+            finishSectionDrag()
+        }
     }
 
-    // MARK: - Section cell with conditional drag
+    // MARK: - Section cell
 
     @ViewBuilder
     private func sectionCell(_ section: HomeSection) -> some View {
         let content = sectionContent(section)
 
         if viewModel.isEditingHome {
-            content.gesture(
-                DragGesture(minimumDistance: 5, coordinateSpace: .named("sectionList"))
-                    .onChanged { value in
-                        if draggingSection == nil {
-                            draggingSection = section
-                            if let frame = sectionFrames[section.id] {
-                                sectionFingerOffset = CGSize(
-                                    width: value.startLocation.x - frame.midX,
-                                    height: value.startLocation.y - frame.midY
-                                )
-                            }
-                            sectionDragLocation = value.location
-                            return
-                        }
-                        sectionDragLocation = value.location
-                        reorderSectionsIfNeeded(at: value.location)
-                    }
-                    .onEnded { _ in
-                        withAnimation(.smoothSpring) {
-                            draggingSection = nil
-                        }
-                        viewModel.saveSectionLayout()
-                    }
-            )
+            let payload = sectionDragPayload(for: section)
+            content
+                .draggable(payload) {
+                    SectionDragPreview(section: section)
+                        .onAppear { activeSectionDrag = payload }
+                }
+                .onDrop(
+                    of: [.tigerDuckReorderPayload],
+                    delegate: ReorderDropDelegate(
+                        targetID: section.id,
+                        expectedKind: .homeSection,
+                        containerID: Self.sectionDragContainerID,
+                        activePayload: $activeSectionDrag,
+                        didReorder: $didReorderSection,
+                        currentIDs: { viewModel.sections.map(\.id) },
+                        moveAction: { fromOffsets, destination in
+                            viewModel.sections.move(fromOffsets: fromOffsets, toOffset: destination)
+                        },
+                        onPersist: viewModel.saveSectionLayout
+                    )
+                )
         } else {
             content
         }
@@ -191,15 +201,7 @@ struct HomeView: View {
             }
         }
         .wiggling(viewModel.isEditingHome)
-        .opacity(draggingSection?.id == section.id ? 0 : 1)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: SectionFrameKey.self,
-                    value: [section.id: geo.frame(in: .named("sectionList"))]
-                )
-            }
-        )
+        .opacity(activeSectionDrag?.id == section.id ? 0.35 : 1)
     }
 
     @ViewBuilder
@@ -213,61 +215,20 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Floating section preview
-
-    @ViewBuilder
-    private var floatingSectionPreview: some View {
-        if let dragging = draggingSection {
-            HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                Image(systemName: dragging.type.iconName)
-                    .font(.title3)
-                    .foregroundStyle(Color.accentPrimary)
-                Text(dragging.title)
-                    .font(TigerDuckTheme.Typography.headline)
-                    .foregroundStyle(.primary)
-                Spacer()
-            }
-            .padding(TigerDuckTheme.Spacing.lg)
-            .frame(width: 280, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
-                    .fill(Color(.secondarySystemGroupedBackground))
-                    .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
-            )
-            .scaleEffect(1.05)
-            .position(
-                x: sectionDragLocation.x - sectionFingerOffset.width,
-                y: sectionDragLocation.y - sectionFingerOffset.height
-            )
-            .allowsHitTesting(false)
-        }
+    private func sectionDragPayload(for section: HomeSection) -> ReorderDragPayload {
+        ReorderDragPayload(
+            id: section.id,
+            kind: .homeSection,
+            containerID: Self.sectionDragContainerID
+        )
     }
 
-    // MARK: - Reorder sections
-
-    private func reorderSectionsIfNeeded(at point: CGPoint) {
-        guard let dragging = draggingSection,
-              let fromIndex = viewModel.sections.firstIndex(where: { $0.id == dragging.id }) else { return }
-
-        for (id, frame) in sectionFrames where id != dragging.id {
-            if frame.contains(point),
-               let toIndex = viewModel.sections.firstIndex(where: { $0.id == id }) {
-                withAnimation(.smoothSpring) {
-                    viewModel.sections.move(fromOffsets: IndexSet(integer: fromIndex),
-                                            toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-                }
-                return
-            }
-        }
-    }
-}
-
-// MARK: - Section frame tracking
-
-private struct SectionFrameKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    private func finishSectionDrag() {
+        ReorderDropSupport.finalizeDrop(
+            activePayload: $activeSectionDrag,
+            didReorder: $didReorderSection,
+            onPersist: viewModel.saveSectionLayout
+        )
     }
 }
 
@@ -288,6 +249,30 @@ private struct SectionDragHandle: View {
             Capsule().fill(Color(.systemGray5))
         )
         .padding(.top, TigerDuckTheme.Spacing.xs)
+    }
+}
+
+private struct SectionDragPreview: View {
+    let section: HomeSection
+
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Image(systemName: section.type.iconName)
+                .font(.title3)
+                .foregroundStyle(Color.accentPrimary)
+            Text(section.title)
+                .font(TigerDuckTheme.Typography.headline)
+                .foregroundStyle(Color.textPrimary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(TigerDuckTheme.Spacing.lg)
+        .frame(width: 280, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
+        )
     }
 }
 
@@ -368,6 +353,7 @@ private struct HomeSectionView: View {
                         get: { viewModel.isEditingHome },
                         set: { viewModel.isEditingHome = $0 }
                     ),
+                    dragContainerID: section.id,
                     onRemove: { widget in
                         withAnimation(.smoothSpring) {
                             viewModel.removeWidget(from: section.id, widget: widget)
