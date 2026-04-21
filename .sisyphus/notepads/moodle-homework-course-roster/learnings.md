@@ -1,3 +1,0 @@
-- Moodles webservice probes can stay as tiny standalone modules that mirror `backend/api/moodle/homework.py` exactly.
-- `core_webservice_get_site_info` is a reliable first hop for `userid`, and `mod_assign_get_assignments` can be used to auto-discover a fallback assignment id.
-- Evidence capture works cleanly by running each probe via `uv run python -m api.moodle.<module>` from `backend/` and copying stdout JSON into `.sisyphus/evidence/`.
