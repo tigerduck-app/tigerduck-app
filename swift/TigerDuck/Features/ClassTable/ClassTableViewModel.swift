@@ -11,9 +11,9 @@ final class ClassTableViewModel {
     var selectedWeekday: Int? = nil
     var selectedPeriodId: String? = nil
 
-    var currentSemester: String = CourseService.currentSemesterCode()
+    var currentSemester: String = CourseSelectionService.currentSemesterCode()
     let availableSemesters: [String] = {
-        let code = CourseService.currentSemesterCode()
+        let code = CourseSelectionService.currentSemesterCode()
         let yearStr = String(code.dropLast())
         guard let year = Int(yearStr) else { return [code] }
         let sem = String(code.last!)
@@ -96,7 +96,7 @@ final class ClassTableViewModel {
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
         courses = buildCourseList(
-            DataCache.shared.loadCourses(),
+            DataCache.shared.loadCourses(semester: CourseSelectionService.currentSemesterCode()),
             DataCache.shared.loadUserAddedCourses()
         )
         assignments = DataCache.shared.loadAssignments()
@@ -274,7 +274,7 @@ final class ClassTableViewModel {
 
         let cachedAssignments = DataCache.shared.loadAssignments()
         let merged = buildCourseList(
-            DataCache.shared.loadCourses(),
+            DataCache.shared.loadCourses(semester: CourseSelectionService.currentSemesterCode()),
             DataCache.shared.loadUserAddedCourses()
         )
 

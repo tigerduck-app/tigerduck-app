@@ -27,6 +27,10 @@ final class SDCourse: Identifiable {
     /// Moodle course ID number (e.g. "1142EC1013701")
     var moodleIdNumber: String?
 
+    /// Semester code for which this course was enrolled (e.g. "1142").
+    /// Empty string = unknown / pre-feature cache; treated as current semester.
+    var semester: String = ""
+
     var skippedDatesJSON: String = "[]"
 
     @Transient private var _cachedSchedule: [Int: [String]]?
@@ -44,6 +48,7 @@ final class SDCourse: Identifiable {
         maxCount: Int = 0,
         schedule: [Int: [String]] = [:],
         moodleIdNumber: String? = nil,
+        semester: String = "",
         classroomMap: [String: String] = [:]
     ) {
         self.courseNo = courseNo
@@ -57,6 +62,7 @@ final class SDCourse: Identifiable {
         self.scheduleJSON = (try? JSONEncoder().encode(stringKeyDict))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         self.moodleIdNumber = moodleIdNumber
+        self.semester = semester
         self.classroomMapJSON = (try? JSONEncoder().encode(classroomMap))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     }

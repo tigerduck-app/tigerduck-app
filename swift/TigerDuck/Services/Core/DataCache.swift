@@ -28,18 +28,26 @@ final class DataCache {
             AppLogger.captureError(error, context: ["phase": "dataCache.createPersistentDir"])
         }
         persistentDir = persistent
+
+        absorbLegacyCourseCache()
     }
 
-    // MARK: - Courses
+    // MARK: - Courses (semester-scoped)
 
-    func saveCourses(_ courses: [SDCourse]) {
+    /// Save courses for a specific semester. Filename: courses_<semester>.json
+    func saveCourses(_ courses: [SDCourse], semester: String) {
         let dtos = courses.map { CachedCourse(from: $0) }
-        save(dtos, to: "courses.json")
+        save(dtos, to: coursesFilename(semester))
     }
 
-    func loadCourses() -> [SDCourse] {
-        let dtos: [CachedCourse] = load(from: "courses.json") ?? []
+    /// Load courses for a specific semester. Returns [] if not yet cached.
+    func loadCourses(semester: String) -> [SDCourse] {
+        let dtos: [CachedCourse] = load(from: coursesFilename(semester)) ?? []
         return dtos.map { $0.toSDCourse() }
+    }
+
+    private func coursesFilename(_ semester: String) -> String {
+        "courses_\(semester).json"
     }
 
     // MARK: - User-Added Courses
@@ -105,7 +113,6 @@ final class DataCache {
     /// on the home screen, in the Live Activity, or in pending reminders.
     func clearUserScopedData() {
         let filenames: [(String, URL)] = [
-            ("courses.json", cacheDir),
             ("assignments.json", cacheDir),
             ("calendar_events.json", cacheDir),
             ("user_added_courses.json", persistentDir),
@@ -126,6 +133,14 @@ final class DataCache {
                     ])
                 }
             }
+        }
+
+        let cacheContents = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for url in cacheContents where url.lastPathComponent.hasPrefix("courses_") && url.pathExtension == "json" {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -172,6 +187,23 @@ final class DataCache {
             return nil
         }
     }
+
+    // Legacy migration: absorb courses.json (pre-semester-scoped format) into courses_<current>.json
+    private func absorbLegacyCourseCache() {
+        let legacyURL = cacheDir.appendingPathComponent("courses.json")
+        guard FileManager.default.fileExists(atPath: legacyURL.path) else { return }
+
+        if let data = try? Data(contentsOf: legacyURL),
+           let _ = try? decoder.decode([CachedCourse].self, from: data) {
+            let current = CourseSelectionService.currentSemesterCode()
+            let targetURL = cacheDir.appendingPathComponent("courses_\(current).json")
+            // Only absorb if the semester file doesn't already exist (avoid overwriting fresh data)
+            if !FileManager.default.fileExists(atPath: targetURL.path) {
+                try? data.write(to: targetURL, options: .atomic)
+            }
+            try? FileManager.default.removeItem(at: legacyURL)
+        }
+    }
 }
 
 // MARK: - Codable DTOs
@@ -186,6 +218,7 @@ private struct CachedCourse: Codable {
     let maxCount: Int
     let scheduleJSON: String
     let moodleIdNumber: String?
+    let semester: String?
     let classroomMapJSON: String?
     /// Persisted skip state for the course. Optional so older cache files
     /// written before this field existed continue to decode cleanly; falls
@@ -202,6 +235,7 @@ private struct CachedCourse: Codable {
         maxCount = course.maxCount
         scheduleJSON = course.scheduleJSON
         moodleIdNumber = course.moodleIdNumber
+        semester = course.semester.isEmpty ? nil : course.semester
         classroomMapJSON = course.classroomMapJSON
         skippedDatesJSON = course.skippedDatesJSON
     }
@@ -238,6 +272,7 @@ private struct CachedCourse: Codable {
             maxCount: maxCount,
             schedule: schedule,
             moodleIdNumber: moodleIdNumber,
+            semester: semester ?? CourseSelectionService.currentSemesterCode(),
             classroomMap: classroomMap
         )
         course.skippedDatesJSON = skippedDatesJSON ?? "[]"

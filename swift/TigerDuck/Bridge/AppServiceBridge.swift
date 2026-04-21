@@ -32,26 +32,26 @@ enum AppServiceBridge {
         let startGeneration = authService.loginGeneration
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
-            return DataCache.shared.loadCourses()
+            return DataCache.shared.loadCourses(semester: CourseSelectionService.currentSemesterCode())
         }
 
         do {
             let session = NTUSTSessionManager.shared.session
-            let courseNos = try await CourseService.fetchEnrolledCourseNos(
+            let courseNos = try await CourseSelectionService.fetchEnrolledCourseNos(
                 session: session,
                 studentId: studentId,
                 password: password,
                 forceRefresh: forceRefresh
             )
 
-            let semester = CourseService.currentSemesterCode()
+            let semester = CourseSelectionService.currentSemesterCode()
 
             let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
                 for courseNo in courseNos {
                     group.addTask {
                         let results: [CourseSearchResult]
                         do {
-                            results = try await CourseService.lookupCourse(
+                            results = try await CourseLookupService.lookupCourse(
                                 semester: semester, courseNo: courseNo
                             )
                         } catch {
@@ -75,7 +75,7 @@ enum AppServiceBridge {
                         var seenClassrooms = Set<String>()
 
                         for row in results {
-                            let partial = CourseService.parseNodeToSchedule(row.Node)
+                            let partial = CourseLookupService.parseNodeToSchedule(row.Node)
                             // API may return "教室A、教室A" — reuse SDCourse helpers to split/dedup
                             var seenParts = Set<String>()
                             let uniqueParts = SDCourse.splitRoom(row.ClassRoomNo ?? "")
@@ -133,6 +133,7 @@ enum AppServiceBridge {
                     maxCount: d.maxCount,
                     schedule: d.schedule,
                     moodleIdNumber: d.moodleIdNumber,
+                    semester: semester,
                     classroomMap: d.classroomMap
                 )
             }
@@ -145,14 +146,14 @@ enum AppServiceBridge {
             if !courses.isEmpty,
                !Task.isCancelled,
                authService.loginGeneration == startGeneration {
-                DataCache.shared.saveCourses(courses)
+                DataCache.shared.saveCourses(courses, semester: CourseSelectionService.currentSemesterCode())
             }
             return courses
         } catch {
             await MainActor.run {
                 AppLogger.captureError(error, context: ["bridge": "fetchCourses"])
             }
-            return DataCache.shared.loadCourses()
+            return DataCache.shared.loadCourses(semester: CourseSelectionService.currentSemesterCode())
         }
     }
 
