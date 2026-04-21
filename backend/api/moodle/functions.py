@@ -1,8 +1,7 @@
-"""Moodle homework fetcher via long-lived OIDC webservice token.
+"""Moodle site-info probe via long-lived OIDC webservice token.
 
-Replaces the SSO + sesskey + /lib/ajax/service.php scraping path
-(kept in api/moodle/legacy/homework_sso.py for comparison) with
-/webservice/rest/server.php using a Moodle Mobile App token.
+Calls core_webservice_get_site_info via /webservice/rest/server.php
+using a Moodle Mobile App token.
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ from api.moodle.auth import MoodleOidcAuthClient
 WSFUNCTION = "core_webservice_get_site_info"
 
 
-def fetch_action_events(
+def fetch_site_info(
     client: MoodleOidcAuthClient,
 ) -> dict:
     return client.call(
@@ -32,7 +31,7 @@ def main() -> int:
         return 2
 
     with MoodleOidcAuthClient(sid, pwd) as client:
-        events = fetch_action_events(client)
+        events = fetch_site_info(client)
         if isinstance(events, dict) and events.get("errorcode"):
             print(f"[FAIL] {events}", file=sys.stderr)
             return 3
