@@ -101,6 +101,17 @@ def _alert_for(scenario: str, snapshot: dict[str, Any]) -> dict[str, str]:
     return {"title": title, "body": subtitle}
 
 
+def composed_activity_id(scenario: str, source_id: str) -> str:
+    """Mirror of Swift's `LiveActivitySnapshot.composedActivityId`.
+
+    Must stay in sync with `LiveActivitySnapshot.composedActivityId` on the
+    client. Scoping by scenario lets a classPreparing activity and its
+    follow-up inClass activity coexist distinctly so a PTS for inClass never
+    collides with a still-running classPreparing activity.
+    """
+    return f"{scenario}::{source_id}"
+
+
 def build_pts_payload(
     scenario: str,
     source_id: str,
@@ -116,7 +127,7 @@ def build_pts_payload(
             "timestamp": timestamp,
             "event": "start",
             "attributes-type": attrs_type,
-            "attributes": {"activityId": source_id},
+            "attributes": {"activityId": composed_activity_id(scenario, source_id)},
             "content-state": {"snapshot": normalized_snapshot},
             "alert": _alert_for(scenario, snapshot),
         }

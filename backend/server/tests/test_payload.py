@@ -46,7 +46,9 @@ def test_build_pts_payload_minimum_shape():
     aps = payload["aps"]
     assert aps["event"] == "start"
     assert aps["attributes-type"] == "TigerDuckActivityAttributes"
-    assert aps["attributes"] == {"activityId": "slot-123"}
+    # Composite id = `{scenario}::{source_id}` — scoped by scenario so
+    # classPreparing and inClass never collide in ActivityKit.
+    assert aps["attributes"] == {"activityId": "classPreparing::slot-123"}
     # Non-date fields pass through unchanged
     state = aps["content-state"]["snapshot"]
     assert state["title"] == snapshot["title"]
@@ -96,7 +98,7 @@ def test_build_apns_request_headers():
     # expiration = fire_at + slack
     assert request.expiration == int(fire_at.timestamp()) + 60
     assert request.message["aps"]["event"] == "start"
-    assert request.message["aps"]["attributes"]["activityId"] == "slot-42"
+    assert request.message["aps"]["attributes"]["activityId"] == "classPreparing::slot-42"
 
 
 def test_expiration_slack_customizable():
@@ -147,6 +149,26 @@ def test_null_date_fields_stay_null():
     state = payload["aps"]["content-state"]["snapshot"]
     assert state["countdownTarget"] is None
     assert state["progressStart"] is None
+
+
+def test_activity_id_is_scenario_scoped():
+    """Guards against the classPreparing/inClass collision bug: if they
+    share activityId, the second PTS is silently dropped by iOS."""
+    prep = build_pts_payload(
+        scenario=SCENARIO_CLASS_PREPARING,
+        source_id="slot-x",
+        snapshot=_sample_snapshot(),
+        now=FIXED_NOW,
+    )
+    in_class = build_pts_payload(
+        scenario=SCENARIO_IN_CLASS,
+        source_id="slot-x",
+        snapshot=_sample_snapshot(),
+        now=FIXED_NOW,
+    )
+    assert prep["aps"]["attributes"]["activityId"] == "classPreparing::slot-x"
+    assert in_class["aps"]["attributes"]["activityId"] == "inClass::slot-x"
+    assert prep["aps"]["attributes"]["activityId"] != in_class["aps"]["attributes"]["activityId"]
 
 
 def test_snapshot_input_is_not_mutated():

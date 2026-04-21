@@ -2,15 +2,20 @@ import ActivityKit
 import Foundation
 import os
 
-/// Reflects a resolved `LiveActivitySnapshot` as a single running ActivityKit
-/// activity. Maintains the spec invariant: only one Live Activity exists; we
-/// start, update, or end it based on what the resolver returns.
+/// Reflects a resolved `LiveActivitySnapshot` as at most one running
+/// `TigerDuckActivityAttributes` activity per `(scenario, sourceId)` pair.
 ///
-/// Before phase B ships the Widget Extension UI, calling `apply` does write
-/// the snapshot to the shared store and attempt to request an activity, but
-/// iOS will reject the request without a matching `ActivityConfiguration` in
-/// an extension. That is acceptable — the app side contract stays stable,
-/// and the moment the extension lands, the activity will light up.
+/// Scenario-scoped `activityId` (`snapshot.composedActivityId`) is the
+/// single source of truth for identity. It keeps the on-device path and
+/// the server-push path consistent: a classPreparing activity and its
+/// follow-up inClass activity are distinct to ActivityKit, so PTS from
+/// the server can start the inClass one without colliding with the
+/// classPreparing one that iOS already has running.
+///
+/// `apply` enforces the single-activity invariant *within* a matching
+/// `composedActivityId`: any activity whose id does NOT match the current
+/// snapshot's target id is ended immediately before we create / update
+/// the target.
 @MainActor
 final class LiveActivityCoordinator {
     private let store: SharedSnapshotStore
@@ -20,7 +25,7 @@ final class LiveActivityCoordinator {
         self.store = store
     }
 
-    /// Apply the resolved snapshot. Starts, updates, or ends the activity as needed.
+    /// Apply the resolved snapshot. Starts, updates, or ends activities as needed.
     func apply(snapshot: LiveActivitySnapshot?) async {
         store.writeSnapshot(snapshot)
 
@@ -29,26 +34,36 @@ final class LiveActivityCoordinator {
             return
         }
 
-        let current = Activity<TigerDuckActivityAttributes>.activities.first
+        let runningActivities = Activity<TigerDuckActivityAttributes>.activities
 
         guard let snapshot else {
-            if let current {
-                await current.end(nil, dismissalPolicy: .immediate)
+            for activity in runningActivities {
+                await activity.end(nil, dismissalPolicy: .immediate)
             }
             return
+        }
+
+        let targetId = snapshot.composedActivityId
+
+        // End every activity whose id does not match the current target.
+        // Different scenario or different slot → stop it before spinning up
+        // the new one. `end(nil, .immediate)` is safe when the activity
+        // has already been auto-dismissed by a push dismissal-date.
+        for activity in runningActivities where activity.attributes.activityId != targetId {
+            await activity.end(nil, dismissalPolicy: .immediate)
         }
 
         let state = TigerDuckActivityAttributes.ContentState(snapshot: snapshot)
         let content = ActivityContent(state: state, staleDate: snapshot.countdownTarget)
 
-        if let current {
-            if current.content.state.snapshot != snapshot {
-                await current.update(content)
+        if let matching = runningActivities.first(where: { $0.attributes.activityId == targetId }) {
+            if matching.content.state.snapshot != snapshot {
+                await matching.update(content)
             }
         } else {
             do {
                 _ = try Activity.request(
-                    attributes: TigerDuckActivityAttributes(activityId: snapshot.sourceId),
+                    attributes: TigerDuckActivityAttributes(activityId: targetId),
                     content: content,
                     pushType: nil
                 )
@@ -56,7 +71,7 @@ final class LiveActivityCoordinator {
                 logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
                 AppLogger.captureError(error, context: [
                     "phase": "liveActivity.requestStart",
-                    "sourceId": snapshot.sourceId,
+                    "activityId": targetId,
                 ])
             }
         }
