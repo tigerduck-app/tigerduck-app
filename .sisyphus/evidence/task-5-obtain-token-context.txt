@@ -1,0 +1,4 @@
+92:                    _ = try await MoodleTokenService.shared.obtainToken(studentId: normalizedId, password: password)
+93-                } catch {
+94-                    AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
+95-                }

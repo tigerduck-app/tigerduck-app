@@ -79,7 +79,7 @@ final class AuthService {
                 // so the first post-login fetch scrapes fresh data;
                 // prevents showing stale courses after e.g. an end-of-
                 // semester crossover.
-                CourseService.invalidateEnrolledCoursesCache(for: normalizedId)
+                CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
                 reauthErrorMessage = nil
                 _revision += 1
 
@@ -159,7 +159,7 @@ final class AuthService {
         // Drop the enrolled-courses cache so the next user does not see
         // the previous account's course list while their own data is
         // still in flight.
-        CourseService.invalidateEnrolledCoursesCache(for: loggingOutStudentId)
+        CourseSelectionService.invalidateEnrolledCoursesCache(for: loggingOutStudentId)
         loginError = nil
         reauthErrorMessage = nil
         isReauthenticating = false

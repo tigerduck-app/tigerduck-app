@@ -18,6 +18,7 @@ struct WidgetGridEditMode: View {
                     WidgetGridView(
                         widgets: $widgets,
                         isEditing: .constant(true),
+                        dragContainerID: "widget-grid-edit-mode",
                         onRemove: { widget in
                             withAnimation(.smoothSpring) {
                                 widgets.removeAll { $0.id == widget.id }

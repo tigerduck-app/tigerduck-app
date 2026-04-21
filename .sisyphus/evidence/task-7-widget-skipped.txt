@@ -1,0 +1,1 @@
+Widget: NO_COUPLING per T1c audit

@@ -54,11 +54,14 @@ actor MoodleTokenService {
             let triple = try await Self.performOidcLogin(
                 studentId: normalizedId, password: password,
             )
-            await Self.persist(triple: triple)
+            Self.persist(triple: triple)
             return triple.wstoken
         }
         inFlightTokenTask = task
-        defer { inFlightTokenTask = nil }
+        defer {
+            task.cancel()
+            inFlightTokenTask = nil
+        }
         return try await task.value
     }
 
@@ -68,43 +71,41 @@ actor MoodleTokenService {
         if let existing = inFlightRefreshTask {
             return try await existing.value
         }
-        let creds = await MainActor.run {
-            (
+        let task = Task<String, Error> {
+            let creds = (
                 KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
                 KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
             )
-        }
-        guard let sid = creds.0, let pwd = creds.1 else {
-            throw MoodleWebserviceError.invalidCredentials
-        }
-        let normalizedId = sid
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-        let task = Task<String, Error> {
+            guard let sid = creds.0, let pwd = creds.1 else {
+                throw MoodleWebserviceError.missingStoredCredentials
+            }
+            let normalizedId = sid
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
             let triple = try await Self.performOidcLogin(
                 studentId: normalizedId, password: pwd,
             )
-            await Self.persist(triple: triple)
+            Self.persist(triple: triple)
             return triple.wstoken
         }
         inFlightRefreshTask = task
-        defer { inFlightRefreshTask = nil }
+        defer {
+            task.cancel()
+            inFlightRefreshTask = nil
+        }
         return try await task.value
     }
 
     /// Clear stored Moodle token. Called on logout.
     func clearToken() async {
-        await MainActor.run {
-            KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
-            KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
-        }
+        KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
+        KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
+        await MoodleSiteInfoService.shared.invalidateCache()
     }
 
     /// Return the currently stored token, or nil if none.
     func currentToken() async -> String? {
-        await MainActor.run {
-            KeychainManager.loadString(key: AppConstants.KeychainKeys.moodleToken)
-        }
+        KeychainManager.loadString(key: AppConstants.KeychainKeys.moodleToken)
     }
 
     // MARK: - OIDC flow
@@ -115,35 +116,37 @@ actor MoodleTokenService {
         let privatetoken: String?
     }
 
-    private static func persist(triple: TokenTriple) async {
-        await MainActor.run {
+    private nonisolated static func persist(triple: TokenTriple) {
+        KeychainManager.saveString(
+            key: AppConstants.KeychainKeys.moodleToken,
+            value: triple.wstoken,
+        )
+        if let pt = triple.privatetoken, !pt.isEmpty {
             KeychainManager.saveString(
-                key: AppConstants.KeychainKeys.moodleToken,
-                value: triple.wstoken,
+                key: AppConstants.KeychainKeys.moodlePrivateToken,
+                value: pt,
             )
-            if let pt = triple.privatetoken, !pt.isEmpty {
-                KeychainManager.saveString(
-                    key: AppConstants.KeychainKeys.moodlePrivateToken,
-                    value: pt,
-                )
-            } else {
-                KeychainManager.delete(
-                    key: AppConstants.KeychainKeys.moodlePrivateToken,
-                )
-            }
+        } else {
+            KeychainManager.delete(
+                key: AppConstants.KeychainKeys.moodlePrivateToken,
+            )
         }
     }
 
-    private static func performOidcLogin(
+    private nonisolated static func performOidcLogin(
         studentId: String,
         password: String
     ) async throws -> TokenTriple {
-        // Dedicated session with an isolated per-flow cookie jar.
-        let config = URLSessionConfiguration.ephemeral
+        // Use the shared browser cookie store so the SSO anti-forgery /
+        // correlation cookies survive the launch.php -> login -> authorize
+        // redirect chain. A private jar on Apple's URLSession stack was
+        // dropping those cookies, which made the credential POST bounce back
+        // to /account/login as a false "login rejected".
+        let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
-        config.httpCookieStorage = HTTPCookieStorage()
+        config.httpCookieStorage = HTTPCookieStorage.shared
         config.httpAdditionalHeaders = [
             "User-Agent": mobileUA,
             "Accept":
@@ -167,106 +170,27 @@ actor MoodleTokenService {
         guard let launchURL = launchComps.url else {
             throw MoodleWebserviceError.malformedResponse(detail: "invalid launch URL")
         }
-        let (loginData, loginResp) = try await dataTask(session: session, request: URLRequest(url: launchURL))
-        try assertOK(response: loginResp, data: loginData)
-        guard let loginURL = (loginResp as? HTTPURLResponse)?.url,
-              loginURL.host?.contains("ssoam2.ntust.edu.tw") == true else {
-            throw MoodleWebserviceError.malformedResponse(detail: "expected SSO login page")
-        }
-        let loginHTML = String(data: loginData, encoding: .utf8) ?? ""
-        let fields = parseSSOLoginFields(from: loginHTML)
-        guard !fields.antiforgery.isEmpty else {
-            throw MoodleWebserviceError.malformedResponse(
-                detail: "AntiForgery token missing — SSO login page shape changed",
-            )
-        }
-
-        // Step 6: POST credentials to ssoam2.ntust.edu.tw/
-        let postURL = URL(string: fields.action, relativeTo: loginURL)?
-            .absoluteURL ?? ssoBaseURL
-        var postReq = URLRequest(url: postURL)
-        postReq.httpMethod = "POST"
-        postReq.setValue(
-            "application/x-www-form-urlencoded",
-            forHTTPHeaderField: "Content-Type",
+        let (initialData, initialResp) = try await dataTask(
+            session: session,
+            request: URLRequest(url: launchURL),
         )
-        postReq.setValue(loginURL.absoluteString, forHTTPHeaderField: "Referer")
-        postReq.setValue(
-            ssoBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
-            forHTTPHeaderField: "Origin",
-        )
-        postReq.httpBody = urlEncodedForm([
-            "__RequestVerificationToken": fields.antiforgery,
-            "Username": studentId,
-            "Password": password,
-            "captcha": "",
-            "cf-turnstile-response": "",
-            "h-captcha-response": "",
-            "g-recaptcha-response": "",
-            "ClientId": fields.clientId,
-            "ReturnUrl": fields.returnUrl,
-            "Uri": fields.uri,
-        ])
-        let (bridgeData, bridgeResp) = try await dataTask(session: session, request: postReq)
-        try assertOK(response: bridgeResp, data: bridgeData)
-
-        // Landing back on /account/login means credentials were rejected.
-        if let url = (bridgeResp as? HTTPURLResponse)?.url?.absoluteString,
-           url.contains("/account/login") {
-            throw MoodleWebserviceError.invalidCredentials
+        try assertOK(response: initialResp, data: initialData)
+        guard let initialURL = (initialResp as? HTTPURLResponse)?.url else {
+            throw MoodleWebserviceError.malformedResponse(detail: "missing initial response URL")
         }
-
-        // Step 8: POST code/state/iss to moodle2.ntust.edu.tw/auth/oidc/
-        let bridgeHTML = String(data: bridgeData, encoding: .utf8) ?? ""
-        guard let bridge = parseOIDCBridge(from: bridgeHTML) else {
-            throw MoodleWebserviceError.malformedResponse(
-                detail: "OIDC form_post bridge missing after login",
-            )
-        }
-        guard let bridgeActionURL = URL(string: bridge.action) else {
-            throw MoodleWebserviceError.malformedResponse(
-                detail: "invalid bridge action URL",
-            )
-        }
-        var bridgeReq = URLRequest(url: bridgeActionURL)
-        bridgeReq.httpMethod = "POST"
-        bridgeReq.setValue(
-            "application/x-www-form-urlencoded",
-            forHTTPHeaderField: "Content-Type",
-        )
-        bridgeReq.httpBody = urlEncodedForm(bridge.payload)
-        let (finalData, finalResp) = try await dataTask(session: session, request: bridgeReq)
-        try assertOK(response: finalResp, data: finalData)
-
-        // Step 10: extract moodlemobile://token=<base64>
-        let finalHTML = String(data: finalData, encoding: .utf8) ?? ""
-        guard let b64 = extractMoodleMobileToken(from: finalHTML) else {
-            throw MoodleWebserviceError.malformedResponse(
-                detail: "moodlemobile://token= scheme missing from final launch page",
-            )
-        }
-        guard let decodedData = Data(base64Encoded: b64),
-              let decoded = String(data: decodedData, encoding: .ascii) else {
-            throw MoodleWebserviceError.malformedResponse(
-                detail: "failed to base64-decode token triple",
-            )
-        }
-        let parts = decoded.components(separatedBy: ":::")
-        guard parts.count == 3 else {
-            throw MoodleWebserviceError.malformedResponse(
-                detail: "unexpected token triple (got \(parts.count) parts)",
-            )
-        }
-        return TokenTriple(
-            signature: parts[0],
-            wstoken: parts[1],
-            privatetoken: parts[2].isEmpty ? nil : parts[2],
+        return try await resolveTokenTriple(
+            session: session,
+            data: initialData,
+            responseURL: initialURL,
+            studentId: studentId,
+            password: password,
+            remainingSteps: 6,
         )
     }
 
     // MARK: - Networking helper
 
-    private static func dataTask(
+    private nonisolated static func dataTask(
         session: URLSession,
         request: URLRequest,
     ) async throws -> (Data, URLResponse) {
@@ -279,7 +203,7 @@ actor MoodleTokenService {
         }
     }
 
-    private static func assertOK(response: URLResponse, data: Data) throws {
+    private nonisolated static func assertOK(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw MoodleWebserviceError.transientNetwork(
                 underlying: "No HTTP response",
@@ -293,7 +217,11 @@ actor MoodleTokenService {
         }
     }
 
-    private static func urlEncodedForm(_ fields: [String: String]) -> Data? {
+    private nonisolated static func urlEncodedForm(_ fields: [String: String]) -> Data? {
+        urlEncodedForm(fields.map { ($0.key, $0.value) })
+    }
+
+    private nonisolated static func urlEncodedForm(_ fields: [(String, String)]) -> Data? {
         // RFC-3986-unreserved only; anything else gets percent-encoded.
         // Conservative so passwords/tokens with `+ @ & = ? /` etc. are safe.
         let unreserved = CharacterSet(
@@ -323,7 +251,141 @@ actor MoodleTokenService {
         let payload: [String: String]
     }
 
-    private static func parseSSOLoginFields(from html: String) -> SSOLoginFields {
+    private nonisolated static func resolveTokenTriple(
+        session: URLSession,
+        data: Data,
+        responseURL: URL,
+        studentId: String,
+        password: String,
+        remainingSteps: Int,
+    ) async throws -> TokenTriple {
+        guard remainingSteps > 0 else {
+            throw MoodleWebserviceError.malformedResponse(
+                detail: "OIDC flow exceeded maximum step count",
+            )
+        }
+
+        let html = String(data: data, encoding: .utf8) ?? ""
+
+        if let b64 = extractMoodleMobileToken(from: html) {
+            return try decodeTokenTriple(from: b64)
+        }
+
+        if let bridge = parseOIDCBridge(from: html) {
+            guard let bridgeActionURL = URL(string: bridge.action, relativeTo: responseURL)?.absoluteURL else {
+                throw MoodleWebserviceError.malformedResponse(
+                    detail: "invalid bridge action URL",
+                )
+            }
+            var bridgeReq = URLRequest(url: bridgeActionURL)
+            bridgeReq.httpMethod = "POST"
+            bridgeReq.setValue(
+                "application/x-www-form-urlencoded",
+                forHTTPHeaderField: "Content-Type",
+            )
+            bridgeReq.httpBody = urlEncodedForm(bridge.payload)
+            let (nextData, nextResp) = try await dataTask(session: session, request: bridgeReq)
+            try assertOK(response: nextResp, data: nextData)
+            guard let nextURL = (nextResp as? HTTPURLResponse)?.url else {
+                throw MoodleWebserviceError.malformedResponse(detail: "missing bridge response URL")
+            }
+            return try await resolveTokenTriple(
+                session: session,
+                data: nextData,
+                responseURL: nextURL,
+                studentId: studentId,
+                password: password,
+                remainingSteps: remainingSteps - 1,
+            )
+        }
+
+        if responseURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+            let fields = parseSSOLoginFields(from: html)
+            if fields.antiforgery.isEmpty {
+                if responseURL.path.contains("/account/login") {
+                    throw MoodleWebserviceError.ssoLoginRejected(
+                        reason: extractLoginError(from: html),
+                    )
+                }
+                throw MoodleWebserviceError.malformedResponse(
+                    detail: "SSO login form missing anti-forgery token",
+                )
+            }
+
+            let postURL = URL(string: fields.action, relativeTo: responseURL)?
+                .absoluteURL ?? ssoBaseURL
+            var postReq = URLRequest(url: postURL)
+            postReq.httpMethod = "POST"
+            postReq.setValue(
+                "application/x-www-form-urlencoded",
+                forHTTPHeaderField: "Content-Type",
+            )
+            postReq.setValue(responseURL.absoluteString, forHTTPHeaderField: "Referer")
+            postReq.setValue(
+                ssoBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+                forHTTPHeaderField: "Origin",
+            )
+            postReq.httpBody = urlEncodedForm([
+                ("__RequestVerificationToken", fields.antiforgery),
+                ("Username", studentId),
+                ("Password", password),
+                ("captcha", ""),
+                ("cf-turnstile-response", ""),
+                ("h-captcha-response", ""),
+                ("g-recaptcha-response", ""),
+                ("ClientId", fields.clientId),
+                ("ReturnUrl", fields.returnUrl),
+                ("Uri", fields.uri),
+            ])
+            let (nextData, nextResp) = try await dataTask(session: session, request: postReq)
+            try assertOK(response: nextResp, data: nextData)
+            guard let nextURL = (nextResp as? HTTPURLResponse)?.url else {
+                throw MoodleWebserviceError.malformedResponse(detail: "missing login response URL")
+            }
+            let nextHTML = String(data: nextData, encoding: .utf8) ?? ""
+            if nextURL.absoluteString.contains("/account/login"),
+               extractMoodleMobileToken(from: nextHTML) == nil,
+               parseOIDCBridge(from: nextHTML) == nil {
+                throw MoodleWebserviceError.ssoLoginRejected(
+                    reason: extractLoginError(from: nextHTML),
+                )
+            }
+            return try await resolveTokenTriple(
+                session: session,
+                data: nextData,
+                responseURL: nextURL,
+                studentId: studentId,
+                password: password,
+                remainingSteps: remainingSteps - 1,
+            )
+        }
+
+        throw MoodleWebserviceError.malformedResponse(
+            detail: "unexpected OIDC page: \(responseURL.absoluteString)",
+        )
+    }
+
+    private nonisolated static func decodeTokenTriple(from base64Token: String) throws -> TokenTriple {
+        guard let decodedData = Data(base64Encoded: base64Token),
+              let decoded = String(data: decodedData, encoding: .ascii) else {
+            throw MoodleWebserviceError.malformedResponse(
+                detail: "failed to base64-decode token triple",
+            )
+        }
+        let parts = decoded.components(separatedBy: ":::")
+        guard parts.count == 3 else {
+            throw MoodleWebserviceError.malformedResponse(
+                detail: "unexpected token triple (got \(parts.count) parts)",
+            )
+        }
+        return TokenTriple(
+            signature: parts[0],
+            wstoken: parts[1],
+            privatetoken: parts[2].isEmpty ? nil : parts[2],
+        )
+    }
+
+    private nonisolated static func parseSSOLoginFields(from html: String) -> SSOLoginFields {
         let ns = html as NSString
         let range = NSRange(location: 0, length: ns.length)
         let formRe = try! NSRegularExpression(
@@ -352,7 +414,7 @@ actor MoodleTokenService {
         )
     }
 
-    private static func parseOIDCBridge(from html: String) -> OIDCBridge? {
+    private nonisolated static func parseOIDCBridge(from html: String) -> OIDCBridge? {
         let ns = html as NSString
         let range = NSRange(location: 0, length: ns.length)
         let formRe = try! NSRegularExpression(
@@ -364,12 +426,14 @@ actor MoodleTokenService {
             guard let m = match, m.numberOfRanges >= 2 else { return }
             let formFull = ns.substring(with: m.range)
             let formBody = ns.substring(with: m.range(at: 1))
-            guard let action = extractFormAction(from: formFull),
-                  action.contains("moodle2.ntust.edu.tw/auth/oidc") else {
+            guard let action = extractFormAction(from: formFull) else {
                 return
             }
             let payload = extractInputPairs(from: formBody)
-            if payload["code"] != nil
+            let isOidcAction = action.contains("/auth/oidc")
+                || action.contains("moodle2.ntust.edu.tw/auth/oidc")
+            if isOidcAction,
+                payload["code"] != nil
                 && payload["state"] != nil
                 && payload["iss"] != nil {
                 result = OIDCBridge(action: action, payload: payload)
@@ -379,7 +443,36 @@ actor MoodleTokenService {
         return result
     }
 
-    private static func extractFormAction(from formTag: String) -> String? {
+    private nonisolated static func extractLoginError(from html: String) -> String? {
+        let classNames = [
+            "field-validation-error",
+            "validation-summary-errors",
+            "alert-danger",
+            "text-danger",
+        ]
+        for className in classNames {
+            let pattern =
+                #"<[^>]*class=["'][^"']*\b\#(className)\b[^"']*["'][^>]*>([\s\S]*?)</[^>]+>"#
+            let re = try! NSRegularExpression(
+                pattern: pattern,
+                options: [.caseInsensitive],
+            )
+            let ns = html as NSString
+            let range = NSRange(location: 0, length: ns.length)
+            guard let match = re.firstMatch(in: html, options: [], range: range),
+                  match.numberOfRanges >= 2 else {
+                continue
+            }
+            let fragment = ns.substring(with: match.range(at: 1))
+            let text = plainText(fromHTMLFragment: fragment)
+            if !text.isEmpty {
+                return text
+            }
+        }
+        return nil
+    }
+
+    private nonisolated static func extractFormAction(from formTag: String) -> String? {
         let re = try! NSRegularExpression(
             pattern: "<form[^>]*action=[\"']([^\"']+)[\"']",
             options: [.caseInsensitive],
@@ -395,7 +488,7 @@ actor MoodleTokenService {
         return ns.substring(with: m.range(at: 1))
     }
 
-    private static func extractInputNames(from html: String) -> Set<String> {
+    private nonisolated static func extractInputNames(from html: String) -> Set<String> {
         let re = try! NSRegularExpression(
             pattern: "<input[^>]*name=[\"']([^\"']+)[\"']",
             options: [.caseInsensitive],
@@ -413,7 +506,7 @@ actor MoodleTokenService {
         return names
     }
 
-    private static func extractInputPairs(from html: String) -> [String: String] {
+    private nonisolated static func extractInputPairs(from html: String) -> [String: String] {
         let tagRe = try! NSRegularExpression(
             pattern: "<input[^>]*>",
             options: [.caseInsensitive],
@@ -454,7 +547,7 @@ actor MoodleTokenService {
         return out
     }
 
-    private static func extractMoodleMobileToken(from html: String) -> String? {
+    private nonisolated static func extractMoodleMobileToken(from html: String) -> String? {
         let re = try! NSRegularExpression(
             pattern: "moodlemobile://token=([A-Za-z0-9+/=_-]+)",
             options: [],
@@ -470,7 +563,7 @@ actor MoodleTokenService {
         return ns.substring(with: m.range(at: 1))
     }
 
-    private static func decodeHTMLEntities(_ s: String) -> String {
+    private nonisolated static func decodeHTMLEntities(_ s: String) -> String {
         var r = s
         r = r.replacingOccurrences(of: "&amp;", with: "&")
         r = r.replacingOccurrences(of: "&quot;", with: "\"")
@@ -481,5 +574,20 @@ actor MoodleTokenService {
         r = r.replacingOccurrences(of: "&#x27;", with: "'")
         r = r.replacingOccurrences(of: "&#39;", with: "'")
         return r
+    }
+
+    private nonisolated static func plainText(fromHTMLFragment fragment: String) -> String {
+        let withoutTags = fragment.replacingOccurrences(
+            of: "<[^>]+>",
+            with: " ",
+            options: .regularExpression,
+        )
+        let decoded = decodeHTMLEntities(withoutTags)
+        return decoded.replacingOccurrences(
+            of: #"\s+"#,
+            with: " ",
+            options: .regularExpression,
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

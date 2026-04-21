@@ -1,0 +1,2 @@
+37:            KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
+38:            KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)

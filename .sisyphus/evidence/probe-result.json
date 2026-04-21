@@ -1,0 +1,1 @@
+{"error":"\u7570\u5e38-SOAP-ERROR: Parsing WSDL: Couldn't load from 'https:\/\/moodleauth.ntust.edu.tw\/AuthService\/AuthService.asmx?wsdl' : failed to load external entity \"https:\/\/moodleauth.ntust.edu.tw\/AuthService\/AuthService.asmx?wsdl\"\n","errorcode":"generalexceptionmessage","stacktrace":null,"debuginfo":null,"reproductionlink":null}

@@ -151,11 +151,11 @@ struct AddCourseSheet: View {
                 let results: [CourseSearchResult]
                 switch searchMode {
                 case .courseCode:
-                    results = try await CourseService.lookupCourse(
+                    results = try await CourseLookupService.lookupCourse(
                         semester: semester, courseNo: trimmed
                     )
                 case .courseName:
-                    results = try await CourseService.searchCourses(
+                    results = try await CourseLookupService.searchCourses(
                         semester: semester, courseName: trimmed
                     )
                 }
@@ -200,7 +200,7 @@ struct AddCourseSheet: View {
         for result in searchResults {
             let key = result.CourseNo
             if var existing = seen[key] {
-                let partial = CourseService.parseNodeToSchedule(result.Node)
+                let partial = CourseLookupService.parseNodeToSchedule(result.Node)
                 var merged = existing.schedule
                 for (day, periods) in partial {
                     merged[day, default: []].append(contentsOf: periods)
@@ -236,7 +236,7 @@ struct AddCourseSheet: View {
                     classroom: result.ClassRoomNo ?? "",
                     enrolledCount: result.ChooseStudent ?? 0,
                     maxCount: Int(result.Restrict2 ?? "0") ?? 0,
-                    schedule: CourseService.parseNodeToSchedule(result.Node),
+                    schedule: CourseLookupService.parseNodeToSchedule(result.Node),
                     nodeDisplay: result.Node ?? ""
                 )
             }

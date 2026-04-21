@@ -3,15 +3,13 @@ import SwiftUI
 struct WidgetGridView: View {
     @Binding var widgets: [WidgetItem]
     @Binding var isEditing: Bool
+    let dragContainerID: String
     var onRemove: ((WidgetItem) -> Void)? = nil
     var onTap: ((AppFeature) -> Void)? = nil
     var onAdd: (() -> Void)? = nil
     var onReorder: (() -> Void)? = nil
 
-    @State private var draggingWidget: WidgetItem?
-    @State private var dragLocation: CGPoint = .zero
-    @State private var fingerOffset: CGSize = .zero
-    @State private var cellFrames: [String: CGRect] = [:]
+    @State private var activeWidgetDrag: ReorderDragPayload?
     @State private var didReorder = false
 
     private let columns = [
@@ -26,10 +24,23 @@ struct WidgetGridView: View {
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .coordinateSpace(name: "widgetGrid")
-        .onPreferenceChange(WidgetCellFrameKey.self) { cellFrames = $0 }
-        .overlay {
-            floatingCard
+        .onDrop(
+            of: [.tigerDuckReorderPayload],
+            delegate: ReorderContainerDropDelegate(
+                expectedKind: .widget,
+                containerID: dragContainerID,
+                activePayload: $activeWidgetDrag,
+                didReorder: $didReorder,
+                onPersist: { onReorder?() }
+            )
+        )
+        .onChange(of: isEditing) { _, editing in
+            if !editing {
+                finishWidgetDrag()
+            }
+        }
+        .onDisappear {
+            finishWidgetDrag()
         }
     }
 
@@ -40,7 +51,27 @@ struct WidgetGridView: View {
         let card = cardContent(widget)
 
         if isEditing {
-            card.gesture(dragGesture(for: widget))
+            let payload = widgetDragPayload(for: widget)
+            card
+                .draggable(payload) {
+                    WidgetDragPreview(widget: widget)
+                        .onAppear { activeWidgetDrag = payload }
+                }
+                .onDrop(
+                    of: [.tigerDuckReorderPayload],
+                    delegate: ReorderDropDelegate(
+                        targetID: widget.id,
+                        expectedKind: .widget,
+                        containerID: dragContainerID,
+                        activePayload: $activeWidgetDrag,
+                        didReorder: $didReorder,
+                        currentIDs: { widgets.map(\.id) },
+                        moveAction: { fromOffsets, destination in
+                            widgets.move(fromOffsets: fromOffsets, toOffset: destination)
+                        },
+                        onPersist: { onReorder?() }
+                    )
+                )
         } else {
             card
                 .onTapGesture { onTap?(widget.feature) }
@@ -66,93 +97,56 @@ struct WidgetGridView: View {
             }
         }
         .wiggling(isEditing)
-        .opacity(draggingWidget?.id == widget.id ? 0 : 1)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: WidgetCellFrameKey.self,
-                    value: [widget.id: geo.frame(in: .named("widgetGrid"))]
-                )
-            }
+        .opacity(activeWidgetDrag?.id == widget.id ? 0.35 : 1)
+    }
+
+    private func widgetDragPayload(for widget: WidgetItem) -> ReorderDragPayload {
+        ReorderDragPayload(
+            id: widget.id,
+            kind: .widget,
+            containerID: dragContainerID
         )
     }
 
-    // MARK: - Drag gesture
-
-    private func dragGesture(for widget: WidgetItem) -> some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .named("widgetGrid"))
-            .onChanged { value in
-                if draggingWidget == nil {
-                    draggingWidget = widget
-                    if let frame = cellFrames[widget.id] {
-                        fingerOffset = CGSize(
-                            width: value.startLocation.x - frame.midX,
-                            height: value.startLocation.y - frame.midY
-                        )
-                    }
-                    dragLocation = value.location
-                    return
-                }
-                dragLocation = value.location
-                reorderIfNeeded(at: value.location)
-            }
-            .onEnded { _ in
-                withAnimation(.smoothSpring) {
-                    draggingWidget = nil
-                }
-                if didReorder {
-                    onReorder?()
-                    didReorder = false
-                }
-            }
-    }
-
-    // MARK: - Floating card overlay
-
-    @ViewBuilder
-    private var floatingCard: some View {
-        if let dragging = draggingWidget,
-           let frame = cellFrames[dragging.id] {
-            WidgetContainer(feature: dragging.feature, size: dragging.size) {
-                SimpleWidgetContent(feature: dragging.feature, size: dragging.size)
-            }
-            .frame(width: frame.width)
-            .scaleEffect(1.05)
-            .shadow(color: .black.opacity(0.3), radius: 15, x: 0, y: 8)
-            .position(
-                x: dragLocation.x - fingerOffset.width,
-                y: dragLocation.y - fingerOffset.height
-            )
-            .allowsHitTesting(false)
-        }
-    }
-
-    // MARK: - Reorder
-
-    private func reorderIfNeeded(at point: CGPoint) {
-        guard let dragging = draggingWidget,
-              let fromIndex = widgets.firstIndex(where: { $0.id == dragging.id }) else { return }
-
-        for (id, frame) in cellFrames where id != dragging.id {
-            if frame.contains(point),
-               let toIndex = widgets.firstIndex(where: { $0.id == id }) {
-                withAnimation(.smoothSpring) {
-                    widgets.move(fromOffsets: IndexSet(integer: fromIndex),
-                                 toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-                }
-                didReorder = true
-                return
-            }
-        }
+    private func finishWidgetDrag() {
+        ReorderDropSupport.finalizeDrop(
+            activePayload: $activeWidgetDrag,
+            didReorder: $didReorder,
+            onPersist: { onReorder?() }
+        )
     }
 }
 
-// MARK: - Cell frame tracking
+private struct WidgetDragPreview: View {
+    let widget: WidgetItem
 
-private struct WidgetCellFrameKey: PreferenceKey {
-    static var defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { $1 })
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Image(systemName: widget.feature.iconName)
+                .font(.title3)
+                .foregroundStyle(Color.accentPrimary)
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(widget.feature.displayName)
+                    .font(TigerDuckTheme.Typography.headline)
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+
+                Text(widget.size.rawValue.capitalized)
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(TigerDuckTheme.Spacing.lg)
+        .frame(width: 220, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
+        )
     }
 }
 

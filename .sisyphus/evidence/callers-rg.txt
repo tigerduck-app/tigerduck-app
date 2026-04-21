@@ -1,0 +1,2 @@
+/Users/xinshou/IdeaProjects/TigerDuck/swift/TigerDuck/App/NTUSTLoginSheetHost.swift:28:                        if appState.isNTUSTLoggedIn {
+/Users/xinshou/IdeaProjects/TigerDuck/swift/TigerDuck/Features/Settings/SettingsView.swift:281:            isLoggedIn: appState.isNTUSTLoggedIn,
