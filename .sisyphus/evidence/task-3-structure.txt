@@ -1,0 +1,6 @@
+4:    case invalidToken
+5:    case invalidCredentials
+6:    case webserviceDisabled
+7:    case transientNetwork(underlying: String)
+8:    case malformedResponse(detail: String)
+9:    case httpStatus(code: Int)

@@ -104,7 +104,7 @@ final class CalendarViewModel {
     }
 
     private func fetchMoodleEvents(authService: AuthService) async -> [SDCalendarEvent] {
-        let assignments = await KMPServiceBridge.fetchAssignments(authService: authService)
+        let assignments = await AppServiceBridge.fetchAssignments(authService: authService)
         return assignments.map { assignment in
             SDCalendarEvent(
                 eventId: "moodle-\(assignment.assignmentId)",

@@ -314,11 +314,11 @@ final class ClassTableViewModel {
         // latest enrolment" gesture — bust the CourseService cache so
         // add/drop shows up immediately instead of waiting out the 24h
         // TTL that absorbs cheaper background refreshes.
-        async let coursesTask = KMPServiceBridge.fetchCourses(
+        async let coursesTask = AppServiceBridge.fetchCourses(
             authService: authService,
             forceRefresh: true,
         )
-        async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+        async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService)
 
         let fetchedCourses = await coursesTask
         let fetchedAssignments = await assignmentsTask

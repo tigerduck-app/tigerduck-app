@@ -154,7 +154,7 @@ final class AppState {
     /// a different user) never inherits previous state on the lock screen or
     /// in notifications.
     ///
-    /// `syncTask` is cancelled first so that `KMPServiceBridge` and the
+    /// `syncTask` is cancelled first so that `AppServiceBridge` and the
     /// `backgroundSync` finalize block — both of which check
     /// `Task.isCancelled` before writing — abort cleanly rather than racing
     /// the cache purge below and resurrecting the previous user's data.
@@ -438,7 +438,7 @@ final class AppState {
 
             sessionManager.loadingState = .loading
 
-            async let assignmentsTask = KMPServiceBridge.fetchAssignments(authService: authService)
+            async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService)
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
             async let coursesTask: Bool = syncCoursesIfAuthenticated()
 
@@ -477,7 +477,7 @@ final class AppState {
     /// can use it as an `async let` value.
     private func syncCoursesIfAuthenticated() async -> Bool {
         guard await authService.ensureAuthenticated() else { return false }
-        _ = await KMPServiceBridge.fetchCourses(authService: authService)
+        _ = await AppServiceBridge.fetchCourses(authService: authService)
         return true
     }
 }

@@ -110,7 +110,7 @@ final class HomeViewModel {
         // `forceRefresh: true`); Home reads it via courseProvider. This
         // avoids paying the 3–5s NTUST SSO round-trip whenever the user
         // just wants to see if any new assignments landed.
-        let fetchedAssignments = await KMPServiceBridge.fetchAssignments(authService: authService)
+        let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
         let upcoming = fetchedAssignments.upcomingSorted()
 
         let allCourses = courseProvider.currentCourses()

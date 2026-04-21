@@ -1,0 +1,6 @@
+swift/TigerDuck/Services/Network/HTMLParser.swift:2:import SwiftSoup
+swift/TigerDuck/Services/Network/HTMLParser.swift:17:        guard let doc = try? SwiftSoup.parse(html) else { return false }
+swift/TigerDuck/Services/Network/HTMLParser.swift:26:        guard let doc = try? SwiftSoup.parse(html),
+swift/TigerDuck/Services/Network/HTMLParser.swift:42:        guard let doc = try? SwiftSoup.parse(html),
+swift/TigerDuck/Services/Network/HTMLParser.swift:69:        guard let doc = try? SwiftSoup.parse(html) else { return [] }
+swift/TigerDuck/Services/Network/CourseService.swift:25:    private static let courseNoRegex = /<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*<\/td>/

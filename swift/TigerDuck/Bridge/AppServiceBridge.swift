@@ -13,7 +13,7 @@ private struct CourseData: Sendable {
     let classroomMap: [String: String]
 }
 
-enum KMPServiceBridge {
+enum AppServiceBridge {
 
     /// Fetch and enrich enrolled courses.
     ///
