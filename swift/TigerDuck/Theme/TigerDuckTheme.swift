@@ -53,14 +53,19 @@ enum TigerDuckTheme {
         Color(hex: 0x2980B9), // 鈷藍
     ]
 
-    /// Deterministic color assignment: sorted course list → each gets a unique color index
+    /// Cache mapping courseNo → Color. Populated lazily and purely as a
+    /// lookup optimization — values are derived from `courseColor(for:)`
+    /// and never depend on which other courses are in the current list.
     private(set) static var courseColorMap: [String: Color] = [:]
 
+    /// Populate / refresh the color cache for the given courses. Colors are a
+    /// pure function of `courseNo`, so reloading the same (or a different)
+    /// semester never reshuffles already-seen courses. New entries are added;
+    /// existing entries are kept as-is.
     static func buildCourseColorMap(courseNos: [String]) {
-        let sorted = courseNos.sorted()
-        var map: [String: Color] = [:]
-        for (index, courseNo) in sorted.enumerated() {
-            map[courseNo] = courseColors[index % courseColors.count]
+        var map = courseColorMap
+        for courseNo in courseNos where map[courseNo] == nil {
+            map[courseNo] = stableColor(for: courseNo)
         }
         courseColorMap = map
     }
@@ -69,7 +74,12 @@ enum TigerDuckTheme {
         if let color = courseColorMap[courseNo] {
             return color
         }
-        // Fallback: deterministic hash (stable across launches, unlike String.hashValue)
+        return stableColor(for: courseNo)
+    }
+
+    /// Deterministic hash → palette index. Stable across launches and
+    /// independent of the surrounding course list.
+    private static func stableColor(for courseNo: String) -> Color {
         let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
         return courseColors[abs(hash) % courseColors.count]
     }
