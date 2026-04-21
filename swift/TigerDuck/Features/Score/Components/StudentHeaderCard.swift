@@ -23,7 +23,7 @@ struct StudentHeaderCard: View {
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                 if !currentTerm.isEmpty {
-                    Text("目前學期 · \(formatTerm(currentTerm))")
+                    Text(formatTerm(currentTerm))
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
                 }
@@ -40,6 +40,6 @@ struct StudentHeaderCard: View {
         let year = String(code.prefix(3))
         let semester = String(code.suffix(1))
         let label = semester == "1" ? "上" : semester == "2" ? "下" : semester
-        return "\(year) 學年度 \(label)學期"
+        return "\(year) 學年度 · \(label)學期"
     }
 }

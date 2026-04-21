@@ -22,12 +22,6 @@ struct CreditSummaryBento: View {
                     accent: Color(hex: 0x45B7D1)
                 )
             }
-            tile(
-                label: "合計",
-                breakdown: summary.total,
-                accent: Color(hex: 0xF39C12),
-                wide: true
-            )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
@@ -53,10 +47,10 @@ struct CreditSummaryBento: View {
                     .foregroundStyle(Color.textSecondary)
             }
 
-            HStack(spacing: TigerDuckTheme.Spacing.xs) {
-                breakdownPill(icon: "person.fill", value: breakdown.inPerson, suffix: "實體")
-                breakdownPill(icon: "dot.radiowaves.left.and.right", value: breakdown.distance, suffix: "遠距")
-            }
+//            HStack(spacing: TigerDuckTheme.Spacing.xs) {
+//                breakdownPill(icon: "person.fill", value: breakdown.inPerson, suffix: "實體")
+//                breakdownPill(icon: "dot.radiowaves.left.and.right", value: breakdown.distance, suffix: "遠距")
+//            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(TigerDuckTheme.Spacing.md)

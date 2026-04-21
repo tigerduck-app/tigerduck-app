@@ -46,13 +46,13 @@ struct SemesterSection: View {
                     HStack(spacing: TigerDuckTheme.Spacing.sm) {
                         statPill(
                             icon: "number",
-                            text: "\(courses.count) 門 · \(totalCredits) 學分"
+                            text: "\(totalCredits) 學分"
                         )
                         if let gpa = ranking?.semester.gpa {
                             statPill(icon: "chart.bar", text: String(format: "GPA %.2f", gpa))
                         }
-                        if let rank = ranking?.semester.classRank {
-                            statPill(icon: "person.2", text: "班 \(rank)")
+                        if let classRank = ranking?.semester.classRank, let deptRank = ranking?.semester.deptRank {
+                            statPill(icon: "person.2", text: "排名 \(deptRank) (\(classRank))")
                         }
                     }
                 }

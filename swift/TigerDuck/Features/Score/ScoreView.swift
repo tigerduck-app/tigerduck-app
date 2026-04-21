@@ -99,41 +99,20 @@ struct ScoreView: View {
             )
         )
 
-        FilterBar(
-            searchText: Binding(
-                get: { viewModel.searchText },
-                set: { viewModel.searchText = $0 }
-            ),
-            statusFilter: Binding(
-                get: { viewModel.statusFilter },
-                set: { viewModel.statusFilter = $0 }
-            )
-        )
-
-        let groups = viewModel.groupedCourses
-        if groups.isEmpty {
-            EmptyStateView(
-                icon: "line.3.horizontal.decrease.circle",
-                title: "找不到符合條件的課程",
-                message: "試著調整搜尋字或狀態篩選"
-            )
-            .padding(.vertical, TigerDuckTheme.Spacing.xl)
-        } else {
-            LazyVStack(spacing: TigerDuckTheme.Spacing.md) {
-                ForEach(groups, id: \.term) { group in
-                    SemesterSection(
-                        term: group.term,
-                        courses: group.courses,
-                        ranking: viewModel.ranking(for: group.term),
-                        isCollapsed: viewModel.isCollapsed(term: group.term),
-                        onToggle: {
-                            withAnimation(.smoothSpring) {
-                                viewModel.toggleCollapse(term: group.term)
-                            }
-                        },
-                        onCourseTap: { selectedCourse = $0 }
-                    )
-                }
+        LazyVStack(spacing: TigerDuckTheme.Spacing.md) {
+            ForEach(viewModel.groupedCourses, id: \.term) { group in
+                SemesterSection(
+                    term: group.term,
+                    courses: group.courses,
+                    ranking: viewModel.ranking(for: group.term),
+                    isCollapsed: viewModel.isCollapsed(term: group.term),
+                    onToggle: {
+                        withAnimation(.smoothSpring) {
+                            viewModel.toggleCollapse(term: group.term)
+                        }
+                    },
+                    onCourseTap: { selectedCourse = $0 }
+                )
             }
         }
     }

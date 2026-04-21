@@ -5,26 +5,6 @@ import SwiftUI
 @MainActor
 final class ScoreViewModel {
 
-    enum StatusFilter: String, CaseIterable, Identifiable {
-        case all
-        case graded
-        case pending
-        case exempted
-        case withdrew
-
-        var id: String { rawValue }
-
-        var displayName: String {
-            switch self {
-            case .all:      return "全部"
-            case .graded:   return "已評定"
-            case .pending:  return "成績未到"
-            case .exempted: return "抵免"
-            case .withdrew: return "退選"
-            }
-        }
-    }
-
     enum RankingScope: String, CaseIterable, Identifiable {
         case semester
         case cumulative
@@ -46,8 +26,6 @@ final class ScoreViewModel {
     private(set) var isRefreshing = false
     private(set) var errorMessage: String?
 
-    var searchText: String = ""
-    var statusFilter: StatusFilter = .all
     var rankingScope: RankingScope = .semester
 
     /// Semesters the user manually collapsed. Lazy default rule: most recent
@@ -58,11 +36,9 @@ final class ScoreViewModel {
 
     // MARK: - Derived state
 
-    /// Courses grouped by term, sorted newest-first. Filtering respects
-    /// search + status chip.
+    /// Courses grouped by term, sorted newest-first.
     var groupedCourses: [(term: String, courses: [CourseGrade])] {
-        let filtered = filteredCourses()
-        let groups = Dictionary(grouping: filtered, by: \.term)
+        let groups = Dictionary(grouping: report.courses, by: \.term)
         return groups
             .map { (term: $0.key, courses: $0.value.sorted { ($0.index ?? 0) < ($1.index ?? 0) }) }
             .sorted { $0.term > $1.term }
@@ -148,27 +124,6 @@ final class ScoreViewModel {
     }
 
     // MARK: - Private
-
-    private func filteredCourses() -> [CourseGrade] {
-        var result = report.courses
-
-        switch statusFilter {
-        case .all: break
-        case .graded:   result = result.filter { $0.status == .graded }
-        case .pending:  result = result.filter { $0.status == .pending }
-        case .exempted: result = result.filter { $0.status == .exempted }
-        case .withdrew: result = result.filter { $0.status == .withdrew }
-        }
-
-        let query = searchText.trimmingCharacters(in: .whitespaces)
-        if !query.isEmpty {
-            result = result.filter {
-                $0.name.localizedCaseInsensitiveContains(query) ||
-                $0.code.localizedCaseInsensitiveContains(query)
-            }
-        }
-        return result
-    }
 
     /// Collapse every term except the most recent the first time data lands.
     /// Re-running is idempotent when the user has already flipped a term.
