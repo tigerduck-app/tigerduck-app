@@ -119,6 +119,42 @@ final class DataCache {
         load(from: "course_custom_colors.json", in: persistentDir) ?? [:]
     }
 
+    // MARK: - Score Report (per-student)
+
+    /// Cache envelope that remembers when the payload was captured so callers
+    /// can enforce TTL without threading a separate timestamp through
+    /// `UserDefaults`.
+    private struct CachedScoreReport: Codable {
+        let report: ScoreReport
+        let cachedAt: TimeInterval
+    }
+
+    func saveScoreReport(_ report: ScoreReport, studentId: String) {
+        let envelope = CachedScoreReport(
+            report: report,
+            cachedAt: Date().timeIntervalSince1970
+        )
+        save(envelope, to: scoreReportFilename(studentId))
+    }
+
+    /// Returns the cached report together with the moment it was captured, so
+    /// the caller can decide whether to honor a stale-while-revalidate window
+    /// or force a refetch.
+    func loadScoreReport(studentId: String) -> (report: ScoreReport, cachedAt: Date)? {
+        let envelope: CachedScoreReport? = load(from: scoreReportFilename(studentId))
+        guard let envelope else { return nil }
+        return (envelope.report, Date(timeIntervalSince1970: envelope.cachedAt))
+    }
+
+    func invalidateScoreReport(studentId: String) {
+        let url = cacheDir.appendingPathComponent(scoreReportFilename(studentId))
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private func scoreReportFilename(_ studentId: String) -> String {
+        "score_report_\(studentId).json"
+    }
+
     // MARK: - User-scoped cleanup
 
     /// Remove every file that is scoped to the currently signed-in NTUST user.
@@ -153,8 +189,11 @@ final class DataCache {
             at: cacheDir,
             includingPropertiesForKeys: nil
         )) ?? []
-        for url in cacheContents where url.lastPathComponent.hasPrefix("courses_") && url.pathExtension == "json" {
-            try? FileManager.default.removeItem(at: url)
+        for url in cacheContents where url.pathExtension == "json" {
+            let name = url.lastPathComponent
+            if name.hasPrefix("courses_") || name.hasPrefix("score_report_") {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
 

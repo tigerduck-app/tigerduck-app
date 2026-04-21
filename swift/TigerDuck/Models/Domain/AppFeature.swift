@@ -39,7 +39,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .calendar: "行事曆"
         case .announcements: "公告"
         case .library: "圖書館"
-        case .gpa: "GPA 查詢"
+        case .gpa: "歷年成績"
         case .courseSelection: "選課系統"
         case .graduationRequirements: "畢業門檻"
         case .discussionRoom: "討論小間"
@@ -78,7 +78,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     var isImplemented: Bool {
         switch self {
-        case .home, .classTable, .calendar, .library, .announcements:
+        case .home, .classTable, .calendar, .library, .announcements, .gpa:
             return true
         default:
             return false

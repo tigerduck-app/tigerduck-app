@@ -211,6 +211,7 @@ struct HomeView: View {
         case .classTable: ClassTableView(embedded: true)
         case .calendar: CalendarTabView(embedded: true)
         case .library: LibraryView(embedded: true)
+        case .gpa: ScoreView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)
         }
     }

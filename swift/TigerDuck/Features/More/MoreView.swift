@@ -78,6 +78,7 @@ struct MoreView: View {
         case .calendar: CalendarTabView(embedded: true)
         case .announcements: AnnouncementsView(embedded: true)
         case .library: LibraryView(embedded: true)
+        case .gpa: ScoreView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)
         }
     }
