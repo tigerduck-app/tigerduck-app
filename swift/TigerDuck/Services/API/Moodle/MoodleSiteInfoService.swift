@@ -50,47 +50,57 @@ actor MoodleSiteInfoService {
     }
 
     private func fetchSiteInfo() async throws -> [String: Any] {
-        let token: String
-        if let currentToken = await MoodleTokenService.shared.currentToken() {
-            token = currentToken
-        } else {
-            token = try await MoodleTokenService.shared.refreshTokenIfNeeded()
+        let tokenService = MoodleTokenService.shared
+
+        func requestSiteInfo(using token: String) async throws -> [String: Any] {
+            var components = URLComponents(url: Self.siteBaseURL, resolvingAgainstBaseURL: false)!
+            components.path = "/webservice/rest/server.php"
+            components.queryItems = [
+                URLQueryItem(name: "moodlewsrestformat", value: "json"),
+                URLQueryItem(name: "wsfunction", value: "core_webservice_get_site_info"),
+                URLQueryItem(name: "wstoken", value: token),
+            ]
+
+            guard let url = components.url else {
+                throw MoodleWebserviceError.malformedResponse(detail: "invalid site_info URL")
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await Self.webserviceSession.data(for: request)
+            } catch let urlError as URLError {
+                throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
+            }
+
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                throw MoodleWebserviceError.httpStatus(code: (response as? HTTPURLResponse)?.statusCode ?? 0)
+            }
+
+            if let moodleError = MoodleWebserviceError.from(jsonData: data) {
+                throw moodleError
+            }
+
+            guard let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw MoodleWebserviceError.malformedResponse(detail: "site_info response not a JSON object")
+            }
+
+            return dict
         }
 
-        var components = URLComponents(url: Self.siteBaseURL, resolvingAgainstBaseURL: false)!
-        components.path = "/webservice/rest/server.php"
-        components.queryItems = [
-            URLQueryItem(name: "moodlewsrestformat", value: "json"),
-            URLQueryItem(name: "wsfunction", value: "core_webservice_get_site_info"),
-            URLQueryItem(name: "wstoken", value: token),
-        ]
-
-        guard let url = components.url else {
-            throw MoodleWebserviceError.malformedResponse(detail: "invalid site_info URL")
+        if let currentToken = await tokenService.currentToken() {
+            do {
+                return try await requestSiteInfo(using: currentToken)
+            } catch MoodleWebserviceError.invalidToken {
+                await tokenService.clearToken()
+                let refreshedToken = try await tokenService.refreshTokenIfNeeded()
+                return try await requestSiteInfo(using: refreshedToken)
+            }
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await Self.webserviceSession.data(for: request)
-        } catch let urlError as URLError {
-            throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw MoodleWebserviceError.httpStatus(code: (response as? HTTPURLResponse)?.statusCode ?? 0)
-        }
-
-        if let moodleError = MoodleWebserviceError.from(jsonData: data) {
-            throw moodleError
-        }
-
-        guard let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw MoodleWebserviceError.malformedResponse(detail: "site_info response not a JSON object")
-        }
-
-        return dict
+        let refreshedToken = try await tokenService.refreshTokenIfNeeded()
+        return try await requestSiteInfo(using: refreshedToken)
     }
 }
