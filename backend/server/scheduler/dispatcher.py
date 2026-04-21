@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from server.config import Settings
 from server.models import DeviceRegistration, PushStatus, ScheduledPush
 from server.push.apns_client import PushSender, SendResult
-from server.push.payload import ApnsRequest, build_apns_request
+from server.push.payload import ApnsRequest, _countdown_target_unix, build_apns_request
 
 logger = structlog.get_logger(__name__)
 
@@ -71,6 +71,21 @@ async def dispatch_due_pushes(
 
         for push, device in rows:
             dispatched += 1
+
+            # Fix #5: skip pushes whose underlying event moment has already
+            # passed. Sending them would waste a round-trip on Apple that
+            # APNs drops anyway (apns-expiration = countdownTarget). Mark
+            # cancelled so monitoring counts them correctly.
+            countdown_unix = _countdown_target_unix(push.payload_json)
+            if countdown_unix is not None and countdown_unix < int(ts.timestamp()):
+                await _mark_cancelled(
+                    session,
+                    push,
+                    reason=f"event_expired countdownTarget={countdown_unix}",
+                )
+                cancelled += 1
+                continue
+
             try:
                 request = build_apns_request(
                     device_token=device.pts_token_hex,

@@ -182,6 +182,53 @@ async def test_transient_failure_bumps_attempts_then_fails(
     assert attempts == 3
 
 
+async def test_expired_event_is_cancelled_not_sent(
+    client: AsyncClient, prepared_engine: AsyncEngine, test_settings: Settings
+):
+    """Fix #5: if the snapshot's countdownTarget is already past, don't waste
+    an APNs call — APNs would drop it anyway (apns-expiration=countdownTarget).
+    Mark as cancelled so monitoring counts it correctly."""
+    await _register_device(client)
+    factory = build_session_factory(prepared_engine)
+
+    now = datetime.now(timezone.utc)
+    past = now - timedelta(minutes=30)
+    push_id = build_push_id(DEVICE_ID, "slot-past", "inClass")
+
+    # Seed a push whose countdownTarget is already 30 min in the past
+    async with factory() as s:
+        push = ScheduledPush(
+            push_id=push_id,
+            device_id=DEVICE_ID,
+            source_id="slot-past",
+            scenario="inClass",
+            fire_at=now,  # fire_at due
+            payload_json={
+                "scenario": "inClass",
+                "title": "Stale",
+                "subtitle": "09:10-10:00",
+                "sourceId": "slot-past",
+                "countdownTarget": past.isoformat(),
+            },
+            status=PushStatus.pending.value,
+            attempts=0,
+        )
+        s.add(push)
+        await s.commit()
+
+    sender = RecordingSender()
+    outcome = await dispatch_due_pushes(factory, sender, test_settings, now=now)
+
+    assert outcome.cancelled == 1
+    assert outcome.sent == 0
+    # No APNs call should have happened
+    assert sender.requests == []
+
+    status, _, err = await _status_of(factory, push_id)
+    assert status == PushStatus.cancelled.value
+    assert "event_expired" in (err or "")
+
+
 async def test_bad_token_prunes_device_and_cancels(
     client: AsyncClient, prepared_engine: AsyncEngine, test_settings: Settings
 ):
