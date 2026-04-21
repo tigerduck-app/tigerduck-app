@@ -83,37 +83,72 @@ def test_alert_reflects_scenario(scenario, expected_title_prefix):
 
 def test_build_apns_request_headers():
     fire_at = FIXED_NOW + timedelta(minutes=15)
+    # countdownTarget = class start at 02:10 UTC → Unix 1776830400
+    class_start_iso = "2026-04-22T02:10:00+00:00"
+    snapshot = _sample_snapshot(countdownTarget=class_start_iso)
     request = build_apns_request(
         device_token="aabbccdd" * 8,
         bundle_id="org.ntust.app.TigerDuck",
         scenario=SCENARIO_CLASS_PREPARING,
         source_id="slot-42",
         fire_at=fire_at,
-        snapshot=_sample_snapshot(),
+        snapshot=snapshot,
         now=FIXED_NOW,
     )
     # topic MUST have the .push-type.liveactivity suffix or APNs rejects
     assert request.topic == "org.ntust.app.TigerDuck.push-type.liveactivity"
     assert request.priority == 10
-    # expiration = fire_at + slack
-    assert request.expiration == int(fire_at.timestamp()) + 60
+    # Fix #3: expiration = Unix seconds of snapshot.countdownTarget (event moment)
+    assert request.expiration == int(
+        datetime.fromisoformat(class_start_iso).timestamp()
+    )
     assert request.message["aps"]["event"] == "start"
     assert request.message["aps"]["attributes"]["activityId"] == "classPreparing::slot-42"
 
 
-def test_expiration_slack_customizable():
+def test_expiration_falls_back_to_fire_at_slack_when_no_countdown():
+    """If snapshot is missing countdownTarget, use fire_at + slack."""
     fire_at = FIXED_NOW + timedelta(minutes=15)
+    snapshot = _sample_snapshot(countdownTarget=None)
     request = build_apns_request(
         device_token="t" * 64,
         bundle_id="org.ntust.app.TigerDuck",
         scenario=SCENARIO_IN_CLASS,
         source_id="slot-42",
         fire_at=fire_at,
-        snapshot=_sample_snapshot(),
+        snapshot=snapshot,
         expiration_slack_seconds=300,
         now=FIXED_NOW,
     )
     assert request.expiration == int(fire_at.timestamp()) + 300
+
+
+def test_dismissal_date_set_when_countdown_present():
+    """Fix #4: iOS auto-ends the Live Activity at countdownTarget."""
+    class_start_iso = "2026-04-22T02:10:00+00:00"
+    snapshot = _sample_snapshot(countdownTarget=class_start_iso)
+    payload = build_pts_payload(
+        scenario=SCENARIO_CLASS_PREPARING,
+        source_id="slot-42",
+        snapshot=snapshot,
+        now=FIXED_NOW,
+    )
+    aps = payload["aps"]
+    assert "dismissal-date" in aps
+    assert aps["dismissal-date"] == int(
+        datetime.fromisoformat(class_start_iso).timestamp()
+    )
+
+
+def test_dismissal_date_absent_when_countdown_missing():
+    snapshot = _sample_snapshot(countdownTarget=None)
+    payload = build_pts_payload(
+        scenario=SCENARIO_IN_CLASS,
+        source_id="slot-42",
+        snapshot=snapshot,
+        now=FIXED_NOW,
+    )
+    assert "dismissal-date" not in payload["aps"]
 
 
 def test_date_fields_normalized_to_swift_reference_seconds():

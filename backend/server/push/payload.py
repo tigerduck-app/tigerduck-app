@@ -112,6 +112,30 @@ def composed_activity_id(scenario: str, source_id: str) -> str:
     return f"{scenario}::{source_id}"
 
 
+def _countdown_target_unix(snapshot: dict[str, Any]) -> int | None:
+    """Extract `countdownTarget` from the stored snapshot as Unix seconds.
+
+    The snapshot may hold it as an ISO8601 string (fresh from client) or a
+    Double (already normalized). Return None if the value is missing or
+    unparseable — the caller decides the fallback.
+    """
+    value = snapshot.get("countdownTarget")
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        # Already in Swift reference seconds post-normalization
+        return int(float(value) + _SWIFT_REFERENCE_EPOCH)
+    if isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    return None
+
+
 def build_pts_payload(
     scenario: str,
     source_id: str,
@@ -122,16 +146,22 @@ def build_pts_payload(
     """Construct the `aps` payload for a Push-to-Start."""
     timestamp = int((now or datetime.now(timezone.utc)).timestamp())
     normalized_snapshot = _normalize_snapshot_for_apns(snapshot)
-    return {
-        "aps": {
-            "timestamp": timestamp,
-            "event": "start",
-            "attributes-type": attrs_type,
-            "attributes": {"activityId": composed_activity_id(scenario, source_id)},
-            "content-state": {"snapshot": normalized_snapshot},
-            "alert": _alert_for(scenario, snapshot),
-        }
+    aps: dict[str, Any] = {
+        "timestamp": timestamp,
+        "event": "start",
+        "attributes-type": attrs_type,
+        "attributes": {"activityId": composed_activity_id(scenario, source_id)},
+        "content-state": {"snapshot": normalized_snapshot},
+        "alert": _alert_for(scenario, snapshot),
     }
+    # Fix #4: auto-dismiss the Live Activity when the countdown target is
+    # reached. For classPreparing, this means the activity disappears at
+    # slot.start — so when the inClass PTS arrives there's no leftover
+    # activity to collide with. Apple expects Unix seconds.
+    dismissal_unix = _countdown_target_unix(snapshot)
+    if dismissal_unix is not None:
+        aps["dismissal-date"] = dismissal_unix
+    return {"aps": aps}
 
 
 def build_apns_request(
@@ -148,11 +178,19 @@ def build_apns_request(
 ) -> ApnsRequest:
     """Bundle everything the APNs client needs to send one PTS push.
 
-    `expiration_slack_seconds`: if the device is offline past fire_at + slack,
-    APNs discards the push. Keeps stale Live Activities from popping up hours late.
+    Fix #3: `apns-expiration` defaults to `snapshot.countdownTarget`
+    (= the event moment — class start / class end / due date). That is
+    the point past which the push is *meaningfully* stale; before then,
+    if the phone was briefly offline and comes online, APNs should still
+    deliver. Fallback to `fire_at + expiration_slack_seconds` only when
+    countdownTarget is absent.
     """
     topic = f"{bundle_id}.push-type.liveactivity"
-    expiration = int(fire_at.timestamp()) + expiration_slack_seconds
+    countdown_unix = _countdown_target_unix(snapshot)
+    if countdown_unix is not None:
+        expiration = countdown_unix
+    else:
+        expiration = int(fire_at.timestamp()) + expiration_slack_seconds
     message = build_pts_payload(
         scenario=scenario,
         source_id=source_id,
