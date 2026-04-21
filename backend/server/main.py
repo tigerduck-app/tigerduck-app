@@ -9,6 +9,7 @@ import structlog
 from fastapi import FastAPI
 
 from server.config import Settings, get_settings
+from server.db import build_engine, build_session_factory
 from server.logging_setup import configure as configure_logging
 
 logger = structlog.get_logger(__name__)
@@ -24,9 +25,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         apns_env=settings.apns_env,
         apns_topic=settings.apns_topic_live_activity,
     )
-    # DB engine, scheduler, APNs client will be wired in later checkpoints.
-    yield
-    logger.info("server.shutdown")
+
+    engine = build_engine(settings)
+    app.state.engine = engine
+    app.state.session_factory = build_session_factory(engine)
+
+    try:
+        yield
+    finally:
+        await engine.dispose()
+        logger.info("server.shutdown")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
