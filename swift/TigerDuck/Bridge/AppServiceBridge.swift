@@ -65,6 +65,8 @@ enum AppServiceBridge {
         let currentSemester = CourseSelectionService.currentSemesterCode()
         let isCurrentSemester = semester == currentSemester
 
+        guard !Task.isCancelled else { return [] }
+
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
             return DataCache.shared.loadCourses(semester: semester)
@@ -360,6 +362,7 @@ enum AppServiceBridge {
 
             let freshAssignments: [SDAssignment] = records.compactMap { record in
                 guard let dueDate = record.dueDate else { return nil }
+                guard !record.noSubmissions else { return nil }
 
                 let moodleCourse = moodleCoursesById[record.courseId]
                 let status = statuses[record.assignId]

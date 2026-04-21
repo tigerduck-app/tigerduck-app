@@ -58,10 +58,7 @@ actor MoodleTokenService {
             return triple.wstoken
         }
         inFlightTokenTask = task
-        defer {
-            task.cancel()
-            inFlightTokenTask = nil
-        }
+        defer { inFlightTokenTask = nil }
         return try await task.value
     }
 
@@ -89,10 +86,7 @@ actor MoodleTokenService {
             return triple.wstoken
         }
         inFlightRefreshTask = task
-        defer {
-            task.cancel()
-            inFlightRefreshTask = nil
-        }
+        defer { inFlightRefreshTask = nil }
         return try await task.value
     }
 

@@ -140,7 +140,7 @@ struct UpcomingAssignmentsView: View {
     }
 
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        if showAbsoluteTime {
+        if showAbsoluteTime || (assignment.isCompleted && assignment.dueDate < now) {
             return assignment.dueDate.absoluteTimeString
         } else {
             return assignment.dueDate.relativeTimeString(from: now)
