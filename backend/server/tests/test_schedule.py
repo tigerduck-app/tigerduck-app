@@ -129,6 +129,74 @@ async def test_sync_replaces_previous_events(client: AsyncClient):
     assert body["total_pending"] == 1
 
 
+async def test_resync_does_not_revive_already_sent_push(
+    client: AsyncClient, prepared_engine
+):
+    """Audit finding N2: a re-sync after delivery must not re-fire the push.
+
+    Reproduce: register, sync 1 push, mark it sent in-DB (simulating
+    dispatcher delivery), then re-sync with the same push_id. The row
+    must stay `status=sent`.
+    """
+    from sqlalchemy import update as sa_update
+
+    from server.db import build_session_factory
+    from server.models import PushStatus, ScheduledPush, build_push_id
+
+    await _register(client)
+    fire = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+    await client.post(
+        "/v1/schedule/sync",
+        json={
+            "device_id": DEVICE_ID,
+            "events": [
+                {
+                    "source_id": "slot-sent",
+                    "scenario": "classPreparing",
+                    "fire_at": _iso(fire),
+                    "snapshot": _snapshot("A"),
+                },
+            ],
+        },
+    )
+
+    push_id = build_push_id(DEVICE_ID, "slot-sent", "classPreparing")
+    factory = build_session_factory(prepared_engine)
+
+    # Simulate dispatcher marking this push as delivered
+    async with factory() as s:
+        await s.execute(
+            sa_update(ScheduledPush)
+            .where(ScheduledPush.push_id == push_id)
+            .values(status=PushStatus.sent.value)
+        )
+        await s.commit()
+
+    # Re-sync — same push_id, same content. Must NOT flip status back.
+    await client.post(
+        "/v1/schedule/sync",
+        json={
+            "device_id": DEVICE_ID,
+            "events": [
+                {
+                    "source_id": "slot-sent",
+                    "scenario": "classPreparing",
+                    "fire_at": _iso(fire),
+                    "snapshot": _snapshot("A"),
+                },
+            ],
+        },
+    )
+
+    async with factory() as s:
+        row = await s.get(ScheduledPush, push_id)
+        assert row is not None
+        assert row.status == PushStatus.sent.value, (
+            f"expected sent after re-sync, got {row.status}"
+        )
+
+
 async def test_cancel_by_source_removes_all_scenarios(client: AsyncClient):
     await _register(client)
     fire = datetime.now(timezone.utc) + timedelta(hours=2)

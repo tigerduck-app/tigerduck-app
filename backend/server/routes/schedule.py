@@ -46,31 +46,33 @@ async def sync_schedule(
         )
         incoming_push_ids.add(push_id)
 
-        stmt = (
-            pg_insert(ScheduledPush)
-            .values(
-                push_id=push_id,
-                device_id=payload.device_id,
-                source_id=event.source_id,
-                scenario=event.scenario.value,
-                fire_at=event.fire_at,
-                payload_json=event.snapshot,
-                status=PushStatus.pending.value,
-                attempts=0,
-                last_error=None,
-            )
-            .on_conflict_do_update(
-                index_elements=[ScheduledPush.push_id],
-                set_={
-                    "fire_at": event.fire_at,
-                    "payload_json": event.snapshot,
-                    # Re-queue if previously failed/cancelled: only reset to pending
-                    # when fire_at is still in the future. Otherwise leave history.
-                    "status": PushStatus.pending.value,
-                    "attempts": 0,
-                    "last_error": None,
-                },
-            )
+        insert_stmt = pg_insert(ScheduledPush).values(
+            push_id=push_id,
+            device_id=payload.device_id,
+            source_id=event.source_id,
+            scenario=event.scenario.value,
+            fire_at=event.fire_at,
+            payload_json=event.snapshot,
+            status=PushStatus.pending.value,
+            attempts=0,
+            last_error=None,
+        )
+        # Fix for duplicate-delivery bug (audit finding N2): only UPDATE rows
+        # that have NOT already been delivered. A successful `sent` row means
+        # the user's phone already got that notification — blindly resetting
+        # to `pending` would re-fire on the next tick. The `where` clause
+        # leaves sent rows completely untouched, so client re-syncs after a
+        # delivery are idempotent.
+        stmt = insert_stmt.on_conflict_do_update(
+            index_elements=[ScheduledPush.push_id],
+            set_={
+                "fire_at": event.fire_at,
+                "payload_json": event.snapshot,
+                "status": PushStatus.pending.value,
+                "attempts": 0,
+                "last_error": None,
+            },
+            where=ScheduledPush.status != PushStatus.sent.value,
         )
         await session.execute(stmt)
         upserted += 1
