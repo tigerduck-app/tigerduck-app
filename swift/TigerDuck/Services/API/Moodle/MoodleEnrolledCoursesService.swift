@@ -19,21 +19,29 @@ enum MoodleEnrolledCoursesService {
 
     static func fetchEnrolled() async throws -> [MoodleEnrolledCourse] {
         let tokenService = MoodleTokenService.shared
-        let token: String
-        if let cached = await tokenService.currentToken() {
-            token = cached
-        } else {
-            token = try await tokenService.refreshTokenIfNeeded()
+
+        func attempt(forceFreshToken: Bool) async throws -> [MoodleEnrolledCourse] {
+            let token: String
+            if forceFreshToken {
+                token = try await tokenService.refreshTokenIfNeeded()
+            } else if let cached = await tokenService.currentToken() {
+                token = cached
+            } else {
+                token = try await tokenService.refreshTokenIfNeeded()
+            }
+            // userId() hits core_webservice_get_site_info with the same token,
+            // so it must live inside the retry block — otherwise a stale
+            // token that triggers .invalidToken on site_info bypasses the
+            // refresh path and the whole call fails.
+            let userId = try await MoodleSiteInfoService.shared.userId()
+            return try await fetchEnrolledCourses(token: token, userId: userId)
         }
 
-        let userId = try await MoodleSiteInfoService.shared.userId()
-
         do {
-            return try await fetchEnrolledCourses(token: token, userId: userId)
+            return try await attempt(forceFreshToken: false)
         } catch MoodleWebserviceError.invalidToken {
             await tokenService.clearToken()
-            let refreshedToken = try await tokenService.refreshTokenIfNeeded()
-            return try await fetchEnrolledCourses(token: refreshedToken, userId: userId)
+            return try await attempt(forceFreshToken: true)
         }
     }
 

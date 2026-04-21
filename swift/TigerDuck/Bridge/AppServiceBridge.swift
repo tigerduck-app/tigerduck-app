@@ -72,16 +72,30 @@ enum AppServiceBridge {
 
         do {
             let session = NTUSTSessionManager.shared.session
-            let courseSelectionNos: [String]
+            // NTUST SSO is the "nice to have" source here — Moodle's long-lived
+            // OIDC token is the primary. If SSO is unreachable (cookies cleared,
+            // credentials rotated, portal flaky), swallow the failure so we
+            // still fall through to the Moodle path; otherwise the whole
+            // fetch would throw, the catch below would return an empty cache,
+            // and Home / Class Table / Time Machine would stay blank.
+            var courseSelectionNos: [String] = []
             if isCurrentSemester {
-                courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
-                    session: session,
-                    studentId: studentId,
-                    password: password,
-                    forceRefresh: forceRefresh
-                )
-            } else {
-                courseSelectionNos = []
+                do {
+                    courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
+                        session: session,
+                        studentId: studentId,
+                        password: password,
+                        forceRefresh: forceRefresh
+                    )
+                } catch {
+                    await MainActor.run {
+                        AppLogger.captureError(error, context: [
+                            "service": "fetchEnrolledCourseNos",
+                            "semester": semester,
+                            "fallback": "moodleOnly",
+                        ])
+                    }
+                }
             }
 
             let moodleAll = if let moodleEnrolledCourses {
@@ -292,13 +306,22 @@ enum AppServiceBridge {
         do {
             let currentSemester = CourseSelectionService.currentSemesterCode()
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
-            guard !currentCourses.isEmpty else {
-                return DataCache.shared.loadAssignments()
-            }
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
+            // On first launch the NTUST course cache is empty because
+            // backgroundSync runs assignments + courses in parallel.
+            // Without this fallback we'd filter against an empty set,
+            // short-circuit to cached-empty assignments, and 作業 would
+            // stay blank until a second launch. Prefer filtering to the
+            // current course roster when it exists (handles drops), else
+            // use the semester prefix on Moodle's idnumber.
             let currentCourseNos = Set(currentCourses.map(\.courseNo))
-            let relevantCourses = moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) }
+            let relevantCourses: [MoodleEnrolledCourse]
+            if currentCourses.isEmpty {
+                relevantCourses = moodleEnrolled.filter { $0.semester == currentSemester }
+            } else {
+                relevantCourses = moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) }
+            }
             let relevantMoodleCourseIds = relevantCourses.map(\.id)
             guard !relevantMoodleCourseIds.isEmpty else {
                 return DataCache.shared.loadAssignments()
