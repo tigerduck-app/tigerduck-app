@@ -130,7 +130,7 @@ enum CourseSelectionService {
         }
     }
 
-    static func currentSemesterCode() -> String {
+    nonisolated static func currentSemesterCode() -> String {
         let cal = Calendar.current
         let now = Date()
         let year = cal.component(.year, from: now)
@@ -143,5 +143,22 @@ enum CourseSelectionService {
             let academicYear = month >= 9 ? rocYear : rocYear - 1
             return "\(academicYear)1"
         }
+    }
+
+    nonisolated static func previousSemesterCode(_ semester: String) -> String {
+        guard semester.count >= 2 else { return semester }
+
+        let yearPart = String(semester.dropLast())
+        let semesterPart = String(semester.suffix(1))
+
+        guard let year = Int(yearPart), let term = Int(semesterPart) else {
+            return semester
+        }
+
+        if term <= 1 {
+            return "\(year - 1)2"
+        }
+
+        return "\(year)1"
     }
 }

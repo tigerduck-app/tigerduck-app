@@ -9,7 +9,7 @@ private struct CourseData: Sendable {
     let enrolledCount: Int
     let maxCount: Int
     let schedule: [Int: [String]]
-    let moodleIdNumber: String
+    let moodleIdNumber: String?
     let classroomMap: [String: String]
 }
 
@@ -22,7 +22,39 @@ enum AppServiceBridge {
     /// default `false` lets the 24h cache absorb cheap refreshes.
     static func fetchCourses(
         authService: AuthService,
+        semester: String = CourseSelectionService.currentSemesterCode(),
         forceRefresh: Bool = false
+    ) async -> [SDCourse] {
+        await fetchCourses(
+            authService: authService,
+            semester: semester,
+            forceRefresh: forceRefresh,
+            moodleEnrolledCourses: nil
+        )
+    }
+
+    static func warmAllSemesterCaches(authService: AuthService) async {
+        let moodleEnrolledCourses = (try? await MoodleEnrolledCoursesService.fetchEnrolled()) ?? []
+
+        for semester in computeAvailableSemesters() {
+            guard DataCache.shared.loadCourses(semester: semester).isEmpty else { continue }
+
+            Task {
+                _ = await fetchCourses(
+                    authService: authService,
+                    semester: semester,
+                    forceRefresh: false,
+                    moodleEnrolledCourses: moodleEnrolledCourses
+                )
+            }
+        }
+    }
+
+    private static func fetchCourses(
+        authService: AuthService,
+        semester: String,
+        forceRefresh: Bool,
+        moodleEnrolledCourses: [MoodleEnrolledCourse]?
     ) async -> [SDCourse] {
         // Snapshot the login generation before issuing the network call.
         // Any logout that happens while we are awaiting will bump this
@@ -30,29 +62,96 @@ enum AppServiceBridge {
         // previous user's data does not land in DataCache after
         // `clearUserScopedData()` has already run.
         let startGeneration = authService.loginGeneration
+        let currentSemester = CourseSelectionService.currentSemesterCode()
+        let isCurrentSemester = semester == currentSemester
+
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
-            return DataCache.shared.loadCourses(semester: CourseSelectionService.currentSemesterCode())
+            return DataCache.shared.loadCourses(semester: semester)
         }
 
         do {
             let session = NTUSTSessionManager.shared.session
-            let courseNos = try await CourseSelectionService.fetchEnrolledCourseNos(
-                session: session,
-                studentId: studentId,
-                password: password,
-                forceRefresh: forceRefresh
+            let courseSelectionNos: [String]
+            if isCurrentSemester {
+                courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
+                    session: session,
+                    studentId: studentId,
+                    password: password,
+                    forceRefresh: forceRefresh
+                )
+            } else {
+                courseSelectionNos = []
+            }
+
+            let moodleAll = if let moodleEnrolledCourses {
+                moodleEnrolledCourses
+            } else {
+                try await MoodleEnrolledCoursesService.fetchEnrolled()
+            }
+            let moodleForSemester = moodleAll.filter { $0.semester == semester }
+            let moodleByNo = Dictionary(
+                moodleForSemester.compactMap { course -> (String, MoodleEnrolledCourse)? in
+                    guard !course.courseNo.isEmpty else { return nil }
+                    return (course.courseNo, course)
+                },
+                uniquingKeysWith: { first, _ in first }
             )
 
-            let semester = CourseSelectionService.currentSemesterCode()
+            var orderedCourseNos: [String] = []
+            var seenCourseNos = Set<String>()
+
+            for courseNo in courseSelectionNos where seenCourseNos.insert(courseNo).inserted {
+                orderedCourseNos.append(courseNo)
+            }
+
+            for moodleCourse in moodleForSemester {
+                let courseNo = moodleCourse.courseNo
+                guard !courseNo.isEmpty, seenCourseNos.insert(courseNo).inserted else { continue }
+                orderedCourseNos.append(courseNo)
+            }
 
             let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
-                for courseNo in courseNos {
+                for courseNo in orderedCourseNos {
                     group.addTask {
-                        let results: [CourseSearchResult]
                         do {
-                            results = try await CourseLookupService.lookupCourse(
+                            let results = try await CourseLookupService.lookupCourse(
                                 semester: semester, courseNo: courseNo
+                            )
+
+                            guard !results.isEmpty else {
+                                return moodleByNo[courseNo].map {
+                                    CourseData(
+                                        courseNo: courseNo,
+                                        courseName: $0.fullname,
+                                        instructor: "",
+                                        credits: 0,
+                                        classroom: "",
+                                        enrolledCount: 0,
+                                        maxCount: 0,
+                                        schedule: [:],
+                                        moodleIdNumber: $0.idnumber,
+                                        classroomMap: [:]
+                                    )
+                                }
+                            }
+
+                            let course = buildSDCourse(
+                                from: results,
+                                semester: semester,
+                                fallbackMoodleIdNumber: moodleByNo[courseNo]?.idnumber
+                            )
+                            return CourseData(
+                                courseNo: course.courseNo,
+                                courseName: course.courseName,
+                                instructor: course.instructor,
+                                credits: course.credits,
+                                classroom: course.classroom,
+                                enrolledCount: course.enrolledCount,
+                                maxCount: course.maxCount,
+                                schedule: course.schedule,
+                                moodleIdNumber: course.moodleIdNumber,
+                                classroomMap: course.classroomMap
                             )
                         } catch {
                             await MainActor.run {
@@ -62,79 +161,44 @@ enum AppServiceBridge {
                                     "courseNo": courseNo,
                                 ])
                             }
-                            return nil
-                        }
-
-                        guard let first = results.first else { return nil }
-
-                        // Merge schedules and classrooms from all rows
-                        // (same course can have multiple time slots / classrooms)
-                        var mergedSchedule: [Int: [String]] = [:]
-                        var classroomMap: [String: String] = [:]
-                        var allClassrooms: [String] = []
-                        var seenClassrooms = Set<String>()
-
-                        for row in results {
-                            let partial = CourseLookupService.parseNodeToSchedule(row.Node)
-                            // API may return "教室A、教室A" — reuse SDCourse helpers to split/dedup
-                            var seenParts = Set<String>()
-                            let uniqueParts = SDCourse.splitRoom(row.ClassRoomNo ?? "")
-                                .filter { seenParts.insert($0).inserted }
-                            let room = uniqueParts.joined(separator: ", ")
-
-                            for (day, periods) in partial {
-                                mergedSchedule[day, default: []].append(contentsOf: periods)
-                                if !room.isEmpty {
-                                    for period in periods {
-                                        classroomMap["\(day)-\(period)"] = room
-                                    }
-                                }
-                            }
-
-                            for part in uniqueParts where !seenClassrooms.contains(part) {
-                                seenClassrooms.insert(part)
-                                allClassrooms.append(part)
+                            return moodleByNo[courseNo].map {
+                                CourseData(
+                                    courseNo: courseNo,
+                                    courseName: $0.fullname,
+                                    instructor: "",
+                                    credits: 0,
+                                    classroom: "",
+                                    enrolledCount: 0,
+                                    maxCount: 0,
+                                    schedule: [:],
+                                    moodleIdNumber: $0.idnumber,
+                                    classroomMap: [:]
+                                )
                             }
                         }
-
-                        let credits = Int(first.CreditPoint) ?? 0
-                        let enrolled = first.ChooseStudent ?? 0
-                        let maxCount = Int(first.Restrict2 ?? "0") ?? 0
-
-                        return CourseData(
-                            courseNo: first.CourseNo,
-                            courseName: first.CourseName,
-                            instructor: first.CourseTeacher,
-                            credits: credits,
-                            classroom: allClassrooms.joined(separator: ", "),
-                            enrolledCount: enrolled,
-                            maxCount: maxCount,
-                            schedule: mergedSchedule,
-                            moodleIdNumber: "\(first.Semester)\(first.CourseNo)",
-                            classroomMap: classroomMap
-                        )
                     }
                 }
 
                 var results: [CourseData] = []
                 for await data in group {
-                    if let d = data { results.append(d) }
+                    if let data { results.append(data) }
                 }
                 return results
             }
-            let courses = courseDataList.map { d in
+
+            let courses = courseDataList.map { course in
                 SDCourse(
-                    courseNo: d.courseNo,
-                    courseName: d.courseName,
-                    instructor: d.instructor,
-                    credits: d.credits,
-                    classroom: d.classroom,
-                    enrolledCount: d.enrolledCount,
-                    maxCount: d.maxCount,
-                    schedule: d.schedule,
-                    moodleIdNumber: d.moodleIdNumber,
+                    courseNo: course.courseNo,
+                    courseName: course.courseName,
+                    instructor: course.instructor,
+                    credits: course.credits,
+                    classroom: course.classroom,
+                    enrolledCount: course.enrolledCount,
+                    maxCount: course.maxCount,
+                    schedule: course.schedule,
+                    moodleIdNumber: course.moodleIdNumber,
                     semester: semester,
-                    classroomMap: d.classroomMap
+                    classroomMap: course.classroomMap
                 )
             }
 
@@ -146,40 +210,161 @@ enum AppServiceBridge {
             if !courses.isEmpty,
                !Task.isCancelled,
                authService.loginGeneration == startGeneration {
-                DataCache.shared.saveCourses(courses, semester: CourseSelectionService.currentSemesterCode())
+                DataCache.shared.saveCourses(courses, semester: semester)
             }
             return courses
         } catch {
             await MainActor.run {
-                AppLogger.captureError(error, context: ["bridge": "fetchCourses"])
+                AppLogger.captureError(error, context: ["bridge": "fetchCourses", "semester": semester])
             }
-            return DataCache.shared.loadCourses(semester: CourseSelectionService.currentSemesterCode())
+            return DataCache.shared.loadCourses(semester: semester)
         }
+    }
+
+    nonisolated private static func buildSDCourse(
+        from results: [CourseSearchResult],
+        semester: String,
+        fallbackMoodleIdNumber: String?
+    ) -> SDCourse {
+        let first = results[0]
+
+        var mergedSchedule: [Int: [String]] = [:]
+        var classroomMap: [String: String] = [:]
+        var allClassrooms: [String] = []
+        var seenClassrooms = Set<String>()
+
+        for row in results {
+            let partial = CourseLookupService.parseNodeToSchedule(row.Node)
+            var seenParts = Set<String>()
+            let uniqueParts = SDCourse.splitRoom(row.ClassRoomNo ?? "")
+                .filter { seenParts.insert($0).inserted }
+            let room = uniqueParts.joined(separator: ", ")
+
+            for (day, periods) in partial {
+                mergedSchedule[day, default: []].append(contentsOf: periods)
+                if !room.isEmpty {
+                    for period in periods {
+                        classroomMap["\(day)-\(period)"] = room
+                    }
+                }
+            }
+
+            for part in uniqueParts where !seenClassrooms.contains(part) {
+                seenClassrooms.insert(part)
+                allClassrooms.append(part)
+            }
+        }
+
+        return SDCourse(
+            courseNo: first.CourseNo,
+            courseName: first.CourseName,
+            instructor: first.CourseTeacher,
+            credits: Int(first.CreditPoint) ?? 0,
+            classroom: allClassrooms.joined(separator: ", "),
+            enrolledCount: first.ChooseStudent ?? 0,
+            maxCount: Int(first.Restrict2 ?? "0") ?? 0,
+            schedule: mergedSchedule,
+            moodleIdNumber: fallbackMoodleIdNumber ?? "\(first.Semester)\(first.CourseNo)",
+            semester: semester,
+            classroomMap: classroomMap
+        )
+    }
+
+    private static func computeAvailableSemesters() -> [String] {
+        var semesters: [String] = []
+        var code = CourseSelectionService.currentSemesterCode()
+
+        for _ in 0..<4 {
+            semesters.append(code)
+            code = CourseSelectionService.previousSemesterCode(code)
+        }
+
+        return semesters
     }
 
     static func fetchAssignments(authService: AuthService) async -> [SDAssignment] {
         let startGeneration = authService.loginGeneration
-        // MoodleAssignmentBridgeService runs on its own long-lived OIDC
-        // token; credentials are only needed so that a token refresh can
-        // reach Keychain. If the user logged out, fall back to cache.
         guard authService.storedStudentId != nil,
               authService.storedPassword != nil else {
             return DataCache.shared.loadAssignments()
         }
 
         do {
-            let assignments = try await MoodleAssignmentBridgeService.fetchAssignments()
-            let mergedAssignments = preserveCompletionState(
-                freshAssignments: assignments,
-                cachedAssignments: DataCache.shared.loadAssignments(),
+            let currentSemester = CourseSelectionService.currentSemesterCode()
+            let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
+            guard !currentCourses.isEmpty else {
+                return DataCache.shared.loadAssignments()
+            }
+
+            let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
+            let currentCourseNos = Set(currentCourses.map(\.courseNo))
+            let relevantCourses = moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) }
+            let relevantMoodleCourseIds = relevantCourses.map(\.id)
+            guard !relevantMoodleCourseIds.isEmpty else {
+                return DataCache.shared.loadAssignments()
+            }
+
+            let records = try await MoodleAssignmentBridgeService.fetchAssignments(
+                courseIds: relevantMoodleCourseIds
             )
-            // Same dual guard as fetchCourses above: cancellation OR a
-            // logout that bumped loginGeneration must drop the save.
+            let moodleCoursesById = Dictionary(
+                uniqueKeysWithValues: relevantCourses.map { ($0.id, $0) }
+            )
+
+            let statuses: [Int: MoodleSubmissionStatus] = await withTaskGroup(
+                of: (Int, MoodleSubmissionStatus)?.self,
+                returning: [Int: MoodleSubmissionStatus].self
+            ) { group in
+                for record in records {
+                    group.addTask {
+                        guard let status = try? await MoodleAssignmentBridgeService.fetchSubmissionStatus(
+                            assignId: record.assignId
+                        ) else {
+                            return nil
+                        }
+                        return (record.assignId, status)
+                    }
+                }
+
+                var result: [Int: MoodleSubmissionStatus] = [:]
+                for await pair in group {
+                    if let (id, status) = pair {
+                        result[id] = status
+                    }
+                }
+                return result
+            }
+
+            let freshAssignments: [SDAssignment] = records.compactMap { record in
+                guard let dueDate = record.dueDate else { return nil }
+
+                let moodleCourse = moodleCoursesById[record.courseId]
+                return SDAssignment(
+                    assignmentId: String(record.assignId),
+                    courseNo: moodleCourse?.courseNo ?? "",
+                    courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
+                    title: record.name,
+                    dueDate: dueDate,
+                    isCompleted: statuses[record.assignId]?.isSubmitted ?? false,
+                    moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(record.cmId)"
+                )
+            }
+
+            let assignmentsToPersist: [SDAssignment]
+            if statuses.count < records.count {
+                assignmentsToPersist = preserveCompletionState(
+                    freshAssignments: freshAssignments,
+                    cachedAssignments: DataCache.shared.loadAssignments()
+                )
+            } else {
+                assignmentsToPersist = freshAssignments
+            }
+
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
-                DataCache.shared.saveAssignments(mergedAssignments)
+                DataCache.shared.saveAssignments(assignmentsToPersist)
             }
-            return mergedAssignments
+            return assignmentsToPersist
         } catch {
             await MainActor.run {
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
@@ -203,6 +388,19 @@ enum AppServiceBridge {
         }
 
         return freshAssignments
+    }
+
+    private static func courseName(from fullname: String) -> String {
+        let parts = fullname.components(separatedBy: " ")
+        guard parts.count >= 2 else { return fullname }
+
+        if let index = parts.firstIndex(where: {
+            $0.range(of: "3?[A-Z]{2}[A-Z0-9]{6,7}", options: .regularExpression) != nil
+        }), index + 1 < parts.count {
+            return parts[(index + 1)...].joined(separator: " ")
+        }
+
+        return fullname
     }
 
 }

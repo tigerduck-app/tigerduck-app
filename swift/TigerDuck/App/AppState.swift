@@ -64,8 +64,9 @@ final class AppState {
     /// Called once per app launch from init(). Runs in a detached background
     /// task so it never blocks the main thread or app startup.
     func runPendingMigrations() {
-        Task.detached(priority: .utility) {
+        Task(priority: .utility) { @MainActor in
             await MoodleTokenMigration.runIfNeeded()
+            HomeSectionTitleMigration.runIfNeeded()
             // Add future migrations here in sequence.
         }
     }
