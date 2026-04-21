@@ -65,6 +65,7 @@ struct UpcomingAssignmentsView: View {
 
     @ViewBuilder
     private func assignmentRow(assignment: SDAssignment, now: Date, policy: VisualStylePolicy) -> some View {
+        let status = assignment.status(now: now)
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(assignment.title)
@@ -76,15 +77,59 @@ struct UpcomingAssignmentsView: View {
                     .foregroundStyle(policy.secondaryTextColor)
             }
             Spacer()
-            Text(timeLabel(for: assignment, now: now))
-                .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(assignment.dueDate < now ? Color.badgeRed : policy.secondaryTextColor)
+            trailingStatus(
+                assignment: assignment,
+                status: status,
+                now: now,
+                policy: policy
+            )
 
             if policy.assignmentRowStyle == .groupedList {
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func trailingStatus(
+        assignment: SDAssignment,
+        status: AssignmentStatus,
+        now: Date,
+        policy: VisualStylePolicy
+    ) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            if let label = status.badgeLabel {
+                Text(label)
+                    .font(statusFont(status: status))
+                    .foregroundStyle(status.tint)
+            }
+            Text(timeLabel(for: assignment, now: now))
+                .font(timeFont(status: status))
+                .foregroundStyle(timeColor(status: status, policy: policy))
+        }
+    }
+
+    private func statusFont(status: AssignmentStatus) -> Font {
+        let base = TigerDuckTheme.Typography.caption
+        return status.usesEmphasis ? base.weight(.bold) : base.weight(.semibold)
+    }
+
+    private func timeFont(status: AssignmentStatus) -> Font {
+        let base = TigerDuckTheme.Typography.caption
+        return status.usesEmphasis ? base.weight(.bold) : base
+    }
+
+    /// Only overdue rows tint the due time red. Submitted rows keep the
+    /// secondary body color so the green/orange status badge reads as the
+    /// primary signal and the time is just metadata.
+    private func timeColor(status: AssignmentStatus, policy: VisualStylePolicy) -> Color {
+        switch status {
+        case .overdueAcceptable, .overdueRejected:
+            return status.tint
+        case .pending, .submitted, .submittedLate:
+            return policy.secondaryTextColor
         }
     }
 
