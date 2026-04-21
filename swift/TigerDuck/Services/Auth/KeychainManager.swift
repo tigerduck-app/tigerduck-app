@@ -1,6 +1,6 @@
 import Foundation
 
-enum KeychainManager {
+nonisolated enum KeychainManager {
     static func save(key: String, data: Data) {
         try? SecureStore.save(data, forKey: key)
     }

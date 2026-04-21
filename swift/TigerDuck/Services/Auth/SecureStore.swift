@@ -2,7 +2,7 @@ import Foundation
 import Security
 import Valet
 
-enum SecureStore {
+nonisolated enum SecureStore {
     private static let shared = Valet.valet(
         with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
         accessibility: .afterFirstUnlock
