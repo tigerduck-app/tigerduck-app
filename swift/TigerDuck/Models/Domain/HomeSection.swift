@@ -17,7 +17,7 @@ struct HomeSection: Identifiable, Equatable, Codable {
         var defaultTitle: String {
             switch self {
             case .todayCourses: "時光機"
-            case .upcomingAssignments: "待辦作業"
+            case .upcomingAssignments: "作業"
             case .quickWidgets: "快速功能"
             case .custom: "自訂區塊"
             }

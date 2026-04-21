@@ -9,6 +9,21 @@ final class HomeViewModel {
     var upcomingAssignments: [SDAssignment] = []
     var isEditingHome = false
 
+    var assignmentFilter: AssignmentFilter = AssignmentFilter(
+        rawValue: Defaults[.homeAssignmentFilter]
+    ) ?? .incomplete {
+        didSet {
+            guard assignmentFilter != oldValue else { return }
+            Defaults[.homeAssignmentFilter] = assignmentFilter.rawValue
+            recomputeUpcomingAssignments()
+        }
+    }
+
+    /// Cached source-of-truth assignment list, already filtered to the current
+    /// semester. The visible `upcomingAssignments` is derived from this via
+    /// `assignmentFilter` so toggling 全部/未完成 is instant and does not refetch.
+    private var allAssignmentsCache: [SDAssignment] = []
+
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
@@ -48,7 +63,28 @@ final class HomeViewModel {
         TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
         allCourses = courses
         todayCourses = courses.coursesForToday()
-        upcomingAssignments = assignments.upcomingSorted()
+        allAssignmentsCache = filterToCurrentSemester(assignments, courses: courses)
+        recomputeUpcomingAssignments()
+    }
+
+    private func filterToCurrentSemester(
+        _ assignments: [SDAssignment],
+        courses: [SDCourse]
+    ) -> [SDAssignment] {
+        let currentCourseNos = Set(courses.map(\.courseNo))
+        // Empty-course fallback: skip filter so first-launch (no roster yet)
+        // does not blank out the assignment list.
+        guard !currentCourseNos.isEmpty else { return assignments }
+        return assignments.filter { currentCourseNos.contains($0.courseNo) }
+    }
+
+    private func recomputeUpcomingAssignments() {
+        switch assignmentFilter {
+        case .incomplete:
+            upcomingAssignments = allAssignmentsCache.upcomingSorted()
+        case .all:
+            upcomingAssignments = allAssignmentsCache.allSorted()
+        }
     }
 
     func load(authService: AuthService) {
@@ -111,17 +147,17 @@ final class HomeViewModel {
         // avoids paying the 3–5s NTUST SSO round-trip whenever the user
         // just wants to see if any new assignments landed.
         let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
-        let upcoming = fetchedAssignments.upcomingSorted()
-
         let allCourses = courseProvider.currentCourses()
         let todayFiltered = allCourses.coursesForToday()
+        let semesterFiltered = filterToCurrentSemester(fetchedAssignments, courses: allCourses)
 
         await MainActor.run {
             isUpdatingFromNetwork = true
             TigerDuckTheme.buildCourseColorMap(courseNos: allCourses.map(\.courseNo))
             self.allCourses = allCourses
             todayCourses = todayFiltered
-            upcomingAssignments = upcoming
+            allAssignmentsCache = semesterFiltered
+            recomputeUpcomingAssignments()
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             isUpdatingFromNetwork = false
@@ -141,7 +177,7 @@ final class HomeViewModel {
             HomeSection(
                 id: "upcoming-assignments",
                 type: .upcomingAssignments,
-                title: "待辦作業",
+                title: "作業",
                 sortOrder: 1,
                 isVisible: true,
                 widgets: []

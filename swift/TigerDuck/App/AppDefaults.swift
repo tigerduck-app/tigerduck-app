@@ -86,4 +86,8 @@ extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.classTableSelectedSemester,
         default: CourseSelectionService.currentSemesterCode()
     )
+    static let homeAssignmentFilter = Key<String>(
+        AppConstants.UserDefaultsKeys.homeAssignmentFilter,
+        default: AssignmentFilter.incomplete.rawValue
+    )
 }

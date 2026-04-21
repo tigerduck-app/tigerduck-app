@@ -42,6 +42,7 @@ enum AppConstants {
         static let showInClassScenario = "showInClassScenario"
         static let ssoLoginTimestamp = "ssoLoginTimestamp"
         static let classTableSelectedSemester = "classTableSelectedSemester"
+        static let homeAssignmentFilter = "homeAssignmentFilter"
     }
 
     enum Periods {

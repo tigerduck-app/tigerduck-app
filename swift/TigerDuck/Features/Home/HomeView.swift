@@ -301,26 +301,37 @@ private struct HomeSectionView: View {
 
     @ViewBuilder
     private var upcomingAssignmentsContent: some View {
-        switch appState.ntustProtectedAccessState(isEmpty: viewModel.upcomingAssignments.isEmpty) {
-        case .loginRequired:
-            LoginRequiredView(
-                layout: .section,
-                title: "尚未登入",
-                message: "尚未登入，無法顯示待辦作業",
-                onPrimary: { appState.presentNTUSTLogin() }
-            )
-        case .empty:
-            EmptyStateView(
-                icon: "checkmark.circle",
-                title: "一切順利",
-                message: "沒有待辦作業"
-            )
-        case .content:
-            UpcomingAssignmentsView(
-                assignments: viewModel.upcomingAssignments,
-                showAbsoluteTime: appState.showAbsoluteAssignmentTime
-            )
-            .allowsHitTesting(!viewModel.isEditingHome)
+        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Picker("", selection: Bindable(viewModel).assignmentFilter) {
+                ForEach(AssignmentFilter.allCases, id: \.self) { filter in
+                    Text(filter.rawValue).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .disabled(viewModel.isEditingHome)
+
+            switch appState.ntustProtectedAccessState(isEmpty: viewModel.upcomingAssignments.isEmpty) {
+            case .loginRequired:
+                LoginRequiredView(
+                    layout: .section,
+                    title: "尚未登入",
+                    message: "尚未登入，無法顯示作業",
+                    onPrimary: { appState.presentNTUSTLogin() }
+                )
+            case .empty:
+                EmptyStateView(
+                    icon: "checkmark.circle",
+                    title: "一切順利",
+                    message: viewModel.assignmentFilter == .incomplete ? "沒有未完成的作業" : "沒有作業"
+                )
+            case .content:
+                UpcomingAssignmentsView(
+                    assignments: viewModel.upcomingAssignments,
+                    showAbsoluteTime: appState.showAbsoluteAssignmentTime
+                )
+                .allowsHitTesting(!viewModel.isEditingHome)
+            }
         }
     }
 
