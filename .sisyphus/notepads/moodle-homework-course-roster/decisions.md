@@ -1,0 +1,2 @@
+- Keep each probe script minimal and self-contained instead of introducing shared helper modules, so each POC stays easy to diff against the Swift migration target.
+- Treat `submission_status.py` fallback resolution as best-effort only: if no assignment exists, fail fast with a clear stderr message.
