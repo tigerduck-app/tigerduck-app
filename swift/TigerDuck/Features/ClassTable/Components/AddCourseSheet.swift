@@ -156,7 +156,8 @@ struct AddCourseSheet: View {
                     async let byTeacher = CourseLookupService.searchByTeacher(
                         semester: semester, teacher: trimmed
                     )
-                    let (nameResults, teacherResults) = try await (byName, byTeacher)
+                    let nameResults = (try? await byName) ?? []
+                    let teacherResults = (try? await byTeacher) ?? []
                     results = Self.merge(nameResults, teacherResults)
                 }
                 await MainActor.run {
