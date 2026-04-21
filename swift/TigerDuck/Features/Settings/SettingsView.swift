@@ -101,6 +101,9 @@ struct SettingsView: View {
                 NavigationLink("即時動態 Live Activity（實驗性）") {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }
+                NavigationLink("伺服器推播（實驗性）") {
+                    PushServerSettingsView()
+                }
             }
 
             // MARK: - About
