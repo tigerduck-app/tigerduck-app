@@ -4,13 +4,13 @@ import UserNotifications
 
 /// Settings page for the push notification server.
 ///
-/// Shows the full diagnostic state: toggle, Live Activity permission,
-/// notification permission, token lengths, last sync / last error, resolved
-/// server URL. Makes the otherwise-invisible push pipeline debuggable.
+/// The status section stays so users (and us in support) can see at a
+/// glance whether the pipeline is healthy. The raw server URL and the
+/// debug override field are intentionally not shown — users don't need
+/// them, and exposing them makes the screen feel like a dev console.
 struct PushServerSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.pushServerEnabled) private var pushServerEnabled
-    @Default(.pushServerURLOverride) private var pushServerURLOverride
     @Default(.pushLastRegistrationAt) private var lastRegistrationAt
     @Default(.pushLastSyncAt) private var lastSyncAt
 
@@ -23,7 +23,7 @@ struct PushServerSettingsView: View {
             Section {
                 Toggle("啟用伺服器推播", isOn: toggleBinding)
             } footer: {
-                Text("由 TigerDuck 伺服器在設定時間主動觸發動態島，App 不需開啟也能收到通知。")
+                Text("用於接收學校即時公告訊息、主動觸發動態島等提醒。")
             }
 
             if pushServerEnabled, let s = snapshot {
@@ -36,22 +36,18 @@ struct PushServerSettingsView: View {
                               ok: s.notificationAuthStatus == .authorized || s.notificationAuthStatus == .provisional,
                               okText: notificationStatusText(s.notificationAuthStatus),
                               badText: notificationStatusText(s.notificationAuthStatus))
-                    statusRow(label: "APNs device token",
-                              ok: s.registration.deviceTokenLength > 0,
-                              okText: "\(s.registration.deviceTokenLength) chars",
-                              badText: "尚未取得（等 iOS APNs 回呼）")
-                    statusRow(label: "Push-to-Start token",
+                    statusRow(label: "裝置註冊",
                               ok: s.registration.ptsTokenLength > 0,
-                              okText: "\(s.registration.ptsTokenLength) chars",
-                              badText: "尚未取得（等 ActivityKit 指派）")
-                    LabeledContent("註冊") {
+                              okText: "完成",
+                              badText: "等 iOS 指派 token")
+                    LabeledContent("上次註冊") {
                         if let at = lastRegistrationAt {
                             Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
                         } else {
                             Text("尚未完成").foregroundStyle(.secondary)
                         }
                     }
-                    LabeledContent("同步") {
+                    LabeledContent("上次同步") {
                         if let at = lastSyncAt {
                             Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
                         } else {
@@ -65,39 +61,12 @@ struct PushServerSettingsView: View {
                     }
                     Button("立即同步一次") { appState.requestPushScheduleSync() }
                 }
-
-                Section("伺服器") {
-                    LabeledContent("URL") {
-                        Text(s.resolvedServerURL.absoluteString)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
             }
-
-            #if DEBUG
-            Section {
-                TextField(
-                    "https://api.tigerduck.app/v1",
-                    text: serverOverrideBinding
-                )
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            } header: {
-                Text("開發者：伺服器 URL 覆寫")
-            } footer: {
-                Text("留空使用正式環境。只影響除錯組建。修改後重啟 app 生效。")
-            }
-            #endif
         }
         .navigationTitle("伺服器推播")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refreshSnapshot() }
         .onAppear {
-            // Refresh every 2s while visible so the user can watch PTS /
-            // device tokens arrive without leaving the screen.
             refreshTimer?.invalidate()
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
                 Task { await refreshSnapshot() }
@@ -120,16 +89,6 @@ struct PushServerSettingsView: View {
                     disableTask = Task { await appState.disablePushServer() }
                 }
                 Task { await refreshSnapshot() }
-            }
-        )
-    }
-
-    private var serverOverrideBinding: Binding<String> {
-        Binding(
-            get: { pushServerURLOverride ?? "" },
-            set: { new in
-                let trimmed = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                pushServerURLOverride = trimmed.isEmpty ? nil : trimmed
             }
         )
     }

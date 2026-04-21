@@ -94,7 +94,7 @@ extension Defaults.Keys {
     // MARK: Push server
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
-        default: false
+        default: true
     )
     static let pushServerURLOverride = Key<String?>(
         AppConstants.UserDefaultsKeys.pushServerURLOverride
