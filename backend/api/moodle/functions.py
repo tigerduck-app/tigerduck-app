@@ -31,11 +31,11 @@ def main() -> int:
         return 2
 
     with MoodleOidcAuthClient(sid, pwd) as client:
-        events = fetch_site_info(client)
-        if isinstance(events, dict) and events.get("errorcode"):
-            print(f"[FAIL] {events}", file=sys.stderr)
+        info = fetch_site_info(client)
+        if isinstance(info, dict) and info.get("errorcode"):
+            print(f"[FAIL] {info}", file=sys.stderr)
             return 3
-        print(json.dumps(events, ensure_ascii=False))
+        print(json.dumps(info, ensure_ascii=False))
     return 0
 
 
