@@ -135,7 +135,8 @@ final class SDCourse: Identifiable {
     }
 
     static func courseNoFromMoodleId(_ moodleId: String) -> String {
-        if moodleId.count > 4 {
+        if moodleId.count > 4,
+           moodleId.prefix(4).allSatisfy(\.isNumber) {
             return String(moodleId.dropFirst(4))
         }
         return moodleId

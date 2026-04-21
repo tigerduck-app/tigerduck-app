@@ -58,7 +58,10 @@ actor MoodleTokenService {
             return triple.wstoken
         }
         inFlightTokenTask = task
-        defer { inFlightTokenTask = nil }
+        defer {
+            task.cancel()
+            inFlightTokenTask = nil
+        }
         return try await task.value
     }
 
@@ -68,19 +71,19 @@ actor MoodleTokenService {
         if let existing = inFlightRefreshTask {
             return try await existing.value
         }
-        let creds = await MainActor.run {
-            (
-                KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
-                KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
-            )
-        }
-        guard let sid = creds.0, let pwd = creds.1 else {
-            throw MoodleWebserviceError.invalidCredentials
-        }
-        let normalizedId = sid
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
         let task = Task<String, Error> {
+            let creds = await MainActor.run {
+                (
+                    KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
+                    KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
+                )
+            }
+            guard let sid = creds.0, let pwd = creds.1 else {
+                throw MoodleWebserviceError.invalidCredentials
+            }
+            let normalizedId = sid
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
             let triple = try await Self.performOidcLogin(
                 studentId: normalizedId, password: pwd,
             )
@@ -88,7 +91,10 @@ actor MoodleTokenService {
             return triple.wstoken
         }
         inFlightRefreshTask = task
-        defer { inFlightRefreshTask = nil }
+        defer {
+            task.cancel()
+            inFlightRefreshTask = nil
+        }
         return try await task.value
     }
 
@@ -223,7 +229,7 @@ actor MoodleTokenService {
                 detail: "OIDC form_post bridge missing after login",
             )
         }
-        guard let bridgeActionURL = URL(string: bridge.action) else {
+        guard let bridgeActionURL = URL(string: bridge.action, relativeTo: loginURL)?.absoluteURL else {
             throw MoodleWebserviceError.malformedResponse(
                 detail: "invalid bridge action URL",
             )
@@ -364,12 +370,14 @@ actor MoodleTokenService {
             guard let m = match, m.numberOfRanges >= 2 else { return }
             let formFull = ns.substring(with: m.range)
             let formBody = ns.substring(with: m.range(at: 1))
-            guard let action = extractFormAction(from: formFull),
-                  action.contains("moodle2.ntust.edu.tw/auth/oidc") else {
+            guard let action = extractFormAction(from: formFull) else {
                 return
             }
             let payload = extractInputPairs(from: formBody)
-            if payload["code"] != nil
+            let isOidcAction = action.contains("/auth/oidc")
+                || action.contains("moodle2.ntust.edu.tw/auth/oidc")
+            if isOidcAction,
+                payload["code"] != nil
                 && payload["state"] != nil
                 && payload["iss"] != nil {
                 result = OIDCBridge(action: action, payload: payload)

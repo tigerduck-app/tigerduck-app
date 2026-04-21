@@ -3,6 +3,22 @@ import Foundation
 enum MoodleAssignmentBridgeService {
     private static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
     private static let actionEventsFunction = "core_calendar_get_action_events_by_timesort"
+    private static let actionEventsLimit = 100
+    private static let assignmentLookbackDays = 7
+    private static let webserviceUserAgent = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) "
+        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 "
+        + "MoodleMobile 5.1.1 (51100)"
+    )
+    private static let webserviceSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 20
+        config.httpAdditionalHeaders = [
+            "User-Agent": webserviceUserAgent,
+            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        ]
+        return URLSession(configuration: config)
+    }()
 
     /// Fetch upcoming assignments via Moodle webservice.
     ///
@@ -17,10 +33,12 @@ enum MoodleAssignmentBridgeService {
             token = try await tokenService.refreshTokenIfNeeded()
         }
 
+        let timesortFrom = assignmentTimesortFrom()
+
         do {
             let response = try await fetchActionEvents(
                 using: token,
-                timesortFrom: Int(Date().timeIntervalSince1970),
+                timesortFrom: timesortFrom,
             )
             return mapAssignments(from: response.events)
         } catch MoodleWebserviceError.invalidToken {
@@ -28,7 +46,7 @@ enum MoodleAssignmentBridgeService {
             let refreshedToken = try await tokenService.refreshTokenIfNeeded()
             let response = try await fetchActionEvents(
                 using: refreshedToken,
-                timesortFrom: Int(Date().timeIntervalSince1970),
+                timesortFrom: timesortFrom,
             )
             return mapAssignments(from: response.events)
         }
@@ -43,7 +61,7 @@ enum MoodleAssignmentBridgeService {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await webserviceSession.data(for: request)
         } catch let urlError as URLError {
             throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
         } catch {
@@ -76,7 +94,7 @@ enum MoodleAssignmentBridgeService {
         // Aligned 1:1 with backend/api/moodle/homework.py:
         //   POST /webservice/rest/server.php
         //     ?moodlewsrestformat=json&wsfunction=...&wstoken=...
-        //   body: limitnum=50&timesortfrom=<now>&limittononsuspendedevents=1
+        //   body: limitnum=<cap>&timesortfrom=<lookback>&limittononsuspendedevents=1
         guard var components = URLComponents(url: siteBaseURL, resolvingAgainstBaseURL: false) else {
             throw MoodleWebserviceError.malformedResponse(detail: "invalid base URL")
         }
@@ -93,11 +111,20 @@ enum MoodleAssignmentBridgeService {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = wsFormBody([
-            "limitnum": "50",
+            "limitnum": String(actionEventsLimit),
             "timesortfrom": String(timesortFrom),
             "limittononsuspendedevents": "1",
         ])
         return request
+    }
+
+    static func assignmentTimesortFrom(referenceDate: Date = Date()) -> Int {
+        let lookbackDate = Calendar.current.date(
+            byAdding: .day,
+            value: -assignmentLookbackDays,
+            to: referenceDate,
+        ) ?? referenceDate
+        return Int(lookbackDate.timeIntervalSince1970)
     }
 
     private static func wsFormBody(_ fields: [String: String]) -> Data? {
@@ -118,15 +145,19 @@ enum MoodleAssignmentBridgeService {
 
     private static func mapAssignments(from events: [BridgeMoodleCalendarEvent]) -> [SDAssignment] {
         events.compactMap { event in
-            guard event.modulename == "assign" else { return nil }
+            guard event.modulename?.lowercased() == "assign" else { return nil }
+            guard let dueTimestamp = event.timestart ?? event.timeusermidnight else {
+                return nil
+            }
 
             let courseNo = event.course.map { SDCourse.courseNoFromMoodleId($0.idnumber ?? "") } ?? ""
             let courseName = courseName(from: event.course?.fullname)
-            let dueDate = Date(timeIntervalSince1970: TimeInterval(event.timestart ?? event.timeusermidnight ?? 0))
+            let dueDate = Date(timeIntervalSince1970: TimeInterval(dueTimestamp))
             let moodleURL = event.url ?? event.action?.url
+            let assignmentId = event.instance.map(String.init) ?? "event-\(event.id)"
 
             return SDAssignment(
-                assignmentId: "\(event.instance ?? event.id)",
+                assignmentId: assignmentId,
                 courseNo: courseNo,
                 courseName: courseName,
                 title: event.activityname ?? event.name,
@@ -137,7 +168,7 @@ enum MoodleAssignmentBridgeService {
         }
     }
 
-    private static func courseName(from fullname: String?) -> String {
+    static func courseName(from fullname: String?) -> String {
         guard let fullname else { return "" }
 
         let parts = fullname.components(separatedBy: " ")
@@ -146,7 +177,7 @@ enum MoodleAssignmentBridgeService {
         if let index = parts.firstIndex(where: {
             $0.range(of: "3?[A-Z]{2}[A-Z0-9]{6,7}", options: .regularExpression) != nil
         }), index + 1 < parts.count {
-            return parts[index + 1]
+            return parts[(index + 1)...].joined(separator: " ")
         }
 
         return fullname

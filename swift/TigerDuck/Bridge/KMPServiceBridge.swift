@@ -168,19 +168,40 @@ enum KMPServiceBridge {
 
         do {
             let assignments = try await MoodleAssignmentBridgeService.fetchAssignments()
+            let mergedAssignments = preserveCompletionState(
+                freshAssignments: assignments,
+                cachedAssignments: DataCache.shared.loadAssignments(),
+            )
             // Same dual guard as fetchCourses above: cancellation OR a
             // logout that bumped loginGeneration must drop the save.
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
-                DataCache.shared.saveAssignments(assignments)
+                DataCache.shared.saveAssignments(mergedAssignments)
             }
-            return assignments
+            return mergedAssignments
         } catch {
             await MainActor.run {
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()
         }
+    }
+
+    static func preserveCompletionState(
+        freshAssignments: [SDAssignment],
+        cachedAssignments: [SDAssignment]
+    ) -> [SDAssignment] {
+        let completedIds = Set(
+            cachedAssignments
+                .filter(\.isCompleted)
+                .map(\.assignmentId)
+        )
+
+        for assignment in freshAssignments where completedIds.contains(assignment.assignmentId) {
+            assignment.isCompleted = true
+        }
+
+        return freshAssignments
     }
 
 }

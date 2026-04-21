@@ -34,6 +34,17 @@ final class SDAssignment {
     }
 
     var moodleDeepLink: URL? {
-        URL(string: "moodlemobile://https://moodle2.ntust.edu.tw?redirect=/mod/assign/view.php?id=\(assignmentId)")
+        guard let moodleUrl,
+              let targetURL = URL(string: moodleUrl) else {
+            return nil
+        }
+
+        let redirectTarget = targetURL.path + (targetURL.query.map { "?\($0)" } ?? "")
+        let allowedCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/?:")
+        guard let encodedRedirect = redirectTarget.addingPercentEncoding(withAllowedCharacters: allowedCharacters) else {
+            return targetURL
+        }
+
+        return URL(string: "moodlemobile://https://moodle2.ntust.edu.tw?redirect=\(encodedRedirect)")
     }
 }
