@@ -1,5 +1,26 @@
 import Foundation
 
+// MARK: - Shared webservice session
+
+enum MoodleWebserviceClient {
+    static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
+    static let webservicePath = "/webservice/rest/server.php"
+    static let session: URLSession = {
+        let userAgent = (
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) "
+            + "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 "
+            + "MoodleMobile 5.1.1 (51100)"
+        )
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 20
+        config.httpAdditionalHeaders = [
+            "User-Agent": userAgent,
+            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+        ]
+        return URLSession(configuration: config)
+    }()
+}
+
 // MARK: - Enrolled Courses (core_enrol_get_users_courses)
 
 struct MoodleEnrolledCourse: Sendable {

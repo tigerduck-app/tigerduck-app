@@ -11,6 +11,10 @@ enum CourseLookupService {
         try await searchAPI(body: .forCourseName(courseName, semester: semester))
     }
 
+    static func searchByTeacher(semester: String, teacher: String) async throws -> [CourseSearchResult] {
+        try await searchAPI(body: .forCourseTeacher(teacher, semester: semester))
+    }
+
     private static func searchAPI(body: CourseSearchRequest) async throws -> [CourseSearchResult] {
         var request = URLRequest(url: courseSearchAPI)
         request.httpMethod = "POST"

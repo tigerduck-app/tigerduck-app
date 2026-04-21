@@ -108,6 +108,14 @@ struct ClassTableView: View {
                     viewModel.courseToRename = nil
                 }
             }
+            .sheet(item: $viewModel.courseToRecolor) { course in
+                CourseColorPickerSheet(
+                    course: course,
+                    onSelect: { viewModel.setCustomColor(paletteIndex: $0, for: course) },
+                    onReset: { viewModel.clearCustomColor(for: course) }
+                )
+                .presentationDetents([.medium])
+            }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the

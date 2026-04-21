@@ -1,22 +1,6 @@
 import Foundation
 
 enum MoodleAssignmentService {
-    private static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
-    private static let webservicePath = "/webservice/rest/server.php"
-    private static let webserviceUserAgent = (
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) "
-        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 "
-        + "MoodleMobile 5.1.1 (51100)"
-    )
-    private static let webserviceSession: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 20
-        config.httpAdditionalHeaders = [
-            "User-Agent": webserviceUserAgent,
-            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        ]
-        return URLSession(configuration: config)
-    }()
 
     // MARK: - mod_assign_get_assignments
 
@@ -109,7 +93,7 @@ enum MoodleAssignmentService {
 
     private static func executeRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
         do {
-            let (data, response) = try await webserviceSession.data(for: request)
+            let (data, response) = try await MoodleWebserviceClient.session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw MoodleWebserviceError.malformedResponse(detail: "No HTTP response")
             }
@@ -134,10 +118,10 @@ enum MoodleAssignmentService {
         wsfunction: String,
         body: String
     ) throws -> URLRequest {
-        guard var components = URLComponents(url: siteBaseURL, resolvingAgainstBaseURL: false) else {
+        guard var components = URLComponents(url: MoodleWebserviceClient.siteBaseURL, resolvingAgainstBaseURL: false) else {
             throw MoodleWebserviceError.malformedResponse(detail: "invalid base URL")
         }
-        components.path = webservicePath
+        components.path = MoodleWebserviceClient.webservicePath
         components.queryItems = [
             URLQueryItem(name: "moodlewsrestformat", value: "json"),
             URLQueryItem(name: "wsfunction", value: wsfunction),
