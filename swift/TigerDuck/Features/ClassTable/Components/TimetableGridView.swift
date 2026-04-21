@@ -95,6 +95,11 @@ struct TimetableGridView: View {
                         } label: {
                             Label("重新命名", systemImage: "pencil")
                         }
+                        Button {
+                            viewModel.startRecolor(course)
+                        } label: {
+                            Label("修改顏色", systemImage: "paintpalette")
+                        }
                         Button(role: .destructive) {
                             viewModel.deleteCourse(course)
                         } label: {

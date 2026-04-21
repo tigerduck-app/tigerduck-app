@@ -58,6 +58,11 @@ enum TigerDuckTheme {
     /// and never depend on which other courses are in the current list.
     private(set) static var courseColorMap: [String: Color] = [:]
 
+    /// User-chosen palette-index overrides keyed by courseNo. Loaded lazily
+    /// from disk on first access so the app-launch sequence does not block
+    /// on DataCache.
+    private(set) static var courseCustomColors: [String: Int] = DataCache.shared.loadCourseCustomColors()
+
     /// Populate / refresh the color cache for the given courses. Colors are a
     /// pure function of `courseNo`, so reloading the same (or a different)
     /// semester never reshuffles already-seen courses. New entries are added;
@@ -71,10 +76,53 @@ enum TigerDuckTheme {
     }
 
     static func courseColor(for courseNo: String) -> Color {
+        if let index = courseCustomColors[courseNo], courseColors.indices.contains(index) {
+            return courseColors[index]
+        }
         if let color = courseColorMap[courseNo] {
             return color
         }
         return stableColor(for: courseNo)
+    }
+
+    /// Palette index currently in effect for this course, whether from an
+    /// explicit override or the hash-based default. Used by the color picker
+    /// to highlight the current selection.
+    static func paletteIndex(for courseNo: String) -> Int {
+        if let index = courseCustomColors[courseNo], courseColors.indices.contains(index) {
+            return index
+        }
+        let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
+        return abs(hash) % courseColors.count
+    }
+
+    /// Whether this course has been explicitly recolored by the user.
+    static func hasCustomColor(for courseNo: String) -> Bool {
+        courseCustomColors[courseNo] != nil
+    }
+
+    /// Persist a new palette-index override for this course and invalidate
+    /// the fast-path cache entry so the next read re-derives.
+    static func setCustomColor(index: Int, for courseNo: String) {
+        guard courseColors.indices.contains(index) else { return }
+        courseCustomColors[courseNo] = index
+        courseColorMap.removeValue(forKey: courseNo)
+        DataCache.shared.saveCourseCustomColors(courseCustomColors)
+    }
+
+    /// Drop the override for this course so it falls back to the deterministic
+    /// default.
+    static func clearCustomColor(for courseNo: String) {
+        guard courseCustomColors.removeValue(forKey: courseNo) != nil else { return }
+        courseColorMap.removeValue(forKey: courseNo)
+        DataCache.shared.saveCourseCustomColors(courseCustomColors)
+    }
+
+    /// Refresh the in-memory override map from disk. Called when the
+    /// underlying user-scoped data is swapped (e.g. logout/login).
+    static func reloadCustomColors() {
+        courseCustomColors = DataCache.shared.loadCourseCustomColors()
+        courseColorMap.removeAll()
     }
 
     /// Deterministic hash → palette index. Stable across launches and
