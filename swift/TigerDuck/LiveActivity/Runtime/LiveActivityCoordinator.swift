@@ -12,10 +12,12 @@ import os
 /// the server can start the inClass one without colliding with the
 /// classPreparing one that iOS already has running.
 ///
-/// `apply` enforces the single-activity invariant *within* a matching
-/// `composedActivityId`: any activity whose id does NOT match the current
-/// snapshot's target id is ended immediately before we create / update
-/// the target.
+/// `apply` touches only the activity matching the current snapshot's
+/// composed id. Activities for other slots / scenarios — typically
+/// prelaunched by the server for upcoming events — are left alone and
+/// auto-dismiss at their own `dismissal-date`. Explicitly ending them
+/// here would kill legitimate future Live Activities (e.g. next
+/// class's classPreparing) the moment the app opens.
 @MainActor
 final class LiveActivityCoordinator {
     private let store: SharedSnapshotStore
@@ -25,7 +27,8 @@ final class LiveActivityCoordinator {
         self.store = store
     }
 
-    /// Apply the resolved snapshot. Starts, updates, or ends activities as needed.
+    /// Apply the resolved snapshot. Starts or updates the single activity
+    /// matching the target id; never ends unrelated activities.
     func apply(snapshot: LiveActivitySnapshot?) async {
         store.writeSnapshot(snapshot)
 
@@ -34,24 +37,14 @@ final class LiveActivityCoordinator {
             return
         }
 
-        let runningActivities = Activity<TigerDuckActivityAttributes>.activities
-
         guard let snapshot else {
-            for activity in runningActivities {
-                await activity.end(nil, dismissalPolicy: .immediate)
-            }
+            // Snapshot cleared — nothing to do for the on-device target.
+            // Server-pushed activities continue their own lifecycle.
             return
         }
 
         let targetId = snapshot.composedActivityId
-
-        // End every activity whose id does not match the current target.
-        // Different scenario or different slot → stop it before spinning up
-        // the new one. `end(nil, .immediate)` is safe when the activity
-        // has already been auto-dismissed by a push dismissal-date.
-        for activity in runningActivities where activity.attributes.activityId != targetId {
-            await activity.end(nil, dismissalPolicy: .immediate)
-        }
+        let runningActivities = Activity<TigerDuckActivityAttributes>.activities
 
         let state = TigerDuckActivityAttributes.ContentState(snapshot: snapshot)
         let content = ActivityContent(state: state, staleDate: snapshot.countdownTarget)
@@ -77,7 +70,9 @@ final class LiveActivityCoordinator {
         }
     }
 
-    /// End any running activity unconditionally (e.g. on logout or privacy toggle).
+    /// End every running activity unconditionally. Used for logout and
+    /// explicit privacy toggles — the user wants nothing on their lock
+    /// screen, server-pushed or otherwise.
     func endAll() async {
         for activity in Activity<TigerDuckActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)
