@@ -18,6 +18,10 @@ class ScenarioKind(StrEnum):
 class DeviceRegisterRequest(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
     device_id: str = Field(min_length=1, max_length=128)
+    # 'apple' (APNs, pts_token_hex = Push-to-Start token) or 'android' (FCM,
+    # pts_token_hex = FCM registration token). Defaults to apple so existing
+    # iOS clients that haven't been rebuilt keep working.
+    platform: str = Field(default="apple", pattern="^(apple|android)$")
     pts_token_hex: str = Field(min_length=1, max_length=512)
     device_token_hex: str | None = Field(default=None, max_length=512)
     bundle_id: str = Field(default="org.ntust.app.TigerDuck", max_length=128)
@@ -28,6 +32,7 @@ class DeviceRegisterRequest(BaseModel):
 class DeviceRegisterResponse(BaseModel):
     device_id: str
     user_id: str
+    platform: str
     registered_at: datetime
 
 
