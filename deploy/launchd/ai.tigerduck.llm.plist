@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  TigerDuck bulletin classifier LLM (llama.cpp / gemma-4-E4B-it).
+
+  Runs NATIVE on the host so it can use Metal GPU — Docker Desktop on Mac
+  can't pass Metal through. The FastAPI backend (in Docker) reaches it via
+  Docker Desktop's host.docker.internal on port 40001.
+
+  Install:
+    ln -sf "$(pwd)/deploy/launchd/ai.tigerduck.llm.plist" ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.tigerduck.llm.plist
+    # First launch downloads ~4GB of GGUF weights into Hugging Face cache —
+    # be patient and tail the log:
+    tail -f ~/Library/Logs/tigerduck-llm.err.log
+
+  Tear down:
+    launchctl bootout gui/$UID ~/Library/LaunchAgents/ai.tigerduck.llm.plist
+    rm ~/Library/LaunchAgents/ai.tigerduck.llm.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.tigerduck.llm</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/llama-server</string>
+        <string>-hf</string>
+        <string>ggml-org/gemma-4-E4B-it-GGUF</string>
+        <string>--host</string>
+        <!-- 0.0.0.0 so the backend container can reach via host.docker.internal.
+             On Mac Docker Desktop, connections still come from the local
+             machine; LAN exposure depends on the macOS firewall setting. -->
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>40001</string>
+        <!-- Dropped from 131072 to 32768: bulletins are <5K chars in practice,
+             giant context wastes KV-cache memory and slows inference. -->
+        <string>--ctx-size</string>
+        <string>32768</string>
+        <string>--threads</string>
+        <string>2</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <!-- Restart on unclean exit (OOM, segfault, etc); respect manual stops. -->
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/xinshoutw/Library/Logs/tigerduck-llm.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/xinshoutw/Library/Logs/tigerduck-llm.err.log</string>
+
+    <!-- Launchd cgroup defaults give 100% CPU; cap at reasonable niceness so
+         llama-server doesn't starve interactive workloads. -->
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>Nice</key>
+    <integer>5</integer>
+</dict>
+</plist>
