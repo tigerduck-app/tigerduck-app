@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from server.config import Settings
@@ -174,6 +174,9 @@ def _classify(result: SendResult) -> str:
 
 
 async def _mark_sent(session: AsyncSession, push: ScheduledPush, ts: datetime) -> None:
+    # Core-level update bypasses the ORM, so the model's onupdate=func.now()
+    # hook does NOT fire. Set updated_at explicitly so the column actually
+    # reflects the last state transition.
     await session.execute(
         update(ScheduledPush)
         .where(ScheduledPush.push_id == push.push_id)
@@ -182,6 +185,7 @@ async def _mark_sent(session: AsyncSession, push: ScheduledPush, ts: datetime) -
             sent_at=ts,
             attempts=push.attempts + 1,
             last_error=None,
+            updated_at=func.now(),
         )
     )
 
@@ -196,6 +200,7 @@ async def _mark_cancelled(
             status=PushStatus.cancelled.value,
             attempts=push.attempts + 1,
             last_error=reason,
+            updated_at=func.now(),
         )
     )
 
@@ -210,6 +215,7 @@ async def _mark_failed(
             status=PushStatus.failed.value,
             attempts=push.attempts + 1,
             last_error=reason,
+            updated_at=func.now(),
         )
     )
 
@@ -231,6 +237,7 @@ async def _bump_or_fail(
             .values(
                 attempts=next_attempts,
                 last_error=f"status={result.status} desc={result.description}",
+                updated_at=func.now(),
             )
         )
 

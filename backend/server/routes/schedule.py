@@ -76,6 +76,10 @@ async def sync_schedule(
                 "status": PushStatus.pending.value,
                 "attempts": 0,
                 "last_error": None,
+                # Core-level UPSERT bypasses the ORM's onupdate=func.now()
+                # hook, so updated_at would otherwise stay frozen at insert
+                # time across re-syncs.
+                "updated_at": func.now(),
             },
             where=ScheduledPush.status != PushStatus.sent.value,
         )
