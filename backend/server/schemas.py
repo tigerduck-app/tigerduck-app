@@ -36,7 +36,11 @@ class DeviceUnregisterRequest(BaseModel):
 
 
 class ScheduleEvent(BaseModel):
-    source_id: str = Field(min_length=1, max_length=128)
+    # `:` is reserved as the separator in build_push_id(device_id, source_id,
+    # scenario). Allowing it in source_id would let two distinct (source_id,
+    # scenario) pairs collide onto the same push_id and silently overwrite
+    # each other (e.g. ("a:b", "x") vs. ("a", "b:x")).
+    source_id: str = Field(min_length=1, max_length=128, pattern=r"^[^:]+$")
     scenario: ScenarioKind
     fire_at: datetime
     snapshot: dict[str, Any]
