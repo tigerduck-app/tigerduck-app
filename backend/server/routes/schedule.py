@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -79,8 +79,11 @@ async def sync_schedule(
             },
             where=ScheduledPush.status != PushStatus.sent.value,
         )
-        await session.execute(stmt)
-        upserted += 1
+        result = await session.execute(stmt)
+        # rowcount is 0 when the ON CONFLICT WHERE clause suppresses the
+        # update (row was already `sent`). Counting only real writes keeps
+        # `scheduled` honest for observability.
+        upserted += result.rowcount or 0
 
     # Cancel any pending pushes for this device that weren't in the sync.
     # Don't touch already-sent ones (history preservation).
@@ -129,9 +132,11 @@ async def sync_schedule(
     status_code=status.HTTP_200_OK,
 )
 async def cancel_by_source(
-    device_id: str,
-    source_id: str,
     session: SessionDep,
+    device_id: str = Path(min_length=1, max_length=128),
+    # Same `^[^:]+$` guard as ScheduleEvent.source_id — see that schema for
+    # rationale (push_id collision prevention).
+    source_id: str = Path(min_length=1, max_length=128, pattern=r"^[^:]+$"),
 ) -> ScheduleDeleteResponse:
     """Cancel every pending push for this device+source_id (all scenarios).
 
