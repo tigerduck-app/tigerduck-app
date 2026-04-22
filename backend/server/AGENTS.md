@@ -60,8 +60,10 @@ The backend reaches it via `host.docker.internal:40001`. See
 
 ### One-shot backfill
 ```bash
+# NOTE: the production image only bundles the .venv (no uv). Call python
+# directly — /app/.venv/bin is on PATH so it resolves to the pinned 3.13.
 docker compose exec backend \
-  uv run python scripts/backfill_bulletins.py --pages 20 --concurrency 3
+  python scripts/backfill_bulletins.py --pages 20 --concurrency 3
 ```
 
 ### Tests (host-side, not inside container)
