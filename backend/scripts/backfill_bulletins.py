@@ -248,6 +248,66 @@ async def _drain_pending(
     return totals
 
 
+async def _preflight_llm(
+    settings: Settings, http_client: httpx.AsyncClient
+) -> None:
+    """Fail fast with a clear message when the LLM endpoint is unreachable.
+
+    Without this, every bulletin burns 3 retry attempts with full timeouts
+    before the script notices the LLM is down — so a single misconfigured
+    base_url silently turns a 10-minute backfill into a multi-hour stall.
+
+    Two checks: TCP reachability via GET /models, and a one-token
+    /chat/completions round-trip so we catch model-name mismatches too.
+    """
+    base = settings.llm_base_url.rstrip("/")
+    try:
+        r = await http_client.get(
+            f"{base}/models",
+            headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+            timeout=5.0,
+        )
+    except httpx.HTTPError as exc:
+        raise SystemExit(
+            f"! LLM preflight failed: GET {base}/models → {exc}\n"
+            f"  Is llama-server actually reachable from THIS machine?\n"
+            f"  (If it is on a different host, set TIGERDUCK_LLM_BASE_URL "
+            f"to the correct host, or establish an ssh tunnel.)"
+        ) from exc
+    if r.status_code >= 400:
+        raise SystemExit(
+            f"! LLM preflight failed: GET {base}/models → HTTP {r.status_code}\n"
+            f"  Body: {r.text[:200]}\n"
+            f"  Likely the base_url is wrong or the server on that port is "
+            f"not OpenAI-compatible."
+        )
+
+    try:
+        r = await http_client.post(
+            f"{base}/chat/completions",
+            headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+            json={
+                "model": settings.llm_model,
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 4,
+                "temperature": 0,
+            },
+            timeout=15.0,
+        )
+    except httpx.HTTPError as exc:
+        raise SystemExit(
+            f"! LLM chat preflight failed: POST {base}/chat/completions → {exc}"
+        ) from exc
+    if r.status_code >= 400:
+        raise SystemExit(
+            f"! LLM chat preflight failed: HTTP {r.status_code}\n"
+            f"  Body: {r.text[:300]}\n"
+            f"  If body says 'model not found', adjust TIGERDUCK_LLM_MODEL "
+            f"to match the model name llama-server actually loaded."
+        )
+    print(f"[preflight] LLM {base} reachable, model {settings.llm_model} ok")
+
+
 async def _suppress_future_push(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> int:
@@ -289,6 +349,9 @@ async def main_async(args: argparse.Namespace) -> int:
             follow_redirects=True,
             headers={"User-Agent": "TigerDuckBulletinBot/0.1 (backfill)"},
         ) as http_client:
+            if not args.skip_preflight:
+                await _preflight_llm(settings, http_client)
+
             inserted, refreshed = await _scrape_pages(
                 settings, session_factory, pages, http_client
             )
@@ -334,6 +397,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--no-suppress-push",
         action="store_true",
         help="do NOT stamp notified_at — backfill will fan out pushes to every device",
+    )
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="skip the LLM reachability check at startup (not recommended)",
     )
     return parser
 
