@@ -142,7 +142,12 @@ final class PushAPIClient: Sendable {
     }()
 
     private static func percentEncoded(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
+        // `urlPathAllowed` includes `/`, so a source_id like "EE/CS-101"
+        // would be spliced into the URL as an extra path segment and the
+        // server would 404. Remove it so the value stays one segment.
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove("/")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 }
 
