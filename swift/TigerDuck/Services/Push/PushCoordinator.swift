@@ -43,7 +43,10 @@ final class PushCoordinator {
         apiClient: PushAPIClient? = nil
     ) {
         self.identity = identity
-        let resolvedClient = apiClient ?? PushAPIClient(baseURL: Self.resolveServerURL())
+        let resolvedClient = apiClient ?? PushAPIClient(
+            baseURL: Self.resolveServerURL(),
+            sharedSecret: Self.resolveSharedSecret()
+        )
         self.apiClient = resolvedClient
         self.registration = PushRegistrationService(
             identity: identity,
@@ -149,5 +152,16 @@ final class PushCoordinator {
             return url
         }
         return AppConstants.defaultPushServerURL
+    }
+
+    /// Read the shared secret from Info.plist key `TigerDuckAPIToken`
+    /// (injected at build time from an xcconfig / CI secret). Returning
+    /// nil preserves the dev-friendly no-auth path when the key is absent.
+    static func resolveSharedSecret() -> String? {
+        guard
+            let value = Bundle.main.object(forInfoDictionaryKey: "TigerDuckAPIToken") as? String,
+            !value.isEmpty
+        else { return nil }
+        return value
     }
 }

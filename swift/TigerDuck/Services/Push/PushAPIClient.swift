@@ -10,14 +10,19 @@ import os
 final class PushAPIClient: Sendable {
     private let baseURL: URL
     private let session: URLSession
+    private let sharedSecret: String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
     init(
         baseURL: URL = AppConstants.defaultPushServerURL,
-        session: URLSession? = nil
+        session: URLSession? = nil,
+        sharedSecret: String? = nil
     ) {
         self.baseURL = baseURL
         self.session = session ?? Self.defaultSession()
+        // Only keep non-empty secrets — empty strings mean "auth disabled"
+        // on the server side, and we want the client to behave identically.
+        self.sharedSecret = sharedSecret.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     // MARK: - Public surface
@@ -41,6 +46,7 @@ final class PushAPIClient: Sendable {
         let url = baseURL.appendingPathComponent("schedule/\(safeDevice)/\(safeSource)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
+        applyAuth(to: &request)
         _ = try await execute(request)
     }
 
@@ -80,12 +86,21 @@ final class PushAPIClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(to: &request)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
             throw PushAPIError.encodingFailed(error)
         }
         return request
+    }
+
+    /// Attach the `X-Push-Token` shared-secret header when one is configured.
+    /// No-op for dev builds that leave the secret unset; mirrors the
+    /// server's behaviour when `TIGERDUCK_API_SHARED_SECRET` is empty.
+    private func applyAuth(to request: inout URLRequest) {
+        guard let secret = sharedSecret else { return }
+        request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
     }
 
     private func execute(_ request: URLRequest) async throws -> Data {
