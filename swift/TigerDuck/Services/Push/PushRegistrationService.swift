@@ -16,6 +16,19 @@ struct PushRegistrationSnapshot: Sendable {
     let lastRegisteredAt: Date?
 }
 
+/// APNs environment of the PTS token Apple issues for this build. Debug
+/// builds use the sandbox (`api.sandbox.push.apple.com`); TestFlight and
+/// App Store builds are issued production tokens. The server uses the
+/// value we upload to select the correct APNs host, so it MUST match the
+/// build configuration — never a constant string.
+nonisolated enum PushAPNsEnv {
+    #if DEBUG
+    static let resolvedForBuild = "development"
+    #else
+    static let resolvedForBuild = "production"
+    #endif
+}
+
 actor PushRegistrationService {
     private let identity: PushIdentity
     private let apiClient: PushAPIClient
@@ -35,7 +48,7 @@ actor PushRegistrationService {
         apiClient: PushAPIClient,
         bundleId: String = "org.ntust.app.TigerDuck",
         attrsType: String = "TigerDuckActivityAttributes",
-        apnsEnv: String = "development"
+        apnsEnv: String = PushAPNsEnv.resolvedForBuild
     ) {
         self.identity = identity
         self.apiClient = apiClient
