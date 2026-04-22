@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from server.db import SessionDep
@@ -94,16 +94,19 @@ async def sync_schedule(
     cancel_result = await session.execute(cancel_stmt)
     cancelled = cancel_result.rowcount or 0
 
-    # Final pending count for this device
+    # Final pending count for this device — server-side COUNT so we don't
+    # materialise every ORM row just to call len() on it.
     count_result = await session.execute(
-        select(ScheduledPush).where(
+        select(func.count())
+        .select_from(ScheduledPush)
+        .where(
             and_(
                 ScheduledPush.device_id == payload.device_id,
                 ScheduledPush.status == PushStatus.pending.value,
             )
         )
     )
-    total_pending = len(count_result.scalars().all())
+    total_pending = count_result.scalar_one()
 
     logger.info(
         "schedule.synced",
