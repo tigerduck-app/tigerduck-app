@@ -105,6 +105,19 @@ def test_parse_response_rejects_bad_json() -> None:
         _parse_response("not json {{{")
 
 
+def test_parse_response_strips_markdown_fences() -> None:
+    # Instruction-tuned models (Gemma, Qwen, Llama) often wrap JSON in
+    # ```json ... ``` even when response_format asks for pure JSON.
+    fenced = "```json\n" + json.dumps(_good_payload()) + "\n```"
+    meta = _parse_response(fenced)
+    assert meta.canonical_org is CanonicalOrg.student_affairs
+
+    # Plain ``` fence without language tag also happens.
+    bare = "```\n" + json.dumps(_good_payload()) + "\n```"
+    meta = _parse_response(bare)
+    assert meta.canonical_org is CanonicalOrg.student_affairs
+
+
 # ---- Backoff ---------------------------------------------------------------
 
 

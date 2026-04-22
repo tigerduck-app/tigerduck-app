@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any
 
 import httpx
@@ -114,11 +115,12 @@ class OpenAICompatibleProvider:
                 logger.warning(
                     "bulletins.llm.retry",
                     attempt=attempt + 1,
-                    error=str(exc)[:200],
+                    error=str(exc)[:500],
                 )
 
         raise LLMError(
-            f"classification failed after {self._max_retries + 1} attempts: {last_error}"
+            f"classification failed after {self._max_retries + 1} attempts: "
+            f"{str(last_error)[:800]}"
         )
 
     async def _once(self, payload: dict[str, Any]) -> BulletinMetadata:
@@ -149,23 +151,47 @@ def _extract_message_content(data: dict[str, Any]) -> str:
         raise LLMError(f"response missing choices[0].message.content: {data!r}") from exc
 
 
+# Match ```json ... ``` / ``` ... ``` / <tag>{json}</tag> wrappers that
+# instruction-tuned models love to emit. Keep the regex greedy — we always
+# want the *last* closing fence since JSON itself may contain backticks.
+_FENCE_RE = re.compile(r"^```(?:json|JSON)?\s*(.+?)\s*```\s*$", re.DOTALL)
+
+
+def _strip_fences(content: str) -> str:
+    """Strip markdown code fences and leading/trailing whitespace.
+
+    Gemma / Qwen / Llama-Instruct frequently wrap JSON in ```json ... ```
+    even when response_format asks for pure JSON. The grammar constraint
+    in llama.cpp also sometimes fires *inside* a fence. Be forgiving."""
+    stripped = content.strip()
+    match = _FENCE_RE.match(stripped)
+    if match:
+        return match.group(1).strip()
+    return stripped
+
+
 def _parse_response(content: str) -> BulletinMetadata:
+    cleaned = _strip_fences(content)
     try:
-        obj = json.loads(content)
+        obj = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise LLMError(f"content was not valid JSON: {content[:200]}") from exc
+        raise LLMError(
+            f"content was not valid JSON after fence-strip: {cleaned[:800]}"
+        ) from exc
 
     try:
         canonical_org = CanonicalOrg(obj["canonical_org"])
         importance = Importance(obj.get("importance", Importance.normal.value))
         content_tags = tuple(ContentTag(t) for t in obj.get("content_tags", []))
     except (KeyError, ValueError) as exc:
-        raise LLMError(f"response failed enum validation: {obj!r}") from exc
+        raise LLMError(
+            f"response failed enum validation: {str(obj)[:800]} (cause: {exc})"
+        ) from exc
 
     summary = str(obj.get("summary", "")).strip()
     body_clean = str(obj.get("body_clean", "")).strip()
     if not summary or not body_clean:
-        raise LLMError(f"summary and body_clean must be non-empty: {obj!r}")
+        raise LLMError(f"summary and body_clean must be non-empty: {str(obj)[:800]}")
 
     # Keep summary below our hard cap — the prompt asks for 60 but models
     # occasionally overshoot. We truncate rather than retry since the payload
