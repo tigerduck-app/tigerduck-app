@@ -1,6 +1,11 @@
 TigerDuck.iml
 swift/buildServer.json
 
+# iOS secrets — real values live only on the developer machine, synced
+# manually with the server's TIGERDUCK_API_SHARED_SECRET. The .example
+# counterpart is committed as a template.
+swift/TigerDuck/Secrets.xcconfig
+
 .superpowers/
 docs/plans/
 # Created by https://www.toptal.com/developers/gitignore/api/linux,macos,swift,xcode,kotlin,python,pycharm,windows,intellij,visualstudio,visualstudiocode
