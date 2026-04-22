@@ -64,7 +64,6 @@
 		42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		42B9BC8A2F90EDD100D3B5A1 /* TigerDuckLiveActivityExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TigerDuckLiveActivityExtension.entitlements; sourceTree = "<group>"; };
 		42D2EEAC2F73B4B300973752 /* tigerduck.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = tigerduck.icon; sourceTree = "<group>"; };
-		42FAA8EF2F98FE760096E4A9 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -176,7 +175,6 @@
 				42B9BBFF2F90EBFA00D3B5A1 /* Frameworks */,
 				424C46572F6E763C009D1DDA /* Products */,
 				42D2EEAC2F73B4B300973752 /* tigerduck.icon */,
-				42FAA8EF2F98FE760096E4A9 /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -438,8 +436,6 @@
 /* Begin XCBuildConfiguration section */
 		424C46772F6E763E009D1DDA /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReferenceAnchor = 424C46582F6E763C009D1DDA /* TigerDuck */;
-			baseConfigurationReferenceRelativePath = Secrets.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -503,8 +499,6 @@
 		};
 		424C46782F6E763E009D1DDA /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReferenceAnchor = 424C46582F6E763C009D1DDA /* TigerDuck */;
-			baseConfigurationReferenceRelativePath = Secrets.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
