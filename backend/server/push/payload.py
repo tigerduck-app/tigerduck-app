@@ -19,8 +19,9 @@ Payload shape for a PTS push:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import Any
 
 SCENARIO_CLASS_PREPARING = "classPreparing"
@@ -73,6 +74,19 @@ def _normalize_snapshot_for_apns(snapshot: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+class PushKind(StrEnum):
+    """Which APNs channel this request targets.
+
+    * `live_activity` — Push-to-Start / Live Activity updates. Topic has the
+      `.push-type.liveactivity` suffix and APNs refuses delivery otherwise.
+    * `alert` — standard user-facing alert/banner push. Topic is the plain
+      bundle id.
+    """
+
+    live_activity = "live_activity"
+    alert = "alert"
+
+
 @dataclass(frozen=True)
 class ApnsRequest:
     """Transport-level view of a single APNs call."""
@@ -82,6 +96,9 @@ class ApnsRequest:
     expiration: int  # unix seconds
     priority: int
     message: dict[str, Any]
+    # Default stays on live_activity so the PTS code path keeps working
+    # without changes. Alert callers set `kind=PushKind.alert` explicitly.
+    kind: PushKind = field(default=PushKind.live_activity)
 
 
 def _alert_for(scenario: str, snapshot: dict[str, Any]) -> dict[str, str]:
@@ -162,6 +179,53 @@ def build_pts_payload(
     if dismissal_unix is not None:
         aps["dismissal-date"] = dismissal_unix
     return {"aps": aps}
+
+
+def build_alert_request(
+    *,
+    device_token: str,
+    bundle_id: str,
+    title: str,
+    body: str,
+    bulletin_id: int,
+    source_url: str,
+    canonical_org: str,
+    thread_id: str = "bulletin",
+    ttl_seconds: int = 7 * 24 * 3600,
+    now: datetime | None = None,
+) -> ApnsRequest:
+    """Build a standard alert-push APNs request for a bulletin notification.
+
+    `apns-topic` is the plain bundle id (no `.push-type.liveactivity`
+    suffix), otherwise iOS drops the push silently. `thread-id` groups
+    bulletins under one notification stack on the lock screen.
+
+    Extra keys at the top level (`bulletin_id`, `source_url`,
+    `canonical_org`) ride along for the client's notification content
+    extension and deep-link handler.
+    """
+    timestamp = int((now or datetime.now(timezone.utc)).timestamp())
+    expiration = timestamp + ttl_seconds
+    message: dict[str, Any] = {
+        "aps": {
+            "alert": {"title": title, "body": body},
+            "sound": "default",
+            "badge": 1,
+            "mutable-content": 1,
+            "thread-id": thread_id,
+        },
+        "bulletin_id": bulletin_id,
+        "source_url": source_url,
+        "canonical_org": canonical_org,
+    }
+    return ApnsRequest(
+        device_token=device_token,
+        topic=bundle_id,
+        expiration=expiration,
+        priority=10,
+        message=message,
+        kind=PushKind.alert,
+    )
 
 
 def build_apns_request(
