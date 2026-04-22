@@ -9,3 +9,6 @@ server/secrets/
 *.p8
 .venv/
 .pytest_cache/
+
+# Local editor/tool auto-backups of .env
+.duckversions/
