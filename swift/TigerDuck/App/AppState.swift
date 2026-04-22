@@ -53,9 +53,15 @@ final class AppState {
             queue: .main
         ) { [weak self] _ in
             self?.scheduleLiveActivityRefresh()
+            self?.requestPushScheduleSync()
         }
 
         runPendingMigrations()
+
+        // Auto-enable the push stack when the user has already opted in
+        // (e.g. across app launches). The coordinator no-ops when the
+        // toggle is off, so this is safe to call unconditionally.
+        pushCoordinator.enable()
     }
 
     // MARK: - Migrations
@@ -97,6 +103,10 @@ final class AppState {
     private var preferencesObserver: Any?
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
+
+    // MARK: - Push server
+
+    let pushCoordinator = PushCoordinator()
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
@@ -417,7 +427,61 @@ final class AppState {
             if rescheduleReminderNotifications {
                 await rescheduleReminders()
             }
+            requestPushScheduleSync()
         }
+    }
+
+    // MARK: - Push server integration
+
+    /// Wire the `PushAppDelegate` at app launch so APNs device tokens flow
+    /// into `PushRegistrationService`.
+    func bindPushDelegate(_ delegate: PushAppDelegate) {
+        pushCoordinator.bindTokenForwarding(delegate)
+    }
+
+    /// Sync the next-48h event list to the push server. No-ops when the user
+    /// has not enabled server push. Safe to call from any scene / data
+    /// transition — `PushCoordinator` debounces bursts into a single POST.
+    func requestPushScheduleSync() {
+        pushCoordinator.requestSync { [weak self] in
+            guard let self else {
+                return ScheduleSyncService.Inputs(
+                    courses: [],
+                    assignments: [],
+                    accentHex: 0x007AFF,
+                    classPreparingLeadTime: 0,
+                    assignmentLeadTime: 0,
+                    showClassPreparing: false,
+                    showInClass: false,
+                    showAssignmentScenario: false
+                )
+            }
+            return ScheduleSyncService.Inputs(
+                courses: courseProvider.currentCourses(),
+                assignments: DataCache.shared.loadAssignments(),
+                accentHex: accentColorHex,
+                classPreparingLeadTime: liveActivityPreferences.classPreparingLeadTime,
+                assignmentLeadTime: liveActivityPreferences.assignmentLiveActivityLeadTime,
+                showClassPreparing: liveActivityPreferences.showClassPreparingScenario,
+                showInClass: liveActivityPreferences.showInClassScenario,
+                showAssignmentScenario: liveActivityPreferences.showAssignmentScenario
+            )
+        }
+    }
+
+    /// Enable server push (registers for remote notifications, starts PTS
+    /// relay, queues an immediate sync). Call only from explicit user intent
+    /// — turning on the Settings toggle.
+    func enablePushServer() {
+        Defaults[.pushServerEnabled] = true
+        pushCoordinator.enable()
+        requestPushScheduleSync()
+    }
+
+    /// Disable server push (tells server to drop the device, stops relay).
+    func disablePushServer() async {
+        Defaults[.pushServerEnabled] = false
+        await pushCoordinator.disable()
     }
 
     /// Background sync all data on app launch.

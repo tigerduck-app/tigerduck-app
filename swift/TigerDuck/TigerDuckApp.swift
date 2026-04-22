@@ -5,6 +5,7 @@ import SwiftData
 struct TigerDuckApp: App {
     @State private var appState = AppState()
     @State private var sceneRefreshTask: Task<Void, Never>?
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -51,6 +52,7 @@ struct TigerDuckApp: App {
                 .tint(appState.accentColor)
                 .preferredColorScheme(.dark)
                 .onAppear {
+                    appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
@@ -64,6 +66,7 @@ struct TigerDuckApp: App {
                             await appState.refreshLiveActivity()
                             guard !Task.isCancelled else { return }
                             await appState.rescheduleReminders()
+                            appState.requestPushScheduleSync()
                         }
                     }
                 }
