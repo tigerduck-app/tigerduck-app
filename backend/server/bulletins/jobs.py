@@ -96,6 +96,62 @@ async def _mark_stale_deleted(
     return result.rowcount or 0
 
 
+async def claim_pending_bulletins(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    max_attempts: int,
+    limit: int,
+) -> list[Bulletin]:
+    """Atomically reserve up to `limit` pending bulletins for processing.
+
+    Two workers running in parallel (e.g. the scheduler's `process_job` and
+    the one-shot backfill script) must not pick the same row — without this
+    they would both hit the LLM with the same payload and race on the final
+    state update. We use SELECT ... FOR UPDATE SKIP LOCKED inside a single
+    transaction, increment `processing_attempts`, and commit; any other
+    worker running the same SELECT concurrently just skips the locked ids.
+
+    The attempts bump here is the AUTHORITATIVE place — downstream success
+    and failure paths no longer re-increment, they only transition state.
+    That way an exhausted bulletin is defined precisely as
+    `processing_attempts >= max_attempts` at the moment of finalization.
+    """
+    async with session_factory() as session:
+        claim_ids = (
+            await session.execute(
+                select(Bulletin.id)
+                .where(
+                    Bulletin.processing_state
+                    == BulletinProcessingState.pending.value,
+                    Bulletin.processing_attempts < max_attempts,
+                    Bulletin.is_deleted.is_(False),
+                )
+                .order_by(Bulletin.id)
+                .limit(limit)
+                .with_for_update(skip_locked=True)
+            )
+        ).scalars().all()
+
+        if not claim_ids:
+            return []
+
+        await session.execute(
+            update(Bulletin)
+            .where(Bulletin.id.in_(claim_ids))
+            .values(processing_attempts=Bulletin.processing_attempts + 1)
+        )
+        claimed = (
+            await session.execute(
+                select(Bulletin)
+                .where(Bulletin.id.in_(claim_ids))
+                .order_by(Bulletin.id)
+            )
+        ).scalars().all()
+        await session.commit()
+
+    return list(claimed)
+
+
 async def process_job(
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
@@ -105,32 +161,17 @@ async def process_job(
     batch_limit: int = 10,
 ) -> int:
     """Drain up to `batch_limit` pending bulletins through detail + LLM."""
-    async with session_factory() as session:
-        pending = (
-            (
-                await session.execute(
-                    select(Bulletin)
-                    .where(
-                        Bulletin.processing_state
-                        == BulletinProcessingState.pending.value,
-                        Bulletin.processing_attempts
-                        < settings.bulletin_max_process_attempts,
-                        Bulletin.is_deleted.is_(False),
-                    )
-                    .order_by(Bulletin.id)
-                    .limit(batch_limit)
-                )
-            )
-            .scalars()
-            .all()
-        )
-
-    if not pending:
+    claimed = await claim_pending_bulletins(
+        session_factory,
+        max_attempts=settings.bulletin_max_process_attempts,
+        limit=batch_limit,
+    )
+    if not claimed:
         return 0
 
     processed = 0
     async with http_client_factory() as http_client:
-        for bul in pending:
+        for bul in claimed:
             try:
                 await _process_one(session_factory, settings, llm, http_client, bul.id)
                 processed += 1
@@ -163,11 +204,11 @@ async def _process_one(
     try:
         detail = await fetch_detail(source_url, http_client)
     except httpx.HTTPError as exc:
-        await _mark_failed(session_factory, bulletin_id, f"detail fetch: {exc}")
+        await _mark_failed(session_factory, settings, bulletin_id, f"detail fetch: {exc}")
         return
 
     if detail is None:
-        await _mark_failed(session_factory, bulletin_id, "trafilatura empty extract")
+        await _mark_failed(session_factory, settings, bulletin_id, "trafilatura empty extract")
         return
 
     # First: persist body_md + dedup against existing content_hash.
@@ -185,7 +226,7 @@ async def _process_one(
             body_md=detail.body_md,
         )
     except LLMError as exc:
-        await _mark_failed(session_factory, bulletin_id, f"llm: {exc}")
+        await _mark_failed(session_factory, settings, bulletin_id, f"llm: {exc}")
         return
 
     async with session_factory() as session:
@@ -200,7 +241,7 @@ async def _process_one(
                 importance=meta.importance.value,
                 processing_state=BulletinProcessingState.processed.value,
                 processing_error=None,
-                processing_attempts=Bulletin.processing_attempts + 1,
+                # processing_attempts already bumped at claim time
             )
         )
         await session.commit()
@@ -208,17 +249,21 @@ async def _process_one(
 
 async def _mark_failed(
     session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
     bulletin_id: int,
     reason: str,
 ) -> None:
+    """Mark a claimed bulletin as failed.
+
+    processing_attempts has already been bumped at claim time; here we only
+    decide whether to keep the row in `pending` (will retry next tick) or
+    flip to `failed` (exhausted the attempt budget).
+    """
     async with session_factory() as session:
         bul = await session.get(Bulletin, bulletin_id)
         if bul is None:
             return
-        next_attempts = bul.processing_attempts + 1
-        # Stay in pending until attempts exhausted, then flip to failed so
-        # the job stops picking it up.
-        stays_pending = next_attempts < 3  # duplicates settings.bulletin_max_process_attempts default; safe since we also gate at the SELECT
+        stays_pending = bul.processing_attempts < settings.bulletin_max_process_attempts
         state = (
             BulletinProcessingState.pending.value
             if stays_pending
@@ -230,7 +275,7 @@ async def _mark_failed(
             .values(
                 processing_state=state,
                 processing_error=reason[:500],
-                processing_attempts=next_attempts,
+                # processing_attempts already bumped at claim time
             )
         )
         await session.commit()

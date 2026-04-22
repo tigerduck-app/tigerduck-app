@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 # Let the script run via `uv run python scripts/backfill_bulletins.py`
@@ -43,6 +43,7 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from server.bulletins.dedup import attach_body_and_dedup, upsert_list_rows  # noqa: E402
 from server.bulletins.detail import fetch_detail  # noqa: E402
+from server.bulletins.jobs import claim_pending_bulletins  # noqa: E402
 from server.bulletins.llm.base import LLMError, LLMProvider  # noqa: E402
 from server.bulletins.models import Bulletin, BulletinProcessingState  # noqa: E402
 from server.bulletins.scraper import fetch_list  # noqa: E402
@@ -105,29 +106,25 @@ async def _process_one(
     session_factory: async_sessionmaker[AsyncSession],
     llm: LLMProvider,
     http_client: httpx.AsyncClient,
-    bulletin_id: int,
+    bulletin: Bulletin,
     max_attempts: int,
 ) -> str:
-    """Run one bulletin through detail+dedup+LLM. Returns a short tag
-    describing the outcome: processed / repost / failed / skipped."""
-    async with session_factory() as session:
-        bulletin = await session.get(Bulletin, bulletin_id)
-        if bulletin is None:
-            return "missing"
-        if bulletin.processing_attempts >= max_attempts:
-            return "exhausted"
-        source_url = bulletin.source_url
-        title = bulletin.title
-        raw_publisher = bulletin.raw_publisher or ""
+    """Run one already-claimed bulletin through detail+dedup+LLM. Returns a
+    short tag: processed / repost / failed / missing. processing_attempts
+    was bumped at claim time."""
+    bulletin_id = bulletin.id
+    source_url = bulletin.source_url
+    title = bulletin.title
+    raw_publisher = bulletin.raw_publisher or ""
 
     try:
         detail = await fetch_detail(source_url, http_client)
     except httpx.HTTPError as exc:
-        await _mark_failed(session_factory, bulletin_id, f"detail fetch: {exc}")
+        await _mark_failed(session_factory, bulletin_id, max_attempts, f"detail fetch: {exc}")
         return "failed"
 
     if detail is None:
-        await _mark_failed(session_factory, bulletin_id, "trafilatura empty extract")
+        await _mark_failed(session_factory, bulletin_id, max_attempts, "trafilatura empty extract")
         return "failed"
 
     async with session_factory() as session:
@@ -143,7 +140,7 @@ async def _process_one(
             body_md=detail.body_md,
         )
     except LLMError as exc:
-        await _mark_failed(session_factory, bulletin_id, f"llm: {exc}")
+        await _mark_failed(session_factory, bulletin_id, max_attempts, f"llm: {exc}")
         return "failed"
 
     async with session_factory() as session:
@@ -158,7 +155,7 @@ async def _process_one(
                 importance=meta.importance.value,
                 processing_state=BulletinProcessingState.processed.value,
                 processing_error=None,
-                processing_attempts=Bulletin.processing_attempts + 1,
+                # processing_attempts already bumped at claim time
             )
         )
         await session.commit()
@@ -168,14 +165,14 @@ async def _process_one(
 async def _mark_failed(
     session_factory: async_sessionmaker[AsyncSession],
     bulletin_id: int,
+    max_attempts: int,
     reason: str,
 ) -> None:
     async with session_factory() as session:
         bul = await session.get(Bulletin, bulletin_id)
         if bul is None:
             return
-        next_attempts = bul.processing_attempts + 1
-        stays_pending = next_attempts < 3
+        stays_pending = bul.processing_attempts < max_attempts
         state = (
             BulletinProcessingState.pending.value
             if stays_pending
@@ -187,7 +184,7 @@ async def _mark_failed(
             .values(
                 processing_state=state,
                 processing_error=reason[:500],
-                processing_attempts=next_attempts,
+                # processing_attempts already bumped at claim time
             )
         )
         await session.commit()
@@ -200,51 +197,41 @@ async def _drain_pending(
     http_client: httpx.AsyncClient,
     max_attempts: int,
     concurrency: int,
+    batch_size: int = 100,
 ) -> dict[str, int]:
     """Pick up every pending row (within attempt budget) and run it.
-    Concurrency-capped so we don't hammer either the NTUST server or
-    the local llama.cpp box."""
+
+    Claims rows atomically with SELECT ... FOR UPDATE SKIP LOCKED so that
+    if the scheduler's `process_job` happens to run concurrently, neither
+    side duplicates LLM work. Claims in bounded batches to keep the
+    transaction that holds the SKIP LOCKED lease short."""
     totals: dict[str, int] = {
         "processed": 0,
         "repost": 0,
         "failed": 0,
-        "exhausted": 0,
         "missing": 0,
     }
     semaphore = asyncio.Semaphore(concurrency)
 
-    async def handle(bulletin_id: int) -> None:
+    async def handle(bulletin: Bulletin) -> None:
         async with semaphore:
             result = await _process_one(
-                session_factory, llm, http_client, bulletin_id, max_attempts
+                session_factory, llm, http_client, bulletin, max_attempts
             )
             totals[result] = totals.get(result, 0) + 1
             done = sum(totals.values())
-            print(f"  [{done}] bulletin {bulletin_id}: {result}")
+            print(f"  [{done}] bulletin {bulletin.id}: {result}")
 
     while True:
-        async with session_factory() as session:
-            pending_ids = (
-                (
-                    await session.execute(
-                        select(Bulletin.id)
-                        .where(
-                            Bulletin.processing_state
-                            == BulletinProcessingState.pending.value,
-                            Bulletin.processing_attempts < max_attempts,
-                        )
-                        .order_by(Bulletin.id)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-        if not pending_ids:
+        claimed = await claim_pending_bulletins(
+            session_factory, max_attempts=max_attempts, limit=batch_size
+        )
+        if not claimed:
             break
 
-        print(f"[process] queue size {len(pending_ids)} — running up to "
+        print(f"[process] claimed {len(claimed)} rows — running up to "
               f"{concurrency} in parallel")
-        await asyncio.gather(*(handle(bid) for bid in pending_ids))
+        await asyncio.gather(*(handle(bul) for bul in claimed))
     return totals
 
 
