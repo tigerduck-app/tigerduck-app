@@ -16,7 +16,15 @@ nonisolated enum AppConstants {
         static let libraryTokenExpiry = "library_token_expiry"
         static let moodleToken = "moodle_token"
         static let moodlePrivateToken = "moodle_private_token"
+        static let pushUserId = "push_user_id"
+        static let pushDeviceId = "push_device_id"
     }
+
+    /// Base URL for the push notification server. Production default points at
+    /// the nginx-proxy-manager + Cloudflare-fronted Mac mini. Override via
+    /// ``UserDefaultsKeys/pushServerURLOverride`` during development to talk
+    /// to a LAN instance.
+    static let defaultPushServerURL = URL(string: "https://api.tigerduck.app/v1")!
 
     enum UserDefaultsKeys {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
@@ -43,6 +51,12 @@ nonisolated enum AppConstants {
         static let ssoLoginTimestamp = "ssoLoginTimestamp"
         static let classTableSelectedSemester = "classTableSelectedSemester"
         static let homeAssignmentFilter = "homeAssignmentFilter"
+
+        // MARK: Push server
+        static let pushServerEnabled = "pushServerEnabled"
+        static let pushServerURLOverride = "pushServerURLOverride"
+        static let pushLastRegistrationAt = "pushLastRegistrationAt"
+        static let pushLastSyncAt = "pushLastSyncAt"
     }
 
     enum Periods {

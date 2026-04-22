@@ -21,4 +21,14 @@ nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable 
     let deepLink: URL?
     /// Stable id used for tie-breaks and `update` vs `end` decisions.
     let sourceId: String
+
+    /// Composite identity used as `TigerDuckActivityAttributes.activityId`.
+    /// Scoping by scenario guarantees that a server-triggered classPreparing
+    /// activity and the follow-up inClass activity are distinct as far as
+    /// ActivityKit is concerned — PTS cannot update an existing activity, so
+    /// sharing the id would make iOS silently drop the second push. The same
+    /// format MUST be used on the server (`{scenario}::{source_id}`).
+    var composedActivityId: String {
+        "\(scenario.rawValue)::\(sourceId)"
+    }
 }

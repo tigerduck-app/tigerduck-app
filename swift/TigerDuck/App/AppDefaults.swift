@@ -90,4 +90,19 @@ extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.homeAssignmentFilter,
         default: AssignmentFilter.incomplete.rawValue
     )
+
+    // MARK: Push server
+    static let pushServerEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.pushServerEnabled,
+        default: true
+    )
+    static let pushServerURLOverride = Key<String?>(
+        AppConstants.UserDefaultsKeys.pushServerURLOverride
+    )
+    static let pushLastRegistrationAt = Key<Date?>(
+        AppConstants.UserDefaultsKeys.pushLastRegistrationAt
+    )
+    static let pushLastSyncAt = Key<Date?>(
+        AppConstants.UserDefaultsKeys.pushLastSyncAt
+    )
 }

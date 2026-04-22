@@ -2,15 +2,22 @@ import ActivityKit
 import Foundation
 import os
 
-/// Reflects a resolved `LiveActivitySnapshot` as a single running ActivityKit
-/// activity. Maintains the spec invariant: only one Live Activity exists; we
-/// start, update, or end it based on what the resolver returns.
+/// Reflects a resolved `LiveActivitySnapshot` as at most one running
+/// `TigerDuckActivityAttributes` activity per `(scenario, sourceId)` pair.
 ///
-/// Before phase B ships the Widget Extension UI, calling `apply` does write
-/// the snapshot to the shared store and attempt to request an activity, but
-/// iOS will reject the request without a matching `ActivityConfiguration` in
-/// an extension. That is acceptable — the app side contract stays stable,
-/// and the moment the extension lands, the activity will light up.
+/// Scenario-scoped `activityId` (`snapshot.composedActivityId`) is the
+/// single source of truth for identity. It keeps the on-device path and
+/// the server-push path consistent: a classPreparing activity and its
+/// follow-up inClass activity are distinct to ActivityKit, so PTS from
+/// the server can start the inClass one without colliding with the
+/// classPreparing one that iOS already has running.
+///
+/// `apply` touches only the activity matching the current snapshot's
+/// composed id. Activities for other slots / scenarios — typically
+/// prelaunched by the server for upcoming events — are left alone and
+/// auto-dismiss at their own `dismissal-date`. Explicitly ending them
+/// here would kill legitimate future Live Activities (e.g. next
+/// class's classPreparing) the moment the app opens.
 @MainActor
 final class LiveActivityCoordinator {
     private let store: SharedSnapshotStore
@@ -20,7 +27,8 @@ final class LiveActivityCoordinator {
         self.store = store
     }
 
-    /// Apply the resolved snapshot. Starts, updates, or ends the activity as needed.
+    /// Apply the resolved snapshot. Starts or updates the single activity
+    /// matching the target id; never ends unrelated activities.
     func apply(snapshot: LiveActivitySnapshot?) async {
         store.writeSnapshot(snapshot)
 
@@ -29,26 +37,26 @@ final class LiveActivityCoordinator {
             return
         }
 
-        let current = Activity<TigerDuckActivityAttributes>.activities.first
-
         guard let snapshot else {
-            if let current {
-                await current.end(nil, dismissalPolicy: .immediate)
-            }
+            // Snapshot cleared — nothing to do for the on-device target.
+            // Server-pushed activities continue their own lifecycle.
             return
         }
+
+        let targetId = snapshot.composedActivityId
+        let runningActivities = Activity<TigerDuckActivityAttributes>.activities
 
         let state = TigerDuckActivityAttributes.ContentState(snapshot: snapshot)
         let content = ActivityContent(state: state, staleDate: snapshot.countdownTarget)
 
-        if let current {
-            if current.content.state.snapshot != snapshot {
-                await current.update(content)
+        if let matching = runningActivities.first(where: { $0.attributes.activityId == targetId }) {
+            if matching.content.state.snapshot != snapshot {
+                await matching.update(content)
             }
         } else {
             do {
                 _ = try Activity.request(
-                    attributes: TigerDuckActivityAttributes(activityId: snapshot.sourceId),
+                    attributes: TigerDuckActivityAttributes(activityId: targetId),
                     content: content,
                     pushType: nil
                 )
@@ -56,13 +64,15 @@ final class LiveActivityCoordinator {
                 logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
                 AppLogger.captureError(error, context: [
                     "phase": "liveActivity.requestStart",
-                    "sourceId": snapshot.sourceId,
+                    "activityId": targetId,
                 ])
             }
         }
     }
 
-    /// End any running activity unconditionally (e.g. on logout or privacy toggle).
+    /// End every running activity unconditionally. Used for logout and
+    /// explicit privacy toggles — the user wants nothing on their lock
+    /// screen, server-pushed or otherwise.
     func endAll() async {
         for activity in Activity<TigerDuckActivityAttributes>.activities {
             await activity.end(nil, dismissalPolicy: .immediate)

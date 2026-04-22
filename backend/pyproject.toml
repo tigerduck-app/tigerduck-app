@@ -1,8 +1,8 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.14"
+description = "TigerDuck backend — POC scripts (api/) + push notification server (server/)"
+requires-python = ">=3.13"
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "httpx[http2]>=0.28.1",
@@ -10,4 +10,26 @@ dependencies = [
     "ntust-courses>=0.2.1",
     "pip-system-certs>=5.3",
     "rich>=14.3.3",
+    # --- server/ deps ---
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "pydantic-settings>=2.6.0",
+    "aioapns>=3.4",
+    "apscheduler>=3.10.4",
+    "pyjwt[crypto]>=2.10.0",
+    "structlog>=24.4.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["server/tests"]

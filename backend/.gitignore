@@ -2,3 +2,10 @@ api/runtime/*
 !api/runtime/.gitkeep
 api/.env
 __pycache__/
+
+# Server runtime / secrets
+.env
+server/secrets/
+*.p8
+.venv/
+.pytest_cache/

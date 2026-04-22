@@ -1,0 +1,23 @@
+# Local dev Postgres. On the Mac mini for production deployment, prefer
+# Homebrew-native postgres (`brew install postgresql@17`) so the DB survives
+# Docker Desktop restarts and integrates with Time Machine.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tigerduck-postgres
+    environment:
+      POSTGRES_USER: tigerduck
+      POSTGRES_PASSWORD: tigerduck
+      POSTGRES_DB: tigerduck
+    ports:
+      - "5432:5432"
+    volumes:
+      - tigerduck_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tigerduck -d tigerduck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  tigerduck_pgdata:
