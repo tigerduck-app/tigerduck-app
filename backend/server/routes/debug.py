@@ -10,15 +10,20 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 
 from server.db import SessionDep
 from server.models import DeviceRegistration, PushStatus, ScheduledPush
 from server.push.payload import build_apns_request
 from server.scheduler.dispatcher import dispatch_due_pushes
+from server.security import require_shared_secret
 
-router = APIRouter(prefix="/_debug", tags=["debug"])
+router = APIRouter(
+    prefix="/_debug",
+    tags=["debug"],
+    dependencies=[Depends(require_shared_secret)],
+)
 logger = structlog.get_logger(__name__)
 
 
@@ -122,7 +127,8 @@ async def fire_first_pending(
         raise HTTPException(status_code=404, detail="no pending pushes")
 
     device = await session.get(DeviceRegistration, push.device_id)
-    assert device is not None
+    if device is None:
+        raise HTTPException(status_code=404, detail="device missing for push")
 
     req = build_apns_request(
         device_token=device.pts_token_hex,

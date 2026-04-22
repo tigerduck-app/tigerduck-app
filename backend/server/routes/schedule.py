@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import and_, delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -14,8 +14,13 @@ from server.schemas import (
     ScheduleSyncRequest,
     ScheduleSyncResponse,
 )
+from server.security import require_shared_secret
 
-router = APIRouter(prefix="/schedule", tags=["schedule"])
+router = APIRouter(
+    prefix="/schedule",
+    tags=["schedule"],
+    dependencies=[Depends(require_shared_secret)],
+)
 logger = structlog.get_logger(__name__)
 
 

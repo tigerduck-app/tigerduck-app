@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, status
-from sqlalchemy import delete, select
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from server.db import SessionDep
@@ -14,8 +14,13 @@ from server.schemas import (
     DeviceRegisterResponse,
     DeviceUnregisterRequest,
 )
+from server.security import require_shared_secret
 
-router = APIRouter(prefix="/devices", tags=["devices"])
+router = APIRouter(
+    prefix="/devices",
+    tags=["devices"],
+    dependencies=[Depends(require_shared_secret)],
+)
 logger = structlog.get_logger(__name__)
 
 
@@ -45,6 +50,7 @@ async def register_device(
                 "bundle_id": payload.bundle_id,
                 "attrs_type": payload.attrs_type,
                 "apns_env": payload.apns_env,
+                "updated_at": func.now(),
             },
         )
         .returning(DeviceRegistration)
