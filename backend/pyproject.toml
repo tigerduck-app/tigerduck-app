@@ -21,6 +21,8 @@ dependencies = [
     "apscheduler>=3.10.4",
     "pyjwt[crypto]>=2.10.0",
     "structlog>=24.4.0",
+    "selectolax>=0.4.7",
+    "trafilatura>=2.0.0",
 ]
 
 [dependency-groups]

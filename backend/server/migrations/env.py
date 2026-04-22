@@ -15,6 +15,7 @@ from alembic import context
 from server.config import get_settings
 from server.db import Base
 from server import models  # noqa: F401  (register tables on Base.metadata)
+from server.bulletins import models as _bulletin_models  # noqa: F401
 
 config = context.config
 
