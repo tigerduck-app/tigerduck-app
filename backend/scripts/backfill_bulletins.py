@@ -41,6 +41,7 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
+from server import _ssl_compat  # noqa: F401, E402  # relax OpenSSL 3 strict parsing for NTUST
 from server.bulletins.dedup import attach_body_and_dedup, upsert_list_rows  # noqa: E402
 from server.bulletins.detail import fetch_detail  # noqa: E402
 from server.bulletins.jobs import claim_pending_bulletins  # noqa: E402

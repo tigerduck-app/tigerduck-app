@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-import asyncio
-import time
-from contextlib import asynccontextmanager
-from typing import AsyncIterator
+# Relax OpenSSL 3 strict cert parsing before any httpx client loads — see
+# server/_ssl_compat.py for the full why.
+from server import _ssl_compat  # noqa: F401, E402
 
-import httpx
-import structlog
-from fastapi import FastAPI
+import asyncio  # noqa: E402
+import time  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+from typing import AsyncIterator  # noqa: E402
+
+import httpx  # noqa: E402
+import structlog  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
 
 from server.config import Settings, get_settings
 from server.db import build_engine, build_session_factory
