@@ -12,6 +12,7 @@ from server.config import Settings, get_settings
 from server.db import build_engine, build_session_factory
 from server.logging_setup import configure as configure_logging
 from server.push.apns_client import build_sender
+from server.routes import bulletins as bulletins_routes
 from server.routes import debug as debug_routes
 from server.routes import devices as devices_routes
 from server.routes import schedule as schedule_routes
@@ -76,6 +77,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(devices_routes.router, prefix=settings.api_base_path)
     app.include_router(schedule_routes.router, prefix=settings.api_base_path)
     app.include_router(debug_routes.router, prefix=settings.api_base_path)
+    app.include_router(bulletins_routes.router, prefix=settings.api_base_path)
+    app.include_router(bulletins_routes.device_router, prefix=settings.api_base_path)
 
     return app
 
