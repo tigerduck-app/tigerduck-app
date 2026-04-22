@@ -52,6 +52,26 @@ class Settings(BaseSettings):
     # fire_at within [now, now + window_seconds] becomes eligible each tick
     scheduler_window_seconds: int = 60
 
+    # --- Bulletins ---
+    bulletin_list_url: str = (
+        "https://bulletin.ntust.edu.tw/p/403-1045-1391-1.php"
+    )
+    bulletin_scrape_interval_seconds: int = 600   # 10 min
+    bulletin_process_interval_seconds: int = 60
+    bulletin_dispatch_interval_seconds: int = 60
+    # Rows whose last_seen_at is older than N scrape cycles get is_deleted=true.
+    bulletin_stale_cycles: int = 3
+    # Max processing retries before giving up on a bulletin.
+    bulletin_max_process_attempts: int = 3
+
+    # --- LLM (OpenAI-compatible endpoint: llama.cpp, Gemini, vLLM, ...) ---
+    llm_base_url: str = "http://localhost:8080/v1"
+    llm_api_key: str = "sk-local"
+    llm_model: str = "gemma-4-e4b-it"
+    llm_timeout_seconds: float = 30.0
+    llm_max_retries: int = 2
+    llm_temperature: float = 0.2
+
     @property
     def apns_topic_live_activity(self) -> str:
         return f"{self.apns_bundle_id}.push-type.liveactivity"
