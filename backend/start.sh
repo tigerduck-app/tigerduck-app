@@ -12,9 +12,14 @@ echo "[start.sh] alembic upgrade head"
 alembic upgrade head
 
 echo "[start.sh] launching uvicorn on :40000"
+# --workers 1 on purpose: APScheduler lives inside the FastAPI lifespan, so
+# every additional worker spawns a duplicate scheduler that re-runs every
+# job (bulletin scrape, LLM classify, APNs dispatch) — no lock coordinates
+# them. Stay single-worker until we extract the scheduler into its own
+# process or wire up an advisory-lock leader election.
 exec uvicorn server.main:app \
     --host 0.0.0.0 \
     --port 40000 \
     --proxy-headers \
     --forwarded-allow-ips '*' \
-    --workers 2
+    --workers 1
