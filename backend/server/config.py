@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     bulletin_stale_cycles: int = 3
     # Max processing retries before giving up on a bulletin.
     bulletin_max_process_attempts: int = 3
+    # Delete is_deleted=true rows this old to keep the table bounded. Rows
+    # still visible on the bulletin board keep refreshing last_seen_at and
+    # stay forever; only the ones that fell off the list and aged out go.
+    bulletin_retention_days: int = 365
+    # Retention job runs at this cadence. Once a day is plenty.
+    bulletin_retention_interval_hours: int = 24
 
     # --- LLM (OpenAI-compatible endpoint: llama.cpp, Gemini, vLLM, ...) ---
     llm_base_url: str = "http://localhost:8080/v1"

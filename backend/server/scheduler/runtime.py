@@ -37,12 +37,13 @@ def build_scheduler(
     *,
     llm: LLMProvider | None = None,
 ) -> AsyncIOScheduler:
-    """Wire APScheduler with the four TigerDuck jobs:
+    """Wire APScheduler with the five TigerDuck jobs:
 
     * `dispatcher_tick` — existing PTS dispatcher (Live Activity).
     * `bulletin_scrape` — fetch NTUST bulletin list every 10 min.
     * `bulletin_process` — drain pending bulletins through the LLM every 60s.
     * `bulletin_dispatch` — fan out alert pushes every 60s.
+    * `bulletin_retention` — prune aged-out soft-deleted bulletins daily.
 
     Passing `llm=None` (the default) builds the real OpenAI-compatible
     provider; tests inject `RecordingProvider` to stay offline.
@@ -61,6 +62,9 @@ def build_scheduler(
 
     async def bulletin_dispatch() -> None:
         await bulletin_jobs.dispatch_job(session_factory, sender, settings)
+
+    async def bulletin_retention() -> None:
+        await bulletin_jobs.retention_job(session_factory, settings)
 
     scheduler.add_job(
         pts_tick,
@@ -96,6 +100,15 @@ def build_scheduler(
         max_instances=1,
         coalesce=True,
         misfire_grace_time=30,
+        next_run_time=None,
+    )
+    scheduler.add_job(
+        bulletin_retention,
+        trigger=IntervalTrigger(hours=settings.bulletin_retention_interval_hours),
+        id="bulletin_retention",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
         next_run_time=None,
     )
     return scheduler

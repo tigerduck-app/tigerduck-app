@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from server.bulletins.dedup import attach_body_and_dedup, upsert_list_rows
@@ -290,3 +290,36 @@ async def dispatch_job(
     settings: Settings,
 ) -> None:
     await dispatch_pending_bulletins(session_factory, sender, settings)
+
+
+async def retention_job(
+    session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> int:
+    """Prune bulletins that fell off the source list and are now older than
+    `bulletin_retention_days`. `bulletin_dispatches` rows cascade-delete
+    via FK, so we only need to target the parent table.
+
+    Only rows with `is_deleted=true` are eligible — anything still visible
+    on the bulletin board keeps refreshing its `last_seen_at` through the
+    scrape job and therefore never falls past the cutoff here.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        days=settings.bulletin_retention_days
+    )
+    async with session_factory() as session:
+        result = await session.execute(
+            delete(Bulletin).where(
+                Bulletin.is_deleted.is_(True),
+                Bulletin.last_seen_at < cutoff,
+            )
+        )
+        await session.commit()
+    deleted = result.rowcount or 0
+    logger.info(
+        "bulletins.retention_job.done",
+        deleted=deleted,
+        cutoff=cutoff.isoformat(),
+        retention_days=settings.bulletin_retention_days,
+    )
+    return deleted
