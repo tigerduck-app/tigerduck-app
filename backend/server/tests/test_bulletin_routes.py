@@ -215,10 +215,22 @@ async def test_put_subscriptions_is_snapshot_replacement(
     assert rules[0]["orgs"] == [CanonicalOrg.library.value]
 
 
-async def test_subscriptions_require_registered_device(client: AsyncClient) -> None:
+async def test_subscriptions_get_returns_empty_when_device_missing(
+    client: AsyncClient,
+) -> None:
+    """GET tolerates the first-launch race where subscriptions load fires
+    before APNs token registration finishes — returning 200 empty lets the
+    editor render immediately without the client special-casing 404."""
     resp = await client.get("/v1/devices/ghost-device/subscriptions")
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.json() == {"device_id": "ghost-device", "rules": []}
 
+
+async def test_subscriptions_put_requires_registered_device(
+    client: AsyncClient,
+) -> None:
+    """PUT still 404s for unknown devices so a saved ruleset can't end up
+    orphaned with no DeviceRegistration to push to."""
     put = await client.put(
         "/v1/devices/ghost-device/subscriptions",
         json={"rules": []},

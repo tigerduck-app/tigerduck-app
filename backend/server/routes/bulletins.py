@@ -141,7 +141,17 @@ def _rule_from_db(row: BulletinSubscription) -> SubscriptionRule:
 async def list_subscriptions(
     device_id: str, session: SessionDep
 ) -> SubscriptionsResponse:
-    await _ensure_device(session, device_id)
+    """Return the device's subscription rules.
+
+    The device row may not exist yet on first launch — APNs token fetch on
+    iOS races with the subscriptions load. Returning an empty list (instead
+    of 404) lets the client show the editor immediately without the client
+    needing a special-case catch. The PUT path still requires a registered
+    device so a saved ruleset can't orphan.
+    """
+    device = await session.get(DeviceRegistration, device_id)
+    if device is None:
+        return SubscriptionsResponse(device_id=device_id, rules=[])
     rows = (
         (
             await session.execute(

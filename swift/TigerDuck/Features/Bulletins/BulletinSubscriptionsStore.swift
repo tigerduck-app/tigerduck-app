@@ -50,20 +50,16 @@ final class BulletinSubscriptionsStore {
 
     /// Load existing rules from the server. Safe to call repeatedly; a
     /// second call while loading is coalesced by the state guard.
+    ///
+    /// The server returns an empty list (not 404) when the device row
+    /// isn't registered yet — that handles the first-launch race where the
+    /// editor opens before APNs registration finishes.
     func load() async {
         if case .loading = loadState { return }
         loadState = .loading
         do {
             let response = try await apiClient.getSubscriptions(deviceId: deviceId)
             pending = response.rules
-            loadState = .loaded
-        } catch BulletinAPIError.httpStatus(let code, _) where code == 404 {
-            // 404 means the device row is not yet registered on the server.
-            // That happens when the user opens the editor before the first
-            // push registration completes. Show an empty list so the user
-            // can still draft rules — the save path handles re-registration.
-            logger.info("device not registered on server yet; starting with empty rules")
-            pending = []
             loadState = .loaded
         } catch {
             logger.error("subscription load failed: \(error.localizedDescription, privacy: .public)")
@@ -72,19 +68,40 @@ final class BulletinSubscriptionsStore {
     }
 
     /// Replace the rule set on the server with the current `pending`.
+    ///
+    /// The PUT path still requires a registered device; if the user
+    /// closes the editor before APNs registration completes, the first
+    /// attempt comes back 404. Retry with short backoff so registration
+    /// usually wins within a second or two — APNs handshake on a warm
+    /// simulator is sub-second.
     func save() async {
         saveState = .saving
-        do {
-            let response = try await apiClient.putSubscriptions(
-                deviceId: deviceId,
-                rules: pending
-            )
-            pending = response.rules
-            saveState = .saved
-        } catch {
-            logger.error("subscription save failed: \(error.localizedDescription, privacy: .public)")
-            saveState = .failed(error.localizedDescription)
+        let maxAttempts = 4
+        for attempt in 1...maxAttempts {
+            do {
+                let response = try await apiClient.putSubscriptions(
+                    deviceId: deviceId,
+                    rules: pending
+                )
+                pending = response.rules
+                saveState = .saved
+                return
+            } catch BulletinAPIError.httpStatus(let code, _) where code == 404 {
+                if attempt == maxAttempts {
+                    break
+                }
+                // Backoff: 250ms, 500ms, 1000ms. Total worst case ~1.75s.
+                let delayMs = 250 * (1 << (attempt - 1))
+                logger.info("PUT subscriptions 404 (attempt \(attempt, privacy: .public)); retrying in \(delayMs, privacy: .public)ms")
+                try? await Task.sleep(for: .milliseconds(delayMs))
+            } catch {
+                logger.error("subscription save failed: \(error.localizedDescription, privacy: .public)")
+                saveState = .failed(error.localizedDescription)
+                return
+            }
         }
+        logger.error("subscription save gave up after \(maxAttempts, privacy: .public) 404 attempts")
+        saveState = .failed("設備尚未註冊，請稍後再儲存")
     }
 
     // MARK: - Mutation helpers
