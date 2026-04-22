@@ -1,6 +1,3 @@
-api/runtime/*
-!api/runtime/.gitkeep
-api/.env
 __pycache__/
 
 # Server runtime / secrets

@@ -1,16 +1,9 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "TigerDuck backend — POC scripts (api/) + push notification server (server/)"
+description = "TigerDuck push notification server (FastAPI + APScheduler + APNs + bulletin LLM classifier)"
 requires-python = ">=3.13"
 dependencies = [
-    "beautifulsoup4>=4.14.3",
-    "httpx[http2]>=0.28.1",
-    "lxml>=6.1.0",
-    "ntust-courses>=0.2.1",
-    "pip-system-certs>=5.3",
-    "rich>=14.3.3",
-    # --- server/ deps ---
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "sqlalchemy[asyncio]>=2.0.36",
@@ -21,6 +14,7 @@ dependencies = [
     "apscheduler>=3.10.4",
     "pyjwt[crypto]>=2.10.0",
     "structlog>=24.4.0",
+    "httpx[http2]>=0.28.1",
     "selectolax>=0.4.7",
     "trafilatura>=2.0.0",
 ]
@@ -29,7 +23,6 @@ dependencies = [
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
-    "httpx>=0.28.1",
 ]
 
 [tool.pytest.ini_options]
