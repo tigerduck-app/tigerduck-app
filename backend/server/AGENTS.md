@@ -38,22 +38,43 @@ backend/server/
 ```
 
 ## RUNNING
+
+### Production (docker compose, proxy-net)
 ```bash
 cd backend
-docker compose up -d postgres
-uv sync
-.venv/bin/alembic upgrade head          # create tables
-.venv/bin/uvicorn server.main:app --reload --port 8000
+cp .env.example .env                      # then fill in real values
+docker compose up -d --build              # builds Dockerfile, brings up postgres + backend
+
+docker compose logs -f backend            # follow; look for "server.startup" and "llm.ready"
+docker compose exec backend curl -sS localhost:40000/health
 ```
 
-Tests:
+nginx-proxy-manager (on proxy-net) routes `api.tigerduck.app` to
+`http://tigerduck-internal:40000`. No ports are published to the host.
+Postgres is private to `tigerduck-net` and unreachable from outside the
+backend container.
+
+`llama-server` stays NATIVE on the host (Docker on Mac can't get Metal GPU).
+The backend reaches it via `host.docker.internal:40001`. See
+`deploy/launchd/ai.tigerduck.llm.plist` for the launchd service.
+
+### One-shot backfill
 ```bash
-.venv/bin/pytest server/tests/ -v      # needs dev Postgres running
+docker compose exec backend \
+  uv run python scripts/backfill_bulletins.py --pages 20 --concurrency 3
+```
+
+### Tests (host-side, not inside container)
+```bash
+uv sync
+uv run pytest server/tests/ -v            # LLM + pipeline tests; DB-backed ones need postgres up
 ```
 
 ## CONFIG
-All env vars use the `TIGERDUCK_` prefix. See `server/.env.template`.
-Drop APNs credentials under `server/secrets/apns_auth_key.p8` before Checkpoint 3.
+All env vars use the `TIGERDUCK_` prefix. See `.env.example` for the full,
+commented list. Drop APNs credentials under
+`server/secrets/AuthKey_<KEY_ID>.p8` — the path is mounted read-only into
+the backend container via docker-compose.
 
 ## CONVENTIONS
 - All DB timestamps stored as `timestamp with time zone` (UTC in, UTC out)
