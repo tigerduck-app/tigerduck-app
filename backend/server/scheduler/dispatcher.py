@@ -69,8 +69,18 @@ async def dispatch_due_pushes(
         )
         rows = (await session.execute(stmt)).all()
 
+        # Once a device's token comes back as BadDeviceToken / Unregistered we
+        # cascade-delete it. The locked `rows` list still holds the device's
+        # other pending pushes in memory, so without this guard we'd keep
+        # firing APNs requests at the same dead token and then no-op UPDATE
+        # already-deleted rows.
+        pruned_device_ids: set[str] = set()
+
         for push, device in rows:
             dispatched += 1
+
+            if device.device_id in pruned_device_ids:
+                continue
 
             # Fix #5: skip pushes whose underlying event moment has already
             # passed. Sending them would waste a round-trip on Apple that
@@ -112,6 +122,7 @@ async def dispatch_due_pushes(
             elif classification == "bad_token":
                 await _mark_cancelled(session, push, reason=result.description or "bad_token")
                 await _prune_device(session, device.device_id)
+                pruned_device_ids.add(device.device_id)
                 cancelled += 1
             else:
                 # transient — retry next tick unless exhausted
