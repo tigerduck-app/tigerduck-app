@@ -167,35 +167,5 @@ enum PushAPIError: Error, LocalizedError {
     }
 }
 
-private extension JSONDecoder.DateDecodingStrategy {
-    /// Accept both `2026-04-22T02:10:00.123+00:00` and `2026-04-22T02:10:00+00:00`.
-    static var iso8601WithFractionalSecondsFallback: Self {
-        .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            let raw = try container.decode(String.self)
-            if let date = PushDateFormatters.withFractional.date(from: raw) {
-                return date
-            }
-            if let date = PushDateFormatters.withoutFractional.date(from: raw) {
-                return date
-            }
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Unrecognised date: \(raw)"
-            )
-        }
-    }
-}
-
-private enum PushDateFormatters {
-    static let withFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-    static let withoutFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-}
+// ISO-8601 decoding helpers live in `Extensions/JSONDecoder+ISO8601.swift`
+// so every HTTP client in the app shares the same parsing behaviour.
