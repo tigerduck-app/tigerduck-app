@@ -115,12 +115,13 @@ class OpenAICompatibleProvider:
                 logger.warning(
                     "bulletins.llm.retry",
                     attempt=attempt + 1,
-                    error=str(exc)[:500],
+                    error_type=type(exc).__name__,
+                    error=_describe(exc),
                 )
 
         raise LLMError(
             f"classification failed after {self._max_retries + 1} attempts: "
-            f"{str(last_error)[:800]}"
+            f"[{type(last_error).__name__}] {_describe(last_error)}"
         )
 
     async def _once(self, payload: dict[str, Any]) -> BulletinMetadata:
@@ -142,6 +143,22 @@ class OpenAICompatibleProvider:
 def _backoff_seconds(attempt: int) -> float:
     """0.5s, 1s, 2s, ... capped at 8s. Attempt index is 0-based."""
     return min(8.0, 0.5 * (2**attempt))
+
+
+def _describe(exc: BaseException | None) -> str:
+    """Best-effort one-line description.
+
+    httpx exceptions (especially the Timeout hierarchy) often have empty
+    `str()` because the message is attached to `.request`/`.response` or
+    constructed lazily. Fall back to `repr` so the caller always has
+    SOMETHING useful to paste into a bug report. Truncated to stay
+    readable in log aggregators."""
+    if exc is None:
+        return "<none>"
+    text = str(exc).strip()
+    if not text:
+        text = repr(exc)
+    return text[:800]
 
 
 def _extract_message_content(data: dict[str, Any]) -> str:

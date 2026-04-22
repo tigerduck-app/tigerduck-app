@@ -330,6 +330,10 @@ async def _suppress_future_push(
 
 async def main_async(args: argparse.Namespace) -> int:
     settings = Settings()
+    if args.llm_timeout is not None:
+        # Back-door override so one run can lean on a long timeout without
+        # editing .env. The underlying provider reads this on construction.
+        settings.llm_timeout_seconds = args.llm_timeout
     engine = build_engine(settings)
     session_factory = build_session_factory(engine)
     llm = build_llm_provider(settings)
@@ -340,7 +344,8 @@ async def main_async(args: argparse.Namespace) -> int:
     pages = list(range(args.start, args.end + 1))
 
     print(f"[config] list_url={settings.bulletin_list_url}")
-    print(f"[config] llm={settings.llm_base_url} model={settings.llm_model}")
+    print(f"[config] llm={settings.llm_base_url} model={settings.llm_model} "
+          f"timeout={settings.llm_timeout_seconds}s")
     print(f"[config] pages={pages[0]}..{pages[-1]} "
           f"concurrency={args.concurrency} suppress_push={not args.no_suppress_push}")
 
@@ -402,6 +407,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--skip-preflight",
         action="store_true",
         help="skip the LLM reachability check at startup (not recommended)",
+    )
+    parser.add_argument(
+        "--llm-timeout",
+        type=float,
+        default=None,
+        help="override per-request LLM timeout in seconds (default from "
+             "TIGERDUCK_LLM_TIMEOUT_SECONDS or 120s). Bump to 240+ if "
+             "running gemma-4-E4B at high concurrency on slower hardware.",
     )
     return parser
 

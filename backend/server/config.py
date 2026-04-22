@@ -68,7 +68,11 @@ class Settings(BaseSettings):
     llm_base_url: str = "http://localhost:8080/v1"
     llm_api_key: str = "sk-local"
     llm_model: str = "gemma-4-e4b-it"
-    llm_timeout_seconds: float = 30.0
+    # 120s is generous because multi-slot llama.cpp fans one backend
+    # GPU across concurrent requests, so effective per-request latency
+    # scales with the backfill `--concurrency`. 30s was too tight for
+    # Gemma-4 E4B on Apple Silicon at 3× concurrency.
+    llm_timeout_seconds: float = 120.0
     llm_max_retries: int = 2
     llm_temperature: float = 0.2
 
