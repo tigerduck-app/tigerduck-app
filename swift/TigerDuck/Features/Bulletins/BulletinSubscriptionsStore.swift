@@ -66,6 +66,7 @@ final class BulletinSubscriptionsStore {
             pending = response.rules
             isDirty = false
             loadState = .loaded
+            logger.info("subscriptions loaded device=\(self.deviceId, privacy: .public) count=\(response.rules.count, privacy: .public)")
         } catch {
             logger.error("subscription load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
@@ -81,6 +82,7 @@ final class BulletinSubscriptionsStore {
     /// simulator is sub-second.
     func save() async {
         saveState = .saving
+        logger.info("subscription save starting device=\(self.deviceId, privacy: .public) ruleCount=\(self.pending.count, privacy: .public)")
         // Snapshot the pre-save clientIds in their current order. The server
         // PUT does delete + insert preserving order, so the response rules
         // line up with the request rules positionally. We re-attach the
@@ -104,6 +106,7 @@ final class BulletinSubscriptionsStore {
                 pending = preserved
                 isDirty = false
                 saveState = .saved
+                logger.info("subscription save success device=\(self.deviceId, privacy: .public) serverCount=\(response.rules.count, privacy: .public)")
                 return
             } catch BulletinAPIError.httpStatus(let code, _) where code == 404 {
                 if attempt == maxAttempts {
@@ -141,6 +144,7 @@ final class BulletinSubscriptionsStore {
         pending.append(new)
         isDirty = true
         saveState = .idle
+        logger.info("addRule clientId=\(new.clientId.uuidString, privacy: .public) pendingCount=\(self.pending.count, privacy: .public)")
         return new.clientId
     }
 
