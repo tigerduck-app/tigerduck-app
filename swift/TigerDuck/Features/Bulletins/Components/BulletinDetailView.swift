@@ -4,9 +4,10 @@ import os
 
 /// Full-screen bulletin reader. The parent pushes this via
 /// `.navigationDestination`; we hide the default nav bar entirely so the
-/// content can breathe edge-to-edge, and offer a floating xmark at the
-/// top-trailing corner as the dismissal affordance. The user explicitly
-/// asked for the top-leading slot to be empty (no back chevron).
+/// content can breathe edge-to-edge. Dismissal uses the iOS system
+/// swipe-from-left-edge gesture — the nav stack's `interactivePop`
+/// still fires even with a hidden bar, so no custom close button is
+/// needed and nothing clutters the top chrome.
 struct BulletinDetailView: View {
     let bulletin: BulletinAPI.BulletinSummary
     let taxonomy: BulletinTaxonomyStore
@@ -15,7 +16,6 @@ struct BulletinDetailView: View {
     var readState: BulletinReadStateStore? = nil
 
     @Environment(AppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
     @State private var detail: BulletinAPI.BulletinDetail?
     @State private var loadError: String?
     @State private var isLoading: Bool = false
@@ -44,11 +44,6 @@ struct BulletinDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(Color.backgroundPrimary)
-        .overlay(alignment: .topTrailing) {
-            closeButton
-                .padding(.top, TigerDuckTheme.Spacing.sm)
-                .padding(.trailing, TigerDuckTheme.Spacing.lg)
-        }
         .overlay(alignment: .bottomTrailing) {
             sourceLinkButton
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
@@ -154,22 +149,6 @@ struct BulletinDetailView: View {
         }
     }
 
-    /// Floating close X in the top-trailing corner. The only dismissal UI
-    /// this view exposes — the top-leading slot stays empty per spec.
-    private var closeButton: some View {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.textPrimary)
-                .frame(width: 32, height: 32)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("關閉")
-    }
-
     @ViewBuilder
     private var sourceLinkButton: some View {
         if let url = URL(string: bulletin.sourceUrl) {
@@ -218,11 +197,12 @@ struct BulletinDetailView: View {
     /// reliably picks up inline emphasis inside list items. The LLM
     /// occasionally emits `*   ` (asterisk + multiple spaces) as a list
     /// marker which some CommonMark profiles render as a plain paragraph,
-    /// and closing `**` runs that sit flush against full-width CJK
-    /// punctuation can fail CommonMark's flanking rules when the parser
-    /// is strict about "preceded by letter, followed by punctuation".
-    /// Both shapes are normalised here so the theme's `.strong` styling
-    /// actually fires on bold-inside-list-item content.
+    /// and `**` runs flush against full-width CJK punctuation can fail
+    /// CommonMark's flanking rules — both the "punct OUTSIDE the bold"
+    /// and "punct INSIDE right before `**`" shapes misfire because the
+    /// closing run is neither preceded by whitespace nor followed by a
+    /// whitespace/punct. Every observed shape is normalised here so the
+    /// theme's `.strong` styling actually fires.
     static func normalizeMarkdown(_ source: String) -> String {
         var text = source
         // `*   ` / `+   ` at line start → `- ` (standard bullet).
@@ -231,13 +211,28 @@ struct BulletinDetailView: View {
             with: "$1- ",
             options: .regularExpression
         )
-        // Full-width punctuation right after `**bold**` — insert an
-        // ASCII space so the closing run is unambiguously right-flanking.
+        // `**text**<fullwidth-punct>` — punct OUTSIDE bold. Insert a
+        // space before the punct so the closing `**` is flanked by a
+        // letter and whitespace, unambiguously right-flanking.
         text = text.replacingOccurrences(
             of: #"\*\*([^*\n]+)\*\*([、。，．：；！？」』）])"#,
             with: "**$1** $2",
             options: .regularExpression
         )
+        // `**text<fullwidth-punct>**<letter>` — punct INSIDE bold, right
+        // before `**`, followed by a non-whitespace/non-punct character
+        // (typically CJK). Insert an ASCII space after `**` so the
+        // closing run is followed by whitespace — satisfies the "punct
+        // before + whitespace after" branch of right-flanking and emphasis
+        // closes correctly. This is the shape the LLM most often emits in
+        // bulleted definition lists: `- **跨界轉身：**分享…`.
+        text = text.replacingOccurrences(
+            of: #"\*\*([^*\n]*?[、。，．：；！？])\*\*(\p{L})"#,
+            with: "**$1** $2",
+            options: .regularExpression
+        )
+        // `<fullwidth-open-punct>**text**` — punct OUTSIDE bold on the
+        // opening side, mirror case of the first rule.
         text = text.replacingOccurrences(
             of: #"([「『（])\*\*([^*\n]+)\*\*"#,
             with: "$1 **$2**",
