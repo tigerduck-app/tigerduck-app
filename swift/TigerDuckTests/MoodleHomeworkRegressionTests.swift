@@ -186,15 +186,71 @@ struct MoodleHomeworkRegressionTests {
         #expect(assignment.status(now: Date()) == .submittedLate)
     }
 
+    @Test func assignmentStatus_archivedTakesPriorityOverMoodleState() {
+        let now = Date()
+        let assignment = SDAssignment(
+            assignmentId: "a1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false,
+            isArchived: true
+        )
+        #expect(assignment.status(now: now) == .archived)
+    }
+
+    @Test func assignmentStatus_locallyCompletedTakesPriorityOverMoodleState() {
+        let now = Date()
+        let assignment = SDAssignment(
+            assignmentId: "lc1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false,
+            isLocallyCompleted: true
+        )
+        #expect(assignment.status(now: now) == .locallyCompleted)
+    }
+
+    @Test func assignmentStatus_archivedBeatsLocallyCompleted() {
+        // isArchived is checked first in status(); if both flags are somehow set, archived wins.
+        let now = Date()
+        let assignment = SDAssignment(
+            assignmentId: "al1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false,
+            isArchived: true, isLocallyCompleted: true
+        )
+        #expect(assignment.status(now: now) == .archived)
+    }
+
+    @Test func assignmentStatus_moodleCompletionBeatsLocalOverrides() {
+        let due = Date().addingTimeInterval(-3600)
+        let assignment = SDAssignment(
+            assignmentId: "done1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: due, isCompleted: true,
+            isArchived: true, isLocallyCompleted: true,
+            submittedAt: due.addingTimeInterval(600)
+        )
+        #expect(assignment.status(now: Date()) == .submittedLate)
+    }
+
     @Test func assignmentStatus_badgeMetadataMatchesCase() {
         #expect(AssignmentStatus.pending.badgeLabel == nil)
         #expect(AssignmentStatus.submitted.badgeLabel == "已繳交")
         #expect(AssignmentStatus.submittedLate.badgeLabel == "已遲交")
         #expect(AssignmentStatus.overdueAcceptable.badgeLabel == "逾期")
         #expect(AssignmentStatus.overdueRejected.badgeLabel == "逾期拒收")
+        #expect(AssignmentStatus.archived.badgeLabel == "已忽略")
+        #expect(AssignmentStatus.locallyCompleted.badgeLabel == "標示為完成")
 
         #expect(!AssignmentStatus.overdueAcceptable.usesEmphasis)
         #expect(AssignmentStatus.overdueRejected.usesEmphasis)
+        #expect(!AssignmentStatus.archived.usesEmphasis)
+        #expect(!AssignmentStatus.locallyCompleted.usesEmphasis)
+    }
+
+    @Test func assignmentStatus_swipeEligibleForRawUnsubmittedStates() {
+        #expect(AssignmentStatus.pending.isSwipeActionEligible)
+        #expect(!AssignmentStatus.submitted.isSwipeActionEligible)
+        #expect(!AssignmentStatus.submittedLate.isSwipeActionEligible)
+        #expect(AssignmentStatus.overdueAcceptable.isSwipeActionEligible)
+        #expect(AssignmentStatus.overdueRejected.isSwipeActionEligible)
+        #expect(!AssignmentStatus.archived.isSwipeActionEligible)
+        #expect(!AssignmentStatus.locallyCompleted.isSwipeActionEligible)
     }
 
     @Test func arrayUpcomingSorted_excludesCompletedAndOrdersByDueDateAscending() {
@@ -214,6 +270,69 @@ struct MoodleHomeworkRegressionTests {
 
         let result = [futureIncomplete, completed, pastIncomplete].upcomingSorted()
         #expect(result.map(\.assignmentId) == ["1", "2"])
+    }
+
+    @Test func arrayUpcomingSorted_excludesArchivedAndLocallyCompleted() {
+        let now = Date()
+        let normal = SDAssignment(
+            assignmentId: "1", courseNo: "C", courseName: "C", title: "Normal",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false
+        )
+        let archived = SDAssignment(
+            assignmentId: "2", courseNo: "C", courseName: "C", title: "Archived",
+            dueDate: now.addingTimeInterval(-7200), isCompleted: false, isArchived: true
+        )
+        let locallyDone = SDAssignment(
+            assignmentId: "3", courseNo: "C", courseName: "C", title: "LocalDone",
+            dueDate: now.addingTimeInterval(-1800), isCompleted: false, isLocallyCompleted: true
+        )
+
+        let result = [normal, archived, locallyDone].upcomingSorted()
+        #expect(result.map(\.assignmentId) == ["1"])
+    }
+
+    @Test func arrayAllSorted_excludesIgnoredButIncludesLocallyCompleted() {
+        let now = Date()
+        let normal = SDAssignment(
+            assignmentId: "1", courseNo: "C", courseName: "C", title: "Normal",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false
+        )
+        let archived = SDAssignment(
+            assignmentId: "2", courseNo: "C", courseName: "C", title: "Archived",
+            dueDate: now.addingTimeInterval(-7200), isCompleted: false, isArchived: true
+        )
+        let locallyDone = SDAssignment(
+            assignmentId: "3", courseNo: "C", courseName: "C", title: "LocalDone",
+            dueDate: now.addingTimeInterval(-1800), isCompleted: false, isLocallyCompleted: true
+        )
+
+        let result = [normal, archived, locallyDone].allSorted()
+        #expect(result.map(\.assignmentId) == ["1", "3"])
+    }
+
+    @Test func arrayIgnoredSorted_onlyIncludesIgnoredUnsubmittedAssignments() {
+        let now = Date()
+        let ignoredLater = SDAssignment(
+            assignmentId: "1", courseNo: "C", courseName: "C", title: "IgnoredLater",
+            dueDate: now.addingTimeInterval(-1800), isCompleted: false, isArchived: true
+        )
+        let ignoredEarlier = SDAssignment(
+            assignmentId: "2", courseNo: "C", courseName: "C", title: "IgnoredEarlier",
+            dueDate: now.addingTimeInterval(-7200), isCompleted: false, isArchived: true
+        )
+        let normal = SDAssignment(
+            assignmentId: "3", courseNo: "C", courseName: "C", title: "Normal",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false
+        )
+        let completedIgnored = SDAssignment(
+            assignmentId: "4", courseNo: "C", courseName: "C", title: "CompletedIgnored",
+            dueDate: now.addingTimeInterval(-5400), isCompleted: true, isArchived: true
+        )
+
+        let result = [ignoredLater, ignoredEarlier, normal, completedIgnored].ignoredSorted()
+        #expect(result.map(\.assignmentId) == ["2", "1"])
+        #expect([ignoredLater, ignoredEarlier, normal, completedIgnored].hasIgnored())
+        #expect(![normal, completedIgnored].hasIgnored())
     }
 
     @Test func arrayAllSorted_putsIncompleteAscendingBeforeCompletedDescending() {
@@ -249,8 +368,15 @@ struct MoodleHomeworkRegressionTests {
     @Test func assignmentFilter_rawValuesArePersistableStrings() {
         #expect(AssignmentFilter.incomplete.rawValue == "未完成")
         #expect(AssignmentFilter.all.rawValue == "全部")
+        #expect(AssignmentFilter.ignored.rawValue == "已忽略")
         #expect(AssignmentFilter(rawValue: "未完成") == .incomplete)
         #expect(AssignmentFilter(rawValue: "全部") == .all)
+        #expect(AssignmentFilter(rawValue: "已忽略") == .ignored)
+    }
+
+    @Test func assignmentFilter_visibleFiltersAddsIgnoredOnlyWhenNeeded() {
+        #expect(AssignmentFilter.visibleFilters(hasIgnored: false) == [.incomplete, .all])
+        #expect(AssignmentFilter.visibleFilters(hasIgnored: true) == [.incomplete, .all, .ignored])
     }
 
     @Test func latestSemesterFilter_excludesOtherSemesters() {

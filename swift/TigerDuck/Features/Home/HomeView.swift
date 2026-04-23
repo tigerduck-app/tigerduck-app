@@ -289,7 +289,7 @@ private struct HomeSectionView: View {
     private var upcomingAssignmentsContent: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             Picker("", selection: Bindable(viewModel).assignmentFilter) {
-                ForEach(AssignmentFilter.allCases, id: \.self) { filter in
+                ForEach(viewModel.availableAssignmentFilters, id: \.self) { filter in
                     Text(filter.rawValue).tag(filter)
                 }
             }
@@ -309,15 +309,30 @@ private struct HomeSectionView: View {
                 EmptyStateView(
                     icon: "checkmark.circle",
                     title: "一切順利",
-                    message: viewModel.assignmentFilter == .incomplete ? "沒有未完成的作業" : "沒有作業"
+                    message: assignmentEmptyMessage
                 )
             case .content:
                 UpcomingAssignmentsView(
                     assignments: viewModel.upcomingAssignments,
-                    showAbsoluteTime: appState.showAbsoluteAssignmentTime
+                    showAbsoluteTime: appState.showAbsoluteAssignmentTime,
+                    onArchive: { viewModel.archiveAssignment($0) },
+                    onMarkComplete: { viewModel.markAssignmentAsLocallyCompleted($0) },
+                    onUnarchive: { viewModel.unarchiveAssignment($0) },
+                    onUndoComplete: { viewModel.undoLocallyCompleted($0) }
                 )
                 .allowsHitTesting(!viewModel.isEditingHome)
             }
+        }
+    }
+
+    private var assignmentEmptyMessage: String {
+        switch viewModel.assignmentFilter {
+        case .incomplete:
+            return "沒有未完成的作業"
+        case .all:
+            return "沒有作業"
+        case .ignored:
+            return "沒有已忽略的作業"
         }
     }
 
