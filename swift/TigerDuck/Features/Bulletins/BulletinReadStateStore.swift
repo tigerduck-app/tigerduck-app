@@ -33,6 +33,21 @@ final class BulletinReadStateStore {
         Defaults[.bulletinReadIds] = read
     }
 
+    func markUnread(_ id: Int) {
+        guard read.contains(id) else { return }
+        read.remove(id)
+        Defaults[.bulletinReadIds] = read
+    }
+
+    /// Convenience for swipe actions — flips state in one call.
+    func toggleRead(_ id: Int) {
+        if read.contains(id) {
+            markUnread(id)
+        } else {
+            markRead(id)
+        }
+    }
+
     /// Drop ids that are no longer present in the supplied list. Lets the
     /// retention path keep `bulletinReadIds` from growing unbounded as
     /// older bulletins fall off the server side.
