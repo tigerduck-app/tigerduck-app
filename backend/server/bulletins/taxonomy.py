@@ -8,6 +8,10 @@ Two orthogonal dimensions:
 
 A subscription rule is `(orgs: set[CanonicalOrg], tags: set[ContentTag], mode)`
 where empty set means wildcard on that dimension. See `matcher.rule_hits`.
+
+Enum-definition order is significant: `GET /v1/bulletins/taxonomy` iterates
+the enum, so the iOS subscription editor renders the picker in this exact
+sequence.
 """
 
 from __future__ import annotations
@@ -16,45 +20,38 @@ from enum import StrEnum
 
 
 class CanonicalOrg(StrEnum):
+    department = "department"
     academic_affairs = "academic_affairs"
-    research = "research"
+    student_affairs = "student_affairs"
     computer_center = "computer_center"
+    language_center = "language_center"
+    bilingual_office = "bilingual_office"
+    general_education = "general_education"
+    general_affairs = "general_affairs"
+    hr = "hr"
+    library = "library"
+    pe = "pe"
+    research = "research"
     industry_academia = "industry_academia"
     international = "international"
-    general_education = "general_education"
-    pe = "pe"
-    student_affairs = "student_affairs"
-    library = "library"
-    language_center = "language_center"
-    hr = "hr"
-    bilingual_office = "bilingual_office"
-    secretariat = "secretariat"
-    general_affairs = "general_affairs"
     safety = "safety"
-    continuing_education = "continuing_education"
-    college_eecs = "college_eecs"
-    college_other = "college_other"
-    department = "department"
     other = "other"
 
 
 class ContentTag(StrEnum):
-    scholarship = "scholarship"
-    event = "event"
-    competition = "competition"
-    career = "career"
-    course = "course"
-    exam = "exam"
-    registration = "registration"
-    payment = "payment"
-    housing = "housing"
-    health = "health"
-    facility = "facility"
-    international_exchange = "international_exchange"
-    library_resource = "library_resource"
-    forwarded = "forwarded"
-    important = "important"
     free_meal = "free_meal"
+    event = "event"
+    scholarship = "scholarship"
+    competition = "competition"
+    course = "course"
+    registration = "registration"
+    housing = "housing"
+    exam = "exam"
+    facility = "facility"
+    payment = "payment"
+    internship = "internship"
+    international_exchange = "international_exchange"
+    forwarded = "forwarded"
 
 
 class Importance(StrEnum):
@@ -64,63 +61,56 @@ class Importance(StrEnum):
 
 
 # Human-readable labels exposed to the iOS subscription UI via
-# `GET /v1/bulletins/taxonomy`. Keeping the mapping here keeps the server as
-# the single source of truth so the client never needs to hardcode strings.
+# `GET /v1/bulletins/taxonomy`. Labels intentionally contain no slashes
+# or other separators — the user-facing picker renders single-token names.
 ORG_LABELS: dict[CanonicalOrg, str] = {
+    CanonicalOrg.department: "系院所",
     CanonicalOrg.academic_affairs: "教務處",
-    CanonicalOrg.research: "研發處",
+    CanonicalOrg.student_affairs: "學務處",
     CanonicalOrg.computer_center: "電算中心",
+    CanonicalOrg.language_center: "語言中心",
+    CanonicalOrg.bilingual_office: "雙語辦公室",
+    CanonicalOrg.general_education: "通識中心",
+    CanonicalOrg.general_affairs: "總務處",
+    CanonicalOrg.hr: "人事室",
+    CanonicalOrg.library: "圖書館",
+    CanonicalOrg.pe: "體育室",
+    CanonicalOrg.research: "研發處",
     CanonicalOrg.industry_academia: "產學處",
     CanonicalOrg.international: "國際處",
-    CanonicalOrg.general_education: "通識中心",
-    CanonicalOrg.pe: "體育室",
-    CanonicalOrg.student_affairs: "學務處",
-    CanonicalOrg.library: "圖書館",
-    CanonicalOrg.language_center: "語言中心",
-    CanonicalOrg.hr: "人事室",
-    CanonicalOrg.bilingual_office: "雙語辦",
-    CanonicalOrg.secretariat: "秘書室",
-    CanonicalOrg.general_affairs: "總務處",
-    CanonicalOrg.safety: "環安/防疫",
-    CanonicalOrg.continuing_education: "推廣教育",
-    CanonicalOrg.college_eecs: "電資學院",
-    CanonicalOrg.college_other: "其他學院",
-    CanonicalOrg.department: "系所",
+    CanonicalOrg.safety: "安全",
     CanonicalOrg.other: "其他",
 }
 
 
 TAG_LABELS: dict[ContentTag, str] = {
-    ContentTag.scholarship: "獎學金/助學金",
-    ContentTag.event: "活動/講座",
+    ContentTag.free_meal: "便當",
+    ContentTag.event: "講座",
+    ContentTag.scholarship: "獎助學金",
     ContentTag.competition: "競賽",
-    ContentTag.career: "徵才/實習",
-    ContentTag.course: "選課/教學",
-    ContentTag.exam: "考試/檢定",
-    ContentTag.registration: "註冊/學籍",
+    ContentTag.course: "選課",
+    ContentTag.registration: "註冊",
+    ContentTag.housing: "宿舍",
+    ContentTag.exam: "考試",
+    ContentTag.facility: "維修",
     ContentTag.payment: "繳費",
-    ContentTag.housing: "住宿",
-    ContentTag.health: "衛保/防疫",
-    ContentTag.facility: "停電水/維修",
-    ContentTag.international_exchange: "國際交流",
-    ContentTag.library_resource: "圖書資源",
-    ContentTag.forwarded: "轉知",
-    ContentTag.important: "重要",
-    ContentTag.free_meal: "免費便當/餐食",
+    ContentTag.internship: "實習",
+    ContentTag.international_exchange: "國際",
+    ContentTag.forwarded: "轉發",
 }
 
 
 # Defaults shipped to a freshly-installed iOS client until the user edits
 # them. Low-noise, high-value tags only; orgs wide-open so nothing important
-# is silently missed.
+# is silently missed. `important` is no longer a tag — `Importance` is its
+# own field on the bulletin and the client filters on it directly.
 DEFAULT_TAGS_FOR_NEW_USER: frozenset[ContentTag] = frozenset(
     {
-        ContentTag.important,
+        ContentTag.free_meal,
         ContentTag.scholarship,
         ContentTag.payment,
         ContentTag.exam,
         ContentTag.facility,
-        ContentTag.free_meal,
     }
 )
 

@@ -55,7 +55,7 @@ def _good_payload() -> dict:
         "canonical_org": CanonicalOrg.student_affairs.value,
         "content_tags": [
             ContentTag.scholarship.value,
-            ContentTag.important.value,
+            ContentTag.payment.value,
         ],
         "summary": "學務處發放新獎學金，請同學盡速申請",
         "body_clean": "## 重點\n- 申請期限 4/30\n- 至生輔組領取",
@@ -66,7 +66,7 @@ def _good_payload() -> dict:
 def test_parse_response_happy_path() -> None:
     meta = _parse_response(json.dumps(_good_payload()))
     assert meta.canonical_org is CanonicalOrg.student_affairs
-    assert set(meta.content_tags) == {ContentTag.scholarship, ContentTag.important}
+    assert set(meta.content_tags) == {ContentTag.scholarship, ContentTag.payment}
     assert meta.importance is Importance.high
     assert meta.summary.startswith("學務處")
     assert "4/30" in meta.body_clean

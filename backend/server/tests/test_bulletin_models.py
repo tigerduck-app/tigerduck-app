@@ -49,7 +49,7 @@ def test_free_meal_is_in_taxonomy() -> None:
 
 
 def test_default_tags_are_a_conservative_subset() -> None:
-    assert ContentTag.important in DEFAULT_TAGS_FOR_NEW_USER
+    assert ContentTag.scholarship in DEFAULT_TAGS_FOR_NEW_USER
     assert ContentTag.free_meal in DEFAULT_TAGS_FOR_NEW_USER
     # Should not spam the user with every event
     assert ContentTag.event not in DEFAULT_TAGS_FOR_NEW_USER
@@ -225,7 +225,7 @@ async def test_subscription_array_round_trip(prepared_engine: AsyncEngine) -> No
                 device_id="dev-arr",
                 name="scholarship-watch",
                 orgs=[CanonicalOrg.student_affairs.value],
-                tags=[ContentTag.scholarship.value, ContentTag.important.value],
+                tags=[ContentTag.scholarship.value, ContentTag.payment.value],
                 mode=SubscriptionMode.AND.value,
             )
         )
@@ -242,7 +242,7 @@ async def test_subscription_array_round_trip(prepared_engine: AsyncEngine) -> No
         assert row.orgs == [CanonicalOrg.student_affairs.value]
         assert set(row.tags) == {
             ContentTag.scholarship.value,
-            ContentTag.important.value,
+            ContentTag.payment.value,
         }
         assert row.mode == "AND"
         assert row.enabled is True

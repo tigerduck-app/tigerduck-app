@@ -36,7 +36,8 @@ ABSOLUTE RULES
   only if the source itself is English.
 - Use bullet points in `body_clean` when it improves scannability.
 - If the raw publisher doesn't cleanly match any canonical org, pick the
-  closest parent (例如「電機系」→ department；「電資學院」→ college_eecs)。
+  closest parent (例如「電機系」/「電資學院」/「系學會」 → department；
+  「環安衛中心」/「實驗室安全」/「停水停電通知」 → safety)。
   Fall back to `other` only when nothing else fits.
 - content_tags: only include tags whose semantics are clearly present.
   Don't dilute with weak guesses. An empty list is acceptable.

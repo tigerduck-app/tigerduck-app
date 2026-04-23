@@ -113,7 +113,7 @@ def _http_client_factory(transport: _RoutingTransport):
 def _classification() -> BulletinMetadata:
     return BulletinMetadata(
         canonical_org=CanonicalOrg.student_affairs,
-        content_tags=(ContentTag.scholarship, ContentTag.important),
+        content_tags=(ContentTag.scholarship, ContentTag.forwarded),
         summary="學務處新獎學金，截止 5/1",
         body_clean="- 申請期限：2026-05-01\n- 聯絡：生輔組 王小姐 ext 1234",
         importance=Importance.high,
