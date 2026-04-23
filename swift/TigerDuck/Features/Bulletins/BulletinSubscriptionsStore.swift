@@ -30,6 +30,10 @@ final class BulletinSubscriptionsStore {
     var pending: [BulletinAPI.SubscriptionRule] = []
     private(set) var loadState: LoadState = .idle
     private(set) var saveState: SaveState = .idle
+    /// True when `pending` no longer matches what's on the server. Used by
+    /// the settings page to gate the 儲存 toolbar item — we only want to
+    /// nag the user when there's actual unsaved work.
+    private(set) var isDirty: Bool = false
 
     private let apiClient: BulletinAPIClient
     private let deviceId: String
@@ -60,6 +64,7 @@ final class BulletinSubscriptionsStore {
         do {
             let response = try await apiClient.getSubscriptions(deviceId: deviceId)
             pending = response.rules
+            isDirty = false
             loadState = .loaded
         } catch {
             logger.error("subscription load failed: \(error.localizedDescription, privacy: .public)")
@@ -97,6 +102,7 @@ final class BulletinSubscriptionsStore {
                     preserved[i].clientId = oldId
                 }
                 pending = preserved
+                isDirty = false
                 saveState = .saved
                 return
             } catch BulletinAPIError.httpStatus(let code, _) where code == 404 {
@@ -133,18 +139,24 @@ final class BulletinSubscriptionsStore {
             enabled: true
         )
         pending.append(new)
+        isDirty = true
         saveState = .idle
         return new.clientId
     }
 
     func removeRule(clientId: UUID) {
+        let before = pending.count
         pending.removeAll { $0.clientId == clientId }
+        if pending.count != before { isDirty = true }
         saveState = .idle
     }
 
     func update(_ rule: BulletinAPI.SubscriptionRule) {
         guard let index = pending.firstIndex(where: { $0.clientId == rule.clientId }) else { return }
-        pending[index] = rule
+        if pending[index] != rule {
+            pending[index] = rule
+            isDirty = true
+        }
         saveState = .idle
     }
 
@@ -170,6 +182,7 @@ final class BulletinSubscriptionsStore {
                 enabled: true
             )
         )
+        isDirty = true
         saveState = .idle
     }
 }

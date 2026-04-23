@@ -45,7 +45,7 @@ struct BulletinNotificationSettingsView: View {
         .navigationTitle("公告通知")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if pushEnabled {
+            if pushEnabled, shouldShowSaveButton {
                 ToolbarItem(placement: .topBarTrailing) {
                     saveToolbarButton
                 }
@@ -177,14 +177,14 @@ struct BulletinNotificationSettingsView: View {
                 .onDelete(perform: deleteRules)
 
                 Button {
-                    let newId = store.addRule()
-                    // Defer one runloop so SwiftUI commits the ForEach
-                    // append before pushing — without this, the editor
-                    // would resolve the rule lookup against pre-append
-                    // state on some iOS builds.
-                    DispatchQueue.main.async {
-                        editingClientId = newId
-                    }
+                    // addRule mutates `pending` synchronously and returns
+                    // the new clientId. Setting `editingClientId` in the
+                    // same event loop tick lets SwiftUI batch both state
+                    // changes into a single render pass; the previous
+                    // dispatch_async created a window where the ForEach
+                    // had committed but the editor binding read stale
+                    // state.
+                    editingClientId = store.addRule()
                 } label: {
                     Label("新增規則", systemImage: "plus")
                 }
@@ -211,6 +211,15 @@ struct BulletinNotificationSettingsView: View {
     }
 
     // MARK: - Toolbar / editor
+
+    /// Don't render the 儲存 toolbar item unless either:
+    ///   * the user has unsaved changes (`isDirty`), or
+    ///   * a save is currently in flight (so the spinner has a slot).
+    /// Keeps the right side of the nav bar clean during read-only browsing.
+    private var shouldShowSaveButton: Bool {
+        if case .saving = store.saveState { return true }
+        return store.isDirty
+    }
 
     @ViewBuilder
     private var saveToolbarButton: some View {
