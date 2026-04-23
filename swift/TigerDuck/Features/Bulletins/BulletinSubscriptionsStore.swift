@@ -119,17 +119,22 @@ final class BulletinSubscriptionsStore {
 
     // MARK: - Mutation helpers
 
-    func addRule() {
-        pending.append(
-            BulletinAPI.SubscriptionRule(
-                name: nil,
-                orgs: [],
-                tags: [],
-                mode: .and,
-                enabled: true
-            )
+    /// Append a fresh blank rule and return its `clientId` so the caller
+    /// can immediately push the editor for it. Returning the id avoids the
+    /// "guess the index" pattern and pairs cleanly with
+    /// `.navigationDestination(item:)` for programmatic navigation.
+    @discardableResult
+    func addRule() -> UUID {
+        let new = BulletinAPI.SubscriptionRule(
+            name: nil,
+            orgs: [],
+            tags: [],
+            mode: .and,
+            enabled: true
         )
+        pending.append(new)
         saveState = .idle
+        return new.clientId
     }
 
     func removeRule(clientId: UUID) {
@@ -141,6 +146,16 @@ final class BulletinSubscriptionsStore {
         guard let index = pending.firstIndex(where: { $0.clientId == rule.clientId }) else { return }
         pending[index] = rule
         saveState = .idle
+    }
+
+    /// Acknowledge a `.failed` save so the toolbar drops the indicator
+    /// and the alert binding reads false. Idempotent on `.idle/.saving`.
+    func clearSaveState() {
+        if case .failed = saveState {
+            saveState = .idle
+        } else if case .saved = saveState {
+            saveState = .idle
+        }
     }
 
     /// Seed a "follow the defaults" rule when the user starts from zero.

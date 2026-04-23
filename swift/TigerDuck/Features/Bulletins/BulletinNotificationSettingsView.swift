@@ -4,14 +4,20 @@ import UserNotifications
 
 /// Per-device bulletin notification settings.
 ///
-/// Contextual permission: we ask for `UNAuthorizationOptions` the first
-/// time the user reaches this page. Turning push on here also flips the
-/// app-wide `pushServerEnabled` flag so APNs device-token upload happens
-/// automatically via `PushCoordinator`.
+/// Three responsibilities:
+/// 1. Surface the OS push permission state and let the user request it.
+/// 2. Toggle our `pushServerEnabled` flag (a `Defaults` key); flipping it
+///    on triggers `PushCoordinator` registration, off tells the server
+///    to drop this device.
+/// 3. CRUD the device's subscription rules. Rules are local drafts until
+///    the user hits 儲存 — the backend takes a snapshot replacement PUT.
 ///
-/// Rules are editable drafts until the user hits 儲存 — a single snapshot
-/// PUT replaces the whole set on the server, matching the backend's
-/// idempotent replacement contract.
+/// `@Default(.pushServerEnabled)` gives us a reactive binding so the page
+/// updates immediately when push is toggled (the previous read-once
+/// `Defaults[.pushServerEnabled]` left the page stale until the next nav
+/// event). Rule edits use programmatic navigation via
+/// `.navigationDestination(item:)` so the new-rule flow doesn't depend on
+/// captured-closure state in a NavigationLink trailing-builder.
 struct BulletinNotificationSettingsView: View {
     let taxonomy: BulletinTaxonomyStore
 
@@ -19,12 +25,16 @@ struct BulletinNotificationSettingsView: View {
     @State private var store = BulletinSubscriptionsStore()
     @State private var authStatus: UNAuthorizationStatus = .notDetermined
     @State private var isAskingPermission: Bool = false
+    @State private var editingClientId: UUID?
+    @State private var saveErrorMessage: String?
+
+    @Default(.pushServerEnabled) private var pushEnabled
 
     var body: some View {
         List {
             pushStatusSection
 
-            if Defaults[.pushServerEnabled] {
+            if pushEnabled {
                 rulesSection
                 if store.loadState == .loaded, store.pending.isEmpty {
                     defaultRuleBanner
@@ -35,49 +45,60 @@ struct BulletinNotificationSettingsView: View {
         .navigationTitle("公告通知")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if Defaults[.pushServerEnabled] {
-                ToolbarItem(placement: .primaryAction) {
-                    saveButton
+            if pushEnabled {
+                ToolbarItem(placement: .topBarTrailing) {
+                    saveToolbarButton
                 }
             }
         }
         .task {
             await taxonomy.loadIfNeeded()
             await refreshAuthStatus()
-            if Defaults[.pushServerEnabled] {
+            if pushEnabled {
                 await store.load()
+            }
+        }
+        .onChange(of: pushEnabled) { _, isOn in
+            // Toggling push back on (e.g. via Settings page elsewhere)
+            // should re-load subscriptions so the rules section is
+            // populated rather than blank.
+            if isOn { Task { await store.load() } }
+        }
+        .onChange(of: store.saveState) { _, newState in
+            if case .failed(let msg) = newState {
+                saveErrorMessage = msg
             }
         }
         .alert(
             "儲存失敗",
             isPresented: Binding(
-                get: { if case .failed = store.saveState { return true } else { return false } },
-                set: { newValue in if !newValue { store.pending = store.pending } }
+                get: { saveErrorMessage != nil },
+                set: { if !$0 { saveErrorMessage = nil; store.clearSaveState() } }
             ),
-            actions: {
-                Button("知道了", role: .cancel) { }
-            },
+            actions: { Button("知道了", role: .cancel) {} },
             message: {
-                if case .failed(let message) = store.saveState {
-                    Text(message)
-                }
+                if let msg = saveErrorMessage { Text(msg) }
             }
         )
+        .navigationDestination(item: $editingClientId) { clientId in
+            ruleEditor(for: clientId)
+        }
     }
 
     // MARK: - Sections
 
     @ViewBuilder
     private var pushStatusSection: some View {
-        Section {
-            if Defaults[.pushServerEnabled] {
-                HStack {
-                    Label("推播通知", systemImage: "bell.fill")
-                    Spacer()
+        if pushEnabled {
+            Section {
+                LabeledContent {
                     Text(authStatusText)
                         .foregroundStyle(authStatusColor)
                         .font(.caption)
+                } label: {
+                    Label("推播通知", systemImage: "bell.fill")
                 }
+
                 if authStatus == .denied {
                     Button {
                         openAppSettings()
@@ -85,12 +106,17 @@ struct BulletinNotificationSettingsView: View {
                         Label("在 iOS 設定中重新開啟", systemImage: "gear")
                     }
                 }
+
                 Button(role: .destructive) {
                     Task { await disablePush() }
                 } label: {
                     Label("關閉公告推播", systemImage: "bell.slash")
                 }
-            } else {
+            } header: {
+                Text("推播設定")
+            }
+        } else {
+            Section {
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
                     Text("開啟推播後，當有符合你設定規則的公告時，老虎鴨會即時通知你。")
                         .font(.callout)
@@ -99,11 +125,12 @@ struct BulletinNotificationSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
                 Button {
                     Task { await enablePush() }
                 } label: {
                     if isAskingPermission {
-                        HStack {
+                        HStack(spacing: TigerDuckTheme.Spacing.xs) {
                             ProgressView()
                             Text("請求中…")
                         }
@@ -112,11 +139,9 @@ struct BulletinNotificationSettingsView: View {
                     }
                 }
                 .disabled(isAskingPermission)
-            }
-        } header: {
-            Text("推播設定")
-        } footer: {
-            if !Defaults[.pushServerEnabled] {
+            } header: {
+                Text("推播設定")
+            } footer: {
                 Text("推播通知由 TigerDuck 伺服器根據你選的規則派送。設備標識以匿名 UUID 傳送，不會上傳學號。")
             }
         }
@@ -127,10 +152,9 @@ struct BulletinNotificationSettingsView: View {
         Section {
             switch store.loadState {
             case .idle, .loading:
-                HStack {
+                HStack(spacing: TigerDuckTheme.Spacing.xs) {
                     ProgressView()
-                    Text("載入規則…")
-                        .foregroundStyle(.secondary)
+                    Text("載入規則…").foregroundStyle(.secondary)
                 }
             case .failed(let message):
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
@@ -143,33 +167,24 @@ struct BulletinNotificationSettingsView: View {
                 }
             case .loaded:
                 ForEach(store.pending, id: \.clientId) { rule in
-                    NavigationLink {
-                        SubscriptionRuleEditorView(
-                            rule: rule,
-                            taxonomy: taxonomy,
-                            onCommit: { store.update($0) },
-                            onDelete: { store.removeRule(clientId: rule.clientId) }
-                        )
+                    Button {
+                        editingClientId = rule.clientId
                     } label: {
                         ruleRow(rule)
                     }
+                    .foregroundStyle(.primary)
                 }
-                .onDelete { indexSet in
-                    for index in indexSet {
-                        let rule = store.pending[index]
-                        store.removeRule(clientId: rule.clientId)
-                    }
-                }
+                .onDelete(perform: deleteRules)
 
-                NavigationLink {
-                    SubscriptionRuleEditorView(
-                        rule: BulletinAPI.SubscriptionRule(),
-                        taxonomy: taxonomy,
-                        onCommit: { newRule in
-                            store.pending.append(newRule)
-                        },
-                        onDelete: nil
-                    )
+                Button {
+                    let newId = store.addRule()
+                    // Defer one runloop so SwiftUI commits the ForEach
+                    // append before pushing — without this, the editor
+                    // would resolve the rule lookup against pre-append
+                    // state on some iOS builds.
+                    DispatchQueue.main.async {
+                        editingClientId = newId
+                    }
                 } label: {
                     Label("新增規則", systemImage: "plus")
                 }
@@ -191,16 +206,49 @@ struct BulletinNotificationSettingsView: View {
                 Label("套用預設規則", systemImage: "wand.and.stars")
             }
         } footer: {
-            Text("預設會訂閱：重要公告、獎學金、繳費、考試、場館與免費便當。")
+            Text("預設會訂閱：免費便當、獎助學金、繳費、考試、維修。")
         }
     }
 
-    // MARK: - Pieces
+    // MARK: - Toolbar / editor
+
+    @ViewBuilder
+    private var saveToolbarButton: some View {
+        switch store.saveState {
+        case .saving:
+            ProgressView()
+        default:
+            Button("儲存") {
+                Task { await store.save() }
+            }
+            .disabled(store.pending.count > 32)
+        }
+    }
+
+    @ViewBuilder
+    private func ruleEditor(for clientId: UUID) -> some View {
+        if let rule = store.pending.first(where: { $0.clientId == clientId }) {
+            SubscriptionRuleEditorView(
+                rule: rule,
+                taxonomy: taxonomy,
+                onCommit: { updated in store.update(updated) },
+                onDelete: { store.removeRule(clientId: clientId) }
+            )
+        } else {
+            // Rule was deleted while the editor was open (e.g. via swipe
+            // on a different navigation path). Bounce back rather than
+            // showing a stale view.
+            Color.clear
+                .onAppear { editingClientId = nil }
+        }
+    }
+
+    // MARK: - Row rendering
 
     private func ruleRow(_ rule: BulletinAPI.SubscriptionRule) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(rule.name ?? defaultRuleTitle(rule))
+                Text(rule.name?.nilIfEmpty ?? defaultRuleTitle(rule))
                     .font(.headline)
                     .foregroundStyle(Color.textPrimary)
                 Spacer()
@@ -218,23 +266,17 @@ struct BulletinNotificationSettingsView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
-    }
-
-    private var saveButton: some View {
-        Group {
-            switch store.saveState {
-            case .saving:
-                ProgressView()
-            default:
-                Button("儲存") {
-                    Task { await store.save() }
-                }
-                .disabled(store.pending.count > 32)
-            }
-        }
+        .contentShape(Rectangle())
     }
 
     // MARK: - Actions
+
+    private func deleteRules(at offsets: IndexSet) {
+        for index in offsets {
+            let rule = store.pending[index]
+            store.removeRule(clientId: rule.clientId)
+        }
+    }
 
     private func enablePush() async {
         isAskingPermission = true
@@ -243,12 +285,13 @@ struct BulletinNotificationSettingsView: View {
             .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshAuthStatus()
         guard granted || authStatus == .provisional else { return }
-        await MainActor.run { appState.enablePushServer() }
+        appState.enablePushServer()
         await store.load()
     }
 
     private func disablePush() async {
         await appState.disablePushServer()
+        // pushEnabled flips reactively via @Default; no manual refresh.
     }
 
     private func refreshAuthStatus() async {
@@ -290,23 +333,17 @@ struct BulletinNotificationSettingsView: View {
     }
 
     private func ruleSubtitle(_ rule: BulletinAPI.SubscriptionRule) -> String {
-        let orgText: String
-        if rule.orgs.isEmpty {
-            orgText = "全部處室"
-        } else {
-            orgText = "處室：" + rule.orgs.map { taxonomy.orgLabel(for: $0) }.joined(separator: "、")
-        }
-        let tagText: String
-        if rule.tags.isEmpty {
-            tagText = "全部類別"
-        } else {
-            tagText = "類別：" + rule.tags.map { taxonomy.tagLabel(for: $0) }.joined(separator: "、")
-        }
-        let joiner: String
-        switch rule.mode {
-        case .and: joiner = " 且 "
-        case .or: joiner = " 或 "
-        }
+        let orgText = rule.orgs.isEmpty
+            ? "全部處室"
+            : "處室：" + rule.orgs.map { taxonomy.orgLabel(for: $0) }.joined(separator: "、")
+        let tagText = rule.tags.isEmpty
+            ? "全部類別"
+            : "類別：" + rule.tags.map { taxonomy.tagLabel(for: $0) }.joined(separator: "、")
+        let joiner = rule.mode == .and ? " 且 " : " 或 "
         return orgText + joiner + tagText
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
