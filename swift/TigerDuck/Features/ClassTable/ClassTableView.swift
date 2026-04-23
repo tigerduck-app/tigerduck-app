@@ -57,6 +57,9 @@ struct ClassTableView: View {
                         // switch to a semester that does have courses even
                         // when the current semester's roster is empty.
                         VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                            if !viewModel.todayCourses.isEmpty {
+                                todayCoursesSection
+                            }
                             semesterPickerBar
                             EmptyStateView(
                                 icon: "book.closed",
@@ -150,20 +153,23 @@ struct ClassTableView: View {
     private var authenticatedContent: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             if !viewModel.todayCourses.isEmpty {
-                VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                    SectionHeader(title: "今日課程")
-                    TodayCourseCarousel(
-                        courses: viewModel.todayCourses,
-                        hasAssignment: viewModel.hasAssignment,
-                        showProgress: false,
-                        onSelect: { viewModel.selectedCourse = $0 }
-                    )
-                }
+                todayCoursesSection
             }
-
             semesterPickerBar
 
             TimetableGridView(viewModel: viewModel)
+        }
+    }
+
+    private var todayCoursesSection: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+            SectionHeader(title: "今日課程")
+            TodayCourseCarousel(
+                courses: viewModel.todayCourses,
+                hasAssignment: viewModel.hasAssignment,
+                showProgress: false,
+                onSelect: { viewModel.selectedCourse = $0 }
+            )
         }
     }
 

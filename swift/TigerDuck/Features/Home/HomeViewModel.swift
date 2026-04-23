@@ -3,6 +3,8 @@ import Defaults
 
 @Observable
 final class HomeViewModel {
+    private static let assignmentMutationAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
+
     var sections: [HomeSection] = []
     var allCourses: [SDCourse] = []
     var todayCourses: [SDCourse] = []
@@ -21,7 +23,7 @@ final class HomeViewModel {
 
     /// Cached source-of-truth assignment list, already filtered to the current
     /// semester. The visible `upcomingAssignments` is derived from this via
-    /// `assignmentFilter` so toggling 全部/未完成 is instant and does not refetch.
+    /// `assignmentFilter` so toggling filters is instant and does not refetch.
     private var allAssignmentsCache: [SDAssignment] = []
 
     private var hasLoaded = false
@@ -79,12 +81,25 @@ final class HomeViewModel {
     }
 
     private func recomputeUpcomingAssignments() {
+        let availableFilters = AssignmentFilter.visibleFilters(
+            hasIgnored: allAssignmentsCache.hasIgnored()
+        )
+        if !availableFilters.contains(assignmentFilter) {
+            assignmentFilter = .all
+        }
+
         switch assignmentFilter {
         case .incomplete:
             upcomingAssignments = allAssignmentsCache.upcomingSorted()
         case .all:
             upcomingAssignments = allAssignmentsCache.allSorted()
+        case .ignored:
+            upcomingAssignments = allAssignmentsCache.ignoredSorted()
         }
+    }
+
+    var availableAssignmentFilters: [AssignmentFilter] {
+        AssignmentFilter.visibleFilters(hasIgnored: allAssignmentsCache.hasIgnored())
     }
 
     func load(authService: AuthService) {
@@ -188,6 +203,42 @@ final class HomeViewModel {
     }
 
     var selectedCourse: SDCourse? = nil
+
+    func archiveAssignment(_ assignment: SDAssignment) {
+        guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
+        withAnimation(Self.assignmentMutationAnimation) {
+            allAssignmentsCache[idx].isArchived = true
+            DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
+            recomputeUpcomingAssignments()
+        }
+    }
+
+    func unarchiveAssignment(_ assignment: SDAssignment) {
+        guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
+        withAnimation(Self.assignmentMutationAnimation) {
+            allAssignmentsCache[idx].isArchived = false
+            DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
+            recomputeUpcomingAssignments()
+        }
+    }
+
+    func markAssignmentAsLocallyCompleted(_ assignment: SDAssignment) {
+        guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
+        withAnimation(Self.assignmentMutationAnimation) {
+            allAssignmentsCache[idx].isLocallyCompleted = true
+            DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
+            recomputeUpcomingAssignments()
+        }
+    }
+
+    func undoLocallyCompleted(_ assignment: SDAssignment) {
+        guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
+        withAnimation(Self.assignmentMutationAnimation) {
+            allAssignmentsCache[idx].isLocallyCompleted = false
+            DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
+            recomputeUpcomingAssignments()
+        }
+    }
 
     func hasUnfinishedAssignment(for courseNo: String) -> Bool {
         upcomingAssignments.hasUnfinished(for: courseNo)

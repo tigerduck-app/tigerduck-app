@@ -71,7 +71,52 @@ final class DataCache {
 
     func loadAssignments() -> [SDAssignment] {
         let dtos: [CachedAssignment] = load(from: "assignments.json") ?? []
-        return dtos.map { $0.toSDAssignment() }
+        let archivedIds = loadArchivedAssignmentIds()
+        let locallyCompletedIds = loadLocallyCompletedAssignmentIds()
+        return dtos.map { dto in
+            let a = dto.toSDAssignment()
+            if archivedIds.contains(a.assignmentId) { a.isArchived = true }
+            if locallyCompletedIds.contains(a.assignmentId) { a.isLocallyCompleted = true }
+            return a
+        }
+    }
+
+    // MARK: - Archived Assignment IDs (local, persistent, survives Moodle refresh)
+
+    func addArchivedAssignmentId(_ id: String) {
+        var ids = loadArchivedAssignmentIds()
+        ids.insert(id)
+        save(Array(ids), to: "archived_assignments.json", in: persistentDir)
+    }
+
+    func removeArchivedAssignmentId(_ id: String) {
+        var ids = loadArchivedAssignmentIds()
+        ids.remove(id)
+        save(Array(ids), to: "archived_assignments.json", in: persistentDir)
+    }
+
+    func loadArchivedAssignmentIds() -> Set<String> {
+        let ids: [String] = load(from: "archived_assignments.json", in: persistentDir) ?? []
+        return Set(ids)
+    }
+
+    // MARK: - Locally Completed Assignment IDs (local, persistent, survives Moodle refresh)
+
+    func addLocallyCompletedAssignmentId(_ id: String) {
+        var ids = loadLocallyCompletedAssignmentIds()
+        ids.insert(id)
+        save(Array(ids), to: "locally_completed_assignments.json", in: persistentDir)
+    }
+
+    func removeLocallyCompletedAssignmentId(_ id: String) {
+        var ids = loadLocallyCompletedAssignmentIds()
+        ids.remove(id)
+        save(Array(ids), to: "locally_completed_assignments.json", in: persistentDir)
+    }
+
+    func loadLocallyCompletedAssignmentIds() -> Set<String> {
+        let ids: [String] = load(from: "locally_completed_assignments.json", in: persistentDir) ?? []
+        return Set(ids)
     }
 
     // MARK: - Bulletins
@@ -203,6 +248,8 @@ final class DataCache {
             ("deleted_courses.json", persistentDir),
             ("course_custom_names.json", persistentDir),
             ("course_custom_colors.json", persistentDir),
+            ("archived_assignments.json", persistentDir),
+            ("locally_completed_assignments.json", persistentDir),
         ]
         for (name, dir) in filenames {
             let url = dir.appendingPathComponent(name)
