@@ -86,7 +86,6 @@ final class HomeViewModel {
         )
         if !availableFilters.contains(assignmentFilter) {
             assignmentFilter = .all
-            return
         }
 
         switch assignmentFilter {
