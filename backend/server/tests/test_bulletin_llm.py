@@ -20,8 +20,13 @@ from server.bulletins.llm.openai_compat import (
     RecordingProvider,
     _backoff_seconds,
     _parse_response,
+    _truncate_to_fullwidth_budget,
 )
-from server.bulletins.llm.prompts import RESPONSE_SCHEMA, SYSTEM_PROMPT
+from server.bulletins.llm.prompts import (
+    RESPONSE_SCHEMA,
+    SYSTEM_PROMPT,
+    TITLE_FULLWIDTH_BUDGET,
+)
 from server.bulletins.taxonomy import CanonicalOrg, ContentTag, Importance
 
 _async = pytest.mark.asyncio(loop_scope="session")
@@ -57,6 +62,7 @@ def _good_payload() -> dict:
             ContentTag.scholarship.value,
             ContentTag.payment.value,
         ],
+        "title": "新獎學金開放申請",
         "summary": "學務處發放新獎學金，請同學盡速申請",
         "body_clean": "## 重點\n- 申請期限 4/30\n- 至生輔組領取",
         "importance": Importance.high.value,
@@ -68,6 +74,7 @@ def test_parse_response_happy_path() -> None:
     assert meta.canonical_org is CanonicalOrg.student_affairs
     assert set(meta.content_tags) == {ContentTag.scholarship, ContentTag.payment}
     assert meta.importance is Importance.high
+    assert meta.title == "新獎學金開放申請"
     assert meta.summary.startswith("學務處")
     assert "4/30" in meta.body_clean
 
@@ -77,6 +84,30 @@ def test_parse_response_caps_summary_to_60_chars() -> None:
     payload["summary"] = "A" * 120
     meta = _parse_response(json.dumps(payload))
     assert len(meta.summary) == 60
+
+
+def test_parse_response_truncates_overlong_title() -> None:
+    payload = _good_payload()
+    # 30 全形 chars — over the 24 budget, must be cut to exactly 24.
+    payload["title"] = "甲" * 30
+    meta = _parse_response(json.dumps(payload))
+    assert meta.title == "甲" * TITLE_FULLWIDTH_BUDGET
+
+
+def test_truncate_to_fullwidth_budget_mixes_widths() -> None:
+    # 24 ASCII = 12 budget units → fits whole.
+    assert _truncate_to_fullwidth_budget("A" * 24, 24) == "A" * 24
+    # 48 ASCII = 24 budget units → boundary, fits whole.
+    assert _truncate_to_fullwidth_budget("A" * 48, 24) == "A" * 48
+    # 50 ASCII = 25 budget units → drop last 4 (each = 0.5).
+    assert len(_truncate_to_fullwidth_budget("A" * 50, 24)) == 48
+    # Mixed: 12 全形 + 24 ASCII = 12 + 12 = 24, exactly at budget.
+    mixed = "甲" * 12 + "A" * 24
+    assert _truncate_to_fullwidth_budget(mixed, 24) == mixed
+    # 13 全形 + 1 ASCII = 13.5 → cut to 12 全形 (12 units) + nothing else
+    # because the next char would push past 24.
+    over = "甲" * 13 + "A"
+    assert _truncate_to_fullwidth_budget(over, 12) == "甲" * 12
 
 
 def test_parse_response_rejects_unknown_org() -> None:
@@ -96,6 +127,13 @@ def test_parse_response_rejects_unknown_tag() -> None:
 def test_parse_response_rejects_empty_summary() -> None:
     payload = _good_payload()
     payload["summary"] = ""
+    with pytest.raises(LLMError):
+        _parse_response(json.dumps(payload))
+
+
+def test_parse_response_rejects_empty_title() -> None:
+    payload = _good_payload()
+    payload["title"] = ""
     with pytest.raises(LLMError):
         _parse_response(json.dumps(payload))
 

@@ -24,6 +24,9 @@ class BulletinMetadata:
 
     * `canonical_org` — Dim-1 publisher after synonym normalization.
     * `content_tags` — Dim-2 multi-label tags (possibly empty).
+    * `title` — normalized topic title (≤24 全形 chars, no decorative
+      prefixes like 【】, no publisher prefix). Empty string when the
+      provider has no title rewrite (e.g. `RecordingProvider` in tests).
     * `summary` — ≤60-char Chinese summary, used as the push notification
       body. Trimmed on the way out so the push envelope stays small.
     * `body_clean` — reformatted full content; factual info must be
@@ -34,6 +37,7 @@ class BulletinMetadata:
 
     canonical_org: CanonicalOrg
     content_tags: tuple[ContentTag, ...] = field(default_factory=tuple)
+    title: str = ""
     summary: str = ""
     body_clean: str = ""
     importance: Importance = Importance.normal

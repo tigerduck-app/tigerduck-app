@@ -31,11 +31,18 @@ class TaxonomyResponse(BaseModel):
 
 
 class BulletinSummary(BaseModel):
-    """Summary row for list pagination."""
+    """Summary row for list pagination.
+
+    `title` is the raw NTUST headline as scraped; `title_clean` is the
+    LLM-normalized version (≤24 全形 chars, no decorative prefixes).
+    Clients should display `title_clean` and fall back to `title` when
+    the LLM hasn't run yet (legacy rows or fresh pending bulletins).
+    """
 
     id: int
     external_id: str
     title: str
+    title_clean: str | None
     canonical_org: CanonicalOrg | None
     content_tags: list[ContentTag]
     importance: Literal["low", "normal", "high"] | None

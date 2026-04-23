@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import unicodedata
 from typing import Any
 
 import httpx
@@ -24,6 +25,7 @@ from server.bulletins.llm.base import BulletinMetadata, LLMError, LLMProvider
 from server.bulletins.llm.prompts import (
     RESPONSE_FORMAT,
     SYSTEM_PROMPT,
+    TITLE_FULLWIDTH_BUDGET,
     build_user_prompt,
 )
 from server.bulletins.taxonomy import CanonicalOrg, ContentTag, Importance
@@ -205,21 +207,46 @@ def _parse_response(content: str) -> BulletinMetadata:
             f"response failed enum validation: {str(obj)[:800]} (cause: {exc})"
         ) from exc
 
+    title = str(obj.get("title", "")).strip()
     summary = str(obj.get("summary", "")).strip()
     body_clean = str(obj.get("body_clean", "")).strip()
-    if not summary or not body_clean:
-        raise LLMError(f"summary and body_clean must be non-empty: {str(obj)[:800]}")
+    if not title or not summary or not body_clean:
+        raise LLMError(
+            f"title, summary, body_clean must be non-empty: {str(obj)[:800]}"
+        )
 
-    # Keep summary below our hard cap — the prompt asks for 60 but models
-    # occasionally overshoot. We truncate rather than retry since the payload
-    # is good enough.
+    # Hard caps — schema gives the model a wall but instruction-tuned models
+    # occasionally overshoot a few chars. Truncate rather than retry since
+    # the payload is otherwise good. `title` uses width-aware budget
+    # (2 ASCII = 1 全形); `summary` is char-count.
     return BulletinMetadata(
         canonical_org=canonical_org,
         content_tags=content_tags,
+        title=_truncate_to_fullwidth_budget(title, TITLE_FULLWIDTH_BUDGET),
         summary=summary[:60],
         body_clean=body_clean,
         importance=importance,
     )
+
+
+def _truncate_to_fullwidth_budget(text: str, budget: int) -> str:
+    """Cut `text` so its width-aware cost ≤ budget.
+
+    Each East-Asian Wide / Fullwidth / Ambiguous character costs 1 unit;
+    each narrow / half-width character costs 0.5. Returns the longest
+    prefix of `text` whose cumulative cost stays within `budget`.
+    """
+    cost = 0.0
+    cut_at = 0
+    for i, ch in enumerate(text):
+        ch_cost = (
+            1.0 if unicodedata.east_asian_width(ch) in ("F", "W", "A") else 0.5
+        )
+        if cost + ch_cost > budget:
+            break
+        cost += ch_cost
+        cut_at = i + 1
+    return text[:cut_at]
 
 
 class RecordingProvider:

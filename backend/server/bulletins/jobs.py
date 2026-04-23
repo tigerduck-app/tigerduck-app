@@ -248,6 +248,7 @@ async def _process_one(
             .values(
                 canonical_org=meta.canonical_org.value,
                 content_tags=[t.value for t in meta.content_tags],
+                title_clean=meta.title or None,
                 summary=meta.summary,
                 body_clean=meta.body_clean,
                 importance=meta.importance.value,

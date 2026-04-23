@@ -61,6 +61,7 @@ def _to_summary(row: Bulletin) -> BulletinSummary:
         id=row.id,
         external_id=row.external_id,
         title=row.title,
+        title_clean=row.title_clean,
         canonical_org=CanonicalOrg(row.canonical_org) if row.canonical_org else None,
         content_tags=[ContentTag(t) for t in (row.content_tags or [])],
         importance=row.importance,  # type: ignore[arg-type]

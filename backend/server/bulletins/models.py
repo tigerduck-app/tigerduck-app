@@ -70,6 +70,7 @@ class Bulletin(Base):
     importance: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     title: Mapped[str] = mapped_column(Text)
+    title_clean: Mapped[str | None] = mapped_column(Text, nullable=True)
     body_md: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     posted_at: Mapped[datetime | None] = mapped_column(
