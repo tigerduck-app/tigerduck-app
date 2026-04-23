@@ -89,7 +89,7 @@ private struct PresetChipModifier: ViewModifier {
             padded
                 .background {
                     if isSelected {
-                        Capsule().fill(Color.accentPrimary)
+                        Capsule().fill(Color.accentColor)
                     } else {
                         Capsule().fill(.ultraThinMaterial)
                     }

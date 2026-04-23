@@ -13,55 +13,9 @@ struct BulletinCardView: View {
     var body: some View {
         let policy = appState.visualStylePolicy
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            // Org / importance / deleted / date row. Unread indicator lives
-            // here (not in a side gutter) so it stays close to the metadata
-            // and doesn't burn a column for read rows.
-            HStack(spacing: TigerDuckTheme.Spacing.xs) {
-                if !isRead {
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 7, height: 7)
-                        .accessibilityLabel("未讀")
-                }
-                if let org = bulletin.canonicalOrg {
-                    Text(taxonomy.orgLabel(for: org))
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(orgLabelColor(policy: policy))
-                }
-                if let importance = bulletin.importance, importance == .high {
-                    importanceBadge
-                }
-                if bulletin.isDeleted {
-                    Text("已撤下")
-                        .font(TigerDuckTheme.Typography.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.textSecondary.opacity(0.2), in: Capsule())
-                        .foregroundStyle(Color.textSecondary)
-                }
-                Spacer()
-                if let posted = bulletin.postedAt {
-                    Text(posted.shortDateString)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(policy.secondaryTextColor)
-                }
-            }
-
-            Text(bulletin.displayTitle)
-                .font(TigerDuckTheme.Typography.headline)
-                .fontWeight(isRead ? .regular : .semibold)
-                .foregroundStyle(policy.primaryTextColor)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            if let summary = bulletin.summary, !summary.isEmpty {
-                Text(summary)
-                    .font(summaryFont(policy: policy))
-                    .foregroundStyle(policy.secondaryTextColor)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-
+            topRow
+            titleRow
+            summaryRow(policy: policy)
             if !bulletin.contentTags.isEmpty {
                 tagStrip
             }
@@ -71,31 +25,100 @@ struct BulletinCardView: View {
         .opacity(bulletin.isDeleted ? 0.55 : 1)
     }
 
-    /// Compact trailing tag strip. Capsules previously took a noticeable
-    /// chunk of card height; now we use plain accented text joined with
-    /// `·` separators and cap at three labels with an overflow counter.
-    /// Same information, ~40% less vertical space.
+    // MARK: - Rows
+
+    /// Top row: filled org badge on the left, importance/撤下/date on the right.
+    /// The badge now lands as a solid accent pill so it reads as the card's
+    /// primary metadata anchor — the category strip at the bottom
+    /// intentionally uses a lighter hashtag style so the two dimensions
+    /// don't compete for attention.
+    private var topRow: some View {
+        HStack(alignment: .center, spacing: TigerDuckTheme.Spacing.sm) {
+            if !isRead {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 7, height: 7)
+                    .accessibilityLabel("未讀")
+            }
+            if let org = bulletin.canonicalOrg {
+                orgBadge(label: taxonomy.orgLabel(for: org))
+            }
+            if let importance = bulletin.importance, importance == .high {
+                importanceBadge
+            }
+            if bulletin.isDeleted {
+                Text("已撤下")
+                    .font(TigerDuckTheme.Typography.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.textSecondary.opacity(0.2), in: Capsule())
+                    .foregroundStyle(Color.textSecondary)
+            }
+            Spacer()
+            if let posted = bulletin.postedAt {
+                Text(posted.shortDateString)
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
+            }
+        }
+    }
+
+    private var titleRow: some View {
+        Text(bulletin.displayTitle)
+            .font(TigerDuckTheme.Typography.headline)
+            .fontWeight(isRead ? .regular : .semibold)
+            .foregroundStyle(Color.textPrimary)
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+    }
+
+    @ViewBuilder
+    private func summaryRow(policy: VisualStylePolicy) -> some View {
+        if let summary = bulletin.summary, !summary.isEmpty {
+            Text(summary)
+                .font(summaryFont(policy: policy))
+                .foregroundStyle(Color.textSecondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
+    }
+
+    /// Filled capsule with theme accent fill and white text. Larger than the
+    /// previous plain caption so it asserts itself as the card's primary
+    /// source signal.
+    private func orgBadge(label: String) -> some View {
+        Text(label)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(Color.accentColor, in: Capsule())
+    }
+
+    /// Hashtag-style inline strip. Pairs intentionally with the filled org
+    /// badge above — plain `#tag` text in the secondary color reads as
+    /// metadata rather than a second competing chip set.
     private var tagStrip: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             Spacer(minLength: 0)
             let visible = bulletin.contentTags.prefix(3)
             let overflow = bulletin.contentTags.count - visible.count
-            Text(visible.map { taxonomy.tagLabel(for: $0) }.joined(separator: " · "))
-                .font(TigerDuckTheme.Typography.caption2)
-                .foregroundStyle(Color.accentPrimary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            ForEach(Array(visible.enumerated()), id: \.offset) { _, tag in
+                Text("#\(taxonomy.tagLabel(for: tag))")
+                    .font(TigerDuckTheme.Typography.caption2)
+                    .foregroundStyle(Color.textSecondary)
+            }
             if overflow > 0 {
                 Text("+\(overflow)")
                     .font(TigerDuckTheme.Typography.caption2)
                     .foregroundStyle(Color.textSecondary)
             }
         }
+        .lineLimit(1)
     }
 
-    /// Capsule-style "重要" badge replaces the previous warning triangle.
-    /// The triangle read as a hard error / network failure cue; a tinted
-    /// label communicates "high-priority bulletin" without alarming.
+    /// Capsule-style "重要" badge — same capsule idiom as org badge but
+    /// tinted orange so it reads as a priority signal rather than a source.
     private var importanceBadge: some View {
         Text("重要")
             .font(TigerDuckTheme.Typography.caption2)
@@ -103,13 +126,6 @@ struct BulletinCardView: View {
             .padding(.vertical, 2)
             .background(Color.orange.opacity(0.18), in: Capsule())
             .foregroundStyle(Color.orange)
-    }
-
-    private func orgLabelColor(policy: VisualStylePolicy) -> Color {
-        switch policy.preset {
-        case .default: return Color.accentPrimary
-        case .iosInspired: return Color.accentColor
-        }
     }
 
     private func summaryFont(policy: VisualStylePolicy) -> Font {

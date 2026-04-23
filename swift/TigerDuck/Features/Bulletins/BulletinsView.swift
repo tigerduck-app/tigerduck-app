@@ -68,10 +68,13 @@ struct BulletinsView: View {
                 Button {
                     unreadOnly.toggle()
                 } label: {
-                    // SF Symbol swap signals the active state without a
-                    // text label — closed envelope = filter on (only
-                    // unseen), open envelope = filter off (everything).
-                    Image(systemName: unreadOnly ? "envelope.badge.fill" : "envelope")
+                    // Filter chevron swaps to the filled variant when the
+                    // "unread only" filter is active — a filter glyph reads
+                    // as "filtering the list" more directly than the prior
+                    // envelope, which conflated with notifications.
+                    Image(systemName: unreadOnly
+                        ? "line.3.horizontal.decrease.circle.fill"
+                        : "line.3.horizontal.decrease.circle")
                         .symbolRenderingMode(.hierarchical)
                 }
                 .accessibilityLabel(unreadOnly ? "顯示全部公告" : "只看未讀")
