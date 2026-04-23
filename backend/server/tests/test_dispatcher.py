@@ -341,6 +341,33 @@ async def test_due_live_activity_end_is_sent(
     assert err is None
 
 
+async def test_live_activity_end_within_window_is_sent(
+    client: AsyncClient,
+    prepared_engine: AsyncEngine,
+    test_settings: Settings,
+):
+    """Near-future Live Activity ends fire the same tick, matching the push
+    path. `scheduler_window_seconds` (default 60) is the symmetric look-ahead."""
+    await _register_device(client)
+    factory = build_session_factory(prepared_engine)
+    now = datetime.now(timezone.utc)
+    activity_id = await _seed_live_activity_token(
+        factory,
+        activity_id="inClass::slot-near-end",
+        source_id="slot-near-end",
+        scenario="inClass",
+        countdown_target=now + timedelta(seconds=30),
+    )
+
+    sender = RecordingSender()
+    outcome = await dispatch_due_pushes(factory, sender, test_settings, now=now)
+
+    assert outcome.dispatched == 1
+    assert outcome.sent == 1
+    status, _, _ = await _activity_status_of(factory, activity_id)
+    assert status == LiveActivityTokenStatus.ended.value
+
+
 async def test_future_live_activity_end_is_skipped(
     client: AsyncClient,
     prepared_engine: AsyncEngine,

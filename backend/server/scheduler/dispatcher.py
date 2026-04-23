@@ -141,6 +141,12 @@ async def dispatch_due_pushes(
                 if push.attempts + 1 >= MAX_ATTEMPTS:
                     failed += 1
 
+        # Look-ahead by `scheduler_window_seconds` so a countdown that lands
+        # 0–N seconds after this tick is still fired now rather than waiting
+        # one more full tick. Mirrors the push path above; without it, the
+        # `cancel_by_source` flow (which sets countdown_target=now()) would
+        # race the tick and leave the activity running for up to one tick
+        # interval past its intended end.
         activity_stmt = (
             select(LiveActivityUpdateToken, DeviceRegistration)
             .join(
@@ -151,7 +157,7 @@ async def dispatch_due_pushes(
                 LiveActivityUpdateToken.status
                 == LiveActivityTokenStatus.active.value,
                 LiveActivityUpdateToken.countdown_target.is_not(None),
-                LiveActivityUpdateToken.countdown_target <= ts,
+                LiveActivityUpdateToken.countdown_target <= window_end,
             )
             .with_for_update(skip_locked=True)
             .limit(64)
