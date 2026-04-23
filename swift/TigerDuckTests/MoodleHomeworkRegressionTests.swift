@@ -186,15 +186,60 @@ struct MoodleHomeworkRegressionTests {
         #expect(assignment.status(now: Date()) == .submittedLate)
     }
 
+    @Test func assignmentStatus_archivedTakesPriorityOverMoodleState() {
+        let now = Date()
+        let assignment = SDAssignment(
+            assignmentId: "a1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false,
+            isArchived: true
+        )
+        #expect(assignment.status(now: now) == .archived)
+    }
+
+    @Test func assignmentStatus_locallyCompletedTakesPriorityOverMoodleState() {
+        let now = Date()
+        let assignment = SDAssignment(
+            assignmentId: "lc1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false,
+            isLocallyCompleted: true
+        )
+        #expect(assignment.status(now: now) == .locallyCompleted)
+    }
+
+    @Test func assignmentStatus_archivedBeatsLocallyCompleted() {
+        // isArchived is checked first in status(); if both flags are somehow set, archived wins.
+        let now = Date()
+        let assignment = SDAssignment(
+            assignmentId: "al1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false,
+            isArchived: true, isLocallyCompleted: true
+        )
+        #expect(assignment.status(now: now) == .archived)
+    }
+
     @Test func assignmentStatus_badgeMetadataMatchesCase() {
         #expect(AssignmentStatus.pending.badgeLabel == nil)
         #expect(AssignmentStatus.submitted.badgeLabel == "已繳交")
         #expect(AssignmentStatus.submittedLate.badgeLabel == "已遲交")
         #expect(AssignmentStatus.overdueAcceptable.badgeLabel == "逾期")
         #expect(AssignmentStatus.overdueRejected.badgeLabel == "逾期拒收")
+        #expect(AssignmentStatus.archived.badgeLabel == "已封存")
+        #expect(AssignmentStatus.locallyCompleted.badgeLabel == "標示為完成")
 
         #expect(!AssignmentStatus.overdueAcceptable.usesEmphasis)
         #expect(AssignmentStatus.overdueRejected.usesEmphasis)
+        #expect(!AssignmentStatus.archived.usesEmphasis)
+        #expect(!AssignmentStatus.locallyCompleted.usesEmphasis)
+    }
+
+    @Test func assignmentStatus_swipeEligibleOnlyForRawOverdueStates() {
+        #expect(!AssignmentStatus.pending.isSwipeActionEligible)
+        #expect(!AssignmentStatus.submitted.isSwipeActionEligible)
+        #expect(!AssignmentStatus.submittedLate.isSwipeActionEligible)
+        #expect(AssignmentStatus.overdueAcceptable.isSwipeActionEligible)
+        #expect(AssignmentStatus.overdueRejected.isSwipeActionEligible)
+        #expect(!AssignmentStatus.archived.isSwipeActionEligible)
+        #expect(!AssignmentStatus.locallyCompleted.isSwipeActionEligible)
     }
 
     @Test func arrayUpcomingSorted_excludesCompletedAndOrdersByDueDateAscending() {
@@ -214,6 +259,45 @@ struct MoodleHomeworkRegressionTests {
 
         let result = [futureIncomplete, completed, pastIncomplete].upcomingSorted()
         #expect(result.map(\.assignmentId) == ["1", "2"])
+    }
+
+    @Test func arrayUpcomingSorted_excludesArchivedAndLocallyCompleted() {
+        let now = Date()
+        let normal = SDAssignment(
+            assignmentId: "1", courseNo: "C", courseName: "C", title: "Normal",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false
+        )
+        let archived = SDAssignment(
+            assignmentId: "2", courseNo: "C", courseName: "C", title: "Archived",
+            dueDate: now.addingTimeInterval(-7200), isCompleted: false, isArchived: true
+        )
+        let locallyDone = SDAssignment(
+            assignmentId: "3", courseNo: "C", courseName: "C", title: "LocalDone",
+            dueDate: now.addingTimeInterval(-1800), isCompleted: false, isLocallyCompleted: true
+        )
+
+        let result = [normal, archived, locallyDone].upcomingSorted()
+        #expect(result.map(\.assignmentId) == ["1"])
+    }
+
+    @Test func arrayAllSorted_includesArchivedAndLocallyCompleted() {
+        let now = Date()
+        let normal = SDAssignment(
+            assignmentId: "1", courseNo: "C", courseName: "C", title: "Normal",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false
+        )
+        let archived = SDAssignment(
+            assignmentId: "2", courseNo: "C", courseName: "C", title: "Archived",
+            dueDate: now.addingTimeInterval(-7200), isCompleted: false, isArchived: true
+        )
+        let locallyDone = SDAssignment(
+            assignmentId: "3", courseNo: "C", courseName: "C", title: "LocalDone",
+            dueDate: now.addingTimeInterval(-1800), isCompleted: false, isLocallyCompleted: true
+        )
+
+        let result = [normal, archived, locallyDone].allSorted()
+        // All three appear (none are moodle-completed), sorted by dueDate ascending
+        #expect(result.map(\.assignmentId) == ["2", "1", "3"])
     }
 
     @Test func arrayAllSorted_putsIncompleteAscendingBeforeCompletedDescending() {
