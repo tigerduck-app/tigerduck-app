@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import AsyncIterator
 
@@ -67,9 +68,17 @@ def test_settings() -> Settings:
     # `scheduler_tick_seconds=99999` neuters the background APScheduler job
     # that ASGITransport starts via the lifespan handler — otherwise the
     # dispatcher could mark test rows `sent` and make assertions flaky.
+    #
+    # Honor TIGERDUCK_TEST_DATABASE_URL so the same tests can run in a
+    # CI/container setup where Postgres lives on a different host (e.g. the
+    # compose `postgres` service) without editing this file.
+    database_url = os.environ.get(
+        "TIGERDUCK_TEST_DATABASE_URL",
+        "postgresql+asyncpg://tigerduck:tigerduck@localhost:5432/tigerduck_test",
+    )
     return Settings(
         env="development",
-        database_url="postgresql+asyncpg://tigerduck:tigerduck@localhost:5432/tigerduck_test",
+        database_url=database_url,
         apns_env="development",
         scheduler_tick_seconds=99999,
         api_shared_secret="",
