@@ -12,7 +12,6 @@ struct BulletinsView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = BulletinsViewModel()
     @State private var taxonomy = BulletinTaxonomyStore()
-    @State private var showSearch: Bool = false
     @State private var showNotificationSettings: Bool = false
 
     var body: some View {
@@ -36,10 +35,6 @@ struct BulletinsView: View {
             VStack(spacing: TigerDuckTheme.Spacing.md) {
                 headerRow
 
-                if showSearch {
-                    searchBar
-                }
-
                 filters
 
                 listOrState
@@ -48,6 +43,14 @@ struct BulletinsView: View {
         }
         .background(Color.backgroundPrimary)
         .refreshable { await viewModel.refresh() }
+        // iOS 26 system search field; placement below the nav bar so the
+        // existing in-content "公告" header stays as the section title and
+        // the search affordance is always visible without a manual toggle.
+        .searchable(
+            text: $viewModel.searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "搜尋公告"
+        )
         .navigationDestination(isPresented: $showNotificationSettings) {
             BulletinNotificationSettingsView(taxonomy: taxonomy)
         }
@@ -62,15 +65,6 @@ struct BulletinsView: View {
                 .foregroundStyle(Color.textPrimary)
             Spacer()
             Button {
-                withAnimation(.smoothSpring) {
-                    showSearch.toggle()
-                    if !showSearch { viewModel.searchText = "" }
-                }
-            } label: {
-                Image(systemName: showSearch ? "xmark" : "magnifyingglass")
-                    .foregroundStyle(Color.textSecondary)
-            }
-            Button {
                 showNotificationSettings = true
             } label: {
                 Image(systemName: "bell.badge")
@@ -79,18 +73,6 @@ struct BulletinsView: View {
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)
-    }
-
-    private var searchBar: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(Color.textSecondary)
-            TextField("搜尋公告", text: $viewModel.searchText)
-                .foregroundStyle(Color.textPrimary)
-        }
-        .presetSearchBarSurface(policy: appState.visualStylePolicy)
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     // MARK: - Filters
