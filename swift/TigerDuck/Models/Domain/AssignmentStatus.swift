@@ -15,7 +15,7 @@ enum AssignmentStatus: Sendable, Equatable {
     case overdueAcceptable
     /// Past the cutoff — Moodle rejects further submissions.
     case overdueRejected
-    /// Locally archived by the user (swipe-left). Moodle still sees it as unsubmitted.
+    /// Locally ignored by the user (swipe-left). Moodle still sees it as unsubmitted.
     case archived
     /// Locally marked complete by the user (swipe-right). Moodle still sees it as unsubmitted.
     case locallyCompleted
@@ -31,7 +31,7 @@ extension AssignmentStatus {
         case .submittedLate: return "已遲交"
         case .overdueAcceptable: return "逾期"
         case .overdueRejected: return "逾期拒收"
-        case .archived: return "已封存"
+        case .archived: return "已忽略"
         case .locallyCompleted: return "標示為完成"
         }
     }
@@ -54,10 +54,10 @@ extension AssignmentStatus {
         self == .overdueRejected
     }
 
-    /// Whether the row should show swipe actions (archive / mark complete).
-    /// True only for raw overdue states — archived/locallyCompleted rows
-    /// have already been acted upon and don't need swipe options.
+    /// Whether the row should show swipe actions (ignore / mark complete).
+    /// Any not-yet-submitted row can be acted upon locally; submitted rows are
+    /// Moodle-authoritative and remain non-swipeable.
     var isSwipeActionEligible: Bool {
-        self == .overdueAcceptable || self == .overdueRejected
+        self == .pending || self == .overdueAcceptable || self == .overdueRejected
     }
 }

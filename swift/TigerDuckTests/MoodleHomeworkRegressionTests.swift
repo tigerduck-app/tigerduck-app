@@ -217,13 +217,24 @@ struct MoodleHomeworkRegressionTests {
         #expect(assignment.status(now: now) == .archived)
     }
 
+    @Test func assignmentStatus_moodleCompletionBeatsLocalOverrides() {
+        let due = Date().addingTimeInterval(-3600)
+        let assignment = SDAssignment(
+            assignmentId: "done1", courseNo: "C", courseName: "C", title: "T",
+            dueDate: due, isCompleted: true,
+            isArchived: true, isLocallyCompleted: true,
+            submittedAt: due.addingTimeInterval(600)
+        )
+        #expect(assignment.status(now: Date()) == .submittedLate)
+    }
+
     @Test func assignmentStatus_badgeMetadataMatchesCase() {
         #expect(AssignmentStatus.pending.badgeLabel == nil)
         #expect(AssignmentStatus.submitted.badgeLabel == "已繳交")
         #expect(AssignmentStatus.submittedLate.badgeLabel == "已遲交")
         #expect(AssignmentStatus.overdueAcceptable.badgeLabel == "逾期")
         #expect(AssignmentStatus.overdueRejected.badgeLabel == "逾期拒收")
-        #expect(AssignmentStatus.archived.badgeLabel == "已封存")
+        #expect(AssignmentStatus.archived.badgeLabel == "已忽略")
         #expect(AssignmentStatus.locallyCompleted.badgeLabel == "標示為完成")
 
         #expect(!AssignmentStatus.overdueAcceptable.usesEmphasis)
@@ -232,8 +243,8 @@ struct MoodleHomeworkRegressionTests {
         #expect(!AssignmentStatus.locallyCompleted.usesEmphasis)
     }
 
-    @Test func assignmentStatus_swipeEligibleOnlyForRawOverdueStates() {
-        #expect(!AssignmentStatus.pending.isSwipeActionEligible)
+    @Test func assignmentStatus_swipeEligibleForRawUnsubmittedStates() {
+        #expect(AssignmentStatus.pending.isSwipeActionEligible)
         #expect(!AssignmentStatus.submitted.isSwipeActionEligible)
         #expect(!AssignmentStatus.submittedLate.isSwipeActionEligible)
         #expect(AssignmentStatus.overdueAcceptable.isSwipeActionEligible)
@@ -300,6 +311,31 @@ struct MoodleHomeworkRegressionTests {
         #expect(result.map(\.assignmentId) == ["2", "1", "3"])
     }
 
+    @Test func arrayIgnoredSorted_onlyIncludesIgnoredUnsubmittedAssignments() {
+        let now = Date()
+        let ignoredLater = SDAssignment(
+            assignmentId: "1", courseNo: "C", courseName: "C", title: "IgnoredLater",
+            dueDate: now.addingTimeInterval(-1800), isCompleted: false, isArchived: true
+        )
+        let ignoredEarlier = SDAssignment(
+            assignmentId: "2", courseNo: "C", courseName: "C", title: "IgnoredEarlier",
+            dueDate: now.addingTimeInterval(-7200), isCompleted: false, isArchived: true
+        )
+        let normal = SDAssignment(
+            assignmentId: "3", courseNo: "C", courseName: "C", title: "Normal",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false
+        )
+        let completedIgnored = SDAssignment(
+            assignmentId: "4", courseNo: "C", courseName: "C", title: "CompletedIgnored",
+            dueDate: now.addingTimeInterval(-5400), isCompleted: true, isArchived: true
+        )
+
+        let result = [ignoredLater, ignoredEarlier, normal, completedIgnored].ignoredSorted()
+        #expect(result.map(\.assignmentId) == ["2", "1"])
+        #expect([ignoredLater, ignoredEarlier, normal, completedIgnored].hasIgnored())
+        #expect(![normal, completedIgnored].hasIgnored())
+    }
+
     @Test func arrayAllSorted_putsIncompleteAscendingBeforeCompletedDescending() {
         let now = Date()
         let incompleteA = SDAssignment(
@@ -333,8 +369,15 @@ struct MoodleHomeworkRegressionTests {
     @Test func assignmentFilter_rawValuesArePersistableStrings() {
         #expect(AssignmentFilter.incomplete.rawValue == "未完成")
         #expect(AssignmentFilter.all.rawValue == "全部")
+        #expect(AssignmentFilter.ignored.rawValue == "已忽略")
         #expect(AssignmentFilter(rawValue: "未完成") == .incomplete)
         #expect(AssignmentFilter(rawValue: "全部") == .all)
+        #expect(AssignmentFilter(rawValue: "已忽略") == .ignored)
+    }
+
+    @Test func assignmentFilter_visibleFiltersAddsIgnoredOnlyWhenNeeded() {
+        #expect(AssignmentFilter.visibleFilters(hasIgnored: false) == [.incomplete, .all])
+        #expect(AssignmentFilter.visibleFilters(hasIgnored: true) == [.incomplete, .all, .ignored])
     }
 
     @Test func latestSemesterFilter_excludesOtherSemesters() {

@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct UpcomingAssignmentsView: View {
+    private static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
+
     let assignments: [SDAssignment]
     var showAbsoluteTime: Bool = false
     var onArchive: ((SDAssignment) -> Void)? = nil
@@ -29,26 +31,67 @@ struct UpcomingAssignmentsView: View {
     }
 
     private func cardLayout(policy: VisualStylePolicy, now: Date) -> some View {
-        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+        List {
             ForEach(assignments, id: \.assignmentId) { assignment in
                 swipeableCardRow(assignment: assignment, now: now, policy: policy)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(
+                        EdgeInsets(
+                            top: 0,
+                            leading: TigerDuckTheme.Spacing.lg,
+                            bottom: TigerDuckTheme.Spacing.sm,
+                            trailing: TigerDuckTheme.Spacing.lg
+                        )
+                    )
             }
         }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .listStyle(.plain)
+        .scrollDisabled(true)
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .frame(height: listHeight(for: policy))
+        .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
     }
 
     private func groupedListLayout(policy: VisualStylePolicy, now: Date) -> some View {
-        VStack(spacing: 0) {
+        List {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { index, assignment in
                 swipeableListRow(assignment: assignment, now: now, policy: policy)
-                if index < assignments.count - 1 {
-                    Divider()
-                        .padding(.leading, TigerDuckTheme.Spacing.lg)
-                }
+                    .overlay(alignment: .bottom) {
+                        if index < assignments.count - 1 {
+                            Divider()
+                                .padding(.leading, TigerDuckTheme.Spacing.lg)
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
             }
         }
+        .listStyle(.plain)
+        .scrollDisabled(true)
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .frame(height: listHeight(for: policy))
         .presetGroupedListContainer(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
+    }
+
+    private func listHeight(for policy: VisualStylePolicy) -> CGFloat {
+        guard !assignments.isEmpty else { return 0 }
+        let count = CGFloat(assignments.count)
+        switch policy.assignmentRowStyle {
+        case .card:
+            let rowHeight: CGFloat = 82
+            let spacing: CGFloat = TigerDuckTheme.Spacing.sm
+            return count * rowHeight + max(0, count - 1) * spacing
+        case .groupedList:
+            let rowHeight: CGFloat = 56
+            let separators = max(0, count - 1)
+            return count * rowHeight + separators
+        }
     }
 
     private func swipeableCardRow(
@@ -57,7 +100,7 @@ struct UpcomingAssignmentsView: View {
         policy: VisualStylePolicy
     ) -> some View {
         let actions = rowSwipeActions(for: assignment, now: now)
-        return SwipeToActRow(
+        return AssignmentSwipeRow(
             trailingAction: actions.trailing,
             leadingAction: actions.leading,
             onTap: { openAssignment(assignment) }
@@ -74,7 +117,7 @@ struct UpcomingAssignmentsView: View {
         policy: VisualStylePolicy
     ) -> some View {
         let actions = rowSwipeActions(for: assignment, now: now)
-        return SwipeToActRow(
+        return AssignmentSwipeRow(
             trailingAction: actions.trailing,
             leadingAction: actions.leading,
             onTap: { openAssignment(assignment) }
@@ -94,17 +137,17 @@ struct UpcomingAssignmentsView: View {
 
         let trailing: SwipeActionDescriptor?
         switch status {
-        case .overdueAcceptable, .overdueRejected:
-            trailing = SwipeActionDescriptor(label: "封存", systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
+        case .pending, .overdueAcceptable, .overdueRejected:
+            trailing = SwipeActionDescriptor(label: "忽略", systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
         case .archived:
-            trailing = SwipeActionDescriptor(label: "取消封存", systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
+            trailing = SwipeActionDescriptor(label: "取消忽略", systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
         default:
             trailing = nil
         }
 
         let leading: SwipeActionDescriptor?
         switch status {
-        case .overdueAcceptable, .overdueRejected:
+        case .pending, .overdueAcceptable, .overdueRejected:
             leading = SwipeActionDescriptor(label: "標示為完成", systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
         case .locallyCompleted:
             leading = SwipeActionDescriptor(label: "取消完成", systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
@@ -212,23 +255,16 @@ private struct SwipeActionDescriptor {
     let action: () -> Void
 }
 
-private struct SwipeToActRow<Content: View>: View {
+private struct AssignmentSwipeRow<Content: View>: View {
     let content: Content
-    let trailingAction: SwipeActionDescriptor?  // revealed on left swipe
-    let leadingAction: SwipeActionDescriptor?   // revealed on right swipe
-    let onTap: (() -> Void)?
-
-    @State private var dragX: CGFloat = 0
-    /// Locked to true once the gesture is confirmed horizontal, preventing
-    /// accumulated vertical drift from freezing dragX mid-reversal.
-    @State private var gestureIsHorizontal = false
-
-    private let threshold: CGFloat = 72
+    let trailingAction: SwipeActionDescriptor?
+    let leadingAction: SwipeActionDescriptor?
+    let onTap: () -> Void
 
     init(
         trailingAction: SwipeActionDescriptor?,
         leadingAction: SwipeActionDescriptor?,
-        onTap: (() -> Void)? = nil,
+        onTap: @escaping () -> Void,
         @ViewBuilder content: () -> Content
     ) {
         self.trailingAction = trailingAction
@@ -237,83 +273,30 @@ private struct SwipeToActRow<Content: View>: View {
         self.content = content()
     }
 
-    private var hasAnyAction: Bool { trailingAction != nil || leadingAction != nil }
-
     var body: some View {
-        ZStack {
-            if hasAnyAction { actionBackground }
-            content.offset(x: dragX)
+        Button(action: onTap) {
+            content
+                .contentShape(Rectangle())
         }
-        .contentShape(Rectangle())
-        .clipped()
-        // Tap and drag are exclusive: when DragGesture recognises (>15 pt),
-        // SwiftUI cancels the TapGesture automatically, so the tap action never
-        // fires after a real swipe. No Button inside means no separate tap
-        // recogniser that can escape this cancellation.
-        .onTapGesture { onTap?() }
-        .gesture(hasAnyAction ? swipeGesture : nil)
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if let trailingAction {
+                swipeButton(for: trailingAction)
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            if let leadingAction {
+                swipeButton(for: leadingAction)
+            }
+        }
     }
 
     @ViewBuilder
-    private var actionBackground: some View {
-        if dragX < 0, let action = trailingAction {
-            action.tint
-                .overlay(alignment: .trailing) {
-                    VStack(spacing: 6) {
-                        Image(systemName: action.systemImage).font(.title3)
-                        Text(action.label).font(.caption.weight(.medium))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.trailing, 20)
-                }
-        } else if dragX > 0, let action = leadingAction {
-            action.tint
-                .overlay(alignment: .leading) {
-                    VStack(spacing: 6) {
-                        Image(systemName: action.systemImage).font(.title3)
-                        Text(action.label).font(.caption.weight(.medium))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.leading, 20)
-                }
+    private func swipeButton(for action: SwipeActionDescriptor) -> some View {
+        Button(action: action.action) {
+            Label(action.label, systemImage: action.systemImage)
+                .labelStyle(.iconOnly)
         }
-    }
-
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 15)
-            .onChanged { value in
-                // Lock gesture direction on first clearly horizontal movement.
-                // Using cumulative translation for the check means we only lock
-                // once — after that, all movements in this gesture update dragX
-                // regardless of the current width/height ratio, so reversing
-                // direction mid-swipe stays smooth.
-                if !gestureIsHorizontal {
-                    let w = abs(value.translation.width)
-                    let h = abs(value.translation.height)
-                    guard w > h else { return }
-                    gestureIsHorizontal = true
-                }
-                isGesturing = true
-                let raw = value.translation.width
-                // Allow return toward center (dragX != 0) even if that direction
-                // has no action, so the row can snap back smoothly.
-                guard (raw < 0 && trailingAction != nil)
-                        || (raw > 0 && leadingAction != nil)
-                        || dragX != 0 else { return }
-                if abs(raw) > threshold {
-                    let excess = abs(raw) - threshold
-                    dragX = raw > 0 ? threshold + excess * 0.3 : -(threshold + excess * 0.3)
-                } else {
-                    dragX = raw
-                }
-            }
-            .onEnded { _ in
-                gestureIsHorizontal = false
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    if dragX <= -threshold { trailingAction?.action() }
-                    else if dragX >= threshold { leadingAction?.action() }
-                    dragX = 0
-                }
-            }
+        .tint(action.tint)
     }
 }
