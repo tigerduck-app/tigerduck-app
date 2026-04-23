@@ -36,7 +36,12 @@ def _assert_safe_ident(db_name: str) -> None:
 
 def _admin_url(settings: Settings) -> str:
     """Derive the admin-DB URL from test_settings so credentials stay in one place."""
-    return str(make_url(settings.database_url).set(database=_ADMIN_DB))
+    # `str(url)` masks passwords as `***`, which asyncpg then treats as the
+    # literal password and fails with InvalidPasswordError. Render explicitly
+    # without masking so the real credential reaches the driver.
+    return make_url(settings.database_url).set(database=_ADMIN_DB).render_as_string(
+        hide_password=False
+    )
 
 
 async def _drop_create_db(admin_url: str, db_name: str) -> None:

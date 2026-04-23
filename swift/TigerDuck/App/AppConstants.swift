@@ -57,6 +57,9 @@ nonisolated enum AppConstants {
         static let pushServerURLOverride = "pushServerURLOverride"
         static let pushLastRegistrationAt = "pushLastRegistrationAt"
         static let pushLastSyncAt = "pushLastSyncAt"
+
+        // MARK: Bulletins
+        static let bulletinReadIds = "bulletinReadIds"
     }
 
     enum Periods {

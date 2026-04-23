@@ -1,16 +1,33 @@
-# Local dev Postgres. On the Mac mini for production deployment, prefer
-# Homebrew-native postgres (`brew install postgresql@17`) so the DB survives
-# Docker Desktop restarts and integrates with Time Machine.
+# TigerDuck backend stack.
+#
+# Networks:
+#   * tigerduck-net  — private, used by backend <-> postgres. Not external.
+#   * proxy-net      — shared with nginx-proxy-manager. External. NPM proxies
+#                      api.tigerduck.app to `http://tigerduck-internal:40000`
+#                      over this network (container DNS by name).
+#
+# No ports are published to the host for either service. Everything goes
+# through nginx-proxy-manager via proxy-net.
+#
+# llama-server stays NATIVE on the host (Docker Desktop on Mac can't surface
+# Metal GPU). The backend reaches it via Docker Desktop's host-gateway:
+# TIGERDUCK_LLM_BASE_URL=http://host.docker.internal:40001/v1 in .env.
+
+name: tigerduck
+
 services:
   postgres:
     image: postgres:17-alpine
     container_name: tigerduck-postgres
+    restart: unless-stopped
+    networks: [tigerduck-net]
     environment:
       POSTGRES_USER: tigerduck
-      POSTGRES_PASSWORD: tigerduck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: tigerduck
-    ports:
-      - "5432:5432"
+      # Log timestamps in local time for easier readability. Storage stays UTC
+      # (TIMESTAMPTZ columns are always UTC internally).
+      TZ: Asia/Taipei
     volumes:
       - tigerduck_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -18,6 +35,32 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  backend:
+    build: .
+    # container_name doubles as the DNS name that nginx-proxy-manager uses
+    # over proxy-net. Do NOT change without updating NPM's proxy target.
+    container_name: tigerduck-internal
+    restart: unless-stopped
+    networks: [tigerduck-net, proxy-net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    # Mount the APNs auth key read-only. Also makes cert rotation a host-side
+    # operation (drop the new .p8, restart container) instead of a rebuild.
+    volumes:
+      - ./server/secrets:/app/server/secrets:ro
+    # host-gateway resolves `host.docker.internal` to the Docker host. Needed
+    # on Linux for parity with Mac (on macOS Docker Desktop sets this for free,
+    # explicit entry is harmless).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  tigerduck-net:
+  proxy-net:
+    external: true
 
 volumes:
   tigerduck_pgdata:

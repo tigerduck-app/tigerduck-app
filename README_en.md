@@ -91,7 +91,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard to
 - [ ] **NTUST Library Events** — Event registration and lookup (campus network required)
 
 ### 📣 Campus Information
-- [ ] **Department & Office Announcements** — Aggregated announcements with filter support
+- [x] **Department & Office Announcements** — Aggregated announcements with filter support
 - [ ] **Scholarships** — Filterable by eligibility (low-income, indigenous, etc.)
 - [ ] **Daily Club Activities** — Curated daily club event listings
 - [ ] **Empty Classroom Finder** — Quickly find currently available classrooms

@@ -15,6 +15,7 @@
 		60A0A00230AA000100000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20230AA000100000001 /* SwiftSoup */; };
 		60A0A00330AA000100000001 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20330AA000100000001 /* Sentry */; };
 		60A0A00430AA000100000001 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20430AA000100000001 /* Defaults */; };
+		60A0A00530AA000100000001 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20530AA000100000001 /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -132,6 +133,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				60A0A00430AA000100000001 /* Defaults in Frameworks */,
+				60A0A00530AA000100000001 /* MarkdownUI in Frameworks */,
 				60A0A00330AA000100000001 /* Sentry in Frameworks */,
 				60A0A00230AA000100000001 /* SwiftSoup in Frameworks */,
 				60A0A00130AA000100000001 /* Valet in Frameworks */,
@@ -224,6 +226,7 @@
 				60A0A20230AA000100000001 /* SwiftSoup */,
 				60A0A20330AA000100000001 /* Sentry */,
 				60A0A20430AA000100000001 /* Defaults */,
+				60A0A20530AA000100000001 /* MarkdownUI */,
 			);
 			productName = TigerDuck;
 			productReference = 424C46562F6E763C009D1DDA /* TigerDuck.app */;
@@ -338,6 +341,7 @@
 				60A0A10230AA000100000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */,
+				60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 424C46572F6E763C009D1DDA /* Products */;
@@ -586,7 +590,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -638,7 +642,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -782,7 +786,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -816,7 +820,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.4.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -914,6 +918,14 @@
 				minimumVersion = 9.0.8;
 			};
 		};
+		60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -936,6 +948,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */;
 			productName = Defaults;
+		};
+		60A0A20530AA000100000001 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

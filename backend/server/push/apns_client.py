@@ -14,7 +14,7 @@ import structlog
 from aioapns import APNs, NotificationRequest, PushType
 
 from server.config import Settings
-from server.push.payload import ApnsRequest
+from server.push.payload import ApnsRequest, PushKind
 
 logger = structlog.get_logger(__name__)
 
@@ -59,12 +59,17 @@ class AioApnsSender:
         )
 
     async def send(self, request: ApnsRequest) -> SendResult:
+        push_type = (
+            PushType.LIVEACTIVITY
+            if request.kind is PushKind.live_activity
+            else PushType.ALERT
+        )
         notification = NotificationRequest(
             device_token=request.device_token,
             message=request.message,
             priority=request.priority,
             time_to_live=max(0, request.expiration - _now_seconds()),
-            push_type=PushType.LIVEACTIVITY,
+            push_type=push_type,
             apns_topic=request.topic,
         )
         result = await self._client.send_notification(notification)

@@ -35,6 +35,7 @@ async def register_device(
         .values(
             device_id=payload.device_id,
             user_id=payload.user_id,
+            platform=payload.platform,
             pts_token_hex=payload.pts_token_hex,
             device_token_hex=payload.device_token_hex,
             bundle_id=payload.bundle_id,
@@ -45,6 +46,7 @@ async def register_device(
             index_elements=[DeviceRegistration.device_id],
             set_={
                 "user_id": payload.user_id,
+                "platform": payload.platform,
                 "pts_token_hex": payload.pts_token_hex,
                 "device_token_hex": payload.device_token_hex,
                 "bundle_id": payload.bundle_id,
@@ -62,11 +64,13 @@ async def register_device(
         "device.registered",
         device_id=device.device_id,
         user_id=device.user_id,
+        platform=device.platform,
         apns_env=device.apns_env,
     )
     return DeviceRegisterResponse(
         device_id=device.device_id,
         user_id=device.user_id,
+        platform=device.platform,
         registered_at=device.updated_at,
     )
 
@@ -98,5 +102,6 @@ async def get_device(device_id: str, session: SessionDep) -> DeviceRegisterRespo
     return DeviceRegisterResponse(
         device_id=device.device_id,
         user_id=device.user_id,
+        platform=device.platform,
         registered_at=device.updated_at,
     )

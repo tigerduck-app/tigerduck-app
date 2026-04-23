@@ -1,0 +1,13 @@
+[project]
+name = "api-poc"
+version = "0.1.0"
+description = "POC scripts that validate NTUST / Moodle third-party endpoints before the Swift client implements them. Not a server process."
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "httpx[http2]>=0.28.1",
+    "lxml>=6.1.0",
+    "ntust-courses>=0.2.1",
+    "pip-system-certs>=5.3",
+    "rich>=14.3.3",
+]
