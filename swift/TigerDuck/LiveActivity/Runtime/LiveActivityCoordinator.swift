@@ -3,7 +3,7 @@ import Foundation
 import os
 
 /// Reflects a resolved `LiveActivitySnapshot` as at most one running
-/// `TigerDuckActivityAttributes` activity per `(scenario, sourceId)` pair.
+/// `TigerDuckActivityAttributes` activity.
 ///
 /// Scenario-scoped `activityId` (`snapshot.composedActivityId`) is the
 /// single source of truth for identity. It keeps the on-device path and
@@ -12,25 +12,35 @@ import os
 /// the server can start the inClass one without colliding with the
 /// classPreparing one that iOS already has running.
 ///
-/// `apply` touches only the activity matching the current snapshot's
-/// composed id. Activities for other slots / scenarios — typically
-/// prelaunched by the server for upcoming events — are left alone and
-/// auto-dismiss at their own `dismissal-date`. Explicitly ending them
-/// here would kill legitimate future Live Activities (e.g. next
-/// class's classPreparing) the moment the app opens.
+/// The coordinator owns the client-side single-activity invariant. ActivityKit
+/// does not treat `staleDate` as an end signal, and server-started activities
+/// are not guaranteed to disappear unless an explicit end path runs. Every
+/// foreground refresh therefore prunes expired activities and ends any
+/// non-current activity before starting or updating the resolved target.
 @MainActor
 final class LiveActivityCoordinator {
     private let store: SharedSnapshotStore
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "LiveActivity")
+    private var automaticEndTasks: [String: Task<Void, Never>] = [:]
+    private var activityObserverTask: Task<Void, Never>?
 
     init(store: SharedSnapshotStore = SharedSnapshotStore()) {
         self.store = store
+        startActivityObserver()
+    }
+
+    deinit {
+        activityObserverTask?.cancel()
+        cancelAutomaticEndTasks()
     }
 
     /// Apply the resolved snapshot. Starts or updates the single activity
-    /// matching the target id; never ends unrelated activities.
+    /// matching the target id and ends stale or unrelated activities.
     func apply(snapshot: LiveActivitySnapshot?) async {
         store.writeSnapshot(snapshot)
+
+        let now = Date()
+        await pruneRunningActivities(keeping: snapshot?.composedActivityId, now: now)
 
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             logger.info("Live Activities are disabled by the system")
@@ -38,8 +48,7 @@ final class LiveActivityCoordinator {
         }
 
         guard let snapshot else {
-            // Snapshot cleared — nothing to do for the on-device target.
-            // Server-pushed activities continue their own lifecycle.
+            cancelAutomaticEndTasks()
             return
         }
 
@@ -53,13 +62,15 @@ final class LiveActivityCoordinator {
             if matching.content.state.snapshot != snapshot {
                 await matching.update(content)
             }
+            scheduleAutomaticEnd(for: targetId, snapshot: snapshot, now: now)
         } else {
             do {
-                _ = try Activity.request(
+                _ = try Activity<TigerDuckActivityAttributes>.request(
                     attributes: TigerDuckActivityAttributes(activityId: targetId),
                     content: content,
                     pushType: nil
                 )
+                scheduleAutomaticEnd(for: targetId, snapshot: snapshot, now: now)
             } catch {
                 logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
                 AppLogger.captureError(error, context: [
@@ -75,8 +86,106 @@ final class LiveActivityCoordinator {
     /// screen, server-pushed or otherwise.
     func endAll() async {
         for activity in Activity<TigerDuckActivityAttributes>.activities {
-            await activity.end(nil, dismissalPolicy: .immediate)
+            await end(activity, reason: "endAll")
         }
+        cancelAutomaticEndTasks()
         store.writeSnapshot(nil)
+    }
+
+    private func startActivityObserver() {
+        activityObserverTask = Task { @MainActor [weak self] in
+            for await activity in Activity<TigerDuckActivityAttributes>.activityUpdates {
+                guard let self else { return }
+                let now = Date()
+                await pruneRunningActivities(keeping: nil, now: now, expiredOnly: true)
+                let snapshot = activity.content.state.snapshot
+                if snapshot.countdownTarget.map({ $0 <= now }) == true {
+                    await end(activity, reason: "observed expired activity")
+                } else {
+                    scheduleAutomaticEnd(
+                        for: activity.attributes.activityId,
+                        snapshot: snapshot,
+                        now: now
+                    )
+                }
+            }
+        }
+    }
+
+    private func pruneRunningActivities(
+        keeping targetId: String?,
+        now: Date,
+        expiredOnly: Bool = false
+    ) async {
+        var retainedTaskIds: Set<String> = []
+        for activity in Activity<TigerDuckActivityAttributes>.activities {
+            let activityId = activity.attributes.activityId
+            let isExpired = activity.content.state.snapshot.countdownTarget.map { $0 <= now } ?? false
+            let isCurrentTarget = targetId.map { $0 == activityId } ?? false
+
+            if isExpired {
+                await end(activity, reason: "countdown expired")
+            } else if !expiredOnly, !isCurrentTarget {
+                await end(activity, reason: "non-current activity")
+            } else {
+                retainedTaskIds.insert(activityId)
+                scheduleAutomaticEnd(
+                    for: activityId,
+                    snapshot: activity.content.state.snapshot,
+                    now: now
+                )
+            }
+        }
+        cancelAutomaticEndTasks(except: retainedTaskIds)
+    }
+
+    private func scheduleAutomaticEnd(
+        for activityId: String,
+        snapshot: LiveActivitySnapshot,
+        now: Date
+    ) {
+        automaticEndTasks[activityId]?.cancel()
+
+        guard let target = snapshot.countdownTarget else {
+            automaticEndTasks[activityId] = nil
+            return
+        }
+
+        let delay = max(0, target.timeIntervalSince(now)) + 1
+        automaticEndTasks[activityId] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            await self?.endIfStillExpired(activityId: activityId, target: target)
+        }
+    }
+
+    private func endIfStillExpired(activityId: String, target: Date) async {
+        automaticEndTasks[activityId] = nil
+        guard Date() >= target,
+              let activity = Activity<TigerDuckActivityAttributes>.activities
+              .first(where: { $0.attributes.activityId == activityId }) else {
+            return
+        }
+        await end(activity, reason: "automatic countdown end")
+    }
+
+    private func end(
+        _ activity: Activity<TigerDuckActivityAttributes>,
+        reason: String
+    ) async {
+        let activityId = activity.attributes.activityId
+        logger.info(
+            "Ending Live Activity id=\(activityId, privacy: .public) reason=\(reason, privacy: .public)"
+        )
+        await activity.end(nil, dismissalPolicy: .immediate)
+        automaticEndTasks[activityId]?.cancel()
+        automaticEndTasks[activityId] = nil
+    }
+
+    private func cancelAutomaticEndTasks(except retainedIds: Set<String> = []) {
+        for activityId in Array(automaticEndTasks.keys) where !retainedIds.contains(activityId) {
+            automaticEndTasks[activityId]?.cancel()
+            automaticEndTasks[activityId] = nil
+        }
     }
 }
