@@ -57,7 +57,9 @@ struct ClassTableView: View {
                         // switch to a semester that does have courses even
                         // when the current semester's roster is empty.
                         VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                            todayCoursesSection
+                            if !viewModel.todayCourses.isEmpty {
+                                todayCoursesSection
+                            }
                             semesterPickerBar
                             EmptyStateView(
                                 icon: "book.closed",
