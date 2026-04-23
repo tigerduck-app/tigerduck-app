@@ -1,3 +1,4 @@
+import MarkdownUI
 import SwiftUI
 import os
 
@@ -138,23 +139,19 @@ struct BulletinDetailView: View {
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
                 if let summary = bulletin.summary, !summary.isEmpty {
-                    Text(summary)
-                        .font(TigerDuckTheme.Typography.body)
-                        .foregroundStyle(Color.textPrimary)
+                    Markdown(summary)
+                        .markdownTheme(bulletinMarkdownTheme)
                         .padding(.top, TigerDuckTheme.Spacing.md)
                 }
             }
         } else if let detail {
-            Text(formattedBody(detail: detail))
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .lineSpacing(6)
+            Markdown(markdownSource(for: detail))
+                .markdownTheme(bulletinMarkdownTheme)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if let summary = bulletin.summary, !summary.isEmpty {
-            Text(summary)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .lineSpacing(6)
+            Markdown(summary)
+                .markdownTheme(bulletinMarkdownTheme)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -182,21 +179,41 @@ struct BulletinDetailView: View {
 
     // MARK: - Content helpers
 
-    /// Prefer the LLM-cleaned `body_clean` (fact-preserving summary the
-    /// server classifier produces) over the raw markdown. We fall back to
-    /// body_md only when body_clean is missing so older rows still render.
-    private func formattedBody(detail: BulletinAPI.BulletinDetail) -> AttributedString {
-        let source = detail.bodyClean?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    /// Prefer the LLM-cleaned `body_clean` (fact-preserving Markdown the
+    /// server classifier produces) over the raw scrape. We fall back to
+    /// body_md when body_clean is missing so older rows still render
+    /// something, and finally to summary as the last resort.
+    private func markdownSource(for detail: BulletinAPI.BulletinDetail) -> String {
+        detail.bodyClean?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? detail.bodyMd?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? detail.summary
             ?? ""
-        if let attributed = try? AttributedString(
-            markdown: source,
-            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            return attributed
-        }
-        return AttributedString(source)
+    }
+
+    /// MarkdownUI theme tuned to match the rest of the app — we want the
+    /// renderer's headers / lists / links to feel native to TigerDuck
+    /// rather than MarkdownUI's GitHub-flavored defaults.
+    private var bulletinMarkdownTheme: Theme {
+        Theme()
+            .text {
+                ForegroundColor(Color.textPrimary)
+            }
+            .link {
+                ForegroundColor(Color.accentPrimary)
+                UnderlineStyle(.single)
+            }
+            .strong {
+                FontWeight(.semibold)
+            }
+            .paragraph { configuration in
+                configuration.label
+                    .relativeLineSpacing(.em(0.25))
+                    .markdownMargin(top: .em(0.6))
+            }
+            .listItem { configuration in
+                configuration.label
+                    .markdownMargin(top: .em(0.3))
+            }
     }
 
     // MARK: - Loading
