@@ -341,6 +341,10 @@ async def main_async(args: argparse.Namespace) -> int:
         async with httpx.AsyncClient(
             follow_redirects=True,
             headers={"User-Agent": "TigerDuckBulletinBot/0.1 (backfill)"},
+            # Match server/bulletins/jobs.default_http_client_factory — many
+            # NTUST subdomains ship broken/incomplete chains that OpenSSL 3
+            # rejects. See that function's docstring for the full reasoning.
+            verify=False,
         ) as http_client:
             if not args.skip_preflight:
                 await _preflight_llm(settings, http_client)

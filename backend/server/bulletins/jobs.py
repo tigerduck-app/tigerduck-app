@@ -39,10 +39,22 @@ HttpClientFactory = Callable[[], httpx.AsyncClient]
 
 def default_http_client_factory() -> httpx.AsyncClient:
     """Each job call builds its own client — simpler than juggling an app-
-    wide pool for calls that only happen every minute or so."""
+    wide pool for calls that only happen every minute or so.
+
+    TLS verification is disabled because the NTUST bulletin pipeline hops
+    through multiple ntust.edu.tw subdomains (obei, admissions, library…)
+    whose servers ship incomplete cert chains or certs missing RFC 5280
+    extensions. OpenSSL 3 on Debian rejects all of them; curl/macOS
+    tolerate them via AIA chasing / lax parsing. Since the content is
+    public and nothing sensitive flows out, trading TLS strictness for
+    success on all ~600 bulletins is the right call at MVP scale. If a
+    later phase needs genuine integrity, pin the NTUST root manually and
+    re-enable verify.
+    """
     return httpx.AsyncClient(
         follow_redirects=True,
         headers={"User-Agent": "TigerDuckBulletinBot/0.1"},
+        verify=False,
     )
 
 
