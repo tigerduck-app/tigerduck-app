@@ -60,6 +60,16 @@ final class BulletinSubscriptionsStore {
     /// editor opens before APNs registration finishes.
     func load() async {
         if case .loading = loadState { return }
+        // Never overwrite unsaved edits. Earlier iteration of the page
+        // had two paths that could fire `load()` concurrently (view
+        // `.task` + `onChange(of: pushEnabled)`) — the second firing
+        // happily wiped a freshly-added rule to an empty array because
+        // the server had nothing yet. Guarding on `isDirty` lets the
+        // user's in-flight edits survive any number of re-triggers.
+        if isDirty {
+            logger.info("subscriptions load skipped (dirty): pendingCount=\(self.pending.count, privacy: .public)")
+            return
+        }
         loadState = .loading
         do {
             let response = try await apiClient.getSubscriptions(deviceId: deviceId)

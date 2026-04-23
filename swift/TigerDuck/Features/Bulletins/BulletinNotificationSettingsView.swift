@@ -240,8 +240,20 @@ struct BulletinNotificationSettingsView: View {
             SubscriptionRuleEditorView(
                 rule: rule,
                 taxonomy: taxonomy,
-                onCommit: { updated in store.update(updated) },
-                onDelete: { store.removeRule(clientId: clientId) }
+                onCommit: { updated in
+                    store.update(updated)
+                    // Auto-save on 完成 — the prior "add rule → 完成 →
+                    // also remember to tap 儲存" flow was lossy: users
+                    // navigated away thinking it was saved and the
+                    // draft evaporated. Commit-means-save matches the
+                    // iOS idiom where a modal editor persists on
+                    // confirm.
+                    Task { await store.save() }
+                },
+                onDelete: {
+                    store.removeRule(clientId: clientId)
+                    Task { await store.save() }
+                }
             )
         } else {
             // Rule was deleted while the editor was open (e.g. via swipe
@@ -285,6 +297,7 @@ struct BulletinNotificationSettingsView: View {
             let rule = store.pending[index]
             store.removeRule(clientId: rule.clientId)
         }
+        Task { await store.save() }
     }
 
     private func enablePush() async {
