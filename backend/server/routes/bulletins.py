@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.bulletins.models import Bulletin, BulletinSubscription
@@ -104,18 +104,40 @@ async def list_bulletins(
     cursor: int | None = Query(default=None, ge=0),
     include_deleted: bool = Query(default=False),
 ) -> BulletinListResponse:
-    """Paginate processed bulletins, newest first. `cursor` is the last
-    seen bulletin id from a previous page — we fetch rows strictly smaller
-    than that id. Deleted bulletins are hidden by default to keep the list
-    coherent when the school removes a post."""
+    """Paginate processed bulletins, newest first by `posted_at`.
+
+    Sort key is `(posted_at DESC, id DESC)`. Pure `id DESC` shows pinned
+    posts (low posted_at, high id from a recent re-scrape) above their
+    chronological position; users want them where the publish date puts
+    them.
+
+    `cursor` is the id of the last item from the previous page. We
+    interpret it as "items strictly older than the cursor row in
+    `(posted_at, id)` ordering" so a pinned post never appears on more
+    than one page. The cursor sub-query is a single primary-key lookup.
+
+    Deleted bulletins are hidden by default to keep the list coherent
+    when the school removes a post.
+    """
     stmt = (
         select(Bulletin)
         .where(Bulletin.canonical_org.isnot(None))
-        .order_by(Bulletin.id.desc())
+        .order_by(Bulletin.posted_at.desc().nulls_last(), Bulletin.id.desc())
         .limit(limit + 1)
     )
     if cursor is not None:
-        stmt = stmt.where(Bulletin.id < cursor)
+        cursor_row = (
+            await session.execute(
+                select(Bulletin.posted_at, Bulletin.id).where(Bulletin.id == cursor)
+            )
+        ).first()
+        if cursor_row is not None:
+            stmt = stmt.where(
+                tuple_(Bulletin.posted_at, Bulletin.id)
+                < tuple_(cursor_row.posted_at, cursor_row.id)
+            )
+        # else: cursor row vanished between requests; fall through and
+        # serve from the start. Client dedupes by id.
     if not include_deleted:
         stmt = stmt.where(Bulletin.is_deleted.is_(False))
 
