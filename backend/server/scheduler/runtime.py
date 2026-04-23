@@ -73,7 +73,6 @@ def build_scheduler(
         max_instances=1,
         coalesce=True,
         misfire_grace_time=30,
-        next_run_time=None,
     )
     scheduler.add_job(
         bulletin_scrape,
@@ -82,7 +81,6 @@ def build_scheduler(
         max_instances=1,
         coalesce=True,
         misfire_grace_time=60,
-        next_run_time=None,
     )
     scheduler.add_job(
         bulletin_process,
@@ -91,7 +89,6 @@ def build_scheduler(
         max_instances=1,
         coalesce=True,
         misfire_grace_time=30,
-        next_run_time=None,
     )
     scheduler.add_job(
         bulletin_dispatch,
@@ -100,7 +97,6 @@ def build_scheduler(
         max_instances=1,
         coalesce=True,
         misfire_grace_time=30,
-        next_run_time=None,
     )
     scheduler.add_job(
         bulletin_retention,
@@ -109,6 +105,5 @@ def build_scheduler(
         max_instances=1,
         coalesce=True,
         misfire_grace_time=3600,
-        next_run_time=None,
     )
     return scheduler
