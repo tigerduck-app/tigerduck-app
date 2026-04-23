@@ -37,7 +37,7 @@ actor MoodleSiteInfoService {
         let tokenService = MoodleTokenService.shared
 
         func requestSiteInfo(using token: String) async throws -> [String: Any] {
-            var components = URLComponents(url: MoodleWebserviceClient.siteBaseURL, resolvingAgainstBaseURL: false)!
+            var components = await URLComponents(url: MoodleWebserviceClient.siteBaseURL, resolvingAgainstBaseURL: false)!
             components.path = "/webservice/rest/server.php"
             components.queryItems = [
                 URLQueryItem(name: "moodlewsrestformat", value: "json"),
