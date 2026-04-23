@@ -3,63 +3,71 @@ import SwiftUI
 struct BulletinCardView: View {
     let bulletin: BulletinAPI.BulletinSummary
     let taxonomy: BulletinTaxonomyStore
+    /// Local read state — shows an unread dot + bolder title when false.
+    /// Defaults to true so callers without a read store don't render
+    /// "everything unread" by accident.
+    var isRead: Bool = true
 
     @Environment(AppState.self) private var appState
 
     var body: some View {
         let policy = appState.visualStylePolicy
-        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            HStack(spacing: TigerDuckTheme.Spacing.xs) {
-                if let org = bulletin.canonicalOrg {
-                    Text(taxonomy.orgLabel(for: org))
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(orgLabelColor(policy: policy))
+        HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.sm) {
+            unreadDot
+            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
+                HStack(spacing: TigerDuckTheme.Spacing.xs) {
+                    if let org = bulletin.canonicalOrg {
+                        Text(taxonomy.orgLabel(for: org))
+                            .font(TigerDuckTheme.Typography.caption)
+                            .foregroundStyle(orgLabelColor(policy: policy))
+                    }
+                    if let importance = bulletin.importance, importance == .high {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(Color.orange)
+                    }
+                    if bulletin.isDeleted {
+                        Text("已撤下")
+                            .font(TigerDuckTheme.Typography.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.textSecondary.opacity(0.2), in: Capsule())
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                    Spacer()
+                    if let posted = bulletin.postedAt {
+                        Text(posted.shortDateString)
+                            .font(TigerDuckTheme.Typography.caption)
+                            .foregroundStyle(policy.secondaryTextColor)
+                    }
                 }
-                if let importance = bulletin.importance, importance == .high {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundStyle(Color.orange)
-                }
-                if bulletin.isDeleted {
-                    Text("已撤下")
-                        .font(TigerDuckTheme.Typography.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.textSecondary.opacity(0.2), in: Capsule())
-                        .foregroundStyle(Color.textSecondary)
-                }
-                Spacer()
-                if let posted = bulletin.postedAt {
-                    Text(posted.shortDateString)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(policy.secondaryTextColor)
-                }
-            }
 
-            Text(bulletin.displayTitle)
-                .font(TigerDuckTheme.Typography.headline)
-                .foregroundStyle(policy.primaryTextColor)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-
-            if let summary = bulletin.summary, !summary.isEmpty {
-                Text(summary)
-                    .font(summaryFont(policy: policy))
-                    .foregroundStyle(policy.secondaryTextColor)
+                Text(bulletin.displayTitle)
+                    .font(TigerDuckTheme.Typography.headline)
+                    .fontWeight(isRead ? .regular : .semibold)
+                    .foregroundStyle(policy.primaryTextColor)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-            }
 
-            if !bulletin.contentTags.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: TigerDuckTheme.Spacing.xs) {
-                        ForEach(bulletin.contentTags, id: \.self) { tag in
-                            Text(taxonomy.tagLabel(for: tag))
-                                .font(TigerDuckTheme.Typography.caption2)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color.accentPrimary.opacity(0.12), in: Capsule())
-                                .foregroundStyle(Color.accentPrimary)
+                if let summary = bulletin.summary, !summary.isEmpty {
+                    Text(summary)
+                        .font(summaryFont(policy: policy))
+                        .foregroundStyle(policy.secondaryTextColor)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+
+                if !bulletin.contentTags.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: TigerDuckTheme.Spacing.xs) {
+                            ForEach(bulletin.contentTags, id: \.self) { tag in
+                                Text(taxonomy.tagLabel(for: tag))
+                                    .font(TigerDuckTheme.Typography.caption2)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.accentPrimary.opacity(0.12), in: Capsule())
+                                    .foregroundStyle(Color.accentPrimary)
+                            }
                         }
                     }
                 }
@@ -68,6 +76,16 @@ struct BulletinCardView: View {
         .cardPadding()
         .presetCard(policy: policy)
         .opacity(bulletin.isDeleted ? 0.55 : 1)
+    }
+
+    @ViewBuilder
+    private var unreadDot: some View {
+        // Reserve the gutter even when read so titles stay vertically
+        // aligned across mixed read/unread rows; only the fill changes.
+        Circle()
+            .fill(isRead ? Color.clear : Color.accentColor)
+            .frame(width: 8, height: 8)
+            .padding(.top, 6)
     }
 
     private func orgLabelColor(policy: VisualStylePolicy) -> Color {

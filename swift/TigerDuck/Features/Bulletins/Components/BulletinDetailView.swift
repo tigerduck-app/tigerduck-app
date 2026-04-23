@@ -4,6 +4,9 @@ import os
 struct BulletinDetailView: View {
     let bulletin: BulletinAPI.BulletinSummary
     let taxonomy: BulletinTaxonomyStore
+    /// Optional — when supplied, opening this view marks the bulletin as
+    /// read so the parent list can drop the unread dot + bold weight.
+    var readState: BulletinReadStateStore? = nil
 
     @Environment(AppState.self) private var appState
     @State private var detail: BulletinAPI.BulletinDetail?
@@ -60,7 +63,10 @@ struct BulletinDetailView: View {
         }
         .background(Color.backgroundPrimary)
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: bulletin.id) { await loadDetail() }
+        .task(id: bulletin.id) {
+            readState?.markRead(bulletin.id)
+            await loadDetail()
+        }
         .sheet(isPresented: $showInAppBrowser) {
             if let url = URL(string: bulletin.sourceUrl) {
                 InAppBrowserView(url: url)

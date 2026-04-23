@@ -12,6 +12,7 @@ struct BulletinsView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = BulletinsViewModel()
     @State private var taxonomy = BulletinTaxonomyStore()
+    @State private var readState = BulletinReadStateStore()
     @State private var showNotificationSettings: Bool = false
 
     var body: some View {
@@ -157,9 +158,17 @@ struct BulletinsView: View {
             LazyVStack(spacing: TigerDuckTheme.Spacing.md) {
                 ForEach(viewModel.filteredItems) { bulletin in
                     NavigationLink {
-                        BulletinDetailView(bulletin: bulletin, taxonomy: taxonomy)
+                        BulletinDetailView(
+                            bulletin: bulletin,
+                            taxonomy: taxonomy,
+                            readState: readState
+                        )
                     } label: {
-                        BulletinCardView(bulletin: bulletin, taxonomy: taxonomy)
+                        BulletinCardView(
+                            bulletin: bulletin,
+                            taxonomy: taxonomy,
+                            isRead: readState.isRead(bulletin.id)
+                        )
                     }
                     .buttonStyle(.plain)
                     .task {
