@@ -42,6 +42,19 @@ actor PushRegistrationService {
     private var lastAttempt: Task<Void, Never>?
     private var lastError: String?
     private var lastRegisteredAt: Date?
+    private var pendingActivityRegistrations: [String: LiveActivityUpdateTokenRegistration] = [:]
+    // Retry scheduling for activity-token registration. A transient network
+    // or 5xx failure against `/live-activities/register` would otherwise drop
+    // the update-token on the floor — the server would never learn it, and
+    // the end-push path would be permanently broken for that Live Activity.
+    private var activityRegistrationRetryTasks: [String: Task<Void, Never>] = [:]
+    private var activityRegistrationAttempts: [String: Int] = [:]
+    // Exponential backoff: 30s, 90s, 270s. Caps the total wait at ~7 minutes,
+    // long enough to ride out a server deploy or brief offline period without
+    // holding memory for a dead registration indefinitely.
+    private let maxActivityRegistrationAttempts = 4
+    private let activityRegistrationBaseDelaySeconds: Double = 30
+    private let activityRegistrationMaxDelaySeconds: Double = 600
 
     init(
         identity: PushIdentity,
@@ -74,6 +87,17 @@ actor PushRegistrationService {
         await registerIfReady()
     }
 
+    func registerLiveActivityUpdateToken(
+        _ registration: LiveActivityUpdateTokenRegistration
+    ) async {
+        pendingActivityRegistrations[registration.activityId] = registration
+        guard ptsTokenHex != nil else {
+            await registerIfReady()
+            return
+        }
+        await performActivityRegistration(registration, logger: logger)
+    }
+
     func registrationFailed(_ error: Error) {
         lastError = "APNs register failed: \(error.localizedDescription)"
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
@@ -101,6 +125,12 @@ actor PushRegistrationService {
         }
         deviceTokenHex = nil
         ptsTokenHex = nil
+        pendingActivityRegistrations.removeAll()
+        for task in activityRegistrationRetryTasks.values {
+            task.cancel()
+        }
+        activityRegistrationRetryTasks.removeAll()
+        activityRegistrationAttempts.removeAll()
     }
 
     // MARK: - Internals
@@ -149,6 +179,7 @@ actor PushRegistrationService {
             let response = try await apiClient.registerDevice(request)
             logger.info("registered device=\(response.deviceId, privacy: .public) user=\(response.userId, privacy: .public)")
             noteSuccessfulRegistration()
+            await flushPendingActivityRegistrations(logger: logger)
         } catch is CancellationError {
             // Expected side-effect of debounce preempting an in-flight
             // request. Swallow silently so the logs stay clean.
@@ -170,5 +201,101 @@ actor PushRegistrationService {
 
     private func noteRegistrationError(_ error: Error) {
         lastError = "register: \(error.localizedDescription)"
+    }
+
+    private func flushPendingActivityRegistrations(logger: Logger) async {
+        for registration in Array(pendingActivityRegistrations.values) {
+            await performActivityRegistration(registration, logger: logger)
+        }
+    }
+
+    private func performActivityRegistration(
+        _ registration: LiveActivityUpdateTokenRegistration,
+        logger: Logger
+    ) async {
+        let snapshot = registration.snapshot
+        let request = PushAPI.LiveActivityTokenRegisterRequest(
+            deviceId: identity.deviceId,
+            activityId: registration.activityId,
+            sourceId: snapshot.sourceId,
+            scenario: snapshot.scenario,
+            updateTokenHex: registration.updateTokenHex,
+            countdownTarget: snapshot.countdownTarget,
+            snapshot: snapshot
+        )
+        do {
+            let response = try await apiClient.registerLiveActivityToken(request)
+            logger.info(
+                "registered live activity token id=\(response.activityId, privacy: .public)"
+            )
+            if pendingActivityRegistrations[registration.activityId]?.updateTokenHex == registration.updateTokenHex {
+                pendingActivityRegistrations[registration.activityId] = nil
+            }
+            activityRegistrationRetryTasks[registration.activityId]?.cancel()
+            activityRegistrationRetryTasks[registration.activityId] = nil
+            activityRegistrationAttempts[registration.activityId] = nil
+        } catch let error as PushAPIError {
+            if case .httpStatus(404, _) = error {
+                // Device row is missing server-side — re-register it; the
+                // success path will flush `pendingActivityRegistrations`
+                // immediately, no standalone retry needed.
+                await registerIfReady()
+                logger.error("live activity token register failed (device missing): \(error.localizedDescription, privacy: .public)")
+                return
+            }
+            logger.error("live activity token register failed: \(error.localizedDescription, privacy: .public)")
+            scheduleActivityRegistrationRetry(registration, logger: logger)
+        } catch {
+            logger.error("live activity token register failed: \(error.localizedDescription, privacy: .public)")
+            scheduleActivityRegistrationRetry(registration, logger: logger)
+        }
+    }
+
+    /// Queue an exponential-backoff retry. Attempts counter and any in-flight
+    /// retry task are keyed by activityId so a newer `registerLiveActivityUpdateToken`
+    /// call (e.g. Apple rotated the update-token) can supersede the retry.
+    private func scheduleActivityRegistrationRetry(
+        _ registration: LiveActivityUpdateTokenRegistration,
+        logger: Logger
+    ) {
+        let activityId = registration.activityId
+        let attempt = (activityRegistrationAttempts[activityId] ?? 0) + 1
+        activityRegistrationAttempts[activityId] = attempt
+        guard attempt < maxActivityRegistrationAttempts else {
+            logger.error(
+                "giving up on live activity token register attempts=\(attempt, privacy: .public) id=\(activityId, privacy: .public)"
+            )
+            pendingActivityRegistrations[activityId] = nil
+            activityRegistrationRetryTasks[activityId]?.cancel()
+            activityRegistrationRetryTasks[activityId] = nil
+            activityRegistrationAttempts[activityId] = nil
+            return
+        }
+        let delay = min(
+            activityRegistrationBaseDelaySeconds * pow(3.0, Double(attempt - 1)),
+            activityRegistrationMaxDelaySeconds
+        )
+        activityRegistrationRetryTasks[activityId]?.cancel()
+        activityRegistrationRetryTasks[activityId] = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            if Task.isCancelled { return }
+            await self?.retryActivityRegistration(registration)
+        }
+    }
+
+    private func retryActivityRegistration(
+        _ registration: LiveActivityUpdateTokenRegistration
+    ) async {
+        // If a newer registration replaced this activity's pending entry
+        // (Apple rotates update-tokens, or the client pushed a fresh
+        // snapshot) the newer call's own success/retry cycle owns the
+        // lifecycle from here — drop this retry.
+        guard
+            pendingActivityRegistrations[registration.activityId]?.updateTokenHex
+                == registration.updateTokenHex
+        else {
+            return
+        }
+        await performActivityRegistration(registration, logger: logger)
     }
 }

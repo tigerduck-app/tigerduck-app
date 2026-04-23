@@ -166,6 +166,7 @@ def build_pts_payload(
     aps: dict[str, Any] = {
         "timestamp": timestamp,
         "event": "start",
+        "input-push-token": 1,
         "attributes-type": attrs_type,
         "attributes": {"activityId": composed_activity_id(scenario, source_id)},
         "content-state": {"snapshot": normalized_snapshot},
@@ -179,6 +180,26 @@ def build_pts_payload(
     if dismissal_unix is not None:
         aps["dismissal-date"] = dismissal_unix
     return {"aps": aps}
+
+
+def build_end_payload(
+    snapshot: dict[str, Any],
+    now: datetime | None = None,
+    dismissal_date: datetime | None = None,
+) -> dict[str, Any]:
+    """Construct the `aps` payload that explicitly ends a Live Activity."""
+    ts = now or datetime.now(timezone.utc)
+    timestamp = int(ts.timestamp())
+    normalized_snapshot = _normalize_snapshot_for_apns(snapshot)
+    dismissal_unix = int((dismissal_date or ts).timestamp())
+    return {
+        "aps": {
+            "timestamp": timestamp,
+            "event": "end",
+            "content-state": {"snapshot": normalized_snapshot},
+            "dismissal-date": dismissal_unix,
+        }
+    }
 
 
 def build_alert_request(
@@ -268,4 +289,24 @@ def build_apns_request(
         expiration=expiration,
         priority=10,
         message=message,
+    )
+
+
+def build_live_activity_end_request(
+    *,
+    update_token: str,
+    bundle_id: str,
+    snapshot: dict[str, Any],
+    ttl_seconds: int = 4 * 3600,
+    now: datetime | None = None,
+) -> ApnsRequest:
+    """Build an APNs request that ends one existing Live Activity."""
+    ts = now or datetime.now(timezone.utc)
+    topic = f"{bundle_id}.push-type.liveactivity"
+    return ApnsRequest(
+        device_token=update_token,
+        topic=topic,
+        expiration=int(ts.timestamp()) + ttl_seconds,
+        priority=10,
+        message=build_end_payload(snapshot=snapshot, now=ts, dismissal_date=ts),
     )

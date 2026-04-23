@@ -125,6 +125,13 @@ final class PushCoordinator {
         await registration.unregister()
     }
 
+    func registerLiveActivityUpdateToken(
+        _ registrationPayload: LiveActivityUpdateTokenRegistration
+    ) async {
+        guard Defaults[.pushServerEnabled] else { return }
+        await registration.registerLiveActivityUpdateToken(registrationPayload)
+    }
+
     // MARK: - Sync driver
 
     /// Schedules a debounced sync. Multiple rapid callers coalesce into one

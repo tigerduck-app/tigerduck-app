@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ScenarioKind(StrEnum):
@@ -67,3 +67,34 @@ class ScheduleDeleteResponse(BaseModel):
     device_id: str
     source_id: str
     deleted: int
+
+
+class LiveActivityTokenRegisterRequest(BaseModel):
+    device_id: str = Field(min_length=1, max_length=128)
+    activity_id: str = Field(min_length=1, max_length=256)
+    source_id: str = Field(min_length=1, max_length=128, pattern=r"^[^:]+$")
+    scenario: ScenarioKind
+    update_token_hex: str = Field(min_length=1, max_length=512)
+    countdown_target: datetime | None = None
+    snapshot: dict[str, Any]
+
+    @model_validator(mode="after")
+    def _snapshot_source_id_must_match(self) -> "LiveActivityTokenRegisterRequest":
+        # Snapshot carries its own sourceId (mirrors Swift's
+        # LiveActivitySnapshot.sourceId). If it disagrees with the top-level
+        # source_id, the server-side cancel_by_source lookup and the
+        # Live Activity payload would reference different ids — a silent
+        # divergence that is almost always a client bug.
+        snapshot_source_id = self.snapshot.get("sourceId")
+        if snapshot_source_id is not None and snapshot_source_id != self.source_id:
+            raise ValueError(
+                f"snapshot.sourceId ({snapshot_source_id!r}) must match "
+                f"source_id ({self.source_id!r})"
+            )
+        return self
+
+
+class LiveActivityTokenRegisterResponse(BaseModel):
+    device_id: str
+    activity_id: str
+    registered_at: datetime

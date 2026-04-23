@@ -88,4 +88,36 @@ enum PushAPI {
             case totalPending = "total_pending"
         }
     }
+
+    struct LiveActivityTokenRegisterRequest: Codable, Sendable {
+        let deviceId: String
+        let activityId: String
+        let sourceId: String
+        let scenario: LiveActivityScenarioKind
+        let updateTokenHex: String
+        let countdownTarget: Date?
+        let snapshot: LiveActivitySnapshot
+
+        enum CodingKeys: String, CodingKey {
+            case deviceId = "device_id"
+            case activityId = "activity_id"
+            case sourceId = "source_id"
+            case scenario
+            case updateTokenHex = "update_token_hex"
+            case countdownTarget = "countdown_target"
+            case snapshot
+        }
+    }
+
+    struct LiveActivityTokenRegisterResponse: Codable, Sendable {
+        let deviceId: String
+        let activityId: String
+        let registeredAt: Date
+
+        enum CodingKeys: String, CodingKey {
+            case deviceId = "device_id"
+            case activityId = "activity_id"
+            case registeredAt = "registered_at"
+        }
+    }
 }

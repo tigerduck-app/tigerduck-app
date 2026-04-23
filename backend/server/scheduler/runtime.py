@@ -17,6 +17,7 @@ from server.bulletins.llm.openai_compat import OpenAICompatibleProvider
 from server.config import Settings
 from server.push.apns_client import PushSender
 from server.scheduler.dispatcher import dispatch_due_pushes
+from server.scheduler.retention import prune_terminal_activity_tokens
 
 
 def build_llm_provider(settings: Settings) -> LLMProvider:
@@ -44,6 +45,7 @@ def build_scheduler(
     * `bulletin_process` — drain pending bulletins through the LLM every 60s.
     * `bulletin_dispatch` — fan out alert pushes every 60s.
     * `bulletin_retention` — prune aged-out soft-deleted bulletins daily.
+    * `live_activity_token_retention` — prune terminal update-token rows daily.
 
     Passing `llm=None` (the default) builds the real OpenAI-compatible
     provider; tests inject `RecordingProvider` to stay offline.
@@ -65,6 +67,9 @@ def build_scheduler(
 
     async def bulletin_retention() -> None:
         await bulletin_jobs.retention_job(session_factory, settings)
+
+    async def live_activity_token_retention() -> None:
+        await prune_terminal_activity_tokens(session_factory, settings)
 
     scheduler.add_job(
         pts_tick,
@@ -102,6 +107,16 @@ def build_scheduler(
         bulletin_retention,
         trigger=IntervalTrigger(hours=settings.bulletin_retention_interval_hours),
         id="bulletin_retention",
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+    scheduler.add_job(
+        live_activity_token_retention,
+        trigger=IntervalTrigger(
+            hours=settings.live_activity_token_retention_interval_hours
+        ),
+        id="live_activity_token_retention",
         max_instances=1,
         coalesce=True,
         misfire_grace_time=3600,

@@ -58,6 +58,10 @@ final class AppState {
 
         runPendingMigrations()
 
+        liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
+            await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
+        }
+
         // Auto-enable the push stack when the user has already opted in
         // (e.g. across app launches). The coordinator no-ops when the
         // toggle is off, so this is safe to call unconditionally.

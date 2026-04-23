@@ -39,6 +39,13 @@ class PushStatus(StrEnum):
     cancelled = "cancelled"
 
 
+class LiveActivityTokenStatus(StrEnum):
+    active = "active"
+    ended = "ended"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
 class DevicePlatform(StrEnum):
     """Push delivery platform. Picks which sender the dispatcher uses —
     APNs for apple, FCM for android. Stored as a plain string (not a PG
@@ -72,6 +79,9 @@ class DeviceRegistration(Base):
     )
 
     pushes: Mapped[list["ScheduledPush"]] = relationship(
+        back_populates="device", cascade="all, delete-orphan"
+    )
+    live_activity_tokens: Mapped[list["LiveActivityUpdateToken"]] = relationship(
         back_populates="device", cascade="all, delete-orphan"
     )
 
@@ -108,6 +118,50 @@ class ScheduledPush(Base):
 
     __table_args__ = (
         Index("ix_pushes_due", "status", "fire_at"),
+    )
+
+
+class LiveActivityUpdateToken(Base):
+    __tablename__ = "live_activity_update_tokens"
+
+    activity_id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    device_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("device_registrations.device_id", ondelete="CASCADE"),
+        index=True,
+    )
+    source_id: Mapped[str] = mapped_column(String(128))
+    scenario: Mapped[str] = mapped_column(String(32))
+    update_token_hex: Mapped[str] = mapped_column(String(512))
+    countdown_target: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    snapshot_json: Mapped[dict] = mapped_column(JSONB)
+
+    status: Mapped[str] = mapped_column(
+        String(16), default=LiveActivityTokenStatus.active.value
+    )
+    attempts: Mapped[int] = mapped_column(BigInteger, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    device: Mapped[DeviceRegistration] = relationship(
+        back_populates="live_activity_tokens"
+    )
+
+    __table_args__ = (
+        Index("ix_live_activity_tokens_due", "status", "countdown_target"),
     )
 
 

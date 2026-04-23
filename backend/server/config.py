@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     # fire_at within [now, now + window_seconds] becomes eligible each tick
     scheduler_window_seconds: int = 60
 
+    # --- Live Activity token retention ---
+    # Prune update-token rows that reached a terminal state (ended / failed /
+    # cancelled) and have not been touched since `live_activity_token_retention_days`.
+    # Active rows are never pruned; a device that stops syncing keeps its
+    # pending rows until the device itself is unregistered and the cascade
+    # delete fires.
+    live_activity_token_retention_days: int = 30
+    live_activity_token_retention_interval_hours: int = 24
+
     # --- Bulletins ---
     bulletin_list_url: str = (
         "https://bulletin.ntust.edu.tw/p/403-1045-1391-1.php"
