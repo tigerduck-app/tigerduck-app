@@ -16,6 +16,8 @@ struct BulletinsView: View {
     @State private var taxonomy = BulletinTaxonomyStore()
     @State private var readState = BulletinReadStateStore()
     @State private var showNotificationSettings: Bool = false
+    @State private var detailingBulletinId: Int?
+    @State private var unreadOnly: Bool = false
 
     var body: some View {
         Group {
@@ -64,6 +66,18 @@ struct BulletinsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    unreadOnly.toggle()
+                } label: {
+                    // SF Symbol swap signals the active state without a
+                    // text label — closed envelope = filter on (only
+                    // unseen), open envelope = filter off (everything).
+                    Image(systemName: unreadOnly ? "envelope.badge.fill" : "envelope")
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .accessibilityLabel(unreadOnly ? "顯示全部公告" : "只看未讀")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     showNotificationSettings = true
                 } label: {
                     Image(systemName: "bell.badge")
@@ -72,6 +86,19 @@ struct BulletinsView: View {
         }
         .navigationDestination(isPresented: $showNotificationSettings) {
             BulletinNotificationSettingsView(taxonomy: taxonomy)
+        }
+        .navigationDestination(item: $detailingBulletinId) { id in
+            if let row = viewModel.items.first(where: { $0.id == id }) {
+                BulletinDetailView(
+                    bulletin: row,
+                    taxonomy: taxonomy,
+                    readState: readState
+                )
+            } else {
+                // Row evaporated mid-flight (deleted by retention sweep).
+                // Bounce back rather than render a stale shell.
+                Color.clear.onAppear { detailingBulletinId = nil }
+            }
         }
     }
 
@@ -124,23 +151,26 @@ struct BulletinsView: View {
                     .frame(height: 200)
                 }
             }
-        } else if viewModel.filteredItems.isEmpty {
+        } else if displayedItems.isEmpty {
             centeredRow {
                 EmptyStateView(
-                    icon: "tray",
-                    title: "沒有公告",
-                    message: viewModel.hasActiveFilter ? "沒有符合篩選條件的公告" : "稍後再回來查看"
+                    icon: unreadOnly ? "envelope.open" : "tray",
+                    title: unreadOnly ? "沒有未讀公告" : "沒有公告",
+                    message: viewModel.hasActiveFilter || unreadOnly
+                        ? "沒有符合條件的公告"
+                        : "稍後再回來查看"
                 )
                 .frame(height: 200)
             }
         } else {
-            ForEach(viewModel.filteredItems) { bulletin in
-                NavigationLink {
-                    BulletinDetailView(
-                        bulletin: bulletin,
-                        taxonomy: taxonomy,
-                        readState: readState
-                    )
+            ForEach(displayedItems) { bulletin in
+                // Plain Button (not NavigationLink) so the row keeps the
+                // standard tap-to-highlight feedback without rendering
+                // the trailing chevron the user asked us to remove.
+                // Programmatic push via .navigationDestination(item:)
+                // attached to the parent List.
+                Button {
+                    detailingBulletinId = bulletin.id
                 } label: {
                     BulletinCardView(
                         bulletin: bulletin,
@@ -184,6 +214,17 @@ struct BulletinsView: View {
                 }
             }
         }
+    }
+
+    /// Layer the local "unread only" toggle on top of the view-model's
+    /// filtered items. Keeping read-state filtering at the View layer (not
+    /// in the VM) avoids coupling BulletinsViewModel to the persistence
+    /// store and matches how the swipe action mutates state in place.
+    private var displayedItems: [BulletinAPI.BulletinSummary] {
+        if unreadOnly {
+            return viewModel.filteredItems.filter { !readState.isRead($0.id) }
+        }
+        return viewModel.filteredItems
     }
 
     // MARK: - Helpers

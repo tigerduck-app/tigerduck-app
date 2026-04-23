@@ -71,18 +71,24 @@ struct BulletinCardView: View {
         .opacity(bulletin.isDeleted ? 0.55 : 1)
     }
 
-    /// Tags pinned to the trailing edge — request from product to keep
-    /// the busy left-aligned title/summary column visually clean.
+    /// Compact trailing tag strip. Capsules previously took a noticeable
+    /// chunk of card height; now we use plain accented text joined with
+    /// `·` separators and cap at three labels with an overflow counter.
+    /// Same information, ~40% less vertical space.
     private var tagStrip: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.xs) {
+        HStack(spacing: 4) {
             Spacer(minLength: 0)
-            ForEach(bulletin.contentTags, id: \.self) { tag in
-                Text(taxonomy.tagLabel(for: tag))
+            let visible = bulletin.contentTags.prefix(3)
+            let overflow = bulletin.contentTags.count - visible.count
+            Text(visible.map { taxonomy.tagLabel(for: $0) }.joined(separator: " · "))
+                .font(TigerDuckTheme.Typography.caption2)
+                .foregroundStyle(Color.accentPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if overflow > 0 {
+                Text("+\(overflow)")
                     .font(TigerDuckTheme.Typography.caption2)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.accentPrimary.opacity(0.12), in: Capsule())
-                    .foregroundStyle(Color.accentPrimary)
+                    .foregroundStyle(Color.textSecondary)
             }
         }
     }
