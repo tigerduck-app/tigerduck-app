@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, status
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from server.db import SessionDep
-from server.models import DeviceRegistration, PushStatus, ScheduledPush, build_push_id
+from server.models import (
+    DeviceRegistration,
+    LiveActivityTokenStatus,
+    LiveActivityUpdateToken,
+    PushStatus,
+    ScheduledPush,
+    build_push_id,
+)
 from server.schemas import (
     ScheduleDeleteResponse,
     ScheduleSyncRequest,
@@ -145,7 +152,8 @@ async def cancel_by_source(
     """Cancel every pending push for this device+source_id (all scenarios).
 
     Called when user completes an assignment or skips a course — removes all
-    three potential pushes (classPreparing / inClass / assignmentUrgent).
+    three potential pushes and queues any active Live Activity token for an
+    immediate server-side end push.
     """
     stmt = delete(ScheduledPush).where(
         and_(
@@ -156,6 +164,17 @@ async def cancel_by_source(
     )
     result = await session.execute(stmt)
     deleted = result.rowcount or 0
+    await session.execute(
+        update(LiveActivityUpdateToken)
+        .where(
+            and_(
+                LiveActivityUpdateToken.device_id == device_id,
+                LiveActivityUpdateToken.source_id == source_id,
+                LiveActivityUpdateToken.status == LiveActivityTokenStatus.active.value,
+            )
+        )
+        .values(countdown_target=func.now(), updated_at=func.now())
+    )
     logger.info(
         "schedule.cancelled",
         device_id=device_id,

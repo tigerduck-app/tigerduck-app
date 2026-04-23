@@ -11,6 +11,7 @@ from server.push.payload import (
     SCENARIO_CLASS_PREPARING,
     SCENARIO_IN_CLASS,
     build_apns_request,
+    build_live_activity_end_request,
     build_pts_payload,
 )
 
@@ -45,6 +46,7 @@ def test_build_pts_payload_minimum_shape():
     )
     aps = payload["aps"]
     assert aps["event"] == "start"
+    assert aps["input-push-token"] == 1
     assert aps["attributes-type"] == "TigerDuckActivityAttributes"
     # Composite id = `{scenario}::{source_id}` — scoped by scenario so
     # classPreparing and inClass never collide in ActivityKit.
@@ -231,3 +233,26 @@ def test_custom_attrs_type_reflected():
         now=FIXED_NOW,
     )
     assert request.message["aps"]["attributes-type"] == "SomeOtherAttributes"
+
+
+def test_build_live_activity_end_request():
+    snapshot = _sample_snapshot(
+        countdownTarget="2026-04-22T02:10:00+00:00",
+        progressStart=None,
+    )
+    request = build_live_activity_end_request(
+        update_token="b" * 128,
+        bundle_id="org.ntust.app.TigerDuck",
+        snapshot=snapshot,
+        now=FIXED_NOW,
+    )
+
+    assert request.device_token == "b" * 128
+    assert request.topic == "org.ntust.app.TigerDuck.push-type.liveactivity"
+    assert request.priority == 10
+    assert request.expiration == int(FIXED_NOW.timestamp()) + 4 * 3600
+    aps = request.message["aps"]
+    assert aps["event"] == "end"
+    assert aps["timestamp"] == int(FIXED_NOW.timestamp())
+    assert aps["dismissal-date"] == int(FIXED_NOW.timestamp())
+    assert isinstance(aps["content-state"]["snapshot"]["countdownTarget"], float)

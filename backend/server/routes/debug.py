@@ -14,7 +14,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 
 from server.db import SessionDep
-from server.models import DeviceRegistration, PushStatus, ScheduledPush
+from server.models import (
+    DeviceRegistration,
+    LiveActivityUpdateToken,
+    PushStatus,
+    ScheduledPush,
+)
 from server.push.payload import build_apns_request
 from server.scheduler.dispatcher import dispatch_due_pushes
 from server.security import require_shared_secret
@@ -41,10 +46,19 @@ async def stats(request: Request, session: SessionDep) -> dict:
         select(ScheduledPush.status, func.count()).group_by(ScheduledPush.status)
     )
     by_status = dict(rows.all())
-    device_count = (await session.execute(select(func.count()).select_from(DeviceRegistration))).scalar_one()
+    activity_rows = await session.execute(
+        select(LiveActivityUpdateToken.status, func.count()).group_by(
+            LiveActivityUpdateToken.status
+        )
+    )
+    activities_by_status = dict(activity_rows.all())
+    device_count = (
+        await session.execute(select(func.count()).select_from(DeviceRegistration))
+    ).scalar_one()
     return {
         "devices": device_count,
         "pushes_by_status": by_status,
+        "live_activities_by_status": activities_by_status,
         "sender_type": type(request.app.state.sender).__name__,
     }
 

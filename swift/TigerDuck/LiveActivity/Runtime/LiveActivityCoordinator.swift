@@ -2,6 +2,12 @@ import ActivityKit
 import Foundation
 import os
 
+nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
+    let activityId: String
+    let updateTokenHex: String
+    let snapshot: LiveActivitySnapshot
+}
+
 /// Reflects a resolved `LiveActivitySnapshot` as at most one running
 /// `TigerDuckActivityAttributes` activity.
 ///
@@ -23,6 +29,8 @@ final class LiveActivityCoordinator {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "LiveActivity")
     private var automaticEndTasks: [String: Task<Void, Never>] = [:]
     private var activityObserverTask: Task<Void, Never>?
+    private var activityUpdateTokenTasks: [String: Task<Void, Never>] = [:]
+    private var updateTokenRegistrationHandler: (@Sendable (LiveActivityUpdateTokenRegistration) async -> Void)?
 
     init(store: SharedSnapshotStore = SharedSnapshotStore()) {
         self.store = store
@@ -31,7 +39,18 @@ final class LiveActivityCoordinator {
 
     deinit {
         activityObserverTask?.cancel()
-        cancelAutomaticEndTasks()
+        for task in automaticEndTasks.values {
+            task.cancel()
+        }
+        for task in activityUpdateTokenTasks.values {
+            task.cancel()
+        }
+    }
+
+    func setUpdateTokenRegistrationHandler(
+        _ handler: @escaping @Sendable (LiveActivityUpdateTokenRegistration) async -> Void
+    ) {
+        updateTokenRegistrationHandler = handler
     }
 
     /// Apply the resolved snapshot. Starts or updates the single activity
@@ -62,14 +81,16 @@ final class LiveActivityCoordinator {
             if matching.content.state.snapshot != snapshot {
                 await matching.update(content)
             }
+            observeUpdateToken(for: matching)
             scheduleAutomaticEnd(for: targetId, snapshot: snapshot, now: now)
         } else {
             do {
-                _ = try Activity<TigerDuckActivityAttributes>.request(
+                let activity = try Activity<TigerDuckActivityAttributes>.request(
                     attributes: TigerDuckActivityAttributes(activityId: targetId),
                     content: content,
-                    pushType: nil
+                    pushType: .token
                 )
+                observeUpdateToken(for: activity)
                 scheduleAutomaticEnd(for: targetId, snapshot: snapshot, now: now)
             } catch {
                 logger.error("Failed to start Live Activity: \(error.localizedDescription, privacy: .public)")
@@ -89,6 +110,7 @@ final class LiveActivityCoordinator {
             await end(activity, reason: "endAll")
         }
         cancelAutomaticEndTasks()
+        cancelUpdateTokenTasks()
         store.writeSnapshot(nil)
     }
 
@@ -102,6 +124,7 @@ final class LiveActivityCoordinator {
                 if snapshot.countdownTarget.map({ $0 <= now }) == true {
                     await end(activity, reason: "observed expired activity")
                 } else {
+                    observeUpdateToken(for: activity)
                     scheduleAutomaticEnd(
                         for: activity.attributes.activityId,
                         snapshot: snapshot,
@@ -129,6 +152,7 @@ final class LiveActivityCoordinator {
                 await end(activity, reason: "non-current activity")
             } else {
                 retainedTaskIds.insert(activityId)
+                observeUpdateToken(for: activity)
                 scheduleAutomaticEnd(
                     for: activityId,
                     snapshot: activity.content.state.snapshot,
@@ -137,6 +161,7 @@ final class LiveActivityCoordinator {
             }
         }
         cancelAutomaticEndTasks(except: retainedTaskIds)
+        cancelUpdateTokenTasks(except: retainedTaskIds)
     }
 
     private func scheduleAutomaticEnd(
@@ -180,12 +205,68 @@ final class LiveActivityCoordinator {
         await activity.end(nil, dismissalPolicy: .immediate)
         automaticEndTasks[activityId]?.cancel()
         automaticEndTasks[activityId] = nil
+        activityUpdateTokenTasks[activityId]?.cancel()
+        activityUpdateTokenTasks[activityId] = nil
     }
 
     private func cancelAutomaticEndTasks(except retainedIds: Set<String> = []) {
         for activityId in Array(automaticEndTasks.keys) where !retainedIds.contains(activityId) {
             automaticEndTasks[activityId]?.cancel()
             automaticEndTasks[activityId] = nil
+        }
+    }
+
+    private func observeUpdateToken(for activity: Activity<TigerDuckActivityAttributes>) {
+        let activityId = activity.attributes.activityId
+        Task { @MainActor [weak self] in
+            await self?.registerCurrentUpdateToken(for: activity)
+        }
+
+        guard activityUpdateTokenTasks[activityId] == nil else { return }
+        activityUpdateTokenTasks[activityId] = Task { @MainActor [weak self] in
+            await self?.registerCurrentUpdateToken(for: activity)
+            for await tokenData in activity.pushTokenUpdates {
+                guard !Task.isCancelled else { return }
+                await self?.registerUpdateToken(
+                    activityId: activityId,
+                    tokenData: tokenData,
+                    snapshot: activity.content.state.snapshot
+                )
+            }
+        }
+    }
+
+    private func registerCurrentUpdateToken(
+        for activity: Activity<TigerDuckActivityAttributes>
+    ) async {
+        guard let tokenData = activity.pushToken else { return }
+        await registerUpdateToken(
+            activityId: activity.attributes.activityId,
+            tokenData: tokenData,
+            snapshot: activity.content.state.snapshot
+        )
+    }
+
+    private func registerUpdateToken(
+        activityId: String,
+        tokenData: Data,
+        snapshot: LiveActivitySnapshot
+    ) async {
+        guard let updateTokenRegistrationHandler else { return }
+        let tokenHex = tokenData.map { String(format: "%02x", $0) }.joined()
+        await updateTokenRegistrationHandler(
+            LiveActivityUpdateTokenRegistration(
+                activityId: activityId,
+                updateTokenHex: tokenHex,
+                snapshot: snapshot
+            )
+        )
+    }
+
+    private func cancelUpdateTokenTasks(except retainedIds: Set<String> = []) {
+        for activityId in Array(activityUpdateTokenTasks.keys) where !retainedIds.contains(activityId) {
+            activityUpdateTokenTasks[activityId]?.cancel()
+            activityUpdateTokenTasks[activityId] = nil
         }
     }
 }

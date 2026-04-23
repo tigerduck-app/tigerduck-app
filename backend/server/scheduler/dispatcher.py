@@ -24,9 +24,20 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from server.config import Settings
-from server.models import DeviceRegistration, PushStatus, ScheduledPush
+from server.models import (
+    DeviceRegistration,
+    LiveActivityTokenStatus,
+    LiveActivityUpdateToken,
+    PushStatus,
+    ScheduledPush,
+)
 from server.push.apns_client import PushSender, SendResult
-from server.push.payload import ApnsRequest, _countdown_target_unix, build_apns_request
+from server.push.payload import (
+    ApnsRequest,
+    _countdown_target_unix,
+    build_apns_request,
+    build_live_activity_end_request,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -128,6 +139,63 @@ async def dispatch_due_pushes(
                 # transient — retry next tick unless exhausted
                 await _bump_or_fail(session, push, result)
                 if push.attempts + 1 >= MAX_ATTEMPTS:
+                    failed += 1
+
+        activity_stmt = (
+            select(LiveActivityUpdateToken, DeviceRegistration)
+            .join(
+                DeviceRegistration,
+                DeviceRegistration.device_id == LiveActivityUpdateToken.device_id,
+            )
+            .where(
+                LiveActivityUpdateToken.status
+                == LiveActivityTokenStatus.active.value,
+                LiveActivityUpdateToken.countdown_target.is_not(None),
+                LiveActivityUpdateToken.countdown_target <= ts,
+            )
+            .with_for_update(skip_locked=True)
+            .limit(64)
+        )
+        activity_rows = (await session.execute(activity_stmt)).all()
+
+        for token, device in activity_rows:
+            dispatched += 1
+            try:
+                request = build_live_activity_end_request(
+                    update_token=token.update_token_hex,
+                    bundle_id=device.bundle_id,
+                    snapshot=token.snapshot_json,
+                    now=ts,
+                )
+            except Exception as build_error:  # pragma: no cover — defensive
+                await _mark_activity_failed(
+                    session,
+                    token,
+                    reason=f"build_error: {build_error}",
+                )
+                failed += 1
+                logger.exception(
+                    "dispatcher.activity_end_build_error",
+                    activity_id=token.activity_id,
+                )
+                continue
+
+            result = await _send_safely(sender, request)
+            classification = _classify(result)
+
+            if classification == "sent":
+                await _mark_activity_ended(session, token, ts)
+                sent += 1
+            elif classification == "bad_token":
+                await _mark_activity_cancelled(
+                    session,
+                    token,
+                    reason=result.description or "bad_token",
+                )
+                cancelled += 1
+            else:
+                await _bump_or_fail_activity(session, token, result)
+                if token.attempts + 1 >= MAX_ATTEMPTS:
                     failed += 1
 
         await session.commit()
@@ -234,6 +302,82 @@ async def _bump_or_fail(
         await session.execute(
             update(ScheduledPush)
             .where(ScheduledPush.push_id == push.push_id)
+            .values(
+                attempts=next_attempts,
+                last_error=f"status={result.status} desc={result.description}",
+                updated_at=func.now(),
+            )
+        )
+
+
+async def _mark_activity_ended(
+    session: AsyncSession,
+    token: LiveActivityUpdateToken,
+    ts: datetime,
+) -> None:
+    await session.execute(
+        update(LiveActivityUpdateToken)
+        .where(LiveActivityUpdateToken.activity_id == token.activity_id)
+        .values(
+            status=LiveActivityTokenStatus.ended.value,
+            ended_at=ts,
+            attempts=token.attempts + 1,
+            last_error=None,
+            updated_at=func.now(),
+        )
+    )
+
+
+async def _mark_activity_cancelled(
+    session: AsyncSession,
+    token: LiveActivityUpdateToken,
+    reason: str,
+) -> None:
+    await session.execute(
+        update(LiveActivityUpdateToken)
+        .where(LiveActivityUpdateToken.activity_id == token.activity_id)
+        .values(
+            status=LiveActivityTokenStatus.cancelled.value,
+            attempts=token.attempts + 1,
+            last_error=reason,
+            updated_at=func.now(),
+        )
+    )
+
+
+async def _mark_activity_failed(
+    session: AsyncSession,
+    token: LiveActivityUpdateToken,
+    reason: str,
+) -> None:
+    await session.execute(
+        update(LiveActivityUpdateToken)
+        .where(LiveActivityUpdateToken.activity_id == token.activity_id)
+        .values(
+            status=LiveActivityTokenStatus.failed.value,
+            attempts=token.attempts + 1,
+            last_error=reason,
+            updated_at=func.now(),
+        )
+    )
+
+
+async def _bump_or_fail_activity(
+    session: AsyncSession,
+    token: LiveActivityUpdateToken,
+    result: SendResult,
+) -> None:
+    next_attempts = token.attempts + 1
+    if next_attempts >= MAX_ATTEMPTS:
+        await _mark_activity_failed(
+            session,
+            token,
+            reason=f"status={result.status} desc={result.description}",
+        )
+    else:
+        await session.execute(
+            update(LiveActivityUpdateToken)
+            .where(LiveActivityUpdateToken.activity_id == token.activity_id)
             .values(
                 attempts=next_attempts,
                 last_error=f"status={result.status} desc={result.description}",

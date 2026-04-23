@@ -22,6 +22,7 @@ from server.push.apns_client import build_sender
 from server.routes import bulletins as bulletins_routes
 from server.routes import debug as debug_routes
 from server.routes import devices as devices_routes
+from server.routes import live_activities as live_activities_routes
 from server.routes import schedule as schedule_routes
 from server.scheduler.runtime import build_scheduler
 
@@ -133,6 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"pong": "tigerduck"}
 
     app.include_router(devices_routes.router, prefix=settings.api_base_path)
+    app.include_router(live_activities_routes.router, prefix=settings.api_base_path)
     app.include_router(schedule_routes.router, prefix=settings.api_base_path)
     app.include_router(debug_routes.router, prefix=settings.api_base_path)
     app.include_router(bulletins_routes.router, prefix=settings.api_base_path)

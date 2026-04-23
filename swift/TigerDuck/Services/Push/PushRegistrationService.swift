@@ -42,6 +42,7 @@ actor PushRegistrationService {
     private var lastAttempt: Task<Void, Never>?
     private var lastError: String?
     private var lastRegisteredAt: Date?
+    private var pendingActivityRegistrations: [String: LiveActivityUpdateTokenRegistration] = [:]
 
     init(
         identity: PushIdentity,
@@ -74,6 +75,17 @@ actor PushRegistrationService {
         await registerIfReady()
     }
 
+    func registerLiveActivityUpdateToken(
+        _ registration: LiveActivityUpdateTokenRegistration
+    ) async {
+        pendingActivityRegistrations[registration.activityId] = registration
+        guard ptsTokenHex != nil else {
+            await registerIfReady()
+            return
+        }
+        await performActivityRegistration(registration, logger: logger)
+    }
+
     func registrationFailed(_ error: Error) {
         lastError = "APNs register failed: \(error.localizedDescription)"
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
@@ -101,6 +113,7 @@ actor PushRegistrationService {
         }
         deviceTokenHex = nil
         ptsTokenHex = nil
+        pendingActivityRegistrations.removeAll()
     }
 
     // MARK: - Internals
@@ -149,6 +162,7 @@ actor PushRegistrationService {
             let response = try await apiClient.registerDevice(request)
             logger.info("registered device=\(response.deviceId, privacy: .public) user=\(response.userId, privacy: .public)")
             noteSuccessfulRegistration()
+            await flushPendingActivityRegistrations(logger: logger)
         } catch is CancellationError {
             // Expected side-effect of debounce preempting an in-flight
             // request. Swallow silently so the logs stay clean.
@@ -170,5 +184,43 @@ actor PushRegistrationService {
 
     private func noteRegistrationError(_ error: Error) {
         lastError = "register: \(error.localizedDescription)"
+    }
+
+    private func flushPendingActivityRegistrations(logger: Logger) async {
+        for registration in Array(pendingActivityRegistrations.values) {
+            await performActivityRegistration(registration, logger: logger)
+        }
+    }
+
+    private func performActivityRegistration(
+        _ registration: LiveActivityUpdateTokenRegistration,
+        logger: Logger
+    ) async {
+        let snapshot = registration.snapshot
+        let request = PushAPI.LiveActivityTokenRegisterRequest(
+            deviceId: identity.deviceId,
+            activityId: registration.activityId,
+            sourceId: snapshot.sourceId,
+            scenario: snapshot.scenario,
+            updateTokenHex: registration.updateTokenHex,
+            countdownTarget: snapshot.countdownTarget,
+            snapshot: snapshot
+        )
+        do {
+            let response = try await apiClient.registerLiveActivityToken(request)
+            logger.info(
+                "registered live activity token id=\(response.activityId, privacy: .public)"
+            )
+            if pendingActivityRegistrations[registration.activityId]?.updateTokenHex == registration.updateTokenHex {
+                pendingActivityRegistrations[registration.activityId] = nil
+            }
+        } catch let error as PushAPIError {
+            if case .httpStatus(404, _) = error {
+                await registerIfReady()
+            }
+            logger.error("live activity token register failed: \(error.localizedDescription, privacy: .public)")
+        } catch {
+            logger.error("live activity token register failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

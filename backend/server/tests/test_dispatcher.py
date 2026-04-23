@@ -11,7 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from server.config import Settings
 from server.db import build_session_factory
-from server.models import DeviceRegistration, PushStatus, ScheduledPush, build_push_id
+from server.models import (
+    DeviceRegistration,
+    LiveActivityTokenStatus,
+    LiveActivityUpdateToken,
+    PushStatus,
+    ScheduledPush,
+    build_push_id,
+)
 from server.push.apns_client import RecordingSender, SendResult
 from server.scheduler.dispatcher import dispatch_due_pushes
 
@@ -75,6 +82,54 @@ async def _seed_push(
 async def _status_of(factory: async_sessionmaker, push_id: str) -> tuple[str, int, str | None]:
     async with factory() as s:
         row = await s.get(ScheduledPush, push_id)
+        assert row is not None
+        return row.status, row.attempts, row.last_error
+
+
+async def _seed_live_activity_token(
+    factory: async_sessionmaker,
+    *,
+    activity_id: str,
+    source_id: str,
+    scenario: str,
+    countdown_target: datetime,
+    status: str = LiveActivityTokenStatus.active.value,
+    attempts: int = 0,
+) -> str:
+    async with factory() as s:
+        token = LiveActivityUpdateToken(
+            activity_id=activity_id,
+            device_id=DEVICE_ID,
+            source_id=source_id,
+            scenario=scenario,
+            update_token_hex="cc" * 80,
+            countdown_target=countdown_target,
+            snapshot_json={
+                "scenario": scenario,
+                "title": "Algorithms",
+                "subtitle": "10:10-12:00",
+                "locationText": "T2-401",
+                "instructor": "王小明",
+                "countdownTarget": countdown_target.isoformat(),
+                "progressStart": None,
+                "accentHex": 0x4A90E2,
+                "deepLink": None,
+                "sourceId": source_id,
+            },
+            status=status,
+            attempts=attempts,
+        )
+        s.add(token)
+        await s.commit()
+    return activity_id
+
+
+async def _activity_status_of(
+    factory: async_sessionmaker,
+    activity_id: str,
+) -> tuple[str, int, str | None]:
+    async with factory() as s:
+        row = await s.get(LiveActivityUpdateToken, activity_id)
         assert row is not None
         return row.status, row.attempts, row.last_error
 
@@ -251,3 +306,61 @@ async def test_bad_token_prunes_device_and_cancels(
         assert dev is None
         push = await s.get(ScheduledPush, push_id)
         assert push is None
+
+
+async def test_due_live_activity_end_is_sent(
+    client: AsyncClient,
+    prepared_engine: AsyncEngine,
+    test_settings: Settings,
+):
+    await _register_device(client)
+    factory = build_session_factory(prepared_engine)
+    now = datetime.now(timezone.utc)
+    activity_id = await _seed_live_activity_token(
+        factory,
+        activity_id="inClass::slot-end",
+        source_id="slot-end",
+        scenario="inClass",
+        countdown_target=now,
+    )
+
+    sender = RecordingSender()
+    outcome = await dispatch_due_pushes(factory, sender, test_settings, now=now)
+
+    assert outcome.dispatched == 1
+    assert outcome.sent == 1
+    assert len(sender.requests) == 1
+    req = sender.requests[0]
+    assert req.device_token == "cc" * 80
+    assert req.message["aps"]["event"] == "end"
+    assert req.message["aps"]["dismissal-date"] == int(now.timestamp())
+
+    status, attempts, err = await _activity_status_of(factory, activity_id)
+    assert status == LiveActivityTokenStatus.ended.value
+    assert attempts == 1
+    assert err is None
+
+
+async def test_future_live_activity_end_is_skipped(
+    client: AsyncClient,
+    prepared_engine: AsyncEngine,
+    test_settings: Settings,
+):
+    await _register_device(client)
+    factory = build_session_factory(prepared_engine)
+    now = datetime.now(timezone.utc)
+    activity_id = await _seed_live_activity_token(
+        factory,
+        activity_id="inClass::slot-future-end",
+        source_id="slot-future-end",
+        scenario="inClass",
+        countdown_target=now + timedelta(minutes=10),
+    )
+
+    sender = RecordingSender()
+    outcome = await dispatch_due_pushes(factory, sender, test_settings, now=now)
+
+    assert outcome.dispatched == 0
+    assert sender.requests == []
+    status, _, _ = await _activity_status_of(factory, activity_id)
+    assert status == LiveActivityTokenStatus.active.value

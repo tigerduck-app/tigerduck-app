@@ -40,6 +40,16 @@ final class PushAPIClient: Sendable {
         try await post(path: "/schedule/sync", body: request, returning: PushAPI.ScheduleSyncResponse.self)
     }
 
+    func registerLiveActivityToken(
+        _ request: PushAPI.LiveActivityTokenRegisterRequest
+    ) async throws -> PushAPI.LiveActivityTokenRegisterResponse {
+        try await post(
+            path: "/live-activities/register",
+            body: request,
+            returning: PushAPI.LiveActivityTokenRegisterResponse.self
+        )
+    }
+
     func cancelSchedule(deviceId: String, sourceId: String) async throws {
         let safeDevice = Self.percentEncoded(deviceId)
         let safeSource = Self.percentEncoded(sourceId)

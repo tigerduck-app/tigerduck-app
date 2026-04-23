@@ -67,3 +67,19 @@ class ScheduleDeleteResponse(BaseModel):
     device_id: str
     source_id: str
     deleted: int
+
+
+class LiveActivityTokenRegisterRequest(BaseModel):
+    device_id: str = Field(min_length=1, max_length=128)
+    activity_id: str = Field(min_length=1, max_length=256)
+    source_id: str = Field(min_length=1, max_length=128, pattern=r"^[^:]+$")
+    scenario: ScenarioKind
+    update_token_hex: str = Field(min_length=1, max_length=512)
+    countdown_target: datetime | None = None
+    snapshot: dict[str, Any]
+
+
+class LiveActivityTokenRegisterResponse(BaseModel):
+    device_id: str
+    activity_id: str
+    registered_at: datetime
