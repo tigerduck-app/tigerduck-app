@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, select, tuple_
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.bulletins.models import Bulletin, BulletinSubscription
@@ -132,10 +132,29 @@ async def list_bulletins(
             )
         ).first()
         if cursor_row is not None:
-            stmt = stmt.where(
-                tuple_(Bulletin.posted_at, Bulletin.id)
-                < tuple_(cursor_row.posted_at, cursor_row.id)
-            )
+            # A naive `tuple_(posted_at, id) < tuple_(cursor_posted_at, cursor_id)`
+            # evaluates to NULL (→ FALSE under WHERE) whenever either side's
+            # posted_at is NULL, silently dropping NULLS-LAST rows on page 2+.
+            # Decompose into nullable-safe predicates so NULL-posted rows
+            # still stream through after the dated tail of page 1.
+            if cursor_row.posted_at is not None:
+                stmt = stmt.where(
+                    or_(
+                        Bulletin.posted_at < cursor_row.posted_at,
+                        and_(
+                            Bulletin.posted_at == cursor_row.posted_at,
+                            Bulletin.id < cursor_row.id,
+                        ),
+                        Bulletin.posted_at.is_(None),
+                    )
+                )
+            else:
+                # Cursor sits in the NULL tail already → continue strictly
+                # within that tail by id descending.
+                stmt = stmt.where(
+                    Bulletin.posted_at.is_(None),
+                    Bulletin.id < cursor_row.id,
+                )
         # else: cursor row vanished between requests; fall through and
         # serve from the start. Client dedupes by id.
     if not include_deleted:
