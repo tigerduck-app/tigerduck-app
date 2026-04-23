@@ -3,11 +3,12 @@ import SwiftUI
 import os
 
 /// Full-screen bulletin reader. The parent pushes this via
-/// `.navigationDestination`; we hide the default nav bar entirely so the
-/// content can breathe edge-to-edge. Dismissal uses the iOS system
-/// swipe-from-left-edge gesture — the nav stack's `interactivePop`
-/// still fires even with a hidden bar, so no custom close button is
-/// needed and nothing clutters the top chrome.
+/// `.navigationDestination`; the nav bar stays in place (with just
+/// the back-button chevron hidden) because
+/// `toolbar(.hidden, for: .navigationBar)` disables the
+/// interactivePopGesture on iOS — which the user explicitly needs.
+/// A transparent toolbar background lets the masthead feel edge-to-
+/// edge without sacrificing the system swipe-from-left-edge dismissal.
 struct BulletinDetailView: View {
     let bulletin: BulletinAPI.BulletinSummary
     let taxonomy: BulletinTaxonomyStore
@@ -49,7 +50,9 @@ struct BulletinDetailView: View {
                 .padding(.trailing, TigerDuckTheme.Spacing.lg)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .task(id: bulletin.id) {
             readState?.markRead(bulletin.id)
             await loadDetail()
