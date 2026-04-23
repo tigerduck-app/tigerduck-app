@@ -1,7 +1,7 @@
 # TigerDuck — Session Handover
 
 **Last updated**: 2026-04-23 (post-Wave-A/B/C session)
-**Branch**: `feature/backend-server` (not pushed; 28 commits ahead of `origin`)
+**Branch**: `feature/backend-server` (not pushed; 10 commits ahead of `origin/feature/backend-server` (which already carries the prior 19; total branch is 48 commits ahead of `main`))
 **Replaces**: `HANDOVER_BULLETINS.md` (now obsolete, safe to delete)
 
 Read this file first. It captures the architecture after the big backend + iOS overhaul, the user's working preferences, the pending work queue, and the gotchas that bite if you guess.
@@ -292,7 +292,7 @@ PATH has `/app/.venv/bin` prepended so bare `python` resolves to the pinned 3.13
   ```
 - **Postgres daily backup**: `pg_dump` + cron/launchd. User said "MVP first", do after stability.
 - **TestFlight switch**: flip `TIGERDUCK_APNS_ENV=production` in `.env` when the build ships to TestFlight. Otherwise APNs silently drops pushes.
-- **Push feature/backend-server to origin**: branch is **28 commits ahead** of `origin/feature/backend-server`. User hasn't asked to push; confirm before doing it.
+- **Push feature/backend-server to origin**: branch is **10 commits ahead** of `origin/feature/backend-server` (this session) and **48 commits ahead** of `main`. User hasn't asked to push; confirm before doing it.
 - **iOS TigerDuckAPIToken on the build Mac**: user's build Mac needs `swift/TigerDuck/Secrets.plist` created locally (gitignored; not auto-synced). Already done once; re-creation needed if they switch machines.
 - **MarkdownUI on first build**: build mac will need to let Xcode resolve `swift-markdown-ui`. If File > Packages > Reset Package Caches is needed, that's normal SwiftPM hygiene.
 - **Ralph's feedback loop**: the code under `BulletinSubscriptionsStore` currently rotates through 4 retries; consider whether the UI should expose a manual retry button for the "超過 1.75s 還沒 register 完成" edge case.
