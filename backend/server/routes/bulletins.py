@@ -56,14 +56,39 @@ async def get_taxonomy() -> TaxonomyResponse:
     )
 
 
+def _coerce_org(raw: str | None) -> CanonicalOrg | None:
+    """Tolerate DB rows that still carry a dropped enum value (e.g. during
+    the re-classification window after a taxonomy change). Returns None
+    for unknown values so the client sees an unclassified row instead of
+    the endpoint erroring out."""
+    if not raw:
+        return None
+    try:
+        return CanonicalOrg(raw)
+    except ValueError:
+        return None
+
+
+def _coerce_tags(raw: list[str] | None) -> list[ContentTag]:
+    """Same pattern as `_coerce_org` but for the multi-valued tag array —
+    silently drop entries that no longer map to a known enum."""
+    result: list[ContentTag] = []
+    for t in raw or []:
+        try:
+            result.append(ContentTag(t))
+        except ValueError:
+            continue
+    return result
+
+
 def _to_summary(row: Bulletin) -> BulletinSummary:
     return BulletinSummary(
         id=row.id,
         external_id=row.external_id,
         title=row.title,
         title_clean=row.title_clean,
-        canonical_org=CanonicalOrg(row.canonical_org) if row.canonical_org else None,
-        content_tags=[ContentTag(t) for t in (row.content_tags or [])],
+        canonical_org=_coerce_org(row.canonical_org),
+        content_tags=_coerce_tags(row.content_tags),
         importance=row.importance,  # type: ignore[arg-type]
         summary=row.summary,
         source_url=row.source_url,
@@ -126,11 +151,28 @@ async def _ensure_device(session: AsyncSession, device_id: str) -> DeviceRegistr
 
 
 def _rule_from_db(row: BulletinSubscription) -> SubscriptionRule:
+    # Self-healing on read: a saved rule may reference an enum that was
+    # later dropped from the taxonomy (e.g. after a catalog reshuffle).
+    # Silently strip the dropped values — when the iOS client saves next,
+    # the PUT body will carry only the surviving ones and the row gets
+    # cleaned on disk.
+    orgs: list[CanonicalOrg] = []
+    for o in row.orgs or []:
+        try:
+            orgs.append(CanonicalOrg(o))
+        except ValueError:
+            continue
+    tags: list[ContentTag] = []
+    for t in row.tags or []:
+        try:
+            tags.append(ContentTag(t))
+        except ValueError:
+            continue
     return SubscriptionRule(
         id=row.id,
         name=row.name,
-        orgs=[CanonicalOrg(o) for o in (row.orgs or [])],
-        tags=[ContentTag(t) for t in (row.tags or [])],
+        orgs=orgs,
+        tags=tags,
         mode=row.mode,  # type: ignore[arg-type]
         enabled=row.enabled,
     )
