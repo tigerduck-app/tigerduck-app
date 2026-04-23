@@ -189,6 +189,20 @@ final class HomeViewModel {
 
     var selectedCourse: SDCourse? = nil
 
+    func archiveAssignment(_ assignment: SDAssignment) {
+        guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
+        allAssignmentsCache[idx].isArchived = true
+        DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
+        recomputeUpcomingAssignments()
+    }
+
+    func markAssignmentAsLocallyCompleted(_ assignment: SDAssignment) {
+        guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
+        allAssignmentsCache[idx].isLocallyCompleted = true
+        DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
+        recomputeUpcomingAssignments()
+    }
+
     func hasUnfinishedAssignment(for courseNo: String) -> Bool {
         upcomingAssignments.hasUnfinished(for: courseNo)
     }

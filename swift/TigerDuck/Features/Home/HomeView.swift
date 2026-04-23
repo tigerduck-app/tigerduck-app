@@ -314,7 +314,9 @@ private struct HomeSectionView: View {
             case .content:
                 UpcomingAssignmentsView(
                     assignments: viewModel.upcomingAssignments,
-                    showAbsoluteTime: appState.showAbsoluteAssignmentTime
+                    showAbsoluteTime: appState.showAbsoluteAssignmentTime,
+                    onArchive: { viewModel.archiveAssignment($0) },
+                    onMarkComplete: { viewModel.markAssignmentAsLocallyCompleted($0) }
                 )
                 .allowsHitTesting(!viewModel.isEditingHome)
             }

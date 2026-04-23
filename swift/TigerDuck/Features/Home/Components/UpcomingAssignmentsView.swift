@@ -3,6 +3,8 @@ import SwiftUI
 struct UpcomingAssignmentsView: View {
     let assignments: [SDAssignment]
     var showAbsoluteTime: Bool = false
+    var onArchive: ((SDAssignment) -> Void)? = nil
+    var onMarkComplete: ((SDAssignment) -> Void)? = nil
 
     @Environment(AppState.self) private var appState
 
@@ -27,14 +29,21 @@ struct UpcomingAssignmentsView: View {
     private func cardLayout(policy: VisualStylePolicy, now: Date) -> some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             ForEach(assignments, id: \.assignmentId) { assignment in
-                Button {
-                    openAssignment(assignment)
-                } label: {
-                    assignmentRow(assignment: assignment, now: now, policy: policy)
-                        .cardPadding()
-                        .glassCard()
+                let status = assignment.status(now: now)
+                SwipeToActRow(
+                    isEligible: status.isSwipeActionEligible,
+                    onArchive: { onArchive?(assignment) },
+                    onMarkComplete: { onMarkComplete?(assignment) }
+                ) {
+                    Button {
+                        openAssignment(assignment)
+                    } label: {
+                        assignmentRow(assignment: assignment, now: now, policy: policy)
+                            .cardPadding()
+                            .glassCard()
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -43,15 +52,22 @@ struct UpcomingAssignmentsView: View {
     private func groupedListLayout(policy: VisualStylePolicy, now: Date) -> some View {
         VStack(spacing: 0) {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { index, assignment in
-                Button {
-                    openAssignment(assignment)
-                } label: {
-                    assignmentRow(assignment: assignment, now: now, policy: policy)
-                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                        .padding(.vertical, TigerDuckTheme.Spacing.md)
-                        .contentShape(Rectangle())
+                let status = assignment.status(now: now)
+                SwipeToActRow(
+                    isEligible: status.isSwipeActionEligible,
+                    onArchive: { onArchive?(assignment) },
+                    onMarkComplete: { onMarkComplete?(assignment) }
+                ) {
+                    Button {
+                        openAssignment(assignment)
+                    } label: {
+                        assignmentRow(assignment: assignment, now: now, policy: policy)
+                            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                            .padding(.vertical, TigerDuckTheme.Spacing.md)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 if index < assignments.count - 1 {
                     Divider()
@@ -148,5 +164,88 @@ struct UpcomingAssignmentsView: View {
         } else {
             return assignment.dueDate.relativeTimeString(from: now)
         }
+    }
+}
+
+// MARK: - Swipe gesture helper
+
+private struct SwipeToActRow<Content: View>: View {
+    let content: Content
+    let isEligible: Bool
+    let onArchive: () -> Void
+    let onMarkComplete: () -> Void
+
+    @State private var dragX: CGFloat = 0
+
+    private let maxDrag: CGFloat = 75
+    private let threshold: CGFloat = 50
+
+    init(
+        isEligible: Bool,
+        onArchive: @escaping () -> Void,
+        onMarkComplete: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.isEligible = isEligible
+        self.onArchive = onArchive
+        self.onMarkComplete = onMarkComplete
+        self.content = content()
+    }
+
+    var body: some View {
+        if isEligible {
+            ZStack {
+                actionBackground
+                content.offset(x: dragX)
+            }
+            .clipped()
+            .gesture(swipeGesture)
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var actionBackground: some View {
+        if dragX < 0 {
+            HStack {
+                Spacer()
+                Image(systemName: "archivebox.fill")
+                    .foregroundStyle(.white)
+                    .font(.body.weight(.medium))
+                    .padding(.trailing, 20)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.orange)
+            .opacity(Double(min(abs(dragX) / threshold, 1.0)))
+        } else if dragX > 0 {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.white)
+                    .font(.body.weight(.medium))
+                    .padding(.leading, 20)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.blue)
+            .opacity(Double(min(dragX / threshold, 1.0)))
+        }
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 15)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                dragX = value.translation.width > 0
+                    ? min(value.translation.width, maxDrag)
+                    : max(value.translation.width, -maxDrag)
+            }
+            .onEnded { _ in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    if dragX <= -threshold { onArchive() }
+                    else if dragX >= threshold { onMarkComplete() }
+                    dragX = 0
+                }
+            }
     }
 }
