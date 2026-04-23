@@ -152,7 +152,9 @@ struct ClassTableView: View {
 
     private var authenticatedContent: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
-            todayCoursesSection
+            if !viewModel.todayCourses.isEmpty {
+                todayCoursesSection
+            }
             semesterPickerBar
 
             TimetableGridView(viewModel: viewModel)
