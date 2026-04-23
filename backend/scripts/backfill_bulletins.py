@@ -335,7 +335,8 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"[config] list_url={settings.bulletin_list_url}")
     print(f"[config] llm={settings.llm_base_url} model={settings.llm_model} "
           f"timeout={settings.llm_timeout_seconds}s")
-    print(f"[config] pages={pages[0]}..{pages[-1]} "
+    pages_desc = "skipped" if args.skip_scrape else f"{pages[0]}..{pages[-1]}"
+    print(f"[config] pages={pages_desc} "
           f"concurrency={args.concurrency} suppress_push={not args.no_suppress_push}")
 
     try:
@@ -350,10 +351,13 @@ async def main_async(args: argparse.Namespace) -> int:
             if not args.skip_preflight:
                 await _preflight_llm(settings, http_client)
 
-            inserted, refreshed = await _scrape_pages(
-                settings, session_factory, pages, http_client
-            )
-            print(f"[scrape] done — {inserted} new, {refreshed} refreshed\n")
+            if args.skip_scrape:
+                print("[scrape] skipped — only draining pending rows\n")
+            else:
+                inserted, refreshed = await _scrape_pages(
+                    settings, session_factory, pages, http_client
+                )
+                print(f"[scrape] done — {inserted} new, {refreshed} refreshed\n")
 
             totals = await _drain_pending(
                 session_factory,
@@ -400,6 +404,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--skip-preflight",
         action="store_true",
         help="skip the LLM reachability check at startup (not recommended)",
+    )
+    parser.add_argument(
+        "--skip-scrape",
+        action="store_true",
+        help="skip NTUST list-page scraping — only drain `pending` rows "
+             "through the LLM. Use after `UPDATE bulletins SET "
+             "processing_state='pending'` to re-classify against an "
+             "updated prompt without re-fetching list pages.",
     )
     parser.add_argument(
         "--llm-timeout",
