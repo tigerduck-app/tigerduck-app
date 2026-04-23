@@ -291,7 +291,7 @@ struct MoodleHomeworkRegressionTests {
         #expect(result.map(\.assignmentId) == ["1"])
     }
 
-    @Test func arrayAllSorted_includesArchivedAndLocallyCompleted() {
+    @Test func arrayAllSorted_excludesIgnoredButIncludesLocallyCompleted() {
         let now = Date()
         let normal = SDAssignment(
             assignmentId: "1", courseNo: "C", courseName: "C", title: "Normal",
@@ -307,8 +307,7 @@ struct MoodleHomeworkRegressionTests {
         )
 
         let result = [normal, archived, locallyDone].allSorted()
-        // All three appear (none are moodle-completed), sorted by dueDate ascending
-        #expect(result.map(\.assignmentId) == ["2", "1", "3"])
+        #expect(result.map(\.assignmentId) == ["1", "3"])
     }
 
     @Test func arrayIgnoredSorted_onlyIncludesIgnoredUnsubmittedAssignments() {
