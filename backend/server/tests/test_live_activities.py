@@ -67,6 +67,32 @@ async def test_register_live_activity_token_requires_device(client: AsyncClient)
     assert response.status_code == 404
 
 
+async def test_register_live_activity_token_rejects_mismatched_source_id(
+    client: AsyncClient,
+):
+    """`snapshot.sourceId` must equal the top-level `source_id`. A bug on the
+    client that sends mismatched values would otherwise silently store a row
+    whose snapshot points at the wrong assignment/slot, so the later
+    cancel_by_source / end-push flow would reference divergent ids."""
+    await _register_device(client)
+    target = datetime.now(timezone.utc) + timedelta(minutes=15)
+    snapshot = _snapshot(target)
+    snapshot["sourceId"] = "slot-other"  # deliberately mismatched
+    response = await client.post(
+        "/v1/live-activities/register",
+        json={
+            "device_id": DEVICE_ID,
+            "activity_id": "classPreparing::slot-live",
+            "source_id": "slot-live",
+            "scenario": "classPreparing",
+            "update_token_hex": "b" * 128,
+            "countdown_target": _iso(target),
+            "snapshot": snapshot,
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
 async def test_register_live_activity_token_upserts(
     client: AsyncClient,
     prepared_engine: AsyncEngine,
@@ -115,3 +141,6 @@ async def test_register_live_activity_token_upserts(
     assert len(rows) == 1
     assert rows[0].update_token_hex == "c" * 128
     assert rows[0].status == LiveActivityTokenStatus.active.value
+    # Re-registering a previously-ended activity (ended_at would be set by the
+    # dispatcher) must reset the terminal markers so the row is eligible again.
+    assert rows[0].ended_at is None
