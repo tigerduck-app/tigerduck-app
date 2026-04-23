@@ -74,6 +74,41 @@ final class DataCache {
         return dtos.map { $0.toSDAssignment() }
     }
 
+    // MARK: - Bulletins
+
+    /// Persist the full known list of bulletin summaries. Writes are
+    /// atomic — callers should hand over the entire merged list, not a
+    /// delta. The file survives app restarts so the list view can render
+    /// instantly on launch while the VM refreshes against the server.
+    func saveBulletinSummaries(_ summaries: [BulletinAPI.BulletinSummary]) {
+        save(summaries, to: "bulletin_summaries.json")
+    }
+
+    func loadBulletinSummaries() -> [BulletinAPI.BulletinSummary] {
+        load(from: "bulletin_summaries.json") ?? []
+    }
+
+    /// Persist a single bulletin detail. One file per id keeps writes
+    /// small (~few KB) and avoids the append/rewrite cost a single
+    /// aggregated file would have once we're past a few hundred items.
+    func saveBulletinDetail(_ detail: BulletinAPI.BulletinDetail) {
+        save(detail, to: bulletinDetailFilename(detail.id), in: bulletinDetailDir())
+    }
+
+    func loadBulletinDetail(id: Int) -> BulletinAPI.BulletinDetail? {
+        load(from: bulletinDetailFilename(id), in: bulletinDetailDir())
+    }
+
+    private func bulletinDetailDir() -> URL {
+        let dir = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private func bulletinDetailFilename(_ id: Int) -> String {
+        "\(id).json"
+    }
+
     // MARK: - Calendar Events
 
     func saveCalendarEvents(_ events: [SDCalendarEvent]) {
