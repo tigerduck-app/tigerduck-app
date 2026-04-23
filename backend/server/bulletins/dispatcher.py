@@ -170,11 +170,15 @@ async def _dispatch_one(
                 cancelled_count += 1
                 continue
 
+            # Bulletins arrive here in `processed` state, so `title_clean`
+            # has already been normalized by the LLM (prefix stripped,
+            # de-shouted). Fall back to the raw title when classification
+            # left it NULL — mirrors iOS `BulletinAPIDTO.displayTitle`.
             request = build_alert_request(
                 device_token=device.device_token_hex,
                 bundle_id=device.bundle_id,
-                title=bulletin.title,
-                body=bulletin.summary or bulletin.title,
+                title=bulletin.title_clean or bulletin.title,
+                body=bulletin.summary or bulletin.title_clean or bulletin.title,
                 bulletin_id=bulletin.id,
                 source_url=bulletin.source_url,
                 canonical_org=bulletin.canonical_org or "",
