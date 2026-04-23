@@ -176,7 +176,6 @@ final class ClassTableViewModel {
 
     private func reloadCurrentSemesterCourses() {
         currentSemesterCourses = courseProvider.currentCourses()
-        refreshCourseColors()
     }
 
     private func refreshCourseColors() {
