@@ -43,7 +43,8 @@ extension AssignmentStatus {
         case .submitted: return .green
         case .submittedLate: return .orange
         case .overdueAcceptable, .overdueRejected: return .badgeRed
-        case .archived, .locallyCompleted: return .secondary
+        case .archived: return .secondary
+        case .locallyCompleted: return .green
         }
     }
 

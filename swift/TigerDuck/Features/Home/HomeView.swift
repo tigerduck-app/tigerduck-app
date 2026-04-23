@@ -316,7 +316,9 @@ private struct HomeSectionView: View {
                     assignments: viewModel.upcomingAssignments,
                     showAbsoluteTime: appState.showAbsoluteAssignmentTime,
                     onArchive: { viewModel.archiveAssignment($0) },
-                    onMarkComplete: { viewModel.markAssignmentAsLocallyCompleted($0) }
+                    onMarkComplete: { viewModel.markAssignmentAsLocallyCompleted($0) },
+                    onUnarchive: { viewModel.unarchiveAssignment($0) },
+                    onUndoComplete: { viewModel.undoLocallyCompleted($0) }
                 )
                 .allowsHitTesting(!viewModel.isEditingHome)
             }

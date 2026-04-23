@@ -5,6 +5,8 @@ struct UpcomingAssignmentsView: View {
     var showAbsoluteTime: Bool = false
     var onArchive: ((SDAssignment) -> Void)? = nil
     var onMarkComplete: ((SDAssignment) -> Void)? = nil
+    var onUnarchive: ((SDAssignment) -> Void)? = nil
+    var onUndoComplete: ((SDAssignment) -> Void)? = nil
 
     @Environment(AppState.self) private var appState
 
@@ -29,21 +31,7 @@ struct UpcomingAssignmentsView: View {
     private func cardLayout(policy: VisualStylePolicy, now: Date) -> some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             ForEach(assignments, id: \.assignmentId) { assignment in
-                let status = assignment.status(now: now)
-                SwipeToActRow(
-                    isEligible: status.isSwipeActionEligible,
-                    onArchive: { onArchive?(assignment) },
-                    onMarkComplete: { onMarkComplete?(assignment) }
-                ) {
-                    Button {
-                        openAssignment(assignment)
-                    } label: {
-                        assignmentRow(assignment: assignment, now: now, policy: policy)
-                            .cardPadding()
-                            .glassCard()
-                    }
-                    .buttonStyle(.plain)
-                }
+                swipeableCardRow(assignment: assignment, now: now, policy: policy)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -52,23 +40,7 @@ struct UpcomingAssignmentsView: View {
     private func groupedListLayout(policy: VisualStylePolicy, now: Date) -> some View {
         VStack(spacing: 0) {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { index, assignment in
-                let status = assignment.status(now: now)
-                SwipeToActRow(
-                    isEligible: status.isSwipeActionEligible,
-                    onArchive: { onArchive?(assignment) },
-                    onMarkComplete: { onMarkComplete?(assignment) }
-                ) {
-                    Button {
-                        openAssignment(assignment)
-                    } label: {
-                        assignmentRow(assignment: assignment, now: now, policy: policy)
-                            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                            .padding(.vertical, TigerDuckTheme.Spacing.md)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-
+                swipeableListRow(assignment: assignment, now: now, policy: policy)
                 if index < assignments.count - 1 {
                     Divider()
                         .padding(.leading, TigerDuckTheme.Spacing.lg)
@@ -77,6 +49,70 @@ struct UpcomingAssignmentsView: View {
         }
         .presetGroupedListContainer(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    private func swipeableCardRow(
+        assignment: SDAssignment,
+        now: Date,
+        policy: VisualStylePolicy
+    ) -> some View {
+        let actions = rowSwipeActions(for: assignment, now: now)
+        return SwipeToActRow(
+            trailingAction: actions.trailing,
+            leadingAction: actions.leading,
+            onTap: { openAssignment(assignment) }
+        ) {
+            assignmentRow(assignment: assignment, now: now, policy: policy)
+                .cardPadding()
+                .glassCard()
+        }
+    }
+
+    private func swipeableListRow(
+        assignment: SDAssignment,
+        now: Date,
+        policy: VisualStylePolicy
+    ) -> some View {
+        let actions = rowSwipeActions(for: assignment, now: now)
+        return SwipeToActRow(
+            trailingAction: actions.trailing,
+            leadingAction: actions.leading,
+            onTap: { openAssignment(assignment) }
+        ) {
+            assignmentRow(assignment: assignment, now: now, policy: policy)
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                .padding(.vertical, TigerDuckTheme.Spacing.md)
+        }
+    }
+
+    private func rowSwipeActions(
+        for assignment: SDAssignment,
+        now: Date
+    ) -> (trailing: SwipeActionDescriptor?, leading: SwipeActionDescriptor?) {
+        let status = assignment.status(now: now)
+        let gray = Color(.systemGray)
+
+        let trailing: SwipeActionDescriptor?
+        switch status {
+        case .overdueAcceptable, .overdueRejected:
+            trailing = SwipeActionDescriptor(label: "封存", systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
+        case .archived:
+            trailing = SwipeActionDescriptor(label: "取消封存", systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
+        default:
+            trailing = nil
+        }
+
+        let leading: SwipeActionDescriptor?
+        switch status {
+        case .overdueAcceptable, .overdueRejected:
+            leading = SwipeActionDescriptor(label: "標示為完成", systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
+        case .locallyCompleted:
+            leading = SwipeActionDescriptor(label: "取消完成", systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
+        default:
+            leading = nil
+        }
+
+        return (trailing, leading)
     }
 
     @ViewBuilder
@@ -167,83 +203,115 @@ struct UpcomingAssignmentsView: View {
     }
 }
 
-// MARK: - Swipe gesture helper
+// MARK: - Swipe gesture helpers
+
+private struct SwipeActionDescriptor {
+    let label: String
+    let systemImage: String
+    let tint: Color
+    let action: () -> Void
+}
 
 private struct SwipeToActRow<Content: View>: View {
     let content: Content
-    let isEligible: Bool
-    let onArchive: () -> Void
-    let onMarkComplete: () -> Void
+    let trailingAction: SwipeActionDescriptor?  // revealed on left swipe
+    let leadingAction: SwipeActionDescriptor?   // revealed on right swipe
+    let onTap: (() -> Void)?
 
     @State private var dragX: CGFloat = 0
+    /// Locked to true once the gesture is confirmed horizontal, preventing
+    /// accumulated vertical drift from freezing dragX mid-reversal.
+    @State private var gestureIsHorizontal = false
 
-    private let maxDrag: CGFloat = 75
-    private let threshold: CGFloat = 50
+    private let threshold: CGFloat = 72
 
     init(
-        isEligible: Bool,
-        onArchive: @escaping () -> Void,
-        onMarkComplete: @escaping () -> Void,
+        trailingAction: SwipeActionDescriptor?,
+        leadingAction: SwipeActionDescriptor?,
+        onTap: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) {
-        self.isEligible = isEligible
-        self.onArchive = onArchive
-        self.onMarkComplete = onMarkComplete
+        self.trailingAction = trailingAction
+        self.leadingAction = leadingAction
+        self.onTap = onTap
         self.content = content()
     }
 
+    private var hasAnyAction: Bool { trailingAction != nil || leadingAction != nil }
+
     var body: some View {
-        if isEligible {
-            ZStack {
-                actionBackground
-                content.offset(x: dragX)
-            }
-            .clipped()
-            .gesture(swipeGesture)
-        } else {
-            content
+        ZStack {
+            if hasAnyAction { actionBackground }
+            content.offset(x: dragX)
         }
+        .contentShape(Rectangle())
+        .clipped()
+        // Tap and drag are exclusive: when DragGesture recognises (>15 pt),
+        // SwiftUI cancels the TapGesture automatically, so the tap action never
+        // fires after a real swipe. No Button inside means no separate tap
+        // recogniser that can escape this cancellation.
+        .onTapGesture { onTap?() }
+        .gesture(hasAnyAction ? swipeGesture : nil)
     }
 
     @ViewBuilder
     private var actionBackground: some View {
-        if dragX < 0 {
-            HStack {
-                Spacer()
-                Image(systemName: "archivebox.fill")
+        if dragX < 0, let action = trailingAction {
+            action.tint
+                .overlay(alignment: .trailing) {
+                    VStack(spacing: 6) {
+                        Image(systemName: action.systemImage).font(.title3)
+                        Text(action.label).font(.caption.weight(.medium))
+                    }
                     .foregroundStyle(.white)
-                    .font(.body.weight(.medium))
                     .padding(.trailing, 20)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.orange)
-            .opacity(Double(min(abs(dragX) / threshold, 1.0)))
-        } else if dragX > 0 {
-            HStack {
-                Image(systemName: "checkmark.circle.fill")
+                }
+        } else if dragX > 0, let action = leadingAction {
+            action.tint
+                .overlay(alignment: .leading) {
+                    VStack(spacing: 6) {
+                        Image(systemName: action.systemImage).font(.title3)
+                        Text(action.label).font(.caption.weight(.medium))
+                    }
                     .foregroundStyle(.white)
-                    .font(.body.weight(.medium))
                     .padding(.leading, 20)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.blue)
-            .opacity(Double(min(dragX / threshold, 1.0)))
+                }
         }
     }
 
     private var swipeGesture: some Gesture {
         DragGesture(minimumDistance: 15)
             .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                dragX = value.translation.width > 0
-                    ? min(value.translation.width, maxDrag)
-                    : max(value.translation.width, -maxDrag)
+                // Lock gesture direction on first clearly horizontal movement.
+                // Using cumulative translation for the check means we only lock
+                // once — after that, all movements in this gesture update dragX
+                // regardless of the current width/height ratio, so reversing
+                // direction mid-swipe stays smooth.
+                if !gestureIsHorizontal {
+                    let w = abs(value.translation.width)
+                    let h = abs(value.translation.height)
+                    guard w > h else { return }
+                    gestureIsHorizontal = true
+                }
+                isGesturing = true
+                let raw = value.translation.width
+                // Allow return toward center (dragX != 0) even if that direction
+                // has no action, so the row can snap back smoothly.
+                guard (raw < 0 && trailingAction != nil)
+                        || (raw > 0 && leadingAction != nil)
+                        || dragX != 0 else { return }
+                if abs(raw) > threshold {
+                    let excess = abs(raw) - threshold
+                    dragX = raw > 0 ? threshold + excess * 0.3 : -(threshold + excess * 0.3)
+                } else {
+                    dragX = raw
+                }
             }
             .onEnded { _ in
+                gestureIsHorizontal = false
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    if dragX <= -threshold { onArchive() }
-                    else if dragX >= threshold { onMarkComplete() }
+                    if dragX <= -threshold { trailingAction?.action() }
+                    else if dragX >= threshold { leadingAction?.action() }
                     dragX = 0
                 }
             }

@@ -89,6 +89,12 @@ final class DataCache {
         save(Array(ids), to: "archived_assignments.json", in: persistentDir)
     }
 
+    func removeArchivedAssignmentId(_ id: String) {
+        var ids = loadArchivedAssignmentIds()
+        ids.remove(id)
+        save(Array(ids), to: "archived_assignments.json", in: persistentDir)
+    }
+
     func loadArchivedAssignmentIds() -> Set<String> {
         let ids: [String] = load(from: "archived_assignments.json", in: persistentDir) ?? []
         return Set(ids)
@@ -99,6 +105,12 @@ final class DataCache {
     func addLocallyCompletedAssignmentId(_ id: String) {
         var ids = loadLocallyCompletedAssignmentIds()
         ids.insert(id)
+        save(Array(ids), to: "locally_completed_assignments.json", in: persistentDir)
+    }
+
+    func removeLocallyCompletedAssignmentId(_ id: String) {
+        var ids = loadLocallyCompletedAssignmentIds()
+        ids.remove(id)
         save(Array(ids), to: "locally_completed_assignments.json", in: persistentDir)
     }
 

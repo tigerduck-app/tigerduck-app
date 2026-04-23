@@ -196,10 +196,24 @@ final class HomeViewModel {
         recomputeUpcomingAssignments()
     }
 
+    func unarchiveAssignment(_ assignment: SDAssignment) {
+        guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
+        allAssignmentsCache[idx].isArchived = false
+        DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
+        recomputeUpcomingAssignments()
+    }
+
     func markAssignmentAsLocallyCompleted(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
         allAssignmentsCache[idx].isLocallyCompleted = true
         DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
+        recomputeUpcomingAssignments()
+    }
+
+    func undoLocallyCompleted(_ assignment: SDAssignment) {
+        guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
+        allAssignmentsCache[idx].isLocallyCompleted = false
+        DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
         recomputeUpcomingAssignments()
     }
 
