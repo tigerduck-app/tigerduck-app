@@ -128,6 +128,9 @@ struct UpcomingAssignmentsView: View {
         switch status {
         case .overdueAcceptable, .overdueRejected:
             return status.tint
+        case .archived, .locallyCompleted:
+            // Time label stays red — Moodle still considers these unsubmitted overdue items.
+            return .badgeRed
         case .pending, .submitted, .submittedLate:
             return policy.secondaryTextColor
         }

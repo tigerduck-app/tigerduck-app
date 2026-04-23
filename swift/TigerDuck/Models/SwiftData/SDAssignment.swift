@@ -9,6 +9,8 @@ final class SDAssignment {
     var title: String
     var dueDate: Date
     var isCompleted: Bool
+    var isArchived: Bool
+    var isLocallyCompleted: Bool
     var moodleUrl: String?
     /// Final cutoff from Moodle. When `nil`, the assignment keeps accepting
     /// late submissions indefinitely; when non-`nil`, submissions past this
@@ -26,6 +28,8 @@ final class SDAssignment {
         title: String,
         dueDate: Date,
         isCompleted: Bool = false,
+        isArchived: Bool = false,
+        isLocallyCompleted: Bool = false,
         moodleUrl: String? = nil,
         cutoffDate: Date? = nil,
         submittedAt: Date? = nil
@@ -36,6 +40,8 @@ final class SDAssignment {
         self.title = title
         self.dueDate = dueDate
         self.isCompleted = isCompleted
+        self.isArchived = isArchived
+        self.isLocallyCompleted = isLocallyCompleted
         self.moodleUrl = moodleUrl
         self.cutoffDate = cutoffDate
         self.submittedAt = submittedAt
@@ -50,6 +56,8 @@ final class SDAssignment {
     /// views consistent; they all read the same enum instead of each
     /// re-deriving rules from raw dates.
     func status(now: Date = Date()) -> AssignmentStatus {
+        if isArchived { return .archived }
+        if isLocallyCompleted { return .locallyCompleted }
         if isCompleted {
             if let submittedAt, submittedAt > dueDate {
                 return .submittedLate

@@ -2,16 +2,18 @@ import Foundation
 
 extension Array where Element == SDAssignment {
     func unfinished(for courseNo: String) -> [SDAssignment] {
-        filter { $0.courseNo == courseNo && !$0.isCompleted }
+        filter { $0.courseNo == courseNo && !$0.isCompleted && !$0.isArchived && !$0.isLocallyCompleted }
     }
 
     func hasUnfinished(for courseNo: String) -> Bool {
-        contains { $0.courseNo == courseNo && !$0.isCompleted }
+        contains { $0.courseNo == courseNo && !$0.isCompleted && !$0.isArchived && !$0.isLocallyCompleted }
     }
 
     /// Returns incomplete assignments sorted by due date ascending.
+    /// Excludes locally archived and locally-completed items (hidden in 未完成 tab).
     func upcomingSorted() -> [SDAssignment] {
-        filter { !$0.isCompleted }.sorted { $0.dueDate < $1.dueDate }
+        filter { !$0.isCompleted && !$0.isArchived && !$0.isLocallyCompleted }
+            .sorted { $0.dueDate < $1.dueDate }
     }
 
     /// Returns all assignments with incomplete-first ordering: pending items
