@@ -1,7 +1,7 @@
 # TigerDuck — Session Handover
 
-**Last updated**: 2026-04-23
-**Branch**: `feature/backend-server` (not pushed; 19 commits ahead of `origin`)
+**Last updated**: 2026-04-23 (post-Wave-A/B/C session)
+**Branch**: `feature/backend-server` (not pushed; 28 commits ahead of `origin`)
 **Replaces**: `HANDOVER_BULLETINS.md` (now obsolete, safe to delete)
 
 Read this file first. It captures the architecture after the big backend + iOS overhaul, the user's working preferences, the pending work queue, and the gotchas that bite if you guess.
@@ -139,8 +139,23 @@ Read at runtime via `PushCoordinator.resolveSharedSecret()` with Info.plist fall
 
 ---
 
-## 4. This session's 19 commits (newest first)
+## 4. Recent commits (newest first)
 
+### Wave A/B/C session (2026-04-23) — 10 commits
+```
+94ba12d feat(iOS bulletins): MarkdownUI renders body_clean (P1)
+8feb110 feat(iOS bulletins): local read-state with unread dot + semibold (P7)
+df10f96 feat(iOS bulletins): native .searchable replaces custom toggle (P8)
+fc2d4d5 feat(iOS bulletins): consume title_clean, fix picker tap, preserve clientId (P2/P9)
+4f70f0e feat(bulletins): list orders by posted_at, composite cursor (P3/P6)
+242f9c2 fix(bulletins): tolerate dropped enum values in stored rows
+db1835a feat(backfill): --skip-scrape flag for re-classification runs
+6f35d92 feat(bulletins): LLM-normalized title persisted as title_clean (P4)
+4d63a00 refactor(taxonomy): reduce orgs/tags to user-facing set (P4-prep)
+(fd41071 docs: add HANDOVER.md ← previous handover boundary)
+```
+
+### Pre-handover infra session — 19 commits
 ```
 b003f75 fix(bulletins): disable TLS verify on bulletin fetch client
 31cdc2d fix(ssl): relax VERIFY_X509_STRICT for NTUST bulletin cert chain
@@ -165,10 +180,13 @@ c2ddda2 chore(api-poc): move backend/api/ to api-poc/api/ (git mv, no code chang
 ```
 
 Grouped:
-- **Infra**: proxy-net compose, Dockerfile, launchd plist, env cleanup, api-poc split
-- **Backend hardening**: lifespan LLM-poll, SKIP-LOCKED race fix, retention job, workers=1
-- **iOS**: Secrets.plist pattern (after xcconfig approach proved Xcode only honors Apple-whitelisted INFOPLIST_KEY_*), device platform field, subscriptions 404-retry
-- **NTUST TLS**: `_ssl_compat` clears `VERIFY_X509_STRICT`, bulletin-fetch client uses `verify=False` (see gotchas below)
+- **Wave-A bulletin polish**: `title_clean` + Markdown body + strict tagging prompt + reduced taxonomy + alembic 9a4c7e1f2d8b. New `BulletinSummary.title_clean` exposed; iOS reads via `displayTitle` fallback.
+- **Wave-B sort/data layer**: `posted_at DESC, id DESC` with composite cursor (handles NTUST pinned posts), defensive enum coerce on read, save() preserves clientId so post-save edits stop silently no-op'ing.
+- **Wave-C UI**: native `.searchable` (drops custom toggle), `MarkdownUI` for body, picker rows full-row tap target, local read state via `Defaults<Set<Int>>`.
+- **Infra (prior)**: proxy-net compose, Dockerfile, launchd plist, env cleanup, api-poc split
+- **Backend hardening (prior)**: lifespan LLM-poll, SKIP-LOCKED race fix, retention job, workers=1
+- **iOS (prior)**: Secrets.plist pattern, device platform field, subscriptions 404-retry
+- **NTUST TLS (prior)**: `_ssl_compat` clears `VERIFY_X509_STRICT`, bulletin-fetch client uses `verify=False` (see gotchas below)
 
 ---
 
@@ -243,64 +261,40 @@ PATH has `/app/.venv/bin` prepended so bare `python` resolves to the pinned 3.13
 
 ---
 
-## 8. Pending work — iOS side (user's queue for next session)
+## 8. P-list status (Wave-A/B/C session, 2026-04-23)
 
-The user listed the following items during the backfill verification step. They're the next session's top of the backlog.
+| # | Item | Status | Where to look |
+|---|---|---|---|
+| P1 | LLM Markdown body + iOS renders it | ✅ done | server prompt → MarkdownUI in `BulletinDetailView.bulletinMarkdownTheme` |
+| P2 | Custom rules won't save/modify | ✅ root-caused & fixed | `BulletinSubscriptionsStore.save()` snapshots clientIds and re-attaches positionally to the response so post-save closures still find rows |
+| P3 | Sort by posted_at desc + no default filter | ✅ done | `routes/bulletins.list_bulletins` orders `(posted_at DESC, id DESC)` with composite cursor; iOS default `selectedOrgs/Tags` already empty |
+| P4 | Uniform `title_clean` format | ✅ done | LLM `title` field, ≤24 全形 (2 ASCII = 1 全形), no decorative prefix, no source. Stored as `bulletins.title_clean` |
+| P5 | All-Chinese output, merge English nuance | ✅ done | `prompts.SYSTEM_PROMPT` LANGUAGE RULES — English text dropped, info merged in |
+| P6 | iOS not showing all bulletins | ✅ likely fixed | Was duplicate-on-pagination from pinned posts (low posted_at + high id); composite cursor closes the gap. Re-verify after backfill finishes |
+| P7 | Local read/unread state | ✅ done | `BulletinReadStateStore` + `Defaults[.bulletinReadIds]`, blue dot + semibold |
+| P8 | iOS 26 search bar | ✅ done | `.searchable(... placement: .navigationBarDrawer(displayMode: .always))` in `BulletinsView` |
+| P9 | Rule picker tap target | ✅ done | `.contentShape(Rectangle())` on Button HStack in `BulletinTaxonomyPickerView` |
+| P10 | (reserved by user) | — | — |
 
-### P1. LLM should output Markdown; iOS renders it
-Currently `body_clean` already allows Markdown (prompts.py doesn't restrict). iOS just displays plain-text. Next:
-- Keep / tighten LLM prompt so output is reliably Markdown (bullet lists, bold for key terms, links preserved).
-- iOS swap `Text(bulletin.bodyClean)` → a proper Markdown renderer. SwiftUI's `Text(AttributedString(markdown:))` handles inline formatting out-of-the-box on iOS 15+; for richer output (links, lists, tables) consider `MarkdownUI` (MIT-licensed).
-
-### P2. Custom subscription rules won't save/modify
-Only preset-toggle or full-disable works. Reproduce:
-1. Enter `BulletinNotificationSettingsView`
-2. Add a new custom rule via `SubscriptionRuleEditorView`
-3. Attempt save → no persist / no server hit / or silent failure
-Investigate `BulletinSubscriptionsStore.save()` error state, the rule-editor's binding into `pending: [SubscriptionRule]`, and whether `SubscriptionRuleEditorView` is mutating a detached copy. PUT path itself works (verified via curl), so this is iOS-side state management.
-
-### P3. Bulletin list sort order + default filter
-- Sort by `posted_at` descending (latest first).
-- Default view shows **all** bulletins (no implicit org/tag filter on first load).
-`BulletinsViewModel.refresh()` likely passes filter params even when empty; trace the query-param builder and cursor pagination.
-
-### P4. Rewrite titles to a uniform format
-The raw NTUST title is often verbose and inconsistent (`【重要】轉知XX單位...`, `[轉知]...`, `公告-...`). Want the LLM to produce a normalized `title` field. Steps:
-- Add `title` to `RESPONSE_SCHEMA` in `server/bulletins/llm/prompts.py` (e.g. 6–24 chars, zh-Hant, no `【】` decorations).
-- Store in a new `title_clean` column — Alembic migration + ORM field + schemas.
-- iOS displays `title_clean` (fallback to raw `title` if null during transition).
-- Pick an exact format with the user before implementing (they haven't specified the template, just "特定格式").
-
-### P5. All-Chinese output, fold-in English nuance
-Current SYSTEM_PROMPT says "Output Traditional Chinese... Keep English only if the source itself is English." Adjust:
-- If English parallel translation appears, skip it entirely in output.
-- If the English copy carries info the Chinese one misses (happens for cross-dept announcements), merge the English meaning into the Chinese result but don't include English text.
-
-### P6. iOS not showing all bulletins
-Could be pagination cursor bug, filter leak, or server-side `is_deleted=true` filter that's too aggressive. Check:
-- `BulletinsViewModel.refresh()` cursor reset logic
-- `/v1/bulletins/` list endpoint default limits
-- Count in DB vs count surfaced in app
-
-### P7. Read/unread state (local only)
-Mark-as-read when user opens detail view. Persist in SwiftData or UserDefaults keyed by bulletin_id. UI: unread gets a blue dot / bold title. No server round-trip.
-
-### P8. Search bar: iOS 26 style
-iOS 18+ `.searchable` with the new iOS 26 visual treatment (user specified "iOS26 Style"). Check `BulletinsView` for existing `.searchable` usage, upgrade modifiers per current iOS 26 HIG (likely `.searchable(text:, placement: .navigationBarDrawer(displayMode: .always))` or the new toolbar-embedded variant).
-
-### P9. Rule editor row tap target bug
-In the org/tag picker, tapping the row must trigger selection, but currently only the text area triggers. Whole row (including padding and checkmark column) should be tappable. Wrap in a `Button` or add `.contentShape(Rectangle())` + `.onTapGesture`.
-
-### P10. (empty — user reserved)
+### Open follow-ups discovered this session
+- **Quality pass on title_clean / classification**: backfill produces ~600 rows; user should sample after it finishes and feed bad cases back so we can tighten `SYSTEM_PROMPT` (mostly negative examples). Some 28→18 sample showed `canonical_org=other` for clearly department-y posts; might warrant adding more org-mapping hints.
+- **MarkdownUI dep verification**: pbxproj edited with the same slot pattern as Defaults (id `0530AA00`); `plutil -lint` + xml roundtrip pass. The build mac will resolve via SwiftPM on next Xcode open. If it errors, double-check `Package.resolved` got an entry for `swift-markdown-ui` after first build.
+- **`BulletinReadStateStore.prune(keepingIdsIn:)`**: helper exists but no caller wires it up. Eventually call from list-loaded so the read set doesn't grow past retention.
 
 ---
 
 ## 9. Deferred TODOs (not touched, but tracked)
 
+- **Restart backend after backfill**: 242f9c2 (defensive enum coerce) + 4f70f0e (posted_at sort) were committed AFTER the user kicked off the in-flight backfill, so the running container doesn't have them. Once backfill drains:
+  ```bash
+  docker compose up -d --build backend
+  # then optionally re-run backfill if some rows hit max_attempts
+  ```
 - **Postgres daily backup**: `pg_dump` + cron/launchd. User said "MVP first", do after stability.
 - **TestFlight switch**: flip `TIGERDUCK_APNS_ENV=production` in `.env` when the build ships to TestFlight. Otherwise APNs silently drops pushes.
-- **Push feature/backend-server to origin**: branch is 19 commits ahead of `origin/feature/backend-server`. User hasn't asked to push; confirm before doing it.
+- **Push feature/backend-server to origin**: branch is **28 commits ahead** of `origin/feature/backend-server`. User hasn't asked to push; confirm before doing it.
 - **iOS TigerDuckAPIToken on the build Mac**: user's build Mac needs `swift/TigerDuck/Secrets.plist` created locally (gitignored; not auto-synced). Already done once; re-creation needed if they switch machines.
+- **MarkdownUI on first build**: build mac will need to let Xcode resolve `swift-markdown-ui`. If File > Packages > Reset Package Caches is needed, that's normal SwiftPM hygiene.
 - **Ralph's feedback loop**: the code under `BulletinSubscriptionsStore` currently rotates through 4 retries; consider whether the UI should expose a manual retry button for the "超過 1.75s 還沒 register 完成" edge case.
 - **Android path**: `platform` field exists, no FCM sender. Deferred until an actual Android client is on the roadmap.
 
