@@ -129,15 +129,15 @@ TIGERDUCK_DATABASE_URL     # postgresql+asyncpg://tigerduck:<POSTGRES_PASSWORD>@
 TIGERDUCK_LLM_BASE_URL     # http://host.docker.internal:40001/v1
 TIGERDUCK_LLM_API_KEY=sk-local
 TIGERDUCK_LLM_MODEL=gemma-4-e4b-it
-TIGERDUCK_APNS_KEY_ID=5YMK3Y2A96
-TIGERDUCK_APNS_TEAM_ID=43UV8F72V6
+TIGERDUCK_APNS_KEY_ID=<APNS_KEY_ID>              # real value lives in backend/.env only
+TIGERDUCK_APNS_TEAM_ID=<APNS_TEAM_ID>            # real value lives in backend/.env only
 TIGERDUCK_APNS_BUNDLE_ID=org.ntust.app.TigerDuck
-TIGERDUCK_APNS_ENV=development        # flip to production for TestFlight
-TIGERDUCK_APNS_KEY_PATH=server/secrets/AuthKey_5YMK3Y2A96.p8
+TIGERDUCK_APNS_ENV=development                    # flip to production for TestFlight
+TIGERDUCK_APNS_KEY_PATH=server/secrets/AuthKey_<APNS_KEY_ID>.p8
 TIGERDUCK_API_SHARED_SECRET   # must match swift/TigerDuck/Secrets.plist APIToken
 ```
 
-APNs `.p8` file lives at `backend/server/secrets/AuthKey_5YMK3Y2A96.p8` — mounted read-only into container at `/app/server/secrets`. User already has the file backed up.
+APNs `.p8` file lives at `backend/server/secrets/AuthKey_<APNS_KEY_ID>.p8` (the literal key id is intentionally not in this doc — see `backend/.env`) and is mounted read-only into the container at `/app/server/secrets`. User already has the file backed up.
 
 ### iOS Secrets.plist (swift/TigerDuck/Secrets.plist) — gitignored
 
