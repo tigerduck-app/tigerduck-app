@@ -18,6 +18,10 @@ struct BulletinsView: View {
     @State private var showNotificationSettings: Bool = false
     @State private var detailingBulletinId: Int?
     @State private var unreadOnly: Bool = false
+    /// Gated by a long-press on the filter toolbar button. We surface the
+    /// bulk "mark all as read" action here instead of a separate button
+    /// so the primary toolbar stays uncluttered.
+    @State private var showMarkAllReadConfirm: Bool = false
 
     var body: some View {
         Group {
@@ -78,6 +82,12 @@ struct BulletinsView: View {
                         .symbolRenderingMode(.hierarchical)
                 }
                 .accessibilityLabel(unreadOnly ? "顯示全部公告" : "只看未讀")
+                // Long-press surfaces a bulk "全部已讀" action behind a
+                // confirmation sheet so accidental presses don't nuke the
+                // unread state.
+                .onLongPressGesture(minimumDuration: 0.4) {
+                    showMarkAllReadConfirm = true
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -90,6 +100,19 @@ struct BulletinsView: View {
         .navigationDestination(isPresented: $showNotificationSettings) {
             BulletinNotificationSettingsView(taxonomy: taxonomy)
         }
+        .confirmationDialog(
+            "將目前載入的公告全部標示為已讀？",
+            isPresented: $showMarkAllReadConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("全部標示為已讀") {
+                readState.markAllRead(viewModel.items.map(\.id))
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("共 \(viewModel.items.count) 則公告")
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: showMarkAllReadConfirm) { _, new in new }
         .navigationDestination(item: $detailingBulletinId) { id in
             if let row = viewModel.items.first(where: { $0.id == id }) {
                 BulletinDetailView(

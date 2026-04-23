@@ -48,6 +48,18 @@ final class BulletinReadStateStore {
         }
     }
 
+    /// Mark every supplied id as read in one atomic Defaults write. Used
+    /// by the list page's "全部標示為已讀" action so a stack of unreads
+    /// can be cleared without paging through. Ids already in the set are
+    /// harmlessly included in the union.
+    func markAllRead(_ ids: some Sequence<Int>) {
+        let incoming = Set(ids)
+        let merged = read.union(incoming)
+        guard merged.count != read.count else { return }
+        read = merged
+        Defaults[.bulletinReadIds] = merged
+    }
+
     /// Drop ids that are no longer present in the supplied list. Lets the
     /// retention path keep `bulletinReadIds` from growing unbounded as
     /// older bulletins fall off the server side.
