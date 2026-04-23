@@ -2,9 +2,14 @@ import Foundation
 import Observation
 import os
 
-/// Singleton-style cache for the taxonomy lookup. The orgs/tags set changes
+/// Process-level cache for the taxonomy lookup. The orgs/tags set changes
 /// rarely (only when the server enums evolve), so we fetch on first use and
 /// keep the result in memory for the lifetime of the app.
+///
+/// Exposed as a shared singleton (`BulletinTaxonomyStore.shared`) so that
+/// navigating into `BulletinsView` from the Home widget — which re-creates
+/// the view on every push — does not re-fetch the taxonomy and block the
+/// filter chips behind a network round-trip on each entry.
 ///
 /// Falls back to an empty taxonomy on error — the list view degrades
 /// gracefully (no filter chips) and the subscription editor surfaces the
@@ -12,6 +17,11 @@ import os
 @MainActor
 @Observable
 final class BulletinTaxonomyStore {
+    /// Shared instance. Safe to hold a direct reference in views: SwiftUI
+    /// tracks `@Observable` property access regardless of whether the
+    /// instance is `@State`-owned.
+    static let shared = BulletinTaxonomyStore()
+
     enum State: Sendable {
         case idle
         case loading

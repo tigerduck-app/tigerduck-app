@@ -12,16 +12,21 @@ struct BulletinsView: View {
     var embedded: Bool = false
 
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = BulletinsViewModel()
-    @State private var taxonomy = BulletinTaxonomyStore()
+    /// Shared across navigations — fetching the taxonomy is a network hop
+    /// the user feels as "filter chips missing on entry" every time the
+    /// Home widget pushes this view fresh. A singleton keeps the loaded
+    /// taxonomy in memory for the app's lifetime.
+    private let taxonomy = BulletinTaxonomyStore.shared
     @State private var readState = BulletinReadStateStore()
     @State private var showNotificationSettings: Bool = false
     @State private var detailingBulletinId: Int?
     @State private var unreadOnly: Bool = false
-    /// Gated by a long-press on the filter toolbar button. We surface the
-    /// bulk "mark all as read" action here instead of a separate button
-    /// so the primary toolbar stays uncluttered.
-    @State private var showMarkAllReadConfirm: Bool = false
+    /// Drives `.searchable`'s expansion — bound so we can force-collapse
+    /// it when the app returns to foreground (users expect the search
+    /// scope to reset across sessions rather than persist).
+    @State private var searchIsPresented: Bool = false
 
     var body: some View {
         Group {
@@ -32,9 +37,27 @@ struct BulletinsView: View {
             }
         }
         .task {
-            await taxonomy.loadIfNeeded()
-            await viewModel.loadIfNeeded()
+            // Kick both loads off concurrently — taxonomy and bulletin
+            // list are independent, and the list's cache-seed already
+            // paints before either resolves.
+            async let tax: Void = taxonomy.loadIfNeeded()
+            async let bulletins: Void = viewModel.loadIfNeeded()
+            _ = await (tax, bulletins)
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Collapse + clear the search field when the app comes back
+            // to foreground. Without this, a user who left the app with
+            // an active query sees the same expanded search UI on the
+            // next session, which is not what "reopen" implies.
+            if newPhase == .active {
+                searchIsPresented = false
+                viewModel.searchText = ""
+            }
+        }
+    }
+
+    private var hasUnreadBulletins: Bool {
+        viewModel.items.contains { !readState.isRead($0.id) }
     }
 
     // MARK: - Content
@@ -65,9 +88,21 @@ struct BulletinsView: View {
         // reveals on pull-down and collapses on scroll. Liquid Glass
         // styling is applied automatically by the system; we don't
         // call `.glassEffect()` ourselves per HIG guidance.
-        .searchable(text: $viewModel.searchText, prompt: "搜尋公告")
+        .searchable(text: $viewModel.searchText, isPresented: $searchIsPresented, prompt: "搜尋公告")
         .refreshable { await viewModel.refresh() }
         .toolbar {
+            // Surfaces only when the user has narrowed to unread AND
+            // there's actually something to clear. This replaces the
+            // prior long-press-on-filter → confirmation-dialog path:
+            // the conditional visibility is self-gating, so no extra
+            // confirmation step is needed.
+            if unreadOnly, hasUnreadBulletins {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("全部已讀") {
+                        readState.markAllRead(viewModel.items.map(\.id))
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     unreadOnly.toggle()
@@ -82,12 +117,6 @@ struct BulletinsView: View {
                         .symbolRenderingMode(.hierarchical)
                 }
                 .accessibilityLabel(unreadOnly ? "顯示全部公告" : "只看未讀")
-                // Long-press surfaces a bulk "全部已讀" action behind a
-                // confirmation sheet so accidental presses don't nuke the
-                // unread state.
-                .onLongPressGesture(minimumDuration: 0.4) {
-                    showMarkAllReadConfirm = true
-                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -100,19 +129,6 @@ struct BulletinsView: View {
         .navigationDestination(isPresented: $showNotificationSettings) {
             BulletinNotificationSettingsView(taxonomy: taxonomy)
         }
-        .confirmationDialog(
-            "將目前載入的公告全部標示為已讀？",
-            isPresented: $showMarkAllReadConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("全部標示為已讀") {
-                readState.markAllRead(viewModel.items.map(\.id))
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("共 \(viewModel.items.count) 則公告")
-        }
-        .sensoryFeedback(.impact(weight: .medium), trigger: showMarkAllReadConfirm) { _, new in new }
         .navigationDestination(item: $detailingBulletinId) { id in
             if let row = viewModel.items.first(where: { $0.id == id }) {
                 BulletinDetailView(
