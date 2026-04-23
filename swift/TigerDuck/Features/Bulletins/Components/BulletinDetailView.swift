@@ -222,15 +222,17 @@ struct BulletinDetailView: View {
             with: "**$1** $2",
             options: .regularExpression
         )
-        // `**text<fullwidth-punct>**<letter>` — punct INSIDE bold, right
-        // before `**`, followed by a non-whitespace/non-punct character
-        // (typically CJK). Insert an ASCII space after `**` so the
-        // closing run is followed by whitespace — satisfies the "punct
-        // before + whitespace after" branch of right-flanking and emphasis
-        // closes correctly. This is the shape the LLM most often emits in
-        // bulleted definition lists: `- **跨界轉身：**分享…`.
+        // `**text<fullwidth-punct>**<non-space>` — punct INSIDE bold,
+        // right before `**`, followed directly by any non-whitespace
+        // character. The closing `**` is neither "not followed by
+        // non-whitespace" nor "preceded by whitespace/punct AND followed
+        // by punct" → fails CommonMark right-flanking. Insert an ASCII
+        // space so the closing run is followed by whitespace. Covers all
+        // known LLM outputs: CJK (`**跨界：**分享`), ASCII digits
+        // (`**日期：**115 年`), ASCII letters (`**主講人：**Alex`), and
+        // link openers (`**報名連結：**[連結](url)`).
         text = text.replacingOccurrences(
-            of: #"\*\*([^*\n]*?[、。，．：；！？])\*\*(\p{L})"#,
+            of: #"\*\*([^*\n]*?[、。，．：；！？])\*\*(\S)"#,
             with: "**$1** $2",
             options: .regularExpression
         )
