@@ -33,9 +33,9 @@ extension Array where Element == SDAssignment {
     /// due date descending (most recently due first). Ignored-but-unsubmitted
     /// items are excluded because they live in the dedicated 已忽略 filter.
     func allSorted() -> [SDAssignment] {
-        let incomplete = filter { !$0.isCompleted && !$0.isArchived }
+        let incomplete = filter { !($0.isCompleted || $0.isLocallyCompleted) && !$0.isArchived }
             .sorted { $0.dueDate < $1.dueDate }
-        let completed = filter { $0.isCompleted }.sorted { $0.dueDate > $1.dueDate }
+        let completed = filter { ($0.isCompleted || $0.isLocallyCompleted) }.sorted { $0.dueDate > $1.dueDate }
         return incomplete + completed
     }
 }
