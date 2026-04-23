@@ -44,7 +44,10 @@ if str(_BACKEND_DIR) not in sys.path:
 from server import _ssl_compat  # noqa: F401, E402  # relax OpenSSL 3 strict parsing for NTUST
 from server.bulletins.dedup import attach_body_and_dedup, upsert_list_rows  # noqa: E402
 from server.bulletins.detail import fetch_detail  # noqa: E402
-from server.bulletins.jobs import claim_pending_bulletins  # noqa: E402
+from server.bulletins.jobs import (  # noqa: E402
+    claim_pending_bulletins,
+    resolve_bulletin_verify,
+)
 from server.bulletins.llm.base import LLMError, LLMProvider  # noqa: E402
 from server.bulletins.models import Bulletin, BulletinProcessingState  # noqa: E402
 from server.bulletins.scraper import fetch_list  # noqa: E402
@@ -343,10 +346,10 @@ async def main_async(args: argparse.Namespace) -> int:
         async with httpx.AsyncClient(
             follow_redirects=True,
             headers={"User-Agent": "TigerDuckBulletinBot/0.1 (backfill)"},
-            # Match server/bulletins/jobs.default_http_client_factory — many
-            # NTUST subdomains ship broken/incomplete chains that OpenSSL 3
-            # rejects. See that function's docstring for the full reasoning.
-            verify=False,
+            # Match the scheduler client — use the NTUST CA bundle when
+            # configured, fall back to verify=False with a logged warning
+            # otherwise. See server/bulletins/jobs.resolve_bulletin_verify.
+            verify=resolve_bulletin_verify(settings),
         ) as http_client:
             if not args.skip_preflight:
                 await _preflight_llm(settings, http_client)

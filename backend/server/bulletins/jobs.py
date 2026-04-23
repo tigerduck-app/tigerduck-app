@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 
 import httpx
 import structlog
@@ -37,24 +38,61 @@ logger = structlog.get_logger(__name__)
 HttpClientFactory = Callable[[], httpx.AsyncClient]
 
 
+@lru_cache(maxsize=1)
+def _warn_ca_bundle_missing(path: str) -> None:
+    """Log once per process when the configured bundle path isn't present
+    on disk, so the fallback to unverified TLS doesn't stay silent."""
+    logger.warning(
+        "bulletins.ca_bundle.missing",
+        path=path,
+        fallback="verify=False",
+    )
+
+
+@lru_cache(maxsize=1)
+def _warn_ca_bundle_unset() -> None:
+    """Log once per process when no bundle is configured at all, so the
+    security trade-off is visible in startup logs instead of folklore."""
+    logger.warning(
+        "bulletins.ca_bundle.unset",
+        fallback="verify=False",
+        remedy="set TIGERDUCK_BULLETIN_CA_BUNDLE to a PEM file",
+    )
+
+
+def resolve_bulletin_verify(settings: Settings | None = None) -> bool | str:
+    """Pick the TLS verification strategy for bulletin scraping.
+
+    NTUST subdomains (bulletin / obei / admissions / library …) ship
+    incomplete cert chains and certs missing RFC 5280 extensions. OpenSSL
+    3 on Debian rejects them; curl/macOS tolerate them via AIA chasing.
+
+    When the operator has bundled NTUST's root + the missing intermediates
+    at ``settings.bulletin_ca_bundle`` (build via
+    ``openssl s_client -showcerts -connect <host>:443`` and concat each
+    leaf's chain into one PEM), return that path so httpx can validate
+    hostname and chain against it. Otherwise fall back to ``verify=False``
+    with a logged warning — MVP content is public, but the degradation
+    should stay visible so we don't drift into permanent acceptance.
+    """
+    s = settings or Settings()
+    bundle = s.bulletin_ca_bundle
+    if bundle is None:
+        _warn_ca_bundle_unset()
+        return False
+    if bundle.is_file():
+        return str(bundle)
+    _warn_ca_bundle_missing(str(bundle))
+    return False
+
+
 def default_http_client_factory() -> httpx.AsyncClient:
     """Each job call builds its own client — simpler than juggling an app-
-    wide pool for calls that only happen every minute or so.
-
-    TLS verification is disabled because the NTUST bulletin pipeline hops
-    through multiple ntust.edu.tw subdomains (obei, admissions, library…)
-    whose servers ship incomplete cert chains or certs missing RFC 5280
-    extensions. OpenSSL 3 on Debian rejects all of them; curl/macOS
-    tolerate them via AIA chasing / lax parsing. Since the content is
-    public and nothing sensitive flows out, trading TLS strictness for
-    success on all ~600 bulletins is the right call at MVP scale. If a
-    later phase needs genuine integrity, pin the NTUST root manually and
-    re-enable verify.
-    """
+    wide pool for calls that only happen every minute or so."""
     return httpx.AsyncClient(
         follow_redirects=True,
         headers={"User-Agent": "TigerDuckBulletinBot/0.1"},
-        verify=False,
+        verify=resolve_bulletin_verify(),
     )
 
 
