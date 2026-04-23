@@ -138,39 +138,44 @@ final class BulletinSubscriptionsStore {
 
     // MARK: - Mutation helpers
 
-    /// Append a fresh blank rule and return its `clientId` so the caller
-    /// can immediately push the editor for it. Returning the id avoids the
-    /// "guess the index" pattern and pairs cleanly with
-    /// `.navigationDestination(item:)` for programmatic navigation.
-    @discardableResult
-    func addRule() -> UUID {
-        let new = BulletinAPI.SubscriptionRule(
+    /// Build a blank rule for the editor to work on, *without* touching
+    /// `pending`. The rule is a draft held by the caller — it only
+    /// lands in `pending` when the editor's 完成 path invokes `upsert`.
+    /// This shape lets "tap 新增規則 → swipe-back without 完成" discard
+    /// cleanly instead of persisting an empty placeholder the user didn't
+    /// mean to keep.
+    func makeNewRule() -> BulletinAPI.SubscriptionRule {
+        BulletinAPI.SubscriptionRule(
             name: nil,
             orgs: [],
             tags: [],
             mode: .and,
             enabled: true
         )
-        pending.append(new)
-        isDirty = true
+    }
+
+    /// Insert a newly-committed draft or update an existing rule in place.
+    /// `isDirty` flips only when the value actually changes, so a no-op
+    /// 完成 tap on an existing rule doesn't force a save.
+    func upsert(_ rule: BulletinAPI.SubscriptionRule) {
+        if let index = pending.firstIndex(where: { $0.clientId == rule.clientId }) {
+            if pending[index] != rule {
+                pending[index] = rule
+                isDirty = true
+                logger.info("upsert updated clientId=\(rule.clientId.uuidString, privacy: .public)")
+            }
+        } else {
+            pending.append(rule)
+            isDirty = true
+            logger.info("upsert appended clientId=\(rule.clientId.uuidString, privacy: .public) pendingCount=\(self.pending.count, privacy: .public)")
+        }
         saveState = .idle
-        logger.info("addRule clientId=\(new.clientId.uuidString, privacy: .public) pendingCount=\(self.pending.count, privacy: .public)")
-        return new.clientId
     }
 
     func removeRule(clientId: UUID) {
         let before = pending.count
         pending.removeAll { $0.clientId == clientId }
         if pending.count != before { isDirty = true }
-        saveState = .idle
-    }
-
-    func update(_ rule: BulletinAPI.SubscriptionRule) {
-        guard let index = pending.firstIndex(where: { $0.clientId == rule.clientId }) else { return }
-        if pending[index] != rule {
-            pending[index] = rule
-            isDirty = true
-        }
         saveState = .idle
     }
 

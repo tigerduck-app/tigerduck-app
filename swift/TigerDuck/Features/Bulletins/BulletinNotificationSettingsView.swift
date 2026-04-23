@@ -9,15 +9,20 @@ import UserNotifications
 /// 2. Toggle our `pushServerEnabled` flag (a `Defaults` key); flipping it
 ///    on triggers `PushCoordinator` registration, off tells the server
 ///    to drop this device.
-/// 3. CRUD the device's subscription rules. Rules are local drafts until
-///    the user hits 儲存 — the backend takes a snapshot replacement PUT.
+/// 3. CRUD the device's subscription rules. There is no manual 儲存
+///    button — the page auto-persists in three situations:
+///    * on editor 完成 (upsert + save)
+///    * on editor 刪除規則 (remove + save)
+///    * on page `.onDisappear` if any unsaved change remains (catches
+///      swipe-to-delete on the list that didn't route through the
+///      editor). The user's mental model is "I tweaked something, I
+///      swipe back, it's saved" — matches the Settings / Notes app
+///      idiom.
 ///
-/// `@Default(.pushServerEnabled)` gives us a reactive binding so the page
-/// updates immediately when push is toggled (the previous read-once
-/// `Defaults[.pushServerEnabled]` left the page stale until the next nav
-/// event). Rule edits use programmatic navigation via
-/// `.navigationDestination(item:)` so the new-rule flow doesn't depend on
-/// captured-closure state in a NavigationLink trailing-builder.
+/// Tapping 新增規則 does NOT mutate `pending` — the new rule starts life
+/// as a local draft held in view state and only enters the server-bound
+/// list when the user taps 完成 in the editor. Swiping back out of the
+/// editor discards the draft cleanly.
 struct BulletinNotificationSettingsView: View {
     let taxonomy: BulletinTaxonomyStore
 
@@ -26,7 +31,17 @@ struct BulletinNotificationSettingsView: View {
     @State private var authStatus: UNAuthorizationStatus = .notDetermined
     @State private var isAskingPermission: Bool = false
     @State private var editingClientId: UUID?
+    /// Unpersisted rule that lives only while the editor is on screen.
+    /// Transitions to `store.pending` via `upsert` when the user taps
+    /// 完成. Replaced (or cleared) whenever the user navigates back out.
+    @State private var draftRule: BulletinAPI.SubscriptionRule?
     @State private var saveErrorMessage: String?
+    /// Ensures the initial network load fires exactly once per view
+    /// instance. Without this guard, SwiftUI's `.task` re-firing on
+    /// view re-appearance can issue a redundant GET /subscriptions
+    /// right after the user edits — which in the previous iteration
+    /// clobbered the user's in-flight pending array.
+    @State private var didInitialLoad: Bool = false
 
     @Default(.pushServerEnabled) private var pushEnabled
 
@@ -44,25 +59,25 @@ struct BulletinNotificationSettingsView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("公告通知")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if pushEnabled, shouldShowSaveButton {
-                ToolbarItem(placement: .topBarTrailing) {
-                    saveToolbarButton
-                }
-            }
-        }
         .task {
+            // Taxonomy + auth status refresh every time; only the
+            // subscription GET is gated so it doesn't re-fire on
+            // re-appearance.
             await taxonomy.loadIfNeeded()
             await refreshAuthStatus()
-            if pushEnabled {
+            if pushEnabled, !didInitialLoad {
+                didInitialLoad = true
                 await store.load()
             }
         }
-        .onChange(of: pushEnabled) { _, isOn in
-            // Toggling push back on (e.g. via Settings page elsewhere)
-            // should re-load subscriptions so the rules section is
-            // populated rather than blank.
-            if isOn { Task { await store.load() } }
+        .onDisappear {
+            // Auto-save when leaving the page (swipe back, tab switch,
+            // etc.). Guard against pushing the editor onto the stack —
+            // that also fires `onDisappear`, but `editingClientId`
+            // tells us we're just being covered, not popped.
+            if editingClientId == nil, store.isDirty {
+                Task { await store.save() }
+            }
         }
         .onChange(of: store.saveState) { _, newState in
             if case .failed(let msg) = newState {
@@ -177,14 +192,12 @@ struct BulletinNotificationSettingsView: View {
                 .onDelete(perform: deleteRules)
 
                 Button {
-                    // addRule mutates `pending` synchronously and returns
-                    // the new clientId. Setting `editingClientId` in the
-                    // same event loop tick lets SwiftUI batch both state
-                    // changes into a single render pass; the previous
-                    // dispatch_async created a window where the ForEach
-                    // had committed but the editor binding read stale
-                    // state.
-                    editingClientId = store.addRule()
+                    // Create a draft rule locally; don't touch `pending`
+                    // until 完成. Setting both state fields in the same
+                    // tick so SwiftUI batches a single render pass.
+                    let draft = store.makeNewRule()
+                    draftRule = draft
+                    editingClientId = draft.clientId
                 } label: {
                     Label("新增規則", systemImage: "plus")
                 }
@@ -201,6 +214,7 @@ struct BulletinNotificationSettingsView: View {
             Button {
                 if let tax = taxonomy.state.taxonomy {
                     store.seedDefault(from: tax)
+                    Task { await store.save() }
                 }
             } label: {
                 Label("套用預設規則", systemImage: "wand.and.stars")
@@ -210,44 +224,16 @@ struct BulletinNotificationSettingsView: View {
         }
     }
 
-    // MARK: - Toolbar / editor
-
-    /// Don't render the 儲存 toolbar item unless either:
-    ///   * the user has unsaved changes (`isDirty`), or
-    ///   * a save is currently in flight (so the spinner has a slot).
-    /// Keeps the right side of the nav bar clean during read-only browsing.
-    private var shouldShowSaveButton: Bool {
-        if case .saving = store.saveState { return true }
-        return store.isDirty
-    }
-
-    @ViewBuilder
-    private var saveToolbarButton: some View {
-        switch store.saveState {
-        case .saving:
-            ProgressView()
-        default:
-            Button("儲存") {
-                Task { await store.save() }
-            }
-            .disabled(store.pending.count > 32)
-        }
-    }
+    // MARK: - Editor routing
 
     @ViewBuilder
     private func ruleEditor(for clientId: UUID) -> some View {
-        if let rule = store.pending.first(where: { $0.clientId == clientId }) {
+        if let existing = store.pending.first(where: { $0.clientId == clientId }) {
             SubscriptionRuleEditorView(
-                rule: rule,
+                rule: existing,
                 taxonomy: taxonomy,
                 onCommit: { updated in
-                    store.update(updated)
-                    // Auto-save on 完成 — the prior "add rule → 完成 →
-                    // also remember to tap 儲存" flow was lossy: users
-                    // navigated away thinking it was saved and the
-                    // draft evaporated. Commit-means-save matches the
-                    // iOS idiom where a modal editor persists on
-                    // confirm.
+                    store.upsert(updated)
                     Task { await store.save() }
                 },
                 onDelete: {
@@ -255,10 +241,26 @@ struct BulletinNotificationSettingsView: View {
                     Task { await store.save() }
                 }
             )
+        } else if let draft = draftRule, draft.clientId == clientId {
+            // New rule path — the draft lives in view state until
+            // 完成 upgrades it into `pending`. Swiping back discards
+            // (the editingClientId binding flips to nil, draft remains
+            // in state but is simply replaced on the next 新增規則).
+            // No onDelete here: there's nothing on the server to
+            // delete and the swipe-back gesture is the discard.
+            SubscriptionRuleEditorView(
+                rule: draft,
+                taxonomy: taxonomy,
+                onCommit: { updated in
+                    store.upsert(updated)
+                    draftRule = nil
+                    Task { await store.save() }
+                },
+                onDelete: nil
+            )
         } else {
-            // Rule was deleted while the editor was open (e.g. via swipe
-            // on a different navigation path). Bounce back rather than
-            // showing a stale view.
+            // Neither pending nor draft — rule vanished under us
+            // (e.g. swipe-delete on a different path). Pop back.
             Color.clear
                 .onAppear { editingClientId = nil }
         }
@@ -308,7 +310,10 @@ struct BulletinNotificationSettingsView: View {
         await refreshAuthStatus()
         guard granted || authStatus == .provisional else { return }
         appState.enablePushServer()
-        await store.load()
+        if !didInitialLoad {
+            didInitialLoad = true
+            await store.load()
+        }
     }
 
     private func disablePush() async {
