@@ -207,7 +207,7 @@ struct HomeView: View {
     @ViewBuilder
     private func homeDestination(for feature: AppFeature) -> some View {
         switch feature {
-        case .announcements: AnnouncementsView(embedded: true)
+        case .announcements: BulletinsView(embedded: true)
         case .classTable: ClassTableView(embedded: true)
         case .calendar: CalendarTabView(embedded: true)
         case .library: LibraryView(embedded: true)

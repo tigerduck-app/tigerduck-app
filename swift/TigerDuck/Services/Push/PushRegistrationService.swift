@@ -108,9 +108,34 @@ actor PushRegistrationService {
     /// We upload as soon as the PTS token exists. Device token alone is not
     /// enough to start a Live Activity, and PTS is the Checkpoint-2/3 focus.
     /// The device token rides along for later standard-alert pushes.
+    ///
+    /// At app launch the PTS and APNs device tokens arrive within a few
+    /// tens of ms of each other, so the naive "POST on every update"
+    /// flow fired twice in a row — the first POST got cancelled mid-
+    /// flight by the second `lastAttempt?.cancel()` and surfaced as the
+    /// "register failed: 已取消" line in the logs. A 250ms debounce at
+    /// the head of the Task is enough to coalesce both arrivals into
+    /// one POST, and `CancellationError`s are silenced since they're
+    /// the expected side-effect of a newer request winning.
     private func registerIfReady() async {
-        guard let pts = ptsTokenHex else { return }
+        guard ptsTokenHex != nil else { return }
 
+        lastAttempt?.cancel()
+        let logger = self.logger
+        lastAttempt = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            if Task.isCancelled { return }
+            guard let self else { return }
+            await self.performRegister(logger: logger)
+        }
+    }
+
+    /// Re-reads the current tokens inside the actor and POSTs the
+    /// registration. Split out so the debounce `Task` can call an
+    /// actor-isolated method for fresh state instead of capturing
+    /// stale `let`s from the enqueue site.
+    private func performRegister(logger: Logger) async {
+        guard let pts = ptsTokenHex else { return }
         let request = PushAPI.DeviceRegisterRequest(
             userId: identity.userId,
             deviceId: identity.deviceId,
@@ -120,31 +145,30 @@ actor PushRegistrationService {
             attrsType: attrsType,
             apnsEnv: apnsEnv
         )
-
-        lastAttempt?.cancel()
-        let apiClient = self.apiClient
-        let logger = self.logger
-        lastAttempt = Task { [weak self] in
-            do {
-                let response = try await apiClient.registerDevice(request)
-                logger.info("registered device=\(response.deviceId, privacy: .public) user=\(response.userId, privacy: .public)")
-                await self?.noteSuccessfulRegistration()
-            } catch {
-                logger.error("register failed: \(error.localizedDescription, privacy: .public)")
-                await self?.noteRegistrationError(error)
-            }
+        do {
+            let response = try await apiClient.registerDevice(request)
+            logger.info("registered device=\(response.deviceId, privacy: .public) user=\(response.userId, privacy: .public)")
+            noteSuccessfulRegistration()
+        } catch is CancellationError {
+            // Expected side-effect of debounce preempting an in-flight
+            // request. Swallow silently so the logs stay clean.
+        } catch let error as NSError where error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled {
+            // URLSession surfaces cancellation this way on some paths.
+        } catch {
+            logger.error("register failed: \(error.localizedDescription, privacy: .public)")
+            noteRegistrationError(error)
         }
     }
 
-    private func noteSuccessfulRegistration() async {
+    private func noteSuccessfulRegistration() {
         lastRegisteredAt = Date()
         lastError = nil
-        await MainActor.run {
+        Task { @MainActor in
             Defaults[.pushLastRegistrationAt] = Date()
         }
     }
 
-    private func noteRegistrationError(_ error: Error) async {
+    private func noteRegistrationError(_ error: Error) {
         lastError = "register: \(error.localizedDescription)"
     }
 }

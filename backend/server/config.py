@@ -52,6 +52,44 @@ class Settings(BaseSettings):
     # fire_at within [now, now + window_seconds] becomes eligible each tick
     scheduler_window_seconds: int = 60
 
+    # --- Bulletins ---
+    bulletin_list_url: str = (
+        "https://bulletin.ntust.edu.tw/p/403-1045-1391-1.php"
+    )
+    bulletin_scrape_interval_seconds: int = 600   # 10 min
+    bulletin_process_interval_seconds: int = 60
+    bulletin_dispatch_interval_seconds: int = 60
+    # Rows whose last_seen_at is older than N scrape cycles get is_deleted=true.
+    bulletin_stale_cycles: int = 3
+    # Max processing retries before giving up on a bulletin.
+    bulletin_max_process_attempts: int = 3
+    # Delete is_deleted=true rows this old to keep the table bounded. Rows
+    # still visible on the bulletin board keep refreshing last_seen_at and
+    # stay forever; only the ones that fell off the list and aged out go.
+    bulletin_retention_days: int = 365
+    # Retention job runs at this cadence. Once a day is plenty.
+    bulletin_retention_interval_hours: int = 24
+    # Optional PEM file bundling NTUST's root + intermediates. When set and
+    # readable, the bulletin HTTP client uses it as the trust anchor so
+    # OpenSSL can complete the chain (the NTUST servers themselves ship
+    # incomplete chains). When unset, the client falls back to the MVP
+    # behavior of `verify=False` — still functional, but skips hostname /
+    # chain validation. Obtain the bundle via `openssl s_client -showcerts`
+    # against each NTUST subdomain the pipeline reaches.
+    bulletin_ca_bundle: Path | None = None
+
+    # --- LLM (OpenAI-compatible endpoint: llama.cpp, Gemini, vLLM, ...) ---
+    llm_base_url: str = "http://localhost:8080/v1"
+    llm_api_key: str = "sk-local"
+    llm_model: str = "gemma-4-e4b-it"
+    # 120s is generous because multi-slot llama.cpp fans one backend
+    # GPU across concurrent requests, so effective per-request latency
+    # scales with the backfill `--concurrency`. 30s was too tight for
+    # Gemma-4 E4B on Apple Silicon at 3× concurrency.
+    llm_timeout_seconds: float = 120.0
+    llm_max_retries: int = 2
+    llm_temperature: float = 0.2
+
     @property
     def apns_topic_live_activity(self) -> str:
         return f"{self.apns_bundle_id}.push-type.liveactivity"

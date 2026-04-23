@@ -5,6 +5,18 @@ extension Date {
         formatted(.dateTime.month(.defaultDigits).day())
     }
 
+    /// Full numeric date — "2026/04/23". Used for article mastheads where
+    /// the year matters and truncating to M/d would read as ambiguous.
+    var fullDateString: String {
+        Self.fullDateFormatter.string(from: self)
+    }
+
+    private static let fullDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy/MM/dd"
+        return f
+    }()
+
     var timeString: String {
         formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
     }

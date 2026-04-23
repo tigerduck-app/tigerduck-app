@@ -154,14 +154,24 @@ final class PushCoordinator {
         return AppConstants.defaultPushServerURL
     }
 
-    /// Read the shared secret from Info.plist key `TigerDuckAPIToken`
-    /// (injected at build time from an xcconfig / CI secret). Returning
-    /// nil preserves the dev-friendly no-auth path when the key is absent.
+    /// Read the shared secret from `Secrets.plist` (gitignored) bundled
+    /// with the app. The `APIToken` key must match the server's
+    /// `TIGERDUCK_API_SHARED_SECRET`. A missing file or empty value returns
+    /// nil, which preserves the dev-friendly no-auth path.
+    ///
+    /// Falls back to the legacy Info.plist key so older builds keep
+    /// working if an unrelated CI pipeline still injects there.
     static func resolveSharedSecret() -> String? {
-        guard
-            let value = Bundle.main.object(forInfoDictionaryKey: "TigerDuckAPIToken") as? String,
-            !value.isEmpty
-        else { return nil }
-        return value
+        if let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
+           let dict = NSDictionary(contentsOf: url),
+           let value = dict["APIToken"] as? String,
+           !value.isEmpty {
+            return value
+        }
+        if let value = Bundle.main.object(forInfoDictionaryKey: "TigerDuckAPIToken") as? String,
+           !value.isEmpty {
+            return value
+        }
+        return nil
     }
 }

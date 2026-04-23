@@ -1,0 +1,35 @@
+# Same exclusions as backend/.gitignore PLUS things that are fine in git but
+# shouldn't ship inside the container image.
+
+# Secrets & runtime env (mounted at runtime via env_file / volumes, not baked).
+.env
+.env.*
+!.env.example
+server/secrets/
+*.p8
+
+# Python artefacts
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editor / tool state
+.duckversions/
+.idea/
+.vscode/
+*.iml
+
+# Tests — not needed in production image.
+server/tests/
+
+# Dev tooling that doesn't run inside the image.
+docker-compose.yml
+Dockerfile
+.dockerignore
+.gitignore
+
+# Docs
+*.md

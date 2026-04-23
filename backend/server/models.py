@@ -39,11 +39,25 @@ class PushStatus(StrEnum):
     cancelled = "cancelled"
 
 
+class DevicePlatform(StrEnum):
+    """Push delivery platform. Picks which sender the dispatcher uses —
+    APNs for apple, FCM for android. Stored as a plain string (not a PG
+    ENUM) for the same reason we do this with every other enum-ish column:
+    trivial to add a value later via default-only migration, no ALTER TYPE
+    gymnastics."""
+
+    apple = "apple"
+    android = "android"
+
+
 class DeviceRegistration(Base):
     __tablename__ = "device_registrations"
 
     device_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True)
+    platform: Mapped[str] = mapped_column(
+        String(16), default=DevicePlatform.apple.value, server_default="apple"
+    )
     pts_token_hex: Mapped[str] = mapped_column(String(512))
     device_token_hex: Mapped[str | None] = mapped_column(String(512), nullable=True)
     bundle_id: Mapped[str] = mapped_column(String(128))

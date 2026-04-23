@@ -105,4 +105,10 @@ extension Defaults.Keys {
     static let pushLastSyncAt = Key<Date?>(
         AppConstants.UserDefaultsKeys.pushLastSyncAt
     )
+
+    // MARK: Bulletins
+    static let bulletinReadIds = Key<Set<Int>>(
+        AppConstants.UserDefaultsKeys.bulletinReadIds,
+        default: []
+    )
 }

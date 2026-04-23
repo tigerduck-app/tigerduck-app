@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from server.config import Settings
@@ -69,8 +69,18 @@ async def dispatch_due_pushes(
         )
         rows = (await session.execute(stmt)).all()
 
+        # Once a device's token comes back as BadDeviceToken / Unregistered we
+        # cascade-delete it. The locked `rows` list still holds the device's
+        # other pending pushes in memory, so without this guard we'd keep
+        # firing APNs requests at the same dead token and then no-op UPDATE
+        # already-deleted rows.
+        pruned_device_ids: set[str] = set()
+
         for push, device in rows:
             dispatched += 1
+
+            if device.device_id in pruned_device_ids:
+                continue
 
             # Fix #5: skip pushes whose underlying event moment has already
             # passed. Sending them would waste a round-trip on Apple that
@@ -112,6 +122,7 @@ async def dispatch_due_pushes(
             elif classification == "bad_token":
                 await _mark_cancelled(session, push, reason=result.description or "bad_token")
                 await _prune_device(session, device.device_id)
+                pruned_device_ids.add(device.device_id)
                 cancelled += 1
             else:
                 # transient — retry next tick unless exhausted
@@ -163,6 +174,9 @@ def _classify(result: SendResult) -> str:
 
 
 async def _mark_sent(session: AsyncSession, push: ScheduledPush, ts: datetime) -> None:
+    # Core-level update bypasses the ORM, so the model's onupdate=func.now()
+    # hook does NOT fire. Set updated_at explicitly so the column actually
+    # reflects the last state transition.
     await session.execute(
         update(ScheduledPush)
         .where(ScheduledPush.push_id == push.push_id)
@@ -171,6 +185,7 @@ async def _mark_sent(session: AsyncSession, push: ScheduledPush, ts: datetime) -
             sent_at=ts,
             attempts=push.attempts + 1,
             last_error=None,
+            updated_at=func.now(),
         )
     )
 
@@ -185,6 +200,7 @@ async def _mark_cancelled(
             status=PushStatus.cancelled.value,
             attempts=push.attempts + 1,
             last_error=reason,
+            updated_at=func.now(),
         )
     )
 
@@ -199,6 +215,7 @@ async def _mark_failed(
             status=PushStatus.failed.value,
             attempts=push.attempts + 1,
             last_error=reason,
+            updated_at=func.now(),
         )
     )
 
@@ -220,6 +237,7 @@ async def _bump_or_fail(
             .values(
                 attempts=next_attempts,
                 last_error=f"status={result.status} desc={result.description}",
+                updated_at=func.now(),
             )
         )
 

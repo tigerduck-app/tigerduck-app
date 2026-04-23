@@ -76,7 +76,7 @@ struct MoreView: View {
         case .home: HomeView(embedded: true)
         case .classTable: ClassTableView(embedded: true)
         case .calendar: CalendarTabView(embedded: true)
-        case .announcements: AnnouncementsView(embedded: true)
+        case .announcements: BulletinsView(embedded: true)
         case .library: LibraryView(embedded: true)
         case .gpa: ScoreView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)
