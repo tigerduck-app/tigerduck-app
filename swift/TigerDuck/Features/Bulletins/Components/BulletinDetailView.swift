@@ -23,7 +23,7 @@ struct BulletinDetailView: View {
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
                     header
 
-                    Text(bulletin.title)
+                    Text(bulletin.displayTitle)
                         .font(TigerDuckTheme.Typography.title)
                         .foregroundStyle(Color.textPrimary)
 

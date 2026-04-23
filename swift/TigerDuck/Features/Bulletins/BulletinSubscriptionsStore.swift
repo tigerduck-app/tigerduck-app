@@ -76,6 +76,15 @@ final class BulletinSubscriptionsStore {
     /// simulator is sub-second.
     func save() async {
         saveState = .saving
+        // Snapshot the pre-save clientIds in their current order. The server
+        // PUT does delete + insert preserving order, so the response rules
+        // line up with the request rules positionally. We re-attach the
+        // original clientIds to the response so any closure that captured a
+        // rule's clientId before save (e.g. an open editor pushed via
+        // NavigationLink) still finds the row in `update()`'s
+        // `firstIndex(where:)` lookup. Without this, post-save edits
+        // silently no-op because the decoded clientIds are fresh UUIDs.
+        let snapshotClientIds = pending.map(\.clientId)
         let maxAttempts = 4
         for attempt in 1...maxAttempts {
             do {
@@ -83,7 +92,11 @@ final class BulletinSubscriptionsStore {
                     deviceId: deviceId,
                     rules: pending
                 )
-                pending = response.rules
+                var preserved = response.rules
+                for (i, oldId) in snapshotClientIds.enumerated() where i < preserved.count {
+                    preserved[i].clientId = oldId
+                }
+                pending = preserved
                 saveState = .saved
                 return
             } catch BulletinAPIError.httpStatus(let code, _) where code == 404 {

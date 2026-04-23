@@ -36,7 +36,7 @@ struct BulletinCardView: View {
                 }
             }
 
-            Text(bulletin.title)
+            Text(bulletin.displayTitle)
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(policy.primaryTextColor)
                 .lineLimit(2)

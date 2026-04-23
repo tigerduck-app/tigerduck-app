@@ -57,6 +57,10 @@ enum BulletinAPI {
         let id: Int
         let externalId: String
         let title: String
+        /// LLM-normalized title (≤24 全形 chars, no decorative prefixes,
+        /// no publisher prefix). `nil` for legacy rows that have not yet
+        /// been re-classified — fall back to `title`.
+        let titleClean: String?
         let canonicalOrg: String?
         let contentTags: [String]
         let importance: Importance?
@@ -65,10 +69,14 @@ enum BulletinAPI {
         let postedAt: Date?
         let isDeleted: Bool
 
+        /// What the UI should display as the bulletin headline.
+        var displayTitle: String { titleClean ?? title }
+
         enum CodingKeys: String, CodingKey {
             case id
             case externalId = "external_id"
             case title
+            case titleClean = "title_clean"
             case canonicalOrg = "canonical_org"
             case contentTags = "content_tags"
             case importance
@@ -83,6 +91,7 @@ enum BulletinAPI {
         let id: Int
         let externalId: String
         let title: String
+        let titleClean: String?
         let canonicalOrg: String?
         let contentTags: [String]
         let importance: Importance?
@@ -94,10 +103,13 @@ enum BulletinAPI {
         let bodyMd: String?
         let rawPublisher: String?
 
+        var displayTitle: String { titleClean ?? title }
+
         enum CodingKeys: String, CodingKey {
             case id
             case externalId = "external_id"
             case title
+            case titleClean = "title_clean"
             case canonicalOrg = "canonical_org"
             case contentTags = "content_tags"
             case importance

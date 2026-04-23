@@ -141,6 +141,7 @@ final class BulletinsViewModel {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
             result = result.filter { row in
+                row.displayTitle.localizedCaseInsensitiveContains(trimmed) ||
                 row.title.localizedCaseInsensitiveContains(trimmed) ||
                 (row.summary?.localizedCaseInsensitiveContains(trimmed) ?? false)
             }
