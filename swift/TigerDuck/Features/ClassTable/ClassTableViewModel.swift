@@ -47,6 +47,9 @@ final class ClassTableViewModel {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
         await AppServiceBridge.warmAllSemesterCaches(authService: authService)
+        await MainActor.run { [weak self] in
+            self?.reloadCurrentSemesterCourses()
+        }
     }
 
     /// Silent background refresh for the currently-selected semester.
@@ -67,6 +70,10 @@ final class ClassTableViewModel {
             // changed, so SwiftUI doesn't churn on identical data.
             if merged.map(\.courseNo).sorted() != self.courses.map(\.courseNo).sorted() {
                 self.courses = merged
+            }
+            if target == CourseSelectionService.currentSemesterCode() {
+                self.currentSemesterCourses = merged
+                self.refreshCourseColors()
             }
         }
     }
@@ -97,6 +104,8 @@ final class ClassTableViewModel {
     /// into a no-op instead of stacking concurrent Tasks that would race
     /// on DataCache writes and `dataDidUpdate` notifications.
     private var isRefreshing = false
+    private var currentSemesterCourses: [SDCourse] = []
+    private let courseProvider = CanonicalCourseProvider()
 
     init() {
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
@@ -144,6 +153,7 @@ final class ClassTableViewModel {
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
         TigerDuckTheme.reloadCustomColors()
+        reloadCurrentSemesterCourses()
         courses = buildCourseList(
             DataCache.shared.loadCourses(semester: currentSemester),
             DataCache.shared.loadUserAddedCourses()
@@ -161,7 +171,17 @@ final class ClassTableViewModel {
             }
         }
         courseLookup = lookup
-        TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
+        refreshCourseColors()
+    }
+
+    private func reloadCurrentSemesterCourses() {
+        currentSemesterCourses = courseProvider.currentCourses()
+        refreshCourseColors()
+    }
+
+    private func refreshCourseColors() {
+        let courseNos = Set(courses.map(\.courseNo)).union(currentSemesterCourses.map(\.courseNo))
+        TigerDuckTheme.buildCourseColorMap(courseNos: Array(courseNos))
     }
 
     var totalCredits: Int {
@@ -173,7 +193,7 @@ final class ClassTableViewModel {
         return course.timeRange(for: weekday)
     }
 
-    var todayCourses: [SDCourse] { courses.coursesForToday() }
+    var todayCourses: [SDCourse] { currentSemesterCourses.coursesForToday() }
 
     var activeWeekdays: [Int] {
         var days = Set<Int>()
@@ -347,10 +367,11 @@ final class ClassTableViewModel {
             DataCache.shared.loadCourses(semester: currentSemester),
             DataCache.shared.loadUserAddedCourses()
         )
+        reloadCurrentSemesterCourses()
+        assignments = cachedAssignments
 
         if !merged.isEmpty {
             courses = merged
-            assignments = cachedAssignments
         }
         // backgroundSync() on app launch handles the network refresh
     }
@@ -372,7 +393,16 @@ final class ClassTableViewModel {
             await self.fetchData(authService: authService)
             let latestSemester = CourseSelectionService.currentSemesterCode()
             if latestSemester != self.currentSemester {
-                let _ = await AppServiceBridge.fetchCourses(authService: authService, semester: latestSemester)
+                let latestCourses = await AppServiceBridge.fetchCourses(
+                    authService: authService,
+                    semester: latestSemester
+                )
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    let userAdded = DataCache.shared.loadUserAddedCourses()
+                    self.currentSemesterCourses = self.buildCourseList(latestCourses, userAdded)
+                    self.refreshCourseColors()
+                }
             }
             await MainActor.run { [weak self] in
                 self?.isRefreshing = false
@@ -382,6 +412,7 @@ final class ClassTableViewModel {
 
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
+        let targetSemester = currentSemester
         await MainActor.run { manager.loadingState = .loading }
 
         // ClassTable pull-to-refresh is the explicit "show me the
@@ -390,7 +421,7 @@ final class ClassTableViewModel {
         // TTL that absorbs cheaper background refreshes.
         async let coursesTask = AppServiceBridge.fetchCourses(
             authService: authService,
-            semester: currentSemester,
+            semester: targetSemester,
             forceRefresh: true,
         )
         async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService)
@@ -403,6 +434,10 @@ final class ClassTableViewModel {
         await MainActor.run {
             isUpdatingFromNetwork = true
             courses = buildCourseList(fetchedCourses, userAdded)
+            if targetSemester == CourseSelectionService.currentSemesterCode() {
+                currentSemesterCourses = courses
+                refreshCourseColors()
+            }
             assignments = fetchedAssignments
             manager.loadingState = .loaded
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
