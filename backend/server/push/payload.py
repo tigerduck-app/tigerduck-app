@@ -249,6 +249,47 @@ def build_alert_request(
     )
 
 
+@dataclass(frozen=True)
+class FcmRequest:
+    """Transport-level view of a single FCM call. Mirrors `ApnsRequest` so
+    the dispatcher can branch on platform without leaking SDK types."""
+
+    token: str
+    title: str
+    body: str
+    data: dict[str, str]
+    ttl_seconds: int = 7 * 24 * 3600
+
+
+def build_fcm_alert_request(
+    *,
+    fcm_token: str,
+    title: str,
+    body: str,
+    bulletin_id: int,
+    source_url: str,
+    canonical_org: str,
+    ttl_seconds: int = 7 * 24 * 3600,
+) -> FcmRequest:
+    """Build an FCM alert request for a bulletin notification.
+
+    FCM `data` values must all be strings; the Android client parses
+    `bulletin_id` back to int. Keeps shape parity with `build_alert_request`
+    for APNs.
+    """
+    return FcmRequest(
+        token=fcm_token,
+        title=title,
+        body=body,
+        data={
+            "bulletin_id": str(bulletin_id),
+            "source_url": source_url,
+            "canonical_org": canonical_org,
+        },
+        ttl_seconds=ttl_seconds,
+    )
+
+
 def build_apns_request(
     *,
     device_token: str,

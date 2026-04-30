@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     # "production" talks to api.push.apple.com (TestFlight / App Store)
     apns_env: Literal["development", "production"] = "development"
 
+    # --- FCM (Android) ---
+    # Firebase project id — only required when delivering real pushes.
+    # Empty string means "use the recording stub", same convention as APNs.
+    fcm_project_id: str = ""
+    # Path to the service-account JSON downloaded from the Firebase console.
+    # When the file is missing the router falls back to RecordingFcmSender.
+    fcm_credentials_path: Path = SERVER_DIR / "secrets" / "fcm_service_account.json"
+
     # --- Scheduler ---
     # how often dispatcher polls DB for due pushes
     scheduler_tick_seconds: int = 30

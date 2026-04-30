@@ -26,9 +26,15 @@ from server.bulletins.models import (
     BulletinProcessingState,
 )
 from server.config import Settings
-from server.models import DeviceRegistration
-from server.push.apns_client import PushSender, SendResult
-from server.push.payload import build_alert_request
+from server.models import DevicePlatform, DeviceRegistration
+from server.push.apns_client import SendResult
+from server.push.payload import (
+    ApnsRequest,
+    FcmRequest,
+    build_alert_request,
+    build_fcm_alert_request,
+)
+from server.push.router import PushRouter
 
 logger = structlog.get_logger(__name__)
 
@@ -46,7 +52,7 @@ class DispatchOutcome:
 
 async def dispatch_pending_bulletins(
     session_factory: async_sessionmaker[AsyncSession],
-    sender: PushSender,
+    router: PushRouter,
     settings: Settings,
     *,
     now: datetime | None = None,
@@ -77,7 +83,7 @@ async def dispatch_pending_bulletins(
 
     for bulletin in bulletins:
         sent, failed, cancelled, matched = await _dispatch_one(
-            session_factory, sender, settings, bulletin.id, ts
+            session_factory, router, settings, bulletin.id, ts
         )
         totals[0] += sent
         totals[1] += failed
@@ -99,7 +105,7 @@ async def dispatch_pending_bulletins(
 
 async def _dispatch_one(
     session_factory: async_sessionmaker[AsyncSession],
-    sender: PushSender,
+    router: PushRouter,
     settings: Settings,
     bulletin_id: int,
     ts: datetime,
@@ -158,34 +164,52 @@ async def _dispatch_one(
         ).all()
 
         for dispatch, device, bulletin in pending_rows:
-            if not device.device_token_hex:
-                await session.execute(
-                    update(BulletinDispatch)
-                    .where(BulletinDispatch.id == dispatch.id)
-                    .values(
-                        status=BulletinDispatchStatus.cancelled.value,
-                        last_error="device has no standard APNs token",
-                    )
-                )
-                cancelled_count += 1
-                continue
-
             # Bulletins arrive here in `processed` state, so `title_clean`
             # has already been normalized by the LLM (prefix stripped,
             # de-shouted). Fall back to the raw title when classification
             # left it NULL — mirrors iOS `BulletinAPIDTO.displayTitle`.
-            request = build_alert_request(
-                device_token=device.device_token_hex,
-                bundle_id=device.bundle_id,
-                title=bulletin.title_clean or bulletin.title,
-                body=bulletin.summary or bulletin.title_clean or bulletin.title,
-                bulletin_id=bulletin.id,
-                source_url=bulletin.source_url,
-                canonical_org=bulletin.canonical_org or "",
-                now=ts,
-            )
-            result = await _send_safely(sender, request)
-            classification = _classify(result)
+            title = bulletin.title_clean or bulletin.title
+            body = bulletin.summary or bulletin.title_clean or bulletin.title
+
+            if device.platform == DevicePlatform.android.value:
+                # Android stores the FCM registration token in
+                # `pts_token_hex` (the column is platform-overloaded so we
+                # don't need a schema change for the second channel).
+                if not device.pts_token_hex:
+                    await _cancel_dispatch(
+                        session, dispatch.id, "android device has no FCM token"
+                    )
+                    cancelled_count += 1
+                    continue
+                fcm_req = build_fcm_alert_request(
+                    fcm_token=device.pts_token_hex,
+                    title=title,
+                    body=body,
+                    bulletin_id=bulletin.id,
+                    source_url=bulletin.source_url,
+                    canonical_org=bulletin.canonical_org or "",
+                )
+                result = await _send_android_safely(router, fcm_req)
+            else:
+                if not device.device_token_hex:
+                    await _cancel_dispatch(
+                        session, dispatch.id, "device has no standard APNs token"
+                    )
+                    cancelled_count += 1
+                    continue
+                apns_req = build_alert_request(
+                    device_token=device.device_token_hex,
+                    bundle_id=device.bundle_id,
+                    title=title,
+                    body=body,
+                    bulletin_id=bulletin.id,
+                    source_url=bulletin.source_url,
+                    canonical_org=bulletin.canonical_org or "",
+                    now=ts,
+                )
+                result = await _send_apple_safely(router, apns_req)
+
+            classification = _classify(result, platform=device.platform)
 
             if classification == "sent":
                 await session.execute(
@@ -259,20 +283,49 @@ async def _dispatch_one(
     return (sent_count, failed_count, cancelled_count, len(pending_rows))
 
 
-async def _send_safely(sender: PushSender, request) -> SendResult:
+async def _cancel_dispatch(
+    session: AsyncSession, dispatch_id: int, reason: str
+) -> None:
+    await session.execute(
+        update(BulletinDispatch)
+        .where(BulletinDispatch.id == dispatch_id)
+        .values(
+            status=BulletinDispatchStatus.cancelled.value,
+            last_error=reason,
+        )
+    )
+
+
+async def _send_apple_safely(router: PushRouter, request: ApnsRequest) -> SendResult:
     try:
-        return await sender.send(request)
+        return await router.send_apple(request)
     except Exception as exc:  # aioapns raises on network errors
         return SendResult(success=False, status="exception", description=str(exc))
 
 
-def _classify(result: SendResult) -> str:
+async def _send_android_safely(router: PushRouter, request: FcmRequest) -> SendResult:
+    try:
+        return await router.send_android(request)
+    except Exception as exc:  # firebase-admin raises on network errors
+        return SendResult(success=False, status="exception", description=str(exc))
+
+
+def _classify(result: SendResult, *, platform: str) -> str:
     """Shared classifier with scheduler/dispatcher but local copy so changes
     to one push path don't accidentally mutate the other."""
     if result.success:
         return "sent"
     status = str(result.status).lower()
     desc = (result.description or "").lower()
+
+    if platform == DevicePlatform.android.value:
+        # firebase-admin maps these to dedicated exception types we surface
+        # via SendResult.status in `FcmSender.send`.
+        android_bad_token = ("unregistered", "sender_id_mismatch", "invalid_argument")
+        if any(m in status or m in desc for m in android_bad_token):
+            return "bad_token"
+        return "transient"
+
     bad_token_markers = (
         "410",
         "baddevicetoken",

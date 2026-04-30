@@ -18,7 +18,7 @@ from fastapi import FastAPI  # noqa: E402
 from server.config import Settings, get_settings
 from server.db import build_engine, build_session_factory
 from server.logging_setup import configure as configure_logging
-from server.push.apns_client import build_sender
+from server.push.router import build_router
 from server.routes import bulletins as bulletins_routes
 from server.routes import debug as debug_routes
 from server.routes import devices as devices_routes
@@ -93,12 +93,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     engine = build_engine(settings)
     session_factory = build_session_factory(engine)
-    sender = build_sender(settings)
-    scheduler = build_scheduler(session_factory, sender, settings)
+    router = build_router(settings)
+    scheduler = build_scheduler(session_factory, router, settings)
 
     app.state.engine = engine
     app.state.session_factory = session_factory
-    app.state.sender = sender
+    app.state.router = router
+    # Keep the legacy `sender` attribute pointing at the APNs sender so any
+    # tooling that read `app.state.sender` for Live-Activity / iOS paths
+    # keeps working without a downstream change.
+    app.state.sender = router.apple
     app.state.scheduler = scheduler
     app.state.settings = settings
 
@@ -109,7 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         scheduler.shutdown(wait=False)
-        await sender.close()
+        await router.close()
         await engine.dispose()
         logger.info("server.shutdown")
 

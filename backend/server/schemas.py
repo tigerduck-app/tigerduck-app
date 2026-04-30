@@ -25,8 +25,20 @@ class DeviceRegisterRequest(BaseModel):
     pts_token_hex: str = Field(min_length=1, max_length=512)
     device_token_hex: str | None = Field(default=None, max_length=512)
     bundle_id: str = Field(default="org.ntust.app.TigerDuck", max_length=128)
-    attrs_type: str = Field(default="TigerDuckActivityAttributes", max_length=128)
-    apns_env: str = Field(default="development", pattern="^(development|production)$")
+    # attrs_type / apns_env only have meaning on apple. Optional at the wire
+    # level so android clients don't have to fabricate values; the validator
+    # below fills the apple defaults.
+    attrs_type: str | None = Field(default=None, max_length=128)
+    apns_env: str | None = Field(default=None, pattern="^(development|production)$")
+
+    @model_validator(mode="after")
+    def _require_apple_fields(self) -> "DeviceRegisterRequest":
+        if self.platform == "apple":
+            if not self.attrs_type:
+                self.attrs_type = "TigerDuckActivityAttributes"
+            if not self.apns_env:
+                self.apns_env = "development"
+        return self
 
 
 class DeviceRegisterResponse(BaseModel):

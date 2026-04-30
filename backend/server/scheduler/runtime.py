@@ -15,7 +15,7 @@ from server.bulletins import jobs as bulletin_jobs
 from server.bulletins.llm.base import LLMProvider
 from server.bulletins.llm.openai_compat import OpenAICompatibleProvider
 from server.config import Settings
-from server.push.apns_client import PushSender
+from server.push.router import PushRouter
 from server.scheduler.dispatcher import dispatch_due_pushes
 from server.scheduler.retention import prune_terminal_activity_tokens
 
@@ -33,7 +33,7 @@ def build_llm_provider(settings: Settings) -> LLMProvider:
 
 def build_scheduler(
     session_factory: async_sessionmaker[AsyncSession],
-    sender: PushSender,
+    router: PushRouter,
     settings: Settings,
     *,
     llm: LLMProvider | None = None,
@@ -54,7 +54,8 @@ def build_scheduler(
     llm_provider = llm if llm is not None else build_llm_provider(settings)
 
     async def pts_tick() -> None:
-        await dispatch_due_pushes(session_factory, sender, settings)
+        # Live Activity / scheduled iOS pushes only need APNs.
+        await dispatch_due_pushes(session_factory, router.apple, settings)
 
     async def bulletin_scrape() -> None:
         await bulletin_jobs.scrape_job(session_factory, settings)
@@ -63,7 +64,7 @@ def build_scheduler(
         await bulletin_jobs.process_job(session_factory, settings, llm_provider)
 
     async def bulletin_dispatch() -> None:
-        await bulletin_jobs.dispatch_job(session_factory, sender, settings)
+        await bulletin_jobs.dispatch_job(session_factory, router, settings)
 
     async def bulletin_retention() -> None:
         await bulletin_jobs.retention_job(session_factory, settings)
