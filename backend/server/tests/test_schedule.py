@@ -35,7 +35,7 @@ def _snapshot(title: str) -> dict:
 
 async def _register(client: AsyncClient) -> None:
     await client.post(
-        "/v1/devices/register",
+        "/v2/devices/register",
         json={
             "user_id": USER_ID,
             "device_id": DEVICE_ID,
@@ -47,7 +47,7 @@ async def _register(client: AsyncClient) -> None:
 
 async def test_sync_requires_registered_device(client: AsyncClient):
     response = await client.post(
-        "/v1/schedule/sync",
+        "/v2/schedule/sync",
         json={"device_id": "never-registered", "events": []},
     )
     assert response.status_code == 404
@@ -57,7 +57,7 @@ async def test_sync_inserts_and_reports_counts(client: AsyncClient):
     await _register(client)
     fire = datetime.now(timezone.utc) + timedelta(minutes=15)
     response = await client.post(
-        "/v1/schedule/sync",
+        "/v2/schedule/sync",
         json={
             "device_id": DEVICE_ID,
             "events": [
@@ -88,7 +88,7 @@ async def test_sync_replaces_previous_events(client: AsyncClient):
     fire = datetime.now(timezone.utc) + timedelta(hours=1)
 
     first = await client.post(
-        "/v1/schedule/sync",
+        "/v2/schedule/sync",
         json={
             "device_id": DEVICE_ID,
             "events": [
@@ -111,7 +111,7 @@ async def test_sync_replaces_previous_events(client: AsyncClient):
 
     # Second sync keeps only slot-2, so slot-1 should be cancelled
     second = await client.post(
-        "/v1/schedule/sync",
+        "/v2/schedule/sync",
         json={
             "device_id": DEVICE_ID,
             "events": [
@@ -147,7 +147,7 @@ async def test_resync_does_not_revive_already_sent_push(
     fire = datetime.now(timezone.utc) + timedelta(minutes=5)
 
     await client.post(
-        "/v1/schedule/sync",
+        "/v2/schedule/sync",
         json={
             "device_id": DEVICE_ID,
             "events": [
@@ -175,7 +175,7 @@ async def test_resync_does_not_revive_already_sent_push(
 
     # Re-sync — same push_id, same content. Must NOT flip status back.
     await client.post(
-        "/v1/schedule/sync",
+        "/v2/schedule/sync",
         json={
             "device_id": DEVICE_ID,
             "events": [
@@ -202,7 +202,7 @@ async def test_cancel_by_source_removes_all_scenarios(client: AsyncClient):
     fire = datetime.now(timezone.utc) + timedelta(hours=2)
 
     await client.post(
-        "/v1/schedule/sync",
+        "/v2/schedule/sync",
         json={
             "device_id": DEVICE_ID,
             "events": [
@@ -228,13 +228,13 @@ async def test_cancel_by_source_removes_all_scenarios(client: AsyncClient):
         },
     )
 
-    cancel = await client.delete(f"/v1/schedule/{DEVICE_ID}/slot-1")
+    cancel = await client.delete(f"/v2/schedule/{DEVICE_ID}/slot-1")
     assert cancel.status_code == 200
     assert cancel.json()["deleted"] == 2
 
     # Now re-sync with empty to count remaining
     final = await client.post(
-        "/v1/schedule/sync",
+        "/v2/schedule/sync",
         json={
             "device_id": DEVICE_ID,
             "events": [

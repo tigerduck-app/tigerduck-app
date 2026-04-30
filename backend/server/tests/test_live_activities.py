@@ -39,7 +39,7 @@ def _snapshot(countdown_target: datetime) -> dict:
 
 async def _register_device(client: AsyncClient) -> None:
     response = await client.post(
-        "/v1/devices/register",
+        "/v2/devices/register",
         json={
             "user_id": "user-live",
             "device_id": DEVICE_ID,
@@ -53,7 +53,7 @@ async def _register_device(client: AsyncClient) -> None:
 async def test_register_live_activity_token_requires_device(client: AsyncClient):
     target = datetime.now(timezone.utc) + timedelta(minutes=15)
     response = await client.post(
-        "/v1/live-activities/register",
+        "/v2/live-activities/register",
         json={
             "device_id": "missing-device",
             "activity_id": "classPreparing::slot-live",
@@ -79,7 +79,7 @@ async def test_register_live_activity_token_rejects_mismatched_source_id(
     snapshot = _snapshot(target)
     snapshot["sourceId"] = "slot-other"  # deliberately mismatched
     response = await client.post(
-        "/v1/live-activities/register",
+        "/v2/live-activities/register",
         json={
             "device_id": DEVICE_ID,
             "activity_id": "classPreparing::slot-live",
@@ -101,7 +101,7 @@ async def test_register_live_activity_token_upserts(
     target = datetime.now(timezone.utc) + timedelta(minutes=15)
 
     first = await client.post(
-        "/v1/live-activities/register",
+        "/v2/live-activities/register",
         json={
             "device_id": DEVICE_ID,
             "activity_id": "classPreparing::slot-live",
@@ -116,7 +116,7 @@ async def test_register_live_activity_token_upserts(
 
     second_target = target + timedelta(minutes=5)
     second = await client.post(
-        "/v1/live-activities/register",
+        "/v2/live-activities/register",
         json={
             "device_id": DEVICE_ID,
             "activity_id": "classPreparing::slot-live",

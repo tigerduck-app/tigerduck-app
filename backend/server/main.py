@@ -43,7 +43,7 @@ async def _wait_for_llm(settings: Settings) -> bool:
     Intentionally NON-blocking: on failure we log a warning and let the
     server finish booting. Rationale:
 
-    * Read endpoints (`GET /v1/bulletins/...`) don't need the LLM at all.
+    * Read endpoints (`GET /v2/bulletins/...`) don't need the LLM at all.
     * The scheduler's `bulletin_process` job has its own retry/backoff,
       so transient LLM downtime self-heals without server restart.
     * launchd / Docker supervisor would otherwise pin-pong the API

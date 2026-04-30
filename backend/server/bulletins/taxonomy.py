@@ -9,7 +9,7 @@ Two orthogonal dimensions:
 A subscription rule is `(orgs: set[CanonicalOrg], tags: set[ContentTag], mode)`
 where empty set means wildcard on that dimension. See `matcher.rule_hits`.
 
-Enum-definition order is significant: `GET /v1/bulletins/taxonomy` iterates
+Enum-definition order is significant: `GET /v2/bulletins/taxonomy` iterates
 the enum, so the iOS subscription editor renders the picker in this exact
 sequence.
 """
@@ -61,7 +61,7 @@ class Importance(StrEnum):
 
 
 # Human-readable labels exposed to the iOS subscription UI via
-# `GET /v1/bulletins/taxonomy`. Labels intentionally contain no slashes
+# `GET /v2/bulletins/taxonomy`. Labels intentionally contain no slashes
 # or other separators — the user-facing picker renders single-token names.
 ORG_LABELS: dict[CanonicalOrg, str] = {
     CanonicalOrg.department: "系院所",

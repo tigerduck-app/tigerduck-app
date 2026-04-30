@@ -3,7 +3,7 @@ import Foundation
 import os
 
 /// Builds a 48-hour event list from the same resolver the on-device Live
-/// Activity uses, and POSTs it to `/v1/schedule/sync`.
+/// Activity uses, and POSTs it to `/v2/schedule/sync`.
 ///
 /// Why 48 hours: enough headroom to cover overnight + next day without
 /// letting the server hold a huge pending queue. The app is expected to

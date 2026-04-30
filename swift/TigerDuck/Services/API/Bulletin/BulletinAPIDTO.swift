@@ -1,6 +1,6 @@
 import Foundation
 
-/// Request/response DTOs for `/v1/bulletins` and related subscription
+/// Request/response DTOs for `/v2/bulletins` and related subscription
 /// routes. Mirrors `backend/server/bulletins/schemas.py`. Keep both sides
 /// in sync when evolving the API contract.
 ///

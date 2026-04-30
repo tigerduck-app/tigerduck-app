@@ -25,7 +25,7 @@ nonisolated enum AppConstants {
     /// the nginx-proxy-manager + Cloudflare-fronted Mac mini. Override via
     /// ``UserDefaultsKeys/pushServerURLOverride`` during development to talk
     /// to a LAN instance.
-    static let defaultPushServerURL = URL(string: "https://api.tigerduck.app/v1")!
+    static let defaultPushServerURL = URL(string: "https://api.tigerduck.app/v2")!
 
     enum UserDefaultsKeys {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"

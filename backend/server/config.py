@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # --- App ---
     env: Literal["development", "production"] = "development"
     log_level: str = "INFO"
-    api_base_path: str = "/v1"
+    api_base_path: str = "/v2"
     # Shared-secret that clients must send as X-Push-Token on write endpoints.
     # Empty string disables auth (dev/test convenience). Production must set
     # a non-empty value via TIGERDUCK_API_SHARED_SECRET.

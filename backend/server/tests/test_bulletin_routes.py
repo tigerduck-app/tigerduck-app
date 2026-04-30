@@ -1,4 +1,4 @@
-"""HTTP integration tests for /v1/bulletins and subscription CRUD.
+"""HTTP integration tests for /v2/bulletins and subscription CRUD.
 
 Uses the `client` fixture from conftest which swaps in a fresh DB per test
 (unlike the session-scoped `prepared_engine` used by lower-level tests),
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_taxonomy_lists_every_org_and_tag(client: AsyncClient) -> None:
-    resp = await client.get("/v1/bulletins/taxonomy")
+    resp = await client.get("/v2/bulletins/taxonomy")
     assert resp.status_code == 200
     body = resp.json()
     assert {o["id"] for o in body["orgs"]} == {o.value for o in CanonicalOrg}
@@ -73,7 +73,7 @@ async def _seed_bulletins(client: AsyncClient, count: int = 3) -> list[int]:
 
 async def test_list_bulletins_newest_first_paginates(client: AsyncClient) -> None:
     ids = await _seed_bulletins(client, count=5)
-    resp = await client.get("/v1/bulletins?limit=2")
+    resp = await client.get("/v2/bulletins?limit=2")
     assert resp.status_code == 200
     body = resp.json()
     returned_ids = [item["id"] for item in body["items"]]
@@ -82,7 +82,7 @@ async def test_list_bulletins_newest_first_paginates(client: AsyncClient) -> Non
     assert body["next_cursor"] == returned_ids[-1]
 
     # Fetch the next page via cursor
-    resp2 = await client.get(f"/v1/bulletins?limit=2&cursor={body['next_cursor']}")
+    resp2 = await client.get(f"/v2/bulletins?limit=2&cursor={body['next_cursor']}")
     next_ids = [item["id"] for item in resp2.json()["items"]]
     assert max(next_ids) < min(returned_ids)
 
@@ -98,19 +98,19 @@ async def test_list_bulletins_hides_deleted_by_default(client: AsyncClient) -> N
         )
         await session.commit()
 
-    resp = await client.get("/v1/bulletins")
+    resp = await client.get("/v2/bulletins")
     returned_ids = {item["id"] for item in resp.json()["items"]}
     assert ids[0] not in returned_ids
     assert ids[1] in returned_ids
 
-    resp_with_deleted = await client.get("/v1/bulletins?include_deleted=true")
+    resp_with_deleted = await client.get("/v2/bulletins?include_deleted=true")
     with_ids = {item["id"] for item in resp_with_deleted.json()["items"]}
     assert ids[0] in with_ids
 
 
 async def test_get_bulletin_returns_detail(client: AsyncClient) -> None:
     ids = await _seed_bulletins(client, count=1)
-    resp = await client.get(f"/v1/bulletins/{ids[0]}")
+    resp = await client.get(f"/v2/bulletins/{ids[0]}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["id"] == ids[0]
@@ -120,7 +120,7 @@ async def test_get_bulletin_returns_detail(client: AsyncClient) -> None:
 
 
 async def test_get_bulletin_404s_when_missing(client: AsyncClient) -> None:
-    resp = await client.get("/v1/bulletins/999999999")
+    resp = await client.get("/v2/bulletins/999999999")
     assert resp.status_code == 404
 
 
@@ -129,7 +129,7 @@ async def test_get_bulletin_404s_when_missing(client: AsyncClient) -> None:
 
 async def _register_device(client: AsyncClient, device_id: str = "dev-routes") -> None:
     resp = await client.post(
-        "/v1/devices/register",
+        "/v2/devices/register",
         json={
             "user_id": "u1",
             "device_id": device_id,
@@ -148,12 +148,12 @@ async def test_list_subscriptions_empty_then_after_put(
 ) -> None:
     await _register_device(client)
 
-    empty = await client.get("/v1/devices/dev-routes/subscriptions")
+    empty = await client.get("/v2/devices/dev-routes/subscriptions")
     assert empty.status_code == 200
     assert empty.json()["rules"] == []
 
     put = await client.put(
-        "/v1/devices/dev-routes/subscriptions",
+        "/v2/devices/dev-routes/subscriptions",
         json={
             "rules": [
                 {
@@ -179,7 +179,7 @@ async def test_list_subscriptions_empty_then_after_put(
     assert {r["name"] for r in saved} == {"學務處獎學金", "任何免費便當"}
     assert all(r["id"] for r in saved)
 
-    again = await client.get("/v1/devices/dev-routes/subscriptions")
+    again = await client.get("/v2/devices/dev-routes/subscriptions")
     assert [r["name"] for r in again.json()["rules"]] == [
         "學務處獎學金",
         "任何免費便當",
@@ -193,7 +193,7 @@ async def test_put_subscriptions_is_snapshot_replacement(
     await _register_device(client, device_id="dev-snap")
 
     await client.put(
-        "/v1/devices/dev-snap/subscriptions",
+        "/v2/devices/dev-snap/subscriptions",
         json={
             "rules": [
                 {"orgs": [CanonicalOrg.library.value], "tags": [], "mode": "AND"},
@@ -202,14 +202,14 @@ async def test_put_subscriptions_is_snapshot_replacement(
         },
     )
     await client.put(
-        "/v1/devices/dev-snap/subscriptions",
+        "/v2/devices/dev-snap/subscriptions",
         json={
             "rules": [
                 {"orgs": [CanonicalOrg.library.value], "tags": [], "mode": "AND"}
             ]
         },
     )
-    got = await client.get("/v1/devices/dev-snap/subscriptions")
+    got = await client.get("/v2/devices/dev-snap/subscriptions")
     rules = got.json()["rules"]
     assert len(rules) == 1
     assert rules[0]["orgs"] == [CanonicalOrg.library.value]
@@ -221,7 +221,7 @@ async def test_subscriptions_get_returns_empty_when_device_missing(
     """GET tolerates the first-launch race where subscriptions load fires
     before APNs token registration finishes — returning 200 empty lets the
     editor render immediately without the client special-casing 404."""
-    resp = await client.get("/v1/devices/ghost-device/subscriptions")
+    resp = await client.get("/v2/devices/ghost-device/subscriptions")
     assert resp.status_code == 200
     assert resp.json() == {"device_id": "ghost-device", "rules": []}
 
@@ -232,7 +232,7 @@ async def test_subscriptions_put_requires_registered_device(
     """PUT still 404s for unknown devices so a saved ruleset can't end up
     orphaned with no DeviceRegistration to push to."""
     put = await client.put(
-        "/v1/devices/ghost-device/subscriptions",
+        "/v2/devices/ghost-device/subscriptions",
         json={"rules": []},
     )
     assert put.status_code == 404
@@ -241,7 +241,7 @@ async def test_subscriptions_put_requires_registered_device(
 async def test_put_rejects_unknown_org_value(client: AsyncClient) -> None:
     await _register_device(client, device_id="dev-bad")
     resp = await client.put(
-        "/v1/devices/dev-bad/subscriptions",
+        "/v2/devices/dev-bad/subscriptions",
         json={
             "rules": [
                 {"orgs": ["not_a_real_org"], "tags": [], "mode": "AND"}
@@ -261,7 +261,7 @@ async def test_register_accepts_device_token_hex_end_to_end(
     # Subscription that would match anything — ensures the device is in
     # the matcher's eligible pool (which gates on device_token_hex).
     put = await client.put(
-        "/v1/devices/dev-token-smoke/subscriptions",
+        "/v2/devices/dev-token-smoke/subscriptions",
         json={"rules": [{"orgs": [], "tags": [], "mode": "AND"}]},
     )
     assert put.status_code == 200
