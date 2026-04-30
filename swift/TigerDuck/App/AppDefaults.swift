@@ -119,11 +119,11 @@ extension Defaults.Keys {
     )
     static let useEnglishCourseAbbreviation = Key<Bool>(
         AppConstants.UserDefaultsKeys.useEnglishCourseAbbreviation,
-        default: false
+        default: true
     )
     static let useEnglishClassroomAbbreviation = Key<Bool>(
         AppConstants.UserDefaultsKeys.useEnglishClassroomAbbreviation,
-        default: false
+        default: true
     )
     static let classroomMandarinDisplay = Key<String>(
         AppConstants.UserDefaultsKeys.classroomMandarinDisplay,
