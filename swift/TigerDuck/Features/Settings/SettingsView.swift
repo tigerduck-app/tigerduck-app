@@ -74,9 +74,23 @@ struct SettingsView: View {
             }
 
             // MARK: - Language
+            // The user picks the app language in iOS Settings (per-app
+            // language picker). iOS restarts the process on selection,
+            // which is why we don't need an in-app picker.
             Section(String(localized: "settings_language")) {
-                NavigationLink(String(localized: "settings_language")) {
-                    LanguagePickerView()
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    HStack {
+                        Text(String(localized: "settings_language"))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 

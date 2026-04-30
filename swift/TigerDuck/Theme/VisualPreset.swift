@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Top-level visual presentation preset.
 ///
@@ -21,11 +24,30 @@ enum VisualPreset: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// Localized name shown in Settings.
+    /// Brand name shown in Settings. Not localized: these are platform/
+    /// product proper nouns and read the same in every language.
     var displayName: String {
         switch self {
-        case .default: return "TigerDuck 風格"
-        case .iosInspired: return "iOS 風格"
+        case .default: return "TigerDuck"
+        case .iosInspired: return Self.systemPlatformName
         }
+    }
+
+    private static var systemPlatformName: String {
+        #if os(macOS)
+        return "macOS"
+        #elseif targetEnvironment(macCatalyst)
+        return "macOS"
+        #elseif canImport(UIKit)
+        switch UIDevice.current.userInterfaceIdiom {
+        case .pad: return "iPadOS"
+        case .mac: return "macOS"
+        case .tv: return "tvOS"
+        case .vision: return "visionOS"
+        default: return "iOS"
+        }
+        #else
+        return "iOS"
+        #endif
     }
 }
