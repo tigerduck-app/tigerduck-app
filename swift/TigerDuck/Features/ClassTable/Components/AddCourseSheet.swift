@@ -19,56 +19,47 @@ struct AddCourseSheet: View {
     @State private var errorMessage: String?
     @State private var addedCourseNo: String?
     @State private var searchTask: Task<Void, Never>?
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: TigerDuckTheme.Spacing.md) {
-                HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Form {
+                Section {
                     TextField(String(localized: "add_course_placeholder"), text: $searchText)
-                        .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .focused($searchFocused)
+                        .submitLabel(.search)
                         .onSubmit { search() }
-
-                    Button {
-                        search()
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(.body.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color.accentPrimary)
-                    .disabled(searchText.isEmpty || isSearching)
-                }
-                .padding(.horizontal)
-
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal)
+                } footer: {
+                    Label(String(localized: "add_course_example"), systemImage: "info.circle")
+                        .font(.caption)
                 }
 
                 if isSearching {
-                    Spacer()
-                    ProgressView(String(localized: "add_course_searching"))
-                    Spacer()
-                } else if searchResults.isEmpty && addedCourseNo == nil {
-                    Spacer()
-                    VStack(spacing: TigerDuckTheme.Spacing.xs) {
-                        Text(String(localized: "add_course_placeholder"))
-                            .font(TigerDuckTheme.Typography.body)
-                            .foregroundStyle(Color.textSecondary)
-                        Text(String(localized: "add_course_example"))
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(Color.textSecondary)
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView(String(localized: "add_course_searching"))
+                            Spacer()
+                        }
                     }
-                    Spacer()
-                } else {
-                    resultsList
+                }
+
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "xmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if !searchResults.isEmpty {
+                    Section {
+                        resultRows
+                    }
                 }
             }
-            .padding(.top, TigerDuckTheme.Spacing.sm)
             .background(Color.backgroundPrimary)
             .navigationTitle(String(localized: "add_course_title"))
             .navigationBarTitleDisplayMode(.inline)
@@ -77,6 +68,7 @@ struct AddCourseSheet: View {
                     Button(String(localized: "action_close")) { dismiss() }
                 }
             }
+            .onAppear { searchFocused = true }
         }
     }
 
@@ -85,49 +77,47 @@ struct AddCourseSheet: View {
         return text.contains(where: { $0.isNumber })
     }
 
-    private var resultsList: some View {
+    @ViewBuilder
+    private var resultRows: some View {
         let grouped = groupedResults
-        return List {
-            ForEach(grouped, id: \.courseNo) { group in
-                let alreadyExists = existingCourseNos.contains(group.courseNo)
-                    || addedCourseNo == group.courseNo
-                Button {
-                    guard !alreadyExists else { return }
-                    addCourse(from: group)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.courseName)
-                                .font(TigerDuckTheme.Typography.headline)
-                                .foregroundStyle(Color.textPrimary)
-                            Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits))
+        ForEach(grouped, id: \.courseNo) { group in
+            let alreadyExists = existingCourseNos.contains(group.courseNo)
+                || addedCourseNo == group.courseNo
+            Button {
+                guard !alreadyExists else { return }
+                addCourse(from: group)
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group.courseName)
+                            .font(TigerDuckTheme.Typography.headline)
+                            .foregroundStyle(Color.textPrimary)
+                        Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits))
+                            .font(TigerDuckTheme.Typography.caption)
+                            .foregroundStyle(Color.textSecondary)
+                        if !group.classroom.isEmpty {
+                            Text(group.classroom)
                                 .font(TigerDuckTheme.Typography.caption)
                                 .foregroundStyle(Color.textSecondary)
-                            if !group.classroom.isEmpty {
-                                Text(group.classroom)
-                                    .font(TigerDuckTheme.Typography.caption)
-                                    .foregroundStyle(Color.textSecondary)
-                            }
-                            if !group.nodeDisplay.isEmpty {
-                                Text(group.nodeDisplay)
-                                    .font(TigerDuckTheme.Typography.caption)
-                                    .foregroundStyle(Color.textSecondary)
-                            }
                         }
-                        Spacer()
-                        if alreadyExists {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        } else {
-                            Image(systemName: "plus.circle")
-                                .foregroundStyle(Color.accentPrimary)
+                        if !group.nodeDisplay.isEmpty {
+                            Text(group.nodeDisplay)
+                                .font(TigerDuckTheme.Typography.caption)
+                                .foregroundStyle(Color.textSecondary)
                         }
                     }
+                    Spacer()
+                    if alreadyExists {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Image(systemName: "plus.circle")
+                            .foregroundStyle(Color.accentPrimary)
+                    }
                 }
-                .disabled(alreadyExists)
             }
+            .disabled(alreadyExists)
         }
-        .listStyle(.plain)
     }
 
     // MARK: - Search
