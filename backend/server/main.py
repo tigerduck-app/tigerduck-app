@@ -137,14 +137,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def ping() -> dict[str, str]:
         return {"pong": "tigerduck"}
 
-    app.include_router(devices_routes.router, prefix=settings.api_base_path)
-    app.include_router(live_activities_routes.router, prefix=settings.api_base_path)
-    app.include_router(schedule_routes.router, prefix=settings.api_base_path)
-    app.include_router(debug_routes.router, prefix=settings.api_base_path)
-    app.include_router(bulletins_routes.router, prefix=settings.api_base_path)
-    app.include_router(bulletins_routes.device_router, prefix=settings.api_base_path)
+    _mount_api(app, settings.api_base_path)
+    for legacy in settings.api_legacy_base_paths:
+        _mount_api(app, legacy)
+
+    if settings.api_legacy_base_paths:
+        _install_deprecation_middleware(
+            app,
+            current=settings.api_base_path,
+            legacy_paths=tuple(settings.api_legacy_base_paths),
+            sunset=settings.api_legacy_sunset,
+        )
 
     return app
+
+
+def _mount_api(app: FastAPI, prefix: str) -> None:
+    # ping is registered per-prefix so the deprecation middleware stamps
+    # /v1/ping responses just like the routed endpoints.
+    async def ping() -> dict[str, str]:
+        return {"pong": "tigerduck"}
+
+    app.add_api_route(f"{prefix}/ping", ping, methods=["GET"], tags=["meta"])
+    app.include_router(devices_routes.router, prefix=prefix)
+    app.include_router(live_activities_routes.router, prefix=prefix)
+    app.include_router(schedule_routes.router, prefix=prefix)
+    app.include_router(debug_routes.router, prefix=prefix)
+    app.include_router(bulletins_routes.router, prefix=prefix)
+    app.include_router(bulletins_routes.device_router, prefix=prefix)
+
+
+def _install_deprecation_middleware(
+    app: FastAPI,
+    *,
+    current: str,
+    legacy_paths: tuple[str, ...],
+    sunset: str,
+) -> None:
+    """Stamp RFC 8594 Deprecation + successor-version Link on legacy responses."""
+
+    @app.middleware("http")
+    async def _deprecation_headers(request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        for legacy in legacy_paths:
+            if path == legacy or path.startswith(f"{legacy}/"):
+                response.headers["Deprecation"] = "true"
+                successor = current + path[len(legacy):]
+                response.headers["Link"] = (
+                    f'<{successor}>; rel="successor-version"'
+                )
+                if sunset:
+                    response.headers["Sunset"] = sunset
+                break
+        return response
 
 
 app = create_app()

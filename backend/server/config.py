@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     env: Literal["development", "production"] = "development"
     log_level: str = "INFO"
     api_base_path: str = "/v2"
+    # Older API prefixes still mounted as aliases for clients that haven't
+    # migrated. Each legacy path serves the same routes as `api_base_path`
+    # but responses carry RFC 8594 deprecation headers (see main.py).
+    api_legacy_base_paths: list[str] = Field(default_factory=lambda: ["/v1"])
+    # Optional RFC 8594 Sunset header value (HTTP-date string) advertised on
+    # legacy responses. Empty string means "no Sunset header" — Deprecation
+    # and successor-version Link still go out.
+    api_legacy_sunset: str = ""
     # Shared-secret that clients must send as X-Push-Token on write endpoints.
     # Empty string disables auth (dev/test convenience). Production must set
     # a non-empty value via TIGERDUCK_API_SHARED_SECRET.
