@@ -4,7 +4,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Swift](https://img.shields.io/badge/Swift-5-F05138?style=for-the-badge&logo=swift&logoColor=white)](https://swift.org)
+[![Version](https://img.shields.io/badge/Version-v1.6.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.6.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
@@ -29,8 +29,20 @@ TigerDuck 是由一群學生共同開發的校園助手
 - 從選課系統同步，不用再**等 Moodle 延遲**
 - 動態島與即時動態告訴你下一節課在哪！
 
+### 📣 **公告**
+- 由後端 **LLM 自動分類、整理、去重複**，不用再被處室公告洗版
+- 可篩選未讀、訂閱類別，有重要公告馬上通知你
+
+### 📊 **歷年成績**
+- 學期 / 累計 GPA、排名、各科成績一次看完
+- 互動式圖表追蹤成績走勢
+
 ### 🏛️ **圖書館**（實驗性）
 - 秒開入館 QR-Code，無任何延遲
+
+### 🌏 **外觀**
+- 內建 **67+ 種語系**，自行設定或跟著系統語言切換
+- 名字過長？課程 / 教室名稱**自動簡寫**
 
 ### 🎨 **客製化**
 - 要就加，不要就刪掉
@@ -67,19 +79,36 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 <br/>
 
+## 版本歷程
+> 完整 Release Notes 請見 [GitHub Releases](https://github.com/tigerduck-app/tigerduck-app/releases)。
+
+| 版本 | 日期 | 重點 |
+|:---:|:---:|---|
+| **`v1.6.0`** | 2026-05-01 | 🌏 **多語言（67+ 語系）**、in-app 語言切換、RTL 版面修正、課程/教室**簡稱**子模組、locale 隔離的課表快取 |
+| **`v1.5.2`** | 2026-04-24 | Live Activity 推播 token 重送/清理、Push 排程器 token 修剪、mismatched snapshot 防護 |
+| **`v1.5.1`** | 2026-04-24 | 課表「今日課程」邏輯與作業列表洗資料的修正 |
+| **`v1.5.0`** | 2026-04-24 | 📣 **公告大改版** — 改由後端推、LLM 分類去重、可訂閱類別、NULL-safe 分頁 |
+| **`v1.4.0`** | 2026-04-22 | 🚀 **推播後端上線** — FastAPI + APNs Push-to-Start、Schedule Sync、shared secret 驗證 |
+| **`v1.3.6`** | 2026-04-22 | 📊 **歷年成績** 接進主分頁、互動式圖表 |
+| **`v1.3.3`** | 2026-04-21 | 作業狀態語意色標、submission timemodified |
+| **`v1.3.2`** | 2026-04-21 | Moodle OIDC 改版、`30ms` server probe 取代 `1h` TTL、24h 課程快取 |
+| **`v1.3.0`** | 2026-04-17 | 動態島（Live Activity）重新設計、設定頁優化 |
+
+<br/>
+
 ## 開發規劃
-> 以下功能為規劃中項目，實際開發順序與內容可能依需求調整。
 
 ### 🎓 教務與學習
-- [x] **作業** – 全自動同步 Moodle 作業
-- [x] **作業+** – 訊息與動態島通知
+- [x] **作業** – 全自動同步 Moodle 作業 `v1.0`
+- [x] **作業+** – 訊息與動態島通知 `v1.3.0`
+- [x] **作業 狀態追蹤** – submission / cutoff、語意色標 `v1.3.3`
 - [ ] **作業++** – 根據剩餘時間修改 App 圖標，致敬 Duolingo
-- [x] **課表** – 擷取自選課系統
-- [x] **課表+** – 可修改的課程名稱、可刪除的課程
-- [x] **課表++** – 動態島課程狀態
-- [x] **行事曆** – 整合校公告、Moodle 等行程資訊
+- [x] **課表** – 擷取自選課系統 `v1.0`
+- [x] **課表+** – 可修改的課程名稱、可刪除的課程 `v1.0`
+- [x] **課表++** – 動態島課程狀態 `v1.3.0`
+- [x] **行事曆** – 整合校公告、Moodle 等行程資訊 `v1.0`
 - [ ] **行事曆+** – 追蹤使用者討論小間、講座、社團行程
-- [x] **歷年 GPA 與排名查詢** – 快速查詢歷年成績表現與排名資訊
+- [x] **歷年 GPA 與排名查詢** – 學期 / 累計 / 各科成績 + 互動式圖表 `v1.3.6`
 - [ ] **畢業門檻學分計算** – 包含各個通識向度、院學分、系學分、體育、國文、英文等畢業條件檢核
 
 ### 📝 選課相關
@@ -87,18 +116,24 @@ TigerDuck 是由一群學生共同開發的校園助手
 - [ ] **中籤機率估算與志願序建議** – 根據人數上限與目前選課人數估算中籤機率，並可自動重新排列志願序
 
 ### 📚 圖書館服務
-- [x] **圖書館出入館 QR-Code** – 快速開啟入館 QR-Code
+- [x] **圖書館出入館 QR-Code** – 快速開啟入館 QR-Code `v1.0`
 - [ ] **圖書館討論小間借用** – 支援討論室預約與借用查詢
 - [ ] **臺科大圖書館講座活動** – 包含活動報名與查詢（需校內連線）
 
 ### 📣 校園資訊
-- [x] **各處室、中心公告** – 支援公告整合與 Filter 篩選
+- [x] **各處室、中心公告** – 支援公告整合 `v1.0`
+- [x] **公告 LLM 分類 + 訂閱通知** – 後端自動分類去重、可訂閱類別、未讀篩選 `v1.5.0`
 - [ ] **獎學金資訊** – 支援 Filter，可依低收、中低收、原住民等條件過濾
 - [ ] **當日社團活動** – 整理每日社團活動資訊
 - [ ] **空教室查詢** – 快速查詢目前可使用的教室
 
 ### 🍱 校園生活
 - [ ] **免費便當通知** – 任何人可實名登記，並整合台科大、台大相關資訊，主動推播通知
+
+### 🌏 在地化與無障礙
+- [x] **多語言（67+ 語系）** – 跟著系統或在 App 內單獨切換 `v1.6.0`
+- [x] **課程 / 教室名稱簡稱** – 一鍵切換、可還原 `v1.6.0`
+- [x] **RTL 版面修正** – 阿拉伯語 / 希伯來語等右至左語系排版 `v1.6.0`
 
 ## 系統需求
 | 項目 | 需求 |
@@ -115,18 +150,24 @@ TigerDuck 是由一群學生共同開發的校園助手
 <br/><br/>
 
 ## 開發環境建置
+[![Swift](https://img.shields.io/badge/Swift-5-F05138?style=for-the-badge&logo=swift&logoColor=white)](https://swift.org)
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 
 ### 需求
 - **macOS**
 - Xcode 26+
 - Swift 5
-- [uv](https://github.com/astral-sh/uv) 套件管理器（網路請求方法驗證）
+- [uv](https://github.com/astral-sh/uv) 套件管理器（後端 / POC 腳本）
+- Docker Desktop（要跑完整推播後端時才需要）
 
 ### iOS App
 ```bash
-# clone 專案
-git clone https://github.com/tigerduck-app/tigerduck-app.git
+# clone 專案（含子模組：localization、name-abbr）
+git clone --recurse-submodules https://github.com/tigerduck-app/tigerduck-app.git
 cd tigerduck-app
+
+# 已經 clone 過的話，補抓子模組
+git submodule update --init --recursive
 
 # 以 Xcode 開啟
 open swift/TigerDuck.xcodeproj
@@ -134,13 +175,34 @@ open swift/TigerDuck.xcodeproj
 # 開啟後，中間上方選擇模擬器或實體裝置，按 `⌘R` 執行
 ```
 
+> 💡 名稱簡稱（`name-abbr/`）與多語系字串（`localization/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
 
-### 網路請求方法驗證（Python）
-
-NTUST 課程、Moodle 作業、行事曆的資料抓取、爬蟲
+### 推播後端（`backend/`）
+正式環境的 FastAPI 推播服務，負責 APNs Push-to-Start、排程同步、公告抓取與 LLM 分類。
 
 ```bash
 cd backend
+
+# 安裝相依（host 端跑測試用）
+uv sync
+
+# 複製環境變數範本，填入 NTUST、APNs、Postgres 等設定
+cp .env.example .env
+
+# 把 APNs 私鑰放到 secrets/AuthKey_<KEY_ID>.p8（已在 .gitignore）
+
+# 啟動完整 stack（postgres + backend）
+docker compose up -d --build
+docker compose logs -f backend          # 觀察 server.startup / llm.ready
+docker compose exec backend curl -sS localhost:40000/health
+```
+
+### 網路請求方法驗證（`api-poc/`）
+
+NTUST 課程、Moodle 作業、行事曆等抓取邏輯**進入 Swift 之前**用 Python 先驗證，純粹是 POC 腳本，不是長期服務。
+
+```bash
+cd api-poc
 
 # 安裝 uv
 brew install uv
@@ -149,7 +211,7 @@ brew install uv
 uv sync
 
 # 複製環境變數範本
-cp .env.example .env
+cp api/.env.template api/.env
 
 # 在 .env 內填入 NTUST 學號與密碼
 ```
@@ -158,37 +220,52 @@ cp .env.example .env
 
 ```
 tigerduck-app/
-├── swift/
+├── swift/                              # iOS App（Xcode 26+ / iOS 18+）
 │   └── TigerDuck/
-│       ├── Features/           # 各頁面功能模組
-│       │   ├── Home/           # 首頁（時光機、作業、小工具）
-│       │   ├── ClassTable/     # 課表
-│       │   ├── Calendar/       # 行事曆
-│       │   ├── Library/        # 圖書館
-│       │   ├── Announcements/  # 公告
-│       │   ├── Settings/       # 設定
-│       │   └── Onboarding/     # 初次使用引導
-│       ├── LiveActivity/       # 即時動態 
-│       │   ├── Models/         # 各功能模型
-│       │   ├── Preferences/    # 偏好設定
-│       │   ├── Providers/      # 資料取得
-│       │   ├── Resolvers/      # 解析器
-│       │   ├── Runtime/        # 主邏輯
-│       │   └── Scheduling/     # 排程器
+│       ├── App/                        # 全域狀態（AppState）、語言管理、推播代理
+│       ├── Bridge/                     # 服務協調層（KMP / 原生抓取 bridge）
+│       ├── Features/                   # 各分頁功能模組
+│       │   ├── Home/                   # 首頁（時光機、作業、小工具）
+│       │   ├── ClassTable/             # 課表
+│       │   ├── Calendar/               # 行事曆
+│       │   ├── Bulletins/              # 公告（後端 LLM 分類、訂閱、推播）
+│       │   ├── Score/                  # 歷年成績與排名
+│       │   ├── Library/                # 圖書館
+│       │   ├── More/                   # 「更多」聚合頁與功能釘選
+│       │   ├── Settings/               # 設定（語言、簡稱、主題、來源碼）
+│       │   └── Onboarding/             # 初次使用引導
+│       ├── LiveActivity/               # 即時動態 / 動態島
+│       │   ├── Models/  Preferences/  Providers/
+│       │   ├── Resolvers/  Runtime/  Scheduling/
 │       ├── Models/
-│       │   ├── Domain/         # 業務邏輯模型
-│       │   └── SwiftData/      # 本地持久化模型
+│       │   ├── Domain/                 # 業務邏輯模型
+│       │   └── SwiftData/              # 本地持久化模型
 │       ├── Services/
-│       │   ├── Auth/           # NTUST SSO 認證
-│       │   └── Network/        # 網路請求
-│       ├── SharedUI/           # 共用 UI 元件
-│       └── Theme/              # 全域主題定義
-└── backend/
-    └── api/                    # Python 資料抓取腳本
-        ├── ntust_sso.py        # NTUST SSO 登入
-        ├── course_lookup.py    # 課程查詢
-        ├── get_moodle_homework.py  # Moodle 作業
-        └── get_calender.py     # 行事曆
+│       │   ├── Auth/                   # NTUST SSO 認證
+│       │   ├── Network/                # 網路請求
+│       │   ├── Push/                   # APNs / Push 註冊
+│       │   ├── Logging/                # 結構化日誌
+│       │   └── Migrations/             # 一次性遷移
+│       ├── SharedUI/                   # 共用 UI 元件
+│       └── Theme/                      # 主題、配色、視覺預設
+├── backend/                            # 推播 / 公告後端（FastAPI + Postgres + APNs + LLM）
+│   ├── server/
+│   │   ├── main.py                     # FastAPI 進入點
+│   │   ├── config.py / db.py / models.py
+│   │   ├── routes/                     # devices / schedule / bulletins / live_activities
+│   │   ├── push/                       # APNs payload + sender
+│   │   ├── scheduler/                  # Live Activity 排程派送、retention
+│   │   ├── bulletins/                  # 公告抓取、去重、LLM 分類、taxonomy
+│   │   └── migrations/                 # Alembic
+│   ├── scripts/                        # 一次性腳本（如公告 backfill）
+│   ├── docker-compose.yml / Dockerfile
+│   └── pyproject.toml / uv.lock
+├── api-poc/                            # 第三方 API 驗證腳本（NTUST / Moodle / Calendar）
+│   └── api/                            # ntust_sso / course_lookup / moodle / calendar
+├── deploy/                             # 部署用 launchd plist（host 上的 llama-server）
+├── docs/                               # 規劃文件、移轉計畫
+├── localization/                       # ⤴ git submodule：67+ 語系翻譯
+└── name-abbr/                          # ⤴ git submodule：課程 / 教室簡稱字典
 ```
 
 ## 貢獻
@@ -199,6 +276,7 @@ tigerduck-app/
 2. 測試於 iOS 18 & iOS 26 模擬器或實機上可正常運行
 3. 以 `feature/your-feature` 或 `fix/your-fix` 命名分支
 4. 發布 PR 時，目標分支為 `dev`，且必須勾選 Copilot 做 Revise
+5. 翻譯字串請改 `localization/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink
 
 ## 授權
 本專案採用 [GNU Affero General Public License v3.0](LICENSE) 授權。
