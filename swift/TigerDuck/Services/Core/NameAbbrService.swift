@@ -114,7 +114,6 @@ final class NameAbbrService: @unchecked Sendable {
 
             let (newClassroom, newMap) = derivedClassroom(
                 for: course,
-                isEnglish: isEnglish,
                 classroomAbbrEnabled: classroomAbbrEnabled,
                 mandarinDisplay: classroomMandarinDisplay
             )
@@ -133,11 +132,14 @@ final class NameAbbrService: @unchecked Sendable {
 
     private func derivedClassroom(
         for course: SDCourse,
-        isEnglish: Bool,
         classroomAbbrEnabled: Bool,
         mandarinDisplay: String
     ) -> (classroom: String, map: [String: String]) {
-        let shouldAbbreviate = (isEnglish && classroomAbbrEnabled) || !isEnglish
+        // Mirrors the fetch-time predicate in `AppServiceBridge.fetchCourses`
+        // so a fetched cache and a relabeled cache produce identical strings
+        // for the same toggle state. Diverging predicates were a latent
+        // correctness hazard once UI guards no longer hid the mismatch.
+        let shouldAbbreviate = classroomAbbrEnabled || mandarinDisplay != "original"
 
         let rawFlat = lock.withLock { rawClassrooms[course.courseNo] } ?? course.classroom
         let rawMap = lock.withLock { rawClassroomMaps[course.courseNo] } ?? course.classroomMap
