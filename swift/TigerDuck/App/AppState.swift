@@ -66,6 +66,10 @@ final class AppState {
         // (e.g. across app launches). The coordinator no-ops when the
         // toggle is off, so this is safe to call unconditionally.
         pushCoordinator.enable()
+
+        // Apply stored language preference on launch so string lookups use
+        // the user's chosen locale even before any UI change triggers it.
+        LanguageManager.apply(appLanguage)
     }
 
     // MARK: - Migrations
@@ -278,6 +282,48 @@ final class AppState {
     /// adding new presets stays contained to ``VisualStylePolicy``.
     var visualStylePolicy: VisualStylePolicy {
         VisualStylePolicy(preset: visualPreset)
+    }
+
+    // MARK: - Language & Abbreviations
+
+    /// BCP-47 language tag, or "system" to follow device locale.
+    /// Writing this applies the change immediately via LanguageManager.apply()
+    /// and posts languageDidChange so TigerDuckApp can swap the root-view ID.
+    var appLanguage: String = Defaults[.appLanguage] {
+        didSet {
+            guard appLanguage != oldValue else { return }
+            Defaults[.appLanguage] = appLanguage
+            LanguageManager.apply(appLanguage)
+            NotificationCenter.default.post(name: AppConstants.languageDidChange, object: nil)
+        }
+    }
+
+    var useEnglishCourseAbbreviation: Bool = Defaults[.useEnglishCourseAbbreviation] {
+        didSet {
+            guard useEnglishCourseAbbreviation != oldValue else { return }
+            Defaults[.useEnglishCourseAbbreviation] = useEnglishCourseAbbreviation
+            NotificationCenter.default.post(name: AppConstants.abbrSettingsDidChange, object: nil)
+        }
+    }
+
+    var useEnglishClassroomAbbreviation: Bool = Defaults[.useEnglishClassroomAbbreviation] {
+        didSet {
+            guard useEnglishClassroomAbbreviation != oldValue else { return }
+            Defaults[.useEnglishClassroomAbbreviation] = useEnglishClassroomAbbreviation
+            NotificationCenter.default.post(name: AppConstants.abbrSettingsDidChange, object: nil)
+        }
+    }
+
+    /// One of "original", "pinyin", "translated"
+    var classroomMandarinDisplay: String = Defaults[.classroomMandarinDisplay] {
+        didSet {
+            guard classroomMandarinDisplay != oldValue else { return }
+            let valid: Set<String> = ["original", "pinyin", "translated"]
+            let normalized = valid.contains(classroomMandarinDisplay) ? classroomMandarinDisplay : "original"
+            classroomMandarinDisplay = normalized
+            Defaults[.classroomMandarinDisplay] = normalized
+            NotificationCenter.default.post(name: AppConstants.abbrSettingsDidChange, object: nil)
+        }
     }
 
     // MARK: - Tab Configuration
