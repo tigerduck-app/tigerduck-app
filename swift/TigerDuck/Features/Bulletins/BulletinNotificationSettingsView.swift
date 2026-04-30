@@ -118,7 +118,7 @@ struct BulletinNotificationSettingsView: View {
                     Button {
                         openAppSettings()
                     } label: {
-                        Label(String(localized: "bulletin_push_reopen_ios_settings"), systemImage: "gear")
+                        Label(String(localized: "bulletin_push_reopen_settings"), systemImage: "gear")
                     }
                 }
 

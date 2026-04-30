@@ -31,7 +31,7 @@ struct PushServerSettingsView: View {
                     statusRow(label: String(localized: "push_server_status_live_activities"),
                               ok: s.liveActivitiesEnabled,
                               okText: String(localized: "push_server_status_enabled"),
-                              badText: String(localized: "push_server_status_ios_settings_hint"))
+                              badText: String(localized: "push_server_status_settings_hint"))
                     statusRow(label: String(localized: "permission_notifications_name"),
                               ok: s.notificationAuthStatus == .authorized || s.notificationAuthStatus == .provisional,
                               okText: notificationStatusText(s.notificationAuthStatus),
