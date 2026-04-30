@@ -333,9 +333,14 @@ final class AppState {
         didSet {
             guard classroomMandarinDisplay != oldValue else { return }
             let valid: Set<String> = ["original", "pinyin", "translated"]
-            let normalized = valid.contains(classroomMandarinDisplay) ? classroomMandarinDisplay : "original"
-            classroomMandarinDisplay = normalized
-            Defaults[.classroomMandarinDisplay] = normalized
+            // Reject invalid input by reassigning; the recursive didSet then
+            // takes the valid branch and persists once. Returning here keeps
+            // this outer call from also calling relabelAllCachedCourses.
+            if !valid.contains(classroomMandarinDisplay) {
+                classroomMandarinDisplay = "original"
+                return
+            }
+            Defaults[.classroomMandarinDisplay] = classroomMandarinDisplay
             relabelAllCachedCourses()
         }
     }
