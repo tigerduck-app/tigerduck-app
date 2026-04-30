@@ -297,6 +297,13 @@ final class AppState {
     var appLanguage: String = Defaults[.appLanguage] {
         didSet {
             guard appLanguage != oldValue else { return }
+            // Cancel any in-flight sync started under the previous locale.
+            // AppServiceBridge.fetchCourses snapshots the language at task
+            // start, so without this an orphaned task could land after the
+            // post-language-change refresh and overwrite DataCache with
+            // previous-locale names.
+            syncTask?.cancel()
+            syncTask = nil
             Defaults[.appLanguage] = appLanguage
             LanguageManager.apply(appLanguage)
             AppServiceBridge.handleLanguageChange()

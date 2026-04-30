@@ -131,7 +131,7 @@ struct TimeSliderSection: View {
 
     private static let dateTimeFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
+        f.locale = .autoupdatingCurrent
         f.dateFormat = "M/d (EEEEE) HH:mm"
         return f
     }()

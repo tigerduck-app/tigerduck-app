@@ -13,6 +13,12 @@ struct FluidGlassTrackView: View {
         GeometryReader { geo in
             let width = geo.size.width
             let centerX = width / 2
+            // Track rendering uses positive xOffset = right = future. In RTL
+            // the gesture handler flips drag direction so a rightward swipe
+            // still advances time, which means visually future segments must
+            // also flip to the left side. Mirror every x-offset by this
+            // factor so gesture and visuals agree.
+            let rtlFactor: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
 
             ZStack {
                 // Glass track background
@@ -26,14 +32,14 @@ struct FluidGlassTrackView: View {
                 }
 
                 // Tick marks
-                tickMarks(centerX: centerX, visibleWidth: width)
+                tickMarks(centerX: centerX, visibleWidth: width, rtlFactor: rtlFactor)
 
                 // Course segments positioned relative to center
                 ForEach(viewModel.timeSlots) { slot in
                     let startOffset = viewModel.xOffset(for: slot.start)
                     let endOffset = viewModel.xOffset(for: slot.end)
                     let segWidth = max(TimeSliderMetrics.minimumFluidBlockWidth, endOffset - startOffset)
-                    let segCenterX = centerX + (startOffset + endOffset) / 2
+                    let segCenterX = centerX + rtlFactor * (startOffset + endOffset) / 2
 
                     // Only render if visible
                     if segCenterX + segWidth / 2 > -50 && segCenterX - segWidth / 2 < width + 50 {
@@ -85,7 +91,7 @@ struct FluidGlassTrackView: View {
     // MARK: - Tick Marks
 
     @ViewBuilder
-    private func tickMarks(centerX: CGFloat, visibleWidth: CGFloat) -> some View {
+    private func tickMarks(centerX: CGFloat, visibleWidth: CGFloat, rtlFactor: CGFloat) -> some View {
         let markerInterval = TimeSliderMetrics.markerIntervalMinutes * 60
         let majorInterval = TimeSliderMetrics.majorMarkerIntervalMinutes * 60
 
@@ -103,7 +109,7 @@ struct FluidGlassTrackView: View {
             var t = firstMarker
             while t <= rangeEnd {
                 let markerDate = Date(timeIntervalSinceReferenceDate: t)
-                let x = centerX + viewModel.xOffset(for: markerDate)
+                let x = centerX + rtlFactor * viewModel.xOffset(for: markerDate)
 
                 if x > -10 && x < size.width + 10 {
                     let isMajor = t.truncatingRemainder(dividingBy: majorInterval) == 0
