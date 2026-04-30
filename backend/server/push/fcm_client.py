@@ -38,6 +38,7 @@ class FcmSender:
         )
 
     async def send(self, request: FcmRequest) -> SendResult:
+        import firebase_admin
         from firebase_admin import messaging
 
         msg = messaging.Message(
@@ -64,6 +65,10 @@ class FcmSender:
         except messaging.SenderIdMismatchError as e:
             return SendResult(
                 success=False, status="SENDER_ID_MISMATCH", description=str(e)
+            )
+        except firebase_admin.exceptions.InvalidArgumentError as e:
+            return SendResult(
+                success=False, status="INVALID_ARGUMENT", description=str(e)
             )
         except (messaging.QuotaExceededError, messaging.ThirdPartyAuthError) as e:
             return SendResult(
