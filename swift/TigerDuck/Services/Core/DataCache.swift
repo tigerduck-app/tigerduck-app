@@ -279,6 +279,22 @@ final class DataCache {
         }
     }
 
+    /// Remove every `courses_<semester>.json` file. Used by the abbreviation
+    /// pipeline migration to drop pre-fix entries whose `classroomMapJSON`
+    /// may already be abbreviated and would no longer round-trip through the
+    /// raw classroom cache. The next fetch repopulates from the network.
+    func clearCourseCaches() {
+        let cacheContents = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for url in cacheContents where url.pathExtension == "json" {
+            if url.lastPathComponent.hasPrefix("courses_") {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+
     // MARK: - Private helpers
 
     private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {

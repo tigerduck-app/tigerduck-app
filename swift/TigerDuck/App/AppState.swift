@@ -81,6 +81,7 @@ final class AppState {
         Task(priority: .utility) { @MainActor in
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
+            ClassroomAbbrCacheMigration.runIfNeeded()
             // Add future migrations here in sequence.
         }
     }
@@ -302,7 +303,7 @@ final class AppState {
         didSet {
             guard useEnglishCourseAbbreviation != oldValue else { return }
             Defaults[.useEnglishCourseAbbreviation] = useEnglishCourseAbbreviation
-            NotificationCenter.default.post(name: AppConstants.abbrSettingsDidChange, object: nil)
+            relabelAllCachedCourses()
         }
     }
 
@@ -310,7 +311,7 @@ final class AppState {
         didSet {
             guard useEnglishClassroomAbbreviation != oldValue else { return }
             Defaults[.useEnglishClassroomAbbreviation] = useEnglishClassroomAbbreviation
-            NotificationCenter.default.post(name: AppConstants.abbrSettingsDidChange, object: nil)
+            relabelAllCachedCourses()
         }
     }
 
@@ -322,7 +323,58 @@ final class AppState {
             let normalized = valid.contains(classroomMandarinDisplay) ? classroomMandarinDisplay : "original"
             classroomMandarinDisplay = normalized
             Defaults[.classroomMandarinDisplay] = normalized
-            NotificationCenter.default.post(name: AppConstants.abbrSettingsDidChange, object: nil)
+            relabelAllCachedCourses()
+        }
+    }
+
+    /// Re-derive course/classroom labels for every cached semester using the
+    /// current toggle settings, then post `dataDidUpdate` so visible views
+    /// reload from the freshly relabeled cache. Lives on `AppState` so the
+    /// relabel still runs when no `ClassTableViewModel` is alive (e.g., the
+    /// user toggled in Settings without ever opening the Class Table tab).
+    private func relabelAllCachedCourses() {
+        let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
+        let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
+        let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
+
+        var anyChanged = false
+        var code = CourseSelectionService.currentSemesterCode()
+        for _ in 0..<4 {
+            let courses = DataCache.shared.loadCourses(semester: code)
+            if !courses.isEmpty {
+                let changed = NameAbbrService.shared.relabelInPlace(
+                    courses,
+                    courseAbbrEnabled: courseAbbrEnabled,
+                    classroomAbbrEnabled: classroomAbbrEnabled,
+                    classroomMandarinDisplay: classroomMandarinDisplay
+                )
+                if changed {
+                    DataCache.shared.saveCourses(courses, semester: code)
+                    anyChanged = true
+                }
+            }
+            code = CourseSelectionService.previousSemesterCode(code)
+        }
+
+        // User-added courses live in their own file, outside the per-semester
+        // fetch cache, so the loop above never sees them. Relabel separately
+        // so manually-added Mandarin classrooms also honor the display toggle.
+        let userAdded = DataCache.shared.loadUserAddedCourses()
+        if !userAdded.isEmpty {
+            let changed = NameAbbrService.shared.relabelInPlace(
+                userAdded,
+                courseAbbrEnabled: courseAbbrEnabled,
+                classroomAbbrEnabled: classroomAbbrEnabled,
+                classroomMandarinDisplay: classroomMandarinDisplay
+            )
+            if changed {
+                DataCache.shared.saveUserAddedCourses(userAdded)
+                anyChanged = true
+            }
+        }
+
+        if anyChanged {
+            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
     }
 

@@ -1,4 +1,5 @@
 import XCTest
+import Defaults
 @testable import TigerDuck
 
 final class NameAbbrServiceTests: XCTestCase {
@@ -52,6 +53,61 @@ final class NameAbbrServiceTests: XCTestCase {
         XCTAssertEqual(result, "TR-313, 115 Seminar Room")
     }
 
+    func test_relabelInPlace_propagatesPinyinToClassroomMap() {
+        let svc = NameAbbrService.shared
+        svc.clearRawNameCache()
+        Defaults[.appLanguage] = "en"
+
+        let course = SDCourse(
+            courseNo: "DBG_D607",
+            courseName: "X",
+            classroom: "華夏恆毅樓D607",
+            schedule: [1: ["3", "4"]],
+            classroomMap: ["1-3": "華夏恆毅樓D607", "1-4": "華夏恆毅樓D607"]
+        )
+        svc.storeRawClassroom(
+            courseNo: "DBG_D607",
+            classroom: "華夏恆毅樓D607",
+            map: ["1-3": "華夏恆毅樓D607", "1-4": "華夏恆毅樓D607"]
+        )
+
+        _ = svc.relabelInPlace(
+            [course],
+            courseAbbrEnabled: true,
+            classroomAbbrEnabled: true,
+            classroomMandarinDisplay: "pinyin"
+        )
+
+        XCTAssertEqual(course.classroom, "Hua Xia Heng Yi Lou D607")
+        XCTAssertEqual(course.classroomMap["1-3"], "Hua Xia Heng Yi Lou D607")
+        XCTAssertEqual(course.classroom(for: 1), "Hua Xia Heng Yi Lou D607")
+
+        svc.clearRawNameCache()
+    }
+
+    func test_relabelInPlace_fallsBackToCourseClassroomMapWhenRawMissing() {
+        let svc = NameAbbrService.shared
+        svc.clearRawNameCache()
+        Defaults[.appLanguage] = "en"
+
+        let course = SDCourse(
+            courseNo: "DBG_NORAW",
+            courseName: "X",
+            classroom: "華夏恆毅樓D607",
+            schedule: [1: ["3"]],
+            classroomMap: ["1-3": "華夏恆毅樓D607"]
+        )
+
+        _ = svc.relabelInPlace(
+            [course],
+            courseAbbrEnabled: true,
+            classroomAbbrEnabled: true,
+            classroomMandarinDisplay: "translated"
+        )
+
+        XCTAssertEqual(course.classroom(for: 1), "Hwahsia Hengyi Building D607")
+    }
+
     func test_rawNameCacheRoundtrip() {
         let svc = NameAbbrService.shared
         svc.storeRawName(courseNo: "EC1013701", name: "Calculus (I)")
@@ -59,4 +115,5 @@ final class NameAbbrServiceTests: XCTestCase {
         svc.clearRawNameCache()
         XCTAssertNil(svc.rawName(for: "EC1013701"))
     }
+
 }

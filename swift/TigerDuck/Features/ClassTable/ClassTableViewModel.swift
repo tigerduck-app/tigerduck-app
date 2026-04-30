@@ -97,7 +97,6 @@ final class ClassTableViewModel {
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
-    private var abbrObserver: Any?
     private var languageObserver: Any?
 
     /// Guards the fire-and-forget pull-to-refresh path against overlapping
@@ -122,14 +121,6 @@ final class ClassTableViewModel {
             self?.reloadFromCache()
         }
 
-        abbrObserver = NotificationCenter.default.addObserver(
-            forName: AppConstants.abbrSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.relabelFromCache()
-        }
-
         languageObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.languageDidChange,
             object: nil,
@@ -144,9 +135,6 @@ final class ClassTableViewModel {
 
     deinit {
         if let observer = dataObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = abbrObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = languageObserver {
@@ -186,29 +174,6 @@ final class ClassTableViewModel {
             DataCache.shared.loadUserAddedCourses()
         )
         assignments = DataCache.shared.loadAssignments()
-    }
-
-    /// Re-derive course/classroom labels from the current `NameAbbrService`
-    /// raw-name cache + Defaults settings without hitting the network.
-    /// Triggered when the user toggles abbreviation settings.
-    private func relabelFromCache() {
-        let updated = courses
-        let changed = NameAbbrService.shared.relabelInPlace(
-            updated,
-            courseAbbrEnabled: Defaults[.useEnglishCourseAbbreviation],
-            classroomAbbrEnabled: Defaults[.useEnglishClassroomAbbreviation],
-            classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
-        )
-        guard changed else { return }
-        DataCache.shared.saveCourses(updated, semester: currentSemester)
-        courses = updated
-        if currentSemester == CourseSelectionService.currentSemesterCode() {
-            currentSemesterCourses = buildCourseList(
-                updated, DataCache.shared.loadUserAddedCourses()
-            )
-            refreshCourseColors()
-        }
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
     private func rebuildLookup() {
@@ -329,6 +294,15 @@ final class ClassTableViewModel {
         if let customName = courseCustomNames[course.courseNo] {
             course.courseName = customName
         }
+        // Apply current display toggles immediately so a newly-added course
+        // with a Mandarin classroom shows in the user's chosen form (pinyin /
+        // translated / original) without requiring them to flip the toggle.
+        NameAbbrService.shared.relabelInPlace(
+            [course],
+            courseAbbrEnabled: Defaults[.useEnglishCourseAbbreviation],
+            classroomAbbrEnabled: Defaults[.useEnglishClassroomAbbreviation],
+            classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
+        )
         courses.append(course)
         persistUserAddedCourses()
         broadcastLocalChange()

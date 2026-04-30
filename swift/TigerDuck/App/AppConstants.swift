@@ -6,7 +6,6 @@ nonisolated enum AppConstants {
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
-    static let abbrSettingsDidChange = Notification.Name("TigerDuck.abbrSettingsDidChange")
     static let moodleBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
 
     nonisolated enum KeychainKeys {

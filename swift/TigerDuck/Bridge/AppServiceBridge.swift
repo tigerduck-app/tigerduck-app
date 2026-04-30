@@ -201,6 +201,11 @@ enum AppServiceBridge {
                             NameAbbrService.shared.storeRawName(
                                 courseNo: data.courseNo, name: data.courseName
                             )
+                            NameAbbrService.shared.storeRawClassroom(
+                                courseNo: data.courseNo,
+                                classroom: data.classroom,
+                                map: data.classroomMap
+                            )
                             let isEnglish = courseApiLanguage == "en"
                             if isEnglish && courseAbbrEnabled {
                                 data.courseName = NameAbbrService.shared.abbreviateName(data.courseName)

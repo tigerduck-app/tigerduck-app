@@ -6,12 +6,20 @@ final class NameAbbrService: @unchecked Sendable {
 
     private var courseAbbr: [String: String] = [:]
     private var classroomAbbr: [String: ClassroomAbbrEntry] = [:]
+    /// Reverse index: any of (key, shortened, pinyin, translated) → key.
+    /// Lets `abbreviateClassroom` resolve a previously-abbreviated value back
+    /// to its Mandarin key so the toggle works idempotently in any direction
+    /// (pinyin → translated, translated → original, etc.) without needing a
+    /// separately persisted "raw" copy.
+    private var classroomReverseIndex: [String: String] = [:]
     private var abbrLoaded = false
 
-    // In-memory map of courseNo → raw API course name.
+    // In-memory map of courseNo → raw API course name / classroom values.
     // Populated during AppServiceBridge.fetchCourses; cleared on language change.
     // Allows instant abbreviation toggle without a network round-trip.
     private var rawNames: [String: String] = [:]
+    private var rawClassrooms: [String: String] = [:]
+    private var rawClassroomMaps: [String: [String: String]] = [:]
 
     private let lock = NSLock()
 
@@ -27,8 +35,19 @@ final class NameAbbrService: @unchecked Sendable {
         lock.withLock { rawNames[courseNo] }
     }
 
+    func storeRawClassroom(courseNo: String, classroom: String, map: [String: String]) {
+        lock.withLock {
+            rawClassrooms[courseNo] = classroom
+            rawClassroomMaps[courseNo] = map
+        }
+    }
+
     func clearRawNameCache() {
-        lock.withLock { rawNames.removeAll() }
+        lock.withLock {
+            rawNames.removeAll()
+            rawClassrooms.removeAll()
+            rawClassroomMaps.removeAll()
+        }
     }
 
     // MARK: - Abbreviation lookups
@@ -47,11 +66,16 @@ final class NameAbbrService: @unchecked Sendable {
         let parts = SDCourse.splitRoom(raw)
         let abbreviated = lock.withLock {
             parts.map { part -> String in
-                guard let entry = classroomAbbr[part] else { return part }
+                // Resolve `part` back to the Mandarin key in any form:
+                // direct hit (raw / shortened that matches key) first, then
+                // the reverse index (catches pinyin / translated / shortened
+                // that differs from the key).
+                let key = classroomAbbr[part] != nil ? part : (classroomReverseIndex[part] ?? part)
+                guard let entry = classroomAbbr[key] else { return part }
                 let short = entry.shortenedName.trimmingCharacters(in: .whitespaces)
                 let pinyin = entry.pinyin.trimmingCharacters(in: .whitespaces)
                 let translated = entry.translated.trimmingCharacters(in: .whitespaces)
-                let fallback = short.isEmpty ? part : short
+                let fallback = short.isEmpty ? key : short
                 switch display {
                 case "pinyin": return pinyin.isEmpty ? fallback : pinyin
                 case "translated": return translated.isEmpty ? fallback : translated
@@ -88,16 +112,19 @@ final class NameAbbrService: @unchecked Sendable {
                 newName = raw
             }
 
-            let newClassroom = derivedClassroom(
+            let (newClassroom, newMap) = derivedClassroom(
                 for: course,
                 isEnglish: isEnglish,
                 classroomAbbrEnabled: classroomAbbrEnabled,
                 mandarinDisplay: classroomMandarinDisplay
             )
 
-            if course.courseName != newName || course.classroom != newClassroom {
+            if course.courseName != newName
+                || course.classroom != newClassroom
+                || course.classroomMap != newMap {
                 course.courseName = newName
                 course.classroom = newClassroom
+                course.setClassroomMap(newMap)
                 changed = true
             }
         }
@@ -109,32 +136,39 @@ final class NameAbbrService: @unchecked Sendable {
         isEnglish: Bool,
         classroomAbbrEnabled: Bool,
         mandarinDisplay: String
-    ) -> String {
-        let map = course.classroomMap
-        if map.isEmpty {
-            guard isEnglish && classroomAbbrEnabled else { return course.classroom }
-            return abbreviateClassroom(course.classroom, display: mandarinDisplay)
+    ) -> (classroom: String, map: [String: String]) {
+        let shouldAbbreviate = (isEnglish && classroomAbbrEnabled) || !isEnglish
+
+        let rawFlat = lock.withLock { rawClassrooms[course.courseNo] } ?? course.classroom
+        let rawMap = lock.withLock { rawClassroomMaps[course.courseNo] } ?? course.classroomMap
+
+        let derivedMap: [String: String]
+        if rawMap.isEmpty {
+            derivedMap = [:]
+        } else if shouldAbbreviate {
+            derivedMap = rawMap.mapValues { abbreviateClassroom($0, display: mandarinDisplay) }
+        } else {
+            derivedMap = rawMap
+        }
+
+        if derivedMap.isEmpty {
+            let flat = shouldAbbreviate
+                ? abbreviateClassroom(rawFlat, display: mandarinDisplay)
+                : rawFlat
+            return (flat, [:])
         }
 
         var seen = Set<String>()
         var parts: [String] = []
-        let sortedKeys = map.keys.sorted()
-        for key in sortedKeys {
-            guard let raw = map[key] else { continue }
-            let abbr: String
-            if isEnglish && classroomAbbrEnabled {
-                abbr = abbreviateClassroom(raw, display: mandarinDisplay)
-            } else if !isEnglish {
-                abbr = abbreviateClassroom(raw, display: mandarinDisplay)
-            } else {
-                abbr = raw
-            }
-            for part in SDCourse.splitRoom(abbr) where !seen.contains(part) {
+        for key in derivedMap.keys.sorted() {
+            guard let value = derivedMap[key] else { continue }
+            for part in SDCourse.splitRoom(value) where !seen.contains(part) {
                 seen.insert(part)
                 parts.append(part)
             }
         }
-        return parts.isEmpty ? course.classroom : parts.joined(separator: ", ")
+        let flat = parts.isEmpty ? rawFlat : parts.joined(separator: ", ")
+        return (flat, derivedMap)
     }
 
     // MARK: - Lazy load
@@ -144,8 +178,27 @@ final class NameAbbrService: @unchecked Sendable {
             guard !abbrLoaded else { return }
             courseAbbr = loadCourseAbbr()
             classroomAbbr = loadClassroomAbbr()
+            classroomReverseIndex = buildClassroomReverseIndex(classroomAbbr)
             abbrLoaded = true
         }
+    }
+
+    /// Build a value → key map covering every non-empty form
+    /// (shortened / pinyin / translated) so an already-abbreviated classroom
+    /// can be resolved back to its Mandarin key. Direct key→key mappings are
+    /// implicit via `classroomAbbr` and not duplicated here.
+    private func buildClassroomReverseIndex(
+        _ entries: [String: ClassroomAbbrEntry]
+    ) -> [String: String] {
+        var index: [String: String] = [:]
+        for (key, entry) in entries {
+            for form in [entry.shortenedName, entry.pinyin, entry.translated] {
+                let trimmed = form.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty, trimmed != key, index[trimmed] == nil else { continue }
+                index[trimmed] = key
+            }
+        }
+        return index
     }
 
     private func loadCourseAbbr() -> [String: String] {
