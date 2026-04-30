@@ -11,7 +11,7 @@ struct MoreView: View {
             ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     HStack {
-                        Text("更多")
+                        Text(String(localized: "feature_more"))
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()

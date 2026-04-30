@@ -82,7 +82,7 @@ struct BulletinDetailView: View {
                 importanceBadge
             }
             if bulletin.isDeleted {
-                Text("已撤下")
+                Text(String(localized: "bulletin_withdrawn_badge"))
                     .font(TigerDuckTheme.Typography.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -129,7 +129,7 @@ struct BulletinDetailView: View {
                 .padding(.top, 40)
         } else if let error = loadError {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-                Text("無法載入內文")
+                Text(String(localized: "bulletin_body_load_failed"))
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                 Text(error)
@@ -162,7 +162,7 @@ struct BulletinDetailView: View {
                     UIApplication.shared.open(url)
                 }
             } label: {
-                Label("原文公告", systemImage: "safari")
+                Label(String(localized: "bulletin_source_link_label"), systemImage: "safari")
                     .font(.callout.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
@@ -175,7 +175,7 @@ struct BulletinDetailView: View {
     }
 
     private var importanceBadge: some View {
-        Text("重要")
+        Text(String(localized: "bulletin_importance_high_badge"))
             .font(TigerDuckTheme.Typography.caption)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)

@@ -15,7 +15,7 @@ struct AddSectionSheet: View {
         NavigationStack {
             List {
                 if !availableBuiltInTypes.isEmpty {
-                    Section("內建區塊") {
+                    Section(String(localized: "home_builtin_sections")) {
                         ForEach(availableBuiltInTypes, id: \.self) { type in
                             Button {
                                 viewModel.addSection(type: type, title: type.defaultTitle)
@@ -27,9 +27,9 @@ struct AddSectionSheet: View {
                     }
                 }
 
-                Section("自訂區塊") {
+                Section(String(localized: "home_section_custom")) {
                     HStack {
-                        TextField("區塊名稱", text: $customTitle)
+                        TextField(String(localized: "home_section_name"), text: $customTitle)
                         Button {
                             guard !customTitle.isEmpty else { return }
                             viewModel.addSection(type: .custom, title: customTitle)
@@ -42,7 +42,7 @@ struct AddSectionSheet: View {
                     }
                 }
 
-                Section("新增快速功能") {
+                Section(String(localized: "home_section_add_quick_features")) {
                     let allWidgetFeatures = viewModel.sections
                         .flatMap(\.widgets)
                         .map(\.feature)
@@ -50,7 +50,7 @@ struct AddSectionSheet: View {
                         .filter { !allWidgetFeatures.contains($0) }
 
                     if addable.isEmpty {
-                        Text("所有快速功能已添加")
+                        Text(String(localized: "home_section_all_widgets_added"))
                             .foregroundStyle(Color.textSecondary)
                     } else {
                         ForEach(addable) { feature in
@@ -68,11 +68,11 @@ struct AddSectionSheet: View {
                     }
                 }
             }
-            .navigationTitle("新增區塊")
+            .navigationTitle(String(localized: "home_add_section_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(String(localized: "action_cancel")) { dismiss() }
                 }
             }
         }

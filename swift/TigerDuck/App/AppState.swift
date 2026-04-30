@@ -66,6 +66,14 @@ final class AppState {
         // (e.g. across app launches). The coordinator no-ops when the
         // toggle is off, so this is safe to call unconditionally.
         pushCoordinator.enable()
+
+        // Apply a stored in-app language override on launch so string lookups
+        // use the user's chosen locale. Skip when "system" — calling apply()
+        // there would removeObject(AppleLanguages), wiping the per-app override
+        // iOS Settings writes to that same key.
+        if appLanguage != LanguageManager.system {
+            LanguageManager.apply(appLanguage)
+        }
     }
 
     // MARK: - Migrations
@@ -77,6 +85,7 @@ final class AppState {
         Task(priority: .utility) { @MainActor in
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
+            ClassroomAbbrCacheMigration.runIfNeeded()
             // Add future migrations here in sequence.
         }
     }
@@ -107,6 +116,7 @@ final class AppState {
     private var preferencesObserver: Any?
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
+    private var relabelTask: Task<Void, Never>?
 
     // MARK: - Push server
 
@@ -211,15 +221,15 @@ final class AppState {
         Color(hex: UInt(accentColorHex))
     }
 
-    static let themeColors: [(name: String, hex: Int)] = [
-        ("藍", 0x007AFF),
-        ("紫", 0xAF52DE),
-        ("粉", 0xFF2D55),
-        ("紅", 0xFF3B30),
-        ("橘", 0xFF9500),
-        ("綠", 0x34C759),
-        ("青", 0x5AC8FA),
-        ("靛", 0x5856D6),
+    static let themeColors: [(nameKey: String, hex: Int)] = [
+        ("color_name_blue", 0x007AFF),
+        ("color_name_purple", 0xAF52DE),
+        ("color_name_pink", 0xFF2D55),
+        ("color_name_red", 0xFF3B30),
+        ("color_name_orange", 0xFF9500),
+        ("color_name_green", 0x34C759),
+        ("color_name_cyan", 0x5AC8FA),
+        ("color_name_indigo", 0x5856D6),
     ]
 
     // MARK: - Settings
@@ -278,6 +288,127 @@ final class AppState {
     /// adding new presets stays contained to ``VisualStylePolicy``.
     var visualStylePolicy: VisualStylePolicy {
         VisualStylePolicy(preset: visualPreset)
+    }
+
+    // MARK: - Language & Abbreviations
+
+    /// BCP-47 language tag, or "system" to follow device locale.
+    /// Writing this applies the change immediately via LanguageManager.apply()
+    /// and posts languageDidChange so TigerDuckApp can swap the root-view ID.
+    var appLanguage: String = Defaults[.appLanguage] {
+        didSet {
+            guard appLanguage != oldValue else { return }
+            // Cancel any in-flight sync started under the previous locale.
+            // AppServiceBridge.fetchCourses snapshots the language at task
+            // start, so without this an orphaned task could land after the
+            // post-language-change refresh and overwrite DataCache with
+            // previous-locale names.
+            syncTask?.cancel()
+            syncTask = nil
+            Defaults[.appLanguage] = appLanguage
+            LanguageManager.apply(appLanguage)
+            AppServiceBridge.handleLanguageChange()
+            NotificationCenter.default.post(name: AppConstants.languageDidChange, object: nil)
+        }
+    }
+
+    var useEnglishCourseAbbreviation: Bool = Defaults[.useEnglishCourseAbbreviation] {
+        didSet {
+            guard useEnglishCourseAbbreviation != oldValue else { return }
+            Defaults[.useEnglishCourseAbbreviation] = useEnglishCourseAbbreviation
+            relabelAllCachedCourses()
+        }
+    }
+
+    var useEnglishClassroomAbbreviation: Bool = Defaults[.useEnglishClassroomAbbreviation] {
+        didSet {
+            guard useEnglishClassroomAbbreviation != oldValue else { return }
+            Defaults[.useEnglishClassroomAbbreviation] = useEnglishClassroomAbbreviation
+            relabelAllCachedCourses()
+        }
+    }
+
+    /// One of "original", "pinyin", "translated"
+    var classroomMandarinDisplay: String = Defaults[.classroomMandarinDisplay] {
+        didSet {
+            guard classroomMandarinDisplay != oldValue else { return }
+            let valid: Set<String> = ["original", "pinyin", "translated"]
+            // Reject invalid input by reassigning; the recursive didSet then
+            // takes the valid branch and persists once. Returning here keeps
+            // this outer call from also calling relabelAllCachedCourses.
+            if !valid.contains(classroomMandarinDisplay) {
+                classroomMandarinDisplay = "original"
+                return
+            }
+            Defaults[.classroomMandarinDisplay] = classroomMandarinDisplay
+            relabelAllCachedCourses()
+        }
+    }
+
+    /// Re-derive course/classroom labels for every cached semester using the
+    /// current toggle settings, then post `dataDidUpdate` so visible views
+    /// reload from the freshly relabeled cache. Lives on `AppState` so the
+    /// relabel still runs when no `ClassTableViewModel` is alive (e.g., the
+    /// user toggled in Settings without ever opening the Class Table tab).
+    ///
+    /// Runs on a detached task so disk I/O (up to four cached semesters plus
+    /// user-added courses, plus a first-call JSON parse inside
+    /// ``NameAbbrService``) does not block the UI thread when the toggle is
+    /// flipped from a Settings view. Rapid toggling cancels the previous task
+    /// so the latest settings always win the save race.
+    private func relabelAllCachedCourses() {
+        relabelTask?.cancel()
+        relabelTask = Task.detached(priority: .userInitiated) {
+            let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
+            let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
+            let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
+
+            var anyChanged = false
+            var code = CourseSelectionService.currentSemesterCode()
+            for _ in 0..<4 {
+                if Task.isCancelled { return }
+                let courses = DataCache.shared.loadCourses(semester: code)
+                if !courses.isEmpty {
+                    let changed = NameAbbrService.shared.relabelInPlace(
+                        courses,
+                        courseAbbrEnabled: courseAbbrEnabled,
+                        classroomAbbrEnabled: classroomAbbrEnabled,
+                        classroomMandarinDisplay: classroomMandarinDisplay
+                    )
+                    if changed {
+                        DataCache.shared.saveCourses(courses, semester: code)
+                        anyChanged = true
+                    }
+                }
+                code = CourseSelectionService.previousSemesterCode(code)
+            }
+
+            // User-added courses live in their own file, outside the per-semester
+            // fetch cache, so the loop above never sees them. Relabel separately
+            // so manually-added Mandarin classrooms also honor the display toggle.
+            if Task.isCancelled { return }
+            let userAdded = DataCache.shared.loadUserAddedCourses()
+            if !userAdded.isEmpty {
+                let changed = NameAbbrService.shared.relabelInPlace(
+                    userAdded,
+                    courseAbbrEnabled: courseAbbrEnabled,
+                    classroomAbbrEnabled: classroomAbbrEnabled,
+                    classroomMandarinDisplay: classroomMandarinDisplay
+                )
+                if changed {
+                    DataCache.shared.saveUserAddedCourses(userAdded)
+                    anyChanged = true
+                }
+            }
+
+            if anyChanged && !Task.isCancelled {
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: AppConstants.dataDidUpdate, object: nil
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Tab Configuration
@@ -500,7 +631,7 @@ final class AppState {
         syncTask = Task {
             guard NetworkMonitor.shared.isConnected else {
                 await MainActor.run {
-                    sessionManager.loadingState = .error("無網路連線")
+                    sessionManager.loadingState = .error(String(localized: "error_network_unavailable"))
                 }
                 return
             }

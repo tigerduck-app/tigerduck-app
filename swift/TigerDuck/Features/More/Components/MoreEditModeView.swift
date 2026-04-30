@@ -5,7 +5,7 @@ struct MoreEditModeView: View {
 
     var body: some View {
         // Placeholder for future drag-to-reorder and hide/show functionality
-        Text("編輯模式 - 開發中")
+        Text(String(localized: "more_edit_mode_in_development"))
             .foregroundStyle(Color.textSecondary)
     }
 }

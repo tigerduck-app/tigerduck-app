@@ -21,11 +21,12 @@ enum VisualPreset: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// Localized name shown in Settings.
+    /// Brand name shown in Settings. Not localized: these are platform/
+    /// product proper nouns and read the same in every language.
     var displayName: String {
         switch self {
-        case .default: return "TigerDuck 風格"
-        case .iosInspired: return "iOS 風格"
+        case .default: return "TigerDuck"
+        case .iosInspired: return "Apple"
         }
     }
 }

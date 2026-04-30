@@ -97,6 +97,7 @@ final class ClassTableViewModel {
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
+    private var languageObserver: Any?
 
     /// Guards the fire-and-forget pull-to-refresh path against overlapping
     /// fetches. ``triggerRefresh(authService:)`` flips this to `true` while
@@ -119,10 +120,24 @@ final class ClassTableViewModel {
             guard self?.isUpdatingFromNetwork != true else { return }
             self?.reloadFromCache()
         }
+
+        languageObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.languageDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            // Drop the in-memory raw-name cache so the next fetch re-stores
+            // names in the new locale. The root-view rebuild triggered by
+            // TigerDuckApp will drive the actual re-fetch.
+            AppServiceBridge.handleLanguageChange()
+        }
     }
 
     deinit {
         if let observer = dataObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = languageObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -276,9 +291,35 @@ final class ClassTableViewModel {
             DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         }
         guard !courses.contains(where: { $0.courseNo == course.courseNo }) else { return }
+
+        // Cache the freshly-fetched API values BEFORE any local mutation so
+        // abbreviation toggles can round-trip without a network refetch
+        // (mirrors AppServiceBridge.fetchCourses).
+        NameAbbrService.shared.storeRawName(
+            courseNo: course.courseNo, name: course.courseName
+        )
+        NameAbbrService.shared.storeRawClassroom(
+            courseNo: course.courseNo,
+            classroom: course.classroom,
+            map: course.classroomMap
+        )
+
+        // Apply current display toggles immediately so a newly-added course
+        // with a Mandarin classroom shows in the user's chosen form (pinyin /
+        // translated / original) without requiring them to flip the toggle.
+        NameAbbrService.shared.relabelInPlace(
+            [course],
+            courseAbbrEnabled: Defaults[.useEnglishCourseAbbreviation],
+            classroomAbbrEnabled: Defaults[.useEnglishClassroomAbbreviation],
+            classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
+        )
+
+        // Custom name override comes after relabelInPlace so it survives
+        // (relabelInPlace would otherwise overwrite it from the cached raw).
         if let customName = courseCustomNames[course.courseNo] {
             course.courseName = customName
         }
+
         courses.append(course)
         persistUserAddedCourses()
         broadcastLocalChange()

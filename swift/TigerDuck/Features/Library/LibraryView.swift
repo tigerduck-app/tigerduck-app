@@ -51,7 +51,7 @@ struct LibraryView: View {
 
     private var headerSection: some View {
         HStack {
-            Text("圖書館")
+            Text(String(localized: "feature_library"))
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
@@ -59,7 +59,9 @@ struct LibraryView: View {
                 Circle()
                     .fill(viewModel.isLoggedIn ? Color.green : Color.textSecondary.opacity(0.5))
                     .frame(width: 8, height: 8)
-                Text(viewModel.isLoggedIn ? "已登入" : "未登入")
+                Text(viewModel.isLoggedIn
+                    ? String(localized: "library_status_logged_in")
+                    : String(localized: "common_not_logged_in"))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
             }
@@ -107,24 +109,24 @@ struct LibraryView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(Color.accentPrimary)
 
-            Text("登入以使用 QR 入館")
+            Text(String(localized: "library_login_qr_prompt"))
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
 
-            Text("密碼可能與校務系統不同")
+            Text(String(localized: "library_password_hint"))
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
 
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                TextField("學號", text: $viewModel.libUsername)
+                TextField(String(localized: "login_student_id"), text: $viewModel.libUsername)
                     .textContentType(.username)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.characters)
                     .padding(TigerDuckTheme.Spacing.md)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
 
-                SecureField("圖書館密碼", text: $viewModel.libPassword)
+                SecureField(String(localized: "library_login_password"), text: $viewModel.libPassword)
                     .textContentType(.password)
                     .padding(TigerDuckTheme.Spacing.md)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
@@ -173,7 +175,9 @@ struct LibraryView: View {
                 ProgressView()
                     .tint(.white)
             }
-            Text(viewModel.isLoggingIn ? "登入中..." : "登入圖書館")
+            Text(viewModel.isLoggingIn
+                ? String(localized: "library_logging_in_label")
+                : String(localized: "library_login_action"))
                 .font(TigerDuckTheme.Typography.headline)
         }
     }
@@ -182,8 +186,16 @@ struct LibraryView: View {
 
     private var libraryFeaturesSection: some View {
         HStack(spacing: TigerDuckTheme.Spacing.md) {
-            featureCard(icon: "door.left.hand.open", title: "討論小間", subtitle: "即將推出")
-            featureCard(icon: "mic.fill", title: "講座", subtitle: "即將推出")
+            featureCard(
+                icon: "door.left.hand.open",
+                title: String(localized: "library_feature_discussion_room"),
+                subtitle: String(localized: "library_coming_soon_badge")
+            )
+            featureCard(
+                icon: "mic.fill",
+                title: String(localized: "library_feature_lecture"),
+                subtitle: String(localized: "library_coming_soon_badge")
+            )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .notImplementedAlert(isPresented: $showNotImplementedAlert)

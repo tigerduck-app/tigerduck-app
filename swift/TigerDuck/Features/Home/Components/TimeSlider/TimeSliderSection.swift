@@ -25,8 +25,8 @@ struct TimeSliderSection: View {
         case .loginRequired:
             LoginRequiredView(
                 layout: .section,
-                title: "尚未登入",
-                message: "尚未登入，無法顯示今日課程",
+                title: String(localized: "common_not_logged_in"),
+                message: String(localized: "home_time_slider_login_required_message"),
                 onPrimary: { appState.presentNTUSTLogin() }
             )
         case .content:
@@ -43,14 +43,14 @@ struct TimeSliderSection: View {
 
     private var sectionHeader: some View {
         HStack {
-            Text("時光機")
+            Text(String(localized: "home_time_slider_title"))
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
         }
         .overlay(alignment: .trailing) {
             if viewModel.isUserDragging {
-                Button("現在") {
+                Button(String(localized: "home_time_slider_now")) {
                     viewModel.returnToNow()
                 }
                 .font(.caption.weight(.semibold))
@@ -115,7 +115,7 @@ struct TimeSliderSection: View {
             Image(systemName: "checkmark.circle")
                 .font(.title)
                 .foregroundStyle(.white.opacity(0.4))
-            Text("目前沒有課程")
+            Text(String(localized: "home_time_slider_no_courses"))
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.5))
         }
@@ -131,7 +131,7 @@ struct TimeSliderSection: View {
 
     private static let dateTimeFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
+        f.locale = .autoupdatingCurrent
         f.dateFormat = "M/d (EEEEE) HH:mm"
         return f
     }()

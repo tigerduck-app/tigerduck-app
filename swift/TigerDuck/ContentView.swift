@@ -83,7 +83,7 @@ struct PlaceholderFeatureView: View {
                 Text(feature.displayName)
                     .font(TigerDuckTheme.Typography.title)
                     .foregroundStyle(Color.textPrimary)
-                Text("即將推出")
+                Text(String(localized: "library_coming_soon_badge"))
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(Color.textSecondary)
             }

@@ -13,8 +13,8 @@ final class ScoreViewModel {
 
         var displayName: String {
             switch self {
-            case .semester:   return "學期"
-            case .cumulative: return "累計"
+            case .semester:   return String(localized: "score_scope_semester")
+            case .cumulative: return String(localized: "score_scope_cumulative")
             }
         }
     }
@@ -94,7 +94,7 @@ final class ScoreViewModel {
         guard !isRefreshing else { return }
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
-            errorMessage = "未登入"
+            errorMessage = String(localized: "common_not_logged_in")
             return
         }
 

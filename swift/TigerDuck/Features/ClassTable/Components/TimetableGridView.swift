@@ -93,17 +93,17 @@ struct TimetableGridView: View {
                         Button {
                             viewModel.startRename(course)
                         } label: {
-                            Label("重新命名", systemImage: "pencil")
+                            Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
                         }
                         Button {
                             viewModel.startRecolor(course)
                         } label: {
-                            Label("修改顏色", systemImage: "paintpalette")
+                            Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
                         }
                         Button(role: .destructive) {
                             viewModel.deleteCourse(course)
                         } label: {
-                            Label("刪除", systemImage: "trash")
+                            Label(String(localized: "class_table_delete"), systemImage: "trash")
                         }
                     }
                 }

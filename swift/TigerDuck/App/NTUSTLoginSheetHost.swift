@@ -13,10 +13,10 @@ struct NTUSTLoginSheetHost: ViewModifier {
 
         content.sheet(isPresented: $appState.isShowingNTUSTLoginSheet) {
             LoginSheet(
-                title: "校務系統",
-                subtitle: "使用校務系統帳號登入以存取課表、Moodle 等功能",
-                usernamePlaceholder: "學號",
-                passwordPlaceholder: "密碼",
+                title: String(localized: "settings_account_ntust_system"),
+                subtitle: String(localized: "onboarding_login_subtitle"),
+                usernamePlaceholder: String(localized: "login_student_id"),
+                passwordPlaceholder: String(localized: "login_password"),
                 isLoggingIn: appState.authService.isLoggingIn,
                 loginError: appState.authService.loginError,
                 onLogin: { studentId, password in

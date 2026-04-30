@@ -11,7 +11,6 @@ struct SettingsView: View {
     @State private var showLicense = false
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
-    @State private var showSourceCode = false
     @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
@@ -25,7 +24,6 @@ struct SettingsView: View {
     private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
     private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
     private static let licenseURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/blob/main/LICENSE")!
-    private static let sourceCodeURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app")!
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -37,7 +35,7 @@ struct SettingsView: View {
         @Bindable var appState = appState
         List {
             // MARK: - Account
-            Section("帳號") {
+            Section(String(localized: "settings_section_account")) {
                 ntustAccountRow
                 if appState.libraryFeatureEnabled {
                     libraryAccountRow
@@ -45,12 +43,12 @@ struct SettingsView: View {
             }
 
             // MARK: - Customization
-            Section("自訂") {
-                Button("Tab 編輯器") {
+            Section(String(localized: "settings_section_custom")) {
+                Button(String(localized: "tab_editor_title")) {
                     showingTabEditor = true
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("主題色")
+                    Text(String(localized: "settings_color_theme"))
                     HStack(spacing: 12) {
                         ForEach(AppState.themeColors, id: \.hex) { theme in
                             Button {
@@ -76,39 +74,88 @@ struct SettingsView: View {
             }
 
             // MARK: - Display
-            Section("顯示") {
-                Picker("介面風格", selection: $appState.visualPreset) {
+            Section(String(localized: "settings_section_display")) {
+                Picker(String(localized: "settings_visual_preset_label"), selection: $appState.visualPreset) {
                     ForEach(VisualPreset.allCases) { preset in
                         Text(preset.displayName).tag(preset)
                     }
                 }
-                Toggle("作業截止時間顯示完整日期", isOn: $appState.showAbsoluteAssignmentTime)
-                Toggle("記住公告篩選條件", isOn: $appState.rememberAnnouncementFilter)
-                Picker("開啟連結方式", selection: $appState.browserPreference) {
-                    Text("系統預設瀏覽器").tag(BrowserPreference.system)
-                    Text("App 內瀏覽器").tag(BrowserPreference.inApp)
+                Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $appState.showAbsoluteAssignmentTime)
+                Toggle(String(localized: "settings_remember_bulletin_filter"), isOn: $appState.rememberAnnouncementFilter)
+                Picker(String(localized: "settings_link_opening_method"), selection: $appState.browserPreference) {
+                    Text(String(localized: "settings_browser_system_default")).tag(BrowserPreference.system)
+                    Text(String(localized: "settings_browser_in_app")).tag(BrowserPreference.inApp)
                 }
-                Toggle("反轉滑條方向", isOn: $appState.invertSliderDirection)
+                Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
+            }
+
+            // MARK: - Abbreviations (only when UI is non-Chinese, since the
+            // toggles transform Mandarin display strings)
+            if LanguageManager.isCurrentLanguageNonChinese(appLanguage: appState.appLanguage) {
+                Section(String(localized: "settings_section_abbreviation")) {
+                    Toggle(
+                        String(localized: "settings_use_english_course_abbreviation"),
+                        isOn: $appState.useEnglishCourseAbbreviation
+                    )
+                    Toggle(
+                        String(localized: "settings_use_english_classroom_abbreviation"),
+                        isOn: $appState.useEnglishClassroomAbbreviation
+                    )
+                    if appState.useEnglishClassroomAbbreviation {
+                        Picker(
+                            String(localized: "settings_classroom_mandarin_display"),
+                            selection: $appState.classroomMandarinDisplay
+                        ) {
+                            Text(String(localized: "settings_classroom_mandarin_display_original"))
+                                .tag("original")
+                            Text(String(localized: "settings_classroom_mandarin_display_pinyin"))
+                                .tag("pinyin")
+                            Text(String(localized: "settings_classroom_mandarin_display_translated"))
+                                .tag("translated")
+                        }
+                    }
+                }
             }
 
             // MARK: - Other Features
-            Section("其他功能") {
-                Toggle("圖書館及相關功能", isOn: libraryToggleBinding)
+            Section(String(localized: "settings_section_other_features")) {
+                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
             }
 
             // MARK: - Notifications & Live Activity
-            Section("通知") {
-                NavigationLink("即時動態 Live Activity（實驗性）") {
+            Section(String(localized: "settings_section_notifications")) {
+                NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }
-                NavigationLink("伺服器推播（實驗性）") {
+                NavigationLink(String(localized: "settings_push_server_nav_label")) {
                     PushServerSettingsView()
                 }
             }
 
+            // MARK: - Language
+            // The user picks the app language in iOS Settings (per-app
+            // language picker). iOS restarts the process on selection,
+            // which is why we don't need an in-app picker.
+            Section(String(localized: "feature_category_language")) {
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    HStack {
+                        Text(String(localized: "settings_language"))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             // MARK: - About
-            Section("關於") {
-                LabeledContent("版本", value: appVersion)
+            Section(String(localized: "settings_section_about")) {
+                LabeledContent(String(localized: "settings_version"), value: appVersion)
                 Button {
                     if appState.browserPreference == .inApp {
                         showFeedback = true
@@ -116,7 +163,7 @@ struct SettingsView: View {
                         UIApplication.shared.open(Self.feedbackURL)
                     }
                 } label: {
-                    Text("回饋/問題回報")
+                    Text(String(localized: "settings_feedback_bug_report"))
                 }
                 Button {
                     if appState.browserPreference == .inApp {
@@ -125,25 +172,21 @@ struct SettingsView: View {
                         UIApplication.shared.open(Self.privacyURL)
                     }
                 } label: {
-                    Text("隱私權政策")
+                    Text(String(localized: "settings_privacy_policy"))
                 }
-                Button("開源授權") {
+                Button(String(localized: "settings_open_source_licenses")) {
                     if appState.browserPreference == .inApp {
                         showLicense = true
                     } else {
                         UIApplication.shared.open(Self.licenseURL)
                     }
                 }
-                Button("查看原始碼") {
-                    if appState.browserPreference == .inApp {
-                        showSourceCode = true
-                    } else {
-                        UIApplication.shared.open(Self.sourceCodeURL)
-                    }
+                NavigationLink(String(localized: "settings_view_source_code")) {
+                    SourceCodePickerView()
                 }
             }
         }
-        .navigationTitle("設定")
+        .navigationTitle(String(localized: "feature_settings"))
         .sheet(isPresented: $showingTabEditor) {
             TabEditorView()
         }
@@ -159,16 +202,12 @@ struct SettingsView: View {
             InAppBrowserView(url: Self.licenseURL)
                 .ignoresSafeArea()
         }
-        .sheet(isPresented: $showSourceCode) {
-            InAppBrowserView(url: Self.sourceCodeURL)
-                .ignoresSafeArea()
-        }
         .sheet(isPresented: $showLibraryLogin) {
             LoginSheet(
-                title: "圖書館系統",
-                subtitle: "密碼可能與校務系統不同，預設為身分證字號",
-                usernamePlaceholder: "學號",
-                passwordPlaceholder: "密碼",
+                title: String(localized: "settings_account_library_system"),
+                subtitle: String(localized: "settings_library_account_subtitle"),
+                usernamePlaceholder: String(localized: "login_student_id"),
+                passwordPlaceholder: String(localized: "login_password"),
                 initialUsername: appState.authService.storedStudentId ?? "",
                 isLoggingIn: libIsLoggingIn,
                 loginError: libLoginError,
@@ -280,7 +319,7 @@ struct SettingsView: View {
 
     private var ntustAccountRow: some View {
         accountRow(
-            title: "校務系統",
+            title: String(localized: "settings_account_ntust_system"),
             isLoggedIn: appState.authService.hasStoredCredentials,
             detail: appState.authService.storedStudentId,
             onLogin: { appState.presentNTUSTLogin() },
@@ -290,7 +329,7 @@ struct SettingsView: View {
 
     private var libraryAccountRow: some View {
         accountRow(
-            title: "圖書館系統",
+            title: String(localized: "settings_account_library_system"),
             isLoggedIn: appState.isLibraryLoggedIn,
             detail: appState.libraryUsername,
             onLogin: { showLibraryLogin = true },
@@ -332,14 +371,14 @@ struct SettingsView: View {
     ) -> some View {
         if isLoggedIn {
             Button(role: .destructive, action: onLogout) {
-                Text("登出")
+                Text(String(localized: "action_logout"))
                     .font(.callout.weight(.semibold))
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
         } else {
             Button(action: onLogin) {
-                Text("登入")
+                Text(String(localized: "action_login"))
                     .font(.callout.weight(.semibold))
             }
             .buttonStyle(.borderedProminent)
@@ -358,6 +397,14 @@ private struct LibraryWarningOverlay: View {
     @State private var countdown = 5
     @State private var confirmEnabled = false
 
+    private var confirmLabel: String {
+        if confirmEnabled {
+            return String(localized: "settings_library_warning_confirm")
+        }
+        let format = String(localized: "settings_library_warning_confirm_countdown")
+        return String(format: format, countdown)
+    }
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.45)
@@ -367,14 +414,14 @@ private struct LibraryWarningOverlay: View {
                 // Flashing warning title
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                    Text("請注意！")
+                    Text(String(localized: "settings_library_warning_title"))
                 }
                 .font(.headline.bold())
                 .foregroundStyle(.red)
                 .opacity(isFlashing ? 0.15 : 1.0)
 
                 // Warning message
-                Text("本應用程式非臺科大官方圖書館應用程式，且尚未得到學校圖書館認可，無法保證各項功能的正常使用及其他相關使用後果。\n\n如需使用請謹慎。若使用後產生任何負面結果，需自負責任，且與 tigerduck-app 一律無關！")
+                Text(String(localized: "settings_library_warning_message"))
                     .font(.subheadline)
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
@@ -383,7 +430,7 @@ private struct LibraryWarningOverlay: View {
                 // Buttons
                 VStack(spacing: 10) {
                     Button(action: onConfirm) {
-                        Text(confirmEnabled ? "我願意自負後果" : "我願意自負後果（\(countdown)）")
+                        Text(confirmLabel)
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -397,7 +444,7 @@ private struct LibraryWarningOverlay: View {
                     .disabled(!confirmEnabled)
 
                     Button(action: onCancel) {
-                        Text("退回")
+                        Text(String(localized: "settings_library_warning_dismiss"))
                             .font(.body.weight(.medium))
                             .foregroundStyle(.primary)
                             .frame(maxWidth: .infinity)

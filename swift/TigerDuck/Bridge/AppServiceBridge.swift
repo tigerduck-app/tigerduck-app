@@ -1,16 +1,17 @@
 import Foundation
+import Defaults
 
 private struct CourseData: Sendable {
     let courseNo: String
-    let courseName: String
+    var courseName: String
     let instructor: String
     let credits: Int
-    let classroom: String
+    var classroom: String
     let enrolledCount: Int
     let maxCount: Int
     let schedule: [Int: [String]]
     let moodleIdNumber: String?
-    let classroomMap: [String: String]
+    var classroomMap: [String: String]
 }
 
 enum AppServiceBridge {
@@ -31,6 +32,13 @@ enum AppServiceBridge {
             forceRefresh: forceRefresh,
             moodleEnrolledCourses: nil
         )
+    }
+
+    /// Called when the user changes the app language.
+    /// Clears the NameAbbrService raw-name cache so the next fetch
+    /// re-stores names in the new locale.
+    static func handleLanguageChange() {
+        NameAbbrService.shared.clearRawNameCache()
     }
 
     static func warmAllSemesterCaches(authService: AuthService) async {
@@ -65,6 +73,12 @@ enum AppServiceBridge {
         let startGeneration = authService.loginGeneration
         let currentSemester = CourseSelectionService.currentSemesterCode()
         let isCurrentSemester = semester == currentSemester
+        let courseApiLanguage = LanguageManager.resolvedCourseApiLanguage(
+            appLanguage: Defaults[.appLanguage]
+        )
+        let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
+        let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
+        let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
 
         guard !Task.isCancelled else { return [] }
 
@@ -154,7 +168,7 @@ enum AppServiceBridge {
                     group.addTask {
                         do {
                             let results = try await CourseLookupService.lookupCourse(
-                                semester: semester, courseNo: courseNo
+                                semester: semester, courseNo: courseNo, language: courseApiLanguage
                             )
 
                             guard !results.isEmpty else {
@@ -170,7 +184,7 @@ enum AppServiceBridge {
                                 semester: semester,
                                 fallbackMoodleIdNumber: moodleByNo[courseNo]?.idnumber
                             )
-                            return CourseData(
+                            var data = CourseData(
                                 courseNo: course.courseNo,
                                 courseName: course.courseName,
                                 instructor: course.instructor,
@@ -182,6 +196,33 @@ enum AppServiceBridge {
                                 moodleIdNumber: course.moodleIdNumber,
                                 classroomMap: course.classroomMap
                             )
+                            // Cache the raw API name so abbreviation toggles can re-derive
+                            // without a network round-trip.
+                            NameAbbrService.shared.storeRawName(
+                                courseNo: data.courseNo, name: data.courseName
+                            )
+                            NameAbbrService.shared.storeRawClassroom(
+                                courseNo: data.courseNo,
+                                classroom: data.classroom,
+                                map: data.classroomMap
+                            )
+                            let isEnglish = courseApiLanguage == "en"
+                            if isEnglish && courseAbbrEnabled {
+                                data.courseName = NameAbbrService.shared.abbreviateName(data.courseName)
+                            }
+                            if classroomAbbrEnabled || classroomMandarinDisplay != "original" {
+                                data.classroom = NameAbbrService.shared.abbreviateClassroom(
+                                    data.classroom, display: classroomMandarinDisplay
+                                )
+                                var newMap = data.classroomMap
+                                for (key, val) in newMap {
+                                    newMap[key] = NameAbbrService.shared.abbreviateClassroom(
+                                        val, display: classroomMandarinDisplay
+                                    )
+                                }
+                                data.classroomMap = newMap
+                            }
+                            return data
                         } catch {
                             await MainActor.run {
                                 AppLogger.captureError(error, context: [

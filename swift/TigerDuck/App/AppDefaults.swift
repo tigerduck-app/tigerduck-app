@@ -111,4 +111,22 @@ extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.bulletinReadIds,
         default: []
     )
+
+    // MARK: Language & Abbreviations
+    static let appLanguage = Key<String>(
+        AppConstants.UserDefaultsKeys.appLanguage,
+        default: "system"
+    )
+    static let useEnglishCourseAbbreviation = Key<Bool>(
+        AppConstants.UserDefaultsKeys.useEnglishCourseAbbreviation,
+        default: true
+    )
+    static let useEnglishClassroomAbbreviation = Key<Bool>(
+        AppConstants.UserDefaultsKeys.useEnglishClassroomAbbreviation,
+        default: true
+    )
+    static let classroomMandarinDisplay = Key<String>(
+        AppConstants.UserDefaultsKeys.classroomMandarinDisplay,
+        default: "original"
+    )
 }

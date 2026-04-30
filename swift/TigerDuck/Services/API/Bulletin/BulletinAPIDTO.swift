@@ -143,8 +143,8 @@ enum BulletinAPI {
 
         var displayName: String {
             switch self {
-            case .and: return "同時符合"
-            case .or: return "任一符合"
+            case .and: return String(localized: "bulletin_subscription_mode_and")
+            case .or: return String(localized: "bulletin_subscription_mode_or")
             }
         }
     }

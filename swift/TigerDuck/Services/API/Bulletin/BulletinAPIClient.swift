@@ -193,10 +193,10 @@ enum BulletinAPIError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .encodingFailed(let error): return "公告請求編碼失敗：\(error.localizedDescription)"
-        case .decodingFailed(let error): return "公告回應解析失敗：\(error.localizedDescription)"
-        case .invalidResponse: return "公告伺服器回應格式錯誤"
-        case .httpStatus(let code, let body): return "公告伺服器回應 HTTP \(code)：\(body)"
+        case .encodingFailed(let error): return String(format: String(localized: "error_bulletin_encoding_failed_format"), error.localizedDescription)
+        case .decodingFailed(let error): return String(format: String(localized: "error_bulletin_decoding_failed_format"), error.localizedDescription)
+        case .invalidResponse: return String(localized: "error_bulletin_invalid_response")
+        case .httpStatus(let code, let body): return String(format: String(localized: "error_bulletin_http_status_format"), code, body)
         }
     }
 }

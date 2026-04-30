@@ -207,6 +207,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 424C46792F6E763E009D1DDA /* Build configuration list for PBXNativeTarget "TigerDuck" */;
 			buildPhases = (
+				9F3D7A0001000000000001 /* Sync Localizations */,
 				424C46522F6E763C009D1DDA /* Sources */,
 				424C46532F6E763C009D1DDA /* Frameworks */,
 				424C46542F6E763C009D1DDA /* Resources */,
@@ -333,6 +334,71 @@
 				en,
 				Base,
 				"zh-Hant",
+				ar,
+				bg,
+				bn,
+				ca,
+				cs,
+				da,
+				de,
+				el,
+				"en-AU",
+				"en-CA",
+				"en-GB",
+				"en-IN",
+				es,
+				"es-MX",
+				et,
+				fa,
+				fi,
+				fil,
+				fr,
+				"fr-CA",
+				gu,
+				he,
+				hi,
+				hr,
+				hu,
+				id,
+				is,
+				it,
+				ja,
+				kk,
+				kn,
+				ko,
+				lt,
+				lv,
+				ml,
+				mr,
+				ms,
+				nb,
+				nl,
+				no,
+				pa,
+				pl,
+				pt,
+				"pt-BR",
+				"pt-PT",
+				ro,
+				ru,
+				sk,
+				sl,
+				sr,
+				sv,
+				ta,
+				te,
+				th,
+				tr,
+				uk,
+				ur,
+				vi,
+				"yue-HK",
+				"zh-CN",
+				"zh-HK",
+				"zh-Hans",
+				"zh-MO",
+				"zh-SG",
+				"zh-TW",
 			);
 			mainGroup = 424C464D2F6E763C009D1DDA;
 			minimizedProjectReferenceProxies = 1;
@@ -387,6 +453,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		9F3D7A0001000000000001 /* Sync Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Sync Localizations";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nPYTHON=\"$(command -v python3 || command -v python)\"\nif [ -z \"$PYTHON\" ]; then\n  echo \"warning: python3 not found on PATH; skipping localization sync\"\n  exit 0\nfi\n\"$PYTHON\" \"${SRCROOT}/../tools/localization/sync_localizations.py\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		424C46522F6E763C009D1DDA /* Sources */ = {
@@ -590,7 +678,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.5.2;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -642,7 +730,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.5.2;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -786,7 +874,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.5.2;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -820,7 +908,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.5.2;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

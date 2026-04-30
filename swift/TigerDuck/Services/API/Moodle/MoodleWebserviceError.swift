@@ -13,33 +13,33 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidToken:
-            return "Moodle token 已失效，需重新授權。"
+            return String(localized: "error_moodle_invalid_token")
         case .invalidCredentials:
-            return "Moodle 拒絕目前的登入憑證。"
+            return String(localized: "error_moodle_invalid_credentials")
         case .missingStoredCredentials:
-            return "找不到已儲存的 NTUST 帳號密碼，無法重新取得 Moodle token。"
+            return String(localized: "error_moodle_missing_credentials")
         case .ssoLoginRejected(let reason):
             if let reason, !reason.isEmpty {
-                return "NTUST SSO 拒絕 Moodle 授權：\(reason)"
+                return String(format: String(localized: "error_moodle_sso_rejected_with_reason"), reason)
             }
-            return "NTUST SSO 拒絕 Moodle 授權，請重新確認帳號密碼。"
+            return String(localized: "error_moodle_sso_rejected")
         case .webserviceDisabled:
-            return "Moodle webservice 目前不可用。"
+            return String(localized: "error_moodle_webservice_disabled")
         case .transientNetwork(let underlying):
-            return "Moodle 網路錯誤：\(underlying)"
+            return String(format: String(localized: "error_moodle_network_format"), underlying)
         case .malformedResponse(let detail):
-            return "Moodle 回應格式異常：\(detail)"
+            return String(format: String(localized: "error_moodle_malformed_response_format"), detail)
         case .httpStatus(let code):
-            return "Moodle HTTP 狀態碼異常：\(code)"
+            return String(format: String(localized: "error_moodle_http_status_format"), code)
         }
     }
 
     var recoverySuggestion: String? {
         switch self {
         case .invalidToken, .missingStoredCredentials, .ssoLoginRejected:
-            "請重新登入 NTUST 帳號後再試一次。"
+            String(localized: "error_moodle_recovery_relogin_ntust")
         case .invalidCredentials:
-            "請確認 Moodle / NTUST 憑證是否仍有效。"
+            String(localized: "error_moodle_recovery_check_credentials")
         case .webserviceDisabled, .transientNetwork, .malformedResponse, .httpStatus:
             nil
         }

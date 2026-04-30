@@ -94,6 +94,21 @@ final class SDCourse: Identifiable {
         return dict
     }
 
+    /// Update the per-period classroom map and its JSON backing in one shot.
+    /// Use this instead of writing ``classroomMapJSON`` directly: SwiftData's
+    /// ``@Model`` macro rewrites stored-property accessors, so the ``didSet``
+    /// that should reset ``_cachedClassroomMap`` does not fire reliably for
+    /// in-memory mutations and stale reads leak through ``classroom(for:)``.
+    func setClassroomMap(_ map: [String: String]) {
+        if let data = try? JSONEncoder().encode(map),
+           let str = String(data: data, encoding: .utf8) {
+            classroomMapJSON = str
+        } else {
+            classroomMapJSON = "{}"
+        }
+        _cachedClassroomMap = map
+    }
+
     /// Returns the classroom(s) for a specific weekday, deduped.
     /// Falls back to the flat `classroom` string if no map data.
     func classroom(for weekday: Int) -> String {

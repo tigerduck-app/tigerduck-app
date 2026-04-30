@@ -16,10 +16,10 @@ struct HomeSection: Identifiable, Equatable, Codable {
 
         var defaultTitle: String {
             switch self {
-            case .todayCourses: "時光機"
-            case .upcomingAssignments: "作業"
-            case .quickWidgets: "快速功能"
-            case .custom: "自訂區塊"
+            case .todayCourses: String(localized: "home_time_slider_title")
+            case .upcomingAssignments: String(localized: "live_activity_status_assignment_short")
+            case .quickWidgets: String(localized: "home_section_quick_widgets")
+            case .custom: String(localized: "home_section_custom")
             }
         }
 

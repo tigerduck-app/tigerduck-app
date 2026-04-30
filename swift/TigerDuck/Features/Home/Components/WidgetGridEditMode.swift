@@ -10,7 +10,7 @@ struct WidgetGridEditMode: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
-                    Text("已添加")
+                    Text(String(localized: "home_widget_edit_added_section"))
                         .font(TigerDuckTheme.Typography.headline)
                         .foregroundStyle(Color.textPrimary)
                         .padding(.horizontal)
@@ -26,7 +26,7 @@ struct WidgetGridEditMode: View {
                         }
                     )
 
-                    Text("可添加")
+                    Text(String(localized: "home_widget_edit_available_section"))
                         .font(TigerDuckTheme.Typography.headline)
                         .foregroundStyle(Color.textPrimary)
                         .padding(.horizontal)
@@ -71,10 +71,10 @@ struct WidgetGridEditMode: View {
                 .padding(.vertical)
             }
             .background(Color.backgroundPrimary)
-            .navigationTitle("編輯 Widget")
+            .navigationTitle(String(localized: "home_widget_edit_title"))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") {
+                    Button(String(localized: "action_done")) {
                         isEditing = false
                     }
                 }

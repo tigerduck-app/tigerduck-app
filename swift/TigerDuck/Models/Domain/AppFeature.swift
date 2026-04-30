@@ -34,23 +34,23 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .home: "首頁"
-        case .classTable: "課表"
-        case .calendar: "行事曆"
-        case .announcements: "公告"
-        case .library: "圖書館"
-        case .gpa: "歷年成績"
-        case .courseSelection: "選課系統"
-        case .graduationRequirements: "畢業門檻"
-        case .discussionRoom: "討論小間"
-        case .libraryLecture: "圖書館講座"
-        case .freeLunch: "免費便當"
-        case .clubs: "社團活動"
-        case .emptyClassroom: "空教室"
-        case .scholarship: "獎學金"
-        case .englishVocab: "英文單字測驗"
-        case .more: "更多"
-        case .settings: "設定"
+        case .home: String(localized: "feature_home")
+        case .classTable: String(localized: "feature_class_table")
+        case .calendar: String(localized: "feature_calendar")
+        case .announcements: String(localized: "feature_announcements")
+        case .library: String(localized: "feature_library")
+        case .gpa: String(localized: "feature_score")
+        case .courseSelection: String(localized: "feature_course_selection")
+        case .graduationRequirements: String(localized: "feature_graduation_requirements")
+        case .discussionRoom: String(localized: "feature_discussion_room")
+        case .libraryLecture: String(localized: "feature_library_lecture")
+        case .freeLunch: String(localized: "feature_free_lunch")
+        case .clubs: String(localized: "feature_clubs")
+        case .emptyClassroom: String(localized: "feature_empty_classroom")
+        case .scholarship: String(localized: "feature_scholarship")
+        case .englishVocab: String(localized: "feature_english_vocab")
+        case .more: String(localized: "feature_more")
+        case .settings: String(localized: "feature_settings")
         }
     }
 
@@ -142,12 +142,12 @@ enum FeatureCategory: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .page: "頁面"
-        case .academic: "學業"
-        case .library: "圖書館"
-        case .life: "生活"
-        case .language: "語言"
-        case .system: "系統"
+        case .page: String(localized: "more_section_pages")
+        case .academic: String(localized: "feature_category_academic")
+        case .library: String(localized: "feature_category_library")
+        case .life: String(localized: "feature_category_life")
+        case .language: String(localized: "feature_category_language")
+        case .system: String(localized: "feature_category_system")
         }
     }
 }
