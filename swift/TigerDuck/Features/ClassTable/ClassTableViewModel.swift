@@ -291,9 +291,19 @@ final class ClassTableViewModel {
             DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         }
         guard !courses.contains(where: { $0.courseNo == course.courseNo }) else { return }
-        if let customName = courseCustomNames[course.courseNo] {
-            course.courseName = customName
-        }
+
+        // Cache the freshly-fetched API values BEFORE any local mutation so
+        // abbreviation toggles can round-trip without a network refetch
+        // (mirrors AppServiceBridge.fetchCourses).
+        NameAbbrService.shared.storeRawName(
+            courseNo: course.courseNo, name: course.courseName
+        )
+        NameAbbrService.shared.storeRawClassroom(
+            courseNo: course.courseNo,
+            classroom: course.classroom,
+            map: course.classroomMap
+        )
+
         // Apply current display toggles immediately so a newly-added course
         // with a Mandarin classroom shows in the user's chosen form (pinyin /
         // translated / original) without requiring them to flip the toggle.
@@ -303,6 +313,13 @@ final class ClassTableViewModel {
             classroomAbbrEnabled: Defaults[.useEnglishClassroomAbbreviation],
             classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
         )
+
+        // Custom name override comes after relabelInPlace so it survives
+        // (relabelInPlace would otherwise overwrite it from the cached raw).
+        if let customName = courseCustomNames[course.courseNo] {
+            course.courseName = customName
+        }
+
         courses.append(course)
         persistUserAddedCourses()
         broadcastLocalChange()
