@@ -97,6 +97,8 @@ final class ClassTableViewModel {
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
     private var dataObserver: Any?
+    private var abbrObserver: Any?
+    private var languageObserver: Any?
 
     /// Guards the fire-and-forget pull-to-refresh path against overlapping
     /// fetches. ``triggerRefresh(authService:)`` flips this to `true` while
@@ -119,10 +121,35 @@ final class ClassTableViewModel {
             guard self?.isUpdatingFromNetwork != true else { return }
             self?.reloadFromCache()
         }
+
+        abbrObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.abbrSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.relabelFromCache()
+        }
+
+        languageObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.languageDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            // Drop the in-memory raw-name cache so the next fetch re-stores
+            // names in the new locale. The root-view rebuild triggered by
+            // TigerDuckApp will drive the actual re-fetch.
+            AppServiceBridge.handleLanguageChange()
+        }
     }
 
     deinit {
         if let observer = dataObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = abbrObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = languageObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -159,6 +186,29 @@ final class ClassTableViewModel {
             DataCache.shared.loadUserAddedCourses()
         )
         assignments = DataCache.shared.loadAssignments()
+    }
+
+    /// Re-derive course/classroom labels from the current `NameAbbrService`
+    /// raw-name cache + Defaults settings without hitting the network.
+    /// Triggered when the user toggles abbreviation settings.
+    private func relabelFromCache() {
+        let updated = courses
+        let changed = NameAbbrService.shared.relabelInPlace(
+            updated,
+            courseAbbrEnabled: Defaults[.useEnglishCourseAbbreviation],
+            classroomAbbrEnabled: Defaults[.useEnglishClassroomAbbreviation],
+            classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
+        )
+        guard changed else { return }
+        DataCache.shared.saveCourses(updated, semester: currentSemester)
+        courses = updated
+        if currentSemester == CourseSelectionService.currentSemesterCode() {
+            currentSemesterCourses = buildCourseList(
+                updated, DataCache.shared.loadUserAddedCourses()
+            )
+            refreshCourseColors()
+        }
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
     private func rebuildLookup() {
