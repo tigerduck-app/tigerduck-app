@@ -28,14 +28,17 @@ enum LanguageManager {
         resolvedCourseApiLanguage(appLanguage: appLanguage) == "en"
     }
 
-    /// Whether the active UI language is non-Chinese.
+    /// Whether the active UI language is non-Chinese (English, Japanese,
+    /// Korean, French, etc.). Used to gate UI that only makes sense outside
+    /// Chinese locales — e.g. the course-name abbreviation settings, which
+    /// transform Mandarin display strings.
     ///
     /// When the user picked an explicit `appLanguage`, trust that tag. For
     /// "system", read `Bundle.main.preferredLocalizations` — this is the lproj
     /// iOS resolved at launch (matching what `String(localized:)` actually
     /// uses) and stays stable for the running process, unlike `Locale.current`
     /// which re-resolves dynamically when `AppleLanguages` changes.
-    static func isCurrentLanguageEnglish(appLanguage: String) -> Bool {
+    static func isCurrentLanguageNonChinese(appLanguage: String) -> Bool {
         let tag: String
         if appLanguage == system {
             tag = Bundle.main.preferredLocalizations.first ?? "en"

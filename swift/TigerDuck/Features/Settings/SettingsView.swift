@@ -89,8 +89,9 @@ struct SettingsView: View {
                 Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
             }
 
-            // MARK: - Abbreviations (English course API only)
-            if LanguageManager.isCurrentLanguageEnglish(appLanguage: appState.appLanguage) {
+            // MARK: - Abbreviations (only when UI is non-Chinese, since the
+            // toggles transform Mandarin display strings)
+            if LanguageManager.isCurrentLanguageNonChinese(appLanguage: appState.appLanguage) {
                 Section(String(localized: "settings_section_abbreviation")) {
                     Toggle(
                         String(localized: "settings_use_english_course_abbreviation"),
