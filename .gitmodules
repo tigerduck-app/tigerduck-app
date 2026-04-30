@@ -1,6 +1,6 @@
 [submodule "localization"]
 	path = localization
-	url = git@github.com:tigerduck-app/app-translation.git
+	url = https://github.com/tigerduck-app/app-translation.git
 [submodule "name-abbr"]
 	path = name-abbr
 	url = https://github.com/tigerduck-app/name-abbr
