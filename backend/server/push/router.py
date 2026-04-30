@@ -36,8 +36,10 @@ class PushRouter:
         return await self._android.send(request)
 
     async def close(self) -> None:
-        await self._apple.close()
-        await self._android.close()
+        try:
+            await self._apple.close()
+        finally:
+            await self._android.close()
 
 
 def build_router(settings: Settings) -> PushRouter:

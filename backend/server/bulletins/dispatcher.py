@@ -322,7 +322,7 @@ def _classify(result: SendResult, *, platform: str) -> str:
         # firebase-admin maps these to dedicated exception types we surface
         # via SendResult.status in `FcmSender.send`.
         android_bad_token = ("unregistered", "sender_id_mismatch", "invalid_argument")
-        if any(m in status or m in desc for m in android_bad_token):
+        if any(m in status for m in android_bad_token):
             return "bad_token"
         return "transient"
 
