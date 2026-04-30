@@ -138,9 +138,9 @@ struct UpcomingAssignmentsView: View {
         let trailing: SwipeActionDescriptor?
         switch status {
         case .pending, .overdueAcceptable, .overdueRejected:
-            trailing = SwipeActionDescriptor(label: "忽略", systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
+            trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore"), systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
         case .archived:
-            trailing = SwipeActionDescriptor(label: "取消忽略", systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
+            trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
         default:
             trailing = nil
         }
@@ -148,9 +148,9 @@ struct UpcomingAssignmentsView: View {
         let leading: SwipeActionDescriptor?
         switch status {
         case .pending, .overdueAcceptable, .overdueRejected:
-            leading = SwipeActionDescriptor(label: "標示為完成", systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
+            leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete"), systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
         case .locallyCompleted:
-            leading = SwipeActionDescriptor(label: "取消完成", systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
+            leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
         default:
             leading = nil
         }

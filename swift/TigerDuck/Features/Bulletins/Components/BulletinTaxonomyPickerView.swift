@@ -13,7 +13,7 @@ struct BulletinTaxonomyPickerView: View {
         List {
             if emptyMeansAll {
                 Section {
-                    Text("若不選任何項目，該維度視為「全部」。")
+                    Text(String(localized: "bulletin_taxonomy_picker_hint"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -49,7 +49,7 @@ struct BulletinTaxonomyPickerView: View {
                     Button(role: .destructive) {
                         selected.removeAll()
                     } label: {
-                        Text("清除選取 (\(selected.count))")
+                        Text(String(format: String(localized: "bulletin_taxonomy_clear_selection"), selected.count))
                     }
                 }
             }

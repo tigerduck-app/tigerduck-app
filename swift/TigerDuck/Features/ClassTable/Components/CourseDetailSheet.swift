@@ -18,14 +18,14 @@ struct CourseDetailSheet: View {
 
                     // Course info
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-                        InfoRow(label: "授課教師", value: course.instructor)
-                        InfoRow(label: "代碼", value: course.courseNo)
-                        InfoRow(label: "學分", value: "\(course.credits)")
-                        InfoRow(label: "教室", value: weekday.map { course.classroom(for: $0) } ?? SDCourse.dedup(course.classroom))
+                        InfoRow(label: String(localized: "course_detail_instructor_label"), value: course.instructor)
+                        InfoRow(label: String(localized: "course_detail_code_label"), value: course.courseNo)
+                        InfoRow(label: String(localized: "course_detail_credits_label"), value: "\(course.credits)")
+                        InfoRow(label: String(localized: "course_detail_classroom_label"), value: weekday.map { course.classroom(for: $0) } ?? SDCourse.dedup(course.classroom))
                         if let timeRange {
-                            InfoRow(label: "時間", value: timeRange)
+                            InfoRow(label: String(localized: "course_detail_time_label"), value: timeRange)
                         }
-                        InfoRow(label: "人數", value: "\(course.enrolledCount) / \(course.maxCount)")
+                        InfoRow(label: String(localized: "course_detail_enrollment_label"), value: "\(course.enrolledCount) / \(course.maxCount)")
                     }
                     .padding(.horizontal)
 
@@ -34,7 +34,7 @@ struct CourseDetailSheet: View {
                         Divider().background(Color.textSecondary)
                             .padding(.horizontal)
 
-                        Text("未完成作業")
+                        Text(String(localized: "course_detail_incomplete_assignments"))
                             .font(TigerDuckTheme.Typography.headline)
                             .foregroundStyle(Color.textPrimary)
                             .padding(.horizontal)
@@ -52,7 +52,7 @@ struct CourseDetailSheet: View {
                                         Text(assignment.title)
                                             .font(TigerDuckTheme.Typography.body)
                                             .foregroundStyle(Color.textPrimary)
-                                        Text("截止：\(assignment.dueDate.shortDateString)")
+                                        Text(String(format: String(localized: "course_detail_due_prefix"), assignment.dueDate.shortDateString))
                                             .font(TigerDuckTheme.Typography.caption)
                                             .foregroundStyle(assignment.isOverdue ? Color.badgeRed : Color.textSecondary)
                                     }

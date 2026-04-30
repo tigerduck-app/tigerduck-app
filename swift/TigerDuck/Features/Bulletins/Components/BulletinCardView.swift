@@ -38,7 +38,7 @@ struct BulletinCardView: View {
                 Circle()
                     .fill(Color.accentColor)
                     .frame(width: 7, height: 7)
-                    .accessibilityLabel("未讀")
+                    .accessibilityLabel(String(localized: "bulletin_unread_dot_label"))
             }
             if let org = bulletin.canonicalOrg {
                 orgBadge(label: taxonomy.orgLabel(for: org))
@@ -47,7 +47,7 @@ struct BulletinCardView: View {
                 importanceBadge
             }
             if bulletin.isDeleted {
-                Text("已撤下")
+                Text(String(localized: "bulletin_withdrawn_badge"))
                     .font(TigerDuckTheme.Typography.caption2)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -120,7 +120,7 @@ struct BulletinCardView: View {
     /// Capsule-style "重要" badge — same capsule idiom as org badge but
     /// tinted orange so it reads as a priority signal rather than a source.
     private var importanceBadge: some View {
-        Text("重要")
+        Text(String(localized: "bulletin_importance_high_badge"))
             .font(TigerDuckTheme.Typography.caption2)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

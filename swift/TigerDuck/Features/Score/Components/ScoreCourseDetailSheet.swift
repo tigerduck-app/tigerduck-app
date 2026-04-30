@@ -53,7 +53,7 @@ struct ScoreCourseDetailSheet: View {
                 Text(course.code)
                     .font(TigerDuckTheme.Typography.caption.monospaced())
                     .foregroundStyle(Color.textSecondary)
-                Text("\(displayTerm) · \(course.credits ?? 0) 學分")
+                Text(String(format: String(localized: "score_course_credits_meta"), displayTerm, course.credits ?? 0))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
             }
@@ -73,18 +73,21 @@ struct ScoreCourseDetailSheet: View {
     private func rosterSection(_ roster: SDCourse) -> some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
             if !roster.instructor.isEmpty {
-                InfoRow(label: "授課教師", value: roster.instructor)
+                InfoRow(label: String(localized: "course_detail_instructor_label"), value: roster.instructor)
             }
             if roster.maxCount > 0 {
-                InfoRow(label: "修課人數", value: "\(roster.enrolledCount) / \(roster.maxCount)")
+                InfoRow(
+                    label: String(localized: "score_course_detail_enrollment_label"),
+                    value: "\(roster.enrolledCount) / \(roster.maxCount)"
+                )
             }
             let classroomText = SDCourse.dedup(roster.classroom)
             if !classroomText.isEmpty {
-                InfoRow(label: "教室", value: classroomText)
+                InfoRow(label: String(localized: "course_detail_classroom_label"), value: classroomText)
             }
             let scheduleCode = formatScheduleCode(roster.schedule)
             if !scheduleCode.isEmpty {
-                InfoRow(label: "上課時段", value: scheduleCode)
+                InfoRow(label: String(localized: "score_course_detail_schedule_label"), value: scheduleCode)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -94,7 +97,7 @@ struct ScoreCourseDetailSheet: View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
             Image(systemName: "tray")
                 .foregroundStyle(Color.textSecondary)
-            Text("目前沒有此課程的修課資料")
+            Text(String(localized: "course_detail_no_roster"))
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
             Spacer()
@@ -108,7 +111,7 @@ struct ScoreCourseDetailSheet: View {
 
     private var remarkSection: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-            SectionHeader(title: "備註")
+            SectionHeader(title: String(localized: "score_info_note"))
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             Text(course.remark)
                 .font(TigerDuckTheme.Typography.body)
@@ -173,16 +176,20 @@ struct ScoreCourseDetailSheet: View {
         guard course.term.count == 4 else { return course.term }
         let year = String(course.term.prefix(3))
         let sem = String(course.term.suffix(1))
-        let label = sem == "1" ? "上學期" : sem == "2" ? "下學期" : sem
+        let label = sem == "1"
+            ? String(localized: "score_semester_first")
+            : sem == "2"
+                ? String(localized: "score_semester_second")
+                : sem
         return "\(year) \(label)"
     }
 
     private var gradeDisplay: String {
         switch course.status {
-        case .pending:  return "未到"
-        case .withdrew: return "退選"
-        case .exempted: return "抵免"
-        case .passed:   return course.grade.isEmpty ? "通過" : course.grade
+        case .pending:  return String(localized: "score_grade_pending")
+        case .withdrew: return String(localized: "score_grade_withdrew")
+        case .exempted: return String(localized: "score_grade_exempted")
+        case .passed:   return course.grade.isEmpty ? String(localized: "score_grade_passed") : course.grade
         case .graded:   return course.grade
         case .unknown:  return course.grade.isEmpty ? "—" : course.grade
         }
@@ -195,7 +202,7 @@ struct ScoreCourseDetailSheet: View {
         case .exempted:
             return Color(hex: 0x85C1E9)
         case .passed:
-            return course.grade == "不通過" ? Color(hex: 0xE74C3C) : Color(hex: 0x4ECDC4)
+            return course.grade == String(localized: "score_grade_failed") ? Color(hex: 0xE74C3C) : Color(hex: 0x4ECDC4)
         case .graded:
             let upper = course.grade.uppercased()
             if upper.hasPrefix("A") { return Color(hex: 0x2ECC71) }

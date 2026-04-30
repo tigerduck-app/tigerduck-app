@@ -15,7 +15,7 @@ struct NTUSTReauthErrorBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text("自動登入失敗")
+                Text(String(localized: "common_auto_login_failed"))
                     .font(.footnote.weight(.semibold))
                 Text(message)
                     .font(.caption)
@@ -23,7 +23,7 @@ struct NTUSTReauthErrorBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            Button("重新登入", action: onRetry)
+            Button(String(localized: "action_re_login"), action: onRetry)
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)

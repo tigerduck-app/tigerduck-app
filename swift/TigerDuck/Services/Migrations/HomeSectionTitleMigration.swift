@@ -29,7 +29,7 @@ enum HomeSectionTitleMigration {
             }
 
             var patchedSection = section
-            patchedSection.title = "作業"
+            patchedSection.title = HomeSection.HomeSectionType.upcomingAssignments.defaultTitle
             return patchedSection
         }
 

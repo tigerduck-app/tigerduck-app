@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 
 /// Persists network-fetched data to disk so it survives app restarts.
@@ -32,22 +33,32 @@ final class DataCache {
         absorbLegacyCourseCache()
     }
 
-    // MARK: - Courses (semester-scoped)
+    // MARK: - Courses (semester + language-scoped)
 
-    /// Save courses for a specific semester. Filename: courses_<semester>.json
+    /// Save courses for a specific semester. The NTUST API returns localized
+    /// `CourseName` / `CourseTeacher` based on the request language, so the
+    /// cache filename includes the resolved course-API language to keep
+    /// per-language payloads from clobbering each other when the user toggles
+    /// the app language.
     func saveCourses(_ courses: [SDCourse], semester: String) {
         let dtos = courses.map { CachedCourse(from: $0) }
-        save(dtos, to: coursesFilename(semester))
+        save(dtos, to: coursesFilename(semester, currentCourseApiLanguage()))
     }
 
-    /// Load courses for a specific semester. Returns [] if not yet cached.
+    /// Load courses for a specific semester in the currently selected
+    /// language. Returns [] if not yet cached for that language — the next
+    /// network refresh will repopulate it.
     func loadCourses(semester: String) -> [SDCourse] {
-        let dtos: [CachedCourse] = load(from: coursesFilename(semester)) ?? []
+        let dtos: [CachedCourse] = load(from: coursesFilename(semester, currentCourseApiLanguage())) ?? []
         return dtos.map { $0.toSDCourse() }
     }
 
-    private func coursesFilename(_ semester: String) -> String {
-        "courses_\(semester).json"
+    private func coursesFilename(_ semester: String, _ language: String) -> String {
+        "courses_\(semester)_\(language).json"
+    }
+
+    private func currentCourseApiLanguage() -> String {
+        LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
     }
 
     // MARK: - User-Added Courses
@@ -279,6 +290,22 @@ final class DataCache {
         }
     }
 
+    /// Remove every `courses_<semester>.json` file. Used by the abbreviation
+    /// pipeline migration to drop pre-fix entries whose `classroomMapJSON`
+    /// may already be abbreviated and would no longer round-trip through the
+    /// raw classroom cache. The next fetch repopulates from the network.
+    func clearCourseCaches() {
+        let cacheContents = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for url in cacheContents where url.pathExtension == "json" {
+            if url.lastPathComponent.hasPrefix("courses_") {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+
     // MARK: - Private helpers
 
     private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {
@@ -323,20 +350,35 @@ final class DataCache {
         }
     }
 
-    // Legacy migration: absorb courses.json (pre-semester-scoped format) into courses_<current>.json
+    // Legacy migration:
+    //   * `courses.json`              — pre-semester-scoped
+    //   * `courses_<semester>.json`   — pre-language-scoped (NTUST API
+    //                                    returns localized names, so the
+    //                                    payload is implicitly tied to
+    //                                    whatever language the last fetch
+    //                                    used; we cannot recover that, so
+    //                                    we just delete and let the next
+    //                                    network refresh repopulate)
     private func absorbLegacyCourseCache() {
         let legacyURL = cacheDir.appendingPathComponent("courses.json")
-        guard FileManager.default.fileExists(atPath: legacyURL.path) else { return }
-
-        if let data = try? Data(contentsOf: legacyURL),
-           let _ = try? decoder.decode([CachedCourse].self, from: data) {
-            let current = CourseSelectionService.currentSemesterCode()
-            let targetURL = cacheDir.appendingPathComponent("courses_\(current).json")
-            // Only absorb if the semester file doesn't already exist (avoid overwriting fresh data)
-            if !FileManager.default.fileExists(atPath: targetURL.path) {
-                try? data.write(to: targetURL, options: .atomic)
-            }
+        if FileManager.default.fileExists(atPath: legacyURL.path) {
             try? FileManager.default.removeItem(at: legacyURL)
+        }
+
+        let cacheContents = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        for url in cacheContents where url.pathExtension == "json" {
+            let name = url.deletingPathExtension().lastPathComponent
+            // Match the old `courses_<semester>` shape (exactly one
+            // underscore-delimited segment after the prefix). The new
+            // language-suffixed names have two segments and stay put.
+            guard name.hasPrefix("courses_") else { continue }
+            let suffix = String(name.dropFirst("courses_".count))
+            if !suffix.contains("_") {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
 }

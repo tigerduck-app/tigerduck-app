@@ -148,7 +148,7 @@ final class HomeViewModel {
         let manager = NTUSTSessionManager.shared
 
         guard NetworkMonitor.shared.isConnected else {
-            await MainActor.run { manager.loadingState = .error("無網路連線") }
+            await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
         }
 
@@ -184,7 +184,7 @@ final class HomeViewModel {
             HomeSection(
                 id: "today-courses",
                 type: .todayCourses,
-                title: "時光機",
+                title: String(localized: "home_time_slider_title"),
                 sortOrder: 0,
                 isVisible: true,
                 widgets: []
@@ -192,7 +192,7 @@ final class HomeViewModel {
             HomeSection(
                 id: "upcoming-assignments",
                 type: .upcomingAssignments,
-                title: "作業",
+                title: String(localized: "live_activity_status_assignment_short"),
                 sortOrder: 1,
                 isVisible: true,
                 widgets: []

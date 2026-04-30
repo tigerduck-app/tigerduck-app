@@ -143,7 +143,7 @@ final class AssignmentReminderScheduler {
                     ReminderPayload(
                         id: "\(assignment.assignmentId)_\(offset.rawValue)",
                         fireDate: fireDate,
-                        title: "作業提醒：\(assignment.courseName)",
+                        title: String(format: String(localized: "notification_assignment_reminder_title"), assignment.courseName),
                         body: offset.notificationBody(
                             assignmentTitle: assignment.title,
                             courseName: assignment.courseName

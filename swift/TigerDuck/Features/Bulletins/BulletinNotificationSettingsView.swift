@@ -57,7 +57,7 @@ struct BulletinNotificationSettingsView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("公告通知")
+        .navigationTitle(String(localized: "bulletin_notifications_title"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             // Taxonomy + auth status refresh every time; only the
@@ -85,12 +85,12 @@ struct BulletinNotificationSettingsView: View {
             }
         }
         .alert(
-            "儲存失敗",
+            String(localized: "bulletin_save_failed_title"),
             isPresented: Binding(
                 get: { saveErrorMessage != nil },
                 set: { if !$0 { saveErrorMessage = nil; store.clearSaveState() } }
             ),
-            actions: { Button("知道了", role: .cancel) {} },
+            actions: { Button(String(localized: "settings_acknowledged"), role: .cancel) {} },
             message: {
                 if let msg = saveErrorMessage { Text(msg) }
             }
@@ -111,32 +111,32 @@ struct BulletinNotificationSettingsView: View {
                         .foregroundStyle(authStatusColor)
                         .font(.caption)
                 } label: {
-                    Label("推播通知", systemImage: "bell.fill")
+                    Label(String(localized: "bulletin_push_status_label"), systemImage: "bell.fill")
                 }
 
                 if authStatus == .denied {
                     Button {
                         openAppSettings()
                     } label: {
-                        Label("在 iOS 設定中重新開啟", systemImage: "gear")
+                        Label(String(localized: "bulletin_push_reopen_settings"), systemImage: "gear")
                     }
                 }
 
                 Button(role: .destructive) {
                     Task { await disablePush() }
                 } label: {
-                    Label("關閉公告推播", systemImage: "bell.slash")
+                    Label(String(localized: "bulletin_push_disable_action"), systemImage: "bell.slash")
                 }
             } header: {
-                Text("推播設定")
+                Text(String(localized: "bulletin_push_settings_header"))
             }
         } else {
             Section {
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-                    Text("開啟推播後，當有符合你設定規則的公告時，老虎鴨會即時通知你。")
+                    Text(String(localized: "bulletin_push_enable_description"))
                         .font(.callout)
                         .foregroundStyle(.primary)
-                    Text("通知會包含標題與摘要，點開後可直接看到原文。")
+                    Text(String(localized: "bulletin_push_content_description"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -147,17 +147,17 @@ struct BulletinNotificationSettingsView: View {
                     if isAskingPermission {
                         HStack(spacing: TigerDuckTheme.Spacing.xs) {
                             ProgressView()
-                            Text("請求中…")
+                            Text(String(localized: "bulletin_push_requesting"))
                         }
                     } else {
-                        Label("開啟公告推播", systemImage: "bell.badge")
+                        Label(String(localized: "bulletin_push_enable_action"), systemImage: "bell.badge")
                     }
                 }
                 .disabled(isAskingPermission)
             } header: {
-                Text("推播設定")
+                Text(String(localized: "bulletin_push_settings_header"))
             } footer: {
-                Text("推播通知由 TigerDuck 伺服器根據你選的規則派送。設備標識以匿名 UUID 傳送，不會上傳學號。")
+                Text(String(localized: "bulletin_push_footer"))
             }
         }
     }
@@ -169,13 +169,13 @@ struct BulletinNotificationSettingsView: View {
             case .idle, .loading:
                 HStack(spacing: TigerDuckTheme.Spacing.xs) {
                     ProgressView()
-                    Text("載入規則…").foregroundStyle(.secondary)
+                    Text(String(localized: "bulletin_rules_load_loading")).foregroundStyle(.secondary)
                 }
             case .failed(let message):
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-                    Text("載入失敗").foregroundStyle(.primary)
+                    Text(String(localized: "bulletin_rules_load_failed")).foregroundStyle(.primary)
                     Text(message).font(.caption).foregroundStyle(.secondary)
-                    Button("重試") {
+                    Button(String(localized: "action_retry")) {
                         Task { await store.load() }
                     }
                     .buttonStyle(.bordered)
@@ -199,13 +199,13 @@ struct BulletinNotificationSettingsView: View {
                     draftRule = draft
                     editingClientId = draft.clientId
                 } label: {
-                    Label("新增規則", systemImage: "plus")
+                    Label(String(localized: "bulletin_rule_add_action"), systemImage: "plus")
                 }
             }
         } header: {
-            Text("通知規則")
+            Text(String(localized: "bulletin_rules_header"))
         } footer: {
-            Text("每條規則可選處室、類別與組合模式。留空代表該維度不篩選。最多 32 條。")
+            Text(String(localized: "bulletin_rules_footer"))
         }
     }
 
@@ -217,10 +217,10 @@ struct BulletinNotificationSettingsView: View {
                     Task { await store.save() }
                 }
             } label: {
-                Label("套用預設規則", systemImage: "wand.and.stars")
+                Label(String(localized: "bulletin_apply_default_rules_action"), systemImage: "wand.and.stars")
             }
         } footer: {
-            Text("預設會訂閱：免費便當、獎助學金、繳費、考試、維修。")
+            Text(String(localized: "bulletin_default_rules_footer"))
         }
     }
 
@@ -276,7 +276,7 @@ struct BulletinNotificationSettingsView: View {
                     .foregroundStyle(Color.textPrimary)
                 Spacer()
                 if !rule.enabled {
-                    Text("已停用")
+                    Text(String(localized: "bulletin_rule_disabled_badge"))
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -335,12 +335,12 @@ struct BulletinNotificationSettingsView: View {
 
     private var authStatusText: String {
         switch authStatus {
-        case .authorized: return "已允許"
-        case .provisional: return "寧靜通知"
-        case .denied: return "已被拒絕"
-        case .notDetermined: return "尚未決定"
-        case .ephemeral: return "臨時"
-        @unknown default: return "未知"
+        case .authorized: return String(localized: "permission_granted")
+        case .provisional: return String(localized: "bulletin_push_status_provisional")
+        case .denied: return String(localized: "bulletin_push_status_denied")
+        case .notDetermined: return String(localized: "bulletin_push_status_undetermined")
+        case .ephemeral: return String(localized: "bulletin_push_status_ephemeral")
+        @unknown default: return String(localized: "bulletin_push_status_unknown")
         }
     }
 
@@ -353,20 +353,25 @@ struct BulletinNotificationSettingsView: View {
     }
 
     private func defaultRuleTitle(_ rule: BulletinAPI.SubscriptionRule) -> String {
-        if rule.orgs.isEmpty, rule.tags.isEmpty { return "全部公告" }
-        if !rule.orgs.isEmpty, !rule.tags.isEmpty { return "處室 + 類別 (\(rule.mode.displayName))" }
-        if !rule.orgs.isEmpty { return "指定處室" }
-        return "指定類別"
+        if rule.orgs.isEmpty, rule.tags.isEmpty { return String(localized: "bulletin_rule_all_title") }
+        if !rule.orgs.isEmpty, !rule.tags.isEmpty {
+            return String(format: String(localized: "bulletin_rule_dept_and_tag_title"), rule.mode.displayName)
+        }
+        if !rule.orgs.isEmpty { return String(localized: "bulletin_rule_dept_only_title") }
+        return String(localized: "bulletin_rule_tag_only_title")
     }
 
     private func ruleSubtitle(_ rule: BulletinAPI.SubscriptionRule) -> String {
+        let separator = String(localized: "bulletin_rule_filter_separator")
         let orgText = rule.orgs.isEmpty
-            ? "全部處室"
-            : "處室：" + rule.orgs.map { taxonomy.orgLabel(for: $0) }.joined(separator: "、")
+            ? String(localized: "bulletin_rule_all_orgs")
+            : String(localized: "bulletin_rule_orgs_prefix") + rule.orgs.map { taxonomy.orgLabel(for: $0) }.joined(separator: separator)
         let tagText = rule.tags.isEmpty
-            ? "全部類別"
-            : "類別：" + rule.tags.map { taxonomy.tagLabel(for: $0) }.joined(separator: "、")
-        let joiner = rule.mode == .and ? " 且 " : " 或 "
+            ? String(localized: "bulletin_rule_all_tags")
+            : String(localized: "bulletin_rule_tags_prefix") + rule.tags.map { taxonomy.tagLabel(for: $0) }.joined(separator: separator)
+        let joiner = rule.mode == .and
+            ? String(localized: "bulletin_rule_join_and")
+            : String(localized: "bulletin_rule_join_or")
         return orgText + joiner + tagText
     }
 }

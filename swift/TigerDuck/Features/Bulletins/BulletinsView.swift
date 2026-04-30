@@ -83,12 +83,12 @@ struct BulletinsView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
-        .navigationTitle("公告")
+        .navigationTitle(String(localized: "feature_announcements"))
         // Default placement on iOS 26 = navigation bar drawer that
         // reveals on pull-down and collapses on scroll. Liquid Glass
         // styling is applied automatically by the system; we don't
         // call `.glassEffect()` ourselves per HIG guidance.
-        .searchable(text: $viewModel.searchText, isPresented: $searchIsPresented, prompt: "搜尋公告")
+        .searchable(text: $viewModel.searchText, isPresented: $searchIsPresented, prompt: String(localized: "bulletin_search_prompt"))
         .refreshable { await viewModel.refresh() }
         .toolbar {
             // Surfaces only when the user has narrowed to unread AND
@@ -98,7 +98,7 @@ struct BulletinsView: View {
             // confirmation step is needed.
             if unreadOnly, hasUnreadBulletins {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("全部已讀") {
+                    Button(String(localized: "bulletin_mark_all_read_action")) {
                         readState.markAllRead(viewModel.items.map(\.id))
                     }
                 }
@@ -116,7 +116,9 @@ struct BulletinsView: View {
                         : "line.3.horizontal.decrease.circle")
                         .symbolRenderingMode(.hierarchical)
                 }
-                .accessibilityLabel(unreadOnly ? "顯示全部公告" : "只看未讀")
+                .accessibilityLabel(unreadOnly
+                    ? String(localized: "bulletin_show_all_action")
+                    : String(localized: "bulletin_show_unread_only_action"))
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -158,13 +160,13 @@ struct BulletinsView: View {
         if let tax = taxonomy.state.taxonomy {
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
                 BulletinFilterBar(
-                    title: "處室",
+                    title: String(localized: "bulletin_filter_dept"),
                     options: tax.orgs.map { (id: $0.rawId, label: $0.label) },
                     selected: viewModel.selectedOrgs,
                     onToggle: { viewModel.toggleOrg($0) }
                 )
                 BulletinFilterBar(
-                    title: "類別",
+                    title: String(localized: "bulletin_filter_tag"),
                     options: tax.tags.map { (id: $0.rawId, label: $0.label) },
                     selected: viewModel.selectedTags,
                     onToggle: { viewModel.toggleTag($0) }
@@ -187,8 +189,8 @@ struct BulletinsView: View {
                 centeredRow {
                     EmptyStateView(
                         icon: "tray",
-                        title: "沒有公告",
-                        message: "稍後再回來查看"
+                        title: String(localized: "bulletin_no_bulletins_title"),
+                        message: String(localized: "bulletin_no_bulletins_message")
                     )
                     .frame(height: 200)
                 }
@@ -197,10 +199,12 @@ struct BulletinsView: View {
             centeredRow {
                 EmptyStateView(
                     icon: unreadOnly ? "envelope.open" : "tray",
-                    title: unreadOnly ? "沒有未讀公告" : "沒有公告",
+                    title: unreadOnly
+                        ? String(localized: "bulletin_no_unread_title")
+                        : String(localized: "bulletin_no_bulletins_title"),
                     message: viewModel.hasActiveFilter || unreadOnly
-                        ? "沒有符合條件的公告"
-                        : "稍後再回來查看"
+                        ? String(localized: "bulletin_no_match_message")
+                        : String(localized: "bulletin_no_bulletins_message")
                 )
                 .frame(height: 200)
             }
@@ -236,7 +240,9 @@ struct BulletinsView: View {
                         // Icon-only label per spec — system reads it as a
                         // VoiceOver hint, no visible "已讀/未讀" text.
                         Label(
-                            readState.isRead(bulletin.id) ? "標示為未讀" : "標示為已讀",
+                            readState.isRead(bulletin.id)
+                                ? String(localized: "bulletin_mark_as_unread_action")
+                                : String(localized: "bulletin_mark_as_read_action"),
                             systemImage: readState.isRead(bulletin.id)
                                 ? "envelope.badge"
                                 : "envelope.open"
@@ -289,7 +295,7 @@ struct BulletinsView: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 36))
                 .foregroundStyle(Color.orange)
-            Text("公告載入失敗")
+            Text(String(localized: "bulletin_load_failed_title"))
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
             Text(message)
@@ -297,7 +303,7 @@ struct BulletinsView: View {
                 .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            Button("重試") {
+            Button(String(localized: "action_retry")) {
                 Task { await viewModel.refresh() }
             }
             .buttonStyle(.bordered)

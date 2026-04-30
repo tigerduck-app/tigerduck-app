@@ -14,11 +14,11 @@ struct OnboardingView: View {
             // Page 1: Welcome
             OnboardingPageView(
                 icon: "graduationcap.fill",
-                title: "歡迎使用 TigerDuck",
-                subtitle: "你的臺科大校園助手",
+                title: String(localized: "onboarding_welcome_title"),
+                subtitle: String(localized: "onboarding_welcome_subtitle"),
                 accentColor: .accentPrimary
             ) {
-                Button("下一步") {
+                Button(String(localized: "action_next")) {
                     withAnimation { currentPage = 1 }
                 }
                 .buttonStyle(.borderedProminent)
@@ -28,8 +28,8 @@ struct OnboardingView: View {
             // Page 2: Login
             OnboardingPageView(
                 icon: "person.badge.key.fill",
-                title: "登入帳號",
-                subtitle: "使用校務系統帳號登入以存取課表、Moodle 等功能",
+                title: String(localized: "onboarding_login_title"),
+                subtitle: String(localized: "onboarding_login_subtitle"),
                 accentColor: .green
             ) {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
@@ -38,7 +38,7 @@ struct OnboardingView: View {
                             Image(systemName: "person.fill")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
-                            TextField("學號", text: $studentId)
+                            TextField(String(localized: "login_student_id"), text: $studentId)
                                 .keyboardType(.asciiCapable)
                                 .focused($focusedField, equals: .studentId)
                                 .textContentType(.username)
@@ -58,7 +58,7 @@ struct OnboardingView: View {
                             Image(systemName: "lock.fill")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
-                            SecureField("密碼", text: $password)
+                            SecureField(String(localized: "login_password"), text: $password)
                                 .keyboardType(.asciiCapable)
                                 .focused($focusedField, equals: .password)
                                 .textContentType(.password)
@@ -86,11 +86,11 @@ struct OnboardingView: View {
                             .foregroundStyle(.red)
                     }
 
-                    Button("暫時跳過") {
+                    Button(String(localized: "onboarding_skip_for_now")) {
                         withAnimation { currentPage = 2 }
                     }
                     .foregroundStyle(Color.textSecondary)
-                    
+
                     Button {
                         Task {
                             let success = await appState.authService.login(
@@ -106,7 +106,7 @@ struct OnboardingView: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Text("登入校務系統")
+                            Text(String(localized: "onboarding_login_button"))
                                 .font(.callout.weight(.semibold))
                         }
                     }
@@ -119,11 +119,11 @@ struct OnboardingView: View {
             // Page 3: Feature selection
             OnboardingPageView(
                 icon: "slider.horizontal.3",
-                title: "選擇功能",
-                subtitle: "你可以之後在設定中隨時調整",
+                title: String(localized: "onboarding_choose_features_title"),
+                subtitle: String(localized: "onboarding_choose_features_subtitle"),
                 accentColor: .orange
             ) {
-                Button("下一步") {
+                Button(String(localized: "action_next")) {
                     withAnimation { currentPage = 3 }
                 }
                 .buttonStyle(.borderedProminent)
@@ -133,11 +133,11 @@ struct OnboardingView: View {
             // Page 4: Done
             OnboardingPageView(
                 icon: "checkmark.circle.fill",
-                title: "準備就緒！",
-                subtitle: "開始探索你的校園生活",
+                title: String(localized: "onboarding_ready_title"),
+                subtitle: String(localized: "onboarding_ready_subtitle"),
                 accentColor: .accentPrimary
             ) {
-                Button("開始使用 TigerDuck") {
+                Button(String(localized: "onboarding_start_button")) {
                     appState.completeOnboarding()
                 }
                 .buttonStyle(.borderedProminent)

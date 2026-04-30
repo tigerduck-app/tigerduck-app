@@ -23,7 +23,7 @@ struct TabEditorView: View {
                 VStack(spacing: TigerDuckTheme.Spacing.xl) {
                     // Tab bar preview with drag-to-reorder
                     VStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Text("拖曳圖示調整順序")
+                        Text(String(localized: "tab_editor_drag_reorder"))
                             .font(TigerDuckTheme.Typography.caption)
                             .foregroundStyle(Color.textSecondary)
 
@@ -110,7 +110,7 @@ struct TabEditorView: View {
                     // Available features to add
                     if tabs.count < maxTabs && !availableFeatures.isEmpty {
                         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-                            Text("可新增的分頁")
+                            Text(String(localized: "tab_editor_section_available_tabs"))
                                 .font(TigerDuckTheme.Typography.headline)
                                 .foregroundStyle(Color.textPrimary)
                                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -147,7 +147,7 @@ struct TabEditorView: View {
                         }
                     }
 
-                    Button("恢復預設") {
+                    Button(String(localized: "tab_editor_reset_default")) {
                         withAnimation(.smoothSpring) {
                             tabs = AppFeature.defaultTabs
                         }
@@ -158,14 +158,14 @@ struct TabEditorView: View {
                 .padding(.top, TigerDuckTheme.Spacing.lg)
             }
             .background(Color.backgroundPrimary)
-            .navigationTitle("Tab 編輯器")
+            .navigationTitle(String(localized: "tab_editor_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(String(localized: "action_cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("套用") {
+                    Button(String(localized: "tab_editor_apply_action")) {
                         appState.configuredTabs = tabs
                         dismiss()
                     }

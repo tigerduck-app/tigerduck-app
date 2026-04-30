@@ -5,6 +5,7 @@ nonisolated enum AppConstants {
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
+    static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
     static let moodleBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
 
     nonisolated enum KeychainKeys {
@@ -60,6 +61,12 @@ nonisolated enum AppConstants {
 
         // MARK: Bulletins
         static let bulletinReadIds = "bulletinReadIds"
+
+        // MARK: Language & Abbreviations
+        static let appLanguage = "appLanguage"
+        static let useEnglishCourseAbbreviation = "useEnglishCourseAbbreviation"
+        static let useEnglishClassroomAbbreviation = "useEnglishClassroomAbbreviation"
+        static let classroomMandarinDisplay = "classroomMandarinDisplay"
     }
 
     enum Periods {
@@ -67,8 +74,21 @@ nonisolated enum AppConstants {
         static let extended = ["5", "10", "A", "B", "C", "D"]
         /// Chronological order of all periods (for sorting)
         static let chronologicalOrder = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "B", "C", "D"]
-        static let weekdays = ["一", "二", "三", "四", "五"]
-        static let weekendDays = ["六", "日"]
+        static var weekdays: [String] {
+            [
+                String(localized: "weekday_mon_short"),
+                String(localized: "weekday_tue_short"),
+                String(localized: "weekday_wed_short"),
+                String(localized: "weekday_thu_short"),
+                String(localized: "weekday_fri_short"),
+            ]
+        }
+        static var weekendDays: [String] {
+            [
+                String(localized: "weekday_sat_short"),
+                String(localized: "weekday_sun_short"),
+            ]
+        }
     }
 
     enum PeriodTimes {

@@ -99,7 +99,7 @@ struct HomeView: View {
                             Image(systemName: "plus")
                         }
                     }
-                    Button("完成") {
+                    Button(String(localized: "action_done")) {
                         withAnimation(.smoothSpring) {
                             finishSectionDrag()
                             viewModel.isEditingHome = false
@@ -240,7 +240,7 @@ private struct SectionDragHandle: View {
         HStack(spacing: TigerDuckTheme.Spacing.xs) {
             Image(systemName: "line.3.horizontal")
                 .font(.caption.weight(.bold))
-            Text("長按拖曳排序")
+            Text(String(localized: "home_section_drag_hint"))
                 .font(TigerDuckTheme.Typography.caption2)
         }
         .foregroundStyle(Color.textSecondary)
@@ -290,7 +290,7 @@ private struct HomeSectionView: View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             Picker("", selection: Bindable(viewModel).assignmentFilter) {
                 ForEach(viewModel.availableAssignmentFilters, id: \.self) { filter in
-                    Text(filter.rawValue).tag(filter)
+                    Text(filter.displayName).tag(filter)
                 }
             }
             .pickerStyle(.segmented)
@@ -301,14 +301,14 @@ private struct HomeSectionView: View {
             case .loginRequired:
                 LoginRequiredView(
                     layout: .section,
-                    title: "尚未登入",
-                    message: "尚未登入，無法顯示作業",
+                    title: String(localized: "common_not_logged_in"),
+                    message: String(localized: "home_assignments_login_required_message"),
                     onPrimary: { appState.presentNTUSTLogin() }
                 )
             case .empty:
                 EmptyStateView(
                     icon: "checkmark.circle",
-                    title: "一切順利",
+                    title: String(localized: "home_assignments_all_good"),
                     message: assignmentEmptyMessage
                 )
             case .content:
@@ -328,11 +328,11 @@ private struct HomeSectionView: View {
     private var assignmentEmptyMessage: String {
         switch viewModel.assignmentFilter {
         case .incomplete:
-            return "沒有未完成的作業"
+            return String(localized: "home_assignments_none_incomplete")
         case .all:
-            return "沒有作業"
+            return String(localized: "home_assignments_none")
         case .ignored:
-            return "沒有已忽略的作業"
+            return String(localized: "home_assignments_no_ignored")
         }
     }
 

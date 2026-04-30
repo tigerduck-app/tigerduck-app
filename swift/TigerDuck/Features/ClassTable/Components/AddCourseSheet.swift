@@ -1,4 +1,5 @@
 import SwiftUI
+import Defaults
 
 struct AddCourseSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -18,64 +19,56 @@ struct AddCourseSheet: View {
     @State private var errorMessage: String?
     @State private var addedCourseNo: String?
     @State private var searchTask: Task<Void, Never>?
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: TigerDuckTheme.Spacing.md) {
-                HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                    TextField("輸入課程代碼、課名或老師", text: $searchText)
-                        .textFieldStyle(.roundedBorder)
+            Form {
+                Section {
+                    TextField(String(localized: "add_course_placeholder"), text: $searchText)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .focused($searchFocused)
+                        .submitLabel(.search)
                         .onSubmit { search() }
-
-                    Button {
-                        search()
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(.body.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color.accentPrimary)
-                    .disabled(searchText.isEmpty || isSearching)
-                }
-                .padding(.horizontal)
-
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal)
+                } footer: {
+                    Label(String(localized: "add_course_example"), systemImage: "info.circle")
+                        .font(.caption)
                 }
 
                 if isSearching {
-                    Spacer()
-                    ProgressView("搜尋中...")
-                    Spacer()
-                } else if searchResults.isEmpty && addedCourseNo == nil {
-                    Spacer()
-                    VStack(spacing: TigerDuckTheme.Spacing.xs) {
-                        Text("輸入課程代碼、課名或老師")
-                            .font(TigerDuckTheme.Typography.body)
-                            .foregroundStyle(Color.textSecondary)
-                        Text("例如：EC1013701、微積分、王小明")
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(Color.textSecondary)
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView(String(localized: "add_course_searching"))
+                            Spacer()
+                        }
                     }
-                    Spacer()
-                } else {
-                    resultsList
+                }
+
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "xmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if !searchResults.isEmpty {
+                    Section {
+                        resultRows
+                    }
                 }
             }
-            .padding(.top, TigerDuckTheme.Spacing.sm)
             .background(Color.backgroundPrimary)
-            .navigationTitle("新增課程")
+            .navigationTitle(String(localized: "add_course_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") { dismiss() }
+                    Button(String(localized: "action_close")) { dismiss() }
                 }
             }
+            .onAppear { searchFocused = true }
         }
     }
 
@@ -84,49 +77,47 @@ struct AddCourseSheet: View {
         return text.contains(where: { $0.isNumber })
     }
 
-    private var resultsList: some View {
+    @ViewBuilder
+    private var resultRows: some View {
         let grouped = groupedResults
-        return List {
-            ForEach(grouped, id: \.courseNo) { group in
-                let alreadyExists = existingCourseNos.contains(group.courseNo)
-                    || addedCourseNo == group.courseNo
-                Button {
-                    guard !alreadyExists else { return }
-                    addCourse(from: group)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.courseName)
-                                .font(TigerDuckTheme.Typography.headline)
-                                .foregroundStyle(Color.textPrimary)
-                            Text("\(group.courseNo) · \(group.instructor) · \(group.credits)學分")
+        ForEach(grouped, id: \.courseNo) { group in
+            let alreadyExists = existingCourseNos.contains(group.courseNo)
+                || addedCourseNo == group.courseNo
+            Button {
+                guard !alreadyExists else { return }
+                addCourse(from: group)
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group.courseName)
+                            .font(TigerDuckTheme.Typography.headline)
+                            .foregroundStyle(Color.textPrimary)
+                        Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits))
+                            .font(TigerDuckTheme.Typography.caption)
+                            .foregroundStyle(Color.textSecondary)
+                        if !group.classroom.isEmpty {
+                            Text(group.classroom)
                                 .font(TigerDuckTheme.Typography.caption)
                                 .foregroundStyle(Color.textSecondary)
-                            if !group.classroom.isEmpty {
-                                Text(group.classroom)
-                                    .font(TigerDuckTheme.Typography.caption)
-                                    .foregroundStyle(Color.textSecondary)
-                            }
-                            if !group.nodeDisplay.isEmpty {
-                                Text(group.nodeDisplay)
-                                    .font(TigerDuckTheme.Typography.caption)
-                                    .foregroundStyle(Color.textSecondary)
-                            }
                         }
-                        Spacer()
-                        if alreadyExists {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        } else {
-                            Image(systemName: "plus.circle")
-                                .foregroundStyle(Color.accentPrimary)
+                        if !group.nodeDisplay.isEmpty {
+                            Text(group.nodeDisplay)
+                                .font(TigerDuckTheme.Typography.caption)
+                                .foregroundStyle(Color.textSecondary)
                         }
                     }
+                    Spacer()
+                    if alreadyExists {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        Image(systemName: "plus.circle")
+                            .foregroundStyle(Color.accentPrimary)
+                    }
                 }
-                .disabled(alreadyExists)
             }
+            .disabled(alreadyExists)
         }
-        .listStyle(.plain)
     }
 
     // MARK: - Search
@@ -142,19 +133,23 @@ struct AddCourseSheet: View {
 
         let isCourseCode = looksLikeCourseCode(trimmed)
 
+        let language = LanguageManager.resolvedCourseApiLanguage(
+            appLanguage: Defaults[.appLanguage]
+        )
+
         searchTask = Task {
             do {
                 let results: [CourseSearchResult]
                 if isCourseCode {
                     results = try await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: trimmed
+                        semester: semester, courseNo: trimmed, language: language
                     )
                 } else {
                     async let byName = CourseLookupService.searchCourses(
-                        semester: semester, courseName: trimmed
+                        semester: semester, courseName: trimmed, language: language
                     )
                     async let byTeacher = CourseLookupService.searchByTeacher(
-                        semester: semester, teacher: trimmed
+                        semester: semester, teacher: trimmed, language: language
                     )
                     let nameResults = (try? await byName) ?? []
                     let teacherResults = (try? await byTeacher) ?? []
@@ -164,7 +159,7 @@ struct AddCourseSheet: View {
                     searchResults = results
                     isSearching = false
                     if results.isEmpty {
-                        errorMessage = "找不到符合的課程"
+                        errorMessage = String(localized: "add_course_not_found")
                     }
                 }
             } catch {
@@ -174,7 +169,7 @@ struct AddCourseSheet: View {
                 ])
                 await MainActor.run {
                     isSearching = false
-                    errorMessage = "搜尋失敗：\(error.localizedDescription)"
+                    errorMessage = String(format: String(localized: "add_course_search_failed"), error.localizedDescription)
                 }
             }
         }

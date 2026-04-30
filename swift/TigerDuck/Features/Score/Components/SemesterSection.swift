@@ -46,13 +46,16 @@ struct SemesterSection: View {
                     HStack(spacing: TigerDuckTheme.Spacing.sm) {
                         statPill(
                             icon: "number",
-                            text: "\(totalCredits) 學分"
+                            text: String(format: String(localized: "score_course_credits"), totalCredits)
                         )
                         if let gpa = ranking?.semester.gpa {
                             statPill(icon: "chart.bar", text: String(format: "GPA %.2f", gpa))
                         }
                         if let classRank = ranking?.semester.classRank, let deptRank = ranking?.semester.deptRank {
-                            statPill(icon: "person.2", text: "排名 \(deptRank) (\(classRank))")
+                            statPill(
+                                icon: "person.2",
+                                text: String(format: String(localized: "score_semester_ranking"), "\(deptRank)", "\(classRank)")
+                            )
                         }
                     }
                 }
@@ -71,8 +74,12 @@ struct SemesterSection: View {
         guard term.count == 4 else { return term }
         let year = String(term.prefix(3))
         let sem = String(term.suffix(1))
-        let label = sem == "1" ? "上" : sem == "2" ? "下" : sem
-        return "\(year) 學年度 \(label)學期"
+        let label = sem == "1"
+            ? String(localized: "score_semester_first_short")
+            : sem == "2"
+                ? String(localized: "score_semester_second_short")
+                : sem
+        return String(format: String(localized: "score_academic_year_semester"), year, label)
     }
 
     private var totalCredits: Int {

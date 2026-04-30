@@ -83,7 +83,7 @@ struct LoginSheet: View {
                                     .controlSize(.small)
                                     .padding(.trailing, 6)
                             }
-                            Text("登入")
+                            Text(String(localized: "action_login"))
                                 .fontWeight(.semibold)
                             Spacer()
                         }
@@ -95,7 +95,7 @@ struct LoginSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { onDismiss() }
+                    Button(String(localized: "action_cancel")) { onDismiss() }
                 }
             }
             .onAppear {

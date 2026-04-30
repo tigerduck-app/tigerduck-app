@@ -5,6 +5,7 @@ import SwiftData
 struct TigerDuckApp: App {
     @State private var appState = AppState()
     @State private var sceneRefreshTask: Task<Void, Never>?
+    @State private var rootLanguageId = UUID()
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
@@ -48,12 +49,18 @@ struct TigerDuckApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .id(rootLanguageId)
                 .environment(appState)
                 .tint(appState.accentColor)
                 .preferredColorScheme(.dark)
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
+                ) { _ in
+                    rootLanguageId = UUID()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {

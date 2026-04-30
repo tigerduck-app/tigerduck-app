@@ -37,15 +37,15 @@ struct ScoreView: View {
                 case .loginRequired:
                     LoginRequiredView(
                         layout: .page,
-                        title: "尚未登入",
-                        message: "尚未登入，無法查看歷年成績",
+                        title: String(localized: "common_not_logged_in"),
+                        message: String(localized: "score_login_required_message"),
                         onPrimary: { appState.presentNTUSTLogin() }
                     )
                 case .empty:
                     EmptyStateView(
                         icon: "doc.text.magnifyingglass",
-                        title: "沒有成績資料",
-                        message: "下拉以重新整理，或稍後再試"
+                        title: String(localized: "score_empty_title"),
+                        message: String(localized: "score_empty_pull_to_refresh")
                     )
                     .padding(.vertical, TigerDuckTheme.Spacing.xxl)
                 case .content:
@@ -75,7 +75,7 @@ struct ScoreView: View {
 
     private var titleBar: some View {
         HStack {
-            Text("歷年成績")
+            Text(String(localized: "feature_score"))
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
