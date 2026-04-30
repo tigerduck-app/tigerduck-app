@@ -73,27 +73,6 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Language
-            // The user picks the app language in iOS Settings (per-app
-            // language picker). iOS restarts the process on selection,
-            // which is why we don't need an in-app picker.
-            Section(String(localized: "settings_language")) {
-                Button {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
-                    }
-                } label: {
-                    HStack {
-                        Text(String(localized: "settings_language"))
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-
             // MARK: - Display
             Section(String(localized: "settings_section_display")) {
                 Picker(String(localized: "settings_visual_preset_label"), selection: $appState.visualPreset) {
@@ -149,6 +128,27 @@ struct SettingsView: View {
                 }
                 NavigationLink(String(localized: "settings_push_server_nav_label")) {
                     PushServerSettingsView()
+                }
+            }
+
+            // MARK: - Language
+            // The user picks the app language in iOS Settings (per-app
+            // language picker). iOS restarts the process on selection,
+            // which is why we don't need an in-app picker.
+            Section(String(localized: "settings_language")) {
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    HStack {
+                        Text(String(localized: "settings_language"))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
