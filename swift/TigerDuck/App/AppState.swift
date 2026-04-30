@@ -299,6 +299,7 @@ final class AppState {
             guard appLanguage != oldValue else { return }
             Defaults[.appLanguage] = appLanguage
             LanguageManager.apply(appLanguage)
+            AppServiceBridge.handleLanguageChange()
             NotificationCenter.default.post(name: AppConstants.languageDidChange, object: nil)
         }
     }
