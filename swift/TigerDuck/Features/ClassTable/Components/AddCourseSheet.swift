@@ -1,4 +1,5 @@
 import SwiftUI
+import Defaults
 
 struct AddCourseSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -142,19 +143,23 @@ struct AddCourseSheet: View {
 
         let isCourseCode = looksLikeCourseCode(trimmed)
 
+        let language = LanguageManager.resolvedCourseApiLanguage(
+            appLanguage: Defaults[.appLanguage]
+        )
+
         searchTask = Task {
             do {
                 let results: [CourseSearchResult]
                 if isCourseCode {
                     results = try await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: trimmed
+                        semester: semester, courseNo: trimmed, language: language
                     )
                 } else {
                     async let byName = CourseLookupService.searchCourses(
-                        semester: semester, courseName: trimmed
+                        semester: semester, courseName: trimmed, language: language
                     )
                     async let byTeacher = CourseLookupService.searchByTeacher(
-                        semester: semester, teacher: trimmed
+                        semester: semester, teacher: trimmed, language: language
                     )
                     let nameResults = (try? await byName) ?? []
                     let teacherResults = (try? await byTeacher) ?? []
