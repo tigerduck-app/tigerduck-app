@@ -116,6 +116,7 @@ final class AppState {
     private var preferencesObserver: Any?
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
+    private var relabelTask: Task<Void, Never>?
 
     // MARK: - Push server
 
@@ -344,49 +345,64 @@ final class AppState {
     /// reload from the freshly relabeled cache. Lives on `AppState` so the
     /// relabel still runs when no `ClassTableViewModel` is alive (e.g., the
     /// user toggled in Settings without ever opening the Class Table tab).
+    ///
+    /// Runs on a detached task so disk I/O (up to four cached semesters plus
+    /// user-added courses, plus a first-call JSON parse inside
+    /// ``NameAbbrService``) does not block the UI thread when the toggle is
+    /// flipped from a Settings view. Rapid toggling cancels the previous task
+    /// so the latest settings always win the save race.
     private func relabelAllCachedCourses() {
-        let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
-        let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
-        let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
+        relabelTask?.cancel()
+        relabelTask = Task.detached(priority: .userInitiated) {
+            let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
+            let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
+            let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
 
-        var anyChanged = false
-        var code = CourseSelectionService.currentSemesterCode()
-        for _ in 0..<4 {
-            let courses = DataCache.shared.loadCourses(semester: code)
-            if !courses.isEmpty {
+            var anyChanged = false
+            var code = CourseSelectionService.currentSemesterCode()
+            for _ in 0..<4 {
+                if Task.isCancelled { return }
+                let courses = DataCache.shared.loadCourses(semester: code)
+                if !courses.isEmpty {
+                    let changed = NameAbbrService.shared.relabelInPlace(
+                        courses,
+                        courseAbbrEnabled: courseAbbrEnabled,
+                        classroomAbbrEnabled: classroomAbbrEnabled,
+                        classroomMandarinDisplay: classroomMandarinDisplay
+                    )
+                    if changed {
+                        DataCache.shared.saveCourses(courses, semester: code)
+                        anyChanged = true
+                    }
+                }
+                code = CourseSelectionService.previousSemesterCode(code)
+            }
+
+            // User-added courses live in their own file, outside the per-semester
+            // fetch cache, so the loop above never sees them. Relabel separately
+            // so manually-added Mandarin classrooms also honor the display toggle.
+            if Task.isCancelled { return }
+            let userAdded = DataCache.shared.loadUserAddedCourses()
+            if !userAdded.isEmpty {
                 let changed = NameAbbrService.shared.relabelInPlace(
-                    courses,
+                    userAdded,
                     courseAbbrEnabled: courseAbbrEnabled,
                     classroomAbbrEnabled: classroomAbbrEnabled,
                     classroomMandarinDisplay: classroomMandarinDisplay
                 )
                 if changed {
-                    DataCache.shared.saveCourses(courses, semester: code)
+                    DataCache.shared.saveUserAddedCourses(userAdded)
                     anyChanged = true
                 }
             }
-            code = CourseSelectionService.previousSemesterCode(code)
-        }
 
-        // User-added courses live in their own file, outside the per-semester
-        // fetch cache, so the loop above never sees them. Relabel separately
-        // so manually-added Mandarin classrooms also honor the display toggle.
-        let userAdded = DataCache.shared.loadUserAddedCourses()
-        if !userAdded.isEmpty {
-            let changed = NameAbbrService.shared.relabelInPlace(
-                userAdded,
-                courseAbbrEnabled: courseAbbrEnabled,
-                classroomAbbrEnabled: classroomAbbrEnabled,
-                classroomMandarinDisplay: classroomMandarinDisplay
-            )
-            if changed {
-                DataCache.shared.saveUserAddedCourses(userAdded)
-                anyChanged = true
+            if anyChanged && !Task.isCancelled {
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: AppConstants.dataDidUpdate, object: nil
+                    )
+                }
             }
-        }
-
-        if anyChanged {
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
     }
 
