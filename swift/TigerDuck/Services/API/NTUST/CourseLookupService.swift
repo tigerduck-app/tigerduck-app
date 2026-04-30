@@ -3,16 +3,16 @@ import Foundation
 enum CourseLookupService {
     private static let courseSearchAPI = URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//courses")!
 
-    static func lookupCourse(semester: String, courseNo: String) async throws -> [CourseSearchResult] {
-        try await searchAPI(body: .forCourseNo(courseNo, semester: semester))
+    static func lookupCourse(semester: String, courseNo: String, language: String = "zh") async throws -> [CourseSearchResult] {
+        try await searchAPI(body: .forCourseNo(courseNo, semester: semester, language: language))
     }
 
-    static func searchCourses(semester: String, courseName: String) async throws -> [CourseSearchResult] {
-        try await searchAPI(body: .forCourseName(courseName, semester: semester))
+    static func searchCourses(semester: String, courseName: String, language: String = "zh") async throws -> [CourseSearchResult] {
+        try await searchAPI(body: .forCourseName(courseName, semester: semester, language: language))
     }
 
-    static func searchByTeacher(semester: String, teacher: String) async throws -> [CourseSearchResult] {
-        try await searchAPI(body: .forCourseTeacher(teacher, semester: semester))
+    static func searchByTeacher(semester: String, teacher: String, language: String = "zh") async throws -> [CourseSearchResult] {
+        try await searchAPI(body: .forCourseTeacher(teacher, semester: semester, language: language))
     }
 
     private static func searchAPI(body: CourseSearchRequest) async throws -> [CourseSearchResult] {

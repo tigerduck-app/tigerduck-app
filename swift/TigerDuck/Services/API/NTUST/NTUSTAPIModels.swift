@@ -39,7 +39,7 @@ struct CourseSearchRequest: Codable {
     let OnlyNode: Int
     let Language: String
 
-    static func forCourseNo(_ courseNo: String, semester: String) -> CourseSearchRequest {
+    static func forCourseNo(_ courseNo: String, semester: String, language: String = "zh") -> CourseSearchRequest {
         CourseSearchRequest(
             Semester: semester,
             CourseNo: courseNo,
@@ -54,11 +54,11 @@ struct CourseSearchRequest: Codable {
             OnlyMaster: 0,
             OnlyUnderGraduate: 0,
             OnlyNode: 0,
-            Language: "zh"
+            Language: language
         )
     }
 
-    static func forCourseName(_ name: String, semester: String) -> CourseSearchRequest {
+    static func forCourseName(_ name: String, semester: String, language: String = "zh") -> CourseSearchRequest {
         CourseSearchRequest(
             Semester: semester,
             CourseNo: "",
@@ -73,11 +73,11 @@ struct CourseSearchRequest: Codable {
             OnlyMaster: 0,
             OnlyUnderGraduate: 0,
             OnlyNode: 0,
-            Language: "zh"
+            Language: language
         )
     }
 
-    static func forCourseTeacher(_ teacher: String, semester: String) -> CourseSearchRequest {
+    static func forCourseTeacher(_ teacher: String, semester: String, language: String = "zh") -> CourseSearchRequest {
         CourseSearchRequest(
             Semester: semester,
             CourseNo: "",
@@ -92,7 +92,7 @@ struct CourseSearchRequest: Codable {
             OnlyMaster: 0,
             OnlyUnderGraduate: 0,
             OnlyNode: 0,
-            Language: "zh"
+            Language: language
         )
     }
 }
