@@ -90,7 +90,7 @@ struct SettingsView: View {
             }
 
             // MARK: - Abbreviations (English course API only)
-            if LanguageManager.isCourseApiEnglish(appLanguage: appState.appLanguage) {
+            if LanguageManager.isCurrentLocaleEnglish {
                 Section(String(localized: "settings_section_abbreviation")) {
                     Toggle(
                         String(localized: "settings_use_english_course_abbreviation"),

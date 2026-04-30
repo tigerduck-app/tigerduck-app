@@ -24,6 +24,14 @@ enum LanguageManager {
         resolvedCourseApiLanguage(appLanguage: appLanguage) == "en"
     }
 
+    /// Whether the app is currently running in a non-Chinese locale.
+    /// Uses `Locale.current` so it correctly reflects iOS per-app language
+    /// overrides, which `Locale.preferredLanguages` may not pick up.
+    static var isCurrentLocaleEnglish: Bool {
+        let code = Locale.current.language.languageCode?.identifier ?? ""
+        return !chineseLanguageCodes.contains(code)
+    }
+
     /// Returns the device's primary language code for use when appLanguage == "system".
     /// Falls back to "en" for unsupported device languages.
     static func resolvedSystemLanguage() -> String {
