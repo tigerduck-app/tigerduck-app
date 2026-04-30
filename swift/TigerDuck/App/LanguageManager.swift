@@ -8,8 +8,12 @@ enum LanguageManager {
     // MARK: - Language resolution
 
     /// Language codes that should be treated as Chinese for the course API.
-    /// "yue" covers Cantonese; "zh" covers Mandarin variants.
-    private static let chineseLanguageCodes: Set<String> = ["zh", "yue"]
+    /// Covers every Sinitic language iOS exposes as a system language:
+    /// Mandarin (zh, incl. Hans/Hant/HK), Cantonese (yue), Min Nan / Hokkien
+    /// (nan), Hakka (hak), Wu (wuu), and Classical / Literary Chinese (lzh).
+    private static let chineseLanguageCodes: Set<String> = [
+        "zh", "yue", "nan", "hak", "wuu", "lzh"
+    ]
 
     /// Resolves the language tag to use for NTUST course API calls.
     /// The API only supports "zh" and "en".
@@ -24,11 +28,21 @@ enum LanguageManager {
         resolvedCourseApiLanguage(appLanguage: appLanguage) == "en"
     }
 
-    /// Whether the app is currently running in a non-Chinese locale.
-    /// Uses `Locale.current` so it correctly reflects iOS per-app language
-    /// overrides, which `Locale.preferredLanguages` may not pick up.
-    static var isCurrentLocaleEnglish: Bool {
-        let code = Locale.current.language.languageCode?.identifier ?? ""
+    /// Whether the active UI language is non-Chinese.
+    ///
+    /// When the user picked an explicit `appLanguage`, trust that tag. For
+    /// "system", read `Bundle.main.preferredLocalizations` — this is the lproj
+    /// iOS resolved at launch (matching what `String(localized:)` actually
+    /// uses) and stays stable for the running process, unlike `Locale.current`
+    /// which re-resolves dynamically when `AppleLanguages` changes.
+    static func isCurrentLanguageEnglish(appLanguage: String) -> Bool {
+        let tag: String
+        if appLanguage == system {
+            tag = Bundle.main.preferredLocalizations.first ?? "en"
+        } else {
+            tag = appLanguage
+        }
+        let code = Locale(identifier: tag).language.languageCode?.identifier ?? ""
         return !chineseLanguageCodes.contains(code)
     }
 

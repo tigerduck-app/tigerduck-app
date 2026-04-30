@@ -35,6 +35,17 @@ final class LanguageManagerTests: XCTestCase {
         XCTAssertFalse(LanguageManager.isCourseApiEnglish(appLanguage: "zh-Hant"))
     }
 
+    func test_isCurrentLanguageEnglish_explicitChineseTags() {
+        XCTAssertFalse(LanguageManager.isCurrentLanguageEnglish(appLanguage: "zh-Hant"))
+        XCTAssertFalse(LanguageManager.isCurrentLanguageEnglish(appLanguage: "zh-Hans"))
+        XCTAssertFalse(LanguageManager.isCurrentLanguageEnglish(appLanguage: "yue-HK"))
+    }
+
+    func test_isCurrentLanguageEnglish_explicitEnglish() {
+        XCTAssertTrue(LanguageManager.isCurrentLanguageEnglish(appLanguage: "en"))
+        XCTAssertTrue(LanguageManager.isCurrentLanguageEnglish(appLanguage: "ja"))
+    }
+
     func test_supportedTags_containsCommonLocales() {
         let tags = LanguageManager.supportedLocaleTags()
         XCTAssertTrue(tags.contains("en"))

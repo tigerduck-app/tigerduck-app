@@ -67,9 +67,13 @@ final class AppState {
         // toggle is off, so this is safe to call unconditionally.
         pushCoordinator.enable()
 
-        // Apply stored language preference on launch so string lookups use
-        // the user's chosen locale even before any UI change triggers it.
-        LanguageManager.apply(appLanguage)
+        // Apply a stored in-app language override on launch so string lookups
+        // use the user's chosen locale. Skip when "system" — calling apply()
+        // there would removeObject(AppleLanguages), wiping the per-app override
+        // iOS Settings writes to that same key.
+        if appLanguage != LanguageManager.system {
+            LanguageManager.apply(appLanguage)
+        }
     }
 
     // MARK: - Migrations

@@ -90,7 +90,7 @@ struct SettingsView: View {
             }
 
             // MARK: - Abbreviations (English course API only)
-            if LanguageManager.isCurrentLocaleEnglish {
+            if LanguageManager.isCurrentLanguageEnglish(appLanguage: appState.appLanguage) {
                 Section(String(localized: "settings_section_abbreviation")) {
                     Toggle(
                         String(localized: "settings_use_english_course_abbreviation"),
@@ -135,7 +135,7 @@ struct SettingsView: View {
             // The user picks the app language in iOS Settings (per-app
             // language picker). iOS restarts the process on selection,
             // which is why we don't need an in-app picker.
-            Section(String(localized: "settings_language")) {
+            Section(String(localized: "feature_category_language")) {
                 Button {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         UIApplication.shared.open(url)
