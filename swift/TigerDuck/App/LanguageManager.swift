@@ -58,14 +58,14 @@ enum LanguageManager {
     // MARK: - Supported locale tags
 
     /// Returns the BCP-47 tags that correspond to `.lproj` bundles baked into the app.
-    /// The TigerDuck pipeline ships them under `<app>/Localization/*.lproj`, so we
-    /// enumerate that directory rather than relying on `Bundle.main.localizations`
-    /// (which only sees lproj folders at the bundle root).
+    /// `tools/localization/sync_localizations.py` surfaces each generated lproj as
+    /// a top-level symlink under the synchronized group, so Xcode copies them to
+    /// the bundle root (`<App>.app/<lang>.lproj`), not into a `Localization/`
+    /// subfolder. We enumerate the resource URL directly.
     static func supportedLocaleTags() -> [String] {
         guard let resourceURL = Bundle.main.resourceURL else { return [] }
-        let localizationDir = resourceURL.appendingPathComponent("Localization", isDirectory: true)
         let urls = (try? FileManager.default.contentsOfDirectory(
-            at: localizationDir,
+            at: resourceURL,
             includingPropertiesForKeys: [.isDirectoryKey],
             options: [.skipsHiddenFiles]
         )) ?? []
