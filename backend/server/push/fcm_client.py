@@ -9,6 +9,7 @@ asyncio loop.
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from pathlib import Path
 
 import structlog
@@ -49,7 +50,7 @@ class FcmSender:
             data=request.data,
             android=messaging.AndroidConfig(
                 priority="high",
-                ttl=request.ttl_seconds,
+                ttl=timedelta(seconds=request.ttl_seconds),
                 notification=messaging.AndroidNotification(channel_id="bulletins"),
             ),
         )
