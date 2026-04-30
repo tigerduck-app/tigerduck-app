@@ -5,6 +5,7 @@ struct FluidGlassTrackView: View {
     var invertDirection: Bool = false
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
     @State private var lastDragX: CGFloat = 0
+    @Environment(\.layoutDirection) private var layoutDirection
 
     private let trackHeight = TimeSliderMetrics.fluidTrackHeight
 
@@ -68,8 +69,9 @@ struct FluidGlassTrackView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        let dx = value.translation.width - lastDragX
+                        let rawDelta = value.translation.width - lastDragX
                         lastDragX = value.translation.width
+                        let dx = layoutDirection == .rightToLeft ? -rawDelta : rawDelta
                         viewModel.onDragChanged(dx: dx, invertDirection: invertDirection)
                     }
                     .onEnded { _ in
