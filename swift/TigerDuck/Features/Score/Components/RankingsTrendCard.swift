@@ -22,7 +22,7 @@ struct RankingsTrendCard: View {
             header
 
             if rankings.isEmpty {
-                Text("尚無排名資料")
+                Text(String(localized: "score_no_ranking_data"))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -39,7 +39,7 @@ struct RankingsTrendCard: View {
 
     private var header: some View {
         HStack {
-            Text("GPA 趨勢")
+            Text(String(localized: "score_gpa_trend_title"))
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
@@ -58,7 +58,7 @@ struct RankingsTrendCard: View {
             ForEach(rankings) { ranking in
                 if let value = gpa(for: ranking) {
                     LineMark(
-                        x: .value("學期", ranking.term),
+                        x: .value(String(localized: "class_table_semester_picker_label"),ranking.term),
                         y: .value("GPA", value)
                     )
                     .interpolationMethod(.monotone)
@@ -66,7 +66,7 @@ struct RankingsTrendCard: View {
                     .lineStyle(StrokeStyle(lineWidth: 2.5))
 
                     PointMark(
-                        x: .value("學期", ranking.term),
+                        x: .value(String(localized: "class_table_semester_picker_label"),ranking.term),
                         y: .value("GPA", value)
                     )
                     .foregroundStyle(Color(hex: 0x4ECDC4))
@@ -76,12 +76,12 @@ struct RankingsTrendCard: View {
 
             if let selected = resolvedSelection,
                let value = gpa(for: selected) {
-                RuleMark(x: .value("學期", selected.term))
+                RuleMark(x: .value(String(localized: "class_table_semester_picker_label"),selected.term))
                     .foregroundStyle(Color.textSecondary.opacity(0.35))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
 
                 PointMark(
-                    x: .value("學期", selected.term),
+                    x: .value(String(localized: "class_table_semester_picker_label"),selected.term),
                     y: .value("GPA", value)
                 )
                 .foregroundStyle(Color.white)
@@ -124,15 +124,17 @@ struct RankingsTrendCard: View {
         let source = ranking ?? rankings.last
         HStack(spacing: TigerDuckTheme.Spacing.lg) {
             summaryCell(
-                title: selectedTerm != nil ? "\(displayTerm(source?.term ?? "")) GPA" : "最新 GPA",
+                title: selectedTerm != nil
+                    ? String(format: String(localized: "score_gpa_term_label"), displayTerm(source?.term ?? ""))
+                    : String(localized: "score_gpa_latest"),
                 value: formatGPA(source.flatMap(gpa))
             )
             summaryCell(
-                title: "班排名",
+                title: String(localized: "score_ranking_class_label"),
                 value: formatRank(source.map(rank)?.classRank)
             )
             summaryCell(
-                title: "系排名",
+                title: String(localized: "score_ranking_dept_label"),
                 value: formatRank(source.map(rank)?.deptRank)
             )
             Spacer()
@@ -222,7 +224,11 @@ struct RankingsTrendCard: View {
         guard code.count == 4 else { return code }
         let year = String(code.prefix(3))
         let sem = String(code.suffix(1))
-        let label = sem == "1" ? "上" : sem == "2" ? "下" : sem
+        let label = sem == "1"
+            ? String(localized: "score_semester_first_short")
+            : sem == "2"
+                ? String(localized: "score_semester_second_short")
+                : sem
         return "\(year)-\(label)"
     }
 }

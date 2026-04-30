@@ -12,7 +12,7 @@ struct DayEventListView: View {
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
             if events.isEmpty {
-                EmptyStateView(icon: "calendar.badge.checkmark", title: "今日無事件")
+                EmptyStateView(icon: "calendar.badge.checkmark", title: String(localized: "calendar_no_events_today"))
                     .frame(height: 120)
             } else {
                 ForEach(events, id: \.eventId) { event in
@@ -25,13 +25,14 @@ struct DayEventListView: View {
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh-Hant")
-        f.dateFormat = "M月d日"
+        f.setLocalizedDateFormatFromTemplate("MMMd")
         return f
     }()
 
     private var dateTitle: String {
         let dateStr = Self.dateFormatter.string(from: date)
-        return date.isToday ? "\(dateStr) (今日)" : dateStr
+        return date.isToday
+            ? dateStr + String(localized: "calendar_date_today_suffix")
+            : dateStr
     }
 }

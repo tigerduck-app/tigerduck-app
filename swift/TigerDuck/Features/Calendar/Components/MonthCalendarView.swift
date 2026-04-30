@@ -3,7 +3,15 @@ import SwiftUI
 struct MonthCalendarView: View {
     @Bindable var viewModel: CalendarViewModel
 
-    private let weekdaySymbols = ["日", "一", "二", "三", "四", "五", "六"]
+    private let weekdaySymbols = [
+        String(localized: "weekday_sun_short"),
+        String(localized: "weekday_mon_short"),
+        String(localized: "weekday_tue_short"),
+        String(localized: "weekday_wed_short"),
+        String(localized: "weekday_thu_short"),
+        String(localized: "weekday_fri_short"),
+        String(localized: "weekday_sat_short"),
+    ]
     private let columns = Array(repeating: GridItem(.flexible()), count: 7)
 
     private var monthTitle: String {

@@ -8,10 +8,10 @@ enum LibraryServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .credentialsNotFound: "找不到圖書館帳號密碼"
-        case .loginFailed(let msg): "圖書館登入失敗：\(msg)"
-        case .qrGenerationFailed(let msg): "QR 碼產生失敗：\(msg)"
-        case .networkError(let e): "網路錯誤：\(e.localizedDescription)"
+        case .credentialsNotFound: String(localized: "error_library_credentials_not_found")
+        case .loginFailed(let msg): String(format: String(localized: "error_library_login_failed_format"), msg)
+        case .qrGenerationFailed(let msg): String(format: String(localized: "error_qr_generation_failed_format"), msg)
+        case .networkError(let e): String(format: String(localized: "error_network_format"), e.localizedDescription)
         }
     }
 }

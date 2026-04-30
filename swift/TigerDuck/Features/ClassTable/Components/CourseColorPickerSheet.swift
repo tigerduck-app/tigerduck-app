@@ -59,7 +59,7 @@ struct CourseColorPickerSheet: View {
                     Button(role: .destructive) {
                         onReset()
                     } label: {
-                        Label("恢復預設顏色", systemImage: "arrow.uturn.backward")
+                        Label(String(localized: "course_color_picker_reset_action"), systemImage: "arrow.uturn.backward")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
@@ -69,11 +69,11 @@ struct CourseColorPickerSheet: View {
             }
             .padding(.top, TigerDuckTheme.Spacing.lg)
             .background(Color.backgroundPrimary)
-            .navigationTitle("修改顏色")
+            .navigationTitle(String(localized: "course_color_picker_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") { dismiss() }
+                    Button(String(localized: "action_close")) { dismiss() }
                 }
             }
         }

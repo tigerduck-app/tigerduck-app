@@ -145,7 +145,7 @@ final class AuthService {
             // Keep credentials so the user can retry interactively — they
             // are the only party who can tell "cookie TTL" apart from
             // "password was changed on the portal".
-            reauthErrorMessage = loginError ?? "自動登入失敗"
+            reauthErrorMessage = loginError ?? String(localized: "common_auto_login_failed")
         }
         return success
     }

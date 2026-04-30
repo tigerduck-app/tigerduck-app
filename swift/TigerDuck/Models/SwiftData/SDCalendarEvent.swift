@@ -44,9 +44,9 @@ enum EventSource: String, Codable {
     var label: String {
         switch self {
         case .moodle: "Moodle"
-        case .school: "學校"
-        case .exam: "考試"
-        case .system: "行事曆"
+        case .school: String(localized: "calendar_event_source_school")
+        case .exam: String(localized: "calendar_event_source_exam")
+        case .system: String(localized: "feature_calendar")
         }
     }
 }

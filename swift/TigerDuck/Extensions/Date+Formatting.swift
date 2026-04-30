@@ -60,9 +60,9 @@ extension Date {
     func greetingText() -> String {
         let hour = Calendar.current.component(.hour, from: self)
         switch hour {
-        case 5..<12: return "早安"
-        case 12..<18: return "午安"
-        default: return "晚安"
+        case 5..<12: return String(localized: "greeting_morning")
+        case 12..<18: return String(localized: "greeting_afternoon")
+        default: return String(localized: "greeting_evening")
         }
     }
 
@@ -77,24 +77,25 @@ extension Date {
         Self.absoluteFormatter.string(from: self)
     }
 
-    /// Relative time: "5 天後", "30 小時後", "3 小時後", "已逾期"
+    /// Relative time, e.g. "5 days later", "30 hours later", or "Overdue".
     func relativeTimeString(from now: Date) -> String {
         let interval = timeIntervalSince(now)
         if interval < 0 {
-            return "已逾期"
+            return String(localized: "assignment_status_overdue")
         }
+        let suffix = String(localized: "assignment_time_suffix_later")
         let days = Int(interval / 86400)
         if days > 3 {
-            return "\(days) 天後"
+            return String(format: String(localized: "assignment_time_days_with_suffix"), days, suffix)
         }
         let hours = Int(interval / 3600)
         if hours > 0 {
-            return "\(hours) 小時後"
+            return String(format: String(localized: "assignment_time_hours_with_suffix"), hours, suffix)
         }
         let minutes = Int(interval / 60)
         if minutes > 0 {
-            return "\(minutes) 分鐘後"
+            return String(format: String(localized: "assignment_time_minutes_with_suffix"), minutes, suffix)
         }
-        return "\(interval) 秒鐘後"
+        return String(format: String(localized: "assignment_time_seconds_with_suffix"), Int(interval), suffix)
     }
 }

@@ -20,7 +20,7 @@ struct CalendarTabView: View {
         ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     HStack {
-                        Text("行事曆")
+                        Text(String(localized: "feature_calendar"))
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
@@ -28,7 +28,7 @@ struct CalendarTabView: View {
                         Button {
                             viewModel.goToToday()
                         } label: {
-                            Text("今天")
+                            Text(String(localized: "calendar_today"))
                                 .font(TigerDuckTheme.Typography.caption)
                                 .foregroundStyle(Color.textSecondary)
                         }

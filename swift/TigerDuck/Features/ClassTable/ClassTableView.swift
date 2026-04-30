@@ -48,8 +48,8 @@ struct ClassTableView: View {
                     case .loginRequired:
                         LoginRequiredView(
                             layout: .page,
-                            title: "尚未登入",
-                            message: "尚未登入，無法查看課表",
+                            title: String(localized: "common_not_logged_in"),
+                            message: String(localized: "class_table_login_required_message"),
                             onPrimary: { appState.presentNTUSTLogin() }
                         )
                     case .empty:
@@ -63,8 +63,8 @@ struct ClassTableView: View {
                             semesterPickerBar
                             EmptyStateView(
                                 icon: "book.closed",
-                                title: "目前沒有課程",
-                                message: "下拉以重新整理，或使用右上角的 + 新增課程，或切換到其他學期"
+                                title: String(localized: "home_time_slider_no_courses"),
+                                message: String(localized: "class_table_empty_message")
                             )
                             .padding(.vertical, TigerDuckTheme.Spacing.xxl)
                         }
@@ -102,12 +102,12 @@ struct ClassTableView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
-            .alert("重新命名", isPresented: $viewModel.showRenameAlert) {
-                TextField("課程名稱", text: $viewModel.renameText)
-                Button("確認") {
+            .alert(String(localized: "class_table_rename_title"), isPresented: $viewModel.showRenameAlert) {
+                TextField(String(localized: "class_table_course_name"), text: $viewModel.renameText)
+                Button(String(localized: "action_confirm")) {
                     viewModel.confirmRename()
                 }
-                Button("取消", role: .cancel) {
+                Button(String(localized: "action_cancel"), role: .cancel) {
                     viewModel.courseToRename = nil
                 }
             }
@@ -132,7 +132,7 @@ struct ClassTableView: View {
 
     private var titleBar: some View {
         HStack {
-            Text("課表")
+            Text(String(localized: "feature_class_table"))
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
@@ -163,7 +163,7 @@ struct ClassTableView: View {
 
     private var todayCoursesSection: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
-            SectionHeader(title: "今日課程")
+            SectionHeader(title: String(localized: "home_section_today_courses"))
             TodayCourseCarousel(
                 courses: viewModel.todayCourses,
                 hasAssignment: viewModel.hasAssignment,
@@ -178,7 +178,7 @@ struct ClassTableView: View {
     /// has no way to pivot to a semester that does have data.
     private var semesterPickerBar: some View {
         HStack {
-            Picker("學期", selection: $viewModel.currentSemester) {
+            Picker(String(localized: "class_table_semester_picker_label"), selection: $viewModel.currentSemester) {
                 ForEach(viewModel.availableSemesters, id: \.self) { code in
                     Text(viewModel.displayLabel(for: code)).tag(code)
                 }
@@ -188,7 +188,7 @@ struct ClassTableView: View {
 
             Spacer()
 
-            Text("\(viewModel.totalCredits) 學分")
+            Text(String(format: String(localized: "class_table_total_credits_value"), viewModel.totalCredits))
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
         }

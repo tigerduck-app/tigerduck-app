@@ -37,20 +37,22 @@ struct SubscriptionRuleEditorView: View {
 
     var body: some View {
         Form {
-            Section("名稱") {
-                TextField("例如：教務 + 獎學金", text: $name)
+            Section(String(localized: "bulletin_rule_editor_name_section")) {
+                TextField(String(localized: "bulletin_rule_editor_name_placeholder"), text: $name)
             }
 
-            Section("處室") {
+            Section(String(localized: "bulletin_filter_dept")) {
                 NavigationLink {
                     BulletinTaxonomyPickerView(
-                        title: "處室",
+                        title: String(localized: "bulletin_filter_dept"),
                         options: orgOptions,
                         selected: $orgs
                     )
                 } label: {
                     HStack {
-                        Text(orgs.isEmpty ? "全部處室" : "已選 \(orgs.count) 個")
+                        Text(orgs.isEmpty
+                            ? String(localized: "bulletin_rule_all_orgs")
+                            : String(format: String(localized: "bulletin_rule_editor_selected_count"), orgs.count))
                             .foregroundStyle(.primary)
                         Spacer()
                         Text(summaryLabels(orgs, lookup: taxonomy.orgLabel(for:)))
@@ -62,16 +64,18 @@ struct SubscriptionRuleEditorView: View {
                 }
             }
 
-            Section("類別") {
+            Section(String(localized: "bulletin_filter_tag")) {
                 NavigationLink {
                     BulletinTaxonomyPickerView(
-                        title: "類別",
+                        title: String(localized: "bulletin_filter_tag"),
                         options: tagOptions,
                         selected: $tags
                     )
                 } label: {
                     HStack {
-                        Text(tags.isEmpty ? "全部類別" : "已選 \(tags.count) 個")
+                        Text(tags.isEmpty
+                            ? String(localized: "bulletin_rule_all_tags")
+                            : String(format: String(localized: "bulletin_rule_editor_selected_count"), tags.count))
                             .foregroundStyle(.primary)
                         Spacer()
                         Text(summaryLabels(tags, lookup: taxonomy.tagLabel(for:)))
@@ -84,7 +88,7 @@ struct SubscriptionRuleEditorView: View {
             }
 
             Section {
-                Picker("模式", selection: $mode) {
+                Picker(String(localized: "bulletin_rule_editor_mode_section"), selection: $mode) {
                     ForEach(BulletinAPI.SubscriptionMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
                     }
@@ -96,7 +100,7 @@ struct SubscriptionRuleEditorView: View {
             }
 
             Section {
-                Toggle("啟用此規則", isOn: $enabled)
+                Toggle(String(localized: "bulletin_rule_editor_enable_toggle"), isOn: $enabled)
             }
 
             if let onDelete {
@@ -105,16 +109,18 @@ struct SubscriptionRuleEditorView: View {
                         onDelete()
                         dismiss()
                     } label: {
-                        Label("刪除規則", systemImage: "trash")
+                        Label(String(localized: "bulletin_rule_delete_action"), systemImage: "trash")
                     }
                 }
             }
         }
-        .navigationTitle(original.id == nil ? "新增規則" : "編輯規則")
+        .navigationTitle(original.id == nil
+            ? String(localized: "bulletin_rule_add_title")
+            : String(localized: "bulletin_rule_edit_title"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("完成") {
+                Button(String(localized: "action_done")) {
                     commit()
                     dismiss()
                 }
@@ -134,14 +140,14 @@ struct SubscriptionRuleEditorView: View {
 
     private var modeFooter: String {
         switch mode {
-        case .and: return "同時符合所選的處室與類別才會推播。"
-        case .or: return "符合任一處室或類別就會推播。"
+        case .and: return String(localized: "bulletin_rule_editor_mode_and_footer")
+        case .or: return String(localized: "bulletin_rule_editor_mode_or_footer")
         }
     }
 
     private func summaryLabels(_ ids: Set<String>, lookup: (String) -> String) -> String {
         let labels = ids.map(lookup).sorted()
-        return labels.joined(separator: "、")
+        return labels.joined(separator: String(localized: "bulletin_rule_filter_separator"))
     }
 
     private func commit() {

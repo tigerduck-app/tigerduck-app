@@ -10,7 +10,7 @@ struct LibraryQRCodeView: View {
         VStack(spacing: 0) {
             // Title bar
             HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                Text("虛擬入館證")
+                Text(String(localized: "library_virtual_pass_title"))
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                 if let username {
@@ -44,7 +44,7 @@ struct LibraryQRCodeView: View {
                 }
                 .frame(width: 18, height: 18)
 
-                Text("\(countdown) 秒後更新")
+                Text(String(format: String(localized: "library_qr_refresh_in_seconds"), countdown))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
             }

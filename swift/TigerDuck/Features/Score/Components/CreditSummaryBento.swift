@@ -12,12 +12,12 @@ struct CreditSummaryBento: View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             HStack(spacing: TigerDuckTheme.Spacing.sm) {
                 tile(
-                    label: "已實得",
+                    label: String(localized: "score_credit_earned_label"),
                     breakdown: summary.earned,
                     accent: Color(hex: 0x2ECC71)
                 )
                 tile(
-                    label: "修習中",
+                    label: String(localized: "score_credit_enrolled_label"),
                     breakdown: summary.enrolled,
                     accent: Color(hex: 0x45B7D1)
                 )
@@ -42,14 +42,14 @@ struct CreditSummaryBento: View {
                 Text("\(breakdown.total)")
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(accent)
-                Text("學分")
+                Text(String(localized: "course_detail_credits_label"))
                     .font(TigerDuckTheme.Typography.caption2)
                     .foregroundStyle(Color.textSecondary)
             }
 
 //            HStack(spacing: TigerDuckTheme.Spacing.xs) {
-//                breakdownPill(icon: "person.fill", value: breakdown.inPerson, suffix: "實體")
-//                breakdownPill(icon: "dot.radiowaves.left.and.right", value: breakdown.distance, suffix: "遠距")
+//                breakdownPill(icon: "person.fill", value: breakdown.inPerson, suffix: "in-person")
+//                breakdownPill(icon: "dot.radiowaves.left.and.right", value: breakdown.distance, suffix: "distance")
 //            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

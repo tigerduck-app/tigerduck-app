@@ -24,7 +24,7 @@ struct AddCourseSheet: View {
         NavigationStack {
             VStack(spacing: TigerDuckTheme.Spacing.md) {
                 HStack(spacing: TigerDuckTheme.Spacing.sm) {
-                    TextField("輸入課程代碼、課名或老師", text: $searchText)
+                    TextField(String(localized: "add_course_placeholder"), text: $searchText)
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
@@ -51,15 +51,15 @@ struct AddCourseSheet: View {
 
                 if isSearching {
                     Spacer()
-                    ProgressView("搜尋中...")
+                    ProgressView(String(localized: "add_course_searching"))
                     Spacer()
                 } else if searchResults.isEmpty && addedCourseNo == nil {
                     Spacer()
                     VStack(spacing: TigerDuckTheme.Spacing.xs) {
-                        Text("輸入課程代碼、課名或老師")
+                        Text(String(localized: "add_course_placeholder"))
                             .font(TigerDuckTheme.Typography.body)
                             .foregroundStyle(Color.textSecondary)
-                        Text("例如：EC1013701、微積分、王小明")
+                        Text(String(localized: "add_course_example"))
                             .font(TigerDuckTheme.Typography.caption)
                             .foregroundStyle(Color.textSecondary)
                     }
@@ -70,11 +70,11 @@ struct AddCourseSheet: View {
             }
             .padding(.top, TigerDuckTheme.Spacing.sm)
             .background(Color.backgroundPrimary)
-            .navigationTitle("新增課程")
+            .navigationTitle(String(localized: "add_course_title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") { dismiss() }
+                    Button(String(localized: "action_close")) { dismiss() }
                 }
             }
         }
@@ -100,7 +100,7 @@ struct AddCourseSheet: View {
                             Text(group.courseName)
                                 .font(TigerDuckTheme.Typography.headline)
                                 .foregroundStyle(Color.textPrimary)
-                            Text("\(group.courseNo) · \(group.instructor) · \(group.credits)學分")
+                            Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits))
                                 .font(TigerDuckTheme.Typography.caption)
                                 .foregroundStyle(Color.textSecondary)
                             if !group.classroom.isEmpty {
@@ -169,7 +169,7 @@ struct AddCourseSheet: View {
                     searchResults = results
                     isSearching = false
                     if results.isEmpty {
-                        errorMessage = "找不到符合的課程"
+                        errorMessage = String(localized: "add_course_not_found")
                     }
                 }
             } catch {
@@ -179,7 +179,7 @@ struct AddCourseSheet: View {
                 ])
                 await MainActor.run {
                     isSearching = false
-                    errorMessage = "搜尋失敗：\(error.localizedDescription)"
+                    errorMessage = String(format: String(localized: "add_course_search_failed"), error.localizedDescription)
                 }
             }
         }

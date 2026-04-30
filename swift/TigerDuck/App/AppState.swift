@@ -215,15 +215,15 @@ final class AppState {
         Color(hex: UInt(accentColorHex))
     }
 
-    static let themeColors: [(name: String, hex: Int)] = [
-        ("藍", 0x007AFF),
-        ("紫", 0xAF52DE),
-        ("粉", 0xFF2D55),
-        ("紅", 0xFF3B30),
-        ("橘", 0xFF9500),
-        ("綠", 0x34C759),
-        ("青", 0x5AC8FA),
-        ("靛", 0x5856D6),
+    static let themeColors: [(nameKey: String, hex: Int)] = [
+        ("color_name_blue", 0x007AFF),
+        ("color_name_purple", 0xAF52DE),
+        ("color_name_pink", 0xFF2D55),
+        ("color_name_red", 0xFF3B30),
+        ("color_name_orange", 0xFF9500),
+        ("color_name_green", 0x34C759),
+        ("color_name_cyan", 0x5AC8FA),
+        ("color_name_indigo", 0x5856D6),
     ]
 
     // MARK: - Settings
@@ -546,7 +546,7 @@ final class AppState {
         syncTask = Task {
             guard NetworkMonitor.shared.isConnected else {
                 await MainActor.run {
-                    sessionManager.loadingState = .error("無網路連線")
+                    sessionManager.loadingState = .error(String(localized: "error_network_unavailable"))
                 }
                 return
             }

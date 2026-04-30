@@ -42,7 +42,7 @@ struct TodayCourseCarousel: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.title2)
                 .foregroundStyle(.green)
-            Text("今日沒有課程")
+            Text(String(localized: "home_no_courses_today"))
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
         }
@@ -122,7 +122,7 @@ private struct TodayCourseCard: View {
                     .lineLimit(1)
 
                 if isActive {
-                    Text("進行中")
+                    Text(String(localized: "widget_ongoing"))
                         .font(.caption2.bold())
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)

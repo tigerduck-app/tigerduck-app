@@ -133,7 +133,7 @@ final class BulletinSubscriptionsStore {
             }
         }
         logger.error("subscription save gave up after \(maxAttempts, privacy: .public) 404 attempts")
-        saveState = .failed("設備尚未註冊，請稍後再儲存")
+        saveState = .failed(String(localized: "bulletin_subscription_device_not_registered"))
     }
 
     // MARK: - Mutation helpers
@@ -194,7 +194,7 @@ final class BulletinSubscriptionsStore {
         guard pending.isEmpty else { return }
         pending.append(
             BulletinAPI.SubscriptionRule(
-                name: "預設推薦",
+                name: String(localized: "bulletin_subscription_default_seed_name"),
                 orgs: [],
                 tags: taxonomy.defaultTags,
                 mode: .or,

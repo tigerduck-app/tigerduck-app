@@ -31,7 +31,7 @@ struct ScoreCourseRow: View {
                             .foregroundStyle(Color.textSecondary)
                         Text("·")
                             .foregroundStyle(Color.textSecondary)
-                        Text("\(course.credits ?? 0) 學分")
+                        Text(String(format: String(localized: "score_course_credits"), course.credits ?? 0))
                             .font(TigerDuckTheme.Typography.caption)
                             .foregroundStyle(Color.textSecondary)
                         CreditTypeBadge(creditType: course.creditType)
@@ -81,15 +81,17 @@ private struct GradeChip: View {
     private func resolveDescriptor() -> (label: String, color: Color, icon: String?) {
         switch course.status {
         case .pending:
-            return ("未到", Color(hex: 0x95A5A6), "hourglass")
+            return (String(localized: "score_grade_pending"), Color(hex: 0x95A5A6), "hourglass")
         case .withdrew:
-            return ("退選", Color(hex: 0x95A5A6), "xmark.circle")
+            return (String(localized: "score_grade_withdrew"), Color(hex: 0x95A5A6), "xmark.circle")
         case .exempted:
-            return ("抵免", Color(hex: 0x85C1E9), "checkmark.seal")
+            return (String(localized: "score_grade_exempted"), Color(hex: 0x85C1E9), "checkmark.seal")
         case .passed:
-            let passed = course.grade == "通過"
+            let passed = course.grade == String(localized: "score_grade_passed")
             return (
-                passed ? "通過" : "未過",
+                passed
+                    ? String(localized: "score_grade_passed")
+                    : String(localized: "score_grade_failed"),
                 passed ? Color(hex: 0x4ECDC4) : Color(hex: 0xE74C3C),
                 passed ? "checkmark" : "xmark"
             )
