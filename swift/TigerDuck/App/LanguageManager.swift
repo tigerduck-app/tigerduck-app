@@ -93,6 +93,5 @@ enum LanguageManager {
             }
             UserDefaults.standard.set([appleTag], forKey: "AppleLanguages")
         }
-        UserDefaults.standard.synchronize()
     }
 }
