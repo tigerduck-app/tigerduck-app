@@ -1,7 +1,4 @@
 import Foundation
-#if canImport(UIKit)
-import UIKit
-#endif
 
 /// Top-level visual presentation preset.
 ///
@@ -29,25 +26,7 @@ enum VisualPreset: String, CaseIterable, Identifiable, Sendable {
     var displayName: String {
         switch self {
         case .default: return "TigerDuck"
-        case .iosInspired: return Self.systemPlatformName
+        case .iosInspired: return "Apple"
         }
-    }
-
-    private static var systemPlatformName: String {
-        #if os(macOS)
-        return "macOS"
-        #elseif targetEnvironment(macCatalyst)
-        return "macOS"
-        #elseif canImport(UIKit)
-        switch UIDevice.current.userInterfaceIdiom {
-        case .pad: return "iPadOS"
-        case .mac: return "macOS"
-        case .tv: return "tvOS"
-        case .vision: return "visionOS"
-        default: return "iOS"
-        }
-        #else
-        return "iOS"
-        #endif
     }
 }
