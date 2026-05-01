@@ -99,11 +99,22 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     /// Features that can be pinned to tab bar (positions 1-4)
     static let pinnableFeatures: [AppFeature] = [
-        .home, .classTable, .calendar, .announcements, .library,
-        .gpa, .courseSelection, .graduationRequirements,
-        .discussionRoom, .libraryLecture,
-        .freeLunch, .clubs, .emptyClassroom, .scholarship,
-        .englishVocab,
+        /// Temporary comments until feature is implemented.
+        .home,
+        .classTable,
+        .calendar,
+        .announcements,
+        .library,
+        .gpa,
+//        .courseSelection,
+//        .graduationRequirements,
+//        .discussionRoom,
+//        .libraryLecture,
+//        .freeLunch,
+//        .clubs,
+//        .emptyClassroom,
+//        .scholarship,
+//        .englishVocab,
     ]
 
     /// Library-related features gated behind the library opt-in toggle
@@ -115,18 +126,34 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     /// Features displayed in the "More" page, grouped by category
     static let moreFeatures: [AppFeature] = [
-        .home, .classTable, .calendar,
+        /// Temporary comments until feature is implemented.
+        .home,
+        .classTable,
+        .calendar,
         .announcements,
-        .gpa, .courseSelection, .graduationRequirements,
-        .library, .discussionRoom, .libraryLecture,
-        .freeLunch, .clubs, .emptyClassroom, .scholarship,
-        .englishVocab,
+        .gpa,
+//        .courseSelection,
+//        .graduationRequirements,
+        .library,
+//        .discussionRoom,
+//        .libraryLecture,
+//        .freeLunch,
+//        .clubs,
+//        .emptyClassroom,
+//        .scholarship,
+//        .englishVocab,
     ]
 
     /// Features available as home screen widgets
     static let widgetFeatures: [AppFeature] = [
-        .announcements, .freeLunch, .clubs, .emptyClassroom,
-        .gpa, .scholarship, .englishVocab,
+        /// Temporary comments until feature is implemented.
+        .announcements,
+//        .freeLunch,
+//        .clubs,
+//        .emptyClassroom,
+        .gpa,
+//        .scholarship,
+//        .englishVocab,
     ]
 }
 
