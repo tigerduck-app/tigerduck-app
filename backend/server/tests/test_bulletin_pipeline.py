@@ -39,7 +39,9 @@ from server.bulletins.taxonomy import (
 from server.config import Settings
 from server.models import DeviceRegistration
 from server.push.apns_client import RecordingSender
+from server.push.fcm_client import RecordingFcmSender
 from server.push.payload import PushKind
+from server.push.router import PushRouter
 
 _async = pytest.mark.asyncio(loop_scope="session")
 
@@ -222,7 +224,11 @@ async def test_full_pipeline_fans_out_to_matching_device(
     assert "【重要】新獎學金開放申請" in llm_titles
     assert "【活動】免費便當來領餐券" in llm_titles
 
-    await bulletin_jobs.dispatch_job(factory, sender, settings)
+    await bulletin_jobs.dispatch_job(
+        factory,
+        PushRouter(apple=sender, android=RecordingFcmSender()),
+        settings,
+    )
 
     # --- Assert
     # Leftover fixtures from sibling tests may also match — what we pin
@@ -339,13 +345,21 @@ async def test_dispatch_is_idempotent(
         await session.commit()
 
     sender = RecordingSender()
-    await bulletin_jobs.dispatch_job(factory, sender, settings)
+    await bulletin_jobs.dispatch_job(
+        factory,
+        PushRouter(apple=sender, android=RecordingFcmSender()),
+        settings,
+    )
     first_count = len(sender.requests)
     assert first_count >= 1  # matches >=1 device, depending on leftover fixtures
     # The device under test must receive exactly one push.
     assert sum(1 for r in sender.requests if r.device_token == "alert-idem") == 1
 
-    await bulletin_jobs.dispatch_job(factory, sender, settings)
+    await bulletin_jobs.dispatch_job(
+        factory,
+        PushRouter(apple=sender, android=RecordingFcmSender()),
+        settings,
+    )
     # Second run is a no-op — notified_at is stamped and dispatch rows are
     # terminal, so nothing new hits the sender.
     assert len(sender.requests) == first_count

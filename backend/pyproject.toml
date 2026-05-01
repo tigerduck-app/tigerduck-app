@@ -11,6 +11,7 @@ dependencies = [
     "alembic>=1.14.0",
     "pydantic-settings>=2.6.0",
     "aioapns>=3.4",
+    "firebase-admin>=6.5.0",
     "apscheduler>=3.10.4",
     "pyjwt[crypto]>=2.10.0",
     "structlog>=24.4.0",

@@ -24,7 +24,15 @@ class Settings(BaseSettings):
     # --- App ---
     env: Literal["development", "production"] = "development"
     log_level: str = "INFO"
-    api_base_path: str = "/v1"
+    api_base_path: str = "/v2"
+    # Older API prefixes still mounted as aliases for clients that haven't
+    # migrated. Each legacy path serves the same routes as `api_base_path`
+    # but responses carry RFC 8594 deprecation headers (see main.py).
+    api_legacy_base_paths: list[str] = Field(default_factory=lambda: ["/v1"])
+    # Optional RFC 8594 Sunset header value (HTTP-date string) advertised on
+    # legacy responses. Empty string means "no Sunset header" — Deprecation
+    # and successor-version Link still go out.
+    api_legacy_sunset: str = ""
     # Shared-secret that clients must send as X-Push-Token on write endpoints.
     # Empty string disables auth (dev/test convenience). Production must set
     # a non-empty value via TIGERDUCK_API_SHARED_SECRET.
@@ -45,6 +53,19 @@ class Settings(BaseSettings):
     # "development" talks to api.sandbox.push.apple.com (debug builds via Xcode)
     # "production" talks to api.push.apple.com (TestFlight / App Store)
     apns_env: Literal["development", "production"] = "development"
+
+    # --- FCM (Android) ---
+    # Firebase project id — only required when delivering real pushes.
+    # Empty string means "use the recording stub", same convention as APNs.
+    fcm_project_id: str = ""
+    # Path to the service-account JSON downloaded from the Firebase console.
+    # When the file is missing the router falls back to RecordingFcmSender.
+    fcm_credentials_path: Path = SERVER_DIR / "secrets" / "fcm_service_account.json"
+    # Hard cap on a single FCM send. firebase-admin's sync `messaging.send`
+    # has no per-call timeout, so without this a stuck token-mint or
+    # unreachable googleapis lookup blocks the bulletin_dispatch tick
+    # indefinitely and APScheduler skips every following tick.
+    fcm_send_timeout_seconds: float = 15.0
 
     # --- Scheduler ---
     # how often dispatcher polls DB for due pushes

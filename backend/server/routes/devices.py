@@ -30,6 +30,11 @@ async def register_device(
     session: SessionDep,
 ) -> DeviceRegisterResponse:
     """Upsert a device registration. Idempotent — called on every app launch."""
+    # attrs_type / apns_env are non-null in the DB but meaningless on
+    # android. Persist empty strings so the column constraint stays
+    # satisfied without a migration.
+    attrs_type = payload.attrs_type or ""
+    apns_env = payload.apns_env or ""
     stmt = (
         pg_insert(DeviceRegistration)
         .values(
@@ -39,8 +44,8 @@ async def register_device(
             pts_token_hex=payload.pts_token_hex,
             device_token_hex=payload.device_token_hex,
             bundle_id=payload.bundle_id,
-            attrs_type=payload.attrs_type,
-            apns_env=payload.apns_env,
+            attrs_type=attrs_type,
+            apns_env=apns_env,
         )
         .on_conflict_do_update(
             index_elements=[DeviceRegistration.device_id],
@@ -50,8 +55,8 @@ async def register_device(
                 "pts_token_hex": payload.pts_token_hex,
                 "device_token_hex": payload.device_token_hex,
                 "bundle_id": payload.bundle_id,
-                "attrs_type": payload.attrs_type,
-                "apns_env": payload.apns_env,
+                "attrs_type": attrs_type,
+                "apns_env": apns_env,
                 "updated_at": func.now(),
             },
         )

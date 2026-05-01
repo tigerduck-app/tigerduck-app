@@ -8,6 +8,7 @@ enum PushAPI {
     struct DeviceRegisterRequest: Codable, Sendable {
         let userId: String
         let deviceId: String
+        let platform: String
         let ptsTokenHex: String
         let deviceTokenHex: String?
         let bundleId: String
@@ -17,6 +18,7 @@ enum PushAPI {
         enum CodingKeys: String, CodingKey {
             case userId = "user_id"
             case deviceId = "device_id"
+            case platform
             case ptsTokenHex = "pts_token_hex"
             case deviceTokenHex = "device_token_hex"
             case bundleId = "bundle_id"

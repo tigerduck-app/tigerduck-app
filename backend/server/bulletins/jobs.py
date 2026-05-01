@@ -31,7 +31,7 @@ from server.bulletins.llm.base import LLMError, LLMProvider
 from server.bulletins.models import Bulletin, BulletinProcessingState
 from server.bulletins.scraper import fetch_list
 from server.config import Settings
-from server.push.apns_client import PushSender
+from server.push.router import PushRouter
 
 logger = structlog.get_logger(__name__)
 
@@ -337,10 +337,10 @@ async def _mark_failed(
 
 async def dispatch_job(
     session_factory: async_sessionmaker[AsyncSession],
-    sender: PushSender,
+    router: PushRouter,
     settings: Settings,
 ) -> None:
-    await dispatch_pending_bulletins(session_factory, sender, settings)
+    await dispatch_pending_bulletins(session_factory, router, settings)
 
 
 async def retention_job(
