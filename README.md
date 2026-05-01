@@ -4,7 +4,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.6.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.6.0)
+[![Version](https://img.shields.io/badge/Version-v1.6.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.6.1)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
@@ -84,6 +84,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v1.6.1`** | 2026-05-01 | 🤖 **Android FCM 推播通道**（為 Android 版鋪路、批次 fan-out、bad-token 分類）、API base path 從 `/v1` 升 `/v2`（`/v1` 保留為 deprecated alias）、iOS 註冊裝置帶 `platform=apple` |
 | **`v1.6.0`** | 2026-05-01 | 🌏 **多語言（67+ 語系）**、in-app 語言切換、RTL 版面修正、課程/教室**簡稱**子模組、locale 隔離的課表快取 |
 | **`v1.5.2`** | 2026-04-24 | Live Activity 推播 token 重送/清理、Push 排程器 token 修剪、mismatched snapshot 防護 |
 | **`v1.5.1`** | 2026-04-24 | 課表「今日課程」邏輯與作業列表洗資料的修正 |

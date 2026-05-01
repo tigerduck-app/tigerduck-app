@@ -4,7 +4,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.6.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.6.0)
+[![Version](https://img.shields.io/badge/Version-v1.6.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.6.1)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
@@ -83,6 +83,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v1.6.1`** | 2026-05-01 | 🤖 **Android FCM push delivery** (groundwork for the Android client; batched fan-out, bad-token classification), API base path bumped from `/v1` to `/v2` (`/v1` kept as deprecated alias), iOS device registration now reports `platform=apple` |
 | **`v1.6.0`** | 2026-05-01 | 🌏 **i18n (67+ locales)**, in-app language switcher, RTL layout fixes, course/classroom **abbreviation** submodule, locale-scoped course cache |
 | **`v1.5.2`** | 2026-04-24 | Live Activity push-token retry/cleanup, scheduler token pruning, mismatched-snapshot guard |
 | **`v1.5.1`** | 2026-04-24 | Class-table "today's courses" pinning + assignment list cleanup fixes |
