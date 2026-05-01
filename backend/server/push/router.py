@@ -35,6 +35,13 @@ class PushRouter:
     async def send_android(self, request: FcmRequest) -> SendResult:
         return await self._android.send(request)
 
+    async def send_android_multi(
+        self, requests: list[FcmRequest]
+    ) -> list[SendResult]:
+        """Batched fan-out for one bulletin to many tokens. Returns one
+        result per request, in the same order. Empty input → empty list."""
+        return await self._android.send_multi(requests)
+
     async def close(self) -> None:
         try:
             await self._apple.close()
@@ -56,7 +63,11 @@ def build_router(settings: Settings) -> PushRouter:
         from server.push.fcm_client import FcmSender
 
         logger.info("fcm.using_real_sender", project_id=settings.fcm_project_id)
-        android = FcmSender(settings.fcm_credentials_path, settings.fcm_project_id)
+        android = FcmSender(
+            settings.fcm_credentials_path,
+            settings.fcm_project_id,
+            send_timeout_seconds=settings.fcm_send_timeout_seconds,
+        )
     else:
         from server.push.fcm_client import RecordingFcmSender
 

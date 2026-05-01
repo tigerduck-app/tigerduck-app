@@ -163,6 +163,44 @@ async def _dispatch_one(
             )
         ).all()
 
+        # Pre-pass: collapse all Android sends for this bulletin into one
+        # batched FCM call. Apple stays on its original per-row code path
+        # (no equivalent multicast helper on APNs and per-row payloads
+        # diverge by `attrs_type` etc.). Android sends share
+        # title/body/data within a bulletin and only differ by token, so
+        # we can collapse N TLS handshakes into ceil(N/500).
+        android_requests: list[FcmRequest] = []
+        android_dispatch_ids: list[int] = []
+        for dispatch, device, bulletin in pending_rows:
+            if device.platform != DevicePlatform.android.value:
+                continue
+            if not device.pts_token_hex:
+                continue  # handled in the main loop below
+            title = bulletin.title_clean or bulletin.title
+            body = bulletin.summary or bulletin.title_clean or bulletin.title
+            android_requests.append(
+                build_fcm_alert_request(
+                    fcm_token=device.pts_token_hex,
+                    title=title,
+                    body=body,
+                    bulletin_id=bulletin.id,
+                    source_url=bulletin.source_url,
+                    canonical_org=bulletin.canonical_org or "",
+                )
+            )
+            android_dispatch_ids.append(dispatch.id)
+
+        try:
+            android_results = await router.send_android_multi(android_requests)
+        except Exception as exc:  # firebase-admin can still raise on init/auth
+            android_results = [
+                SendResult(success=False, status="exception", description=str(exc))
+                for _ in android_requests
+            ]
+        android_results_by_dispatch: dict[int, SendResult] = dict(
+            zip(android_dispatch_ids, android_results)
+        )
+
         for dispatch, device, bulletin in pending_rows:
             # Bulletins arrive here in `processed` state, so `title_clean`
             # has already been normalized by the LLM (prefix stripped,
@@ -181,15 +219,8 @@ async def _dispatch_one(
                     )
                     cancelled_count += 1
                     continue
-                fcm_req = build_fcm_alert_request(
-                    fcm_token=device.pts_token_hex,
-                    title=title,
-                    body=body,
-                    bulletin_id=bulletin.id,
-                    source_url=bulletin.source_url,
-                    canonical_org=bulletin.canonical_org or "",
-                )
-                result = await _send_android_safely(router, fcm_req)
+                # Result was filled by the batched send above.
+                result = android_results_by_dispatch[dispatch.id]
             else:
                 if not device.device_token_hex:
                     await _cancel_dispatch(
@@ -300,13 +331,6 @@ async def _send_apple_safely(router: PushRouter, request: ApnsRequest) -> SendRe
     try:
         return await router.send_apple(request)
     except Exception as exc:  # aioapns raises on network errors
-        return SendResult(success=False, status="exception", description=str(exc))
-
-
-async def _send_android_safely(router: PushRouter, request: FcmRequest) -> SendResult:
-    try:
-        return await router.send_android(request)
-    except Exception as exc:  # firebase-admin raises on network errors
         return SendResult(success=False, status="exception", description=str(exc))
 
 

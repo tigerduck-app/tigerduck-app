@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # Path to the service-account JSON downloaded from the Firebase console.
     # When the file is missing the router falls back to RecordingFcmSender.
     fcm_credentials_path: Path = SERVER_DIR / "secrets" / "fcm_service_account.json"
+    # Hard cap on a single FCM send. firebase-admin's sync `messaging.send`
+    # has no per-call timeout, so without this a stuck token-mint or
+    # unreachable googleapis lookup blocks the bulletin_dispatch tick
+    # indefinitely and APScheduler skips every following tick.
+    fcm_send_timeout_seconds: float = 15.0
 
     # --- Scheduler ---
     # how often dispatcher polls DB for due pushes
