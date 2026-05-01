@@ -30,7 +30,7 @@ DEVICE_ID = "dev-dispatcher"
 
 async def _register_device(client: AsyncClient) -> None:
     resp = await client.post(
-        "/v1/devices/register",
+        "/v2/devices/register",
         json={
             "user_id": "user-dispatcher",
             "device_id": DEVICE_ID,

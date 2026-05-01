@@ -169,6 +169,7 @@ actor PushRegistrationService {
         let request = PushAPI.DeviceRegisterRequest(
             userId: identity.userId,
             deviceId: identity.deviceId,
+            platform: "apple",
             ptsTokenHex: pts,
             deviceTokenHex: deviceTokenHex,
             bundleId: bundleId,

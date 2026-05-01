@@ -20,12 +20,12 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.bulletins.models import BulletinSubscription
 from server.bulletins.taxonomy import SubscriptionMode
-from server.models import DeviceRegistration
+from server.models import DeviceRegistration, DevicePlatform
 
 logger = structlog.get_logger(__name__)
 
@@ -96,7 +96,21 @@ async def match_device_ids(
         )
         .where(
             BulletinSubscription.enabled.is_(True),
-            DeviceRegistration.device_token_hex.isnot(None),
+            # Apple devices need an APNs standard token (`device_token_hex`);
+            # Android devices need an FCM registration token, which lives in
+            # `pts_token_hex`. Originally only the apple branch was checked,
+            # which silently excluded every Android device from matching.
+            or_(
+                and_(
+                    DeviceRegistration.platform == DevicePlatform.apple.value,
+                    DeviceRegistration.device_token_hex.isnot(None),
+                ),
+                and_(
+                    DeviceRegistration.platform == DevicePlatform.android.value,
+                    DeviceRegistration.pts_token_hex.isnot(None),
+                    DeviceRegistration.pts_token_hex != "",
+                ),
+            ),
         )
     )
     rows = (await session.execute(stmt)).all()
