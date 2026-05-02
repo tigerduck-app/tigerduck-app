@@ -14,6 +14,10 @@ extension Date {
     private static let fullDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy/MM/dd"
+        // Pin to gregorian + en_US_POSIX so a device set to ROC /
+        // Buddhist calendar doesn't render `2026-04-23` as `0115/04/23`.
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
         return f
     }()
 
@@ -69,6 +73,8 @@ extension Date {
     private static let absoluteFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "M/d HH:mm:ss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
         return f
     }()
 

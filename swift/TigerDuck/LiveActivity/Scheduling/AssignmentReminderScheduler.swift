@@ -77,10 +77,18 @@ final class AssignmentReminderScheduler {
         }
 
         let payloads = Self.buildPayloads(assignments: assignments, offsets: offsets, now: now)
-        let capped = Array(
-            payloads.sorted { $0.fireDate < $1.fireDate }
-                .prefix(Self.maximumPendingNotifications)
-        )
+        let sorted = payloads.sorted { $0.fireDate < $1.fireDate }
+        let capped = Array(sorted.prefix(Self.maximumPendingNotifications))
+        // The hard 60-cap drops far-future reminders silently. When the
+        // nearest reminders fire, `reschedule` runs again and the
+        // dropped ones may already be past `fireDate > now` — i.e. they
+        // are simply lost. Surface the count so the magnitude shows up
+        // in logs / Sentry breadcrumbs and we can tell whether to raise
+        // the cap or group-by-assignment-with-min-keep.
+        let dropped = sorted.count - capped.count
+        if dropped > 0 {
+            logger.info("Reminder cap dropped \(dropped, privacy: .public) of \(sorted.count, privacy: .public) pending payloads")
+        }
 
         for payload in capped {
             let content = UNMutableNotificationContent()

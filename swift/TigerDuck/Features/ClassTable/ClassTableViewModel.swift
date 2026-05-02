@@ -21,12 +21,19 @@ final class ClassTableViewModel {
     }
     let availableSemesters: [String] = {
         let code = CourseSelectionService.currentSemesterCode()
+        // Defensive parsing: a future `currentSemesterCode()` returning
+        // an empty string or a non-numeric trailing digit would crash
+        // ClassTableView's default-init via the previous `code.last!` /
+        // `Int(sem)!`. Fall back to `[code]` so the UI still renders.
         let yearStr = String(code.dropLast())
-        guard let year = Int(yearStr) else { return [code] }
-        let sem = String(code.last!)
+        guard let year = Int(yearStr),
+              let lastChar = code.last,
+              let s0 = Int(String(lastChar)) else {
+            return [code]
+        }
         var semesters: [String] = []
         var y = year
-        var s = Int(sem)!
+        var s = s0
         for _ in 0..<4 {
             semesters.append("\(y)\(s)")
             s -= 1
@@ -37,8 +44,8 @@ final class ClassTableViewModel {
 
     /// Format semester code for display: "1142" → "114-2"
     func displayLabel(for code: String) -> String {
-        guard code.count >= 2 else { return code }
-        return String(code.dropLast()) + "-" + String(code.last!)
+        guard code.count >= 2, let last = code.last else { return code }
+        return String(code.dropLast()) + "-" + String(last)
     }
 
     private var hasWarmedCaches = false

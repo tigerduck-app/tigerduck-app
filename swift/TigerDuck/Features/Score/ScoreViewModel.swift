@@ -85,7 +85,13 @@ final class ScoreViewModel {
     /// live progress lives in the top-right ``NetworkStatusOverlay`` instead.
     func triggerRefresh(authService: AuthService, force: Bool = true) {
         guard !isRefreshing else { return }
-        Task { [weak self] in
+        // `Task { ... }` without an explicit actor inherits the
+        // *enclosing* isolation; `refresh` mutates `manager.loadingState`
+        // and `@Observable` properties that SwiftUI reads on main, so
+        // pin the Task to MainActor explicitly (matches HomeViewModel /
+        // ClassTableViewModel). Without this, resumption after the
+        // network await may land on a background executor.
+        Task { @MainActor [weak self] in
             await self?.refresh(authService: authService, force: force)
         }
     }

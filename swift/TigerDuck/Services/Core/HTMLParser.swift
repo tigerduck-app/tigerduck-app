@@ -10,10 +10,21 @@ enum HTMLParser {
 
     // MARK: - Public API
 
-    /// Check if a response landed on the NTUST SSO login page
+    /// Check if a response landed on the NTUST SSO login page.
+    /// Host comparison is exact — a substring match would let
+    /// `evil-ssoam2.ntust.edu.tw.attacker.com` impersonate the SSO host.
     static func isSSOLoginPage(html: String, url: URL) -> Bool {
-        guard url.host?.contains("ssoam2.ntust.edu.tw") == true else { return false }
+        guard url.host == "ssoam2.ntust.edu.tw" else { return false }
+        return looksLikeSSOLoginBody(html)
+    }
 
+    /// Body-only signature for the SSO login form, ignoring the URL.
+    /// Use this when an upstream service (e.g. stuinfosys / score
+    /// portal) returns 200 with the SSO form rendered inline instead
+    /// of redirecting to ssoam2 — the URL-gated `isSSOLoginPage`
+    /// would miss that case and the HTML parser would fall through
+    /// to `.empty`.
+    static func looksLikeSSOLoginBody(_ html: String) -> Bool {
         guard let doc = try? SwiftSoup.parse(html) else { return false }
 
         return (try? doc.select("form#loginForm").first()) != nil ||

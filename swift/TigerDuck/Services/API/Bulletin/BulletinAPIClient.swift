@@ -123,7 +123,10 @@ final class BulletinAPIClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .public)")
+            // Body snippet stays .private — error responses occasionally
+            // echo headers (incl. X-Push-Token) or correlation tokens that
+            // must not be retained in the system log indefinitely.
+            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
             throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
         }
         return data

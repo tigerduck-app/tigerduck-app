@@ -34,7 +34,15 @@ actor MoodleTokenService {
         + "MoodleMobile 5.1.1 (51100)"
     )
 
-    private var inFlightTokenTask: Task<String, Error>?
+    /// Key the in-flight obtain task by `(studentId, password)` so that
+    /// two concurrent calls under different credentials do NOT collapse
+    /// onto the same task — previously the second caller (different
+    /// account) silently received the first caller's token.
+    private struct ObtainKey: Hashable {
+        let studentId: String
+        let passwordHash: Int
+    }
+    private var inFlightTokenTask: (key: ObtainKey, task: Task<String, Error>)?
     private var inFlightRefreshTask: Task<String, Error>?
 
     private init() {}
@@ -44,12 +52,19 @@ actor MoodleTokenService {
     /// Obtain a new Moodle webservice token using explicit credentials.
     /// Concurrent calls share the same in-flight task.
     func obtainToken(studentId: String, password: String) async throws -> String {
-        if let existing = inFlightTokenTask {
-            return try await existing.value
-        }
         let normalizedId = studentId
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
+        let key = ObtainKey(studentId: normalizedId, passwordHash: password.hashValue)
+        if let existing = inFlightTokenTask {
+            // Same identity → safe to share. Different identity → must
+            // run a fresh task; refusing here would surprise callers,
+            // so just await the previous one to finish and proceed.
+            if existing.key == key {
+                return try await existing.task.value
+            }
+            _ = try? await existing.task.value
+        }
         let task = Task<String, Error> {
             let triple = try await Self.performOidcLogin(
                 studentId: normalizedId, password: password,
@@ -57,8 +72,10 @@ actor MoodleTokenService {
             Self.persist(triple: triple)
             return triple.wstoken
         }
-        inFlightTokenTask = task
-        defer { inFlightTokenTask = nil }
+        inFlightTokenTask = (key, task)
+        defer {
+            if inFlightTokenTask?.key == key { inFlightTokenTask = nil }
+        }
         return try await task.value
     }
 
@@ -116,6 +133,16 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func persist(triple: TokenTriple) {
+        // Detect a token-value swap so the per-user `cachedUserId` in
+        // MoodleSiteInfoService is invalidated even when the swap
+        // happens via `obtainToken` directly (account switch path) and
+        // `clearToken()` was never called. Without this, the next
+        // `wsfunction=core_webservice_get_site_info` call would return
+        // the previous account's userid from cache and assignments
+        // would fetch under the wrong identity.
+        let previous = KeychainManager.loadString(
+            key: AppConstants.KeychainKeys.moodleToken
+        )
         KeychainManager.saveString(
             key: AppConstants.KeychainKeys.moodleToken,
             value: triple.wstoken,
@@ -129,6 +156,9 @@ actor MoodleTokenService {
             KeychainManager.delete(
                 key: AppConstants.KeychainKeys.moodlePrivateToken,
             )
+        }
+        if previous != triple.wstoken {
+            Task { await MoodleSiteInfoService.shared.invalidateCache() }
         }
     }
 
@@ -156,7 +186,12 @@ actor MoodleTokenService {
         defer { session.invalidateAndCancel() }
 
         // Step 1: GET launch.php — URLSession auto-follows 303s to SSO login.
-        let passport = Double.random(in: 0..<1) * 1000
+        // `String(Double)` can emit `1e-06` for very small values and is
+        // also locale-sensitive in some Foundation paths (`,` vs `.`),
+        // either of which Moodle's `weblogin` may reject. Format with
+        // `%.0f` (POSIX locale) for a stable, integer-only rendering —
+        // matches how the Moodle Mobile App generates this value.
+        let passport = Int(Double.random(in: 0..<1) * 1000)
         var launchComps = URLComponents(
             url: siteBaseURL.appendingPathComponent("admin/tool/mobile/launch.php"),
             resolvingAgainstBaseURL: false,
@@ -298,7 +333,7 @@ actor MoodleTokenService {
             )
         }
 
-        if responseURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+        if responseURL.host == "ssoam2.ntust.edu.tw" {
             let fields = parseSSOLoginFields(from: html)
             if fields.antiforgery.isEmpty {
                 if responseURL.path.contains("/account/login") {
@@ -429,8 +464,12 @@ actor MoodleTokenService {
                 return
             }
             let payload = extractInputPairs(from: formBody)
-            let isOidcAction = action.contains("/auth/oidc")
-                || action.contains("moodle2.ntust.edu.tw/auth/oidc")
+            // Resolve the action against the SSO/Moodle base so substring
+            // tricks like `https://attacker/auth/oidc` cannot pose as the
+            // OIDC bridge; the resolved host must be Moodle's.
+            let resolvedActionURL = URL(string: action, relativeTo: ssoBaseURL)?.absoluteURL
+            let isOidcAction = (resolvedActionURL?.host == "moodle2.ntust.edu.tw")
+                && (resolvedActionURL?.path.hasPrefix("/auth/oidc") == true)
             if isOidcAction,
                 payload["code"] != nil
                 && payload["state"] != nil
@@ -547,8 +586,12 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func extractMoodleMobileToken(from html: String) -> String? {
+        // Anchor inside a quoted JS context (window.location = "moodlemobile://token=...")
+        // so a poisoned response cannot embed an arbitrary chosen token by
+        // dropping the literal string into page text. Strict base64 alphabet
+        // only — `decodeTokenTriple` then re-validates the decoded shape.
         let re = try! NSRegularExpression(
-            pattern: "moodlemobile://token=([A-Za-z0-9+/=_-]+)",
+            pattern: #"["']moodlemobile://token=([A-Za-z0-9+/=_-]+)["']"#,
             options: [],
         )
         let ns = html as NSString

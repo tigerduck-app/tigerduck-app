@@ -142,6 +142,12 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                // Block "Start" while a login is still in flight on the
+                // previous page. Otherwise a user who advances mid-login
+                // (or while backgrounded) lands on the home screen
+                // logged-out, with onboarding already marked done — and
+                // has to discover the Settings → re-login path manually.
+                .disabled(appState.authService.isLoggingIn)
             }
             .tag(3)
         }

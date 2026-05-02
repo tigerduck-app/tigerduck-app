@@ -47,9 +47,13 @@ enum CourseSelectionService {
             throw CourseServiceError.noCourseData
         }
 
-        if let httpResp = response as? HTTPURLResponse,
-           let finalURL = httpResp.url,
-           finalURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+        // Trigger silent re-auth on either an ssoam2 redirect *or* an
+        // inline-rendered SSO login body returned with HTTP 200 from
+        // the course-selection host. URL-only detection misses the
+        // inline case and the regex falls through to "no courses".
+        let landedOnSSO = (response as? HTTPURLResponse)?.url?.host == "ssoam2.ntust.edu.tw"
+        let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
+        if landedOnSSO || bodyIsSSO {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
@@ -62,9 +66,8 @@ enum CourseSelectionService {
             guard let retryHTML = String(data: retryData, encoding: .utf8) else {
                 throw CourseServiceError.noCourseData
             }
-            if let retryResp = retryResponse as? HTTPURLResponse,
-               let retryURL = retryResp.url,
-               retryURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+            let retryHost = (retryResponse as? HTTPURLResponse)?.url?.host
+            if retryHost == "ssoam2.ntust.edu.tw" || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw CourseServiceError.redirectedToSSO
             }
             let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }

@@ -152,12 +152,29 @@ final class PushCoordinator {
 
     // MARK: - Helpers
 
+    /// Hosts that the push-server URL override is allowed to target. The
+    /// default production endpoint plus a small set of dev/staging hosts.
+    /// An attacker-supplied override (via UserDefaults seeding from a
+    /// compromised backup, MDM, or a future dev panel) cannot point the
+    /// app at an arbitrary server outside this list.
+    private static let pushServerHostAllowlist: Set<String> = [
+        "api.tigerduck.app",
+        "staging.api.tigerduck.app",
+        "localhost",
+        "127.0.0.1",
+    ]
+
     static func resolveServerURL() -> URL {
+        #if DEBUG
         if let override = Defaults[.pushServerURLOverride],
            !override.isEmpty,
-           let url = URL(string: override) {
+           let url = URL(string: override),
+           url.scheme == "https" || url.host == "localhost" || url.host == "127.0.0.1",
+           let host = url.host,
+           pushServerHostAllowlist.contains(host) {
             return url
         }
+        #endif
         return AppConstants.defaultPushServerURL
     }
 

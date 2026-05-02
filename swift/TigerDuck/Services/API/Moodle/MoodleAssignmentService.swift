@@ -168,9 +168,10 @@ private struct RawAssignmentsResponse: Decodable {
                     dueDate: assignment.duedate > 0
                         ? Date(timeIntervalSince1970: TimeInterval(assignment.duedate))
                         : nil,
-                    cutoffDate: (assignment.cutoffdate ?? 0) > 0
-                        ? Date(timeIntervalSince1970: TimeInterval(assignment.cutoffdate!))
-                        : nil,
+                    cutoffDate: {
+                        guard let cd = assignment.cutoffdate, cd > 0 else { return nil }
+                        return Date(timeIntervalSince1970: TimeInterval(cd))
+                    }(),
                     allowSubmissionsFromDate: assignment.allowsubmissionsfromdate > 0
                         ? Date(timeIntervalSince1970: TimeInterval(assignment.allowsubmissionsfromdate))
                         : nil,

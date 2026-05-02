@@ -312,7 +312,11 @@ final class DataCache {
         let url = (directory ?? cacheDir).appendingPathComponent(filename)
         do {
             let data = try encoder.encode(value)
-            try data.write(to: url, options: .atomic)
+            // .completeFileProtectionUnlessOpen keeps academic PII at rest
+            // unreadable from a backup or jailbroken device; the
+            // "UnlessOpen" variant lets background refreshes still rewrite
+            // the file while the device is locked.
+            try data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
         } catch {
             AppLogger.captureError(error, context: [
                 "phase": "dataCache.save",

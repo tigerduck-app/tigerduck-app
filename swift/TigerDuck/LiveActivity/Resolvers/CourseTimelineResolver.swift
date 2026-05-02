@@ -23,8 +23,14 @@ struct CourseTimelineResolver {
     }
 
     /// Resolve state at `time` using a pre-built timeline.
+    /// `inClass` uses a half-open interval `[start, end)` so that on the
+    /// exact `slot.end == time` instant — when the next slot starts at
+    /// the same instant for back-to-back classes — only the next slot
+    /// matches. The previous closed-on-both-ends form let
+    /// `endIfStillExpired`'s +1s slack briefly hand the previous
+    /// activity to the resolver after the next class had already begun.
     func state(at time: Date, in timeline: [CourseTimeSlot]) -> CourseState {
-        for slot in timeline where time >= slot.start && time <= slot.end {
+        for slot in timeline where time >= slot.start && time < slot.end {
             return .inClass(slot)
         }
         let previous = timeline.last { $0.end <= time }

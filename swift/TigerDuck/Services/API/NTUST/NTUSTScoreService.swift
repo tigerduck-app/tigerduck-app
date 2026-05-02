@@ -94,9 +94,15 @@ enum NTUSTScoreService {
         }
 
         // SSO bounced us — try one silent re-login and retry once.
-        if let httpResp = response as? HTTPURLResponse,
-           let finalURL = httpResp.url,
-           finalURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+        // Trigger on either (a) URL host became ssoam2 (the obvious 302
+        // redirect) OR (b) the body itself looks like the SSO login
+        // form rendered inline on stuinfosys (200 with login HTML — has
+        // happened during Shibboleth maintenance windows). Without (b)
+        // the parser falls through and the user sees a confusing
+        // "parse failed" instead of a re-auth prompt.
+        let landedOnSSO = (response as? HTTPURLResponse)?.url?.host == "ssoam2.ntust.edu.tw"
+        let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
+        if landedOnSSO || bodyIsSSO {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: scoreRootURL,
@@ -109,9 +115,8 @@ enum NTUSTScoreService {
             guard let retryHTML = String(data: retryData, encoding: .utf8) else {
                 throw NTUSTScoreServiceError.invalidResponse
             }
-            if let retryHTTP = retryResp as? HTTPURLResponse,
-               let retryURL = retryHTTP.url,
-               retryURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+            let retryHost = (retryResp as? HTTPURLResponse)?.url?.host
+            if retryHost == "ssoam2.ntust.edu.tw" || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw NTUSTScoreServiceError.redirectedToSSO
             }
             return retryHTML

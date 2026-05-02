@@ -53,6 +53,9 @@ final class LibraryViewModel {
 
     func onDisappear() {
         stopTimers()
+        // Defense-in-depth: drop the in-memory password buffer on view
+        // teardown too, in case the user navigates away mid-typing.
+        libPassword = ""
     }
 
     // MARK: - Login
@@ -72,6 +75,10 @@ final class LibraryViewModel {
                 startQRRefreshCycle()
             } catch {
                 errorMessage = error.localizedDescription
+                // Clear the password on every failure so it never lingers
+                // in @Observable state where a screenshot or screen recording
+                // could capture it after a recoverable error.
+                libPassword = ""
                 isLoggingIn = false
             }
         }
