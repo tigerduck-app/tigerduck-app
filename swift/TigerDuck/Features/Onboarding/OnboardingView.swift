@@ -155,7 +155,7 @@ struct OnboardingView: View {
         .background(Color.backgroundPrimary)
         .contentShape(Rectangle())
         .onTapGesture { focusedField = nil }
-        .onChange(of: currentPage) { focusedField = nil }
+        .onChange(of: currentPage) { _, _ in focusedField = nil }
     }
 }
 

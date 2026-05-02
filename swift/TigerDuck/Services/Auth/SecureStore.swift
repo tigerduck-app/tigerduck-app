@@ -90,6 +90,24 @@ nonisolated enum SecureStore {
         legacyDelete(key: key)
     }
 
+    /// Like `delete(key:)` but returns false if any backing store reported
+    /// a failure other than "item not found". Used by the fresh-install
+    /// purge to avoid flipping the "installed" flag on partial cleanup.
+    static func deleteReportingSuccess(key: String) -> Bool {
+        var ok = true
+        for store in [shared, legacyShared, legacySharedGroup] {
+            do {
+                try store.removeObject(forKey: key)
+            } catch {
+                let nsError = error as NSError
+                let isMissing = (nsError.domain == NSOSStatusErrorDomain && nsError.code == Int(errSecItemNotFound))
+                if !isMissing { ok = false }
+            }
+        }
+        legacyDelete(key: key)
+        return ok
+    }
+
     private static func legacyLoad(key: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

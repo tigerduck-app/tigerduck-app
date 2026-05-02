@@ -35,6 +35,13 @@ struct RankingsTrendCard: View {
         .padding(TigerDuckTheme.Spacing.md)
         .presetCard(policy: appState.visualStylePolicy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        // Reset selection if the term it pointed to is gone after a refresh,
+        // so the indicator/RuleMark doesn't silently point at a missing entry.
+        .onChange(of: rankings.map(\.term)) { _, newTerms in
+            if let term = selectedTerm, !newTerms.contains(term) {
+                selectedTerm = nil
+            }
+        }
     }
 
     private var header: some View {

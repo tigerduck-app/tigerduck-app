@@ -109,6 +109,22 @@ final class SDCourse: Identifiable {
         _cachedClassroomMap = map
     }
 
+    /// Update the per-weekday schedule map and its JSON backing in one shot.
+    /// Use this instead of assigning ``scheduleJSON`` directly: SwiftData's
+    /// ``@Model`` macro rewrites stored-property accessors, so the
+    /// ``didSet`` that should reset ``_cachedSchedule`` does not fire
+    /// reliably for in-memory mutations and stale reads leak through.
+    func setSchedule(_ schedule: [Int: [String]]) {
+        let stringKeyDict = Dictionary(uniqueKeysWithValues: schedule.map { ("\($0.key)", $0.value) })
+        if let data = try? JSONEncoder().encode(stringKeyDict),
+           let str = String(data: data, encoding: .utf8) {
+            scheduleJSON = str
+        } else {
+            scheduleJSON = "{}"
+        }
+        _cachedSchedule = schedule
+    }
+
     /// Returns the classroom(s) for a specific weekday, deduped.
     /// Falls back to the flat `classroom` string if no map data.
     func classroom(for weekday: Int) -> String {

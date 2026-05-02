@@ -22,7 +22,15 @@ final class SDCalendarEvent {
     }
 
     var source: EventSource {
-        EventSource(rawValue: sourceRaw) ?? .school
+        if let s = EventSource(rawValue: sourceRaw) { return s }
+        // Future-case raw values silently coerced to `.school` are
+        // indistinguishable from real school events; surface as a
+        // breadcrumb so we notice on next data migration.
+        AppLogger.breadcrumb(
+            "SDCalendarEvent: unknown sourceRaw '\(sourceRaw)' coerced to .school",
+            category: "model.calendar"
+        )
+        return .school
     }
 }
 

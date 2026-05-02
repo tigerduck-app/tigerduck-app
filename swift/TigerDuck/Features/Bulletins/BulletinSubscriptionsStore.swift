@@ -126,6 +126,7 @@ final class BulletinSubscriptionsStore {
                 let delayMs = 250 * (1 << (attempt - 1))
                 logger.info("PUT subscriptions 404 (attempt \(attempt, privacy: .public)); retrying in \(delayMs, privacy: .public)ms")
                 try? await Task.sleep(for: .milliseconds(delayMs))
+                if Task.isCancelled { return }
             } catch {
                 logger.error("subscription save failed: \(error.localizedDescription, privacy: .public)")
                 saveState = .failed(error.localizedDescription)

@@ -155,7 +155,14 @@ final class ScoreViewModel {
     /// Re-running is idempotent when the user has already flipped a term.
     private func applyDefaultCollapseRule() {
         let terms = Set(report.courses.map(\.term))
-        guard let latest = terms.max() else { return }
+        // Compare numerically — string `.max()` is fine for fixed-width
+        // term codes (e.g. "1142") but breaks on a stray malformed term
+        // like "92" vs "1141". Falling back to lexical when ints fail.
+        let latest = terms.max { lhs, rhs in
+            if let l = Int(lhs), let r = Int(rhs) { return l < r }
+            return lhs < rhs
+        }
+        guard let latest else { return }
         // Only seed defaults once per fresh appearance; if the user has
         // already interacted we preserve their choices.
         guard collapsedTerms.isEmpty else {

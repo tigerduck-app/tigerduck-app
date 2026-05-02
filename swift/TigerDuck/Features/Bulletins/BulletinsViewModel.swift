@@ -30,14 +30,15 @@ final class BulletinsViewModel {
     private(set) var isPaginating: Bool = false
     private(set) var hasMore: Bool = true
 
+    private var suppressRefilter = false
     var selectedOrgs: Set<String> = [] {
-        didSet { refilter() }
+        didSet { if !suppressRefilter { refilter() } }
     }
     var selectedTags: Set<String> = [] {
-        didSet { refilter() }
+        didSet { if !suppressRefilter { refilter() } }
     }
     var searchText: String = "" {
-        didSet { refilter() }
+        didSet { if !suppressRefilter { refilter() } }
     }
     var showDeleted: Bool = false {
         didSet { Task { await refresh() } }
@@ -276,8 +277,13 @@ final class BulletinsViewModel {
     }
 
     func clearFilters() {
+        // Batch-mutate so refilter() runs once instead of three times over
+        // potentially thousands of items.
+        suppressRefilter = true
         selectedOrgs.removeAll()
         selectedTags.removeAll()
         searchText = ""
+        suppressRefilter = false
+        refilter()
     }
 }

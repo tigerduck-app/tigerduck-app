@@ -167,8 +167,9 @@ final class CalendarViewModel {
             )
         }
 
-        let existingKeys = Set(events.filter { $0.source != .system }.map { "\($0.title)-\($0.date.startOfDay)" })
-        let newEvents = systemEvents.filter { !existingKeys.contains("\($0.title)-\($0.date.startOfDay)") }
+        struct DedupKey: Hashable { let title: String; let day: Date }
+        let existingKeys = Set(events.filter { $0.source != .system }.map { DedupKey(title: $0.title, day: $0.date.startOfDay) })
+        let newEvents = systemEvents.filter { !existingKeys.contains(DedupKey(title: $0.title, day: $0.date.startOfDay)) }
         var updated = events
         updated.removeAll { $0.source == .system }
         updated.append(contentsOf: newEvents)

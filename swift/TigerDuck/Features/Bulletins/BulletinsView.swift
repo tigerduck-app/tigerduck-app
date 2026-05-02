@@ -33,6 +33,7 @@ struct BulletinsView: View {
     /// it when the app returns to foreground (users expect the search
     /// scope to reset across sessions rather than persist).
     @State private var searchIsPresented: Bool = false
+    @State private var lastBackgroundedAt: Date?
 
     var body: some View {
         Group {
@@ -50,14 +51,17 @@ struct BulletinsView: View {
             async let bulletins: Void = viewModel.loadIfNeeded()
             _ = await (tax, bulletins)
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            // Collapse + clear the search field when the app comes back
-            // to foreground. Without this, a user who left the app with
-            // an active query sees the same expanded search UI on the
-            // next session, which is not what "reopen" implies.
-            if newPhase == .active {
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            // Only reset search after a meaningful background gap (>5 min);
+            // a brief jaunt to another app shouldn't lose the user's query.
+            if oldPhase == .background, newPhase == .active,
+               let last = lastBackgroundedAt,
+               Date().timeIntervalSince(last) > 300 {
                 searchIsPresented = false
                 viewModel.searchText = ""
+            }
+            if newPhase == .background {
+                lastBackgroundedAt = Date()
             }
         }
     }
