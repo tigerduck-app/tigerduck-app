@@ -56,6 +56,12 @@ actor PushRegistrationService {
     private let activityRegistrationBaseDelaySeconds: Double = 30
     private let activityRegistrationMaxDelaySeconds: Double = 600
 
+    // Same retry shape for device registration: a transient 5xx leaving the
+    // device permanently un-pushable was the original bug.
+    private var deviceRegisterRetryTask: Task<Void, Never>?
+    private var deviceRegisterAttempts: Int = 0
+    private let maxDeviceRegisterAttempts = 4
+
     init(
         identity: PushIdentity,
         apiClient: PushAPIClient,
@@ -131,6 +137,9 @@ actor PushRegistrationService {
         }
         activityRegistrationRetryTasks.removeAll()
         activityRegistrationAttempts.removeAll()
+        deviceRegisterRetryTask?.cancel()
+        deviceRegisterRetryTask = nil
+        deviceRegisterAttempts = 0
     }
 
     // MARK: - Internals
@@ -179,6 +188,9 @@ actor PushRegistrationService {
         do {
             let response = try await apiClient.registerDevice(request)
             logger.info("registered device=\(response.deviceId, privacy: .public) user=\(response.userId, privacy: .public)")
+            deviceRegisterRetryTask?.cancel()
+            deviceRegisterRetryTask = nil
+            deviceRegisterAttempts = 0
             noteSuccessfulRegistration()
             await flushPendingActivityRegistrations(logger: logger)
         } catch is CancellationError {
@@ -189,6 +201,25 @@ actor PushRegistrationService {
         } catch {
             logger.error("register failed: \(error.localizedDescription, privacy: .public)")
             noteRegistrationError(error)
+            scheduleDeviceRegisterRetry(logger: logger)
+        }
+    }
+
+    private func scheduleDeviceRegisterRetry(logger: Logger) {
+        deviceRegisterAttempts += 1
+        guard deviceRegisterAttempts < maxDeviceRegisterAttempts else {
+            logger.error("giving up on device register attempts=\(self.deviceRegisterAttempts, privacy: .public)")
+            return
+        }
+        let delay = min(
+            activityRegistrationBaseDelaySeconds * pow(3.0, Double(deviceRegisterAttempts - 1)),
+            activityRegistrationMaxDelaySeconds
+        )
+        deviceRegisterRetryTask?.cancel()
+        deviceRegisterRetryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            if Task.isCancelled { return }
+            await self?.performRegister(logger: logger)
         }
     }
 

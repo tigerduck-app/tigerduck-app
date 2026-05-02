@@ -64,6 +64,7 @@ final class ScheduleSyncService {
                 logger.info(
                     "sync ok scheduled=\(response.scheduled, privacy: .public) cancelled=\(response.cancelled, privacy: .public) pending=\(response.totalPending, privacy: .public)"
                 )
+                if Task.isCancelled { return }
                 self?.markSuccess()
             } catch {
                 logger.error("sync failed: \(error.localizedDescription, privacy: .public)")

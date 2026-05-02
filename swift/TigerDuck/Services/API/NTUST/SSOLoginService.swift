@@ -18,6 +18,31 @@ enum SSOLoginError: LocalizedError {
 
 enum SSOLoginService {
 
+    /// Decode an HTML response respecting `Content-Type` charset. Older NTUST
+    /// endpoints occasionally serve Big5 (or windows-1252 for ASCII-only
+    /// pages); a hard UTF-8 decode would return nil on those and surface as
+    /// `invalidResponse` for what is otherwise a recoverable response.
+    private static func decodeHTML(_ data: Data, response: URLResponse?) -> String? {
+        let charset = (response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Type")?
+            .lowercased()
+        if let charset {
+            if charset.contains("big5") {
+                if let s = String(data: data, encoding: .init(rawValue:
+                    CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue))
+                )) { return s }
+            }
+            if charset.contains("windows-1252") || charset.contains("iso-8859-1") {
+                if let s = String(data: data, encoding: .isoLatin1) { return s }
+            }
+        }
+        if let s = String(data: data, encoding: .utf8) { return s }
+        // Last-ditch: try Big5 even if not declared.
+        let big5 = String.Encoding(rawValue:
+            CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue)))
+        return String(data: data, encoding: big5)
+    }
+
     /// Hosts the SSO credential POST is allowed to target. A redirected /
     /// compromised upstream returning a `<form action="https://attacker/">`
     /// must never receive `Username=...&Password=...`, so we hard-fail any
@@ -38,7 +63,7 @@ enum SSOLoginService {
             // Step 1: Visit service URL (follows redirects automatically)
             let (data, response) = try await session.data(from: serviceURL)
             guard let httpResp = response as? HTTPURLResponse,
-                  let html = String(data: data, encoding: .utf8) else {
+                  let html = decodeHTML(data, response: httpResp) else {
                 throw SSOLoginError.invalidResponse
             }
             let finalURL = httpResp.url ?? serviceURL
@@ -67,8 +92,8 @@ enum SSOLoginService {
 
             // Re-visit service URL
             let (data2, response2) = try await session.data(from: serviceURL)
-            guard let html2 = String(data: data2, encoding: .utf8),
-                  let resp2 = response2 as? HTTPURLResponse else {
+            guard let resp2 = response2 as? HTTPURLResponse,
+                  let html2 = decodeHTML(data2, response: resp2) else {
                 throw SSOLoginError.invalidResponse
             }
             currentURL = resp2.url ?? serviceURL
@@ -109,8 +134,8 @@ enum SSOLoginService {
             let (loginData, loginResponse) = try await postForm(
                 session: session, url: actionURL, fields: payload
             )
-            guard let loginHTML = String(data: loginData, encoding: .utf8),
-                  let loginResp = loginResponse as? HTTPURLResponse else {
+            guard let loginResp = loginResponse as? HTTPURLResponse,
+                  let loginHTML = decodeHTML(loginData, response: loginResp) else {
                 throw SSOLoginError.invalidResponse
             }
             currentURL = loginResp.url ?? actionURL

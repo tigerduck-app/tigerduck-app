@@ -122,6 +122,9 @@ final class PushCoordinator {
 
         relay.stop()
         pendingSyncTask?.cancel()
+        // Wait for any already-running debounced sync to finish before we
+        // unregister, so a stale POST can't recreate state we just deleted.
+        await pendingSyncTask?.value
         await registration.unregister()
     }
 
@@ -145,6 +148,9 @@ final class PushCoordinator {
         pendingSyncTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(debounceMs))
             guard !Task.isCancelled else { return }
+            // Don't run the inputs builder (which touches SwiftData / models)
+            // while backgrounded — the system can suspend us mid-build.
+            guard UIApplication.shared.applicationState != .background else { return }
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
         }

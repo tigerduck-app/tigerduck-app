@@ -84,7 +84,16 @@ final class NTUSTSessionManager {
                   let location = http.value(forHTTPHeaderField: "Location") else {
                 return false
             }
-            return location.contains("/Home/Index")
+            let valid = location.contains("/Home/Index")
+            // Slide the local TTL forward on a confirmed-good probe so
+            // synchronous UI consumers (`cookiesValid`) don't show
+            // "not authenticated" merely because the user has been idle
+            // longer than the static 1h window while the server still
+            // honors the cookie jar.
+            if valid {
+                Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
+            }
+            return valid
         } catch {
             return false
         }

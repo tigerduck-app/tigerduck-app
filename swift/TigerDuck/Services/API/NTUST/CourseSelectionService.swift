@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum CourseServiceError: LocalizedError {
     case notAuthenticated
@@ -92,34 +93,44 @@ enum CourseSelectionService {
 
     private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"
 
+    // Serializes read-modify-write of the per-(studentId,semester) cache dict
+    // so concurrent fetches/invalidations cannot lose updates.
+    private static let cacheLock = OSAllocatedUnfairLock()
+
     private struct CachedCourseNos: Codable {
         let courseNos: [String]
         let cachedAt: TimeInterval
     }
 
     static func invalidateEnrolledCoursesCache(for studentId: String? = nil) {
-        let defaults = UserDefaults.standard
-        guard let studentId else {
-            defaults.removeObject(forKey: enrolledCoursesCacheKey)
-            return
+        cacheLock.withLock {
+            let defaults = UserDefaults.standard
+            guard let studentId else {
+                defaults.removeObject(forKey: enrolledCoursesCacheKey)
+                return
+            }
+            var dict = readCacheDict()
+            dict = dict.filter { !$0.key.hasPrefix("\(studentId):") }
+            writeCacheDict(dict)
         }
-        var dict = readCacheDict()
-        dict = dict.filter { !$0.key.hasPrefix("\(studentId):") }
-        writeCacheDict(dict)
     }
 
     private static func loadEnrolledCoursesCache(studentId: String, semester: String) -> [String]? {
-        let dict = readCacheDict()
-        guard let entry = dict["\(studentId):\(semester)"] else { return nil }
-        if Date().timeIntervalSince1970 - entry.cachedAt > enrolledCoursesCacheTTL { return nil }
-        return entry.courseNos
+        cacheLock.withLock {
+            let dict = readCacheDict()
+            guard let entry = dict["\(studentId):\(semester)"] else { return nil }
+            if Date().timeIntervalSince1970 - entry.cachedAt > enrolledCoursesCacheTTL { return nil }
+            return entry.courseNos
+        }
     }
 
     private static func saveEnrolledCoursesCache(studentId: String, semester: String, courseNos: [String]) {
         guard !courseNos.isEmpty else { return }
-        var dict = readCacheDict()
-        dict["\(studentId):\(semester)"] = CachedCourseNos(courseNos: courseNos, cachedAt: Date().timeIntervalSince1970)
-        writeCacheDict(dict)
+        cacheLock.withLock {
+            var dict = readCacheDict()
+            dict["\(studentId):\(semester)"] = CachedCourseNos(courseNos: courseNos, cachedAt: Date().timeIntervalSince1970)
+            writeCacheDict(dict)
+        }
     }
 
     private static func readCacheDict() -> [String: CachedCourseNos] {
@@ -141,8 +152,16 @@ enum CourseSelectionService {
         }
     }
 
+    /// Approximation of NTUST's academic-calendar boundaries based on the
+    /// gregorian month. Note this is a heuristic — actual term cutovers
+    /// vary year-to-year, especially in late August (fall registration
+    /// hasn't opened yet) and early February (spring courses not posted).
+    /// During those windows callers may briefly see the previous term's
+    /// data; if precision is required, prefer a server-driven term code.
     nonisolated static func currentSemesterCode() -> String {
-        let cal = Calendar.current
+        // Pin to gregorian — Calendar.current returns ROC/Buddhist-era
+        // years on a TW device and would shift the rocYear math.
+        let cal = Calendar(identifier: .gregorian)
         let now = Date()
         let year = cal.component(.year, from: now)
         let month = cal.component(.month, from: now)

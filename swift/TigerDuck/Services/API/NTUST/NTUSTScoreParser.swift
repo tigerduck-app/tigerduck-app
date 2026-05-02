@@ -53,7 +53,13 @@ enum NTUSTScoreParser {
     // MARK: - Section parsers
 
     private static func parseStudent(_ doc: Document) -> String {
-        let excluded: Set<String> = ["登出", "Logout", "English"]
+        // Localized navigation links the navbar may render across language
+        // toggles. Add new entries here when NTUST adds a UI language.
+        let excluded: Set<String> = [
+            "登出", "登出系統",
+            "Logout", "Log out", "Sign out",
+            "English", "中文", "繁體中文", "簡體中文", "繁體", "簡體",
+        ]
         let links: [Element] = (try? doc.select("ul.navbar-right a.nav-link").array()) ?? []
         for link in links {
             let name = cleanText(link)
