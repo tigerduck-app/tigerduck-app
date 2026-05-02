@@ -2,10 +2,14 @@ import Foundation
 import os
 
 /// Persists the latest `LiveActivitySnapshot` so the Widget Extension can
-/// render it via a shared App Group. When the App Group capability is not
-/// yet configured (phase B still pending), the store falls back to
-/// `UserDefaults.standard`. The app will still function; the extension
-/// simply won't see the snapshot until the App Group is enabled.
+/// render it via a shared App Group. The App Group is required: without
+/// it the widget extension reads its own per-process defaults and never
+/// sees what the app writes — i.e. Live Activity silently renders empty.
+///
+/// In DEBUG we crash hard if the suite is unavailable so the empty
+/// `com.apple.security.application-groups` regression cannot ship
+/// silently again. In release we still fall back to `.standard` with a
+/// loud error so a user with a provisioning hiccup still launches.
 nonisolated final class SharedSnapshotStore {
     static let snapshotKey = "LA-current-snapshot"
     static let defaultAppGroupIdentifier = "group.org.ntust.app.TigerDuck"
@@ -19,8 +23,12 @@ nonisolated final class SharedSnapshotStore {
         if let id = appGroupIdentifier, let suite = UserDefaults(suiteName: id) {
             self.defaults = suite
         } else {
+            let identifierForLog = appGroupIdentifier ?? "nil"
+            assertionFailure(
+                "App Group suite '\(identifierForLog)' unavailable — verify `com.apple.security.application-groups` is populated in BOTH the app and Live Activity extension entitlements and that the App Group capability is enabled on each target."
+            )
             self.defaults = .standard
-            logger.warning("App Group suite unavailable — snapshot will stay app-private until the extension is configured")
+            logger.error("App Group suite '\(identifierForLog, privacy: .public)' unavailable — Live Activity widget will not see app-side snapshots")
         }
     }
 

@@ -10,6 +10,10 @@ import UserNotifications
 @MainActor
 final class AssignmentReminderScheduler {
     static let requestPrefix = "LA-reminder-"
+    /// Shared category id so a future `UNNotificationCategory` registration
+    /// (with custom actions like "mark complete" / "snooze") attaches to
+    /// every reminder we own without having to re-emit the pending requests.
+    static let categoryIdentifier = "assignment-reminder"
     /// iOS hard limit is 64 pending per app; leave headroom for any other source.
     static let maximumPendingNotifications = 60
 
@@ -83,6 +87,19 @@ final class AssignmentReminderScheduler {
             content.title = payload.title
             content.body = payload.body
             content.sound = .default
+            // Group reminders for the same assignment under one thread so
+            // the lock screen stacks them instead of presenting N separate
+            // banners; iOS uses the most recent in the stack as the
+            // visible "head".
+            content.threadIdentifier = "assignment-\(payload.assignmentId)"
+            content.categoryIdentifier = Self.categoryIdentifier
+            // `.timeSensitive` would let short-offset reminders break
+            // through Focus modes, but it requires the
+            // `com.apple.developer.usernotifications.time-sensitive`
+            // entitlement which is not yet provisioned for this target.
+            // `.active` is the implicit default; setting it explicitly
+            // documents intent.
+            content.interruptionLevel = .active
             content.userInfo = [
                 "assignmentId": payload.assignmentId,
                 "offset": payload.offset.rawValue

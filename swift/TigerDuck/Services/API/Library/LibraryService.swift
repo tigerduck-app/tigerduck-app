@@ -19,6 +19,41 @@ enum LibraryServiceError: LocalizedError {
 enum LibraryService {
     private static let baseURL = "https://api.lib.ntust.edu.tw/v1"
 
+    /// Service-owned URLSession with explicit timeouts. `URLSession.shared`'s
+    /// 60s default lets a stalled library API hold the QR refresh task open
+    /// long enough for the displayed token to expire on the user, and any
+    /// cached response from the system shared cache could leak between
+    /// accounts after a logout/re-login.
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        return URLSession(configuration: config)
+    }()
+
+    /// Validate that the response is HTTP 2xx before decoding. Without this
+    /// a 5xx HTML error page or an auth-redirect surfaces to the caller as
+    /// a confusing decode failure ("the data couldn't be read because it
+    /// isn't in the correct format") instead of an actionable network/server
+    /// error.
+    private static func validateHTTP(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw LibraryServiceError.networkError(URLError(.badServerResponse))
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let underlying = URLError(
+                .badServerResponse,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "HTTP \(http.statusCode)",
+                    "statusCode": http.statusCode,
+                ]
+            )
+            throw LibraryServiceError.networkError(underlying)
+        }
+    }
+
     // MARK: - Credential Management
 
     static var storedUsername: String? {
@@ -81,7 +116,8 @@ enum LibraryService {
                 LibraryLoginRequest(username: username, password: password)
             )
 
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, urlResponse) = try await session.data(for: request)
+            try validateHTTP(urlResponse)
             let response = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
 
             guard response.error.code == 0, let loginData = response.data else {
@@ -128,7 +164,8 @@ enum LibraryService {
                 LibraryQRRequest(token: token)
             )
 
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, urlResponse) = try await session.data(for: request)
+            try validateHTTP(urlResponse)
             let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
 
             guard response.error.code == 0, let qrData = response.data else {
