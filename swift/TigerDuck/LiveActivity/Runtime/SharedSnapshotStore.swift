@@ -11,7 +11,10 @@ import os
 /// silently again. In release we still fall back to `.standard` with a
 /// loud error so a user with a provisioning hiccup still launches.
 nonisolated final class SharedSnapshotStore {
-    static let snapshotKey = "LA-current-snapshot"
+    // Bump this when LiveActivitySnapshot's wire shape changes incompatibly.
+    // The widget extension and main app must agree on the version key so a
+    // stale-schema snapshot cannot decode as nil silently and blank the UI.
+    static let snapshotKey = "LA-current-snapshot-v1"
     static let defaultAppGroupIdentifier = "group.org.ntust.app.TigerDuck"
 
     private let defaults: UserDefaults
@@ -34,7 +37,14 @@ nonisolated final class SharedSnapshotStore {
 
     func readSnapshot() -> LiveActivitySnapshot? {
         guard let data = defaults.data(forKey: Self.snapshotKey) else { return nil }
-        return try? decoder.decode(LiveActivitySnapshot.self, from: data)
+        do {
+            return try decoder.decode(LiveActivitySnapshot.self, from: data)
+        } catch {
+            // Schema mismatch shouldn't silently null every snapshot —
+            // surface it so we notice when the wire shape drifts.
+            logger.error("snapshot decode failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     func writeSnapshot(_ snapshot: LiveActivitySnapshot?) {
@@ -42,8 +52,11 @@ nonisolated final class SharedSnapshotStore {
             defaults.removeObject(forKey: Self.snapshotKey)
             return
         }
-        if let data = try? encoder.encode(snapshot) {
+        do {
+            let data = try encoder.encode(snapshot)
             defaults.set(data, forKey: Self.snapshotKey)
+        } catch {
+            logger.error("snapshot encode failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

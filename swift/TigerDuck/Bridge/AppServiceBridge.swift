@@ -217,13 +217,11 @@ enum AppServiceBridge {
                                 data.classroom = NameAbbrService.shared.abbreviateClassroom(
                                     data.classroom, display: classroomMandarinDisplay
                                 )
-                                var newMap = data.classroomMap
-                                for (key, val) in newMap {
-                                    newMap[key] = NameAbbrService.shared.abbreviateClassroom(
+                                data.classroomMap = data.classroomMap.mapValues { val in
+                                    NameAbbrService.shared.abbreviateClassroom(
                                         val, display: classroomMandarinDisplay
                                     )
                                 }
-                                data.classroomMap = newMap
                             }
                             return data
                         } catch {
@@ -518,12 +516,21 @@ enum AppServiceBridge {
         return freshAssignments
     }
 
+    /// Course-no prefix matcher used to strip the leading code from a
+    /// Moodle fullname like "EE3001 電子學". Hoisted to a static so it
+    /// isn't recompiled per assignment / per call.
+    private static let courseNoPrefixRegex: NSRegularExpression = {
+        // Anchored: must match the whole token.
+        try! NSRegularExpression(pattern: "^3?[A-Z]{2}[A-Z0-9]{6,7}$")
+    }()
+
     private static func courseName(from fullname: String) -> String {
         let parts = fullname.components(separatedBy: " ")
         guard parts.count >= 2 else { return fullname }
 
-        if let index = parts.firstIndex(where: {
-            $0.range(of: "3?[A-Z]{2}[A-Z0-9]{6,7}", options: .regularExpression) != nil
+        if let index = parts.firstIndex(where: { part in
+            let range = NSRange(part.startIndex..<part.endIndex, in: part)
+            return courseNoPrefixRegex.firstMatch(in: part, range: range) != nil
         }), index + 1 < parts.count {
             return parts[(index + 1)...].joined(separator: " ")
         }

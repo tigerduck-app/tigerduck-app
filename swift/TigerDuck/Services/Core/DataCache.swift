@@ -261,6 +261,7 @@ final class DataCache {
             ("course_custom_colors.json", persistentDir),
             ("archived_assignments.json", persistentDir),
             ("locally_completed_assignments.json", persistentDir),
+            ("bulletin_summaries.json", cacheDir),
         ]
         for (name, dir) in filenames {
             let url = dir.appendingPathComponent(name)
@@ -288,6 +289,9 @@ final class DataCache {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+        // Bulletin detail bodies are user-scoped (read state, subscriptions).
+        let bulletinDetails = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
+        try? FileManager.default.removeItem(at: bulletinDetails)
     }
 
     /// Remove every `courses_<semester>.json` file. Used by the abbreviation

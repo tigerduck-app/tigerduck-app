@@ -222,11 +222,28 @@ enum CalendarService {
     }
 
     /// Parse ICS date formats: DTSTART;VALUE=DATE:20250901 or DTSTART:20250901T080000Z
+    /// Honors `TZID=…` parameters when present and the identifier is
+    /// recognised by the system; falls back to Asia/Taipei (the school
+    /// calendar's authoring zone) otherwise.
     private static func parseICSDate(_ line: String) -> Date? {
         guard let colonIndex = line.lastIndex(of: ":") else { return nil }
         let value = String(line[line.index(after: colonIndex)...])
+        let prefix = line[..<colonIndex]
+        var localFormatter = icsDateTime
+        if let tzidRange = prefix.range(of: "TZID=") {
+            let tzidValue = prefix[tzidRange.upperBound...]
+                .split(separator: ";")
+                .first
+                .map(String.init) ?? ""
+            if !tzidValue.isEmpty, let tz = TimeZone(identifier: tzidValue) {
+                let f = DateFormatter()
+                f.dateFormat = "yyyyMMdd'T'HHmmss"
+                f.timeZone = tz
+                localFormatter = f
+            }
+        }
         return icsDateTimeZ.date(from: value)
-            ?? icsDateTime.date(from: value)
+            ?? localFormatter.date(from: value)
             ?? icsDateOnly.date(from: value)
     }
 }

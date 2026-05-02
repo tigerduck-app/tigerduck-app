@@ -182,8 +182,10 @@ final class BulletinAPIClient: Sendable {
     }()
 
     private static func percentEncoded(_ value: String) -> String {
-        var allowed = CharacterSet.urlPathAllowed
-        allowed.remove("/")
+        // Strict allowlist — `urlPathAllowed` keeps `=`, `&`, `:`, `+`, `@`,
+        // any of which can path/query-inject if a device id ever embeds
+        // them.
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 }

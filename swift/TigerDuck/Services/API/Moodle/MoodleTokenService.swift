@@ -113,8 +113,12 @@ actor MoodleTokenService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
         // Purge NTUST SSO cookies from the shared jar so stale anti-forgery /
         // session cookies from this session don't bleed into the next login.
+        // Allowlist only the SSO + Moodle hosts the OIDC bridge actually
+        // touches. The previous suffix match nuked any unrelated NTUST
+        // subdomain cookie sharing the jar (e.g. WebView sessions).
+        let purgeHosts: Set<String> = ["ssoam2.ntust.edu.tw", "moodle2.ntust.edu.tw"]
         HTTPCookieStorage.shared.cookies?
-            .filter { $0.domain.hasSuffix(".ntust.edu.tw") || $0.domain == "ntust.edu.tw" }
+            .filter { purgeHosts.contains($0.domain) || purgeHosts.contains(String($0.domain.drop(while: { $0 == "." }))) }
             .forEach { HTTPCookieStorage.shared.deleteCookie($0) }
         await MoodleSiteInfoService.shared.invalidateCache()
     }
@@ -400,8 +404,22 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func decodeTokenTriple(from base64Token: String) throws -> TokenTriple {
-        guard let decodedData = Data(base64Encoded: base64Token),
-              let decoded = String(data: decodedData, encoding: .ascii) else {
+        // Convert URL-safe base64 (`_`/`-`) to standard alphabet and pad,
+        // since `Data(base64Encoded:)` only accepts the standard form.
+        // The extraction regex permits `_` and `-` to be tolerant of
+        // either encoding Moodle may emit.
+        var standardized = base64Token
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let padding = standardized.count % 4
+        if padding != 0 {
+            standardized.append(String(repeating: "=", count: 4 - padding))
+        }
+        // The wstoken signature is a binary digest base64-encoded — use
+        // isoLatin1 to keep all 0–255 byte values intact (ASCII rejects
+        // anything ≥128, corrupting the signature).
+        guard let decodedData = Data(base64Encoded: standardized),
+              let decoded = String(data: decodedData, encoding: .isoLatin1) else {
             throw MoodleWebserviceError.malformedResponse(
                 detail: "failed to base64-decode token triple",
             )

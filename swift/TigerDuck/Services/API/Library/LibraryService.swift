@@ -120,8 +120,15 @@ enum LibraryService {
             try validateHTTP(urlResponse)
             let response = try JSONDecoder().decode(LibraryLoginResponse.self, from: data)
 
-            guard response.error.code == 0, let loginData = response.data else {
-                let error = LibraryServiceError.loginFailed(response.error.message)
+            // Treat missing `error` as success (the API omits it on the
+            // happy path); only fail when an explicit non-zero code is set.
+            if let apiError = response.error, apiError.code != 0 {
+                let error = LibraryServiceError.loginFailed(apiError.message)
+                AppLogger.captureError(error, context: ["service": "libraryLogin"])
+                throw error
+            }
+            guard let loginData = response.data else {
+                let error = LibraryServiceError.loginFailed("missing data")
                 AppLogger.captureError(error, context: ["service": "libraryLogin"])
                 throw error
             }
@@ -168,8 +175,13 @@ enum LibraryService {
             try validateHTTP(urlResponse)
             let response = try JSONDecoder().decode(LibraryQRResponse.self, from: data)
 
-            guard response.error.code == 0, let qrData = response.data else {
-                let error = LibraryServiceError.qrGenerationFailed(response.error.message)
+            if let apiError = response.error, apiError.code != 0 {
+                let error = LibraryServiceError.qrGenerationFailed(apiError.message)
+                AppLogger.captureError(error, context: ["service": "libraryGenerateQRCode"])
+                throw error
+            }
+            guard let qrData = response.data else {
+                let error = LibraryServiceError.qrGenerationFailed("missing data")
                 AppLogger.captureError(error, context: ["service": "libraryGenerateQRCode"])
                 throw error
             }
