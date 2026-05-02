@@ -1,6 +1,17 @@
 import Foundation
 
 extension Date {
+    /// Gregorian + Asia/Taipei calendar pinned for every schedule-math
+    /// helper below. NTUST's class table, semester boundaries, and ICS
+    /// feeds are gregorian — using `Calendar.current` would shift
+    /// month/day arithmetic on a device set to ROC or Buddhist calendar
+    /// (already proven by `SDCourse.isoFormatter` pinning the same way).
+    static let scheduleCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+        return cal
+    }()
+
     var shortDateString: String {
         formatted(.dateTime.month(.defaultDigits).day())
     }
@@ -27,8 +38,7 @@ extension Date {
 
     var weekdayIndex: Int {
         // 1=Sunday ... 7=Saturday → convert to 0=Monday ... 6=Sunday
-        let cal = Calendar.current
-        let weekday = cal.component(.weekday, from: self)
+        let weekday = Self.scheduleCalendar.component(.weekday, from: self)
         return (weekday + 5) % 7
     }
 
@@ -36,33 +46,33 @@ extension Date {
     var scheduleWeekday: Int { weekdayIndex + 1 }
 
     var isToday: Bool {
-        Calendar.current.isDateInToday(self)
+        Self.scheduleCalendar.isDateInToday(self)
     }
 
     func isSameDay(as other: Date) -> Bool {
-        Calendar.current.isDate(self, inSameDayAs: other)
+        Self.scheduleCalendar.isDate(self, inSameDayAs: other)
     }
 
     var startOfDay: Date {
-        Calendar.current.startOfDay(for: self)
+        Self.scheduleCalendar.startOfDay(for: self)
     }
 
     var startOfMonth: Date {
-        let components = Calendar.current.dateComponents([.year, .month], from: self)
-        return Calendar.current.date(from: components)!
+        let components = Self.scheduleCalendar.dateComponents([.year, .month], from: self)
+        return Self.scheduleCalendar.date(from: components) ?? self
     }
 
     var daysInMonth: Int {
-        Calendar.current.range(of: .day, in: .month, for: self)!.count
+        Self.scheduleCalendar.range(of: .day, in: .month, for: self)?.count ?? 30
     }
 
     var firstWeekdayOfMonth: Int {
         let first = startOfMonth
-        return Calendar.current.component(.weekday, from: first)
+        return Self.scheduleCalendar.component(.weekday, from: first)
     }
 
     func greetingText() -> String {
-        let hour = Calendar.current.component(.hour, from: self)
+        let hour = Self.scheduleCalendar.component(.hour, from: self)
         switch hour {
         case 5..<12: return String(localized: "greeting_morning")
         case 12..<18: return String(localized: "greeting_afternoon")

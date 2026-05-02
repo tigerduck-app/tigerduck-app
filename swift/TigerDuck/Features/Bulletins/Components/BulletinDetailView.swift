@@ -22,7 +22,13 @@ struct BulletinDetailView: View {
     @State private var isLoading: Bool = false
     @State private var showInAppBrowser: Bool = false
 
-    private let apiClient: BulletinAPIClient = BulletinAPIClient(
+    /// Hoisted to a static so the bulletin-detail nav push doesn't hit
+    /// Defaults + Keychain on every appearance just to reconstruct the
+    /// same client. The push-server URL / shared secret are stable for
+    /// the app's lifetime — a stale resolution after the user changes
+    /// the override in Settings is acceptable; the next app launch
+    /// rebuilds the client.
+    private static let apiClient: BulletinAPIClient = BulletinAPIClient(
         baseURL: PushCoordinator.resolveServerURL(),
         sharedSecret: PushCoordinator.resolveSharedSecret()
     )
@@ -290,7 +296,7 @@ struct BulletinDetailView: View {
         loadError = nil
         defer { isLoading = false }
         do {
-            let fresh = try await apiClient.getBulletin(id: bulletin.id)
+            let fresh = try await Self.apiClient.getBulletin(id: bulletin.id)
             detail = fresh
             DataCache.shared.saveBulletinDetail(fresh)
         } catch {

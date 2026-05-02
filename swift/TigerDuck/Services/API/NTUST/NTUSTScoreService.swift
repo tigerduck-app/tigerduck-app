@@ -22,10 +22,10 @@ enum NTUSTScoreServiceError: LocalizedError {
 /// Mirrors the cache + SSO retry flow of ``CourseSelectionService`` so users
 /// of cached-first gates get consistent behavior across screens.
 enum NTUSTScoreService {
-    private static let scoreRootURL = URL(string: "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/")!
-    private static let scoreDisplayURL = URL(
-        string: "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery/DisplayAll"
-    )!
+    private static let scoreRootURL = URL.knownGood("https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/")
+    private static let scoreDisplayURL = URL.knownGood(
+        "https://stuinfosys.ntust.edu.tw/StuScoreQueryServ/StuScoreQuery/DisplayAll"
+    )
 
     /// Disk-cache TTL before the service refetches the live HTML. Mirrors the
     /// CourseSelectionService 24h window — deliberately long because grade
@@ -39,7 +39,8 @@ enum NTUSTScoreService {
         session: URLSession,
         studentId: String,
         password: String,
-        forceRefresh: Bool = false
+        forceRefresh: Bool = false,
+        persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> ScoreReport {
         if !forceRefresh,
            let cached = DataCache.shared.loadScoreReport(studentId: studentId),
@@ -67,7 +68,14 @@ enum NTUSTScoreService {
             throw NTUSTScoreServiceError.parseFailed
         }
 
-        DataCache.shared.saveScoreReport(report, studentId: studentId)
+        // Guard the cache write against an in-flight logout / account
+        // swap. `persistGuard` is read after the (long) network hop so a
+        // user who logged out between fetch and persist never has their
+        // previous-account score report stamped into the cache for the
+        // next account to inherit.
+        if persistGuard?() ?? true {
+            DataCache.shared.saveScoreReport(report, studentId: studentId)
+        }
         return report
     }
 

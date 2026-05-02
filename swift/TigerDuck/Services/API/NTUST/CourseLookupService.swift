@@ -1,7 +1,7 @@
 import Foundation
 
 enum CourseLookupService {
-    private static let courseSearchAPI = URL(string: "https://querycourse.ntust.edu.tw/QueryCourse/api//courses")!
+    private static let courseSearchAPI = URL.knownGood("https://querycourse.ntust.edu.tw/QueryCourse/api//courses")
 
     static func lookupCourse(semester: String, courseNo: String, language: String = "zh") async throws -> [CourseSearchResult] {
         try await searchAPI(body: .forCourseNo(courseNo, semester: semester, language: language))

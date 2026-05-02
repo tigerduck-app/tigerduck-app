@@ -102,7 +102,10 @@ enum AppServiceBridge {
                         session: session,
                         studentId: studentId,
                         password: password,
-                        forceRefresh: forceRefresh
+                        forceRefresh: forceRefresh,
+                        persistGuard: { @Sendable [weak authService] in
+                            authService?.loginGeneration == startGeneration
+                        }
                     )
                 } catch {
                     await MainActor.run {

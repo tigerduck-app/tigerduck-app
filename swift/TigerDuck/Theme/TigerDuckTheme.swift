@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 enum TigerDuckTheme {
     // MARK: - Spacing
@@ -53,44 +54,40 @@ enum TigerDuckTheme {
         Color(hex: 0x2980B9), // 鈷藍
     ]
 
-    /// Cache mapping courseNo → Color. Populated lazily and purely as a
-    /// lookup optimization — values are derived from `courseColor(for:)`
-    /// and never depend on which other courses are in the current list.
-    private(set) static var courseColorMap: [String: Color] = [:]
+    /// Lock-protected mutable state for the per-course color caches.
+    /// `buildCourseColorMap` runs from background sync while
+    /// `setCustomColor` runs on MainActor (settings UI); without
+    /// synchronization the concurrent mutations race against
+    /// SDCourse-driven reads on the render thread. Swift dictionaries
+    /// are not thread-safe, so the access is funneled through
+    /// `os_unfair_lock` via the wrapper below.
+    private static let state = ColorState()
 
-    /// User-chosen palette-index overrides keyed by courseNo. Loaded lazily
-    /// from disk on first access so the app-launch sequence does not block
-    /// on DataCache.
-    private(set) static var courseCustomColors: [String: Int] = DataCache.shared.loadCourseCustomColors()
+    /// Snapshot of the current courseNo → palette-index overrides. Read
+    /// rarely (settings sheet) and never concurrently with mutations on
+    /// the same key, so taking the lock for the snapshot is cheap.
+    static var courseCustomColors: [String: Int] {
+        state.snapshotCustom()
+    }
 
     /// Populate / refresh the color cache for the given courses. Colors are a
     /// pure function of `courseNo`, so reloading the same (or a different)
     /// semester never reshuffles already-seen courses. New entries are added;
     /// existing entries are kept as-is.
     static func buildCourseColorMap(courseNos: [String]) {
-        var map = courseColorMap
-        for courseNo in courseNos where map[courseNo] == nil {
-            map[courseNo] = stableColor(for: courseNo)
-        }
-        courseColorMap = map
+        state.merge(courseNos: courseNos) { stableColor(for: $0) }
     }
 
     static func courseColor(for courseNo: String) -> Color {
-        if let index = courseCustomColors[courseNo], courseColors.indices.contains(index) {
-            return courseColors[index]
-        }
-        if let color = courseColorMap[courseNo] {
-            return color
-        }
-        return stableColor(for: courseNo)
+        state.color(for: courseNo, palette: courseColors) ?? stableColor(for: courseNo)
     }
 
     /// Palette index currently in effect for this course, whether from an
     /// explicit override or the hash-based default. Used by the color picker
     /// to highlight the current selection.
     static func paletteIndex(for courseNo: String) -> Int {
-        if let index = courseCustomColors[courseNo], courseColors.indices.contains(index) {
-            return index
+        if let custom = state.customIndex(for: courseNo), courseColors.indices.contains(custom) {
+            return custom
         }
         let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
         return abs(hash) % courseColors.count
@@ -98,31 +95,29 @@ enum TigerDuckTheme {
 
     /// Whether this course has been explicitly recolored by the user.
     static func hasCustomColor(for courseNo: String) -> Bool {
-        courseCustomColors[courseNo] != nil
+        state.customIndex(for: courseNo) != nil
     }
 
     /// Persist a new palette-index override for this course and invalidate
     /// the fast-path cache entry so the next read re-derives.
     static func setCustomColor(index: Int, for courseNo: String) {
         guard courseColors.indices.contains(index) else { return }
-        courseCustomColors[courseNo] = index
-        courseColorMap.removeValue(forKey: courseNo)
-        DataCache.shared.saveCourseCustomColors(courseCustomColors)
+        let snapshot = state.setCustom(index: index, for: courseNo)
+        DataCache.shared.saveCourseCustomColors(snapshot)
     }
 
     /// Drop the override for this course so it falls back to the deterministic
     /// default.
     static func clearCustomColor(for courseNo: String) {
-        guard courseCustomColors.removeValue(forKey: courseNo) != nil else { return }
-        courseColorMap.removeValue(forKey: courseNo)
-        DataCache.shared.saveCourseCustomColors(courseCustomColors)
+        guard let snapshot = state.clearCustom(for: courseNo) else { return }
+        DataCache.shared.saveCourseCustomColors(snapshot)
     }
 
     /// Refresh the in-memory override map from disk. Called when the
     /// underlying user-scoped data is swapped (e.g. logout/login).
     static func reloadCustomColors() {
-        courseCustomColors = DataCache.shared.loadCourseCustomColors()
-        courseColorMap.removeAll()
+        let custom = DataCache.shared.loadCourseCustomColors()
+        state.reload(custom: custom)
     }
 
     /// Deterministic hash → palette index. Stable across launches and
@@ -130,5 +125,69 @@ enum TigerDuckTheme {
     private static func stableColor(for courseNo: String) -> Color {
         let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
         return courseColors[abs(hash) % courseColors.count]
+    }
+}
+
+/// Wraps the lock + state for `TigerDuckTheme`. Hidden behind a class so
+/// the generic `OSAllocatedUnfairLock<T>` is not visible at the use
+/// sites (the prior generic-in-static-let arrangement triggered the
+/// Swift type-checker's complexity budget on the surrounding palette
+/// literal).
+private final class ColorState: @unchecked Sendable {
+    private nonisolated(unsafe) var map: [String: Color] = [:]
+    private nonisolated(unsafe) var custom: [String: Int]
+    private let lock = OSAllocatedUnfairLock()
+
+    init() {
+        self.custom = DataCache.shared.loadCourseCustomColors()
+    }
+
+    func snapshotCustom() -> [String: Int] {
+        lock.withLock { custom }
+    }
+
+    func customIndex(for courseNo: String) -> Int? {
+        lock.withLock { custom[courseNo] }
+    }
+
+    func merge(courseNos: [String], stableColor: (String) -> Color) {
+        let resolved = courseNos.map { ($0, stableColor($0)) }
+        lock.withLock {
+            for (courseNo, color) in resolved where map[courseNo] == nil {
+                map[courseNo] = color
+            }
+        }
+    }
+
+    func color(for courseNo: String, palette: [Color]) -> Color? {
+        lock.withLock {
+            if let index = custom[courseNo], palette.indices.contains(index) {
+                return palette[index]
+            }
+            return map[courseNo]
+        }
+    }
+
+    func setCustom(index: Int, for courseNo: String) -> [String: Int] {
+        lock.withLock {
+            custom[courseNo] = index
+            map.removeValue(forKey: courseNo)
+            return custom
+        }
+    }
+
+    func clearCustom(for courseNo: String) -> [String: Int]? {
+        lock.withLock {
+            guard custom.removeValue(forKey: courseNo) != nil else { return nil }
+            map.removeValue(forKey: courseNo)
+            return custom
+        }
+    }
+
+    func reload(custom: [String: Int]) {
+        lock.withLock {
+            self.custom = custom
+            self.map.removeAll()
+        }
     }
 }

@@ -17,15 +17,16 @@ enum CourseServiceError: LocalizedError {
 }
 
 enum CourseSelectionService {
-    private static let courseSelectionRoot = URL(string: "https://courseselection.ntust.edu.tw/")!
-    private static let courseListURL = URL(string: "https://courseselection.ntust.edu.tw/ChooseList/D01/D01")!
+    private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
+    private static let courseListURL = URL.knownGood("https://courseselection.ntust.edu.tw/ChooseList/D01/D01")
     private static let courseNoRegex = /<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*<\/td>/
 
     static func fetchEnrolledCourseNos(
         session: URLSession,
         studentId: String,
         password: String,
-        forceRefresh: Bool = false
+        forceRefresh: Bool = false,
+        persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> [String] {
         let semester = currentSemesterCode()
         if !forceRefresh, let cached = loadEnrolledCoursesCache(studentId: studentId, semester: semester) {
@@ -71,12 +72,19 @@ enum CourseSelectionService {
                 throw CourseServiceError.redirectedToSSO
             }
             let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }
-            saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
+            // Guarded write: see persistGuard rationale on
+            // NTUSTScoreService.fetchScoreReport — same in-flight
+            // logout / account-swap protection.
+            if persistGuard?() ?? true {
+                saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
+            }
             return retryCourseNos
         }
 
         let courseNos = html.matches(of: courseNoRegex).map { String($0.1) }
-        saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
+        if persistGuard?() ?? true {
+            saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
+        }
         return courseNos
     }
 

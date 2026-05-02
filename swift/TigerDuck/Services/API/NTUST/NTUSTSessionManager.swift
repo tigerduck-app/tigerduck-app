@@ -69,7 +69,7 @@ final class NTUSTSessionManager {
     /// in one shot. Use this from any async auth path instead of
     /// ``cookiesValid``.
     func probeCookiesValid() async -> Bool {
-        var req = URLRequest(url: URL(string: "https://ssoam2.ntust.edu.tw/")!)
+        var req = URLRequest(url: URL.knownGood("https://ssoam2.ntust.edu.tw/"))
         req.httpMethod = "GET"
         req.timeoutInterval = 8
         req.cachePolicy = .reloadIgnoringLocalCacheData

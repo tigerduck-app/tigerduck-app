@@ -62,7 +62,7 @@ final class AuthService {
 
         do {
             let session = NTUSTSessionManager.shared.session
-            let serviceURL = URL(string: "https://courseselection.ntust.edu.tw/")!
+            let serviceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
 
             let success = try await SSOLoginService.ensureServiceLogin(

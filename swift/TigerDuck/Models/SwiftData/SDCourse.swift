@@ -221,5 +221,12 @@ extension SDCourse {
             dates.append(key)
         }
         skippedDates = dates
+        // Wake the LiveActivity refresh path so the lock-screen
+        // activity reflects the toggle without waiting for the next
+        // background sync tick. The resolver re-evaluates skip state
+        // only on a new resolve; without this nudge a user marking
+        // the in-progress class as skipped would still see it on the
+        // lock screen until something else triggers a refresh.
+        NotificationCenter.default.post(name: AppConstants.courseSkipStateDidChange, object: nil)
     }
 }

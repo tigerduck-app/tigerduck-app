@@ -109,12 +109,21 @@ final class ScoreViewModel {
         let manager = NTUSTSessionManager.shared
         manager.loadingState = .loading
 
+        // Capture the auth generation that owns this fetch. If the user
+        // logs out (or swaps accounts) before the network hop returns,
+        // the persist guard below will reject the cache write so the
+        // next user does not inherit the previous user's score report.
+        let auth = authService
+        let capturedGeneration = auth.loginGeneration
         do {
             let fresh = try await NTUSTScoreService.fetchScoreReport(
                 session: manager.session,
                 studentId: studentId,
                 password: password,
-                forceRefresh: force
+                forceRefresh: force,
+                persistGuard: { @Sendable [weak auth] in
+                    auth?.loginGeneration == capturedGeneration
+                }
             )
             report = fresh
             cachedAt = Date()

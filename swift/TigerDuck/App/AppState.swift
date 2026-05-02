@@ -56,6 +56,14 @@ final class AppState {
             self?.requestPushScheduleSync()
         }
 
+        skipStateObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.courseSkipStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleLiveActivityRefresh()
+        }
+
         runPendingMigrations()
 
         liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
@@ -99,6 +107,9 @@ final class AppState {
         if let observer = preferencesObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = skipStateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     private var _libraryRevision = 0
@@ -114,6 +125,7 @@ final class AppState {
     private let courseProvider = CanonicalCourseProvider()
     private var liveActivityObserver: Any?
     private var preferencesObserver: Any?
+    private var skipStateObserver: Any?
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
     private var relabelTask: Task<Void, Never>?
