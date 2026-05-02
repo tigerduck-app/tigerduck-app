@@ -96,7 +96,11 @@ final class LiveActivityCoordinator {
                 let activity = try Activity<TigerDuckActivityAttributes>.request(
                     attributes: TigerDuckActivityAttributes(activityId: targetId),
                     content: content,
-                    pushType: .token
+                    // Only request a push token when a server-side handler
+                    // is wired up to receive it. Otherwise APNs would mint
+                    // tokens nothing consumes — and a missing handler is
+                    // the legitimate state for users without push enabled.
+                    pushType: updateTokenRegistrationHandler == nil ? nil : .token
                 )
                 observeUpdateToken(for: activity)
                 scheduleAutomaticEnd(for: targetId, snapshot: snapshot, now: now)
@@ -266,7 +270,7 @@ final class LiveActivityCoordinator {
         snapshot: LiveActivitySnapshot
     ) async {
         guard let updateTokenRegistrationHandler else { return }
-        let tokenHex = tokenData.map { String(format: "%02x", $0) }.joined()
+        let tokenHex = tokenData.hexEncodedString()
         await updateTokenRegistrationHandler(
             LiveActivityUpdateTokenRegistration(
                 activityId: activityId,

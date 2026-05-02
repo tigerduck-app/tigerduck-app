@@ -175,6 +175,14 @@ final class NameAbbrService: @unchecked Sendable {
 
     // MARK: - Lazy load
 
+    /// Two `withLock` acquisitions per public read (one in `ensureLoaded`,
+    /// one in the caller) is intentional: the first guards the lazy JSON
+    /// load, the second reads the now-populated dictionary. Keeping them
+    /// separate means the (potentially slow) bundle-resource decode never
+    /// blocks subsequent readers — once `abbrLoaded == true`, the inner
+    /// guard early-returns and the second `withLock` is a plain dictionary
+    /// lookup. NSLock isn't reentrant; hence two distinct acquisitions
+    /// rather than one wrapping block.
     private func ensureLoaded() {
         lock.withLock {
             guard !abbrLoaded else { return }

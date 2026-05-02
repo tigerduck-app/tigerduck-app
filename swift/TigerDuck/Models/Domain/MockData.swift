@@ -1,6 +1,15 @@
+#if DEBUG
 import Foundation
 
 enum MockData {
+    private static func daysFromNow(_ days: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()
+    }
+
+    private static func todayAt(hour: Int, minute: Int) -> Date {
+        Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()
+    }
+
     static let courses: [SDCourse] = [
         SDCourse(
             courseNo: "EC1013701",
@@ -76,21 +85,21 @@ enum MockData {
             courseNo: "CS3034501",
             courseName: "人工智慧導論",
             title: "HW3 搜尋演算法",
-            dueDate: Calendar.current.date(byAdding: .day, value: 3, to: Date())!
+            dueDate: daysFromNow(3)
         ),
         SDAssignment(
             assignmentId: "322841",
             courseNo: "CS2023301",
             courseName: "計算機組織",
             title: "Project01 MIPS Pipeline",
-            dueDate: Calendar.current.date(byAdding: .day, value: 4, to: Date())!
+            dueDate: daysFromNow(4)
         ),
         SDAssignment(
             assignmentId: "325100",
             courseNo: "EC1013701",
             courseName: "網際網路概論",
             title: "Lab5 TCP Socket",
-            dueDate: Calendar.current.date(byAdding: .day, value: 7, to: Date())!
+            dueDate: daysFromNow(7)
         ),
     ]
 
@@ -100,7 +109,7 @@ enum MockData {
             title: "113-2學期獎學金申請公告",
             summary: "各類獎學金即日起至4月30日止受理申請，請同學把握時間。",
             department: "學務處",
-            publishDate: Calendar.current.date(byAdding: .day, value: -1, to: Date())!,
+            publishDate: daysFromNow(-1),
             detailUrl: "https://lc.ntust.edu.tw/p/406-1070-143898,r1828.php"
         ),
         SDAnnouncement(
@@ -108,7 +117,7 @@ enum MockData {
             title: "選課異動通知",
             summary: "第二階段選課結果已公布，請同學至校務系統確認。",
             department: "教務處",
-            publishDate: Calendar.current.date(byAdding: .day, value: -2, to: Date())!,
+            publishDate: daysFromNow(-2),
             detailUrl: "https://lc.ntust.edu.tw/p/406-1070-143800,r1828.php"
         ),
         SDAnnouncement(
@@ -116,7 +125,7 @@ enum MockData {
             title: "圖書館暑假開放時間調整",
             summary: "暑假期間圖書館開放時間調整為 09:00-17:00。",
             department: "圖書館",
-            publishDate: Calendar.current.date(byAdding: .day, value: -3, to: Date())!,
+            publishDate: daysFromNow(-3),
             detailUrl: "https://lc.ntust.edu.tw/p/406-1070-143700,r1828.php"
         ),
         SDAnnouncement(
@@ -124,7 +133,7 @@ enum MockData {
             title: "校園防疫措施更新",
             summary: "依最新防疫指引，進入室內空間建議配戴口罩。",
             department: "總務處",
-            publishDate: Calendar.current.date(byAdding: .day, value: -5, to: Date())!,
+            publishDate: daysFromNow(-5),
             detailUrl: "https://lc.ntust.edu.tw/p/406-1070-143600,r1828.php"
         ),
         SDAnnouncement(
@@ -132,7 +141,7 @@ enum MockData {
             title: "國際交流獎學金計畫",
             summary: "113-2學期國際交流獎學金即日起開放申請，名額有限。",
             department: "國際處",
-            publishDate: Calendar.current.date(byAdding: .day, value: -6, to: Date())!,
+            publishDate: daysFromNow(-6),
             detailUrl: "https://lc.ntust.edu.tw/p/406-1070-143500,r1828.php"
         ),
     ]
@@ -141,32 +150,33 @@ enum MockData {
         SDCalendarEvent(
             eventId: "e1",
             title: "網際網路概論",
-            date: Calendar.current.date(bySettingHour: 10, minute: 10, second: 0, of: Date())!,
+            date: todayAt(hour: 10, minute: 10),
             source: .moodle
         ),
         SDCalendarEvent(
             eventId: "e2",
             title: "校務會議",
-            date: Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!,
+            date: todayAt(hour: 12, minute: 0),
             source: .school
         ),
         SDCalendarEvent(
             eventId: "e3",
             title: "期中考",
-            date: Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: Date())!,
+            date: todayAt(hour: 23, minute: 59),
             source: .exam
         ),
         SDCalendarEvent(
             eventId: "e4",
             title: "HW3 截止",
-            date: Calendar.current.date(byAdding: .day, value: 3, to: Date())!,
+            date: daysFromNow(3),
             source: .moodle
         ),
         SDCalendarEvent(
             eventId: "e5",
             title: "畢業典禮",
-            date: Calendar.current.date(byAdding: .day, value: 10, to: Date())!,
+            date: daysFromNow(10),
             source: .school
         ),
     ]
 }
+#endif

@@ -94,24 +94,28 @@ extension Date {
     }
 
     /// Relative time, e.g. "5 days later", "30 hours later", or "Overdue".
+    /// `<= 0` reads as overdue (a deadline at the exact current second is no
+    /// longer "later"); buckets round up so the user never sees "0 minutes
+    /// later" — a value just below the next bucket should display as that
+    /// bucket.
     func relativeTimeString(from now: Date) -> String {
         let interval = timeIntervalSince(now)
-        if interval < 0 {
+        if interval <= 0 {
             return String(localized: "assignment_status_overdue")
         }
         let suffix = String(localized: "assignment_time_suffix_later")
-        let days = Int(interval / 86400)
+        let days = Int(ceil(interval / 86400))
         if days > 3 {
             return String(format: String(localized: "assignment_time_days_with_suffix"), days, suffix)
         }
-        let hours = Int(interval / 3600)
+        let hours = Int(ceil(interval / 3600))
         if hours > 0 {
             return String(format: String(localized: "assignment_time_hours_with_suffix"), hours, suffix)
         }
-        let minutes = Int(interval / 60)
+        let minutes = Int(ceil(interval / 60))
         if minutes > 0 {
             return String(format: String(localized: "assignment_time_minutes_with_suffix"), minutes, suffix)
         }
-        return String(format: String(localized: "assignment_time_seconds_with_suffix"), Int(interval), suffix)
+        return String(format: String(localized: "assignment_time_seconds_with_suffix"), max(1, Int(ceil(interval))), suffix)
     }
 }

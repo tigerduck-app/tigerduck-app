@@ -36,7 +36,7 @@ final class PushTokenRelay {
         let logger = self.logger
         task = Task.detached(priority: .utility) {
             for await tokenData in Activity<TigerDuckActivityAttributes>.pushToStartTokenUpdates {
-                let hex = tokenData.map { String(format: "%02x", $0) }.joined()
+                let hex = tokenData.hexEncodedString()
                 logger.info("received PTS token (len=\(hex.count, privacy: .public))")
                 await registration.update(ptsTokenHex: hex)
             }

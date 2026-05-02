@@ -152,9 +152,12 @@ struct AddCourseSheet: View {
                         semester: semester, teacher: trimmed, language: language
                     )
                     let nameResults = (try? await byName) ?? []
+                    try Task.checkCancellation()
                     let teacherResults = (try? await byTeacher) ?? []
+                    try Task.checkCancellation()
                     results = Self.merge(nameResults, teacherResults)
                 }
+                try Task.checkCancellation()
                 await MainActor.run {
                     searchResults = results
                     isSearching = false
@@ -162,6 +165,8 @@ struct AddCourseSheet: View {
                         errorMessage = String(localized: "add_course_not_found")
                     }
                 }
+            } catch is CancellationError {
+                return
             } catch {
                 AppLogger.captureError(error, context: [
                     "feature": "addCourseSheet.search",

@@ -4,7 +4,7 @@ struct NetworkStatusOverlay: View {
     var loadingState: LoadingState
 
     @State private var visible = false
-    @State private var stateId = UUID()
+    @State private var hideTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -31,12 +31,12 @@ struct NetworkStatusOverlay: View {
         }
         .animation(.easeInOut(duration: 0.3), value: loadingState)
         .onChange(of: loadingState) { _, newValue in
+            hideTask?.cancel()
             if newValue == .loaded {
                 visible = true
-                stateId = UUID()
-                let capturedId = stateId
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    guard capturedId == stateId else { return }
+                hideTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2))
+                    guard !Task.isCancelled else { return }
                     withAnimation(.easeOut(duration: 0.5)) {
                         visible = false
                     }
@@ -45,5 +45,6 @@ struct NetworkStatusOverlay: View {
                 visible = false
             }
         }
+        .onDisappear { hideTask?.cancel() }
     }
 }

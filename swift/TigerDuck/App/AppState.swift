@@ -390,9 +390,19 @@ final class AppState {
 
             var anyChanged = false
             var code = CourseSelectionService.currentSemesterCode()
-            for _ in 0..<4 {
+            var consecutiveEmpty = 0
+            for _ in 0..<AppConstants.cachedSemesterRelabelDepth {
                 if Task.isCancelled { return }
                 let courses = DataCache.shared.loadCourses(semester: code)
+                if courses.isEmpty {
+                    consecutiveEmpty += 1
+                    // Two empty semesters in a row means we've walked past
+                    // any data the user has fetched; further iterations just
+                    // hit disk for nothing.
+                    if consecutiveEmpty >= 2 { break }
+                } else {
+                    consecutiveEmpty = 0
+                }
                 if !courses.isEmpty {
                     let changed = NameAbbrService.shared.relabelInPlace(
                         courses,
@@ -509,7 +519,7 @@ final class AppState {
             assignments: assignments,
             now: now
         ) else { return }
-        let delay = boundary.timeIntervalSince(now) + 1
+        let delay = boundary.timeIntervalSince(now) + AppConstants.scenarioBoundarySlackSeconds
         guard delay > 0 else { return }
         boundaryRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))

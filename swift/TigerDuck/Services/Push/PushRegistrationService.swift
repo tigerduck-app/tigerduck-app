@@ -79,7 +79,7 @@ actor PushRegistrationService {
     // MARK: - Token intake
 
     func update(deviceToken: Data) async {
-        let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
+        let hex = deviceToken.hexEncodedString()
         guard hex != deviceTokenHex else { return }
         deviceTokenHex = hex
         logger.info("device APNs token updated (len=\(hex.count, privacy: .public))")

@@ -15,10 +15,21 @@ import Observation
 @MainActor
 @Observable
 final class BulletinReadStateStore {
+    /// Hard cap so a user that never lets the prune path run can't grow
+    /// the persisted Set without bound. Bulletin IDs are monotonic so
+    /// dropping the lowest is dropping the oldest — and 1000 covers
+    /// well beyond a year of read history.
+    private static let maxRetainedIds = 1000
+
     private(set) var read: Set<Int>
 
     init() {
-        self.read = Defaults[.bulletinReadIds]
+        self.read = Self.capped(Defaults[.bulletinReadIds])
+    }
+
+    private static func capped(_ ids: Set<Int>) -> Set<Int> {
+        guard ids.count > maxRetainedIds else { return ids }
+        return Set(ids.sorted(by: >).prefix(maxRetainedIds))
     }
 
     func isRead(_ id: Int) -> Bool {
@@ -30,6 +41,7 @@ final class BulletinReadStateStore {
     func markRead(_ id: Int) {
         guard !read.contains(id) else { return }
         read.insert(id)
+        read = Self.capped(read)
         Defaults[.bulletinReadIds] = read
     }
 
@@ -54,8 +66,8 @@ final class BulletinReadStateStore {
     /// harmlessly included in the union.
     func markAllRead(_ ids: some Sequence<Int>) {
         let incoming = Set(ids)
-        let merged = read.union(incoming)
-        guard merged.count != read.count else { return }
+        let merged = Self.capped(read.union(incoming))
+        guard merged != read else { return }
         read = merged
         Defaults[.bulletinReadIds] = merged
     }

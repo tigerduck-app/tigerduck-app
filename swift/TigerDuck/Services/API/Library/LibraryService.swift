@@ -89,7 +89,10 @@ enum LibraryService {
 
     static var isTokenValid: Bool {
         guard storedToken != nil, let expiry = storedTokenExpiry else { return false }
-        return Date() < expiry
+        // 60s safety margin so a token expiring during a request round-trip
+        // is treated as already-expired locally — avoids the user seeing a
+        // QR that the server rejects the moment it scans.
+        return Date().addingTimeInterval(60) < expiry
     }
 
     private static func saveToken(_ token: String, expirationMs: Int64) {

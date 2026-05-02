@@ -24,7 +24,10 @@ nonisolated struct PushIdentity: Sendable {
         if let existing = KeychainManager.loadString(key: key), !existing.isEmpty {
             return existing
         }
-        let minted = UUID().uuidString
+        // Lowercase so server-side casing is normalised at the source — the
+        // push server treats the id as opaque, but URL paths and database
+        // keys built from it are case-sensitive.
+        let minted = UUID().uuidString.lowercased()
         KeychainManager.saveString(key: key, value: minted)
         return minted
     }

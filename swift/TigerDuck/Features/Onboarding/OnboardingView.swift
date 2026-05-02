@@ -64,9 +64,11 @@ struct OnboardingView: View {
                                 .textContentType(.password)
                                 .submitLabel(.go)
                                 .onSubmit {
-                                    guard !studentId.isEmpty, !password.isEmpty, !appState.authService.isLoggingIn else { return }
+                                    let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
+                                    let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
+                                    guard !trimmedId.isEmpty, !trimmedPwd.isEmpty, !appState.authService.isLoggingIn else { return }
                                     Task {
-                                        let success = await appState.authService.login(studentId: studentId, password: password)
+                                        let success = await appState.authService.login(studentId: trimmedId, password: trimmedPwd)
                                         if success { withAnimation { currentPage = 2 } }
                                     }
                                 }
@@ -92,10 +94,12 @@ struct OnboardingView: View {
                     .foregroundStyle(Color.textSecondary)
 
                     Button {
+                        let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
+                        let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
                         Task {
                             let success = await appState.authService.login(
-                                studentId: studentId,
-                                password: password
+                                studentId: trimmedId,
+                                password: trimmedPwd
                             )
                             if success {
                                 withAnimation { currentPage = 2 }

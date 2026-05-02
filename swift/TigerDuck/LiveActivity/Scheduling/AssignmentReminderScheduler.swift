@@ -4,9 +4,11 @@ import UserNotifications
 
 /// Converts assignments + user-selected offsets into pending local notifications.
 ///
-/// Request identifiers follow `"LA-reminder-\(assignmentId)_\(offset)"` so a
-/// reschedule cleanly replaces previous entries. iOS caps pending notifications
-/// at 64; we keep a soft cap of 60 (closest-to-fire wins) to leave headroom.
+/// Request identifiers follow `"LA-reminder-\(assignmentId)::\(offset)"` so a
+/// reschedule cleanly replaces previous entries. The `::` separator avoids
+/// collisions with assignment IDs that may legitimately contain `_`. iOS caps
+/// pending notifications at 64; we keep a soft cap of 60 (closest-to-fire
+/// wins) to leave headroom.
 @MainActor
 final class AssignmentReminderScheduler {
     static let requestPrefix = "LA-reminder-"
@@ -187,7 +189,7 @@ final class AssignmentReminderScheduler {
     /// Cancel pending requests for a single assignment across all offsets.
     func cancelReminders(for assignmentId: String) {
         let ids = AssignmentReminderOffset.allCases.map {
-            Self.requestPrefix + "\(assignmentId)_\($0.rawValue)"
+            Self.requestPrefix + "\(assignmentId)::\($0.rawValue)"
         }
         center.removePendingNotificationRequests(withIdentifiers: ids)
     }
@@ -216,7 +218,7 @@ final class AssignmentReminderScheduler {
                 guard fireDate > now else { continue }
                 payloads.append(
                     ReminderPayload(
-                        id: "\(assignment.assignmentId)_\(offset.rawValue)",
+                        id: "\(assignment.assignmentId)::\(offset.rawValue)",
                         fireDate: fireDate,
                         title: String(format: String(localized: "notification_assignment_reminder_title"), assignment.courseName),
                         body: offset.notificationBody(

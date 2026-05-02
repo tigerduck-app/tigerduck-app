@@ -193,7 +193,19 @@ final class ClassTableViewModel {
             }
         }
         courseLookup = lookup
+        cellRoleCache.removeAll(keepingCapacity: true)
         refreshCourseColors()
+    }
+
+    /// Memoised `cellRole(weekday:periodIndex:)` results. Invalidated whenever
+    /// `courseLookup` is rebuilt (course list change). The grid view calls
+    /// `cellRole` once per (weekday, periodIdx) per render, and the lookup
+    /// inside is O(span) — caching keeps re-renders cheap.
+    private var cellRoleCache: [CellRoleKey: CellRole] = [:]
+
+    private struct CellRoleKey: Hashable {
+        let weekday: Int
+        let periodIndex: Int
     }
 
     private func reloadCurrentSemesterCourses() {
@@ -257,16 +269,26 @@ final class ClassTableViewModel {
     }
 
     func cellRole(weekday: Int, periodIndex: Int) -> CellRole {
+        let key = CellRoleKey(weekday: weekday, periodIndex: periodIndex)
+        if let cached = cellRoleCache[key] { return cached }
+
         let periods = activePeriods
-        guard periodIndex >= 0, periodIndex < periods.count else { return .empty }
+        guard periodIndex >= 0, periodIndex < periods.count else {
+            cellRoleCache[key] = .empty
+            return .empty
+        }
 
         let period = periods[periodIndex]
-        guard let course = course(for: weekday, period: period.id) else { return .empty }
+        guard let course = course(for: weekday, period: period.id) else {
+            cellRoleCache[key] = .empty
+            return .empty
+        }
 
         if periodIndex > 0 {
             let prevPeriod = periods[periodIndex - 1]
             if let prevCourse = self.course(for: weekday, period: prevPeriod.id),
                prevCourse.courseNo == course.courseNo {
+                cellRoleCache[key] = .blockContinuation
                 return .blockContinuation
             }
         }
@@ -284,7 +306,9 @@ final class ClassTableViewModel {
             }
         }
 
-        return .blockStart(course, spanCount: span)
+        let role = CellRole.blockStart(course, spanCount: span)
+        cellRoleCache[key] = role
+        return role
     }
 
     func selectCourse(_ course: SDCourse, weekday: Int, periodId: String) {

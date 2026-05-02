@@ -60,6 +60,9 @@ final class PushAPIClient: Sendable {
         _ = try await execute(request)
     }
 
+    /// Health check. Intentionally unauthenticated — the push server's
+    /// `/ping` is public so connectivity / TLS / DNS can be diagnosed
+    /// without needing the shared secret.
     func ping() async throws {
         let url = baseURL.appendingPathComponent("ping")
         _ = try await execute(URLRequest(url: url))

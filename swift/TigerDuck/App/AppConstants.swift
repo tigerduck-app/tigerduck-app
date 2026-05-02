@@ -50,6 +50,16 @@ nonisolated enum AppConstants {
     /// to a LAN instance.
     static let defaultPushServerURL = URL.knownGood("https://api.tigerduck.app/v2")
 
+    /// How many semesters back the relabel sweep walks when display-toggle
+    /// settings change. NTUST keeps ~2 active semesters in flight; 4 covers
+    /// the full visible window (current + 3 prior) without scanning archives.
+    static let cachedSemesterRelabelDepth = 4
+
+    /// Slack added to a scenario boundary deadline before re-resolving the
+    /// Live Activity, so the timer fires after the boundary instant rather
+    /// than racing against it. Keeps `time >= slot.start` checks stable.
+    static let scenarioBoundarySlackSeconds: TimeInterval = 1
+
     enum UserDefaultsKeys {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
         static let appHasBeenInstalled = "appHasBeenInstalled"

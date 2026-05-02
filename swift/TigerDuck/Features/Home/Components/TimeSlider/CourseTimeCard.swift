@@ -109,16 +109,21 @@ struct CourseTimeCard: View {
         }
     }
 
+    // The pinned `en_US_POSIX` locale + gregorian calendar keeps the numeric
+    // date stable across ROC/Buddhist devices. Weekday glyph still respects
+    // the user's preferred language via `Locale.current` for the EEEEE
+    // component — we override only the calendar arithmetic.
     private static let dateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
+        f.calendar = Calendar(identifier: .gregorian)
         f.dateFormat = "M/d (EEEEE)"
         return f
     }()
 
     private static let shortDateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
         f.dateFormat = "M/d"
         return f
     }()
