@@ -161,7 +161,15 @@ final class PushAPIClient: Sendable {
         // separators. Keep `-_.~` because RFC 3986 explicitly marks them
         // unreserved, and dashes are common in source-id formatting.
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
-        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+        // Encoder fallback returns "" rather than the raw value: in the
+        // (vanishingly rare) UTF-16 surrogate-pair failure mode, shipping
+        // unencoded bytes into the URL path could path-inject. An empty
+        // segment yields a clean 404 instead.
+        guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            assertionFailure("percentEncoded failed for value of length \(value.count)")
+            return ""
+        }
+        return encoded
     }
 }
 

@@ -229,8 +229,15 @@ enum SSOLoginService {
     }()
 
     private static func urlEncode(_ string: String) -> String {
-        let percentEncoded = string
-            .addingPercentEncoding(withAllowedCharacters: formAllowed) ?? string
+        // Encoder fallback returns "" rather than the raw string. The raw
+        // string here is a username/password — silently shipping cleartext
+        // bytes on the wire is far worse than a failed login attempt, so
+        // an empty form value is the safer default.
+        guard let percentEncoded = string
+            .addingPercentEncoding(withAllowedCharacters: formAllowed) else {
+            assertionFailure("urlEncode failed for value of length \(string.count)")
+            return ""
+        }
         return percentEncoded.replacingOccurrences(of: "%20", with: "+")
     }
 
