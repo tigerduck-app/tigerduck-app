@@ -45,6 +45,48 @@ actor MoodleTokenService {
     private var inFlightTokenTask: (key: ObtainKey, task: Task<String, Error>)?
     private var inFlightRefreshTask: Task<String, Error>?
 
+    // MARK: - Compiled regexes (compile once, reuse across login attempts)
+
+    private static let formBlockRegex = try! NSRegularExpression(
+        pattern: "<form[^>]*>([\\s\\S]+?)</form>",
+        options: [.caseInsensitive]
+    )
+    private static let formActionRegex = try! NSRegularExpression(
+        pattern: "<form[^>]*action=[\"']([^\"']+)[\"']",
+        options: [.caseInsensitive]
+    )
+    private static let inputNameRegex = try! NSRegularExpression(
+        pattern: "<input[^>]*name=[\"']([^\"']+)[\"']",
+        options: [.caseInsensitive]
+    )
+    private static let inputTagRegex = try! NSRegularExpression(
+        pattern: "<input[^>]*>",
+        options: [.caseInsensitive]
+    )
+    private static let inputNameAttrRegex = try! NSRegularExpression(
+        pattern: "name=[\"']([^\"']+)[\"']",
+        options: [.caseInsensitive]
+    )
+    private static let inputValueAttrRegex = try! NSRegularExpression(
+        pattern: "value=[\"']([^\"']*)[\"']",
+        options: [.caseInsensitive]
+    )
+    private static let moodleMobileTokenRegex = try! NSRegularExpression(
+        pattern: #"["']moodlemobile://token=([A-Za-z0-9+/=_-]+)["']"#,
+        options: []
+    )
+    /// One precompiled regex per error-class name, lined up with `loginErrorClassNames`.
+    private static let loginErrorClassNames: [String] = [
+        "field-validation-error",
+        "validation-summary-errors",
+        "alert-danger",
+        "text-danger",
+    ]
+    private static let loginErrorRegexes: [NSRegularExpression] = loginErrorClassNames.map { className in
+        let pattern = #"<[^>]*class=["'][^"']*\b\#(className)\b[^"']*["'][^>]*>([\s\S]*?)</[^>]+>"#
+        return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    }
+
     private init() {}
 
     // MARK: - Public API
@@ -116,9 +158,18 @@ actor MoodleTokenService {
         // Allowlist only the SSO + Moodle hosts the OIDC bridge actually
         // touches. The previous suffix match nuked any unrelated NTUST
         // subdomain cookie sharing the jar (e.g. WebView sessions).
+        //
+        // Purge any cookie whose domain (a) exactly matches a purge host
+        // OR (b) is a parent domain of one — e.g. `Domain=ntust.edu.tw`
+        // applies to `ssoam2.ntust.edu.tw`, so an exact-only check would
+        // leak a parent-scoped session cookie across logouts.
         let purgeHosts: Set<String> = ["ssoam2.ntust.edu.tw", "moodle2.ntust.edu.tw"]
         HTTPCookieStorage.shared.cookies?
-            .filter { purgeHosts.contains($0.domain) || purgeHosts.contains(String($0.domain.drop(while: { $0 == "." }))) }
+            .filter { cookie in
+                let cleaned = String(cookie.domain.drop(while: { $0 == "." }))
+                if purgeHosts.contains(cleaned) { return true }
+                return purgeHosts.contains(where: { $0.hasSuffix("." + cleaned) })
+            }
             .forEach { HTTPCookieStorage.shared.deleteCookie($0) }
         await MoodleSiteInfoService.shared.invalidateCache()
     }
@@ -440,13 +491,9 @@ actor MoodleTokenService {
     private nonisolated static func parseSSOLoginFields(from html: String) -> SSOLoginFields {
         let ns = html as NSString
         let range = NSRange(location: 0, length: ns.length)
-        let formRe = try! NSRegularExpression(
-            pattern: "<form[^>]*>([\\s\\S]+?)</form>",
-            options: [.caseInsensitive],
-        )
         var action = "/"
         var fields: [String: String] = [:]
-        formRe.enumerateMatches(in: html, options: [], range: range) { match, _, stop in
+        formBlockRegex.enumerateMatches(in: html, options: [], range: range) { match, _, stop in
             guard let m = match, m.numberOfRanges >= 2 else { return }
             let formFull = ns.substring(with: m.range)
             let formBody = ns.substring(with: m.range(at: 1))
@@ -469,12 +516,8 @@ actor MoodleTokenService {
     private nonisolated static func parseOIDCBridge(from html: String) -> OIDCBridge? {
         let ns = html as NSString
         let range = NSRange(location: 0, length: ns.length)
-        let formRe = try! NSRegularExpression(
-            pattern: "<form[^>]*>([\\s\\S]+?)</form>",
-            options: [.caseInsensitive],
-        )
         var result: OIDCBridge?
-        formRe.enumerateMatches(in: html, options: [], range: range) { match, _, stop in
+        formBlockRegex.enumerateMatches(in: html, options: [], range: range) { match, _, stop in
             guard let m = match, m.numberOfRanges >= 2 else { return }
             let formFull = ns.substring(with: m.range)
             let formBody = ns.substring(with: m.range(at: 1))
@@ -500,21 +543,9 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func extractLoginError(from html: String) -> String? {
-        let classNames = [
-            "field-validation-error",
-            "validation-summary-errors",
-            "alert-danger",
-            "text-danger",
-        ]
-        for className in classNames {
-            let pattern =
-                #"<[^>]*class=["'][^"']*\b\#(className)\b[^"']*["'][^>]*>([\s\S]*?)</[^>]+>"#
-            let re = try! NSRegularExpression(
-                pattern: pattern,
-                options: [.caseInsensitive],
-            )
-            let ns = html as NSString
-            let range = NSRange(location: 0, length: ns.length)
+        let ns = html as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        for re in loginErrorRegexes {
             guard let match = re.firstMatch(in: html, options: [], range: range),
                   match.numberOfRanges >= 2 else {
                 continue
@@ -529,12 +560,8 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func extractFormAction(from formTag: String) -> String? {
-        let re = try! NSRegularExpression(
-            pattern: "<form[^>]*action=[\"']([^\"']+)[\"']",
-            options: [.caseInsensitive],
-        )
         let ns = formTag as NSString
-        guard let m = re.firstMatch(
+        guard let m = formActionRegex.firstMatch(
             in: formTag,
             options: [],
             range: NSRange(location: 0, length: ns.length),
@@ -545,13 +572,9 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func extractInputNames(from html: String) -> Set<String> {
-        let re = try! NSRegularExpression(
-            pattern: "<input[^>]*name=[\"']([^\"']+)[\"']",
-            options: [.caseInsensitive],
-        )
         let ns = html as NSString
         var names = Set<String>()
-        re.enumerateMatches(
+        inputNameRegex.enumerateMatches(
             in: html,
             options: [],
             range: NSRange(location: 0, length: ns.length),
@@ -563,21 +586,9 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func extractInputPairs(from html: String) -> [String: String] {
-        let tagRe = try! NSRegularExpression(
-            pattern: "<input[^>]*>",
-            options: [.caseInsensitive],
-        )
-        let nameRe = try! NSRegularExpression(
-            pattern: "name=[\"']([^\"']+)[\"']",
-            options: [.caseInsensitive],
-        )
-        let valueRe = try! NSRegularExpression(
-            pattern: "value=[\"']([^\"']*)[\"']",
-            options: [.caseInsensitive],
-        )
         let ns = html as NSString
         var out: [String: String] = [:]
-        tagRe.enumerateMatches(
+        inputTagRegex.enumerateMatches(
             in: html,
             options: [],
             range: NSRange(location: 0, length: ns.length),
@@ -586,13 +597,13 @@ actor MoodleTokenService {
             let tag = ns.substring(with: m.range)
             let tagNs = tag as NSString
             let tagRange = NSRange(location: 0, length: tagNs.length)
-            guard let nm = nameRe.firstMatch(in: tag, options: [], range: tagRange),
+            guard let nm = inputNameAttrRegex.firstMatch(in: tag, options: [], range: tagRange),
                   nm.numberOfRanges >= 2 else {
                 return
             }
             let name = tagNs.substring(with: nm.range(at: 1))
             let value: String
-            if let vm = valueRe.firstMatch(in: tag, options: [], range: tagRange),
+            if let vm = inputValueAttrRegex.firstMatch(in: tag, options: [], range: tagRange),
                vm.numberOfRanges >= 2 {
                 value = tagNs.substring(with: vm.range(at: 1))
             } else {
@@ -608,12 +619,8 @@ actor MoodleTokenService {
         // so a poisoned response cannot embed an arbitrary chosen token by
         // dropping the literal string into page text. Strict base64 alphabet
         // only — `decodeTokenTriple` then re-validates the decoded shape.
-        let re = try! NSRegularExpression(
-            pattern: #"["']moodlemobile://token=([A-Za-z0-9+/=_-]+)["']"#,
-            options: [],
-        )
         let ns = html as NSString
-        guard let m = re.firstMatch(
+        guard let m = moodleMobileTokenRegex.firstMatch(
             in: html,
             options: [],
             range: NSRange(location: 0, length: ns.length),
