@@ -103,9 +103,11 @@ final class SDCourse: Identifiable {
         if let data = try? JSONEncoder().encode(map),
            let str = String(data: data, encoding: .utf8) {
             classroomMapJSON = str
-        } else {
-            classroomMapJSON = "{}"
         }
+        // On encode failure, keep the previously-persisted JSON rather
+        // than overwriting with "{}" — same rationale as `setSchedule`:
+        // SwiftData re-hydrating from "{}" would silently drop every
+        // per-period classroom entry on next launch.
         _cachedClassroomMap = map
     }
 
@@ -119,9 +121,13 @@ final class SDCourse: Identifiable {
         if let data = try? JSONEncoder().encode(stringKeyDict),
            let str = String(data: data, encoding: .utf8) {
             scheduleJSON = str
-        } else {
-            scheduleJSON = "{}"
         }
+        // On encode failure, deliberately keep the previously-persisted
+        // `scheduleJSON` rather than overwriting with "{}". A stale-but-
+        // non-empty schedule on next launch is far better than every
+        // period silently disappearing because SwiftData re-hydrated
+        // from "{}". The in-memory cache still reflects this call so
+        // the current session sees the new value.
         _cachedSchedule = schedule
     }
 
