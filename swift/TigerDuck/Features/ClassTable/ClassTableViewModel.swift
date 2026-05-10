@@ -197,6 +197,17 @@ final class ClassTableViewModel {
         refreshCourseColors()
     }
 
+    /// Call whenever `activePeriods` can change independently of a full
+    /// `rebuildLookup` (e.g. a future per-user period-visibility toggle, or
+    /// an in-place `course.setSchedule(_:)` that doesn't reassign `courses`).
+    /// The cache key is `(weekday, periodIndex)` where `periodIndex` is an
+    /// index into `activePeriods`, so any shift in `activePeriods.count`
+    /// makes bounds-guarded `.empty` entries stale and would hide real
+    /// courses until the next rebuild.
+    func invalidateCellRoleCache() {
+        cellRoleCache.removeAll(keepingCapacity: true)
+    }
+
     /// Memoised `cellRole(weekday:periodIndex:)` results. Invalidated whenever
     /// `courseLookup` is rebuilt (course list change). The grid view calls
     /// `cellRole` once per (weekday, periodIdx) per render, and the lookup
