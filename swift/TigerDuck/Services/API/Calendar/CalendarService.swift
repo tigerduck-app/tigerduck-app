@@ -108,21 +108,31 @@ enum CalendarService {
                 inEvent = true
                 summary = nil; dtStart = nil; dtEnd = nil; uid = nil
             } else if trimmed == "END:VEVENT" {
-                if let title = summary, let start = dtStart {
-                    let eventId = uid ?? "school-\(title)-\(start.timeIntervalSince1970)"
+                if let title = summary.map(Self.unescapeICSText), let start = dtStart {
+                    let eventId = (uid.map(Self.unescapeICSText))
+                        ?? "school-\(title)-\(start.timeIntervalSince1970)"
 
-                    if let end = dtEnd, !Calendar.current.isDate(start, inSameDayAs: end.addingTimeInterval(-1)) {
-                        // Multi-day event: create one event per day
+                    if let end = dtEnd, !Self.icsCalendar.isDate(start, inSameDayAs: end.addingTimeInterval(-1)) {
+                        // Multi-day event: create one event per day.
+                        // Pin to gregorian + Asia/Taipei so devices set
+                        // to ROC / Buddhist calendars don't shift day
+                        // boundaries against ICS source data.
                         var current = start
                         let lastDay = end.addingTimeInterval(-1) // ICS DTEND is exclusive
                         while current <= lastDay {
                             events.append(SDCalendarEvent(
-                                eventId: "\(eventId)-\(current.startOfDay.timeIntervalSince1970)",
+                                eventId: "\(eventId)-\(Self.icsCalendar.startOfDay(for: current).timeIntervalSince1970)",
                                 title: title,
                                 date: current,
                                 source: .school
                             ))
-                            current = Calendar.current.date(byAdding: .day, value: 1, to: current)!
+                            guard let next = Self.icsCalendar.date(byAdding: .day, value: 1, to: current) else {
+                                // Calendar arithmetic should never fail for
+                                // a +1 day step, but if it does, abort the
+                                // expansion rather than crashing the parser.
+                                break
+                            }
+                            current = next
                         }
                     } else {
                         events.append(SDCalendarEvent(
@@ -171,12 +181,69 @@ enum CalendarService {
         return f
     }()
 
+    /// Gregorian + Asia/Taipei calendar for ICS day arithmetic.
+    /// `Calendar.current` follows the device locale and would shift
+    /// day boundaries on ROC / Buddhist-calendar devices against the
+    /// gregorian source data the school publishes.
+    private static let icsCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+        return cal
+    }()
+
+    /// Unescape ICS TEXT-typed values per RFC 5545:
+    /// `\,` → `,`, `\;` → `;`, `\n` / `\N` → newline, `\\` → `\`.
+    /// Without this, raw escape sequences leak into the UI as
+    /// `Final Exam\, MA1`.
+    nonisolated static func unescapeICSText(_ raw: String) -> String {
+        var out = ""
+        out.reserveCapacity(raw.count)
+        var iter = raw.makeIterator()
+        while let ch = iter.next() {
+            if ch == "\\" {
+                guard let next = iter.next() else {
+                    out.append(ch)
+                    break
+                }
+                switch next {
+                case "n", "N": out.append("\n")
+                case ",": out.append(",")
+                case ";": out.append(";")
+                case "\\": out.append("\\")
+                default:
+                    out.append("\\")
+                    out.append(next)
+                }
+            } else {
+                out.append(ch)
+            }
+        }
+        return out
+    }
+
     /// Parse ICS date formats: DTSTART;VALUE=DATE:20250901 or DTSTART:20250901T080000Z
+    /// Honors `TZID=…` parameters when present and the identifier is
+    /// recognised by the system; falls back to Asia/Taipei (the school
+    /// calendar's authoring zone) otherwise.
     private static func parseICSDate(_ line: String) -> Date? {
         guard let colonIndex = line.lastIndex(of: ":") else { return nil }
         let value = String(line[line.index(after: colonIndex)...])
+        let prefix = line[..<colonIndex]
+        var localFormatter = icsDateTime
+        if let tzidRange = prefix.range(of: "TZID=") {
+            let tzidValue = prefix[tzidRange.upperBound...]
+                .split(separator: ";")
+                .first
+                .map(String.init) ?? ""
+            if !tzidValue.isEmpty, let tz = TimeZone(identifier: tzidValue) {
+                let f = DateFormatter()
+                f.dateFormat = "yyyyMMdd'T'HHmmss"
+                f.timeZone = tz
+                localFormatter = f
+            }
+        }
         return icsDateTimeZ.date(from: value)
-            ?? icsDateTime.date(from: value)
+            ?? localFormatter.date(from: value)
             ?? icsDateOnly.date(from: value)
     }
 }

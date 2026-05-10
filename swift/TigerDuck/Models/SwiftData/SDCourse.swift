@@ -103,10 +103,32 @@ final class SDCourse: Identifiable {
         if let data = try? JSONEncoder().encode(map),
            let str = String(data: data, encoding: .utf8) {
             classroomMapJSON = str
-        } else {
-            classroomMapJSON = "{}"
         }
+        // On encode failure, keep the previously-persisted JSON rather
+        // than overwriting with "{}" — same rationale as `setSchedule`:
+        // SwiftData re-hydrating from "{}" would silently drop every
+        // per-period classroom entry on next launch.
         _cachedClassroomMap = map
+    }
+
+    /// Update the per-weekday schedule map and its JSON backing in one shot.
+    /// Use this instead of assigning ``scheduleJSON`` directly: SwiftData's
+    /// ``@Model`` macro rewrites stored-property accessors, so the
+    /// ``didSet`` that should reset ``_cachedSchedule`` does not fire
+    /// reliably for in-memory mutations and stale reads leak through.
+    func setSchedule(_ schedule: [Int: [String]]) {
+        let stringKeyDict = Dictionary(uniqueKeysWithValues: schedule.map { ("\($0.key)", $0.value) })
+        if let data = try? JSONEncoder().encode(stringKeyDict),
+           let str = String(data: data, encoding: .utf8) {
+            scheduleJSON = str
+        }
+        // On encode failure, deliberately keep the previously-persisted
+        // `scheduleJSON` rather than overwriting with "{}". A stale-but-
+        // non-empty schedule on next launch is far better than every
+        // period silently disappearing because SwiftData re-hydrated
+        // from "{}". The in-memory cache still reflects this call so
+        // the current session sees the new value.
+        _cachedSchedule = schedule
     }
 
     /// Returns the classroom(s) for a specific weekday, deduped.
@@ -221,5 +243,12 @@ extension SDCourse {
             dates.append(key)
         }
         skippedDates = dates
+        // Wake the LiveActivity refresh path so the lock-screen
+        // activity reflects the toggle without waiting for the next
+        // background sync tick. The resolver re-evaluates skip state
+        // only on a new resolve; without this nudge a user marking
+        // the in-progress class as skipped would still see it on the
+        // lock screen until something else triggers a refresh.
+        NotificationCenter.default.post(name: AppConstants.courseSkipStateDidChange, object: nil)
     }
 }

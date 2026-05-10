@@ -10,7 +10,9 @@ struct LibraryLoginRequest: Encodable {
 
 struct LibraryLoginResponse: Decodable {
     let data: LibraryLoginData?
-    let error: LibraryAPIError
+    // Optional: success responses may omit `error`. Decoding it as
+    // non-optional made every successful response fail decoding.
+    let error: LibraryAPIError?
 }
 
 struct LibraryLoginData: Decodable {
@@ -28,7 +30,9 @@ struct LibraryQRRequest: Encodable {
 
 struct LibraryQRResponse: Decodable {
     let data: String?
-    let error: LibraryAPIError
+    // Optional: success responses may omit `error`. Decoding it as
+    // non-optional made every successful response fail decoding.
+    let error: LibraryAPIError?
 }
 
 // MARK: - Shared Error

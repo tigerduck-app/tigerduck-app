@@ -78,11 +78,15 @@ final class SDAssignment {
         }
 
         let redirectTarget = targetURL.path + (targetURL.query.map { "?\($0)" } ?? "")
-        let allowedCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/?:")
-        guard let encodedRedirect = redirectTarget.addingPercentEncoding(withAllowedCharacters: allowedCharacters) else {
-            return targetURL
-        }
-
-        return URL(string: "moodlemobile://https://moodle2.ntust.edu.tw?redirect=\(encodedRedirect)")
+        // Use URLComponents so multi-param redirects (e.g. `id=…&forceview=…`)
+        // are encoded as `redirect=…` correctly without us hand-rolling an
+        // allowed-character set that risks dropping `=` and `&`.
+        let host = AppConstants.moodleBaseURL.host ?? "moodle2.ntust.edu.tw"
+        var components = URLComponents()
+        components.scheme = "moodlemobile"
+        components.host = "https"
+        components.path = "//\(host)"
+        components.queryItems = [URLQueryItem(name: "redirect", value: redirectTarget)]
+        return components.url
     }
 }

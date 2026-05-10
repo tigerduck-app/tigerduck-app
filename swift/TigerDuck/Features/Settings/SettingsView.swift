@@ -269,6 +269,13 @@ struct SettingsView: View {
                 }
             }
         }
+        .onDisappear {
+            // Cancel any pending warning-overlay delay so it can't fire
+            // (and the countdown loop in LibraryWarningOverlay can't try to
+            // mutate state on a torn-down view) after Settings closes.
+            libraryWarningTask?.cancel()
+            libraryWarningTask = nil
+        }
     }
 
     private var libraryToggleBinding: Binding<Bool> {

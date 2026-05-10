@@ -6,12 +6,11 @@ extension View {
             if show {
                 Image(systemName: "book.fill")
                     .font(.system(size: iconSize))
-                    .foregroundStyle(Color.gray.opacity(0.5))
+                    .foregroundStyle(Color.textSecondary.opacity(0.5))
                     .padding([.bottom, .trailing], padding)
                     .accessibilityHidden(true)
             }
         }
     }
-
 }
 

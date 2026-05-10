@@ -60,6 +60,9 @@ final class PushAPIClient: Sendable {
         _ = try await execute(request)
     }
 
+    /// Health check. Intentionally unauthenticated — the push server's
+    /// `/ping` is public so connectivity / TLS / DNS can be diagnosed
+    /// without needing the shared secret.
     func ping() async throws {
         let url = baseURL.appendingPathComponent("ping")
         _ = try await execute(URLRequest(url: url))
@@ -152,12 +155,21 @@ final class PushAPIClient: Sendable {
     }()
 
     private static func percentEncoded(_ value: String) -> String {
-        // `urlPathAllowed` includes `/`, so a source_id like "EE/CS-101"
-        // would be spliced into the URL as an extra path segment and the
-        // server would 404. Remove it so the value stays one segment.
-        var allowed = CharacterSet.urlPathAllowed
-        allowed.remove("/")
-        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+        // Strict allowlist: alphanumerics + a few unreserved punctuation.
+        // `urlPathAllowed` keeps `; , : @ & = + $`, several of which break
+        // parsers that treat `;` as matrix params or `&` as query
+        // separators. Keep `-_.~` because RFC 3986 explicitly marks them
+        // unreserved, and dashes are common in source-id formatting.
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
+        // Encoder fallback returns "" rather than the raw value: in the
+        // (vanishingly rare) UTF-16 surrogate-pair failure mode, shipping
+        // unencoded bytes into the URL path could path-inject. An empty
+        // segment yields a clean 404 instead.
+        guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            assertionFailure("percentEncoded failed for value of length \(value.count)")
+            return ""
+        }
+        return encoded
     }
 }
 

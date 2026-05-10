@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum CourseServiceError: LocalizedError {
     case notAuthenticated
@@ -17,15 +18,16 @@ enum CourseServiceError: LocalizedError {
 }
 
 enum CourseSelectionService {
-    private static let courseSelectionRoot = URL(string: "https://courseselection.ntust.edu.tw/")!
-    private static let courseListURL = URL(string: "https://courseselection.ntust.edu.tw/ChooseList/D01/D01")!
+    private static let courseSelectionRoot = URL.knownGood("https://courseselection.ntust.edu.tw/")
+    private static let courseListURL = URL.knownGood("https://courseselection.ntust.edu.tw/ChooseList/D01/D01")
     private static let courseNoRegex = /<tr>\s*<td>\s*(3?[A-Z][A-Z][A-Z0-9]{6,7})\s*<\/td>/
 
     static func fetchEnrolledCourseNos(
         session: URLSession,
         studentId: String,
         password: String,
-        forceRefresh: Bool = false
+        forceRefresh: Bool = false,
+        persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> [String] {
         let semester = currentSemesterCode()
         if !forceRefresh, let cached = loadEnrolledCoursesCache(studentId: studentId, semester: semester) {
@@ -47,9 +49,13 @@ enum CourseSelectionService {
             throw CourseServiceError.noCourseData
         }
 
-        if let httpResp = response as? HTTPURLResponse,
-           let finalURL = httpResp.url,
-           finalURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+        // Trigger silent re-auth on either an ssoam2 redirect *or* an
+        // inline-rendered SSO login body returned with HTTP 200 from
+        // the course-selection host. URL-only detection misses the
+        // inline case and the regex falls through to "no courses".
+        let landedOnSSO = (response as? HTTPURLResponse)?.url?.host == "ssoam2.ntust.edu.tw"
+        let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
+        if landedOnSSO || bodyIsSSO {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
@@ -62,18 +68,24 @@ enum CourseSelectionService {
             guard let retryHTML = String(data: retryData, encoding: .utf8) else {
                 throw CourseServiceError.noCourseData
             }
-            if let retryResp = retryResponse as? HTTPURLResponse,
-               let retryURL = retryResp.url,
-               retryURL.host?.contains("ssoam2.ntust.edu.tw") == true {
+            let retryHost = (retryResponse as? HTTPURLResponse)?.url?.host
+            if retryHost == "ssoam2.ntust.edu.tw" || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw CourseServiceError.redirectedToSSO
             }
             let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }
-            saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
+            // Guarded write: see persistGuard rationale on
+            // NTUSTScoreService.fetchScoreReport — same in-flight
+            // logout / account-swap protection.
+            if persistGuard?() ?? true {
+                saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: retryCourseNos)
+            }
             return retryCourseNos
         }
 
         let courseNos = html.matches(of: courseNoRegex).map { String($0.1) }
-        saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
+        if persistGuard?() ?? true {
+            saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
+        }
         return courseNos
     }
 
@@ -81,34 +93,44 @@ enum CourseSelectionService {
 
     private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"
 
+    // Serializes read-modify-write of the per-(studentId,semester) cache dict
+    // so concurrent fetches/invalidations cannot lose updates.
+    private static let cacheLock = OSAllocatedUnfairLock()
+
     private struct CachedCourseNos: Codable {
         let courseNos: [String]
         let cachedAt: TimeInterval
     }
 
     static func invalidateEnrolledCoursesCache(for studentId: String? = nil) {
-        let defaults = UserDefaults.standard
-        guard let studentId else {
-            defaults.removeObject(forKey: enrolledCoursesCacheKey)
-            return
+        cacheLock.withLock {
+            let defaults = UserDefaults.standard
+            guard let studentId else {
+                defaults.removeObject(forKey: enrolledCoursesCacheKey)
+                return
+            }
+            var dict = readCacheDict()
+            dict = dict.filter { !$0.key.hasPrefix("\(studentId):") }
+            writeCacheDict(dict)
         }
-        var dict = readCacheDict()
-        dict = dict.filter { !$0.key.hasPrefix("\(studentId):") }
-        writeCacheDict(dict)
     }
 
     private static func loadEnrolledCoursesCache(studentId: String, semester: String) -> [String]? {
-        let dict = readCacheDict()
-        guard let entry = dict["\(studentId):\(semester)"] else { return nil }
-        if Date().timeIntervalSince1970 - entry.cachedAt > enrolledCoursesCacheTTL { return nil }
-        return entry.courseNos
+        cacheLock.withLock {
+            let dict = readCacheDict()
+            guard let entry = dict["\(studentId):\(semester)"] else { return nil }
+            if Date().timeIntervalSince1970 - entry.cachedAt > enrolledCoursesCacheTTL { return nil }
+            return entry.courseNos
+        }
     }
 
     private static func saveEnrolledCoursesCache(studentId: String, semester: String, courseNos: [String]) {
         guard !courseNos.isEmpty else { return }
-        var dict = readCacheDict()
-        dict["\(studentId):\(semester)"] = CachedCourseNos(courseNos: courseNos, cachedAt: Date().timeIntervalSince1970)
-        writeCacheDict(dict)
+        cacheLock.withLock {
+            var dict = readCacheDict()
+            dict["\(studentId):\(semester)"] = CachedCourseNos(courseNos: courseNos, cachedAt: Date().timeIntervalSince1970)
+            writeCacheDict(dict)
+        }
     }
 
     private static func readCacheDict() -> [String: CachedCourseNos] {
@@ -130,8 +152,16 @@ enum CourseSelectionService {
         }
     }
 
+    /// Approximation of NTUST's academic-calendar boundaries based on the
+    /// gregorian month. Note this is a heuristic — actual term cutovers
+    /// vary year-to-year, especially in late August (fall registration
+    /// hasn't opened yet) and early February (spring courses not posted).
+    /// During those windows callers may briefly see the previous term's
+    /// data; if precision is required, prefer a server-driven term code.
     nonisolated static func currentSemesterCode() -> String {
-        let cal = Calendar.current
+        // Pin to gregorian — Calendar.current returns ROC/Buddhist-era
+        // years on a TW device and would shift the rocYear math.
+        let cal = Calendar(identifier: .gregorian)
         let now = Date()
         let year = cal.component(.year, from: now)
         let month = cal.component(.month, from: now)

@@ -144,6 +144,7 @@ struct ClassTableView: View {
                     Image(systemName: "plus")
                         .foregroundStyle(Color.textSecondary)
                 }
+                .accessibilityLabel(Text("add_course_title"))
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)

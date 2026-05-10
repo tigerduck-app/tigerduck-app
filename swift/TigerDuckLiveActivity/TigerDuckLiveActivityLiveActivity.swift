@@ -266,8 +266,11 @@ private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
 /// Local helper (named `hexColor` not `accentColor` to avoid clashing with
 /// the deprecated `View.accentColor(_:)` modifier during overload resolution).
 private func hexColor(_ hex: Int) -> Color {
-    let r = Double((hex >> 16) & 0xFF) / 255.0
-    let g = Double((hex >> 8) & 0xFF) / 255.0
-    let b = Double(hex & 0xFF) / 255.0
+    // Clamp to a 24-bit RGB range so a corrupted snapshot (negative Int from
+    // a buggy decoder, or a future >0xFFFFFF accent) can't drift channels.
+    let masked = UInt32(bitPattern: Int32(truncatingIfNeeded: hex)) & 0xFFFFFF
+    let r = Double((masked >> 16) & 0xFF) / 255.0
+    let g = Double((masked >> 8) & 0xFF) / 255.0
+    let b = Double(masked & 0xFF) / 255.0
     return Color(red: r, green: g, blue: b)
 }

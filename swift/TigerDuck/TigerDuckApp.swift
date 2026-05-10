@@ -41,7 +41,19 @@ struct TigerDuckApp: App {
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
             } catch {
                 AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
-                fatalError("Could not create ModelContainer after reset: \(error)")
+                // Disk full / sandbox path locked / file-coordination
+                // failure all hardfault here, which would brick the app
+                // on launch with no recovery path. Fall back to an
+                // in-memory container so the app still launches; the
+                // user sees an empty state for one session, the next
+                // launch retries an on-disk container.
+                do {
+                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                    return try ModelContainer(for: schema, configurations: [memoryConfig])
+                } catch {
+                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
+                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
+                }
             }
         }
     }()

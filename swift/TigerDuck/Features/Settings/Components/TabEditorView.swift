@@ -13,6 +13,10 @@ struct TabEditorView: View {
 
     private var availableFeatures: [AppFeature] {
         AppFeature.pinnableFeatures
+            // .more is the navigation root; never expose it as a tab the
+            // user can pin / re-add or navigation breaks. Defensive even
+            // when pinnableFeatures already excludes it.
+            .filter { $0 != .more }
             .filter { !tabs.contains($0) }
             .filter { appState.libraryFeatureEnabled || !AppFeature.libraryRelatedFeatures.contains($0) }
     }
@@ -189,10 +193,12 @@ struct TabEditorView: View {
             if frame.contains(point),
                let feature = AppFeature(rawValue: rawValue),
                let toIndex = tabs.firstIndex(of: feature) {
-                withAnimation(.smoothSpring) {
-                    tabs.move(fromOffsets: IndexSet(integer: fromIndex),
-                              toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-                }
+                // Drag onChanged fires on every gesture tick; animating
+                // here stacks animations and shimmers. Move without
+                // animation during drag — the gesture itself provides
+                // visual continuity.
+                tabs.move(fromOffsets: IndexSet(integer: fromIndex),
+                          toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
                 return
             }
         }

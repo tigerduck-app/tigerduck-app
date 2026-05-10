@@ -24,6 +24,21 @@ final class NTUSTSessionManager {
 
     private(set) var session: URLSession
 
+    /// NTUST-only cookie jar. Previously the session shared
+    /// `HTTPCookieStorage.shared`, so NTUST SSO cookies leaked into any
+    /// other URLSession on the same process (Library, future WKWebViews,
+    /// third-party SDKs) that didn't opt out of shared storage. Scope
+    /// every NTUST cookie to this private store; logout / explicit
+    /// purges only need to touch this jar.
+    ///
+    /// `sharedCookieStorage(forGroupContainerIdentifier:)` returns a
+    /// per-identifier persistent store — distinct from `.shared` and
+    /// not visible to it. The identifier is namespaced to this bundle
+    /// and does NOT need to match any App Group entitlement; it's just
+    /// a key for the storage namespace.
+    let cookieStorage: HTTPCookieStorage = HTTPCookieStorage
+        .sharedCookieStorage(forGroupContainerIdentifier: "org.ntust.app.TigerDuck.ntust-session")
+
     private static let cookieTTL: TimeInterval = 3600 // 1 hour
 
     /// Legacy timestamp-based check — retained for synchronous UI
@@ -54,7 +69,7 @@ final class NTUSTSessionManager {
     /// in one shot. Use this from any async auth path instead of
     /// ``cookiesValid``.
     func probeCookiesValid() async -> Bool {
-        var req = URLRequest(url: URL(string: "https://ssoam2.ntust.edu.tw/")!)
+        var req = URLRequest(url: URL.knownGood("https://ssoam2.ntust.edu.tw/"))
         req.httpMethod = "GET"
         req.timeoutInterval = 8
         req.cachePolicy = .reloadIgnoringLocalCacheData
@@ -69,7 +84,16 @@ final class NTUSTSessionManager {
                   let location = http.value(forHTTPHeaderField: "Location") else {
                 return false
             }
-            return location.contains("/Home/Index")
+            let valid = location.contains("/Home/Index")
+            // Slide the local TTL forward on a confirmed-good probe so
+            // synchronous UI consumers (`cookiesValid`) don't show
+            // "not authenticated" merely because the user has been idle
+            // longer than the static 1h window while the server still
+            // honors the cookie jar.
+            if valid {
+                Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
+            }
+            return valid
         } catch {
             return false
         }
@@ -77,10 +101,21 @@ final class NTUSTSessionManager {
 
     private init() {
         let config = URLSessionConfiguration.default
-        config.httpCookieStorage = HTTPCookieStorage.shared
+        // TODO(security §2.1): pin TLS for ssoam2/courseselection/
+        // stuinfosys/moodle2.ntust.edu.tw via URLSessionDelegate +
+        // SPKI hashes before relying on this session over hostile
+        // networks (campus Wi-Fi w/ MDM-installed root CA). Deferred
+        // because pin material must be provisioned and rotated with
+        // releases; brick-on-rotation risk if shipped naively.
+        config.httpCookieStorage = cookieStorage
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
         config.timeoutIntervalForRequest = 15
+        // Default `timeoutIntervalForResource` is 7 days — far too long
+        // for an interactive SSO login. Cap the entire request lifetime
+        // at 60 s so a stalled or partially-responsive server cannot
+        // wedge a Task forever.
+        config.timeoutIntervalForResource = 60
         config.httpAdditionalHeaders = [
             "User-Agent": Self.browserUserAgent,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -94,7 +129,10 @@ final class NTUSTSessionManager {
     }
 
     func invalidateSession() {
-        HTTPCookieStorage.shared.cookies?.forEach { HTTPCookieStorage.shared.deleteCookie($0) }
+        // Cookies live in the NTUST-only jar now; clear it wholesale —
+        // no host-filter tip-toeing required, and Moodle / Library /
+        // WebView state in `HTTPCookieStorage.shared` is untouched.
+        cookieStorage.cookies?.forEach { cookieStorage.deleteCookie($0) }
         Defaults[.ssoLoginTimestamp] = nil
     }
 }

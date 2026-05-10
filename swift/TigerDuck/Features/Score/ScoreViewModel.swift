@@ -85,7 +85,13 @@ final class ScoreViewModel {
     /// live progress lives in the top-right ``NetworkStatusOverlay`` instead.
     func triggerRefresh(authService: AuthService, force: Bool = true) {
         guard !isRefreshing else { return }
-        Task { [weak self] in
+        // `Task { ... }` without an explicit actor inherits the
+        // *enclosing* isolation; `refresh` mutates `manager.loadingState`
+        // and `@Observable` properties that SwiftUI reads on main, so
+        // pin the Task to MainActor explicitly (matches HomeViewModel /
+        // ClassTableViewModel). Without this, resumption after the
+        // network await may land on a background executor.
+        Task { @MainActor [weak self] in
             await self?.refresh(authService: authService, force: force)
         }
     }
@@ -103,12 +109,21 @@ final class ScoreViewModel {
         let manager = NTUSTSessionManager.shared
         manager.loadingState = .loading
 
+        // Capture the auth generation that owns this fetch. If the user
+        // logs out (or swaps accounts) before the network hop returns,
+        // the persist guard below will reject the cache write so the
+        // next user does not inherit the previous user's score report.
+        let auth = authService
+        let capturedGeneration = auth.loginGeneration
         do {
             let fresh = try await NTUSTScoreService.fetchScoreReport(
                 session: manager.session,
                 studentId: studentId,
                 password: password,
-                forceRefresh: force
+                forceRefresh: force,
+                persistGuard: { @Sendable [weak auth] in
+                    auth?.loginGeneration == capturedGeneration
+                }
             )
             report = fresh
             cachedAt = Date()
@@ -140,7 +155,14 @@ final class ScoreViewModel {
     /// Re-running is idempotent when the user has already flipped a term.
     private func applyDefaultCollapseRule() {
         let terms = Set(report.courses.map(\.term))
-        guard let latest = terms.max() else { return }
+        // Compare numerically — string `.max()` is fine for fixed-width
+        // term codes (e.g. "1142") but breaks on a stray malformed term
+        // like "92" vs "1141". Falling back to lexical when ints fail.
+        let latest = terms.max { lhs, rhs in
+            if let l = Int(lhs), let r = Int(rhs) { return l < r }
+            return lhs < rhs
+        }
+        guard let latest else { return }
         // Only seed defaults once per fresh appearance; if the user has
         // already interacted we preserve their choices.
         guard collapsedTerms.isEmpty else {

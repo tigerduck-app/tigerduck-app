@@ -31,9 +31,15 @@ struct ScoreCourseRow: View {
                             .foregroundStyle(Color.textSecondary)
                         Text("·")
                             .foregroundStyle(Color.textSecondary)
-                        Text(String(format: String(localized: "score_course_credits"), course.credits ?? 0))
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(Color.textSecondary)
+                        if let credits = course.credits {
+                            Text(String(format: String(localized: "score_course_credits"), credits))
+                                .font(TigerDuckTheme.Typography.caption)
+                                .foregroundStyle(Color.textSecondary)
+                        } else {
+                            Text("—")
+                                .font(TigerDuckTheme.Typography.caption)
+                                .foregroundStyle(Color.textSecondary)
+                        }
                         CreditTypeBadge(creditType: course.creditType)
                         if let dim = course.geDimension {
                             Text(dim)

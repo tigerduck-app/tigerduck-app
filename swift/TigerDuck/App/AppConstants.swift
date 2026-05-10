@@ -1,12 +1,35 @@
 import Foundation
 
+extension URL {
+    /// Force-construct a URL from a static string literal that the
+    /// caller treats as compile-time-known-good. The `URL(string:)!`
+    /// pattern crashes on first access for an opaque "fatal error: nil"
+    /// — almost always a typo, leading whitespace, or accidental
+    /// Unicode in a future edit. `knownGood` traps with the offending
+    /// string in the diagnostic so the regression is obvious in crash
+    /// reports. Also throws at the type-load site so static service
+    /// URLs cannot ship with a malformed literal.
+    static func knownGood(_ string: StaticString) -> URL {
+        let raw = "\(string)"
+        guard let url = URL(string: raw) else {
+            preconditionFailure("URL.knownGood received a malformed literal: \(raw)")
+        }
+        return url
+    }
+}
+
 nonisolated enum AppConstants {
     static let appName = "TigerDuck"
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
-    static let moodleBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
+    /// Posted when a course's per-date skip state mutates. Drives the
+    /// Live Activity refresh so a user marking the current class as
+    /// skipped sees the lock-screen activity update without waiting
+    /// for the next sync tick.
+    static let courseSkipStateDidChange = Notification.Name("TigerDuck.courseSkipStateDidChange")
+    static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
     nonisolated enum KeychainKeys {
         static let studentId = "ntust_student_id"
@@ -25,7 +48,17 @@ nonisolated enum AppConstants {
     /// the nginx-proxy-manager + Cloudflare-fronted Mac mini. Override via
     /// ``UserDefaultsKeys/pushServerURLOverride`` during development to talk
     /// to a LAN instance.
-    static let defaultPushServerURL = URL(string: "https://api.tigerduck.app/v2")!
+    static let defaultPushServerURL = URL.knownGood("https://api.tigerduck.app/v2")
+
+    /// How many semesters back the relabel sweep walks when display-toggle
+    /// settings change. NTUST keeps ~2 active semesters in flight; 4 covers
+    /// the full visible window (current + 3 prior) without scanning archives.
+    static let cachedSemesterRelabelDepth = 4
+
+    /// Slack added to a scenario boundary deadline before re-resolving the
+    /// Live Activity, so the timer fires after the boundary instant rather
+    /// than racing against it. Keeps `time >= slot.start` checks stable.
+    static let scenarioBoundarySlackSeconds: TimeInterval = 1
 
     enum UserDefaultsKeys {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"

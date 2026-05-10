@@ -26,7 +26,8 @@ struct LibraryView: View {
                 } else {
                     loginPrompt
                 }
-                libraryFeaturesSection
+                /// Temporary comments until feature is implemented.
+                //  libraryFeaturesSection
             }
             .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }

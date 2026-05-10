@@ -1,6 +1,13 @@
 import SwiftUI
 import EventKit
 
+// `EKEventStore.requestFullAccessToEvents` invokes its callback off
+// the main actor; the previous `Task { ... }` (no @MainActor) then
+// mutated `calendarAccessGranted`, `events`, and `eventsByDay` from a
+// background context while SwiftUI was reading them — a real data
+// race on @Observable storage. Annotating the whole VM @MainActor
+// confines mutations correctly without sprinkling MainActor.run.
+@MainActor
 @Observable
 final class CalendarViewModel {
     var events: [SDCalendarEvent] = []
@@ -14,7 +21,10 @@ final class CalendarViewModel {
     private let eventStore = EKEventStore()
     var calendarAccessGranted = false
     private var hasLoaded = false
-    private var dataObserver: Any?
+    // `nonisolated` so `deinit` (which is nonisolated under Swift 6 on
+    // a @MainActor class) can read this to remove the
+    // NotificationCenter observer at end-of-life.
+    private nonisolated(unsafe) var dataObserver: Any? = nil
 
     /// Pre-grouped events by day for O(1) lookups in the month grid.
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] = [:]
@@ -57,13 +67,18 @@ final class CalendarViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            let fresh = DataCache.shared.loadCalendarEvents()
-            var updated = fresh
-            updated.removeAll { $0.source == .system }
-            // Re-add system events that were already loaded from EventKit
-            updated.append(contentsOf: self.events.filter { $0.source == .system })
-            self.setEvents(updated)
+            // The notification is delivered on the main queue, but the
+            // closure crosses into the @MainActor class — hop explicitly
+            // so accessing `events` / calling `setEvents` is sound under
+            // Swift 6 strict concurrency.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let fresh = DataCache.shared.loadCalendarEvents()
+                var updated = fresh
+                updated.removeAll { $0.source == .system }
+                updated.append(contentsOf: self.events.filter { $0.source == .system })
+                self.setEvents(updated)
+            }
         }
     }
 
@@ -152,8 +167,9 @@ final class CalendarViewModel {
             )
         }
 
-        let existingKeys = Set(events.filter { $0.source != .system }.map { "\($0.title)-\($0.date.startOfDay)" })
-        let newEvents = systemEvents.filter { !existingKeys.contains("\($0.title)-\($0.date.startOfDay)") }
+        struct DedupKey: Hashable { let title: String; let day: Date }
+        let existingKeys = Set(events.filter { $0.source != .system }.map { DedupKey(title: $0.title, day: $0.date.startOfDay) })
+        let newEvents = systemEvents.filter { !existingKeys.contains(DedupKey(title: $0.title, day: $0.date.startOfDay)) }
         var updated = events
         updated.removeAll { $0.source == .system }
         updated.append(contentsOf: newEvents)

@@ -68,8 +68,6 @@ struct TimeSliderSection: View {
     private var sliderContent: some View {
         let policy = appState.visualStylePolicy
         return TimelineView(.periodic(from: .now, by: 1)) { context in
-            let _ = viewModel.tick(context.date)
-
             VStack(spacing: 12) {
                 // Course card
                 CourseTimeCard(
@@ -87,6 +85,15 @@ struct TimeSliderSection: View {
                         policy: policy
                     )
                 }
+            }
+            // Drive `tick` from `.onChange(of: context.date)` rather
+            // than directly inside the body. Mutating `selectedTime` /
+            // rebuilding the timeline as a side effect of view-body
+            // evaluation triggers SwiftUI's "Modifying state during
+            // view update" warning on recent SDKs and is a documented
+            // anti-pattern with `TimelineView`.
+            .onChange(of: context.date) { _, newDate in
+                viewModel.tick(newDate)
             }
         }
     }

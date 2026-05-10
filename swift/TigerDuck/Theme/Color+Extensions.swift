@@ -1,12 +1,15 @@
 import SwiftUI
 
 extension Color {
+    /// Initialise from a 24-bit RGB integer. Higher bits are masked off so
+    /// values >0xFFFFFF can't push channels above 1.0.
     init(hex: UInt, alpha: Double = 1.0) {
+        let masked = hex & 0xFFFFFF
         self.init(
             .sRGB,
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255,
+            red: Double((masked >> 16) & 0xFF) / 255,
+            green: Double((masked >> 8) & 0xFF) / 255,
+            blue: Double(masked & 0xFF) / 255,
             opacity: alpha
         )
     }

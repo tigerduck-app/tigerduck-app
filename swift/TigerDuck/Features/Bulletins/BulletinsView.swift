@@ -21,12 +21,19 @@ struct BulletinsView: View {
     private let taxonomy = BulletinTaxonomyStore.shared
     @State private var readState = BulletinReadStateStore()
     @State private var showNotificationSettings: Bool = false
-    @State private var detailingBulletinId: Int?
+    /// Snapshot of the bulletin captured at push time so the detail
+    /// view can render even if `viewModel.items` mutates mid-flight
+    /// (retention sweep, refilter, refresh). Without this, the
+    /// destination resolved by `items.first(where: { $0.id == id })`
+    /// can evaporate, the fallback `.onAppear { id = nil }` fires, and
+    /// the navigation stack oscillates.
+    @State private var detailingBulletin: BulletinAPI.BulletinSummary?
     @State private var unreadOnly: Bool = false
     /// Drives `.searchable`'s expansion — bound so we can force-collapse
     /// it when the app returns to foreground (users expect the search
     /// scope to reset across sessions rather than persist).
     @State private var searchIsPresented: Bool = false
+    @State private var lastBackgroundedAt: Date?
 
     var body: some View {
         Group {
@@ -44,14 +51,17 @@ struct BulletinsView: View {
             async let bulletins: Void = viewModel.loadIfNeeded()
             _ = await (tax, bulletins)
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            // Collapse + clear the search field when the app comes back
-            // to foreground. Without this, a user who left the app with
-            // an active query sees the same expanded search UI on the
-            // next session, which is not what "reopen" implies.
-            if newPhase == .active {
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            // Only reset search after a meaningful background gap (>5 min);
+            // a brief jaunt to another app shouldn't lose the user's query.
+            if oldPhase == .background, newPhase == .active,
+               let last = lastBackgroundedAt,
+               Date().timeIntervalSince(last) > 300 {
                 searchIsPresented = false
                 viewModel.searchText = ""
+            }
+            if newPhase == .background {
+                lastBackgroundedAt = Date()
             }
         }
     }
@@ -131,18 +141,12 @@ struct BulletinsView: View {
         .navigationDestination(isPresented: $showNotificationSettings) {
             BulletinNotificationSettingsView(taxonomy: taxonomy)
         }
-        .navigationDestination(item: $detailingBulletinId) { id in
-            if let row = viewModel.items.first(where: { $0.id == id }) {
-                BulletinDetailView(
-                    bulletin: row,
-                    taxonomy: taxonomy,
-                    readState: readState
-                )
-            } else {
-                // Row evaporated mid-flight (deleted by retention sweep).
-                // Bounce back rather than render a stale shell.
-                Color.clear.onAppear { detailingBulletinId = nil }
-            }
+        .navigationDestination(item: $detailingBulletin) { row in
+            BulletinDetailView(
+                bulletin: row,
+                taxonomy: taxonomy,
+                readState: readState
+            )
         }
     }
 
@@ -216,7 +220,7 @@ struct BulletinsView: View {
                 // Programmatic push via .navigationDestination(item:)
                 // attached to the parent List.
                 Button {
-                    detailingBulletinId = bulletin.id
+                    detailingBulletin = bulletin
                 } label: {
                     BulletinCardView(
                         bulletin: bulletin,

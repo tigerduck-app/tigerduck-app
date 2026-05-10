@@ -18,6 +18,39 @@ enum SSOLoginError: LocalizedError {
 
 enum SSOLoginService {
 
+    /// Decode an HTML response respecting `Content-Type` charset. Older NTUST
+    /// endpoints occasionally serve Big5 (or windows-1252 for ASCII-only
+    /// pages); a hard UTF-8 decode would return nil on those and surface as
+    /// `invalidResponse` for what is otherwise a recoverable response.
+    private static func decodeHTML(_ data: Data, response: URLResponse?) -> String? {
+        let charset = (response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Type")?
+            .lowercased()
+        if let charset {
+            if charset.contains("big5") {
+                if let s = String(data: data, encoding: .init(rawValue:
+                    CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue))
+                )) { return s }
+            }
+            if charset.contains("windows-1252") || charset.contains("iso-8859-1") {
+                if let s = String(data: data, encoding: .isoLatin1) { return s }
+            }
+        }
+        if let s = String(data: data, encoding: .utf8) { return s }
+        // Last-ditch: try Big5 even if not declared.
+        let big5 = String.Encoding(rawValue:
+            CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.big5.rawValue)))
+        return String(data: data, encoding: big5)
+    }
+
+    /// Hosts the SSO credential POST is allowed to target. A redirected /
+    /// compromised upstream returning a `<form action="https://attacker/">`
+    /// must never receive `Username=...&Password=...`, so we hard-fail any
+    /// resolved action whose host is not in this set.
+    private static let ssoActionHostAllowlist: Set<String> = [
+        "ssoam2.ntust.edu.tw",
+    ]
+
     /// Ensure the user is logged in to the given service via NTUST SSO.
     /// Mirrors the Python `NtustSsoBridge.ensure_service_login` flow.
     static func ensureServiceLogin(
@@ -30,7 +63,7 @@ enum SSOLoginService {
             // Step 1: Visit service URL (follows redirects automatically)
             let (data, response) = try await session.data(from: serviceURL)
             guard let httpResp = response as? HTTPURLResponse,
-                  let html = String(data: data, encoding: .utf8) else {
+                  let html = decodeHTML(data, response: httpResp) else {
                 throw SSOLoginError.invalidResponse
             }
             let finalURL = httpResp.url ?? serviceURL
@@ -48,15 +81,19 @@ enum SSOLoginService {
                 return true
             }
 
-            // Step 4: Clear SSO cookies only (preserve Moodle/service cookies to avoid device-change warnings)
-            HTTPCookieStorage.shared.cookies?
+            // Step 4: Clear SSO cookies only (preserve Moodle/service cookies to avoid device-change warnings).
+            // Cookies live in the NTUST-private jar — never touch
+            // `HTTPCookieStorage.shared` here, which would now be a no-op
+            // for NTUST and a foot-gun for unrelated callers.
+            let ntustJar = NTUSTSessionManager.shared.cookieStorage
+            ntustJar.cookies?
                 .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }
-                .forEach { HTTPCookieStorage.shared.deleteCookie($0) }
+                .forEach { ntustJar.deleteCookie($0) }
 
             // Re-visit service URL
             let (data2, response2) = try await session.data(from: serviceURL)
-            guard let html2 = String(data: data2, encoding: .utf8),
-                  let resp2 = response2 as? HTTPURLResponse else {
+            guard let resp2 = response2 as? HTTPURLResponse,
+                  let html2 = decodeHTML(data2, response: resp2) else {
                 throw SSOLoginError.invalidResponse
             }
             currentURL = resp2.url ?? serviceURL
@@ -83,11 +120,22 @@ enum SSOLoginService {
             }
 
             let actionURL = resolveURL(form.action, base: currentURL)
+            guard let actionHost = actionURL.host,
+                  ssoActionHostAllowlist.contains(actionHost) else {
+                AppLogger.captureError(
+                    SSOLoginError.loginFailed,
+                    context: [
+                        "service": "ssoEnsureServiceLogin",
+                        "rejectedActionHost": actionURL.host ?? "<nil>",
+                    ]
+                )
+                throw SSOLoginError.loginFailed
+            }
             let (loginData, loginResponse) = try await postForm(
                 session: session, url: actionURL, fields: payload
             )
-            guard let loginHTML = String(data: loginData, encoding: .utf8),
-                  let loginResp = loginResponse as? HTTPURLResponse else {
+            guard let loginResp = loginResponse as? HTTPURLResponse,
+                  let loginHTML = decodeHTML(loginData, response: loginResp) else {
                 throw SSOLoginError.invalidResponse
             }
             currentURL = loginResp.url ?? actionURL
@@ -153,7 +201,12 @@ enum SSOLoginService {
         url: URL,
         fields: [(name: String, value: String)]
     ) async throws -> (Data, URLResponse) {
-        var request = URLRequest(url: url)
+        // 15 s per-request matches NTUSTSessionManager's session-level
+        // `timeoutIntervalForRequest`. Without it the request inherits
+        // `URLRequest`'s 60 s default and `URLSessionConfiguration`'s
+        // 7-day `timeoutIntervalForResource`, so a stalled SSO server
+        // could hang the login Task indefinitely.
+        var request = URLRequest(url: url, timeoutInterval: 15)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
 
@@ -165,11 +218,27 @@ enum SSOLoginService {
         return try await session.data(for: request)
     }
 
+    /// Form-encode a single name or value per
+    /// `application/x-www-form-urlencoded` rules:
+    /// percent-encode every byte outside RFC-3986 unreserved, then map
+    /// space → `+`. This keeps passwords containing `+ & = / ; %` and
+    /// CJK characters from being silently corrupted.
+    private static let formAllowed: CharacterSet = {
+        CharacterSet(charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
+    }()
+
     private static func urlEncode(_ string: String) -> String {
-        string.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
-            .replacingOccurrences(of: "+", with: "%2B")
-            .replacingOccurrences(of: "&", with: "%26")
-            .replacingOccurrences(of: "=", with: "%3D") ?? string
+        // Encoder fallback returns "" rather than the raw string. The raw
+        // string here is a username/password — silently shipping cleartext
+        // bytes on the wire is far worse than a failed login attempt, so
+        // an empty form value is the safer default.
+        guard let percentEncoded = string
+            .addingPercentEncoding(withAllowedCharacters: formAllowed) else {
+            assertionFailure("urlEncode failed for value of length \(string.count)")
+            return ""
+        }
+        return percentEncoded.replacingOccurrences(of: "%20", with: "+")
     }
 
     private static func resolveURL(_ path: String, base: URL) -> URL {

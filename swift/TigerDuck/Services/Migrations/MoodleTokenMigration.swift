@@ -11,12 +11,12 @@ enum MoodleTokenMigration {
     static func runIfNeeded() async {
         guard !Defaults[.moodleTokenMigrationDone] else { return }
 
-        let credentials = await MainActor.run {
-            (
-                KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
-                KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
-            )
-        }
+        // KeychainManager.loadString is internally synchronous; call it
+        // directly off-main so cold launch is not blocked on Keychain I/O.
+        let credentials: (String?, String?) = (
+            KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
+            KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
+        )
 
         // No credentials stored → new user or already logged out; mark done to skip future checks.
         guard credentials.0 != nil, credentials.1 != nil else {
@@ -34,7 +34,9 @@ enum MoodleTokenMigration {
             _ = try await MoodleTokenService.shared.refreshTokenIfNeeded()
             Defaults[.moodleTokenMigrationDone] = true
         } catch {
-            // Silent failure — do not set flag; next launch will retry.
+            // Do not set flag; next launch will retry. Surface to Sentry
+            // so we can see how often this silently retries in the wild.
+            AppLogger.captureError(error, context: ["migration": "moodleToken"])
         }
     }
 }

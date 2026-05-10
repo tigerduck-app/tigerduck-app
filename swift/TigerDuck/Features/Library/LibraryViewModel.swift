@@ -20,6 +20,16 @@ final class LibraryViewModel {
     private var countdownTimer: Timer?
     private var hasLoaded = false
 
+    /// Number of consecutive transient failures since the last
+    /// successful refresh. Drives the backoff schedule below — a flapping
+    /// 5xx loop hammered the library API every 30s with no breathing
+    /// room, so the next refresh is delayed proportionally.
+    private var consecutiveErrors = 0
+    /// Backoff cadence after N transient failures (seconds). After the
+    /// final entry the cadence holds at the last value until a refresh
+    /// succeeds.
+    private static let backoffSchedule: [TimeInterval] = [60, 120, 300]
+
     // MARK: - Lifecycle
 
     func load() {
@@ -46,6 +56,17 @@ final class LibraryViewModel {
             startQRRefreshCycle()
             return
         }
+        // If the token expired while the app was backgrounded (e.g. user
+        // returned after >24h), surface logged-out state up front so the
+        // user does not see a stale-token QR for up to 30 s before the
+        // next refresh tick collapses to logged-out.
+        if hasLoaded && isLoggedIn && !LibraryService.isTokenValid {
+            isLoggedIn = false
+            qrCodeImage = nil
+            qrPayload = nil
+            stopTimers()
+            return
+        }
         if hasLoaded && isLoggedIn && refreshTimer == nil {
             startQRRefreshCycle()
         }
@@ -53,6 +74,9 @@ final class LibraryViewModel {
 
     func onDisappear() {
         stopTimers()
+        // Defense-in-depth: drop the in-memory password buffer on view
+        // teardown too, in case the user navigates away mid-typing.
+        libPassword = ""
     }
 
     // MARK: - Login
@@ -72,6 +96,10 @@ final class LibraryViewModel {
                 startQRRefreshCycle()
             } catch {
                 errorMessage = error.localizedDescription
+                // Clear the password on every failure so it never lingers
+                // in @Observable state where a screenshot or screen recording
+                // could capture it after a recoverable error.
+                libPassword = ""
                 isLoggingIn = false
             }
         }
@@ -89,15 +117,34 @@ final class LibraryViewModel {
                 qrCodeImage = Self.generateQRImage(from: payload)
                 countdown = 30
                 isLoadingQR = false
+                consecutiveErrors = 0
                 restartCountdown()
             } catch {
                 errorMessage = error.localizedDescription
                 isLoadingQR = false
                 if !LibraryService.isTokenValid {
                     isLoggedIn = false
+                    consecutiveErrors = 0
                     stopTimers()
+                } else {
+                    // Transient (5xx etc.) — back off so a flapping
+                    // server can't keep the 30s timer hammering it.
+                    consecutiveErrors += 1
+                    rescheduleAfterError()
                 }
             }
+        }
+    }
+
+    /// Restart the refresh timer with the current backoff interval. Holds
+    /// at the last value of `backoffSchedule` for additional failures so
+    /// retries never exceed 5 minutes.
+    private func rescheduleAfterError() {
+        let idx = min(consecutiveErrors - 1, Self.backoffSchedule.count - 1)
+        let interval = Self.backoffSchedule[max(0, idx)]
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            self?.fetchAndDisplayQR()
         }
     }
 

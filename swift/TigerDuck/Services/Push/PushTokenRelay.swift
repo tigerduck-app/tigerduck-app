@@ -15,7 +15,10 @@ import os
 @MainActor
 final class PushTokenRelay {
     private let registration: PushRegistrationService
-    private var task: Task<Void, Never>?
+    // nonisolated(unsafe) so deinit (non-isolated) can cancel without
+    // violating Swift 6 strict concurrency. Mutations stay on MainActor
+    // through start()/stop(), and Task is itself thread-safe.
+    private nonisolated(unsafe) var task: Task<Void, Never>?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Relay")
 
     init(registration: PushRegistrationService) {
@@ -33,7 +36,7 @@ final class PushTokenRelay {
         let logger = self.logger
         task = Task.detached(priority: .utility) {
             for await tokenData in Activity<TigerDuckActivityAttributes>.pushToStartTokenUpdates {
-                let hex = tokenData.map { String(format: "%02x", $0) }.joined()
+                let hex = tokenData.hexEncodedString()
                 logger.info("received PTS token (len=\(hex.count, privacy: .public))")
                 await registration.update(ptsTokenHex: hex)
             }

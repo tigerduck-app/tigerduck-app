@@ -2,7 +2,12 @@ import Foundation
 import Sentry
 import os
 
-enum AppLogger {
+// `nonisolated` so the static Loggers can be referenced from nonisolated
+// parsers / off-main URLSession handlers without crossing actor boundaries.
+// `os.Logger` is Sendable; the default-MainActor isolation Swift 6 applies
+// to module enums otherwise blocks every off-main caller (e.g.
+// `CourseLookupService.parseNodeToSchedule` is `nonisolated static`).
+nonisolated enum AppLogger {
     private static let subsystem = "org.ntust.app.TigerDuck"
 
     static let auth = Logger(subsystem: subsystem, category: "Auth")
@@ -21,13 +26,8 @@ enum AppLogger {
             options.sendDefaultPii = false
             options.beforeSend = { event in
                 if let url = event.request?.url {
-                    event.request?.url = url.replacingOccurrences(
-                        of: #"token=[^&]+"#,
-                        with: "token=***",
-                        options: .regularExpression
-                    )
+                    event.request?.url = scrubSensitive(url)
                 }
-
                 return event
             }
             // Performance spans auto-instrumented from URLSession store the
@@ -36,11 +36,7 @@ enum AppLogger {
             options.beforeSendSpan = { span in
                 for key in ["url", "http.url", "http.query"] {
                     guard let value = span.data[key] as? String else { continue }
-                    let scrubbed = value.replacingOccurrences(
-                        of: #"token=[^&]+"#,
-                        with: "token=***",
-                        options: .regularExpression
-                    )
+                    let scrubbed = scrubSensitive(value)
                     if scrubbed != value {
                         span.setData(value: scrubbed, key: key)
                     }
@@ -62,7 +58,38 @@ enum AppLogger {
         let crumb = Breadcrumb()
         crumb.level = level
         crumb.category = category
-        crumb.message = message
+        crumb.message = scrubSensitive(message)
         SentrySDK.addBreadcrumb(crumb)
     }
+
+    /// Scrub credential-bearing tokens from any string before it leaves
+    /// the device. Covers query-string tokens (`token=`, `wstoken=`),
+    /// path-style Moodle tokens (`/wstoken/<...>`), OIDC password POST
+    /// bodies (`Password=` / `password=`) and `Authorization: Bearer ...`
+    /// headers that might be threaded into URLError userInfo or
+    /// breadcrumbs.
+    static func scrubSensitive(_ value: String) -> String {
+        var out = value
+        for pattern in scrubPatterns {
+            out = out.replacingOccurrences(
+                of: pattern.pattern,
+                with: pattern.replacement,
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+        return out
+    }
+
+    private struct ScrubPattern {
+        let pattern: String
+        let replacement: String
+    }
+
+    private static let scrubPatterns: [ScrubPattern] = [
+        ScrubPattern(pattern: #"(wstoken|token)=[^&\s"']+"#, replacement: "$1=***"),
+        ScrubPattern(pattern: #"/wstoken/[A-Za-z0-9+/=_-]+"#, replacement: "/wstoken/***"),
+        ScrubPattern(pattern: #"(password|passwd|pwd)=[^&\s"']+"#, replacement: "$1=***"),
+        ScrubPattern(pattern: #"Bearer\s+[A-Za-z0-9._\-+/=]+"#, replacement: "Bearer ***"),
+        ScrubPattern(pattern: #"X-Push-Token:\s*\S+"#, replacement: "X-Push-Token: ***"),
+    ]
 }

@@ -50,7 +50,7 @@ enum MoodleEnrolledCoursesService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = wsFormBody(["userid": String(userId)])
+        request.httpBody = try wsFormBody(["userid": String(userId)])
 
         let data: Data
         let response: URLResponse
@@ -79,20 +79,23 @@ enum MoodleEnrolledCoursesService {
             let courses = try JSONDecoder().decode([RawMoodleEnrolledCourse].self, from: data)
             return courses.map { $0.toMoodleEnrolledCourse() }
         } catch {
-            throw MoodleWebserviceError.malformedResponse(detail: "Unable to decode enrolled courses response")
+            throw MoodleWebserviceError.malformedResponse(detail: "Unable to decode enrolled courses response: \(error)")
         }
     }
 
-    private static func wsFormBody(_ fields: [String: String]) -> Data? {
+    private static func wsFormBody(_ fields: [String: String]) throws -> Data {
         let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
-        return fields
+        let encoded = fields
             .map { key, value in
                 let encodedKey = key.addingPercentEncoding(withAllowedCharacters: unreserved) ?? key
                 let encodedValue = value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
                 return "\(encodedKey)=\(encodedValue)"
             }
             .joined(separator: "&")
-            .data(using: .utf8)
+        guard let data = encoded.data(using: .utf8) else {
+            throw MoodleWebserviceError.malformedResponse(detail: "wsFormBody: utf8 encoding failed")
+        }
+        return data
     }
 }
 

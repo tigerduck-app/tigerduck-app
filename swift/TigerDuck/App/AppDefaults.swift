@@ -92,9 +92,12 @@ extension Defaults.Keys {
     )
 
     // MARK: Push server
+    /// Default off: device tokens / metadata are POSTed to the push server
+    /// only after the user explicitly opts in. The previous default sent
+    /// device data on first launch with no consent surface.
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
-        default: true
+        default: false
     )
     static let pushServerURLOverride = Key<String?>(
         AppConstants.UserDefaultsKeys.pushServerURLOverride

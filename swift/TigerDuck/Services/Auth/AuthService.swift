@@ -62,7 +62,7 @@ final class AuthService {
 
         do {
             let session = NTUSTSessionManager.shared.session
-            let serviceURL = URL(string: "https://courseselection.ntust.edu.tw/")!
+            let serviceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
 
             let success = try await SSOLoginService.ensureServiceLogin(
@@ -81,7 +81,7 @@ final class AuthService {
                 // semester crossover.
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
                 reauthErrorMessage = nil
-                _revision += 1
+                _revision &+= 1
 
                 // Auto-attempt library login with same credentials (best-effort)
                 if !LibraryService.isTokenValid {
@@ -164,7 +164,7 @@ final class AuthService {
         reauthErrorMessage = nil
         isReauthenticating = false
         loginGeneration &+= 1
-        _revision += 1
+        _revision &+= 1
     }
 
     func clearReauthError() {

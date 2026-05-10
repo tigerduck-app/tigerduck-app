@@ -122,6 +122,13 @@ final class PushCoordinator {
 
         relay.stop()
         pendingSyncTask?.cancel()
+        // Wait for any already-running debounced sync to finish before we
+        // unregister, so a stale POST can't recreate state we just deleted.
+        // `pendingSyncTask` only covers the debounce + builder; the actual
+        // HTTP POST is owned by `ScheduleSyncService.inflight`, so we await
+        // that separately — otherwise the POST can land *after* unregister.
+        await pendingSyncTask?.value
+        await scheduleSync.awaitInflight()
         await registration.unregister()
     }
 
@@ -145,6 +152,9 @@ final class PushCoordinator {
         pendingSyncTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(debounceMs))
             guard !Task.isCancelled else { return }
+            // Don't run the inputs builder (which touches SwiftData / models)
+            // while backgrounded — the system can suspend us mid-build.
+            guard UIApplication.shared.applicationState != .background else { return }
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
         }
@@ -152,12 +162,29 @@ final class PushCoordinator {
 
     // MARK: - Helpers
 
+    /// Hosts that the push-server URL override is allowed to target. The
+    /// default production endpoint plus a small set of dev/staging hosts.
+    /// An attacker-supplied override (via UserDefaults seeding from a
+    /// compromised backup, MDM, or a future dev panel) cannot point the
+    /// app at an arbitrary server outside this list.
+    private static let pushServerHostAllowlist: Set<String> = [
+        "api.tigerduck.app",
+        "staging.api.tigerduck.app",
+        "localhost",
+        "127.0.0.1",
+    ]
+
     static func resolveServerURL() -> URL {
+        #if DEBUG
         if let override = Defaults[.pushServerURLOverride],
            !override.isEmpty,
-           let url = URL(string: override) {
+           let url = URL(string: override),
+           url.scheme == "https" || url.host == "localhost" || url.host == "127.0.0.1",
+           let host = url.host,
+           pushServerHostAllowlist.contains(host) {
             return url
         }
+        #endif
         return AppConstants.defaultPushServerURL
     }
 

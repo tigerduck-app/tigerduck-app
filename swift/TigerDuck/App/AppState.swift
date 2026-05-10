@@ -27,16 +27,26 @@ final class AppState {
     /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
         if !Defaults[.appHasBeenInstalled] {
-            // Fresh install — purge any leftover Keychain items
-            KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
-            KeychainManager.delete(key: AppConstants.KeychainKeys.password)
-            KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
-            KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
-            KeychainManager.delete(key: AppConstants.KeychainKeys.libraryToken)
-            KeychainManager.delete(key: AppConstants.KeychainKeys.libraryTokenExpiry)
-            KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
-            KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
-            Defaults[.appHasBeenInstalled] = true
+            // Fresh install — purge any leftover Keychain items.
+            let keysToWipe: [String] = [
+                AppConstants.KeychainKeys.studentId,
+                AppConstants.KeychainKeys.password,
+                AppConstants.KeychainKeys.libraryUsername,
+                AppConstants.KeychainKeys.libraryPassword,
+                AppConstants.KeychainKeys.libraryToken,
+                AppConstants.KeychainKeys.libraryTokenExpiry,
+                AppConstants.KeychainKeys.moodleToken,
+                AppConstants.KeychainKeys.moodlePrivateToken,
+            ]
+            let allOk = keysToWipe
+                .map { KeychainManager.deleteReportingSuccess(key: $0) }
+                .allSatisfy { $0 }
+            // Only mark "installed" if every delete succeeded. A partial
+            // failure leaves the flag false so the next launch retries —
+            // otherwise stale credentials could survive a reinstall.
+            if allOk {
+                Defaults[.appHasBeenInstalled] = true
+            }
         }
 
         liveActivityObserver = NotificationCenter.default.addObserver(
@@ -54,6 +64,14 @@ final class AppState {
         ) { [weak self] _ in
             self?.scheduleLiveActivityRefresh()
             self?.requestPushScheduleSync()
+        }
+
+        skipStateObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.courseSkipStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleLiveActivityRefresh()
         }
 
         runPendingMigrations()
@@ -99,6 +117,9 @@ final class AppState {
         if let observer = preferencesObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = skipStateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     private var _libraryRevision = 0
@@ -114,6 +135,7 @@ final class AppState {
     private let courseProvider = CanonicalCourseProvider()
     private var liveActivityObserver: Any?
     private var preferencesObserver: Any?
+    private var skipStateObserver: Any?
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
     private var relabelTask: Task<Void, Never>?
@@ -218,7 +240,9 @@ final class AppState {
     }
 
     var accentColor: Color {
-        Color(hex: UInt(accentColorHex))
+        // Use bitPattern to avoid trapping on a corrupted-defaults negative
+        // accentColorHex (Int → UInt conversion crashes on negative values).
+        Color(hex: UInt(bitPattern: Int(accentColorHex)))
     }
 
     static let themeColors: [(nameKey: String, hex: Int)] = [
@@ -247,10 +271,11 @@ final class AppState {
             return Set(arr)
         }
         set {
-            if let data = try? JSONEncoder().encode(Array(newValue)) {
+            do {
+                let data = try JSONEncoder().encode(Array(newValue))
                 Defaults[.savedAnnouncementDepartmentsData] = data
-            } else {
-                Defaults[.savedAnnouncementDepartmentsData] = nil
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "savedAnnouncementDepartments.encode"])
             }
         }
     }
@@ -365,9 +390,19 @@ final class AppState {
 
             var anyChanged = false
             var code = CourseSelectionService.currentSemesterCode()
-            for _ in 0..<4 {
+            var consecutiveEmpty = 0
+            for _ in 0..<AppConstants.cachedSemesterRelabelDepth {
                 if Task.isCancelled { return }
                 let courses = DataCache.shared.loadCourses(semester: code)
+                if courses.isEmpty {
+                    consecutiveEmpty += 1
+                    // Two empty semesters in a row means we've walked past
+                    // any data the user has fetched; further iterations just
+                    // hit disk for nothing.
+                    if consecutiveEmpty >= 2 { break }
+                } else {
+                    consecutiveEmpty = 0
+                }
                 if !courses.isEmpty {
                     let changed = NameAbbrService.shared.relabelInPlace(
                         courses,
@@ -422,10 +457,14 @@ final class AppState {
         return AppFeature.defaultTabs
     }() {
         didSet {
-            if let data = try? JSONEncoder().encode(configuredTabs.map(\.rawValue)) {
+            do {
+                let data = try JSONEncoder().encode(configuredTabs.map(\.rawValue))
                 Defaults[.configuredTabsData] = data
-            } else {
-                Defaults[.configuredTabsData] = nil
+            } catch {
+                // Don't clobber a working persisted value with nil on a
+                // (vanishingly rare) encode failure — silently losing the
+                // user's customization on next launch is worse than logging.
+                AppLogger.captureError(error, context: ["phase": "configuredTabs.encode"])
             }
         }
     }
@@ -480,7 +519,7 @@ final class AppState {
             assignments: assignments,
             now: now
         ) else { return }
-        let delay = boundary.timeIntervalSince(now) + 1
+        let delay = boundary.timeIntervalSince(now) + AppConstants.scenarioBoundarySlackSeconds
         guard delay > 0 else { return }
         boundaryRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))

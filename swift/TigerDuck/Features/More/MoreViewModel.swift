@@ -3,7 +3,6 @@ import SwiftUI
 @Observable
 final class MoreViewModel {
     var isEditing = false
-    var pinnedTabs: Set<AppFeature> = []
 
     let groupedFeatures: [(category: FeatureCategory, features: [AppFeature])] = {
         FeatureCategory.allCases.compactMap { category in
@@ -12,7 +11,11 @@ final class MoreViewModel {
         }
     }()
 
-    func isPinned(_ feature: AppFeature) -> Bool {
-        pinnedTabs.contains(feature)
+    /// `pinnedTabs` previously held a never-written `Set<AppFeature>`,
+    /// so the pin badge was always false. Read from `AppState`'s
+    /// `configuredTabs` instead — the actual source of truth for which
+    /// features are pinned to the bottom tab bar.
+    func isPinned(_ feature: AppFeature, in appState: AppState) -> Bool {
+        appState.configuredTabs.contains(feature)
     }
 }

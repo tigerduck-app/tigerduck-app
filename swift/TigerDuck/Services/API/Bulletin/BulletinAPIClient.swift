@@ -123,7 +123,10 @@ final class BulletinAPIClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .public)")
+            // Body snippet stays .private — error responses occasionally
+            // echo headers (incl. X-Push-Token) or correlation tokens that
+            // must not be retained in the system log indefinitely.
+            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
             throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
         }
         return data
@@ -179,9 +182,19 @@ final class BulletinAPIClient: Sendable {
     }()
 
     private static func percentEncoded(_ value: String) -> String {
-        var allowed = CharacterSet.urlPathAllowed
-        allowed.remove("/")
-        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+        // Strict allowlist — `urlPathAllowed` keeps `=`, `&`, `:`, `+`, `@`,
+        // any of which can path/query-inject if a device id ever embeds
+        // them.
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
+        // Encoder fallback returns "" rather than the raw value: in the
+        // (vanishingly rare) UTF-16 surrogate-pair failure mode, shipping
+        // unencoded bytes into a URL path could path-inject. An empty
+        // segment yields a clean 404 instead.
+        guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            assertionFailure("percentEncoded failed for value of length \(value.count)")
+            return ""
+        }
+        return encoded
     }
 }
 

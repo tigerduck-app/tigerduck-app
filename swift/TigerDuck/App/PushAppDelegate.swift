@@ -11,8 +11,16 @@ import os
 final class PushAppDelegate: NSObject, UIApplicationDelegate {
     /// Set by `TigerDuckApp` before the first token arrives. Called on the
     /// main thread with the raw token data.
+    ///
+    /// Lifetime contract: this delegate, the `TigerDuckApp`, and the shared
+    /// `PushRegistrationService` all live for the entire app process. The
+    /// closure does **not** weak-capture the registration service — there is
+    /// no shorter lifetime to escape from, and a `[weak]` capture here would
+    /// silently drop the token if scene-phase plumbing ever ran the closure
+    /// before the strong reference had been established.
     var forwardToken: ((Data) -> Void)?
     /// Called when APNs registration fails (e.g. no entitlement, no network).
+    /// Same app-lifetime contract as ``forwardToken``.
     var forwardError: ((Error) -> Void)?
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Delegate")

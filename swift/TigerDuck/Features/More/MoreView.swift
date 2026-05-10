@@ -48,7 +48,7 @@ struct MoreView: View {
                         FeatureCategorySection(
                             category: group.category,
                             features: group.features,
-                            isPinned: viewModel.isPinned,
+                            isPinned: { viewModel.isPinned($0, in: appState) },
                             onFeatureTap: { feature in
                                 if feature.isImplemented {
                                     navigationPath.append(feature)

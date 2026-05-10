@@ -73,11 +73,16 @@ final class LiveActivityPreferencesStore {
 
         isLiveActivityEnabled = Defaults[.isLiveActivityEnabled]
 
+        // Clamp on load: a value persisted by an older build that used a
+        // larger maximum would otherwise stay above the current cap until
+        // the user touched the slider, silently breaking the invariant.
         let rawAssignmentLead = Defaults[.assignmentLiveActivityLeadTime]
-        assignmentLiveActivityLeadTime = rawAssignmentLead > 0 ? rawAssignmentLead : Self.defaultAssignmentLeadTime
+        let resolvedAssignmentLead = rawAssignmentLead > 0 ? rawAssignmentLead : Self.defaultAssignmentLeadTime
+        assignmentLiveActivityLeadTime = min(resolvedAssignmentLead, Self.maximumAssignmentLeadTime)
 
         let rawClassLead = Defaults[.classPreparingLeadTime]
-        classPreparingLeadTime = rawClassLead > 0 ? rawClassLead : Self.defaultClassPreparingLeadTime
+        let resolvedClassLead = rawClassLead > 0 ? rawClassLead : Self.defaultClassPreparingLeadTime
+        classPreparingLeadTime = min(resolvedClassLead, Self.maximumClassPreparingLeadTime)
 
         showAssignmentScenario = Defaults[.showAssignmentScenario]
         showClassPreparingScenario = Defaults[.showClassPreparingScenario]

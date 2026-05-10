@@ -56,20 +56,28 @@ final class LiveActivityCoordinator {
     /// Apply the resolved snapshot. Starts or updates the single activity
     /// matching the target id and ends stale or unrelated activities.
     func apply(snapshot: LiveActivitySnapshot?) async {
-        store.writeSnapshot(snapshot)
-
         let now = Date()
         await pruneRunningActivities(keeping: snapshot?.composedActivityId, now: now)
 
+        // Persist the snapshot to the App Group AFTER the system gate so
+        // a user with Live Activities disabled cannot leave a stale
+        // snapshot in shared storage that any background widget read
+        // would still surface. When disabled — or no snapshot — we
+        // explicitly clear the share so reads see exactly what the
+        // user expects.
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             logger.info("Live Activities are disabled by the system")
+            store.writeSnapshot(nil)
             return
         }
 
         guard let snapshot else {
+            store.writeSnapshot(nil)
             cancelAutomaticEndTasks()
             return
         }
+
+        store.writeSnapshot(snapshot)
 
         let targetId = snapshot.composedActivityId
         let runningActivities = Activity<TigerDuckActivityAttributes>.activities
@@ -88,7 +96,11 @@ final class LiveActivityCoordinator {
                 let activity = try Activity<TigerDuckActivityAttributes>.request(
                     attributes: TigerDuckActivityAttributes(activityId: targetId),
                     content: content,
-                    pushType: .token
+                    // Only request a push token when a server-side handler
+                    // is wired up to receive it. Otherwise APNs would mint
+                    // tokens nothing consumes — and a missing handler is
+                    // the legitimate state for users without push enabled.
+                    pushType: updateTokenRegistrationHandler == nil ? nil : .token
                 )
                 observeUpdateToken(for: activity)
                 scheduleAutomaticEnd(for: targetId, snapshot: snapshot, now: now)
@@ -218,10 +230,15 @@ final class LiveActivityCoordinator {
 
     private func observeUpdateToken(for activity: Activity<TigerDuckActivityAttributes>) {
         let activityId = activity.attributes.activityId
-        Task { @MainActor [weak self] in
-            await self?.registerCurrentUpdateToken(for: activity)
-        }
-
+        // Skip if we're already observing this activity. The previous
+        // implementation also fired an unconditional fire-and-forget
+        // registration Task on every call — `observeUpdateToken` is
+        // invoked from `apply`, `pruneRunningActivities`, and the
+        // activity observer's loop, so server registration was hit
+        // O(refresh × activities) times per session. The gated stream
+        // below already drains `pushTokenUpdates` *and* registers the
+        // current token on first iteration, so the unconditional
+        // re-register is redundant.
         guard activityUpdateTokenTasks[activityId] == nil else { return }
         activityUpdateTokenTasks[activityId] = Task { @MainActor [weak self] in
             await self?.registerCurrentUpdateToken(for: activity)
@@ -253,7 +270,7 @@ final class LiveActivityCoordinator {
         snapshot: LiveActivitySnapshot
     ) async {
         guard let updateTokenRegistrationHandler else { return }
-        let tokenHex = tokenData.map { String(format: "%02x", $0) }.joined()
+        let tokenHex = tokenData.hexEncodedString()
         await updateTokenRegistrationHandler(
             LiveActivityUpdateTokenRegistration(
                 activityId: activityId,
