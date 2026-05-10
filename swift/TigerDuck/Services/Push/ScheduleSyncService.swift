@@ -183,4 +183,13 @@ final class ScheduleSyncService {
     private func markSuccess() {
         Defaults[.pushLastSyncAt] = Date()
     }
+
+    /// Wait until any in-flight POST has completed (or terminally errored).
+    /// `sync(inputs:)` is fire-and-forget: it returns as soon as the inflight
+    /// `Task` is spawned, *not* when the network call finishes. Callers that
+    /// must avoid a stale POST resurrecting state they just deleted (e.g.
+    /// `PushCoordinator.disable()` before `unregister`) need this barrier.
+    func awaitInflight() async {
+        await inflight?.value
+    }
 }

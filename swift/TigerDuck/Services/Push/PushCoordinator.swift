@@ -124,7 +124,11 @@ final class PushCoordinator {
         pendingSyncTask?.cancel()
         // Wait for any already-running debounced sync to finish before we
         // unregister, so a stale POST can't recreate state we just deleted.
+        // `pendingSyncTask` only covers the debounce + builder; the actual
+        // HTTP POST is owned by `ScheduleSyncService.inflight`, so we await
+        // that separately — otherwise the POST can land *after* unregister.
         await pendingSyncTask?.value
+        await scheduleSync.awaitInflight()
         await registration.unregister()
     }
 
