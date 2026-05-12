@@ -1,0 +1,73 @@
+import SwiftUI
+
+struct NowNextView: View {
+    @EnvironmentObject private var store: ScheduleStore
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                if let snapshot = store.snapshot, !snapshot.courses.isEmpty {
+                    let result = NextClassResolver.resolve(courses: snapshot.courses, now: Date())
+                    if let current = result.current {
+                        ClassCard(title: String(localized: "watch.now"), course: current)
+                    }
+                    if let next = result.next {
+                        ClassCard(title: String(localized: "watch.next"), course: next)
+                    }
+                    if result.current == nil && result.next == nil {
+                        ContentUnavailableView(
+                            String(localized: "watch.no_classes_today"),
+                            systemImage: "calendar"
+                        )
+                    }
+                } else if store.snapshot == nil {
+                    ContentUnavailableView(
+                        String(localized: "watch.empty.never_synced"),
+                        systemImage: "iphone.gen3"
+                    )
+                } else {
+                    // Logged out: empty courses array with loggedIn=false
+                    ContentUnavailableView(
+                        String(localized: "watch.empty.not_logged_in"),
+                        systemImage: "person.crop.circle.badge.exclamationmark"
+                    )
+                }
+            }
+            .padding(.horizontal, 8)
+        }
+        .navigationTitle("TigerDuck")
+    }
+}
+
+private struct ClassCard: View {
+    let title: String
+    let course: WatchCourse
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Rectangle()
+                    .fill(Color(hex: course.colorHex) ?? .accentColor)
+                    .frame(width: 3)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(course.name)
+                        .font(.headline)
+                        .lineLimit(2)
+                    Text("\(course.startHHmm)–\(course.endHHmm)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    if !course.classroom.isEmpty {
+                        Text(course.classroom)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+}
