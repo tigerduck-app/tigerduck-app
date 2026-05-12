@@ -207,7 +207,7 @@ private struct MetadataRowView: View {
 
                 if hasLocation {
                     HStack(spacing: 4) {
-                        if let loc = snapshot.locationText, !loc.isEmpty {
+                        if let loc = snapshot.locationText {
                             Image(systemName: "mappin.and.ellipse")
                             Text(loc)
                         }
