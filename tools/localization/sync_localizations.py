@@ -35,9 +35,11 @@ ROOT = Path(__file__).resolve().parents[2]
 LOCALIZATION_DIR = ROOT / "localization"
 GENERATED_APPLE_DIR = LOCALIZATION_DIR / "generated" / "apple"
 TIGERDUCK_DIR = ROOT / "swift" / "TigerDuck"
+TIGERDUCK_WIDGETS_DIR = ROOT / "swift" / "TigerDuckWidgets" / "Resources"
 
 LEGACY_PARENT_SYMLINK = TIGERDUCK_DIR / "Localization"
 LPROJ_TARGET_PREFIX = Path("..") / ".." / "localization" / "generated" / "apple"
+WIDGETS_LPROJ_TARGET_PREFIX = Path("..") / ".." / ".." / "localization" / "generated" / "apple"
 
 
 def is_xcode_build() -> bool:
@@ -85,9 +87,42 @@ def remove_stale_symlinks(desired: set[str]) -> None:
             entry.unlink()
 
 
+def remove_stale_widgets_symlinks(desired: set[str]) -> None:
+    """Drop `<lang>.lproj` symlinks in widgets directory for locales no longer in the source.
+
+    Skipped silently in sandboxed builds where TIGERDUCK_WIDGETS_DIR isn't readable.
+    """
+    try:
+        entries = list(TIGERDUCK_WIDGETS_DIR.iterdir())
+    except (PermissionError, FileNotFoundError):
+        return
+    for entry in entries:
+        if (
+            entry.name.endswith(".lproj")
+            and entry.is_symlink()
+            and entry.name not in desired
+        ):
+            entry.unlink()
+
+
 def ensure_symlink(name: str) -> None:
     link_path = TIGERDUCK_DIR / name
     target = LPROJ_TARGET_PREFIX / name
+    if link_path.is_symlink():
+        if Path(os.readlink(link_path)) == target:
+            return
+        link_path.unlink()
+    elif link_path.exists():
+        raise SystemExit(
+            f"{link_path} exists but is not a symlink; refusing to overwrite. "
+            "Move it aside and re-run."
+        )
+    link_path.symlink_to(target)
+
+
+def ensure_widgets_symlink(name: str) -> None:
+    link_path = TIGERDUCK_WIDGETS_DIR / name
+    target = WIDGETS_LPROJ_TARGET_PREFIX / name
     if link_path.is_symlink():
         if Path(os.readlink(link_path)) == target:
             return
@@ -104,8 +139,14 @@ def sync_lproj_symlinks() -> None:
     desired = desired_lproj_names()
     if not is_xcode_build():
         remove_stale_symlinks(set(desired))
+        remove_stale_widgets_symlinks(set(desired))
     for name in desired:
         ensure_symlink(name)
+
+    # Ensure widgets resources directory exists and sync symlinks
+    TIGERDUCK_WIDGETS_DIR.mkdir(parents=True, exist_ok=True)
+    for name in desired:
+        ensure_widgets_symlink(name)
 
 
 def run_canonical_generator() -> None:
