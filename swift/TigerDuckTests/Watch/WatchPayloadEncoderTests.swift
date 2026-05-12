@@ -76,6 +76,20 @@ final class WatchPayloadEncoderTests: XCTestCase {
         XCTAssertEqual(snap.courses.first?.endHHmm, "12:10")
     }
 
+    func test_perCourseColorMatchesThemePalette() {
+        let c = makeCourse(no: "X1")
+        let snap = WatchPayloadEncoder.encode(
+            courses: [c], accentHex: "#FF8800",
+            syncedAt: Date(), loggedIn: true, languageTag: nil
+        )
+        // Encoder must use the user-visible per-course palette, not the
+        // global accent — otherwise the watch swatch drifts from the phone.
+        XCTAssertEqual(
+            snap.courses.first?.colorHex,
+            TigerDuckTheme.courseColorHex(for: "X1")
+        )
+    }
+
     func test_loggedOut_stillEmitsCachedCourses() {
         let c = makeCourse()
         let snap = WatchPayloadEncoder.encode(

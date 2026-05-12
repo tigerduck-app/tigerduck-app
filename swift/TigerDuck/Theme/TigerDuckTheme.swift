@@ -31,28 +31,43 @@ enum TigerDuckTheme {
     }
 
     // MARK: - Course Colors (20-color palette, high visual distinctness)
-    static let courseColors: [Color] = [
-        Color(hex: 0xFF6B6B), // 珊瑚紅
-        Color(hex: 0x4ECDC4), // 青綠
-        Color(hex: 0x45B7D1), // 天藍
-        Color(hex: 0xF39C12), // 橘橙
-        Color(hex: 0xDDA0DD), // 梅紫
-        Color(hex: 0x2ECC71), // 翡翠綠
-        Color(hex: 0xE74C3C), // 磚紅
-        Color(hex: 0x3498DB), // 寶藍
-        Color(hex: 0xF7DC6F), // 金黃
-        Color(hex: 0x9B59B6), // 紫羅蘭
-        Color(hex: 0x1ABC9C), // 碧綠
-        Color(hex: 0xE67E22), // 南瓜橘
-        Color(hex: 0x85C1E9), // 淺藍
-        Color(hex: 0xD35400), // 焦橙
-        Color(hex: 0x27AE60), // 森林綠
-        Color(hex: 0xC0392B), // 酒紅
-        Color(hex: 0x8E44AD), // 深紫
-        Color(hex: 0x16A085), // 松綠
-        Color(hex: 0xF1C40F), // 向日葵黃
-        Color(hex: 0x2980B9), // 鈷藍
+    /// Source-of-truth palette as 24-bit RGB integers. `courseColors` derives
+    /// `Color` values from this list; the watch-sync encoder reads it via
+    /// `courseColorHex(for:)` so its hex output stays in lockstep with what
+    /// the phone renders.
+    static let coursePaletteHexes: [UInt] = [
+        0xFF6B6B, // 珊瑚紅
+        0x4ECDC4, // 青綠
+        0x45B7D1, // 天藍
+        0xF39C12, // 橘橙
+        0xDDA0DD, // 梅紫
+        0x2ECC71, // 翡翠綠
+        0xE74C3C, // 磚紅
+        0x3498DB, // 寶藍
+        0xF7DC6F, // 金黃
+        0x9B59B6, // 紫羅蘭
+        0x1ABC9C, // 碧綠
+        0xE67E22, // 南瓜橘
+        0x85C1E9, // 淺藍
+        0xD35400, // 焦橙
+        0x27AE60, // 森林綠
+        0xC0392B, // 酒紅
+        0x8E44AD, // 深紫
+        0x16A085, // 松綠
+        0xF1C40F, // 向日葵黃
+        0x2980B9, // 鈷藍
     ]
+
+    static let courseColors: [Color] = coursePaletteHexes.map { Color(hex: $0) }
+
+    /// "#RRGGBB" hex for the course's current palette index. Mirrors
+    /// `courseColor(for:)` but returns the wire-format string used by
+    /// `WatchPayloadEncoder`.
+    static func courseColorHex(for courseNo: String) -> String {
+        let idx = paletteIndex(for: courseNo)
+        let hex = coursePaletteHexes[idx]
+        return String(format: "#%06X", hex)
+    }
 
     /// Lock-protected mutable state for the per-course color caches.
     /// `buildCourseColorMap` runs from background sync while

@@ -61,11 +61,10 @@ enum WatchPayloadEncoder {
         return course.classroomMap[key]
     }
 
-    /// Phone keeps the user's chosen per-course color in a separate store
-    /// (currently `AppConstants.CourseColors` / user preference). For v1 we
-    /// fall back to the global accent — Task 17 wires the per-course
-    /// override into the encoder.
+    /// Phone keeps the user's per-course color override in
+    /// `TigerDuckTheme`'s palette + custom-overrides cache. We surface the
+    /// hex form so the watch can render the same swatch the user picked.
     private static func courseColorHex(_ course: SDCourse) -> String {
-        return WatchSnapshot.defaultAccentHex
+        TigerDuckTheme.courseColorHex(for: course.courseNo)
     }
 }

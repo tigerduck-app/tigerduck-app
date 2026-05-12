@@ -9,8 +9,11 @@ struct TigerDuckApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
+    private let watchSyncCoordinator = WatchSyncCoordinator()
+
     init() {
         AppLogger.start()
+        watchSyncCoordinator.activate()
     }
 
     var sharedModelContainer: ModelContainer = {
@@ -65,6 +68,7 @@ struct TigerDuckApp: App {
                 .environment(appState)
                 .tint(appState.accentColor)
                 .preferredColorScheme(.dark)
+                .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
