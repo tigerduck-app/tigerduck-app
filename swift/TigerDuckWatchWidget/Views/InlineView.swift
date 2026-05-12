@@ -14,7 +14,7 @@ struct InlineView: View {
         } else if let n = entry.next {
             return "\(n.name) · \(n.startHHmm)"
         } else {
-            return String(localized: "watch.no_classes_today")
+            return String(localized: "watch_no_classes_today")
         }
     }
 }

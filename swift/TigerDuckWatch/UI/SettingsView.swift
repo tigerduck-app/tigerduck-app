@@ -21,7 +21,7 @@ struct SettingsView: View {
                 Button {
                     store.requestSync(force: true)
                 } label: {
-                    Label(String(localized: "watch.settings.sync_now"),
+                    Label(String(localized: "watch_settings_sync_now"),
                           systemImage: "arrow.clockwise")
                 }
             }
@@ -31,18 +31,18 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .navigationTitle(String(localized: "watch.settings"))
+        .navigationTitle(String(localized: "watch_settings"))
     }
 
     private var loginText: String {
         store.snapshot?.loggedIn == true
-            ? String(localized: "watch.settings.signed_in")
-            : String(localized: "watch.settings.signed_out")
+            ? String(localized: "watch_settings_signed_in")
+            : String(localized: "watch_settings_signed_out")
     }
 
     private var lastSyncedText: String {
         guard let ms = store.snapshot?.syncedAtMs, ms > 0 else {
-            return String(localized: "watch.empty.never_synced")
+            return String(localized: "watch_empty_never_synced")
         }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short

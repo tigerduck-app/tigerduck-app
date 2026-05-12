@@ -17,7 +17,7 @@ struct TodayView: View {
         Group {
             if todaysCourses.isEmpty {
                 ContentUnavailableView(
-                    String(localized: "watch.no_classes_today"),
+                    String(localized: "watch_no_classes_today"),
                     systemImage: "calendar"
                 )
             } else {
@@ -30,7 +30,7 @@ struct TodayView: View {
                 }
             }
         }
-        .navigationTitle(String(localized: "watch.today"))
+        .navigationTitle(String(localized: "watch_today"))
     }
 }
 

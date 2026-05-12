@@ -9,26 +9,26 @@ struct NowNextView: View {
                 if let snapshot = store.snapshot, !snapshot.courses.isEmpty {
                     let result = NextClassResolver.resolve(courses: snapshot.courses, now: Date())
                     if let current = result.current {
-                        ClassCard(title: String(localized: "watch.now"), course: current)
+                        ClassCard(title: String(localized: "watch_now"), course: current)
                     }
                     if let next = result.next {
-                        ClassCard(title: String(localized: "watch.next"), course: next)
+                        ClassCard(title: String(localized: "watch_next"), course: next)
                     }
                     if result.current == nil && result.next == nil {
                         ContentUnavailableView(
-                            String(localized: "watch.no_classes_today"),
+                            String(localized: "watch_no_classes_today"),
                             systemImage: "calendar"
                         )
                     }
                 } else if store.snapshot == nil {
                     ContentUnavailableView(
-                        String(localized: "watch.empty.never_synced"),
+                        String(localized: "watch_empty_never_synced"),
                         systemImage: "iphone.gen3"
                     )
                 } else {
                     // Logged out: empty courses array with loggedIn=false
                     ContentUnavailableView(
-                        String(localized: "watch.empty.not_logged_in"),
+                        String(localized: "watch_empty_not_logged_in"),
                         systemImage: "person.crop.circle.badge.exclamationmark"
                     )
                 }

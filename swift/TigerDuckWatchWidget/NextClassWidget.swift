@@ -9,8 +9,8 @@ struct NextClassWidget: Widget {
             NextClassWidgetEntryView(entry: entry)
                 .modifier(WatchTheme(snapshot: nil)) // accent passed in entry; locale uses system
         }
-        .configurationDisplayName(String(localized: "watch.widget.next_class"))
-        .description(String(localized: "watch.widget.next_class.description"))
+        .configurationDisplayName(String(localized: "watch_widget_next_class"))
+        .description(String(localized: "watch_widget_next_class_description"))
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
     }
 }
