@@ -55,6 +55,20 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
     /// Composite key — NTUST can legitimately reissue the same code across
     /// terms when a student retakes, so `code` alone is not unique.
     var id: String { "\(term)-\(code)-\(index ?? -1)" }
+
+    /// The school backend returns pass/fail text in its own language
+    /// ("通過"/"不通過"), so this must be derived from raw payload values
+    /// rather than UI localization.
+    var isPassStatusPassed: Bool {
+        let normalized = grade.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalized.isEmpty { return true }
+
+        let failedMarkers: Set<String> = ["不通過", "未通過", "FAIL", "FAILED"]
+        if failedMarkers.contains(normalized.uppercased()) || failedMarkers.contains(normalized) {
+            return false
+        }
+        return true
+    }
 }
 
 enum CreditType: String, Codable, Equatable, Sendable, CaseIterable {

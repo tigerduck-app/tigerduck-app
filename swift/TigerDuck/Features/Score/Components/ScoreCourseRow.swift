@@ -93,7 +93,7 @@ private struct GradeChip: View {
         case .exempted:
             return (String(localized: "score_grade_exempted"), Color(hex: 0x85C1E9), "checkmark.seal")
         case .passed:
-            let passed = course.grade == String(localized: "score_grade_passed")
+            let passed = course.isPassStatusPassed
             return (
                 passed
                     ? String(localized: "score_grade_passed")

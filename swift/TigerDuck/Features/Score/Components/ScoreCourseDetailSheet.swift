@@ -202,7 +202,7 @@ struct ScoreCourseDetailSheet: View {
         case .exempted:
             return Color(hex: 0x85C1E9)
         case .passed:
-            return course.grade == String(localized: "score_grade_failed") ? Color(hex: 0xE74C3C) : Color(hex: 0x4ECDC4)
+            return course.isPassStatusPassed ? Color(hex: 0x4ECDC4) : Color(hex: 0xE74C3C)
         case .graded:
             let upper = course.grade.uppercased()
             if upper.hasPrefix("A") { return Color(hex: 0x2ECC71) }

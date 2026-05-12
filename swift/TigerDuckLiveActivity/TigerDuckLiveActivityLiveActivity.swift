@@ -203,14 +203,18 @@ private struct MetadataRowView: View {
                 }
 
             case .inClass, .classPreparing:
-                HStack(spacing: 4) {
-                    if let loc = snapshot.locationText, !loc.isEmpty {
-                        Image(systemName: "mappin.and.ellipse")
-                        Text(loc)
-                    }
-                }
+                let hasLocation = snapshot.locationText?.isEmpty == false
 
-                Spacer(minLength: 8)
+                if hasLocation {
+                    HStack(spacing: 4) {
+                        if let loc = snapshot.locationText {
+                            Image(systemName: "mappin.and.ellipse")
+                            Text(loc)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+                }
 
                 HStack(spacing: 4) {
                     if !snapshot.subtitle.isEmpty {
