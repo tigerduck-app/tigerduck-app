@@ -22,6 +22,7 @@ struct OnboardingView: View {
                     withAnimation { currentPage = 1 }
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
             .tag(0)
 
@@ -58,12 +59,12 @@ struct OnboardingView: View {
                             Image(systemName: "lock.fill")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
-                            SecureField(String(localized: "login_password"), text: $password)
-                                .keyboardType(.asciiCapable)
-                                .focused($focusedField, equals: .password)
-                                .textContentType(.password)
-                                .submitLabel(.go)
-                                .onSubmit {
+                            PasswordField(
+                                placeholder: String(localized: "login_password"),
+                                text: $password,
+                                focusBinding: $focusedField,
+                                focusValue: .password,
+                                onSubmit: {
                                     let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
                                     let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
                                     guard !trimmedId.isEmpty, !trimmedPwd.isEmpty, !appState.authService.isLoggingIn else { return }
@@ -72,6 +73,7 @@ struct OnboardingView: View {
                                         if success { withAnimation { currentPage = 2 } }
                                     }
                                 }
+                            )
                         }
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                         .padding(.vertical, TigerDuckTheme.Spacing.md)
@@ -115,6 +117,7 @@ struct OnboardingView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .disabled(studentId.isEmpty || password.isEmpty || appState.authService.isLoggingIn)
                 }
             }
@@ -131,6 +134,7 @@ struct OnboardingView: View {
                     withAnimation { currentPage = 3 }
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
             .tag(2)
 
