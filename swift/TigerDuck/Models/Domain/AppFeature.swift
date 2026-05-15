@@ -54,6 +54,32 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// Tab-bar label. English locales otherwise truncate long labels (e.g.
+    /// "Course selection") unevenly across tabs; the `_short` variants are
+    /// hand-tuned in the localization repo. Settings has no short form
+    /// because it never appears in the tab bar.
+    var tabBarDisplayName: String {
+        switch self {
+        case .home: String(localized: "feature_home_short")
+        case .classTable: String(localized: "feature_class_table_short")
+        case .calendar: String(localized: "feature_calendar_short")
+        case .announcements: String(localized: "feature_announcements_short")
+        case .library: String(localized: "feature_library_short")
+        case .gpa: String(localized: "feature_score_short")
+        case .courseSelection: String(localized: "feature_course_selection_short")
+        case .graduationRequirements: String(localized: "feature_graduation_requirements_short")
+        case .discussionRoom: String(localized: "feature_discussion_room_short")
+        case .libraryLecture: String(localized: "feature_library_lecture_short")
+        case .freeLunch: String(localized: "feature_free_lunch_short")
+        case .clubs: String(localized: "feature_clubs_short")
+        case .emptyClassroom: String(localized: "feature_empty_classroom_short")
+        case .scholarship: String(localized: "feature_scholarship_short")
+        case .englishVocab: String(localized: "feature_english_vocab_short")
+        case .more: String(localized: "feature_more_short")
+        case .settings: displayName
+        }
+    }
+
     var iconName: String {
         switch self {
         case .home: "house.fill"

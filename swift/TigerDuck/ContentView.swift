@@ -32,12 +32,12 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { feature in
-                Tab(feature.displayName, systemImage: feature.iconName, value: feature) {
+                Tab(feature.tabBarDisplayName, systemImage: feature.iconName, value: feature) {
                     viewForFeature(feature)
                 }
             }
 
-            Tab(AppFeature.more.displayName, systemImage: AppFeature.more.iconName, value: .more) {
+            Tab(AppFeature.more.tabBarDisplayName, systemImage: AppFeature.more.iconName, value: .more) {
                 MoreView()
             }
         }
