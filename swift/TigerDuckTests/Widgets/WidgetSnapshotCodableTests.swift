@@ -3,6 +3,10 @@ import Testing
 @testable import TigerDuck
 
 struct WidgetSnapshotCodableTests {
+    // Anchor class so Bundle(for:) can locate the test bundle.
+    // Swift Testing structs cannot themselves be Bundle anchors.
+    private final class FixtureBundleAnchor {}
+
     @Test func roundTrip_preservesAllFields() throws {
         let snapshot = WidgetSnapshot(
             version: 1,
@@ -40,33 +44,34 @@ struct WidgetSnapshotCodableTests {
     }
 
     @Test func decodesFrozenV1Fixture() throws {
-        // Fixture loading via Bundle is awkward in Swift Testing without a class
-        // owning the Bundle. Read directly from disk via the working directory
-        // (xcodebuild runs from the project root). This is fragile to test
-        // working-directory changes but mirrors the plan's fallback path.
-        let candidatePaths = [
-            "swift/TigerDuckTests/Widgets/Fixtures/WidgetSnapshot-v1.json",
-            "TigerDuckTests/Widgets/Fixtures/WidgetSnapshot-v1.json",
-            "../TigerDuckTests/Widgets/Fixtures/WidgetSnapshot-v1.json",
-        ]
-        var data: Data?
-        for path in candidatePaths {
-            if FileManager.default.fileExists(atPath: path) {
-                data = try Data(contentsOf: URL(fileURLWithPath: path))
-                break
-            }
-        }
-        // If working directory tricks fail, also try Bundle.module / Bundle(for:)
-        if data == nil {
-            // Intentionally let this throw with a clear file-not-found if needed;
-            // the user will add the fixture to the TigerDuckTests target's
-            // resources in Xcode and rerun.
-            throw NSError(domain: "WidgetSnapshotCodableTests", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "Fixture not found in any candidate path; ensure WidgetSnapshot-v1.json is added to TigerDuckTests target as a resource."])
-        }
-
-        let snapshot = try JSONDecoder().decode(WidgetSnapshot.self, from: data!)
+        let data = try Self.loadFixtureData(name: "WidgetSnapshot-v1", ext: "json")
+        let snapshot = try JSONDecoder().decode(WidgetSnapshot.self, from: data)
         #expect(snapshot.version == 1)
         #expect(!snapshot.courses.isEmpty)
+    }
+
+    /// Tries the test bundle first (works under Xcode when the fixture is added
+    /// as a Copy Bundle Resources entry on the test target), then falls back to
+    /// repo-relative paths for `swift test` / direct CLI runs.
+    private static func loadFixtureData(name: String, ext: String) throws -> Data {
+        let bundle = Bundle(for: FixtureBundleAnchor.self)
+        if let url = bundle.url(forResource: name, withExtension: ext, subdirectory: "Fixtures")
+            ?? bundle.url(forResource: name, withExtension: ext) {
+            return try Data(contentsOf: url)
+        }
+        let cwdCandidates = [
+            "swift/TigerDuckTests/Widgets/Fixtures/\(name).\(ext)",
+            "TigerDuckTests/Widgets/Fixtures/\(name).\(ext)",
+            "../TigerDuckTests/Widgets/Fixtures/\(name).\(ext)",
+        ]
+        for path in cwdCandidates where FileManager.default.fileExists(atPath: path) {
+            return try Data(contentsOf: URL(fileURLWithPath: path))
+        }
+        throw NSError(
+            domain: "WidgetSnapshotCodableTests", code: 1,
+            userInfo: [NSLocalizedDescriptionKey:
+                "Fixture \(name).\(ext) not found in test bundle (subdirectory=Fixtures or top-level) nor at CWD-relative paths. " +
+                "Verify the fixture is added to TigerDuckTests target's Copy Bundle Resources phase."]
+        )
     }
 }
