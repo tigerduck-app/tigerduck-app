@@ -18,10 +18,10 @@ struct LibraryView: View {
 
     private var content: some View {
         Group {
-            if viewModel.isLoggedIn {
-                qrLayout
+            if shouldCenterQRForRotation {
+                qrCenteredLayout
             } else {
-                loginLayout
+                scrollableLayout
             }
         }
         .background(Color.backgroundPrimary)
@@ -41,11 +41,15 @@ struct LibraryView: View {
         }
     }
 
-    /// QR display: header pinned to top, QR vertically centered in the
-    /// remaining space. Spacers keep the card anchored to the layout's
-    /// center on both portrait and landscape so a rotating iPad re-lands
-    /// the pass at the same logical screen position.
-    private var qrLayout: some View {
+    /// iPad rotates freely, so anchor the QR to vertical center to keep its
+    /// on-screen position stable across orientation changes. iPhone is
+    /// portrait-locked by Info.plist and stays on the regular top-aligned
+    /// scroll layout.
+    private var shouldCenterQRForRotation: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && viewModel.isLoggedIn
+    }
+
+    private var qrCenteredLayout: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             headerSection
             errorBanner
@@ -56,14 +60,16 @@ struct LibraryView: View {
         .padding(.bottom, TigerDuckTheme.Spacing.xxl)
     }
 
-    /// Login form lives in a ScrollView so the keyboard can push the
-    /// password field up without clipping the header.
-    private var loginLayout: some View {
+    private var scrollableLayout: some View {
         ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 headerSection
                 errorBanner
-                loginPrompt
+                if viewModel.isLoggedIn {
+                    qrSection
+                } else {
+                    loginPrompt
+                }
             }
             .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
