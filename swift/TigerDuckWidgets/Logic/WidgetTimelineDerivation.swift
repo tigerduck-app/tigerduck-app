@@ -33,9 +33,9 @@ enum WidgetTimelineDerivation {
 
         // 1. Ongoing courses (any course whose any period contains nowMin)
         let ongoing = snapshot.courses.compactMap { course -> WidgetDerivedState.OngoingInfo? in
-            guard let periods = course.schedule[weekday]?
-                .sorted(by: { (order.firstIndex(of: $0) ?? .max) < (order.firstIndex(of: $1) ?? .max) }),
-                  !periods.isEmpty else { return nil }
+            guard let raw = course.schedule[weekday] else { return nil }
+            let periods = sortPeriods(raw, by: order)
+            guard !periods.isEmpty else { return nil }
             let first = periods.first!
             let last = periods.last!
             guard let firstStart = parseHm(snapshot.periodTimes[first]?.start),
@@ -56,8 +56,8 @@ enum WidgetTimelineDerivation {
 
         // 2. Next today (any course whose first period today starts in the future)
         let candidates = snapshot.courses.compactMap { course -> (SnapshotCourse, Int, String)? in
-            guard let periods = course.schedule[weekday]?
-                .sorted(by: { (order.firstIndex(of: $0) ?? .max) < (order.firstIndex(of: $1) ?? .max) }) else { return nil }
+            guard let raw = course.schedule[weekday] else { return nil }
+            let periods = sortPeriods(raw, by: order)
             for periodId in periods {
                 if let start = parseHm(snapshot.periodTimes[periodId]?.start), start > nowMin {
                     return (course, start, periodId)
@@ -77,13 +77,15 @@ enum WidgetTimelineDerivation {
         for offset in 1...7 {
             let target = ((weekday - 1 + offset) % 7) + 1
             let dayCourses = snapshot.courses.compactMap { course -> (SnapshotCourse, String)? in
-                guard let periods = course.schedule[target]?
-                    .sorted(by: { (order.firstIndex(of: $0) ?? .max) < (order.firstIndex(of: $1) ?? .max) }),
-                      let firstPeriod = periods.first else { return nil }
+                guard let raw = course.schedule[target] else { return nil }
+                let periods = sortPeriods(raw, by: order)
+                guard let firstPeriod = periods.first else { return nil }
                 return (course, firstPeriod)
             }
-            if let pick = dayCourses.min(by: {
-                (order.firstIndex(of: $0.1) ?? .max) < (order.firstIndex(of: $1.1) ?? .max)
+            if let pick = dayCourses.min(by: { lhs, rhs in
+                let li = order.firstIndex(of: lhs.1) ?? Int.max
+                let ri = order.firstIndex(of: rhs.1) ?? Int.max
+                return li < ri
             }) {
                 return .tomorrowFirst(.init(
                     course: pick.0,
@@ -118,6 +120,19 @@ enum WidgetTimelineDerivation {
         let parts = s.split(separator: ":")
         guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
         return h * 60 + m
+    }
+
+    /// Sort a list of period IDs by their position in `order`. Period IDs not
+    /// present in `order` sink to the end (Int.max placeholder). Extracted to
+    /// keep the call sites simple — inlining this in `.sorted(by:)` triggers
+    /// "unable to type-check in reasonable time" because of the optional
+    /// `firstIndex(of:)` + `?? .max` interaction with surrounding closures.
+    static func sortPeriods(_ periods: [String], by order: [String]) -> [String] {
+        periods.sorted { lhs, rhs in
+            let li = order.firstIndex(of: lhs) ?? Int.max
+            let ri = order.firstIndex(of: rhs) ?? Int.max
+            return li < ri
+        }
     }
 }
 
