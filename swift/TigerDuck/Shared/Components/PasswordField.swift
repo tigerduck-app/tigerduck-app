@@ -35,7 +35,16 @@ struct PasswordField<Field: Hashable>: View {
             .onSubmit(onSubmit)
 
             Button {
+                let wasFocused = focusBinding.wrappedValue == focusValue
                 isVisible.toggle()
+                if wasFocused {
+                    // Swapping between SecureField and TextField rebuilds the
+                    // input view and drops first responder. Re-assert focus on
+                    // the next runloop tick so the keyboard stays up.
+                    DispatchQueue.main.async {
+                        focusBinding.wrappedValue = focusValue
+                    }
+                }
             } label: {
                 Image(systemName: isVisible ? "eye.slash" : "eye")
                     .foregroundStyle(.secondary)
