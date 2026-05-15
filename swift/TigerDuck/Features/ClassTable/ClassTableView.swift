@@ -98,7 +98,12 @@ struct ClassTableView: View {
                 AddCourseSheet(
                     semester: viewModel.currentSemester,
                     existingCourseNos: Set(viewModel.courses.map(\.courseNo)),
-                    onAdd: { viewModel.addCourse($0) }
+                    onAdd: { viewModel.addCourse($0) },
+                    onRemove: { courseNo in
+                        if let course = viewModel.courses.first(where: { $0.courseNo == courseNo }) {
+                            viewModel.deleteCourse(course)
+                        }
+                    }
                 )
                 .presentationDetents([.medium, .large])
             }
