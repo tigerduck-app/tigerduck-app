@@ -11,6 +11,8 @@ struct UpcomingAssignmentsView: View {
     var onUndoComplete: ((SDAssignment) -> Void)? = nil
 
     @Environment(AppState.self) private var appState
+    @ScaledMetric(relativeTo: .body) private var cardRowHeight: CGFloat = 82
+    @ScaledMetric(relativeTo: .body) private var groupedRowHeight: CGFloat = 56
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -84,13 +86,11 @@ struct UpcomingAssignmentsView: View {
         let count = CGFloat(assignments.count)
         switch policy.assignmentRowStyle {
         case .card:
-            let rowHeight: CGFloat = 82
             let spacing: CGFloat = TigerDuckTheme.Spacing.sm
-            return count * rowHeight + max(0, count - 1) * spacing
+            return count * cardRowHeight + max(0, count - 1) * spacing
         case .groupedList:
-            let rowHeight: CGFloat = 56
             let separators = max(0, count - 1)
-            return count * rowHeight + separators
+            return count * groupedRowHeight + separators
         }
     }
 
@@ -170,6 +170,7 @@ struct UpcomingAssignmentsView: View {
                 Text(assignment.displayCourseName)
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(policy.secondaryTextColor)
+                    .lineLimit(1)
             }
             Spacer()
             trailingStatus(
@@ -199,10 +200,12 @@ struct UpcomingAssignmentsView: View {
                 Text(label)
                     .font(statusFont(status: status))
                     .foregroundStyle(status.tint)
+                    .lineLimit(1)
             }
             Text(timeLabel(for: assignment, now: now))
                 .font(timeFont(status: status))
                 .foregroundStyle(timeColor(status: status, policy: policy))
+                .lineLimit(1)
         }
     }
 
