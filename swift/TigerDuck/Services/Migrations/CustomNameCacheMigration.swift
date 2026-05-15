@@ -18,6 +18,12 @@ enum CustomNameCacheMigration {
     static func runIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
         defer { UserDefaults.standard.set(true, forKey: doneKey) }
+        // Pollution can only exist if the user has at least one persisted
+        // rename. Skipping the purge for users who never renamed a course
+        // preserves their offline timetable across the upgrade — they
+        // would otherwise see an empty class table on a cold launch with
+        // no network until the next successful course fetch.
+        guard !DataCache.shared.loadCourseCustomNames().isEmpty else { return }
         DataCache.shared.clearCourseCaches()
     }
 }
