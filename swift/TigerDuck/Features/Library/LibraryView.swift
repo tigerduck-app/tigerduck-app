@@ -17,22 +17,14 @@ struct LibraryView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                headerSection
-                errorBanner
-                if viewModel.isLoggedIn {
-                    qrSection
-                } else {
-                    loginPrompt
-                }
-                /// Temporary comments until feature is implemented.
-                //  libraryFeaturesSection
+        Group {
+            if viewModel.isLoggedIn {
+                qrLayout
+            } else {
+                loginLayout
             }
-            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
         .background(Color.backgroundPrimary)
-        .lockOrientation(.portrait)
         .onAppear {
             viewModel.load()
             viewModel.onAppear()
@@ -46,6 +38,34 @@ struct LibraryView: View {
             } else {
                 viewModel.stopTimers()
             }
+        }
+    }
+
+    /// QR display: header pinned to top, QR vertically centered in the
+    /// remaining space. Spacers keep the card anchored to the layout's
+    /// center on both portrait and landscape so a rotating iPad re-lands
+    /// the pass at the same logical screen position.
+    private var qrLayout: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.lg) {
+            headerSection
+            errorBanner
+            Spacer(minLength: 0)
+            qrSection
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+    }
+
+    /// Login form lives in a ScrollView so the keyboard can push the
+    /// password field up without clipping the header.
+    private var loginLayout: some View {
+        ScrollView {
+            VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                headerSection
+                errorBanner
+                loginPrompt
+            }
+            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
     }
 
