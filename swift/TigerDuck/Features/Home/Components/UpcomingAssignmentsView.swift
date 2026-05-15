@@ -4,6 +4,7 @@ struct UpcomingAssignmentsView: View {
     private static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
     let assignments: [SDAssignment]
+    var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
     var onArchive: ((SDAssignment) -> Void)? = nil
     var onMarkComplete: ((SDAssignment) -> Void)? = nil
@@ -11,8 +12,19 @@ struct UpcomingAssignmentsView: View {
     var onUndoComplete: ((SDAssignment) -> Void)? = nil
 
     @Environment(AppState.self) private var appState
-    @ScaledMetric(relativeTo: .body) private var cardRowHeight: CGFloat = 82
-    @ScaledMetric(relativeTo: .body) private var groupedRowHeight: CGFloat = 56
+
+    /// Per-row content height reported back via `RowHeightPreferenceKey`.
+    /// Title wrapping makes the row genuinely variable-height, so the parent
+    /// ScrollView's section height must follow what was actually laid out
+    /// rather than a guessed constant — otherwise either the last row clips
+    /// or the section reserves a black gap beneath the list.
+    @State private var rowHeights: [String: CGFloat] = [:]
+
+    /// Conservative fallback used on the first render before the
+    /// PreferenceKey reports back. Sized for a 3-line worst case so the
+    /// initial layout doesn't clip; once measured, the real value takes
+    /// over.
+    @ScaledMetric(relativeTo: .body) private var fallbackRowHeight: CGFloat = 96
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -36,23 +48,22 @@ struct UpcomingAssignmentsView: View {
         List {
             ForEach(assignments, id: \.assignmentId) { assignment in
                 swipeableCardRow(assignment: assignment, now: now, policy: policy)
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                    .padding(.vertical, TigerDuckTheme.Spacing.sm / 2)
+                    .background(rowHeightReporter(for: assignment))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(
-                        EdgeInsets(
-                            top: 0,
-                            leading: TigerDuckTheme.Spacing.lg,
-                            bottom: TigerDuckTheme.Spacing.sm,
-                            trailing: TigerDuckTheme.Spacing.lg
-                        )
-                    )
+                    .listRowInsets(EdgeInsets())
             }
         }
         .listStyle(.plain)
         .scrollDisabled(true)
         .scrollContentBackground(.hidden)
         .background(Color.clear)
-        .frame(height: listHeight(for: policy))
+        .frame(height: totalListHeight(for: policy))
+        .onPreferenceChange(RowHeightPreferenceKey.self) { newHeights in
+            rowHeights = newHeights
+        }
         .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
     }
 
@@ -66,6 +77,7 @@ struct UpcomingAssignmentsView: View {
                                 .padding(.leading, TigerDuckTheme.Spacing.lg)
                         }
                     }
+                    .background(rowHeightReporter(for: assignment))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets())
@@ -75,22 +87,35 @@ struct UpcomingAssignmentsView: View {
         .scrollDisabled(true)
         .scrollContentBackground(.hidden)
         .background(Color.clear)
-        .frame(height: listHeight(for: policy))
+        .frame(height: totalListHeight(for: policy))
         .presetGroupedListContainer(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .onPreferenceChange(RowHeightPreferenceKey.self) { newHeights in
+            rowHeights = newHeights
+        }
         .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
     }
 
-    private func listHeight(for policy: VisualStylePolicy) -> CGFloat {
+    /// Sums the measured row heights so the List frame matches what's
+    /// actually rendered. While measurements are pending (first frame,
+    /// row insertions), each unknown row falls back to a 3-line estimate.
+    private func totalListHeight(for policy: VisualStylePolicy) -> CGFloat {
         guard !assignments.isEmpty else { return 0 }
-        let count = CGFloat(assignments.count)
-        switch policy.assignmentRowStyle {
-        case .card:
-            let spacing: CGFloat = TigerDuckTheme.Spacing.sm
-            return count * cardRowHeight + max(0, count - 1) * spacing
-        case .groupedList:
-            let separators = max(0, count - 1)
-            return count * groupedRowHeight + separators
+        return assignments.reduce(0) { sum, assignment in
+            sum + (rowHeights[assignment.assignmentId] ?? fallbackRowHeight)
+        }
+    }
+
+    /// Background helper that reports the measured row size up through a
+    /// `PreferenceKey`. Used for both card and grouped-list layouts so the
+    /// `totalListHeight` math is single-sourced.
+    private func rowHeightReporter(for assignment: SDAssignment) -> some View {
+        GeometryReader { proxy in
+            Color.clear
+                .preference(
+                    key: RowHeightPreferenceKey.self,
+                    value: [assignment.assignmentId: proxy.size.height]
+                )
         }
     }
 
@@ -161,18 +186,20 @@ struct UpcomingAssignmentsView: View {
     @ViewBuilder
     private func assignmentRow(assignment: SDAssignment, now: Date, policy: VisualStylePolicy) -> some View {
         let status = assignment.status(now: now)
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
+        HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(assignment.title)
+                Text(assignment.displayTitle)
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(policy.primaryTextColor)
-                    .lineLimit(1)
-                Text(assignment.displayCourseName)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(courseLineLabel(for: assignment))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(policy.secondaryTextColor)
                     .lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: TigerDuckTheme.Spacing.xs)
             trailingStatus(
                 assignment: assignment,
                 status: status,
@@ -186,6 +213,19 @@ struct UpcomingAssignmentsView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    /// "課名 • 課程ID" — the third line beneath the (possibly wrapped) title.
+    /// The course code is dropped when it would just repeat the name (e.g.,
+    /// an unknown course where `displayCourseName` already falls back to the
+    /// courseNo).
+    private func courseLineLabel(for assignment: SDAssignment) -> String {
+        let name = assignment.displayCourseName
+        let code = assignment.courseNo
+        if code.isEmpty || name == code {
+            return name
+        }
+        return "\(name) • \(code)"
     }
 
     @ViewBuilder
@@ -240,12 +280,28 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
+    /// Resolves the right-side time text. The 全部 tab uses time-based
+    /// branching (past rows always show the absolute deadline as the
+    /// second line); other tabs keep the legacy "relative unless toggled,
+    /// override to absolute for completed-and-past" rule.
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        if showAbsoluteTime || (assignment.isCompleted && assignment.dueDate < now) {
+        let isPast = assignment.dueDate < now
+        if filter == .all && isPast {
             return assignment.dueDate.absoluteTimeString
-        } else {
-            return assignment.dueDate.relativeTimeString(from: now)
         }
+        if showAbsoluteTime || (assignment.isCompleted && isPast) {
+            return assignment.dueDate.absoluteTimeString
+        }
+        return assignment.dueDate.relativeTimeString(from: now)
+    }
+}
+
+// MARK: - Row height plumbing
+
+private struct RowHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
     }
 }
 
