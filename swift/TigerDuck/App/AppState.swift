@@ -104,6 +104,7 @@ final class AppState {
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
             ClassroomAbbrCacheMigration.runIfNeeded()
+            CustomNameCacheMigration.runIfNeeded()
             // Add future migrations here in sequence.
         }
     }
