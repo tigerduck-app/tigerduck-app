@@ -28,13 +28,18 @@ extension Array where Element == SDAssignment {
         contains { !$0.isCompleted && $0.isArchived }
     }
 
-    /// Time-agnostic candidate set for the 全部 tab: every assignment
-    /// except the locally-ignored ones (those live in the 已忽略 filter).
+    /// Time-agnostic candidate set for the 全部 tab. Excludes
+    /// locally-archived rows (they belong to the 已忽略 filter) *except*
+    /// when Moodle has since marked the row submitted — that
+    /// archived-and-completed state is reachable because the local
+    /// archive flag persists separately from Moodle completion, and the
+    /// 已忽略 bucket itself requires `!isCompleted`, so without this
+    /// exception the row would vanish from every filter.
     /// Intentionally unsorted — the past/future partition depends on the
     /// live clock and must be applied at render time via
     /// `partitionedByDueDate(now:)`, not cached against a frozen `Date()`.
     func allCandidates() -> [SDAssignment] {
-        filter { !$0.isArchived }
+        filter { !$0.isArchived || $0.isCompleted }
     }
 
     /// Splits assignments into future-first and past-second buckets

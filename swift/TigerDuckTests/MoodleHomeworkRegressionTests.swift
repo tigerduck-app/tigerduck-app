@@ -307,14 +307,43 @@ struct MoodleHomeworkRegressionTests {
         )
 
         let candidates = [normal, archived, locallyDone].allCandidates()
-        // archived removed; locallyDone + normal both kept (filter is
-        // time-agnostic at this layer).
+        // archived (uncompleted) removed; locallyDone + normal both kept
+        // (filter is time-agnostic at this layer).
         #expect(Set(candidates.map(\.assignmentId)) == ["1", "3"])
 
         let partitioned = candidates.partitionedByDueDate(now: now)
         // Both items are past; past bucket sorts descending so the
         // more-recently due `locallyDone` (-1800s) lands above `normal` (-3600s).
         #expect(partitioned.map(\.assignmentId) == ["3", "1"])
+    }
+
+    @Test func allCandidates_keepsArchivedRowsOnceMoodleMarksThemCompleted() {
+        let now = Date()
+        let ignoredOnly = SDAssignment(
+            assignmentId: "ignored", courseNo: "C", courseName: "C", title: "Ignored",
+            dueDate: now.addingTimeInterval(-3600), isCompleted: false, isArchived: true
+        )
+        // Reachable real-world state: user swipes-to-ignore (isArchived=true),
+        // later submits on Moodle so the next sync flips isCompleted=true
+        // without clearing the local archive flag.
+        let ignoredThenSubmitted = SDAssignment(
+            assignmentId: "ignored+submitted", courseNo: "C", courseName: "C",
+            title: "IgnoredThenSubmitted",
+            dueDate: now.addingTimeInterval(-7200),
+            isCompleted: true, isArchived: true
+        )
+
+        // 全部 must surface the submitted row (status would render as
+        // .submitted, not .archived). The pure-ignored row stays excluded —
+        // it belongs to the 已忽略 filter.
+        let all = [ignoredOnly, ignoredThenSubmitted].allCandidates()
+        #expect(all.map(\.assignmentId) == ["ignored+submitted"])
+
+        // 已忽略 requires !isCompleted, so it only contains the pure-ignored
+        // row. Together with the assertion above this guarantees the
+        // submitted-archived row is reachable from at least one filter.
+        let ignored = [ignoredOnly, ignoredThenSubmitted].ignoredSorted()
+        #expect(ignored.map(\.assignmentId) == ["ignored"])
     }
 
     @Test func arrayIgnoredSorted_onlyIncludesIgnoredUnsubmittedAssignments() {
