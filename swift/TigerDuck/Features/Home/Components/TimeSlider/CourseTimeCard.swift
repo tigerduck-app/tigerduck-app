@@ -59,7 +59,7 @@ struct CourseTimeCard: View {
                     }
                 }
 
-                Text(course.courseName)
+                Text(course.displayName)
                     .font(.headline)
                     .foregroundStyle(courseNameColor(for: course))
                     .lineLimit(1)

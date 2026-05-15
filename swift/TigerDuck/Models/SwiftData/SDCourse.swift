@@ -12,6 +12,19 @@ final class SDCourse: Identifiable {
     var enrolledCount: Int
     var maxCount: Int
 
+    /// User-supplied alias for `courseName`. Kept transient because the
+    /// canonical store is `DataCache.loadCourseCustomNames()`; persisting it
+    /// here would let SwiftData round-trip the override through cache rebuilds
+    /// and bypass the rename mechanism (see `CanonicalCourseProvider.merge`).
+    /// Read via `displayName`.
+    @Transient var customName: String? = nil
+
+    /// What to show to the user — custom name when set, otherwise the
+    /// canonical API name. Use this anywhere a course label is rendered
+    /// (UI / widget / Live Activity / notification body); keep
+    /// `courseName` for matching, persistence, and search.
+    var displayName: String { customName ?? courseName }
+
     /// Schedule stored as JSON: {"1":["3","4"],"3":["6","7"]}
     /// Keys = weekday (1=Mon..7=Sun), Values = period IDs
     var scheduleJSON: String {

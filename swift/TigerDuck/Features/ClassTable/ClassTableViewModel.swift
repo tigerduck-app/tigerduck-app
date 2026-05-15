@@ -356,11 +356,11 @@ final class ClassTableViewModel {
             classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
         )
 
-        // Custom name override comes after relabelInPlace so it survives
-        // (relabelInPlace would otherwise overwrite it from the cached raw).
-        if let customName = courseCustomNames[course.courseNo] {
-            course.courseName = customName
-        }
+        // Apply the custom-name overlay if one persists for this course
+        // (e.g. user removed and re-added). Stored separately from the
+        // canonical courseName so abbreviation toggles and refreshes still
+        // round-trip the API value through `NameAbbrService`.
+        course.customName = courseCustomNames[course.courseNo]
 
         courses.append(course)
         persistUserAddedCourses()
@@ -374,10 +374,8 @@ final class ClassTableViewModel {
 
     private func applyCustomizations(_ courses: inout [SDCourse]) {
         courses.removeAll { deletedCourseNos.contains($0.courseNo) }
-        for i in courses.indices {
-            if let customName = courseCustomNames[courses[i].courseNo] {
-                courses[i].courseName = customName
-            }
+        for course in courses {
+            course.customName = courseCustomNames[course.courseNo]
         }
     }
 
@@ -411,16 +409,36 @@ final class ClassTableViewModel {
 
     func startRename(_ course: SDCourse) {
         courseToRename = course
-        renameText = course.courseName
+        renameText = course.displayName
         showRenameAlert = true
     }
 
     func confirmRename() {
-        guard let course = courseToRename, !renameText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        let newName = renameText.trimmingCharacters(in: .whitespaces)
-        courseCustomNames[course.courseNo] = newName
+        guard let course = courseToRename else { return }
+        // Trim whitespace *and* newlines so a pasted "\nDefault\n" still
+        // collapses to empty and routes through the revert path instead of
+        // saving an invisible/line-breaking alias.
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Empty (or unchanged-from-default) means the user wants to revert to
+        // the canonical name. Clearing the override is also what the explicit
+        // "Revert to default" button does.
+        if trimmed.isEmpty || trimmed == course.courseName {
+            revertRename(course)
+            return
+        }
+        courseCustomNames[course.courseNo] = trimmed
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
-        course.courseName = newName
+        course.customName = trimmed
+        rebuildLookup()
+        persistUserAddedCourses()
+        courseToRename = nil
+        broadcastLocalChange()
+    }
+
+    func revertRename(_ course: SDCourse) {
+        courseCustomNames.removeValue(forKey: course.courseNo)
+        DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        course.customName = nil
         rebuildLookup()
         persistUserAddedCourses()
         courseToRename = nil
