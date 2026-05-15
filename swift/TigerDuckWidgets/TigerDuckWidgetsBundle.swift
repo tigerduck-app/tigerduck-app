@@ -8,6 +8,6 @@ struct TigerDuckWidgetsBundle: WidgetBundle {
         NextClassWidget()
         TodayWidget()
         WeekWidget()
-        // Future tasks add: AccessoryWidget()
+        AccessoryWidget()
     }
 }
