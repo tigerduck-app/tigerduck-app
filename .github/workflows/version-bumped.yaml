@@ -54,7 +54,19 @@ jobs:
 
           fail=0
 
-          if ! version_gt "$new_marketing" "$old_marketing"; then
+          # Validate both marketing versions are dotted-numeric (optional
+          # `-suffix`) before letting `sort -V` rank them. Without this guard
+          # values like "abc" or "1.6.1+bad" can sort greater than a clean
+          # base like "1.6.1" and slip past the bump gate as long as the
+          # build number is also bumped.
+          marketing_re='^[0-9]+(\.[0-9]+)+(-[A-Za-z0-9._-]+)?$'
+          if ! [[ "$new_marketing" =~ $marketing_re ]]; then
+            echo "::error file=$pbxproj::MARKETING_VERSION must be dotted numeric (e.g. 1.6.1, optionally with -suffix); got '$new_marketing'."
+            fail=1
+          elif ! [[ "$old_marketing" =~ $marketing_re ]]; then
+            echo "::error file=$pbxproj::base MARKETING_VERSION is not dotted numeric (got '$old_marketing'); cannot verify bump."
+            fail=1
+          elif ! version_gt "$new_marketing" "$old_marketing"; then
             echo "::error file=$pbxproj::MARKETING_VERSION must be bumped (current $new_marketing, base $old_marketing). Run /release-bump to bump."
             fail=1
           fi
