@@ -177,9 +177,9 @@ struct AddCourseSheet: View {
             async let enTask = Self.fetchResults(
                 semester: semester, query: enQuery, language: "en", isCourseCode: isCourseCode
             )
-            let zhResults = await zhTask
+            let zhResults = try await zhTask
             try Task.checkCancellation()
-            let enResults = await enTask
+            let enResults = try await enTask
             try Task.checkCancellation()
 
             // The name-search API matches against the queried language only,
@@ -220,19 +220,35 @@ struct AddCourseSheet: View {
 
     private static func fetchResults(
         semester: String, query: String, language: String, isCourseCode: Bool
-    ) async -> [CourseSearchResult] {
+    ) async throws -> [CourseSearchResult] {
         if isCourseCode {
-            return (try? await CourseLookupService.lookupCourse(
+            return try await CourseLookupService.lookupCourse(
                 semester: semester, courseNo: query, language: language
-            )) ?? []
+            )
         }
-        async let byName = (try? CourseLookupService.searchCourses(
+        async let byNameTask = CourseLookupService.searchCourses(
             semester: semester, courseName: query, language: language
-        )) ?? []
-        async let byTeacher = (try? CourseLookupService.searchByTeacher(
+        )
+        async let byTeacherTask = CourseLookupService.searchByTeacher(
             semester: semester, teacher: query, language: language
-        )) ?? []
-        return merge(await byName, await byTeacher)
+        )
+
+        // Best-effort merge of the two name endpoints: tolerate one failing
+        // (the teacher endpoint commonly throws when the query is clearly
+        // not a teacher name), but if BOTH fail propagate the error so the
+        // caller can surface `add_course_search_failed` instead of the
+        // misleading `add_course_not_found` empty-results path.
+        var nameResults: [CourseSearchResult] = []
+        var teacherResults: [CourseSearchResult] = []
+        var nameError: Error?
+        var teacherError: Error?
+        do { nameResults = try await byNameTask } catch { nameError = error }
+        do { teacherResults = try await byTeacherTask } catch { teacherError = error }
+
+        if let nameError, teacherError != nil {
+            throw nameError
+        }
+        return merge(nameResults, teacherResults)
     }
 
     private static func fillCrossLanguage(
