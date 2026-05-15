@@ -73,8 +73,13 @@ struct WidgetSnapshotBuilderTests {
             courses: [], customNames: [:], isLoggedIn: true, accentColorHex: 0, now: Date()
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
-        #expect(snapshot.periodTimes["1"]?.start == "08:10")
-        #expect(snapshot.periodTimes["1"]?.end == "09:00")
-        #expect(snapshot.periodTimes["D"]?.end == "22:00")
+        // Verify the *mapping* is faithful, not the values themselves —
+        // those live in AppConstants and may change without affecting
+        // the builder's correctness.
+        for (periodId, expected) in AppConstants.PeriodTimes.mapping {
+            #expect(snapshot.periodTimes[periodId]?.start == expected.start, "period \(periodId) start mismatch")
+            #expect(snapshot.periodTimes[periodId]?.end == expected.end, "period \(periodId) end mismatch")
+        }
+        #expect(snapshot.periodTimes.count == AppConstants.PeriodTimes.mapping.count)
     }
 }

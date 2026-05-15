@@ -49,11 +49,13 @@ enum WidgetSnapshotBuilder {
         return course.courseName
     }
 
-    /// Deterministic per-course color. Mirrors the `Theme/Color+Extensions.swift`
-    /// selection so the widget matches the in-app card color enough that users
-    /// recognize their classes; exact parity with `TigerDuckTheme.courseColor`
-    /// is deferred — that path requires importing SwiftUI/Theme into the
-    /// widget extension and is tracked as a follow-up.
+    /// Deterministic per-course color from a placeholder palette. NOTE: this
+    /// does NOT yet match `TigerDuckTheme.courseColor(for:)` — the in-app
+    /// palette has 20 colors and uses a different hash function, so widgets
+    /// and the app currently render the same course in different colors.
+    /// True parity is deferred: it requires sharing the theme palette + hash
+    /// across the widget extension target without dragging in SwiftUI/Theme.
+    /// Tracked as a follow-up to this widgets PR.
     private static func hashPaletteColor(_ courseNo: String) -> UInt32 {
         let hash = courseNo.reduce(0) { acc, c in (acc &* 31 &+ Int(c.asciiValue ?? 0)) & 0x7FFFFFFF }
         let palette: [UInt32] = [
