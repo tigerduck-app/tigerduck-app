@@ -316,6 +316,7 @@ private struct HomeSectionView: View {
             case .content:
                 UpcomingAssignmentsView(
                     assignments: viewModel.upcomingAssignments,
+                    courses: viewModel.allCourses,
                     filter: viewModel.assignmentFilter,
                     showAbsoluteTime: appState.showAbsoluteAssignmentTime,
                     onArchive: { viewModel.archiveAssignment($0) },

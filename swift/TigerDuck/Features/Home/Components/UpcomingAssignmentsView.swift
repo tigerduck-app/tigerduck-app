@@ -4,6 +4,13 @@ struct UpcomingAssignmentsView: View {
     private static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
     let assignments: [SDAssignment]
+    /// In-memory course roster used to resolve the canonical display name
+    /// and course code for the third row line. Without this, the row falls
+    /// back to `assignment.courseName` (Moodle fullname with the code
+    /// stripped, fragile) and `assignment.courseNo` (empty when Moodle's
+    /// `idnumber` lacks the semester prefix), so the "課名 • 課程ID" line
+    /// looked wrong or dropped the ID entirely.
+    var courses: [SDCourse] = []
     var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
     var onArchive: ((SDAssignment) -> Void)? = nil
@@ -12,6 +19,10 @@ struct UpcomingAssignmentsView: View {
     var onUndoComplete: ((SDAssignment) -> Void)? = nil
 
     @Environment(AppState.self) private var appState
+
+    private var courseByNo: [String: SDCourse] {
+        Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -155,14 +166,18 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    /// "課名 • 課程ID" — the third line beneath the (possibly wrapped) title.
-    /// The course code is dropped when it would just repeat the name (e.g.,
-    /// an unknown course where `displayCourseName` already falls back to the
-    /// courseNo).
+    /// "課名 • 課程ID" — the line that sits beneath the (possibly wrapped)
+    /// title. Prefers the in-memory `SDCourse` so the label reflects the
+    /// user's custom rename and the canonical NTUST course code; otherwise
+    /// falls back to whatever the assignment was cached with so the line
+    /// still renders something useful when the course roster hasn't loaded
+    /// yet. The code is omitted when it's empty or already echoes the name
+    /// (an unknown course where the name fallback is just the courseNo).
     private func courseLineLabel(for assignment: SDAssignment) -> String {
-        let name = assignment.displayCourseName
-        let code = assignment.courseNo
-        if code.isEmpty || name == code {
+        let match = courseByNo[assignment.courseNo]
+        let name = assignment.displayCourseName(matching: match)
+        let code = match?.courseNo ?? assignment.courseNo
+        if code.isEmpty || name.isEmpty || name == code {
             return name
         }
         return "\(name) • \(code)"
