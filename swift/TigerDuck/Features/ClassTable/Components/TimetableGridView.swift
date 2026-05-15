@@ -114,6 +114,8 @@ struct TimetableGridView: View {
                         courseA: cA, spanA: sA, offsetA: oA,
                         courseB: cB, spanB: sB, offsetB: oB,
                         combinedSpan: combinedSpan,
+                        cellHeight: cellHeight,
+                        rowSpacing: rowSpacing,
                         weekday: weekday,
                         periodId: periodId
                     )
@@ -141,24 +143,39 @@ private struct ConflictClusterView: View {
     let spanB: Int
     let offsetB: Int
     let combinedSpan: Int
+    let cellHeight: CGFloat
+    let rowSpacing: CGFloat
     let weekday: Int
     let periodId: String
 
     var body: some View {
         GeometryReader { proxy in
-            let h = proxy.size.height
-            let rowHeight = h / CGFloat(combinedSpan)
-            let aTop = rowHeight * CGFloat(offsetA)
-            let aHeight = rowHeight * CGFloat(spanA)
-            let bTop = rowHeight * CGFloat(offsetB)
-            let bHeight = rowHeight * CGFloat(spanB)
+            // Step matches the surrounding grid exactly (cell + rowSpacing),
+            // so each course's L sits where the corresponding solo block
+            // would have been. Dividing the cluster height by combinedSpan
+            // averages the spacing into every row and makes the seam drift
+            // farther as the cluster grows.
+            let step = cellHeight + rowSpacing
+            let aTop = CGFloat(offsetA) * step
+            let aHeight = CGFloat(spanA) * cellHeight + CGFloat(spanA - 1) * rowSpacing
+            let bTop = CGFloat(offsetB) * step
+            let bHeight = CGFloat(spanB) * cellHeight + CGFloat(spanB - 1) * rowSpacing
 
             let overlapStart = max(offsetA, offsetB)
             let overlapEnd = min(offsetA + spanA, offsetB + spanB)
-            let soloAboveA = CGFloat(max(0, overlapStart - offsetA)) / CGFloat(spanA)
-            let soloBelowA = CGFloat(max(0, offsetA + spanA - overlapEnd)) / CGFloat(spanA)
-            let soloAboveB = CGFloat(max(0, overlapStart - offsetB)) / CGFloat(spanB)
-            let soloBelowB = CGFloat(max(0, offsetB + spanB - overlapEnd)) / CGFloat(spanB)
+
+            // Each course's overlap region in box-local pixels. Computing
+            // fractions against those (rather than against `span` row
+            // counts) keeps the L seam on the actual row+spacing boundary.
+            let overlapTopA = CGFloat(max(0, overlapStart - offsetA)) * step
+            let overlapBottomA = max(0, CGFloat(overlapEnd - offsetA) * step - rowSpacing)
+            let overlapTopB = CGFloat(max(0, overlapStart - offsetB)) * step
+            let overlapBottomB = max(0, CGFloat(overlapEnd - offsetB) * step - rowSpacing)
+
+            let soloAboveA = aHeight > 0 ? overlapTopA / aHeight : 0
+            let soloBelowA = aHeight > 0 ? (aHeight - overlapBottomA) / aHeight : 0
+            let soloAboveB = bHeight > 0 ? overlapTopB / bHeight : 0
+            let soloBelowB = bHeight > 0 ? (bHeight - overlapBottomB) / bHeight : 0
 
             // When BOTH courses share an outer top/bottom edge of the cluster,
             // both shapes have a convex corner there. Rounding both produces a

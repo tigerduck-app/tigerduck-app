@@ -374,6 +374,21 @@ final class ClassTableViewModel {
         for c in coursesHere { addCourse(c, seedIndex: periodIndex) }
 
         let clusterStart = closure.map(\.first).min() ?? periodIndex
+
+        // A 3+ closure means a chain like A(1-2) B(2-3) C(3-4): pairwise
+        // overlaps without any 3-way slot. Rendering as one cluster would
+        // drop everything past index 2 (and emit .skip in C's solo rows,
+        // hiding C entirely). Fall back to per-slot rendering so every
+        // course stays on the table; the 2-course case still uses the
+        // L-cluster with its block-spanning visual continuity.
+        if closure.count >= 3 {
+            let role = perSlotRole(
+                weekday: weekday, periodIndex: periodIndex, coursesHere: coursesHere
+            )
+            cellRoleCache[key] = role
+            return role
+        }
+
         if clusterStart < periodIndex {
             cellRoleCache[key] = .skip
             return .skip
@@ -386,12 +401,8 @@ final class ClassTableViewModel {
             return role
         }
 
-        // 2+ courses — cap at 2. `wouldCauseTripleConflict` blocks adds that
-        // would land us here, but defensively render only the first two
-        // (matches Android).
-        let kept = Array(closure.prefix(2))
-        let a = kept[0]
-        let b = kept[1]
+        let a = closure[0]
+        let b = closure[1]
         let clusterEnd = max(a.first + a.span, b.first + b.span)
         let role = CellRole.conflictStart(
             courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,
@@ -400,6 +411,46 @@ final class ClassTableViewModel {
         )
         cellRoleCache[key] = role
         return role
+    }
+
+    /// Chain-conflict fallback: render the current cell based only on the
+    /// courses physically present in THIS slot, with span = number of
+    /// consecutive forward periods where the exact same course set appears.
+    /// Used when the transitive closure spans 3+ courses without any 3-way
+    /// slot, so a cluster rendering would hide some of them.
+    private func perSlotRole(
+        weekday: Int, periodIndex: Int, coursesHere: [SDCourse]
+    ) -> CellRole {
+        let periods = activePeriods
+        let mySet = Set(coursesHere.map(\.courseNo))
+
+        if periodIndex > 0 {
+            let prev = courses(for: weekday, period: periods[periodIndex - 1].id)
+            if Set(prev.map(\.courseNo)) == mySet { return .skip }
+        }
+
+        var span = 1
+        var i = periodIndex + 1
+        while i < periods.count {
+            let next = courses(for: weekday, period: periods[i].id)
+            if Set(next.map(\.courseNo)) == mySet {
+                span += 1
+                i += 1
+            } else {
+                break
+            }
+        }
+
+        if coursesHere.count == 1 {
+            return .solo(coursesHere[0], spanCount: span)
+        }
+        let a = coursesHere[0]
+        let b = coursesHere[1]
+        return .conflictStart(
+            courseA: a, spanA: span, offsetA: 0,
+            courseB: b, spanB: span, offsetB: 0,
+            combinedSpan: span
+        )
     }
 
     struct ConflictPickerTarget: Identifiable {
@@ -462,17 +513,29 @@ final class ClassTableViewModel {
     }
 
     func addCourse(_ course: SDCourse) {
-        if deletedCourseNos.remove(course.courseNo) != nil {
-            DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+        // Self-heal the inconsistent state where a course is BOTH tombstoned
+        // and currently present in `courses` (e.g. a refresh re-fetched it
+        // while a stale tombstone lingered). Done before the early-return so
+        // future reloads stop filtering it.
+        if courses.contains(where: { $0.courseNo == course.courseNo }) {
+            if deletedCourseNos.remove(course.courseNo) != nil {
+                DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+            }
+            return
         }
-        guard !courses.contains(where: { $0.courseNo == course.courseNo }) else { return }
 
         // Refuse if any slot it occupies already has 2 courses — three
         // concurrent courses don't have a sensible rendering (Android caps
-        // at 2 with a warning; we surface an alert instead).
+        // at 2 with a warning; we surface an alert instead). Must come
+        // BEFORE we clear the tombstone, otherwise a rejected add leaves
+        // the tombstone cleared and the next reload resurrects the course.
         if let err = wouldCauseTripleConflict(course) {
             tripleConflictError = err
             return
+        }
+
+        if deletedCourseNos.remove(course.courseNo) != nil {
+            DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         }
 
         // Cache the freshly-fetched API values BEFORE any local mutation so
