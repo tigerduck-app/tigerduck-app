@@ -52,7 +52,11 @@ final class DataCache {
         let dtos: [CachedCourse] = load(from: coursesFilename(semester, currentCourseApiLanguage())) ?? []
         let customNames = loadCourseCustomNames()
         return dtos.map { dto in
-            applyCustomNameOverlay(dto.toSDCourse(), customNames: customNames)
+            applyCustomNameOverlay(
+                dto.toSDCourse(),
+                customNames: customNames,
+                clearPollutedCanonical: true
+            )
         }
     }
 
@@ -75,27 +79,39 @@ final class DataCache {
         let dtos: [CachedCourse] = load(from: "user_added_courses.json", in: persistentDir) ?? []
         let customNames = loadCourseCustomNames()
         return dtos.map { dto in
-            applyCustomNameOverlay(dto.toSDCourse(), customNames: customNames)
+            // User-added courses have no network refresh source, so we must
+            // never blank `courseName` even when it matches the alias — the
+            // cached value is the only fallback label after the user reverts
+            // the rename. The semester load path opts in via
+            // `clearPollutedCanonical: true` because a fresh API fetch will
+            // restore the real name.
+            applyCustomNameOverlay(
+                dto.toSDCourse(),
+                customNames: customNames,
+                clearPollutedCanonical: false
+            )
         }
     }
 
-    /// Apply the persisted alias overlay to a freshly-decoded SDCourse, with
-    /// a defensive guard for caches written by builds where the rename flow
-    /// overwrote `courseName` in place. Symptom: `customNames[courseNo]`
-    /// equals the cached `courseName`, meaning the cache no longer holds the
-    /// canonical API name. In that case clear `courseName` so `displayName`
-    /// resolves to the alias via `customName` only — and "Revert to default"
-    /// surfaces an empty canonical (instead of silently leaving the alias
-    /// behind) until the next network refresh repopulates the canonical
-    /// value. Semester course caches are also force-purged once via
-    /// `CustomNameCacheMigration`; this guard catches the user-added cache,
-    /// which has no network refresh source.
+    /// Apply the persisted alias overlay to a freshly-decoded SDCourse.
+    ///
+    /// When `clearPollutedCanonical` is true and `customNames[courseNo]`
+    /// equals the cached `courseName`, treat that as the pre-PR overwrite
+    /// signature (where the rename flow wrote the alias straight into
+    /// `courseName`) and clear `courseName` so `displayName` resolves to
+    /// the alias via `customName` only — and "Revert to default" surfaces
+    /// an empty canonical until the next network refresh repopulates it.
+    /// Callers that have no network refresh source (e.g. user-added
+    /// courses) MUST pass `false` so we never destroy the only available
+    /// fallback label; for those entries revert may visibly preserve the
+    /// alias-as-canonical, which is the most truthful recovery available.
     private func applyCustomNameOverlay(
         _ course: SDCourse,
-        customNames: [String: String]
+        customNames: [String: String],
+        clearPollutedCanonical: Bool
     ) -> SDCourse {
         if let alias = customNames[course.courseNo] {
-            if alias == course.courseName {
+            if clearPollutedCanonical, alias == course.courseName {
                 course.courseName = ""
             }
             course.customName = alias
