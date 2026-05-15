@@ -88,9 +88,23 @@ extension Date {
         return f
     }()
 
-    /// Absolute time: "3/24 23:59:00"
+    private static let absoluteFormatterNoSeconds: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        return f
+    }()
+
+    /// Absolute time. Drops the `:ss` component when seconds are zero
+    /// (Moodle deadlines are typically minute-aligned), so the common case
+    /// reads as "3/24 23:59" instead of the noisier "3/24 23:59:00".
     var absoluteTimeString: String {
-        Self.absoluteFormatter.string(from: self)
+        let seconds = Self.scheduleCalendar.component(.second, from: self)
+        if seconds == 0 {
+            return Self.absoluteFormatterNoSeconds.string(from: self)
+        }
+        return Self.absoluteFormatter.string(from: self)
     }
 
     /// Relative time, e.g. "5 days later", "30 hours later", or "Overdue".

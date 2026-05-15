@@ -14,15 +14,23 @@ extension SDAssignment {
     /// right after a rename, before persistence settles — which is why an
     /// explicit `matching` course wins when supplied.
     func displayCourseName(matching course: SDCourse?) -> String {
+        let raw: String
         if let course, course.courseNo == courseNo {
-            return course.displayName
+            raw = course.displayName
+        } else {
+            let overrides = DataCache.shared.loadCourseCustomNames()
+            raw = overrides[courseNo] ?? courseName
         }
-        let overrides = DataCache.shared.loadCourseCustomNames()
-        return overrides[courseNo] ?? courseName
+        return raw.decodingHTMLEntities()
     }
 
     /// Convenience for callers without course context. Prefer
     /// `displayCourseName(matching:)` when the canonical course list is
     /// already in scope.
     var displayCourseName: String { displayCourseName(matching: nil) }
+
+    /// HTML-decoded title for display. Moodle sometimes returns titles like
+    /// `Assignment 1 &amp; 2`; rendering the raw string would expose the
+    /// encoded entity to the user.
+    var displayTitle: String { title.decodingHTMLEntities() }
 }
