@@ -395,7 +395,10 @@ final class ClassTableViewModel {
 
     func confirmRename() {
         guard let course = courseToRename else { return }
-        let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+        // Trim whitespace *and* newlines so a pasted "\nDefault\n" still
+        // collapses to empty and routes through the revert path instead of
+        // saving an invisible/line-breaking alias.
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         // Empty (or unchanged-from-default) means the user wants to revert to
         // the canonical name. Clearing the override is also what the explicit
         // "Revert to default" button does.

@@ -151,7 +151,7 @@ struct SubscriptionRuleEditorView: View {
     }
 
     private func commit() {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let sanitizedName = trimmed.isEmpty ? nil : trimmed
         let updated = BulletinAPI.SubscriptionRule(
             id: original.id,
