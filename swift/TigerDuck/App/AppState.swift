@@ -688,7 +688,7 @@ final class AppState {
 
             // Build moodle calendar events from assignments and merge with school events
             let moodleEvents = fetchedAssignments.map {
-                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.title, date: $0.dueDate, source: .moodle)
+                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.displayTitle, date: $0.dueDate, source: .moodle)
             }
             // Bail out before persisting if logout cancelled this sync while
             // the network calls were in flight. Without the guard the merged

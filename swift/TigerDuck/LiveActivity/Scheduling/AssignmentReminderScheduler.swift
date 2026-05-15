@@ -222,7 +222,7 @@ final class AssignmentReminderScheduler {
                         fireDate: fireDate,
                         title: String(format: String(localized: "notification_assignment_reminder_title"), assignment.displayCourseName),
                         body: offset.notificationBody(
-                            assignmentTitle: assignment.title,
+                            assignmentTitle: assignment.displayTitle,
                             courseName: assignment.displayCourseName
                         ),
                         assignmentId: assignment.assignmentId,

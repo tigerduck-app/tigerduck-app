@@ -110,7 +110,7 @@ struct LiveActivityScenarioResolver {
             : nil
         return LiveActivitySnapshot(
             scenario: .assignmentUrgent,
-            title: assignment.title,
+            title: assignment.displayTitle,
             subtitle: assignment.displayCourseName(matching: matchingCourse),
             locationText: nil,
             instructor: instructor,
