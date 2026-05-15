@@ -19,12 +19,18 @@ struct AddCourseSheet: View {
     private static let liveSearchDebounce: Duration = .milliseconds(350)
 
     @State private var searchText = ""
+    /// Mirrors `searchText` but is only updated by the live-search `.task(id:)`
+    /// trigger or by an explicit Submit. Used to drive `.task(id:)` so an
+    /// in-flight fetch reflects exactly the query it ran with — and so Submit
+    /// can re-run an already-typed query (changing `submitTrigger` re-fires the
+    /// task even when `searchText` is unchanged).
+    @State private var searchTrigger: String = ""
+    @State private var submitTrigger: Int = 0
     @State private var primaryResults: [CourseSearchResult] = []
     @State private var secondaryNamesByNo: [String: String] = [:]
     @State private var isSearching = false
     @State private var errorMessage: String?
     @State private var sessionAddedCourseNos: Set<String> = []
-    @State private var searchTask: Task<Void, Never>?
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -36,8 +42,7 @@ struct AddCourseSheet: View {
                         .textInputAutocapitalization(.never)
                         .focused($searchFocused)
                         .submitLabel(.search)
-                        .onSubmit { triggerSearch(debounced: false) }
-                        .onChange(of: searchText) { _, _ in triggerSearch(debounced: true) }
+                        .onSubmit { submitTrigger &+= 1 }
                 } footer: {
                     Label(String(localized: "add_course_example"), systemImage: "info.circle")
                         .font(.caption)
@@ -76,6 +81,34 @@ struct AddCourseSheet: View {
                 }
             }
             .onAppear { searchFocused = true }
+            // Live, debounced search. `.task(id:)` deterministically re-fires
+            // whenever the id changes and auto-cancels the in-flight task —
+            // the older `.onChange` + manual `Task` plumbing was unreliable
+            // inside a Form's TextField (the change closure didn't always
+            // fire mid-typing on iOS 18, so the user only saw results after
+            // pressing Submit).
+            .task(id: searchText) {
+                let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else {
+                    primaryResults = []
+                    secondaryNamesByNo = [:]
+                    errorMessage = nil
+                    isSearching = false
+                    return
+                }
+                try? await Task.sleep(for: Self.liveSearchDebounce)
+                if Task.isCancelled { return }
+                await runSearch(query: trimmed)
+            }
+            // Submit path — re-runs the current query without waiting for the
+            // debounce window. Bumping `submitTrigger` re-fires this task even
+            // when `searchText` hasn't changed.
+            .task(id: submitTrigger) {
+                guard submitTrigger > 0 else { return }
+                let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { return }
+                await runSearch(query: trimmed)
+            }
         }
     }
 
@@ -131,28 +164,7 @@ struct AddCourseSheet: View {
         }
     }
 
-    // MARK: - Search dispatch
-
-    private func triggerSearch(debounced: Bool) {
-        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        searchTask?.cancel()
-
-        if trimmed.isEmpty {
-            primaryResults = []
-            secondaryNamesByNo = [:]
-            errorMessage = nil
-            isSearching = false
-            return
-        }
-
-        searchTask = Task {
-            if debounced {
-                try? await Task.sleep(for: Self.liveSearchDebounce)
-                if Task.isCancelled { return }
-            }
-            await runSearch(query: trimmed)
-        }
-    }
+    // MARK: - Search
 
     @MainActor
     private func runSearch(query: String) async {
@@ -182,17 +194,33 @@ struct AddCourseSheet: View {
             let enResults = try await enTask
             try Task.checkCancellation()
 
-            // The name-search API matches against the queried language only,
-            // so searching "隱私" against the EN endpoint returns nothing even
-            // when the course exists. Fill any cross-language gaps via the
-            // language-agnostic lookupCourse (keyed by code).
+            let primaryResultsRaw = uiLanguage == "en" ? enResults : zhResults
+            let secondaryResultsRaw = uiLanguage == "en" ? zhResults : enResults
+
+            // Fast path: the primary-language API returned matches. Show them
+            // immediately with whatever parentheticals the secondary call
+            // happened to return for the same codes — do NOT block on the
+            // cross-language `lookupCourse` fan-out (which fires one HTTP
+            // request per missing code and easily costs 3+ seconds for a
+            // broad query like "calculus").
+            if !primaryResultsRaw.isEmpty {
+                primaryResults = primaryResultsRaw
+                secondaryNamesByNo = Dictionary(
+                    secondaryResultsRaw.map { ($0.CourseNo, $0.CourseName) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+                isSearching = false
+                return
+            }
+
+            // Slow path: the primary-language API returned nothing (the user
+            // typed in the other language). Cross-fill the primary list from
+            // the secondary results' codes so we can still display matches.
             let (zhFilled, enFilled) = await Self.fillCrossLanguage(
                 semester: semester, zhResults: zhResults, enResults: enResults
             )
             try Task.checkCancellation()
 
-            // The primary list (what we show + group) comes from the UI
-            // language; the secondary map carries the parenthetical name.
             let primary = uiLanguage == "en" ? enFilled : zhFilled
             let secondary = uiLanguage == "en" ? zhFilled : enFilled
             let secondaryByNo = Dictionary(
@@ -207,6 +235,9 @@ struct AddCourseSheet: View {
                 errorMessage = String(localized: "add_course_not_found")
             }
         } catch is CancellationError {
+            // A newer keystroke superseded this search — leave isSearching
+            // alone (the next task will overwrite it) but avoid touching
+            // errorMessage so a transient cancel doesn't flash a red label.
             return
         } catch {
             AppLogger.captureError(error, context: [

@@ -100,8 +100,7 @@ struct ClassTableView: View {
                     existingCourseNos: Set(viewModel.courses.map(\.courseNo)),
                     onAdd: { viewModel.addCourse($0) },
                     onRemove: { courseNo in
-                        // AddCourseSheet only invokes onRemove for courses
-                        // added in this session, so route through the
+                        // AddCourseSheet only invokes onRemove for courses// added in this session, so route through the
                         // user-added-only path. Using deleteCourse here
                         // would tombstone the courseNo in deletedCourseNos
                         // and later hide any real enrolled course sharing
