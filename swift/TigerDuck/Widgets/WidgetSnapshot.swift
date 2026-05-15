@@ -1,6 +1,6 @@
 import Foundation
 
-struct WidgetSnapshot: Codable, Equatable {
+struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let version: Int
     let generatedAt: Date
     let isLoggedIn: Bool
@@ -16,7 +16,7 @@ struct WidgetSnapshot: Codable, Equatable {
     static let appGroupIdentifier = "group.org.ntust.app.TigerDuck1"
 }
 
-struct SnapshotCourse: Codable, Equatable {
+struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
     let courseNo: String
     let displayName: String
     let classroom: String
@@ -24,7 +24,7 @@ struct SnapshotCourse: Codable, Equatable {
     let colorHex: UInt32
 }
 
-struct PeriodTime: Codable, Equatable {
+struct PeriodTime: Codable, Equatable, Hashable, Sendable {
     let start: String   // "HH:mm"
     let end: String     // "HH:mm"
 }
