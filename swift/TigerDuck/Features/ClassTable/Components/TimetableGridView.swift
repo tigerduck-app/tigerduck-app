@@ -72,11 +72,7 @@ struct TimetableGridView: View {
                         viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
                     } label: {
                         RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                            .fill(course.color.opacity(0.25))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                                    .strokeBorder(course.color.opacity(0.4), lineWidth: 1)
-                            }
+                            .fill(course.color.opacity(0.4))
                             .overlay {
                                 Text(course.displayName)
                                     .font(.system(size: 11, weight: .medium))
