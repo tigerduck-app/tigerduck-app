@@ -389,6 +389,26 @@ final class ClassTableViewModel {
         broadcastLocalChange()
     }
 
+    /// Undo a not-yet-committed user-added course without tombstoning the
+    /// `courseNo`. Used by AddCourseSheet's tap-to-toggle path so the user
+    /// can add a course, then immediately tap it again to back out, without
+    /// poisoning `deletedCourseNos` — which would later hide any real
+    /// enrolled course sharing the same `courseNo` from cache/network merges
+    /// (see `applyCustomizations`).
+    ///
+    /// Defensive: only removes courses that came from the user-added cache
+    /// (`moodleIdNumber == nil`). A stray call against a real enrolled course
+    /// is a no-op, so callers can route through this without risking the
+    /// regular drop/hide flow.
+    func removeUserAddedCourse(courseNo: String) {
+        guard let course = courses.first(where: { $0.courseNo == courseNo }),
+              course.moodleIdNumber == nil
+        else { return }
+        courses.removeAll { $0.courseNo == courseNo }
+        persistUserAddedCourses()
+        broadcastLocalChange()
+    }
+
     func startRename(_ course: SDCourse) {
         courseToRename = course
         renameText = course.courseName
