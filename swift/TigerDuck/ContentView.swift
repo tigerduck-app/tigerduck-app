@@ -46,6 +46,25 @@ struct MainTabView: View {
                 selectedTab = first
             }
         }
+        .onAppear { drainPendingWidgetDestination() }
+        .onChange(of: appState.pendingWidgetDestination) { _, _ in
+            drainPendingWidgetDestination()
+        }
+    }
+
+    private func drainPendingWidgetDestination() {
+        guard let destination = appState.pendingWidgetDestination else { return }
+        switch destination {
+        case .library:
+            // Library has a feature-disabled flag; if disabled, fall through
+            // to the existing in-app gating UI rather than forcing the tab.
+            if appState.libraryFeatureEnabled {
+                selectedTab = .library
+            }
+        case .classTable:
+            selectedTab = .classTable
+        }
+        appState.clearPendingWidgetDestination()
     }
 
     @ViewBuilder

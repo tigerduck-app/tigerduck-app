@@ -74,6 +74,10 @@ struct TigerDuckApp: App {
                         widgetSnapshotWriter?.regenerate()
                     }
                 }
+                .onOpenURL { url in
+                    guard let destination = WidgetURLRouter.route(url) else { return }
+                    appState.openFromWidget(destination)
+                }
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
                 ) { _ in

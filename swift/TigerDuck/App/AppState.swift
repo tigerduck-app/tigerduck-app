@@ -180,6 +180,24 @@ final class AppState {
         isShowingNTUSTLoginSheet = false
     }
 
+    // MARK: - Widget deep linking
+
+    /// Set by `TigerDuckApp.onOpenURL` when a widget tap deep-links into the
+    /// app. `MainTabView` observes this and updates its local `selectedTab`,
+    /// then calls `clearPendingWidgetDestination()`. Stored here (rather than
+    /// on the tab view) so a cold-launch tap still resolves correctly: the
+    /// destination is set before MainTabView appears, and MainTabView's
+    /// `.onAppear` drain picks it up.
+    var pendingWidgetDestination: WidgetDestination?
+
+    func openFromWidget(_ destination: WidgetDestination) {
+        pendingWidgetDestination = destination
+    }
+
+    func clearPendingWidgetDestination() {
+        pendingWidgetDestination = nil
+    }
+
     var isLibraryLoggedIn: Bool {
         _ = _libraryRevision
         return LibraryService.isTokenValid
