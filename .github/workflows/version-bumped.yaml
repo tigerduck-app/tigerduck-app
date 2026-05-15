@@ -59,7 +59,19 @@ jobs:
             fail=1
           fi
 
-          if [ "$new_build" -le "$old_build" ] 2>/dev/null; then
+          # Validate both build numbers are non-empty positive integers before
+          # comparing. `[ -le ]` exits with status 2 on non-integer operands;
+          # without this guard a malformed CURRENT_PROJECT_VERSION (e.g. "1.0",
+          # "abc", or an unresolved "$(VAR)") would skip the if-body and let
+          # the check pass silently.
+          int_re='^[0-9]+$'
+          if ! [[ "$new_build" =~ $int_re ]]; then
+            echo "::error file=$pbxproj::CURRENT_PROJECT_VERSION must be a positive integer (got '$new_build')."
+            fail=1
+          elif ! [[ "$old_build" =~ $int_re ]]; then
+            echo "::error file=$pbxproj::base CURRENT_PROJECT_VERSION is not a positive integer (got '$old_build'); cannot verify bump."
+            fail=1
+          elif [ "$new_build" -le "$old_build" ]; then
             echo "::error file=$pbxproj::CURRENT_PROJECT_VERSION must be bumped (current $new_build, base $old_build)."
             fail=1
           fi
