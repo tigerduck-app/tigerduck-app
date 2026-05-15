@@ -118,7 +118,7 @@ struct SettingsView: View {
             }
 
             // MARK: - Other Features
-            Section(String(localized: "settings_section_other_features")) {
+            Section(String(localized: "settings_section_other_settings")) {
                 Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
             }
 
