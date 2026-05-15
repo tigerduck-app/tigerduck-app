@@ -28,14 +28,17 @@ extension Array where Element == SDAssignment {
         contains { !$0.isCompleted && $0.isArchived }
     }
 
-    /// Returns all assignments with incomplete-first ordering: pending items
-    /// sorted by due date ascending, followed by completed items sorted by
-    /// due date descending (most recently due first). Ignored-but-unsubmitted
-    /// items are excluded because they live in the dedicated 已忽略 filter.
-    func allSorted() -> [SDAssignment] {
-        let incomplete = filter { !($0.isCompleted || $0.isLocallyCompleted) && !$0.isArchived }
-            .sorted { $0.dueDate < $1.dueDate }
-        let completed = filter { ($0.isCompleted || $0.isLocallyCompleted) }.sorted { $0.dueDate > $1.dueDate }
-        return incomplete + completed
+    /// Returns all assignments split into future-first and past-second
+    /// buckets relative to `now`:
+    ///   • future bucket sorted ascending — the next deadline is on top
+    ///   • past bucket sorted descending — most-recently-due first so the
+    ///     just-passed work is right under the future cutoff
+    /// Ignored-but-unsubmitted items are excluded because they live in the
+    /// dedicated 已忽略 filter.
+    func allSorted(now: Date = Date()) -> [SDAssignment] {
+        let visible = filter { !$0.isArchived }
+        let future = visible.filter { $0.dueDate >= now }.sorted { $0.dueDate < $1.dueDate }
+        let past = visible.filter { $0.dueDate < now }.sorted { $0.dueDate > $1.dueDate }
+        return future + past
     }
 }

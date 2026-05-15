@@ -306,8 +306,10 @@ struct MoodleHomeworkRegressionTests {
             dueDate: now.addingTimeInterval(-1800), isCompleted: false, isLocallyCompleted: true
         )
 
-        let result = [normal, archived, locallyDone].allSorted()
-        #expect(result.map(\.assignmentId) == ["1", "3"])
+        let result = [normal, archived, locallyDone].allSorted(now: now)
+        // Both kept items are past; past bucket sorts descending so the
+        // more-recently due `locallyDone` (-1800s) lands above `normal` (-3600s).
+        #expect(result.map(\.assignmentId) == ["3", "1"])
     }
 
     @Test func arrayIgnoredSorted_onlyIncludesIgnoredUnsubmittedAssignments() {
@@ -335,7 +337,7 @@ struct MoodleHomeworkRegressionTests {
         #expect(![normal, completedIgnored].hasIgnored())
     }
 
-    @Test func arrayAllSorted_putsIncompleteAscendingBeforeCompletedDescending() {
+    @Test func arrayAllSorted_putsFutureAscendingBeforePastDescending() {
         let now = Date()
         let incompleteA = SDAssignment(
             assignmentId: "i1", courseNo: "C", courseName: "C", title: "iA",
@@ -354,8 +356,11 @@ struct MoodleHomeworkRegressionTests {
             dueDate: now.addingTimeInterval(3600), isCompleted: true
         )
 
-        let result = [completedA, incompleteB, completedB, incompleteA].allSorted()
-        #expect(result.map(\.assignmentId) == ["i1", "i2", "c2", "c1"])
+        // 全部 tab partitions by time, not by completion. Future bucket
+        // (c2 @ +3600 < i2 @ +7200) ascending, then past bucket (i1 @
+        // -3600 > c1 @ -7200) descending.
+        let result = [completedA, incompleteB, completedB, incompleteA].allSorted(now: now)
+        #expect(result.map(\.assignmentId) == ["c2", "i2", "i1", "c1"])
     }
 
     @Test func classTableViewModel_displayLabel_formatsSemesterCode() {
