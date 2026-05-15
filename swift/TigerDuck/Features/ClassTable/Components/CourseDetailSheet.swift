@@ -72,7 +72,7 @@ struct CourseDetailSheet: View {
                 .padding(.vertical)
             }
             .background(Color.backgroundPrimary)
-            .navigationTitle(course.courseName)
+            .navigationTitle(course.displayName)
             .navigationBarTitleDisplayMode(.large)
         }
     }

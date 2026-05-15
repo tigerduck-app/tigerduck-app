@@ -167,7 +167,7 @@ struct UpcomingAssignmentsView: View {
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(policy.primaryTextColor)
                     .lineLimit(1)
-                Text(assignment.courseName)
+                Text(assignment.displayCourseName)
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(policy.secondaryTextColor)
             }

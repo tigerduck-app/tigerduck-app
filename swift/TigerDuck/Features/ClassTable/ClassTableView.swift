@@ -107,8 +107,17 @@ struct ClassTableView: View {
                 Button(String(localized: "action_confirm")) {
                     viewModel.confirmRename()
                 }
+                if let course = viewModel.courseToRename, course.customName != nil {
+                    Button(String(localized: "class_table_rename_revert"), role: .destructive) {
+                        viewModel.revertRename(course)
+                    }
+                }
                 Button(String(localized: "action_cancel"), role: .cancel) {
                     viewModel.courseToRename = nil
+                }
+            } message: {
+                if let course = viewModel.courseToRename {
+                    Text(String(format: String(localized: "class_table_rename_default_label"), course.courseName))
                 }
             }
             .sheet(item: $viewModel.courseToRecolor) { course in

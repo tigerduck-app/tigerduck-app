@@ -50,7 +50,12 @@ final class DataCache {
     /// network refresh will repopulate it.
     func loadCourses(semester: String) -> [SDCourse] {
         let dtos: [CachedCourse] = load(from: coursesFilename(semester, currentCourseApiLanguage())) ?? []
-        return dtos.map { $0.toSDCourse() }
+        let customNames = loadCourseCustomNames()
+        return dtos.map { dto in
+            let course = dto.toSDCourse()
+            course.customName = customNames[course.courseNo]
+            return course
+        }
     }
 
     private func coursesFilename(_ semester: String, _ language: String) -> String {
@@ -70,7 +75,12 @@ final class DataCache {
 
     func loadUserAddedCourses() -> [SDCourse] {
         let dtos: [CachedCourse] = load(from: "user_added_courses.json", in: persistentDir) ?? []
-        return dtos.map { $0.toSDCourse() }
+        let customNames = loadCourseCustomNames()
+        return dtos.map { dto in
+            let course = dto.toSDCourse()
+            course.customName = customNames[course.courseNo]
+            return course
+        }
     }
 
     // MARK: - Assignments

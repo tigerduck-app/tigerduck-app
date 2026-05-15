@@ -78,7 +78,7 @@ struct TimetableGridView: View {
                                     .strokeBorder(course.color.opacity(0.4), lineWidth: 1)
                             }
                             .overlay {
-                                Text(course.courseName)
+                                Text(course.displayName)
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(Color.textPrimary)
                                     .lineLimit(spanCount > 1 ? 3 : 2)

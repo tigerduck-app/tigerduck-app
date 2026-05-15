@@ -116,7 +116,7 @@ private struct TodayCourseCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             HStack {
-                Text(course.courseName)
+                Text(course.displayName)
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)

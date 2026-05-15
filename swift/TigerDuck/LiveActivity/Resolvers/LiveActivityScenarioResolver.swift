@@ -69,7 +69,7 @@ struct LiveActivityScenarioResolver {
         let weekday = slot.date.scheduleWeekday
         return LiveActivitySnapshot(
             scenario: .inClass,
-            title: slot.course.courseName,
+            title: slot.course.displayName,
             subtitle: slot.course.timeRange(for: weekday) ?? "",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
@@ -85,7 +85,7 @@ struct LiveActivityScenarioResolver {
         let weekday = slot.date.scheduleWeekday
         return LiveActivitySnapshot(
             scenario: .classPreparing,
-            title: slot.course.courseName,
+            title: slot.course.displayName,
             subtitle: slot.course.timeRange(for: weekday) ?? "",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
@@ -112,7 +112,7 @@ struct LiveActivityScenarioResolver {
         return LiveActivitySnapshot(
             scenario: .assignmentUrgent,
             title: assignment.title,
-            subtitle: assignment.courseName,
+            subtitle: assignment.displayCourseName,
             locationText: nil,
             instructor: instructor,
             countdownTarget: assignment.dueDate,
