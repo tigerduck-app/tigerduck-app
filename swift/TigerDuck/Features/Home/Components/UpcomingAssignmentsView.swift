@@ -13,19 +13,6 @@ struct UpcomingAssignmentsView: View {
 
     @Environment(AppState.self) private var appState
 
-    /// Per-row content height reported back via `RowHeightPreferenceKey`.
-    /// Title wrapping makes the row genuinely variable-height, so the parent
-    /// ScrollView's section height must follow what was actually laid out
-    /// rather than a guessed constant — otherwise either the last row clips
-    /// or the section reserves a black gap beneath the list.
-    @State private var rowHeights: [String: CGFloat] = [:]
-
-    /// Conservative fallback used on the first render before the
-    /// PreferenceKey reports back. Sized for a 3-line worst case so the
-    /// initial layout doesn't clip; once measured, the real value takes
-    /// over.
-    @ScaledMetric(relativeTo: .body) private var fallbackRowHeight: CGFloat = 96
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             assignmentList(for: context.date)
@@ -44,113 +31,63 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
+    /// Card layout was previously a `List` with `scrollDisabled(true)` and an
+    /// explicit `.frame(height:)` derived from per-row measurements. Two real
+    /// problems forced the move to `LazyVStack`:
+    ///   • Switching tabs while rows animated in/out fed `PreferenceKey`
+    ///     updates back into `@State`, racing with the `.animation` on the
+    ///     `assignments` identity and hanging the UI.
+    ///   • `List` + `.swipeActions` inside a parent `ScrollView` rendered a
+    ///     transient black slab above the first row mid-swipe — a `List`
+    ///     edge artifact that no inset / background tweak silenced.
+    /// `LazyVStack` sizes itself to its children and the custom `SwipeableRow`
+    /// (below) replaces `.swipeActions` so neither issue can recur.
     private func cardLayout(policy: VisualStylePolicy, now: Date) -> some View {
-        List {
+        LazyVStack(spacing: TigerDuckTheme.Spacing.sm) {
             ForEach(assignments, id: \.assignmentId) { assignment in
-                swipeableCardRow(assignment: assignment, now: now, policy: policy)
-                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                    .padding(.vertical, TigerDuckTheme.Spacing.sm / 2)
-                    .background(rowHeightReporter(for: assignment))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets())
+                swipeableRow(assignment: assignment, now: now) {
+                    assignmentRow(assignment: assignment, now: now, policy: policy)
+                        .cardPadding()
+                        .glassCard()
+                }
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
-        }
-        .listStyle(.plain)
-        .scrollDisabled(true)
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .frame(height: totalListHeight(for: policy))
-        .onPreferenceChange(RowHeightPreferenceKey.self) { newHeights in
-            rowHeights = newHeights
         }
         .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
     }
 
     private func groupedListLayout(policy: VisualStylePolicy, now: Date) -> some View {
-        List {
+        LazyVStack(spacing: 0) {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { index, assignment in
-                swipeableListRow(assignment: assignment, now: now, policy: policy)
-                    .overlay(alignment: .bottom) {
-                        if index < assignments.count - 1 {
-                            Divider()
-                                .padding(.leading, TigerDuckTheme.Spacing.lg)
-                        }
-                    }
-                    .background(rowHeightReporter(for: assignment))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets())
+                swipeableRow(assignment: assignment, now: now) {
+                    assignmentRow(assignment: assignment, now: now, policy: policy)
+                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                        .padding(.vertical, TigerDuckTheme.Spacing.md)
+                }
+
+                if index < assignments.count - 1 {
+                    Divider()
+                        .padding(.leading, TigerDuckTheme.Spacing.lg)
+                }
             }
         }
-        .listStyle(.plain)
-        .scrollDisabled(true)
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .frame(height: totalListHeight(for: policy))
         .presetGroupedListContainer(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .onPreferenceChange(RowHeightPreferenceKey.self) { newHeights in
-            rowHeights = newHeights
-        }
         .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
     }
 
-    /// Sums the measured row heights so the List frame matches what's
-    /// actually rendered. While measurements are pending (first frame,
-    /// row insertions), each unknown row falls back to a 3-line estimate.
-    private func totalListHeight(for policy: VisualStylePolicy) -> CGFloat {
-        guard !assignments.isEmpty else { return 0 }
-        return assignments.reduce(0) { sum, assignment in
-            sum + (rowHeights[assignment.assignmentId] ?? fallbackRowHeight)
-        }
-    }
-
-    /// Background helper that reports the measured row size up through a
-    /// `PreferenceKey`. Used for both card and grouped-list layouts so the
-    /// `totalListHeight` math is single-sourced.
-    private func rowHeightReporter(for assignment: SDAssignment) -> some View {
-        GeometryReader { proxy in
-            Color.clear
-                .preference(
-                    key: RowHeightPreferenceKey.self,
-                    value: [assignment.assignmentId: proxy.size.height]
-                )
-        }
-    }
-
-    private func swipeableCardRow(
+    private func swipeableRow<Content: View>(
         assignment: SDAssignment,
         now: Date,
-        policy: VisualStylePolicy
+        @ViewBuilder content: () -> Content
     ) -> some View {
         let actions = rowSwipeActions(for: assignment, now: now)
-        return AssignmentSwipeRow(
-            trailingAction: actions.trailing,
+        return SwipeableRow(
             leadingAction: actions.leading,
-            onTap: { openAssignment(assignment) }
-        ) {
-            assignmentRow(assignment: assignment, now: now, policy: policy)
-                .cardPadding()
-                .glassCard()
-        }
-    }
-
-    private func swipeableListRow(
-        assignment: SDAssignment,
-        now: Date,
-        policy: VisualStylePolicy
-    ) -> some View {
-        let actions = rowSwipeActions(for: assignment, now: now)
-        return AssignmentSwipeRow(
             trailingAction: actions.trailing,
-            leadingAction: actions.leading,
-            onTap: { openAssignment(assignment) }
-        ) {
-            assignmentRow(assignment: assignment, now: now, policy: policy)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                .padding(.vertical, TigerDuckTheme.Spacing.md)
-        }
+            onTap: { openAssignment(assignment) },
+            content: content
+        )
     }
 
     private func rowSwipeActions(
@@ -186,7 +123,10 @@ struct UpcomingAssignmentsView: View {
     @ViewBuilder
     private func assignmentRow(assignment: SDAssignment, now: Date, policy: VisualStylePolicy) -> some View {
         let status = assignment.status(now: now)
-        HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
+        // Default `.center` alignment vertically centres the trailing status
+        // even when the title wraps to two lines (third "課名 • 課程ID" line
+        // makes the leading column taller than the badge + time stack).
+        HStack(spacing: TigerDuckTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(assignment.displayTitle)
                     .font(TigerDuckTheme.Typography.body)
@@ -296,15 +236,6 @@ struct UpcomingAssignmentsView: View {
     }
 }
 
-// MARK: - Row height plumbing
-
-private struct RowHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: [String: CGFloat] = [:]
-    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
-        value.merge(nextValue()) { _, new in new }
-    }
-}
-
 // MARK: - Swipe gesture helpers
 
 private struct SwipeActionDescriptor {
@@ -314,48 +245,112 @@ private struct SwipeActionDescriptor {
     let action: () -> Void
 }
 
-private struct AssignmentSwipeRow<Content: View>: View {
-    let content: Content
-    let trailingAction: SwipeActionDescriptor?
+/// Custom horizontal-drag swipe row.
+///
+/// Reproduces the swipe-to-act behaviour we previously got from
+/// `List.swipeActions` so the assignment list can live inside the home
+/// `ScrollView` without the surrounding `List` (whose first-row
+/// `.swipeActions` consistently flashed a black slab above the row, and
+/// whose row diff during tab switches raced with `PreferenceKey`-based
+/// height measurement until it hung).
+///
+/// Threshold-based: drag past `triggerThreshold` in either direction to
+/// execute the corresponding action; release below the threshold to snap
+/// back. The action callback fires before the spring-back animation so the
+/// owning view can remove the row on the same frame the spring kicks off.
+private struct SwipeableRow<Content: View>: View {
     let leadingAction: SwipeActionDescriptor?
+    let trailingAction: SwipeActionDescriptor?
     let onTap: () -> Void
+    let content: Content
+
+    @State private var offset: CGFloat = 0
+
+    private let triggerThreshold: CGFloat = 96
+    private let snapAnimation = Animation.spring(response: 0.32, dampingFraction: 0.78)
 
     init(
-        trailingAction: SwipeActionDescriptor?,
         leadingAction: SwipeActionDescriptor?,
+        trailingAction: SwipeActionDescriptor?,
         onTap: @escaping () -> Void,
         @ViewBuilder content: () -> Content
     ) {
-        self.trailingAction = trailingAction
         self.leadingAction = leadingAction
+        self.trailingAction = trailingAction
         self.onTap = onTap
         self.content = content()
     }
 
     var body: some View {
-        Button(action: onTap) {
+        ZStack {
+            actionBackdrop
             content
                 .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if let trailingAction {
-                swipeButton(for: trailingAction)
-            }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            if let leadingAction {
-                swipeButton(for: leadingAction)
-            }
+                .offset(x: offset)
+                .gesture(dragGesture)
+                .onTapGesture {
+                    if offset != 0 {
+                        snapBack()
+                    } else {
+                        onTap()
+                    }
+                }
         }
     }
 
     @ViewBuilder
-    private func swipeButton(for action: SwipeActionDescriptor) -> some View {
-        Button(action: action.action) {
-            Label(action.label, systemImage: action.systemImage)
-                .labelStyle(.iconOnly)
+    private var actionBackdrop: some View {
+        HStack(spacing: 0) {
+            if let leadingAction, offset > 0 {
+                actionSlab(leadingAction)
+                    .frame(width: max(0, offset))
+            }
+            Spacer(minLength: 0)
+            if let trailingAction, offset < 0 {
+                actionSlab(trailingAction)
+                    .frame(width: max(0, -offset))
+            }
         }
-        .tint(action.tint)
+    }
+
+    private func actionSlab(_ action: SwipeActionDescriptor) -> some View {
+        let progress = min(1, max(0, abs(offset) / triggerThreshold))
+        return ZStack {
+            action.tint
+            Image(systemName: action.systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .opacity(progress)
+                .scaleEffect(0.6 + 0.4 * progress)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 16)
+            .onChanged { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                // Defer to the parent ScrollView for primarily-vertical drags
+                // so the home page can still scroll while a finger is over a row.
+                guard abs(dx) > abs(dy) * 1.3 else { return }
+                if dx > 0 && leadingAction == nil { return }
+                if dx < 0 && trailingAction == nil { return }
+                offset = dx
+            }
+            .onEnded { value in
+                let dx = value.translation.width
+                let triggered = abs(dx) > triggerThreshold
+                if triggered, let action = (dx > 0 ? leadingAction : trailingAction) {
+                    action.action()
+                }
+                snapBack()
+            }
+    }
+
+    private func snapBack() {
+        withAnimation(snapAnimation) {
+            offset = 0
+        }
     }
 }
