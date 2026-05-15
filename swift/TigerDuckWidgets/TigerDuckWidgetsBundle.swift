@@ -6,6 +6,7 @@ struct TigerDuckWidgetsBundle: WidgetBundle {
     var body: some Widget {
         LibraryShortcutWidget()
         NextClassWidget()
-        // Future tasks add: TodayWidget(), WeekWidget(), AccessoryWidget()
+        TodayWidget()
+        // Future tasks add: WeekWidget(), AccessoryWidget()
     }
 }
