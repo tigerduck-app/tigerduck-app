@@ -136,6 +136,35 @@ struct ClassTableView: View {
                 )
                 .presentationDetents([.medium])
             }
+            .sheet(item: $viewModel.conflictPickerTarget) { target in
+                ConflictCoursePickerSheet(
+                    courseA: target.courseA,
+                    courseB: target.courseB,
+                    onPick: { viewModel.pickFromConflict($0) }
+                )
+                .presentationDetents([.medium])
+            }
+            .alert(
+                String(localized: "class_table_conflict_add_failed_title"),
+                isPresented: Binding(
+                    get: { viewModel.tripleConflictError != nil },
+                    set: { if !$0 { viewModel.tripleConflictError = nil } }
+                ),
+                presenting: viewModel.tripleConflictError
+            ) { _ in
+                Button(String(localized: "action_confirm"), role: .cancel) {
+                    viewModel.tripleConflictError = nil
+                }
+            } message: { err in
+                Text(String(
+                    format: String(localized: "class_table_conflict_add_failed_message"),
+                    err.newCourseName,
+                    "\(err.weekday)",
+                    err.periodId,
+                    err.existingA.displayName,
+                    err.existingB.displayName
+                ))
+            }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the

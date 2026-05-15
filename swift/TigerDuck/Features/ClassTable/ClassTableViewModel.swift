@@ -98,8 +98,20 @@ final class ClassTableViewModel {
     private var deletedCourseNos: Set<String> = []
     private var courseCustomNames: [String: String] = [:]
 
-    /// weekday → period ID → SDCourse (built once when courses change)
-    private var courseLookup: [Int: [String: SDCourse]] = [:]
+    /// weekday → period ID → [SDCourse]. A list (not single) so the grid can
+    /// surface 衝堂 (conflict) instead of the previous behaviour where the
+    /// second course in a slot was silently overwritten. Order matches the
+    /// `courses` array so conflict role-assignment (A vs B) is stable.
+    private var courseLookup: [Int: [String: [SDCourse]]] = [:]
+
+    /// Cell-tap state when the user taps a conflict cell. The grid view
+    /// presents a picker sheet driven by this; selecting one route through
+    /// `selectCourse` and clears it.
+    var conflictPickerTarget: ConflictPickerTarget? = nil
+
+    /// Set when an add would push a slot to 3+ overlapping courses. Drives
+    /// an alert in ``ClassTableView``.
+    var tripleConflictError: TripleConflictError? = nil
 
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
@@ -184,11 +196,13 @@ final class ClassTableViewModel {
     }
 
     private func rebuildLookup() {
-        var lookup: [Int: [String: SDCourse]] = [:]
+        var lookup: [Int: [String: [SDCourse]]] = [:]
+        // Walk `courses` in order so the same (weekday, period) always yields
+        // the same A/B ordering across renders.
         for course in courses {
             for (weekday, periods) in course.schedule {
                 for period in periods {
-                    lookup[weekday, default: [:]][period] = course
+                    lookup[weekday, default: [:]][period, default: []].append(course)
                 }
             }
         }
@@ -262,7 +276,13 @@ final class ClassTableViewModel {
     }
 
     func course(for weekday: Int, period: String) -> SDCourse? {
-        courseLookup[weekday]?[period]
+        courseLookup[weekday]?[period]?.first
+    }
+
+    /// All courses present in a given slot. Up to 2 are rendered as a
+    /// conflict cell; the algorithm guards against 3+ at add time.
+    func courses(for weekday: Int, period: String) -> [SDCourse] {
+        courseLookup[weekday]?[period] ?? []
     }
 
     func hasAssignment(for courseNo: String) -> Bool {
@@ -275,8 +295,46 @@ final class ClassTableViewModel {
 
     enum CellRole {
         case empty
-        case blockStart(SDCourse, spanCount: Int)
-        case blockContinuation
+        case solo(SDCourse, spanCount: Int)
+        /// Two overlapping courses occupying (possibly partially) this
+        /// cluster. `combinedSpan` is the total row count of the union;
+        /// `offsetA` / `offsetB` are 0-indexed row positions within the
+        /// cluster where each course's block begins; `spanA` / `spanB` are
+        /// each course's own contiguous block length. The L-split is drawn
+        /// only on rows where both appear.
+        case conflictStart(
+            courseA: SDCourse, spanA: Int, offsetA: Int,
+            courseB: SDCourse, spanB: Int, offsetB: Int,
+            combinedSpan: Int
+        )
+        /// This cell is part of a SoloStart / ConflictStart cluster that
+        /// began at an earlier row; the renderer must emit nothing here so
+        /// the parent's `combinedSpan` overlay can occupy the rows.
+        case skip
+    }
+
+    /// Walks backward and forward from `startIndex` through `activePeriods`,
+    /// collecting the contiguous block where `course` is present. Returns
+    /// (firstIndex, span). Used by the conflict-cluster algorithm so block
+    /// extents are computed against the same chronological ordering the
+    /// grid renders.
+    private func blockFor(weekday: Int, startIndex: Int, course: SDCourse) -> (first: Int, span: Int) {
+        let periods = activePeriods
+        let courseNo = course.courseNo
+
+        var first = startIndex
+        while first - 1 >= 0 {
+            let prev = periods[first - 1]
+            let present = courses(for: weekday, period: prev.id).contains { $0.courseNo == courseNo }
+            if present { first -= 1 } else { break }
+        }
+        var last = startIndex
+        while last + 1 < periods.count {
+            let next = periods[last + 1]
+            let present = courses(for: weekday, period: next.id).contains { $0.courseNo == courseNo }
+            if present { last += 1 } else { break }
+        }
+        return (first, last - first + 1)
     }
 
     func cellRole(weekday: Int, periodIndex: Int) -> CellRole {
@@ -288,38 +346,113 @@ final class ClassTableViewModel {
             cellRoleCache[key] = .empty
             return .empty
         }
-
         let period = periods[periodIndex]
-        guard let course = course(for: weekday, period: period.id) else {
+        let coursesHere = courses(for: weekday, period: period.id)
+        if coursesHere.isEmpty {
             cellRoleCache[key] = .empty
             return .empty
         }
 
-        if periodIndex > 0 {
-            let prevPeriod = periods[periodIndex - 1]
-            if let prevCourse = self.course(for: weekday, period: prevPeriod.id),
-               prevCourse.courseNo == course.courseNo {
-                cellRoleCache[key] = .blockContinuation
-                return .blockContinuation
+        // Build transitive closure of courses whose blocks overlap with any
+        // course already in the cluster, rooted at the courses present in
+        // this cell. This guarantees we emit a `conflictStart` at the
+        // earliest row of the union and `.skip` thereafter.
+        var closure: [(course: SDCourse, first: Int, span: Int)] = []
+        var seen: Set<String> = []
+
+        func addCourse(_ c: SDCourse, seedIndex: Int) {
+            if !seen.insert(c.courseNo).inserted { return }
+            let block = blockFor(weekday: weekday, startIndex: seedIndex, course: c)
+            closure.append((c, block.first, block.span))
+            for i in block.first..<(block.first + block.span) {
+                guard let pid = periods[safe: i]?.id else { continue }
+                for other in courses(for: weekday, period: pid) where !seen.contains(other.courseNo) {
+                    addCourse(other, seedIndex: i)
+                }
             }
         }
+        for c in coursesHere { addCourse(c, seedIndex: periodIndex) }
 
-        var span = 1
-        var nextIdx = periodIndex + 1
-        while nextIdx < periods.count {
-            let nextPeriod = periods[nextIdx]
-            if let nextCourse = self.course(for: weekday, period: nextPeriod.id),
-               nextCourse.courseNo == course.courseNo {
-                span += 1
-                nextIdx += 1
-            } else {
-                break
-            }
+        let clusterStart = closure.map(\.first).min() ?? periodIndex
+        if clusterStart < periodIndex {
+            cellRoleCache[key] = .skip
+            return .skip
         }
 
-        let role = CellRole.blockStart(course, spanCount: span)
+        if closure.count == 1 {
+            let only = closure[0]
+            let role = CellRole.solo(only.course, spanCount: only.span)
+            cellRoleCache[key] = role
+            return role
+        }
+
+        // 2+ courses — cap at 2. `wouldCauseTripleConflict` blocks adds that
+        // would land us here, but defensively render only the first two
+        // (matches Android).
+        let kept = Array(closure.prefix(2))
+        let a = kept[0]
+        let b = kept[1]
+        let clusterEnd = max(a.first + a.span, b.first + b.span)
+        let role = CellRole.conflictStart(
+            courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,
+            courseB: b.course, spanB: b.span, offsetB: b.first - clusterStart,
+            combinedSpan: clusterEnd - clusterStart
+        )
         cellRoleCache[key] = role
         return role
+    }
+
+    struct ConflictPickerTarget: Identifiable {
+        let id = UUID()
+        let courseA: SDCourse
+        let courseB: SDCourse
+        let weekday: Int
+        let periodId: String
+    }
+
+    struct TripleConflictError: Identifiable {
+        let id = UUID()
+        let weekday: Int
+        let periodId: String
+        let newCourseName: String
+        let existingA: SDCourse
+        let existingB: SDCourse
+    }
+
+    /// Scans every slot the candidate would occupy and returns the first
+    /// slot that already has two courses — adding the candidate there would
+    /// push it to three. Returns nil when the add is safe.
+    func wouldCauseTripleConflict(_ candidate: SDCourse) -> TripleConflictError? {
+        for (weekday, periodIds) in candidate.schedule {
+            for pid in periodIds {
+                let existing = courses(for: weekday, period: pid)
+                if existing.count >= 2 {
+                    return TripleConflictError(
+                        weekday: weekday,
+                        periodId: pid,
+                        newCourseName: candidate.displayName,
+                        existingA: existing[0],
+                        existingB: existing[1]
+                    )
+                }
+            }
+        }
+        return nil
+    }
+
+    func presentConflictPicker(courseA: SDCourse, courseB: SDCourse, weekday: Int, periodId: String) {
+        conflictPickerTarget = ConflictPickerTarget(
+            courseA: courseA, courseB: courseB,
+            weekday: weekday, periodId: periodId
+        )
+    }
+
+    func pickFromConflict(_ course: SDCourse) {
+        guard let target = conflictPickerTarget else { return }
+        let weekday = target.weekday
+        let periodId = target.periodId
+        conflictPickerTarget = nil
+        selectCourse(course, weekday: weekday, periodId: periodId)
     }
 
     func selectCourse(_ course: SDCourse, weekday: Int, periodId: String) {
@@ -333,6 +466,14 @@ final class ClassTableViewModel {
             DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         }
         guard !courses.contains(where: { $0.courseNo == course.courseNo }) else { return }
+
+        // Refuse if any slot it occupies already has 2 courses — three
+        // concurrent courses don't have a sensible rendering (Android caps
+        // at 2 with a warning; we surface an alert instead).
+        if let err = wouldCauseTripleConflict(course) {
+            tripleConflictError = err
+            return
+        }
 
         // Cache the freshly-fetched API values BEFORE any local mutation so
         // abbreviation toggles can round-trip without a network refetch
