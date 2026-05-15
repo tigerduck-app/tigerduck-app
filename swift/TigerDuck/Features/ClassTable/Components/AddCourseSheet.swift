@@ -323,6 +323,13 @@ struct AddCourseSheet: View {
         let instructor: String
         let credits: Int
         let classroom: String
+        /// Per-(weekday, period) classroom map, mirroring the structure that
+        /// ``AppServiceBridge.buildSDCourse`` produces for the normal fetch
+        /// path. Required so a newly-added course that meets in different
+        /// rooms on different days shows the correct location in
+        /// ``CourseDetailSheet``, Home time cards, and the Live Activity
+        /// (all of which call ``SDCourse.classroom(for:)``).
+        let classroomMap: [String: String]
         let enrolledCount: Int
         let maxCount: Int
         let schedule: [Int: [String]]
@@ -343,8 +350,17 @@ struct AddCourseSheet: View {
 
         for result in primaryResults {
             let key = result.CourseNo
+            let partial = CourseLookupService.parseNodeToSchedule(result.Node)
+            // Mirror AppServiceBridge.buildSDCourse: dedupe a row's rooms,
+            // then assign the joined string to every (day, period) the row
+            // covers. Without this, `classroom(for:)` falls back to the
+            // combined room list and can display the wrong day's room.
+            var rowSeen = Set<String>()
+            let rowRoomParts = SDCourse.splitRoom(result.ClassRoomNo ?? "")
+                .filter { rowSeen.insert($0).inserted }
+            let rowRoom = rowRoomParts.joined(separator: ", ")
+
             if var existing = seen[key] {
-                let partial = CourseLookupService.parseNodeToSchedule(result.Node)
                 var merged = existing.schedule
                 for (day, periods) in partial {
                     merged[day, default: []].append(contentsOf: periods)
@@ -358,6 +374,15 @@ struct AddCourseSheet: View {
                     (result.Node == nil || result.Node!.isEmpty) ? existing.nodeDisplay :
                     "\(existing.nodeDisplay), \(result.Node!)"
 
+                var mergedMap = existing.classroomMap
+                if !rowRoom.isEmpty {
+                    for (day, periods) in partial {
+                        for period in periods {
+                            mergedMap["\(day)-\(period)"] = rowRoom
+                        }
+                    }
+                }
+
                 existing = GroupedCourse(
                     courseNo: existing.courseNo,
                     primaryName: existing.primaryName,
@@ -365,6 +390,7 @@ struct AddCourseSheet: View {
                     instructor: existing.instructor,
                     credits: existing.credits,
                     classroom: newClassroom,
+                    classroomMap: mergedMap,
                     enrolledCount: existing.enrolledCount,
                     maxCount: existing.maxCount,
                     schedule: merged,
@@ -372,6 +398,14 @@ struct AddCourseSheet: View {
                 )
                 seen[key] = existing
             } else {
+                var initialMap: [String: String] = [:]
+                if !rowRoom.isEmpty {
+                    for (day, periods) in partial {
+                        for period in periods {
+                            initialMap["\(day)-\(period)"] = rowRoom
+                        }
+                    }
+                }
                 order.append(key)
                 seen[key] = GroupedCourse(
                     courseNo: result.CourseNo,
@@ -380,9 +414,10 @@ struct AddCourseSheet: View {
                     instructor: result.CourseTeacher,
                     credits: Int(result.CreditPoint) ?? 0,
                     classroom: result.ClassRoomNo ?? "",
+                    classroomMap: initialMap,
                     enrolledCount: result.ChooseStudent ?? 0,
                     maxCount: Int(result.Restrict2 ?? "0") ?? 0,
-                    schedule: CourseLookupService.parseNodeToSchedule(result.Node),
+                    schedule: partial,
                     nodeDisplay: result.Node ?? ""
                 )
             }
@@ -401,7 +436,9 @@ struct AddCourseSheet: View {
             enrolledCount: group.enrolledCount,
             maxCount: group.maxCount,
             schedule: group.schedule,
-            moodleIdNumber: nil
+            moodleIdNumber: nil,
+            semester: semester,
+            classroomMap: group.classroomMap
         )
         onAdd(course)
         sessionAddedCourseNos.insert(group.courseNo)
