@@ -1,0 +1,67 @@
+name: Version bumped
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check MARKETING_VERSION and CURRENT_PROJECT_VERSION are bumped
+        run: |
+          set -e
+          base="origin/${{ github.base_ref }}"
+          git fetch origin "${{ github.base_ref }}" --quiet --depth=1
+
+          pbxproj="swift/TigerDuck.xcodeproj/project.pbxproj"
+
+          # The pbxproj repeats MARKETING_VERSION per build configuration *per*
+          # target (main app, Live Activity extension, etc). We gate releases
+          # on the main TigerDuck target — that's always the first occurrence
+          # because Xcode writes target sections in dependency order.
+          extract_marketing() {
+            grep -E '^[[:space:]]*MARKETING_VERSION[[:space:]]*=' "$1" \
+              | head -n1 \
+              | sed -E 's/.*=[[:space:]]*([^;[:space:]]+).*/\1/'
+          }
+          extract_build() {
+            grep -E '^[[:space:]]*CURRENT_PROJECT_VERSION[[:space:]]*=' "$1" \
+              | head -n1 \
+              | sed -E 's/.*=[[:space:]]*([^;[:space:]]+).*/\1/'
+          }
+
+          # Semver compare: returns 0 iff $1 > $2 (numeric per dot segment,
+          # ignores any -suffix). Matches the Android workflow's behavior.
+          version_gt() {
+            local a="${1%%-*}" b="${2%%-*}"
+            [ "$a" = "$b" ] && return 1
+            [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | tail -n1)" = "$a" ]
+          }
+
+          new_marketing=$(extract_marketing "$pbxproj")
+          new_build=$(extract_build "$pbxproj")
+          old_marketing=$(git show "$base:$pbxproj" | extract_marketing /dev/stdin)
+          old_build=$(git show "$base:$pbxproj" | extract_build /dev/stdin)
+
+          echo "MARKETING_VERSION:       $old_marketing -> $new_marketing"
+          echo "CURRENT_PROJECT_VERSION: $old_build -> $new_build"
+
+          fail=0
+
+          if ! version_gt "$new_marketing" "$old_marketing"; then
+            echo "::error file=$pbxproj::MARKETING_VERSION must be bumped (current $new_marketing, base $old_marketing). Run /release-bump to bump."
+            fail=1
+          fi
+
+          if [ "$new_build" -le "$old_build" ] 2>/dev/null; then
+            echo "::error file=$pbxproj::CURRENT_PROJECT_VERSION must be bumped (current $new_build, base $old_build)."
+            fail=1
+          fi
+
+          exit $fail
