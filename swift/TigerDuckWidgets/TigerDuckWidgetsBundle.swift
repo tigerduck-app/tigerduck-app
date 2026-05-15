@@ -5,6 +5,7 @@ import SwiftUI
 struct TigerDuckWidgetsBundle: WidgetBundle {
     var body: some Widget {
         LibraryShortcutWidget()
-        // Future tasks add: NextClassWidget(), TodayWidget(), WeekWidget(), AccessoryWidget()
+        NextClassWidget()
+        // Future tasks add: TodayWidget(), WeekWidget(), AccessoryWidget()
     }
 }
