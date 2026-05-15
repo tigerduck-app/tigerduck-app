@@ -306,10 +306,15 @@ struct MoodleHomeworkRegressionTests {
             dueDate: now.addingTimeInterval(-1800), isCompleted: false, isLocallyCompleted: true
         )
 
-        let result = [normal, archived, locallyDone].allSorted(now: now)
-        // Both kept items are past; past bucket sorts descending so the
+        let candidates = [normal, archived, locallyDone].allCandidates()
+        // archived removed; locallyDone + normal both kept (filter is
+        // time-agnostic at this layer).
+        #expect(Set(candidates.map(\.assignmentId)) == ["1", "3"])
+
+        let partitioned = candidates.partitionedByDueDate(now: now)
+        // Both items are past; past bucket sorts descending so the
         // more-recently due `locallyDone` (-1800s) lands above `normal` (-3600s).
-        #expect(result.map(\.assignmentId) == ["3", "1"])
+        #expect(partitioned.map(\.assignmentId) == ["3", "1"])
     }
 
     @Test func arrayIgnoredSorted_onlyIncludesIgnoredUnsubmittedAssignments() {
@@ -337,7 +342,7 @@ struct MoodleHomeworkRegressionTests {
         #expect(![normal, completedIgnored].hasIgnored())
     }
 
-    @Test func arrayAllSorted_putsFutureAscendingBeforePastDescending() {
+    @Test func partitionedByDueDate_putsFutureAscendingBeforePastDescending() {
         let now = Date()
         let incompleteA = SDAssignment(
             assignmentId: "i1", courseNo: "C", courseName: "C", title: "iA",
@@ -358,9 +363,36 @@ struct MoodleHomeworkRegressionTests {
 
         // 全部 tab partitions by time, not by completion. Future bucket
         // (c2 @ +3600 < i2 @ +7200) ascending, then past bucket (i1 @
-        // -3600 > c1 @ -7200) descending.
-        let result = [completedA, incompleteB, completedB, incompleteA].allSorted(now: now)
+        // -3600 > c1 @ -7200) descending. The partition is intentionally
+        // re-applied on every TimelineView tick — this test pins the
+        // expected ordering for a fixed `now`.
+        let result = [completedA, incompleteB, completedB, incompleteA]
+            .partitionedByDueDate(now: now)
         #expect(result.map(\.assignmentId) == ["c2", "i2", "i1", "c1"])
+    }
+
+    @Test func partitionedByDueDate_rebucketsAsClockAdvancesPastDueDate() {
+        let now = Date()
+        let crossingSoon = SDAssignment(
+            assignmentId: "x", courseNo: "C", courseName: "C", title: "X",
+            dueDate: now.addingTimeInterval(60), isCompleted: false
+        )
+        let laterFuture = SDAssignment(
+            assignmentId: "y", courseNo: "C", courseName: "C", title: "Y",
+            dueDate: now.addingTimeInterval(3600), isCompleted: false
+        )
+
+        // At `now`, both are future and sort ascending.
+        let before = [crossingSoon, laterFuture].partitionedByDueDate(now: now)
+        #expect(before.map(\.assignmentId) == ["x", "y"])
+
+        // Two minutes later, `crossingSoon` has slipped into the past
+        // bucket and now sits *below* `laterFuture`. Regression guard for
+        // the time-frozen bug: the same input list must re-bucket purely
+        // by passing a fresher `now`.
+        let after = [crossingSoon, laterFuture]
+            .partitionedByDueDate(now: now.addingTimeInterval(120))
+        #expect(after.map(\.assignmentId) == ["y", "x"])
     }
 
     @Test func classTableViewModel_displayLabel_formatsSemesterCode() {

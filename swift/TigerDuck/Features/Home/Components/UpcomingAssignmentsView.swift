@@ -32,12 +32,22 @@ struct UpcomingAssignmentsView: View {
 
     private func assignmentList(for now: Date) -> some View {
         let policy = appState.visualStylePolicy
+        // For the 全部 tab the view model hands us a time-agnostic
+        // candidate list; the past/future partition runs here against the
+        // `TimelineView` clock so a row whose `dueDate` just crossed `now`
+        // re-buckets on the next minute tick instead of staying frozen
+        // against whichever `Date()` the view model captured at filter
+        // change. Other tabs already sort by `dueDate` only, no live-clock
+        // dependency — pass them through as-is.
+        let rows = filter == .all
+            ? assignments.partitionedByDueDate(now: now)
+            : assignments
         return Group {
             switch policy.assignmentRowStyle {
             case .card:
-                cardLayout(policy: policy, now: now)
+                cardLayout(rows: rows, policy: policy, now: now)
             case .groupedList:
-                groupedListLayout(policy: policy, now: now)
+                groupedListLayout(rows: rows, policy: policy, now: now)
             }
         }
     }
@@ -53,9 +63,9 @@ struct UpcomingAssignmentsView: View {
     ///     edge artifact that no inset / background tweak silenced.
     /// `LazyVStack` sizes itself to its children and the custom `SwipeableRow`
     /// (below) replaces `.swipeActions` so neither issue can recur.
-    private func cardLayout(policy: VisualStylePolicy, now: Date) -> some View {
+    private func cardLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
         LazyVStack(spacing: TigerDuckTheme.Spacing.sm) {
-            ForEach(assignments, id: \.assignmentId) { assignment in
+            ForEach(rows, id: \.assignmentId) { assignment in
                 swipeableRow(assignment: assignment, now: now) {
                     assignmentRow(assignment: assignment, now: now, policy: policy)
                         .cardPadding()
@@ -64,19 +74,19 @@ struct UpcomingAssignmentsView: View {
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
         }
-        .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
+        .animation(Self.listChangeAnimation, value: rows.map(\.assignmentId))
     }
 
-    private func groupedListLayout(policy: VisualStylePolicy, now: Date) -> some View {
+    private func groupedListLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
         LazyVStack(spacing: 0) {
-            ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { index, assignment in
+            ForEach(Array(rows.enumerated()), id: \.element.assignmentId) { index, assignment in
                 swipeableRow(assignment: assignment, now: now) {
                     assignmentRow(assignment: assignment, now: now, policy: policy)
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                         .padding(.vertical, TigerDuckTheme.Spacing.md)
                 }
 
-                if index < assignments.count - 1 {
+                if index < rows.count - 1 {
                     Divider()
                         .padding(.leading, TigerDuckTheme.Spacing.lg)
                 }
@@ -84,7 +94,7 @@ struct UpcomingAssignmentsView: View {
         }
         .presetGroupedListContainer(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
+        .animation(Self.listChangeAnimation, value: rows.map(\.assignmentId))
     }
 
     private func swipeableRow<Content: View>(
