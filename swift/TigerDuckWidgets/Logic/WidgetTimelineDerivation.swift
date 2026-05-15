@@ -141,3 +141,47 @@ private extension Comparable {
         min(max(self, range.lowerBound), range.upperBound)
     }
 }
+
+extension WidgetTimelineDerivation {
+    /// Returns the set of `Date`s at which the widget should refresh:
+    ///   - `now` itself
+    ///   - every remaining period start AND end today
+    ///   - midnight at the start of tomorrow
+    ///
+    /// Deduplicated and sorted ascending. Callers feed these into
+    /// `TimelineEntry` construction so each entry's `derive(at:)` lands
+    /// exactly on a meaningful boundary (period start/end, day change),
+    /// avoiding wasted refreshes mid-period.
+    static func entryDates(
+        snapshot: WidgetSnapshot,
+        after now: Date,
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) -> [Date] {
+        var result: Set<Date> = [now]
+        let weekday = weekdayFor(now)
+        let dayStart = calendar.startOfDay(for: now)
+
+        for course in snapshot.courses {
+            guard let periods = course.schedule[weekday] else { continue }
+            for periodId in periods {
+                guard let pt = snapshot.periodTimes[periodId] else { continue }
+                if let start = parseHm(pt.start),
+                   let date = calendar.date(byAdding: .minute, value: start, to: dayStart),
+                   date > now {
+                    result.insert(date)
+                }
+                if let end = parseHm(pt.end),
+                   let date = calendar.date(byAdding: .minute, value: end, to: dayStart),
+                   date > now {
+                    result.insert(date)
+                }
+            }
+        }
+
+        if let midnight = calendar.date(byAdding: .day, value: 1, to: dayStart) {
+            result.insert(midnight)
+        }
+
+        return result.sorted()
+    }
+}
