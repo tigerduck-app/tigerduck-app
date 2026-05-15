@@ -52,9 +52,7 @@ final class DataCache {
         let dtos: [CachedCourse] = load(from: coursesFilename(semester, currentCourseApiLanguage())) ?? []
         let customNames = loadCourseCustomNames()
         return dtos.map { dto in
-            let course = dto.toSDCourse()
-            course.customName = customNames[course.courseNo]
-            return course
+            applyCustomNameOverlay(dto.toSDCourse(), customNames: customNames)
         }
     }
 
@@ -77,10 +75,32 @@ final class DataCache {
         let dtos: [CachedCourse] = load(from: "user_added_courses.json", in: persistentDir) ?? []
         let customNames = loadCourseCustomNames()
         return dtos.map { dto in
-            let course = dto.toSDCourse()
-            course.customName = customNames[course.courseNo]
-            return course
+            applyCustomNameOverlay(dto.toSDCourse(), customNames: customNames)
         }
+    }
+
+    /// Apply the persisted alias overlay to a freshly-decoded SDCourse, with
+    /// a defensive guard for caches written by builds where the rename flow
+    /// overwrote `courseName` in place. Symptom: `customNames[courseNo]`
+    /// equals the cached `courseName`, meaning the cache no longer holds the
+    /// canonical API name. In that case clear `courseName` so `displayName`
+    /// resolves to the alias via `customName` only — and "Revert to default"
+    /// surfaces an empty canonical (instead of silently leaving the alias
+    /// behind) until the next network refresh repopulates the canonical
+    /// value. Semester course caches are also force-purged once via
+    /// `CustomNameCacheMigration`; this guard catches the user-added cache,
+    /// which has no network refresh source.
+    private func applyCustomNameOverlay(
+        _ course: SDCourse,
+        customNames: [String: String]
+    ) -> SDCourse {
+        if let alias = customNames[course.courseNo] {
+            if alias == course.courseName {
+                course.courseName = ""
+            }
+            course.customName = alias
+        }
+        return course
     }
 
     // MARK: - Assignments
