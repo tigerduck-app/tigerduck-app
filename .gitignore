@@ -9,8 +9,8 @@ swift/TigerDuck/Secrets.plist
 # accidentally get committed. Safe to delete from disk.
 swift/TigerDuck/Secrets.xcconfig
 
-.superpowers/
-docs/plans/
+#.superpowers/
+#docs/plans/
 # Created by https://www.toptal.com/developers/gitignore/api/linux,macos,swift,xcode,kotlin,python,pycharm,windows,intellij,visualstudio,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,macos,swift,xcode,kotlin,python,pycharm,windows,intellij,visualstudio,visualstudiocode
 
