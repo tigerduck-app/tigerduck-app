@@ -32,6 +32,7 @@ struct LibraryView: View {
             .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
         .background(Color.backgroundPrimary)
+        .lockOrientation(.portrait)
         .onAppear {
             viewModel.load()
             viewModel.onAppear()
