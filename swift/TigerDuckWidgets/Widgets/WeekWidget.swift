@@ -10,11 +10,11 @@ struct WeekProvider: TimelineProvider {
     private let store = WidgetSnapshotStore()
 
     func placeholder(in context: Context) -> WeekEntry {
-        WeekEntry(date: Date(), snapshot: Self.emptySnapshot)
+        WeekEntry(date: AppClock.now(), snapshot: Self.emptySnapshot)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WeekEntry) -> Void) {
-        completion(WeekEntry(date: Date(), snapshot: store.readSnapshot() ?? Self.emptySnapshot))
+        completion(WeekEntry(date: AppClock.now(), snapshot: store.readSnapshot() ?? Self.emptySnapshot))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WeekEntry>) -> Void) {
@@ -23,8 +23,8 @@ struct WeekProvider: TimelineProvider {
         // independent, so a single entry + .after(midnight) policy
         // is enough.
         let snap = store.readSnapshot() ?? Self.emptySnapshot
-        let midnight = Calendar(identifier: .gregorian).startOfDay(for: Date().addingTimeInterval(86_400))
-        completion(Timeline(entries: [WeekEntry(date: Date(), snapshot: snap)], policy: .after(midnight)))
+        let midnight = Calendar(identifier: .gregorian).startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        completion(Timeline(entries: [WeekEntry(date: AppClock.now(), snapshot: snap)], policy: .after(midnight)))
     }
 
     private static let emptySnapshot = WidgetSnapshot(

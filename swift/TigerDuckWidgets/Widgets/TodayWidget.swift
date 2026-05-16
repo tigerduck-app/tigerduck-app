@@ -10,16 +10,16 @@ struct TodayProvider: TimelineProvider {
     private let store = WidgetSnapshotStore()
 
     func placeholder(in context: Context) -> TodayEntry {
-        TodayEntry(date: Date(), snapshot: Self.emptySnapshot)
+        TodayEntry(date: AppClock.now(), snapshot: Self.emptySnapshot)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (TodayEntry) -> Void) {
-        completion(TodayEntry(date: Date(), snapshot: store.readSnapshot() ?? Self.emptySnapshot))
+        completion(TodayEntry(date: AppClock.now(), snapshot: store.readSnapshot() ?? Self.emptySnapshot))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodayEntry>) -> Void) {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
-        let now = Date()
+        let now = AppClock.now()
         let dates = WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
         let entries = dates.map { TodayEntry(date: $0, snapshot: snap) }
         completion(Timeline(entries: entries, policy: .atEnd))

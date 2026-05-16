@@ -11,21 +11,21 @@ struct NextClassProvider: TimelineProvider {
     private let store = WidgetSnapshotStore()
 
     func placeholder(in context: Context) -> NextClassEntry {
-        NextClassEntry(date: Date(), snapshot: Self.emptySnapshot, derived: .signInRequired)
+        NextClassEntry(date: AppClock.now(), snapshot: Self.emptySnapshot, derived: .signInRequired)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (NextClassEntry) -> Void) {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
         completion(NextClassEntry(
-            date: Date(),
+            date: AppClock.now(),
             snapshot: snap,
-            derived: WidgetTimelineDerivation.derive(snapshot: snap, at: Date())
+            derived: WidgetTimelineDerivation.derive(snapshot: snap, at: AppClock.now())
         ))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextClassEntry>) -> Void) {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
-        let now = Date()
+        let now = AppClock.now()
         let dates = WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
         let entries = dates.map { date in
             NextClassEntry(

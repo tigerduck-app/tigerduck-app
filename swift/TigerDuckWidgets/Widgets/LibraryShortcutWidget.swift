@@ -10,11 +10,11 @@ struct LibraryShortcutProvider: TimelineProvider {
     private let store = WidgetSnapshotStore()
 
     func placeholder(in context: Context) -> LibraryShortcutEntry {
-        LibraryShortcutEntry(date: Date(), snapshot: nil)
+        LibraryShortcutEntry(date: AppClock.now(), snapshot: nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (LibraryShortcutEntry) -> Void) {
-        completion(LibraryShortcutEntry(date: Date(), snapshot: store.readSnapshot()))
+        completion(LibraryShortcutEntry(date: AppClock.now(), snapshot: store.readSnapshot()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<LibraryShortcutEntry>) -> Void) {
@@ -22,8 +22,8 @@ struct LibraryShortcutProvider: TimelineProvider {
         // so the date used by `containerBackground` rolls over for any future
         // theme-tied logic. No dependency on snapshot freshness.
         let snapshot = store.readSnapshot()
-        let entry = LibraryShortcutEntry(date: Date(), snapshot: snapshot)
-        let midnight = Calendar(identifier: .gregorian).startOfDay(for: Date().addingTimeInterval(86_400))
+        let entry = LibraryShortcutEntry(date: AppClock.now(), snapshot: snapshot)
+        let midnight = Calendar(identifier: .gregorian).startOfDay(for: AppClock.now().addingTimeInterval(86_400))
         completion(Timeline(entries: [entry], policy: .after(midnight)))
     }
 }
