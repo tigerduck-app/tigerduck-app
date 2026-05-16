@@ -6,6 +6,7 @@ struct TigerDuckApp: App {
     @State private var appState = AppState()
     @State private var sceneRefreshTask: Task<Void, Never>?
     @State private var rootLanguageId = UUID()
+    @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
@@ -68,6 +69,14 @@ struct TigerDuckApp: App {
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
+                    if widgetSnapshotWriter == nil {
+                        widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
+                        widgetSnapshotWriter?.regenerate()
+                    }
+                }
+                .onOpenURL { url in
+                    guard let destination = WidgetURLRouter.route(url) else { return }
+                    appState.openFromWidget(destination)
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
@@ -87,6 +96,7 @@ struct TigerDuckApp: App {
                             await appState.rescheduleReminders()
                             appState.requestPushScheduleSync()
                         }
+                        widgetSnapshotWriter?.regenerate()
                     }
                 }
         }
