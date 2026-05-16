@@ -64,7 +64,7 @@ final class WidgetSnapshotWriter {
                 customColors: customColors,
                 isLoggedIn: appState.isNTUSTLoggedIn,
                 accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: appState.accentColorHex)),
-                now: Date()
+                now: AppClock.now()
             )
         )
         store.writeSnapshot(snapshot)

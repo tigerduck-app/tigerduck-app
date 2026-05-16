@@ -56,12 +56,12 @@ struct BulletinsView: View {
             // a brief jaunt to another app shouldn't lose the user's query.
             if oldPhase == .background, newPhase == .active,
                let last = lastBackgroundedAt,
-               Date().timeIntervalSince(last) > 300 {
+               AppClock.now().timeIntervalSince(last) > 300 {
                 searchIsPresented = false
                 viewModel.searchText = ""
             }
             if newPhase == .background {
-                lastBackgroundedAt = Date()
+                lastBackgroundedAt = AppClock.now()
             }
         }
     }

@@ -500,7 +500,7 @@ final class AppState {
     /// frequently — the coordinator only issues ActivityKit calls when the
     /// snapshot actually changes.
     func refreshLiveActivity() async {
-        let now = Date()
+        let now = AppClock.now()
         let courses = courseProvider.currentCourses()
         let assignments = DataCache.shared.loadAssignments()
         let snapshot = scenarioResolver.resolve(
