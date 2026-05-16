@@ -17,19 +17,12 @@ struct LibraryView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                headerSection
-                errorBanner
-                if viewModel.isLoggedIn {
-                    qrSection
-                } else {
-                    loginPrompt
-                }
-                /// Temporary comments until feature is implemented.
-                //  libraryFeaturesSection
+        Group {
+            if shouldCenterQRForRotation {
+                qrCenteredLayout
+            } else {
+                scrollableLayout
             }
-            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
         .background(Color.backgroundPrimary)
         .onAppear {
@@ -45,6 +38,40 @@ struct LibraryView: View {
             } else {
                 viewModel.stopTimers()
             }
+        }
+    }
+
+    /// iPad rotates freely, so anchor the QR to vertical center to keep its
+    /// on-screen position stable across orientation changes. iPhone is
+    /// portrait-locked by Info.plist and stays on the regular top-aligned
+    /// scroll layout.
+    private var shouldCenterQRForRotation: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && viewModel.isLoggedIn
+    }
+
+    private var qrCenteredLayout: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.lg) {
+            headerSection
+            errorBanner
+            Spacer(minLength: 0)
+            qrSection
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+    }
+
+    private var scrollableLayout: some View {
+        ScrollView {
+            VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                headerSection
+                errorBanner
+                if viewModel.isLoggedIn {
+                    qrSection
+                } else {
+                    loginPrompt
+                }
+            }
+            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
         }
     }
 

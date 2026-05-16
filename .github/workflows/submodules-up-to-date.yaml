@@ -1,0 +1,37 @@
+name: Submodules up to date
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          submodules: true
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check each submodule is at upstream tip
+        run: |
+          set -e
+          stale=0
+          while IFS= read -r name; do
+            path=$(git config -f .gitmodules "submodule.$name.path")
+            branch=$(git config -f .gitmodules "submodule.$name.branch" || echo main)
+            (
+              cd "$path"
+              git fetch origin "$branch" --quiet
+              pinned=$(git rev-parse HEAD)
+              latest=$(git rev-parse "origin/$branch")
+              if [ "$pinned" != "$latest" ]; then
+                echo "::error::Submodule '$name' ($path) is behind origin/$branch (pinned $pinned, latest $latest). Bump before merging."
+                exit 1
+              else
+                echo "OK $name up to date with origin/$branch"
+              fi
+            ) || stale=1
+          done < <(git config --file .gitmodules --get-regexp '^submodule\..*\.path$' | sed -E 's/^submodule\.(.*)\.path .*/\1/')
+          exit $stale

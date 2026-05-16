@@ -449,19 +449,25 @@ enum AppServiceBridge {
                 return result
             }
 
+            let locallyCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
+            let archivedIds = DataCache.shared.loadArchivedAssignmentIds()
+
             let freshAssignments: [SDAssignment] = records.compactMap { record in
                 guard let dueDate = record.dueDate else { return nil }
                 guard !record.noSubmissions else { return nil }
 
                 let moodleCourse = moodleCoursesById[record.courseId]
                 let status = statuses[record.assignId]
+                let assignmentId = String(record.assignId)
                 return SDAssignment(
-                    assignmentId: String(record.assignId),
+                    assignmentId: assignmentId,
                     courseNo: moodleCourse?.courseNo ?? "",
                     courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
                     title: record.name,
                     dueDate: dueDate,
                     isCompleted: status?.isSubmitted ?? false,
+                    isArchived: archivedIds.contains(assignmentId),
+                    isLocallyCompleted: locallyCompletedIds.contains(assignmentId),
                     moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(record.cmId)",
                     cutoffDate: record.cutoffDate,
                     submittedAt: status?.submittedAt

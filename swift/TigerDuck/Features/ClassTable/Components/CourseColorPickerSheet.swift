@@ -29,7 +29,7 @@ struct CourseColorPickerSheet: View {
                         .fill(course.color)
                         .frame(width: 36, height: 36)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(course.courseName)
+                        Text(course.displayName)
                             .font(TigerDuckTheme.Typography.headline)
                             .foregroundStyle(Color.textPrimary)
                             .lineLimit(1)

@@ -98,8 +98,20 @@ final class ClassTableViewModel {
     private var deletedCourseNos: Set<String> = []
     private var courseCustomNames: [String: String] = [:]
 
-    /// weekday → period ID → SDCourse (built once when courses change)
-    private var courseLookup: [Int: [String: SDCourse]] = [:]
+    /// weekday → period ID → [SDCourse]. A list (not single) so the grid can
+    /// surface 衝堂 (conflict) instead of the previous behaviour where the
+    /// second course in a slot was silently overwritten. Order matches the
+    /// `courses` array so conflict role-assignment (A vs B) is stable.
+    private var courseLookup: [Int: [String: [SDCourse]]] = [:]
+
+    /// Cell-tap state when the user taps a conflict cell. The grid view
+    /// presents a picker sheet driven by this; selecting one route through
+    /// `selectCourse` and clears it.
+    var conflictPickerTarget: ConflictPickerTarget? = nil
+
+    /// Set when an add would push a slot to 3+ overlapping courses. Drives
+    /// an alert in ``ClassTableView``.
+    var tripleConflictError: TripleConflictError? = nil
 
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
@@ -184,11 +196,13 @@ final class ClassTableViewModel {
     }
 
     private func rebuildLookup() {
-        var lookup: [Int: [String: SDCourse]] = [:]
+        var lookup: [Int: [String: [SDCourse]]] = [:]
+        // Walk `courses` in order so the same (weekday, period) always yields
+        // the same A/B ordering across renders.
         for course in courses {
             for (weekday, periods) in course.schedule {
                 for period in periods {
-                    lookup[weekday, default: [:]][period] = course
+                    lookup[weekday, default: [:]][period, default: []].append(course)
                 }
             }
         }
@@ -262,7 +276,13 @@ final class ClassTableViewModel {
     }
 
     func course(for weekday: Int, period: String) -> SDCourse? {
-        courseLookup[weekday]?[period]
+        courseLookup[weekday]?[period]?.first
+    }
+
+    /// All courses present in a given slot. Up to 2 are rendered as a
+    /// conflict cell; the algorithm guards against 3+ at add time.
+    func courses(for weekday: Int, period: String) -> [SDCourse] {
+        courseLookup[weekday]?[period] ?? []
     }
 
     func hasAssignment(for courseNo: String) -> Bool {
@@ -275,8 +295,46 @@ final class ClassTableViewModel {
 
     enum CellRole {
         case empty
-        case blockStart(SDCourse, spanCount: Int)
-        case blockContinuation
+        case solo(SDCourse, spanCount: Int)
+        /// Two overlapping courses occupying (possibly partially) this
+        /// cluster. `combinedSpan` is the total row count of the union;
+        /// `offsetA` / `offsetB` are 0-indexed row positions within the
+        /// cluster where each course's block begins; `spanA` / `spanB` are
+        /// each course's own contiguous block length. The L-split is drawn
+        /// only on rows where both appear.
+        case conflictStart(
+            courseA: SDCourse, spanA: Int, offsetA: Int,
+            courseB: SDCourse, spanB: Int, offsetB: Int,
+            combinedSpan: Int
+        )
+        /// This cell is part of a SoloStart / ConflictStart cluster that
+        /// began at an earlier row; the renderer must emit nothing here so
+        /// the parent's `combinedSpan` overlay can occupy the rows.
+        case skip
+    }
+
+    /// Walks backward and forward from `startIndex` through `activePeriods`,
+    /// collecting the contiguous block where `course` is present. Returns
+    /// (firstIndex, span). Used by the conflict-cluster algorithm so block
+    /// extents are computed against the same chronological ordering the
+    /// grid renders.
+    private func blockFor(weekday: Int, startIndex: Int, course: SDCourse) -> (first: Int, span: Int) {
+        let periods = activePeriods
+        let courseNo = course.courseNo
+
+        var first = startIndex
+        while first - 1 >= 0 {
+            let prev = periods[first - 1]
+            let present = courses(for: weekday, period: prev.id).contains { $0.courseNo == courseNo }
+            if present { first -= 1 } else { break }
+        }
+        var last = startIndex
+        while last + 1 < periods.count {
+            let next = periods[last + 1]
+            let present = courses(for: weekday, period: next.id).contains { $0.courseNo == courseNo }
+            if present { last += 1 } else { break }
+        }
+        return (first, last - first + 1)
     }
 
     func cellRole(weekday: Int, periodIndex: Int) -> CellRole {
@@ -288,38 +346,164 @@ final class ClassTableViewModel {
             cellRoleCache[key] = .empty
             return .empty
         }
-
         let period = periods[periodIndex]
-        guard let course = course(for: weekday, period: period.id) else {
+        let coursesHere = courses(for: weekday, period: period.id)
+        if coursesHere.isEmpty {
             cellRoleCache[key] = .empty
             return .empty
         }
 
-        if periodIndex > 0 {
-            let prevPeriod = periods[periodIndex - 1]
-            if let prevCourse = self.course(for: weekday, period: prevPeriod.id),
-               prevCourse.courseNo == course.courseNo {
-                cellRoleCache[key] = .blockContinuation
-                return .blockContinuation
+        // Build transitive closure of courses whose blocks overlap with any
+        // course already in the cluster, rooted at the courses present in
+        // this cell. This guarantees we emit a `conflictStart` at the
+        // earliest row of the union and `.skip` thereafter.
+        var closure: [(course: SDCourse, first: Int, span: Int)] = []
+        var seen: Set<String> = []
+
+        func addCourse(_ c: SDCourse, seedIndex: Int) {
+            if !seen.insert(c.courseNo).inserted { return }
+            let block = blockFor(weekday: weekday, startIndex: seedIndex, course: c)
+            closure.append((c, block.first, block.span))
+            for i in block.first..<(block.first + block.span) {
+                guard let pid = periods[safe: i]?.id else { continue }
+                for other in courses(for: weekday, period: pid) where !seen.contains(other.courseNo) {
+                    addCourse(other, seedIndex: i)
+                }
             }
+        }
+        for c in coursesHere { addCourse(c, seedIndex: periodIndex) }
+
+        let clusterStart = closure.map(\.first).min() ?? periodIndex
+
+        // A 3+ closure means a chain like A(1-2) B(2-3) C(3-4): pairwise
+        // overlaps without any 3-way slot. Rendering as one cluster would
+        // drop everything past index 2 (and emit .skip in C's solo rows,
+        // hiding C entirely). Fall back to per-slot rendering so every
+        // course stays on the table; the 2-course case still uses the
+        // L-cluster with its block-spanning visual continuity.
+        if closure.count >= 3 {
+            let role = perSlotRole(
+                weekday: weekday, periodIndex: periodIndex, coursesHere: coursesHere
+            )
+            cellRoleCache[key] = role
+            return role
+        }
+
+        if clusterStart < periodIndex {
+            cellRoleCache[key] = .skip
+            return .skip
+        }
+
+        if closure.count == 1 {
+            let only = closure[0]
+            let role = CellRole.solo(only.course, spanCount: only.span)
+            cellRoleCache[key] = role
+            return role
+        }
+
+        let a = closure[0]
+        let b = closure[1]
+        let clusterEnd = max(a.first + a.span, b.first + b.span)
+        let role = CellRole.conflictStart(
+            courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,
+            courseB: b.course, spanB: b.span, offsetB: b.first - clusterStart,
+            combinedSpan: clusterEnd - clusterStart
+        )
+        cellRoleCache[key] = role
+        return role
+    }
+
+    /// Chain-conflict fallback: render the current cell based only on the
+    /// courses physically present in THIS slot, with span = number of
+    /// consecutive forward periods where the exact same course set appears.
+    /// Used when the transitive closure spans 3+ courses without any 3-way
+    /// slot, so a cluster rendering would hide some of them.
+    private func perSlotRole(
+        weekday: Int, periodIndex: Int, coursesHere: [SDCourse]
+    ) -> CellRole {
+        let periods = activePeriods
+        let mySet = Set(coursesHere.map(\.courseNo))
+
+        if periodIndex > 0 {
+            let prev = courses(for: weekday, period: periods[periodIndex - 1].id)
+            if Set(prev.map(\.courseNo)) == mySet { return .skip }
         }
 
         var span = 1
-        var nextIdx = periodIndex + 1
-        while nextIdx < periods.count {
-            let nextPeriod = periods[nextIdx]
-            if let nextCourse = self.course(for: weekday, period: nextPeriod.id),
-               nextCourse.courseNo == course.courseNo {
+        var i = periodIndex + 1
+        while i < periods.count {
+            let next = courses(for: weekday, period: periods[i].id)
+            if Set(next.map(\.courseNo)) == mySet {
                 span += 1
-                nextIdx += 1
+                i += 1
             } else {
                 break
             }
         }
 
-        let role = CellRole.blockStart(course, spanCount: span)
-        cellRoleCache[key] = role
-        return role
+        if coursesHere.count == 1 {
+            return .solo(coursesHere[0], spanCount: span)
+        }
+        let a = coursesHere[0]
+        let b = coursesHere[1]
+        return .conflictStart(
+            courseA: a, spanA: span, offsetA: 0,
+            courseB: b, spanB: span, offsetB: 0,
+            combinedSpan: span
+        )
+    }
+
+    struct ConflictPickerTarget: Identifiable {
+        let id = UUID()
+        let courseA: SDCourse
+        let courseB: SDCourse
+        let weekday: Int
+        let periodId: String
+    }
+
+    struct TripleConflictError: Identifiable {
+        let id = UUID()
+        let weekday: Int
+        let periodId: String
+        let newCourseName: String
+        let existingA: SDCourse
+        let existingB: SDCourse
+    }
+
+    /// Scans every slot the candidate would occupy and returns the first
+    /// slot that already has two courses — adding the candidate there would
+    /// push it to three. Returns nil when the add is safe.
+    func wouldCauseTripleConflict(_ candidate: SDCourse) -> TripleConflictError? {
+        for (weekday, periodIds) in candidate.schedule {
+            for pid in periodIds {
+                let existing = courses(for: weekday, period: pid)
+                if existing.count >= 2 {
+                    return TripleConflictError(
+                        weekday: weekday,
+                        periodId: pid,
+                        newCourseName: candidate.displayName,
+                        existingA: existing[0],
+                        existingB: existing[1]
+                    )
+                }
+            }
+        }
+        return nil
+    }
+
+    func presentConflictPicker(courseA: SDCourse, courseB: SDCourse, weekday: Int, periodId: String) {
+        conflictPickerTarget = ConflictPickerTarget(
+            courseA: courseA, courseB: courseB,
+            weekday: weekday, periodId: periodId
+        )
+    }
+
+    func pickFromConflict(_ course: SDCourse) {
+        guard let target = conflictPickerTarget else { return }
+        let weekday = target.weekday
+        let periodId = target.periodId
+        conflictPickerTarget = nil
+        selectCourse(course, weekday: weekday, periodId: periodId)
     }
 
     func selectCourse(_ course: SDCourse, weekday: Int, periodId: String) {
@@ -329,10 +513,30 @@ final class ClassTableViewModel {
     }
 
     func addCourse(_ course: SDCourse) {
+        // Self-heal the inconsistent state where a course is BOTH tombstoned
+        // and currently present in `courses` (e.g. a refresh re-fetched it
+        // while a stale tombstone lingered). Done before the early-return so
+        // future reloads stop filtering it.
+        if courses.contains(where: { $0.courseNo == course.courseNo }) {
+            if deletedCourseNos.remove(course.courseNo) != nil {
+                DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+            }
+            return
+        }
+
+        // Refuse if any slot it occupies already has 2 courses — three
+        // concurrent courses don't have a sensible rendering (Android caps
+        // at 2 with a warning; we surface an alert instead). Must come
+        // BEFORE we clear the tombstone, otherwise a rejected add leaves
+        // the tombstone cleared and the next reload resurrects the course.
+        if let err = wouldCauseTripleConflict(course) {
+            tripleConflictError = err
+            return
+        }
+
         if deletedCourseNos.remove(course.courseNo) != nil {
             DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         }
-        guard !courses.contains(where: { $0.courseNo == course.courseNo }) else { return }
 
         // Cache the freshly-fetched API values BEFORE any local mutation so
         // abbreviation toggles can round-trip without a network refetch
@@ -356,11 +560,11 @@ final class ClassTableViewModel {
             classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
         )
 
-        // Custom name override comes after relabelInPlace so it survives
-        // (relabelInPlace would otherwise overwrite it from the cached raw).
-        if let customName = courseCustomNames[course.courseNo] {
-            course.courseName = customName
-        }
+        // Apply the custom-name overlay if one persists for this course
+        // (e.g. user removed and re-added). Stored separately from the
+        // canonical courseName so abbreviation toggles and refreshes still
+        // round-trip the API value through `NameAbbrService`.
+        course.customName = courseCustomNames[course.courseNo]
 
         courses.append(course)
         persistUserAddedCourses()
@@ -374,10 +578,8 @@ final class ClassTableViewModel {
 
     private func applyCustomizations(_ courses: inout [SDCourse]) {
         courses.removeAll { deletedCourseNos.contains($0.courseNo) }
-        for i in courses.indices {
-            if let customName = courseCustomNames[courses[i].courseNo] {
-                courses[i].courseName = customName
-            }
+        for course in courses {
+            course.customName = courseCustomNames[course.courseNo]
         }
     }
 
@@ -389,18 +591,58 @@ final class ClassTableViewModel {
         broadcastLocalChange()
     }
 
+    /// Undo a not-yet-committed user-added course without tombstoning the
+    /// `courseNo`. Used by AddCourseSheet's tap-to-toggle path so the user
+    /// can add a course, then immediately tap it again to back out, without
+    /// poisoning `deletedCourseNos` — which would later hide any real
+    /// enrolled course sharing the same `courseNo` from cache/network merges
+    /// (see `applyCustomizations`).
+    ///
+    /// Defensive: only removes courses that came from the user-added cache
+    /// (`moodleIdNumber == nil`). A stray call against a real enrolled course
+    /// is a no-op, so callers can route through this without risking the
+    /// regular drop/hide flow.
+    func removeUserAddedCourse(courseNo: String) {
+        guard let course = courses.first(where: { $0.courseNo == courseNo }),
+              course.moodleIdNumber == nil
+        else { return }
+        courses.removeAll { $0.courseNo == courseNo }
+        persistUserAddedCourses()
+        broadcastLocalChange()
+    }
+
     func startRename(_ course: SDCourse) {
         courseToRename = course
-        renameText = course.courseName
+        renameText = course.displayName
         showRenameAlert = true
     }
 
     func confirmRename() {
-        guard let course = courseToRename, !renameText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        let newName = renameText.trimmingCharacters(in: .whitespaces)
-        courseCustomNames[course.courseNo] = newName
+        guard let course = courseToRename else { return }
+        // Trim whitespace *and* newlines so a pasted "\nDefault\n" still
+        // collapses to empty and routes through the revert path instead of
+        // saving an invisible/line-breaking alias.
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Empty (or unchanged-from-default) means the user wants to revert to
+        // the canonical name. Clearing the override is also what the explicit
+        // "Revert to default" button does.
+        if trimmed.isEmpty || trimmed == course.courseName {
+            revertRename(course)
+            return
+        }
+        courseCustomNames[course.courseNo] = trimmed
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
-        course.courseName = newName
+        course.customName = trimmed
+        rebuildLookup()
+        persistUserAddedCourses()
+        courseToRename = nil
+        broadcastLocalChange()
+    }
+
+    func revertRename(_ course: SDCourse) {
+        courseCustomNames.removeValue(forKey: course.courseNo)
+        DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        course.customName = nil
         rebuildLookup()
         persistUserAddedCourses()
         courseToRename = nil

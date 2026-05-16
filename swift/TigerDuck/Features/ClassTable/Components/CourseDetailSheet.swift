@@ -49,7 +49,7 @@ struct CourseDetailSheet: View {
                                     Image(systemName: "doc.text")
                                         .foregroundStyle(Color.accentPrimary)
                                     VStack(alignment: .leading) {
-                                        Text(assignment.title)
+                                        Text(assignment.displayTitle)
                                             .font(TigerDuckTheme.Typography.body)
                                             .foregroundStyle(Color.textPrimary)
                                         Text(String(format: String(localized: "course_detail_due_prefix"), assignment.dueDate.shortDateString))
@@ -72,7 +72,7 @@ struct CourseDetailSheet: View {
                 .padding(.vertical)
             }
             .background(Color.backgroundPrimary)
-            .navigationTitle(course.courseName)
+            .navigationTitle(course.displayName)
             .navigationBarTitleDisplayMode(.large)
         }
     }

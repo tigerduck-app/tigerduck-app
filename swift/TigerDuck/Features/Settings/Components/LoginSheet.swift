@@ -51,12 +51,13 @@ struct LoginSheet: View {
                         .submitLabel(.next)
                         .onSubmit { focusedField = .password }
 
-                    SecureField(passwordPlaceholder, text: $password)
-                        .keyboardType(.asciiCapable)
-                        .textContentType(.password)
-                        .focused($focusedField, equals: .password)
-                        .submitLabel(.go)
-                        .onSubmit { submitIfReady() }
+                    PasswordField(
+                        placeholder: passwordPlaceholder,
+                        text: $password,
+                        focusBinding: $focusedField,
+                        focusValue: .password,
+                        onSubmit: { submitIfReady() }
+                    )
                 } footer: {
                     if let subtitle {
                         Label(subtitle, systemImage: "info.circle")

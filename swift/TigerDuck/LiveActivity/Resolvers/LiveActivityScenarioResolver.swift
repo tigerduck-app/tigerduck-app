@@ -69,7 +69,7 @@ struct LiveActivityScenarioResolver {
         let weekday = slot.date.scheduleWeekday
         return LiveActivitySnapshot(
             scenario: .inClass,
-            title: slot.course.courseName,
+            title: slot.course.displayName,
             subtitle: slot.course.timeRange(for: weekday) ?? "",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
@@ -85,7 +85,7 @@ struct LiveActivityScenarioResolver {
         let weekday = slot.date.scheduleWeekday
         return LiveActivitySnapshot(
             scenario: .classPreparing,
-            title: slot.course.courseName,
+            title: slot.course.displayName,
             subtitle: slot.course.timeRange(for: weekday) ?? "",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
@@ -103,16 +103,15 @@ struct LiveActivityScenarioResolver {
         leadTime: TimeInterval,
         accentHex: Int
     ) -> LiveActivitySnapshot {
-        let instructor = courses
-            .first { $0.courseNo == assignment.courseNo }
-            .flatMap { nonEmpty($0.instructor) }
+        let matchingCourse = courses.first { $0.courseNo == assignment.courseNo }
+        let instructor = matchingCourse.flatMap { nonEmpty($0.instructor) }
         let progressStart: Date? = leadTime > 0
             ? assignment.dueDate.addingTimeInterval(-leadTime)
             : nil
         return LiveActivitySnapshot(
             scenario: .assignmentUrgent,
-            title: assignment.title,
-            subtitle: assignment.courseName,
+            title: assignment.displayTitle,
+            subtitle: assignment.displayCourseName(matching: matchingCourse),
             locationText: nil,
             instructor: instructor,
             countdownTarget: assignment.dueDate,

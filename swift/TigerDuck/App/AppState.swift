@@ -104,6 +104,7 @@ final class AppState {
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
             ClassroomAbbrCacheMigration.runIfNeeded()
+            CustomNameCacheMigration.runIfNeeded()
             // Add future migrations here in sequence.
         }
     }
@@ -178,6 +179,24 @@ final class AppState {
 
     func dismissNTUSTLogin() {
         isShowingNTUSTLoginSheet = false
+    }
+
+    // MARK: - Widget deep linking
+
+    /// Set by `TigerDuckApp.onOpenURL` when a widget tap deep-links into the
+    /// app. `MainTabView` observes this and updates its local `selectedTab`,
+    /// then calls `clearPendingWidgetDestination()`. Stored here (rather than
+    /// on the tab view) so a cold-launch tap still resolves correctly: the
+    /// destination is set before MainTabView appears, and MainTabView's
+    /// `.onAppear` drain picks it up.
+    var pendingWidgetDestination: WidgetDestination?
+
+    func openFromWidget(_ destination: WidgetDestination) {
+        pendingWidgetDestination = destination
+    }
+
+    func clearPendingWidgetDestination() {
+        pendingWidgetDestination = nil
     }
 
     var isLibraryLoggedIn: Bool {
@@ -687,7 +706,7 @@ final class AppState {
 
             // Build moodle calendar events from assignments and merge with school events
             let moodleEvents = fetchedAssignments.map {
-                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.title, date: $0.dueDate, source: .moodle)
+                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.displayTitle, date: $0.dueDate, source: .moodle)
             }
             // Bail out before persisting if logout cancelled this sync while
             // the network calls were in flight. Without the guard the merged

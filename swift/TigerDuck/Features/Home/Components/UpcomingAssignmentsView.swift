@@ -4,6 +4,14 @@ struct UpcomingAssignmentsView: View {
     private static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
     let assignments: [SDAssignment]
+    /// In-memory course roster used to resolve the canonical display name
+    /// and course code for the third row line. Without this, the row falls
+    /// back to `assignment.courseName` (Moodle fullname with the code
+    /// stripped, fragile) and `assignment.courseNo` (empty when Moodle's
+    /// `idnumber` lacks the semester prefix), so the "課名 • 課程ID" line
+    /// looked wrong or dropped the ID entirely.
+    var courses: [SDCourse] = []
+    var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
     var onArchive: ((SDAssignment) -> Void)? = nil
     var onMarkComplete: ((SDAssignment) -> Void)? = nil
@@ -11,6 +19,10 @@ struct UpcomingAssignmentsView: View {
     var onUndoComplete: ((SDAssignment) -> Void)? = nil
 
     @Environment(AppState.self) private var appState
+
+    private var courseByNo: [String: SDCourse] {
+        Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -20,112 +32,83 @@ struct UpcomingAssignmentsView: View {
 
     private func assignmentList(for now: Date) -> some View {
         let policy = appState.visualStylePolicy
+        // For the 全部 tab the view model hands us a time-agnostic
+        // candidate list; the past/future partition runs here against the
+        // `TimelineView` clock so a row whose `dueDate` just crossed `now`
+        // re-buckets on the next minute tick instead of staying frozen
+        // against whichever `Date()` the view model captured at filter
+        // change. Other tabs already sort by `dueDate` only, no live-clock
+        // dependency — pass them through as-is.
+        let rows = filter == .all
+            ? assignments.partitionedByDueDate(now: now)
+            : assignments
         return Group {
             switch policy.assignmentRowStyle {
             case .card:
-                cardLayout(policy: policy, now: now)
+                cardLayout(rows: rows, policy: policy, now: now)
             case .groupedList:
-                groupedListLayout(policy: policy, now: now)
+                groupedListLayout(rows: rows, policy: policy, now: now)
             }
         }
     }
 
-    private func cardLayout(policy: VisualStylePolicy, now: Date) -> some View {
-        List {
-            ForEach(assignments, id: \.assignmentId) { assignment in
-                swipeableCardRow(assignment: assignment, now: now, policy: policy)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(
-                        EdgeInsets(
-                            top: 0,
-                            leading: TigerDuckTheme.Spacing.lg,
-                            bottom: TigerDuckTheme.Spacing.sm,
-                            trailing: TigerDuckTheme.Spacing.lg
-                        )
-                    )
+    /// Card layout was previously a `List` with `scrollDisabled(true)` and an
+    /// explicit `.frame(height:)` derived from per-row measurements. Two real
+    /// problems forced the move to `LazyVStack`:
+    ///   • Switching tabs while rows animated in/out fed `PreferenceKey`
+    ///     updates back into `@State`, racing with the `.animation` on the
+    ///     `assignments` identity and hanging the UI.
+    ///   • `List` + `.swipeActions` inside a parent `ScrollView` rendered a
+    ///     transient black slab above the first row mid-swipe — a `List`
+    ///     edge artifact that no inset / background tweak silenced.
+    /// `LazyVStack` sizes itself to its children and the custom `SwipeableRow`
+    /// (below) replaces `.swipeActions` so neither issue can recur.
+    private func cardLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
+        LazyVStack(spacing: TigerDuckTheme.Spacing.sm) {
+            ForEach(rows, id: \.assignmentId) { assignment in
+                swipeableRow(assignment: assignment, now: now) {
+                    assignmentRow(assignment: assignment, now: now, policy: policy)
+                        .cardPadding()
+                        .glassCard()
+                }
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             }
         }
-        .listStyle(.plain)
-        .scrollDisabled(true)
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .frame(height: listHeight(for: policy))
-        .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
+        .animation(Self.listChangeAnimation, value: rows.map(\.assignmentId))
     }
 
-    private func groupedListLayout(policy: VisualStylePolicy, now: Date) -> some View {
-        List {
-            ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { index, assignment in
-                swipeableListRow(assignment: assignment, now: now, policy: policy)
-                    .overlay(alignment: .bottom) {
-                        if index < assignments.count - 1 {
-                            Divider()
-                                .padding(.leading, TigerDuckTheme.Spacing.lg)
-                        }
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets())
+    private func groupedListLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
+        LazyVStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.element.assignmentId) { index, assignment in
+                swipeableRow(assignment: assignment, now: now) {
+                    assignmentRow(assignment: assignment, now: now, policy: policy)
+                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                        .padding(.vertical, TigerDuckTheme.Spacing.md)
+                }
+
+                if index < rows.count - 1 {
+                    Divider()
+                        .padding(.leading, TigerDuckTheme.Spacing.lg)
+                }
             }
         }
-        .listStyle(.plain)
-        .scrollDisabled(true)
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .frame(height: listHeight(for: policy))
         .presetGroupedListContainer(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .animation(Self.listChangeAnimation, value: assignments.map(\.assignmentId))
+        .animation(Self.listChangeAnimation, value: rows.map(\.assignmentId))
     }
 
-    private func listHeight(for policy: VisualStylePolicy) -> CGFloat {
-        guard !assignments.isEmpty else { return 0 }
-        let count = CGFloat(assignments.count)
-        switch policy.assignmentRowStyle {
-        case .card:
-            let rowHeight: CGFloat = 82
-            let spacing: CGFloat = TigerDuckTheme.Spacing.sm
-            return count * rowHeight + max(0, count - 1) * spacing
-        case .groupedList:
-            let rowHeight: CGFloat = 56
-            let separators = max(0, count - 1)
-            return count * rowHeight + separators
-        }
-    }
-
-    private func swipeableCardRow(
+    private func swipeableRow<Content: View>(
         assignment: SDAssignment,
         now: Date,
-        policy: VisualStylePolicy
+        @ViewBuilder content: () -> Content
     ) -> some View {
         let actions = rowSwipeActions(for: assignment, now: now)
-        return AssignmentSwipeRow(
-            trailingAction: actions.trailing,
+        return SwipeableRow(
             leadingAction: actions.leading,
-            onTap: { openAssignment(assignment) }
-        ) {
-            assignmentRow(assignment: assignment, now: now, policy: policy)
-                .cardPadding()
-                .glassCard()
-        }
-    }
-
-    private func swipeableListRow(
-        assignment: SDAssignment,
-        now: Date,
-        policy: VisualStylePolicy
-    ) -> some View {
-        let actions = rowSwipeActions(for: assignment, now: now)
-        return AssignmentSwipeRow(
             trailingAction: actions.trailing,
-            leadingAction: actions.leading,
-            onTap: { openAssignment(assignment) }
-        ) {
-            assignmentRow(assignment: assignment, now: now, policy: policy)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                .padding(.vertical, TigerDuckTheme.Spacing.md)
-        }
+            onTap: { openAssignment(assignment) },
+            content: content
+        )
     }
 
     private func rowSwipeActions(
@@ -161,17 +144,23 @@ struct UpcomingAssignmentsView: View {
     @ViewBuilder
     private func assignmentRow(assignment: SDAssignment, now: Date, policy: VisualStylePolicy) -> some View {
         let status = assignment.status(now: now)
+        // Default `.center` alignment vertically centres the trailing status
+        // even when the title wraps to two lines (third "課名 • 課程ID" line
+        // makes the leading column taller than the badge + time stack).
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(assignment.title)
+                Text(assignment.displayTitle)
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(policy.primaryTextColor)
-                    .lineLimit(1)
-                Text(assignment.courseName)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(courseLineLabel(for: assignment))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(policy.secondaryTextColor)
+                    .lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: TigerDuckTheme.Spacing.xs)
             trailingStatus(
                 assignment: assignment,
                 status: status,
@@ -187,6 +176,23 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
+    /// "課名 • 課程ID" — the line that sits beneath the (possibly wrapped)
+    /// title. Prefers the in-memory `SDCourse` so the label reflects the
+    /// user's custom rename and the canonical NTUST course code; otherwise
+    /// falls back to whatever the assignment was cached with so the line
+    /// still renders something useful when the course roster hasn't loaded
+    /// yet. The code is omitted when it's empty or already echoes the name
+    /// (an unknown course where the name fallback is just the courseNo).
+    private func courseLineLabel(for assignment: SDAssignment) -> String {
+        let match = courseByNo[assignment.courseNo]
+        let name = assignment.displayCourseName(matching: match)
+        let code = match?.courseNo ?? assignment.courseNo
+        if code.isEmpty || name.isEmpty || name == code {
+            return name
+        }
+        return "\(name) • \(code)"
+    }
+
     @ViewBuilder
     private func trailingStatus(
         assignment: SDAssignment,
@@ -199,10 +205,12 @@ struct UpcomingAssignmentsView: View {
                 Text(label)
                     .font(statusFont(status: status))
                     .foregroundStyle(status.tint)
+                    .lineLimit(1)
             }
             Text(timeLabel(for: assignment, now: now))
                 .font(timeFont(status: status))
                 .foregroundStyle(timeColor(status: status, policy: policy))
+                .lineLimit(1)
         }
     }
 
@@ -237,12 +245,19 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
+    /// Resolves the right-side time text. The 全部 tab uses time-based
+    /// branching (past rows always show the absolute deadline as the
+    /// second line); other tabs keep the legacy "relative unless toggled,
+    /// override to absolute for completed-and-past" rule.
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        if showAbsoluteTime || (assignment.isCompleted && assignment.dueDate < now) {
+        let isPast = assignment.dueDate < now
+        if filter == .all && isPast {
             return assignment.dueDate.absoluteTimeString
-        } else {
-            return assignment.dueDate.relativeTimeString(from: now)
         }
+        if showAbsoluteTime || (assignment.isCompleted && isPast) {
+            return assignment.dueDate.absoluteTimeString
+        }
+        return assignment.dueDate.relativeTimeString(from: now)
     }
 }
 
@@ -255,48 +270,117 @@ private struct SwipeActionDescriptor {
     let action: () -> Void
 }
 
-private struct AssignmentSwipeRow<Content: View>: View {
-    let content: Content
-    let trailingAction: SwipeActionDescriptor?
+/// Custom horizontal-drag swipe row.
+///
+/// Reproduces the swipe-to-act behaviour we previously got from
+/// `List.swipeActions` so the assignment list can live inside the home
+/// `ScrollView` without the surrounding `List` (whose first-row
+/// `.swipeActions` consistently flashed a black slab above the row, and
+/// whose row diff during tab switches raced with `PreferenceKey`-based
+/// height measurement until it hung).
+///
+/// Threshold-based: drag past `triggerThreshold` in either direction to
+/// execute the corresponding action; release below the threshold to snap
+/// back. The action callback fires before the spring-back animation so the
+/// owning view can remove the row on the same frame the spring kicks off.
+private struct SwipeableRow<Content: View>: View {
     let leadingAction: SwipeActionDescriptor?
+    let trailingAction: SwipeActionDescriptor?
     let onTap: () -> Void
+    let content: Content
+
+    @State private var offset: CGFloat = 0
+
+    private let triggerThreshold: CGFloat = 96
+    private let snapAnimation = Animation.spring(response: 0.32, dampingFraction: 0.78)
 
     init(
-        trailingAction: SwipeActionDescriptor?,
         leadingAction: SwipeActionDescriptor?,
+        trailingAction: SwipeActionDescriptor?,
         onTap: @escaping () -> Void,
         @ViewBuilder content: () -> Content
     ) {
-        self.trailingAction = trailingAction
         self.leadingAction = leadingAction
+        self.trailingAction = trailingAction
         self.onTap = onTap
         self.content = content()
     }
 
     var body: some View {
-        Button(action: onTap) {
+        ZStack {
+            actionBackdrop
             content
                 .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if let trailingAction {
-                swipeButton(for: trailingAction)
-            }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            if let leadingAction {
-                swipeButton(for: leadingAction)
-            }
+                .offset(x: offset)
+                .gesture(dragGesture)
+                .onTapGesture {
+                    if offset != 0 {
+                        snapBack()
+                    } else {
+                        onTap()
+                    }
+                }
         }
     }
 
     @ViewBuilder
-    private func swipeButton(for action: SwipeActionDescriptor) -> some View {
-        Button(action: action.action) {
-            Label(action.label, systemImage: action.systemImage)
-                .labelStyle(.iconOnly)
+    private var actionBackdrop: some View {
+        HStack(spacing: 0) {
+            if let leadingAction, offset > 0 {
+                actionSlab(leadingAction)
+                    .frame(width: max(0, offset))
+            }
+            Spacer(minLength: 0)
+            if let trailingAction, offset < 0 {
+                actionSlab(trailingAction)
+                    .frame(width: max(0, -offset))
+            }
         }
-        .tint(action.tint)
+    }
+
+    private func actionSlab(_ action: SwipeActionDescriptor) -> some View {
+        let progress = min(1, max(0, abs(offset) / triggerThreshold))
+        return ZStack {
+            action.tint
+            Image(systemName: action.systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .opacity(progress)
+                .scaleEffect(0.6 + 0.4 * progress)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 16)
+            .onChanged { value in
+                let dx = value.translation.width
+                let dy = value.translation.height
+                // Defer to the parent ScrollView for primarily-vertical drags
+                // so the home page can still scroll while a finger is over a row.
+                guard abs(dx) > abs(dy) * 1.3 else { return }
+                if dx > 0 && leadingAction == nil { return }
+                if dx < 0 && trailingAction == nil { return }
+                offset = dx
+            }
+            .onEnded { _ in
+                // `offset` is only ever mutated by horizontal-intent updates
+                // in `onChanged`, so reading it here (instead of the raw
+                // translation) is what gates the trigger on the same
+                // dx-vs-dy rule. A mostly-vertical scroll that happens to
+                // accumulate >threshold horizontal drift never moves the
+                // row, so `offset` stays 0 and no action fires.
+                let triggered = abs(offset) > triggerThreshold
+                if triggered, let action = (offset > 0 ? leadingAction : trailingAction) {
+                    action.action()
+                }
+                snapBack()
+            }
+    }
+
+    private func snapBack() {
+        withAnimation(snapAnimation) {
+            offset = 0
+        }
     }
 }

@@ -92,7 +92,11 @@ final class HomeViewModel {
         case .incomplete:
             upcomingAssignments = allAssignmentsCache.upcomingSorted()
         case .all:
-            upcomingAssignments = allAssignmentsCache.allSorted()
+            // Time-agnostic on purpose — the past/future partition runs in
+            // `UpcomingAssignmentsView` under its `TimelineView`, so rows
+            // re-bucket as the clock advances instead of staying frozen
+            // against the `Date()` captured here.
+            upcomingAssignments = allAssignmentsCache.allCandidates()
         case .ignored:
             upcomingAssignments = allAssignmentsCache.ignoredSorted()
         }

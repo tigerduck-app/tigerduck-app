@@ -32,12 +32,12 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { feature in
-                Tab(feature.displayName, systemImage: feature.iconName, value: feature) {
+                Tab(feature.tabBarDisplayName, systemImage: feature.iconName, value: feature) {
                     viewForFeature(feature)
                 }
             }
 
-            Tab(AppFeature.more.displayName, systemImage: AppFeature.more.iconName, value: .more) {
+            Tab(AppFeature.more.tabBarDisplayName, systemImage: AppFeature.more.iconName, value: .more) {
                 MoreView()
             }
         }
@@ -46,6 +46,25 @@ struct MainTabView: View {
                 selectedTab = first
             }
         }
+        .onAppear { drainPendingWidgetDestination() }
+        .onChange(of: appState.pendingWidgetDestination) { _, _ in
+            drainPendingWidgetDestination()
+        }
+    }
+
+    private func drainPendingWidgetDestination() {
+        guard let destination = appState.pendingWidgetDestination else { return }
+        switch destination {
+        case .library:
+            // Library has a feature-disabled flag; if disabled, fall through
+            // to the existing in-app gating UI rather than forcing the tab.
+            if appState.libraryFeatureEnabled {
+                selectedTab = .library
+            }
+        case .classTable:
+            selectedTab = .classTable
+        }
+        appState.clearPendingWidgetDestination()
     }
 
     @ViewBuilder

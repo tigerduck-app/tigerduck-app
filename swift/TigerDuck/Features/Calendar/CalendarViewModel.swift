@@ -123,7 +123,7 @@ final class CalendarViewModel {
         return assignments.map { assignment in
             SDCalendarEvent(
                 eventId: "moodle-\(assignment.assignmentId)",
-                title: "\(assignment.title)",
+                title: assignment.displayTitle,
                 date: assignment.dueDate,
                 source: .moodle
             )
