@@ -29,7 +29,7 @@ struct LiveActivityScenarioResolver {
         assignments: [SDAssignment],
         preferences: LiveActivityPreferencesStore,
         accentHex: Int,
-        now: Date = Date()
+        now: Date = AppClock.now()
     ) -> LiveActivitySnapshot? {
         guard preferences.isLiveActivityEnabled else { return nil }
 
