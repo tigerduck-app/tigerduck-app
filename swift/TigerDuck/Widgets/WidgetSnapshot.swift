@@ -13,7 +13,7 @@ struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
 
     static let currentVersion = 1
     static let storeKey = "Widget-snapshot-v1"
-    static let appGroupIdentifier = "group.org.ntust.app.TigerDuck1"
+    static let appGroupIdentifier = "group.org.ntust.app.TigerDuck"
 }
 
 struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
