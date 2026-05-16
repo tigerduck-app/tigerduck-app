@@ -41,7 +41,7 @@ struct WeekWidgetView: View {
     var body: some View {
         let palette = WidgetPalette.resolve(snapshot: entry.snapshot, colorScheme: colorScheme)
         WeekGridView(snapshot: entry.snapshot, now: entry.date, palette: palette)
-            .padding(8)
+            .padding(3)
             .containerBackground(palette.background, for: .widget)
             .widgetURL(URL(string: "tigerduck://classtable"))
     }
@@ -57,5 +57,6 @@ struct WeekWidget: Widget {
         .configurationDisplayName(String(localized: "widget_week_light_label"))
         .description(String(localized: "widget_week_light_desc"))
         .supportedFamilies([.systemLarge, .systemExtraLarge])
+        .contentMarginsDisabled()
     }
 }
