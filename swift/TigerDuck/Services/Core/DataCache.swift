@@ -365,23 +365,19 @@ final class DataCache {
     /// is accepted by the web but not by the in-app handler — so we cache the
     /// numeric id off the enrolled-courses payload and look it up at deep-link
     /// build time. Lives in ``persistentDir`` so the map survives cache
-    /// sweeps that wipe localized course data.
+    /// sweeps that wipe localized course data; cleared on logout via
+    /// ``clearUserScopedData()``.
+    ///
+    /// **Always overwrite the whole map** with the fresh enrolled-courses
+    /// snapshot — additive merging would leak stale entries for courses the
+    /// user has been un-enrolled from or whose numeric id got reissued, and
+    /// `SDCourse.moodleDeepLink` would then keep pointing at a dead course.
     func saveMoodleCourseIdMap(_ map: [String: Int]) {
         save(map, to: "moodle_course_id_map.json", in: persistentDir)
     }
 
     func loadMoodleCourseIdMap() -> [String: Int] {
         load(from: "moodle_course_id_map.json", in: persistentDir) ?? [:]
-    }
-
-    /// Merge new entries into the existing map and persist. Later entries win
-    /// on collision so a course whose numeric id gets reissued mid-semester
-    /// (rare but documented in NTUST archive ops) takes the newer value.
-    func mergeMoodleCourseIdMap(_ additions: [String: Int]) {
-        guard !additions.isEmpty else { return }
-        var current = loadMoodleCourseIdMap()
-        for (key, value) in additions { current[key] = value }
-        saveMoodleCourseIdMap(current)
     }
 
     func lookupMoodleCourseId(idnumber: String) -> Int? {

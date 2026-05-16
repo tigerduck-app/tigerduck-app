@@ -125,8 +125,10 @@ enum AppServiceBridge {
             }
             // Persist idnumber → numeric-id map so `SDCourse.moodleDeepLink`
             // can build `?id=N` redirects (Moodle Mobile's in-app router
-            // rejects `?idnumber=…`). Refreshes every sync so renamed
-            // courses pick up new ids without manual invalidation.
+            // rejects `?idnumber=…`). Whole-map overwrite — the fetched list
+            // is the authoritative snapshot, so any idnumber missing from
+            // it has been dropped on Moodle's side and we must not keep a
+            // stale numeric id pointing at a dead course.
             let moodleIdMap = Dictionary(
                 moodleAll.compactMap { entry -> (String, Int)? in
                     guard !entry.idnumber.isEmpty else { return nil }
@@ -134,7 +136,7 @@ enum AppServiceBridge {
                 },
                 uniquingKeysWith: { _, latest in latest }
             )
-            DataCache.shared.mergeMoodleCourseIdMap(moodleIdMap)
+            DataCache.shared.saveMoodleCourseIdMap(moodleIdMap)
 
             let moodleForSemester = moodleAll.filter { $0.semester == semester }
             let moodleByNo = Dictionary(
@@ -412,10 +414,12 @@ enum AppServiceBridge {
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
-            // Same idnumber → numeric-id cache update as the course-table
-            // path. Done here too because the assignments pipeline can run
-            // before the course pipeline on a cold launch, and the deep-link
-            // button shouldn't have to wait two cycles to light up.
+            // Same idnumber → numeric-id snapshot as the course-table path.
+            // Done here too because the assignments pipeline can run before
+            // the course pipeline on a cold launch, and the deep-link button
+            // shouldn't have to wait two cycles to light up. Whole-map
+            // overwrite for the same staleness reason — `moodleEnrolled` is
+            // the authoritative current-enrolment list.
             let moodleIdMapForAssignments = Dictionary(
                 moodleEnrolled.compactMap { entry -> (String, Int)? in
                     guard !entry.idnumber.isEmpty else { return nil }
@@ -423,7 +427,7 @@ enum AppServiceBridge {
                 },
                 uniquingKeysWith: { _, latest in latest }
             )
-            DataCache.shared.mergeMoodleCourseIdMap(moodleIdMapForAssignments)
+            DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
 
             // On first launch the NTUST course cache is empty because
             // backgroundSync runs assignments + courses in parallel.
