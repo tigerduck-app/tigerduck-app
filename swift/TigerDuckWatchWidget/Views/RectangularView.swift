@@ -22,7 +22,7 @@ struct RectangularView: View {
     }
 
     private var displayCourse: WatchCourse? { entry.next ?? entry.current }
-    private var headline: String { displayCourse?.name ?? String(localized: "watch_no_classes_today") }
+    private var headline: String { displayCourse?.name ?? String(localized: "watch_no_upcoming_classes") }
     private var subhead: String {
         guard let c = displayCourse else { return "—" }
         return "\(c.startHHmm)–\(c.endHHmm)"

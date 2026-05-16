@@ -42,7 +42,7 @@ struct SettingsView: View {
 
     private var lastSyncedText: String {
         guard let ms = store.snapshot?.syncedAtMs, ms > 0 else {
-            return String(localized: "watch_empty_never_synced")
+            return String(localized: "watch_last_synced_never")
         }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short

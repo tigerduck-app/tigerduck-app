@@ -16,13 +16,13 @@ struct NowNextView: View {
                     }
                     if result.current == nil && result.next == nil {
                         ContentUnavailableView(
-                            String(localized: "watch_no_classes_today"),
+                            String(localized: "watch_no_upcoming_classes"),
                             systemImage: "calendar"
                         )
                     }
                 } else if store.snapshot == nil {
                     ContentUnavailableView(
-                        String(localized: "watch_empty_never_synced"),
+                        String(localized: "watch_open_phone_to_sync"),
                         systemImage: "iphone.gen3"
                     )
                 } else {
