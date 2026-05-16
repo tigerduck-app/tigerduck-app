@@ -22,6 +22,7 @@ final class WatchSyncCoordinator: NSObject {
 
     private struct PendingPayload {
         let courses: [SDCourse]
+        let customNames: [String: String]
         let accentHex: String
         let loggedIn: Bool
         let languageTag: String?
@@ -40,10 +41,16 @@ final class WatchSyncCoordinator: NSObject {
 
     /// Push immediately (used in tests). Production code uses
     /// `scheduleDebouncedPush(...)` to coalesce bursts.
-    func push(courses: [SDCourse], accentHex: String, loggedIn: Bool, languageTag: String?) {
+    func push(
+        courses: [SDCourse],
+        customNames: [String: String],
+        accentHex: String,
+        loggedIn: Bool,
+        languageTag: String?
+    ) {
         guard session.isPaired, session.isWatchAppInstalled else { return }
         let snapshot = WatchPayloadEncoder.encode(
-            courses: courses, accentHex: accentHex,
+            courses: courses, customNames: customNames, accentHex: accentHex,
             syncedAt: Date(), loggedIn: loggedIn, languageTag: languageTag
         )
         do {
@@ -54,16 +61,23 @@ final class WatchSyncCoordinator: NSObject {
         }
     }
 
-    func scheduleDebouncedPush(courses: [SDCourse], accentHex: String, loggedIn: Bool, languageTag: String?) {
+    func scheduleDebouncedPush(
+        courses: [SDCourse],
+        customNames: [String: String],
+        accentHex: String,
+        loggedIn: Bool,
+        languageTag: String?
+    ) {
         pendingPayload = PendingPayload(
-            courses: courses, accentHex: accentHex, loggedIn: loggedIn, languageTag: languageTag
+            courses: courses, customNames: customNames,
+            accentHex: accentHex, loggedIn: loggedIn, languageTag: languageTag
         )
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64((self?.debounceInterval ?? 0.5) * 1_000_000_000))
             guard !Task.isCancelled, let self, let p = self.pendingPayload else { return }
             self.pendingPayload = nil
-            self.push(courses: p.courses, accentHex: p.accentHex,
+            self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
                       loggedIn: p.loggedIn, languageTag: p.languageTag)
         }
     }

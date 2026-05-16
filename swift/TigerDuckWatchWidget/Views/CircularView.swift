@@ -14,7 +14,7 @@ struct CircularView: View {
     }
 
     private var monogram: String {
-        guard let course = entry.next ?? entry.current else { return "—" }
+        guard let course = entry.current ?? entry.next else { return "—" }
         let name = course.name
         if name.isEmpty { return "?" }
         return String(name.prefix(2))

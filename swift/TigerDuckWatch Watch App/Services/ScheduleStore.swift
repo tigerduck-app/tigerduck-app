@@ -71,16 +71,26 @@ final class ScheduleStore: NSObject, ObservableObject {
         defaults.set(date.timeIntervalSince1970, forKey: DefaultsKey.lastSyncRequestEpoch)
     }
 
+    func clearSyncRequestRecord() {
+        defaults.removeObject(forKey: DefaultsKey.lastSyncRequestEpoch)
+    }
+
     func requestSync(force: Bool = false) {
         let now = Date()
         guard force || shouldRequestSync(at: now) else { return }
         guard WCSession.isSupported(), WCSession.default.isReachable else { return }
+        // Arm the cooldown optimistically so simultaneous calls don't pile
+        // up sendMessages; roll it back in the error handler so a transient
+        // WC failure doesn't strand the watch with stale data for 10 min.
         recordSyncRequest(at: now)
         WCSession.default.sendMessage(
             [WatchWireFormat.MessageKey.kind: WatchWireFormat.MessageKind.syncRequest],
             replyHandler: nil,
-            errorHandler: { error in
+            errorHandler: { [weak self] error in
                 WatchAppLogger.wc.error("sync request failed: \(error.localizedDescription)")
+                Task { @MainActor in
+                    self?.clearSyncRequestRecord()
+                }
             }
         )
     }

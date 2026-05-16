@@ -26,6 +26,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
         let c = makeCourse(schedule: [1: ["3", "4"], 4: ["6", "7"]])
         let snap = WatchPayloadEncoder.encode(
             courses: [c],
+            customNames: [:],
             accentHex: "#FF8800",
             syncedAt: Date(timeIntervalSince1970: 1_747_000_000),
             loggedIn: true,
@@ -43,7 +44,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
             classroomMap: ["1-3": "TR-409", "1-4": "TR-409"]
         )
         let snap = WatchPayloadEncoder.encode(
-            courses: [c], accentHex: "#000000",
+            courses: [c], customNames: [:], accentHex: "#000000",
             syncedAt: Date(), loggedIn: true, languageTag: nil
         )
         XCTAssertEqual(snap.courses.first?.classroom, "TR-409")
@@ -52,11 +53,11 @@ final class WatchPayloadEncoderTests: XCTestCase {
     func test_idIsStableAndDeterministic() {
         let c = makeCourse(no: "X1", schedule: [1: ["3", "4"]])
         let a = WatchPayloadEncoder.encode(
-            courses: [c], accentHex: "#000",
+            courses: [c], customNames: [:], accentHex: "#000",
             syncedAt: Date(), loggedIn: true, languageTag: nil
         )
         let b = WatchPayloadEncoder.encode(
-            courses: [c], accentHex: "#000",
+            courses: [c], customNames: [:], accentHex: "#000",
             syncedAt: Date(), loggedIn: true, languageTag: nil
         )
         XCTAssertEqual(a.courses.first?.id, b.courses.first?.id)
@@ -69,7 +70,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
         // update this assertion to match.
         let c = makeCourse(schedule: [1: ["3", "4"]])
         let snap = WatchPayloadEncoder.encode(
-            courses: [c], accentHex: "#000",
+            courses: [c], customNames: [:], accentHex: "#000",
             syncedAt: Date(), loggedIn: true, languageTag: nil
         )
         XCTAssertEqual(snap.courses.first?.startHHmm, "10:20")
@@ -79,7 +80,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
     func test_perCourseColorMatchesThemePalette() {
         let c = makeCourse(no: "X1")
         let snap = WatchPayloadEncoder.encode(
-            courses: [c], accentHex: "#FF8800",
+            courses: [c], customNames: [:], accentHex: "#FF8800",
             syncedAt: Date(), loggedIn: true, languageTag: nil
         )
         // Encoder must use the user-visible per-course palette, not the
@@ -90,10 +91,23 @@ final class WatchPayloadEncoderTests: XCTestCase {
         )
     }
 
+    func test_customNameAliasOverridesCanonicalName() {
+        let c = makeCourse(no: "X1", name: "Canonical 101")
+        let snap = WatchPayloadEncoder.encode(
+            courses: [c],
+            customNames: ["X1": "我的別名"],
+            accentHex: "#000",
+            syncedAt: Date(),
+            loggedIn: true,
+            languageTag: nil
+        )
+        XCTAssertEqual(snap.courses.first?.name, "我的別名")
+    }
+
     func test_loggedOut_stillEmitsCachedCourses() {
         let c = makeCourse()
         let snap = WatchPayloadEncoder.encode(
-            courses: [c], accentHex: "#000",
+            courses: [c], customNames: [:], accentHex: "#000",
             syncedAt: Date(), loggedIn: false, languageTag: nil
         )
         XCTAssertFalse(snap.loggedIn)

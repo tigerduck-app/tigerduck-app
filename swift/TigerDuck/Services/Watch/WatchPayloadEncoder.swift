@@ -9,12 +9,13 @@ enum WatchPayloadEncoder {
 
     static func encode(
         courses: [SDCourse],
+        customNames: [String: String],
         accentHex: String,
         syncedAt: Date,
         loggedIn: Bool,
         languageTag: String?
     ) -> WatchSnapshot {
-        let watchCourses = courses.flatMap { flatten($0) }
+        let watchCourses = courses.flatMap { flatten($0, customNames: customNames) }
         let syncedAtMs = Int64((syncedAt.timeIntervalSince1970 * 1000).rounded())
         return WatchSnapshot(
             courses: watchCourses,
@@ -25,7 +26,7 @@ enum WatchPayloadEncoder {
         )
     }
 
-    private static func flatten(_ course: SDCourse) -> [WatchCourse] {
+    private static func flatten(_ course: SDCourse, customNames: [String: String]) -> [WatchCourse] {
         course.schedule.compactMap { weekday, periodIds in
             let sorted = periodIds.sortedByPeriodOrder()
             guard let first = sorted.first,
@@ -40,7 +41,7 @@ enum WatchPayloadEncoder {
             return WatchCourse(
                 id: "\(course.courseNo)-\(weekday)-\(first)",
                 courseNo: course.courseNo,
-                name: course.courseName,
+                name: resolveDisplayName(course: course, customNames: customNames),
                 teacher: course.instructor,
                 classroom: course.classroom(for: weekday),
                 colorHex: courseColorHex(course),
@@ -51,6 +52,20 @@ enum WatchPayloadEncoder {
             )
         }
         .sorted { ($0.weekday, $0.startHHmm) < ($1.weekday, $1.startHHmm) }
+    }
+
+    /// Mirror of `WidgetSnapshotBuilder.resolveDisplayName` — prefer the
+    /// persisted alias overlay (canonical store) over the SDCourse
+    /// `@Transient customName` (which may not be hydrated on every
+    /// instance returned by SwiftData `@Query`), then fall back to the
+    /// canonical API name.
+    private static func resolveDisplayName(
+        course: SDCourse,
+        customNames: [String: String]
+    ) -> String {
+        if let alias = customNames[course.courseNo], !alias.isEmpty { return alias }
+        if let alias = course.customName, !alias.isEmpty { return alias }
+        return course.courseName
     }
 
     /// Phone keeps the user's per-course color override in

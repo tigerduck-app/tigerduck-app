@@ -18,6 +18,7 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         let coord = WatchSyncCoordinator(session: session)
         coord.push(
             courses: [],
+            customNames: [:],
             accentHex: "#FF8800",
             loggedIn: true,
             languageTag: "zh-Hant-TW"
@@ -34,7 +35,7 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         let session = StubSession()
         session.isWatchAppInstalled = false
         let coord = WatchSyncCoordinator(session: session)
-        coord.push(courses: [], accentHex: "#000", loggedIn: false, languageTag: nil)
+        coord.push(courses: [], customNames: [:], accentHex: "#000", loggedIn: false, languageTag: nil)
         XCTAssertTrue(session.pushedContexts.isEmpty)
     }
 
@@ -42,9 +43,9 @@ final class WatchSyncCoordinatorTests: XCTestCase {
     func test_debounce_coalescesBurstWithin500ms() async throws {
         let session = StubSession()
         let coord = WatchSyncCoordinator(session: session)
-        coord.scheduleDebouncedPush(courses: [], accentHex: "#A", loggedIn: true, languageTag: nil)
-        coord.scheduleDebouncedPush(courses: [], accentHex: "#B", loggedIn: true, languageTag: nil)
-        coord.scheduleDebouncedPush(courses: [], accentHex: "#C", loggedIn: true, languageTag: nil)
+        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#A", loggedIn: true, languageTag: nil)
+        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#B", loggedIn: true, languageTag: nil)
+        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#C", loggedIn: true, languageTag: nil)
         try await Task.sleep(nanoseconds: 700_000_000)
         XCTAssertEqual(session.pushedContexts.count, 1)
         XCTAssertEqual(session.pushedContexts[0][WatchWireFormat.Key.accentHex] as? String, "#C")

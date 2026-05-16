@@ -13,7 +13,7 @@ struct CornerView: View {
     }
 
     private var label: String {
-        (entry.next ?? entry.current)?.name ?? "—"
+        (entry.current ?? entry.next)?.name ?? "—"
     }
     private var timeText: String {
         if let c = entry.current { return c.endHHmm }

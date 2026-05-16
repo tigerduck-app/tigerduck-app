@@ -36,16 +36,37 @@ struct WatchSyncBridge: View {
 
     /// Combined value whose stable identity flips whenever any tracked
     /// piece of state changes. `.task(id:)` re-runs on change, debouncing
-    /// is handled inside the coordinator.
+    /// is handled inside the coordinator. Course rows must include the
+    /// user-visible fields (name/alias/instructor/schedule/classroom map)
+    /// so that an in-place edit reruns the push even when the array length
+    /// is unchanged.
     private var changeToken: String {
-        "\(courses.count)|\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.isNTUSTLoggedIn)"
+        let courseDigest = courses
+            .map { c in
+                [
+                    c.courseNo,
+                    c.courseName,
+                    c.customName ?? "",
+                    c.instructor,
+                    c.scheduleJSON,
+                    c.classroomMapJSON,
+                ].joined(separator: "·")
+            }
+            .sorted()
+            .joined(separator: ";")
+        return "\(courseDigest)|\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.isNTUSTLoggedIn)"
     }
 
     private func pushNow() {
         let accentHex = String(format: "#%06X", UInt(bitPattern: Int(appState.accentColorHex)) & 0xFFFFFF)
         let lang = appState.appLanguage == LanguageManager.system ? nil : appState.appLanguage
+        // `customName` on SDCourse is `@Transient` and not populated for every
+        // instance returned by `@Query`, so load the canonical alias overlay
+        // here and pass it through — matches the iOS widget snapshot path.
+        let customNames = DataCache.shared.loadCourseCustomNames()
         coordinator.scheduleDebouncedPush(
             courses: courses,
+            customNames: customNames,
             accentHex: accentHex,
             loggedIn: appState.isNTUSTLoggedIn,
             languageTag: lang

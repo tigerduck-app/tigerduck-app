@@ -21,7 +21,7 @@ struct RectangularView: View {
         .containerBackground(.fill.tertiary, for: .widget)
     }
 
-    private var displayCourse: WatchCourse? { entry.next ?? entry.current }
+    private var displayCourse: WatchCourse? { entry.current ?? entry.next }
     private var headline: String { displayCourse?.name ?? String(localized: "watch_no_upcoming_classes") }
     private var subhead: String {
         guard let c = displayCourse else { return "—" }

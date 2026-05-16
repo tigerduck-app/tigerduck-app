@@ -34,17 +34,23 @@ struct NextClassProvider: TimelineProvider {
         var entries: [NextClassEntry] = []
         let now = Date()
         let cal = Calendar(identifier: .iso8601)
-        let raw = cal.component(.weekday, from: now)
-        let iso = ((raw + 5) % 7) + 1
-        let today = courses.filter { $0.weekday == iso }
 
-        // Boundary times in chronological order: each class start + each class end.
+        // Build boundary timestamps for today + tomorrow so the post-midnight
+        // window doesn't strand the watch face on "no upcoming classes" until
+        // the 04:00 reload fires. NextClassResolver re-derives the weekday
+        // from each timestamp, so entries dated tomorrow morning naturally
+        // surface tomorrow's classes.
         var boundaries: [Date] = [now]
-        for c in today {
-            if let s = combine(hhmm: c.startHHmm, with: now), s > now { boundaries.append(s) }
-            if let e = combine(hhmm: c.endHHmm, with: now), e > now { boundaries.append(e) }
+        for dayOffset in 0...1 {
+            guard let anchor = cal.date(byAdding: .day, value: dayOffset, to: now) else { continue }
+            let raw = cal.component(.weekday, from: anchor)
+            let iso = ((raw + 5) % 7) + 1
+            let dayCourses = courses.filter { $0.weekday == iso }
+            for c in dayCourses {
+                if let s = combine(hhmm: c.startHHmm, with: anchor), s > now { boundaries.append(s) }
+                if let e = combine(hhmm: c.endHHmm, with: anchor), e > now { boundaries.append(e) }
+            }
         }
-        // De-dup and sort
         let unique = Array(Set(boundaries)).sorted()
 
         for ts in unique {
@@ -58,7 +64,8 @@ struct NextClassProvider: TimelineProvider {
             ))
         }
 
-        // Reload tomorrow at 04:00 local
+        // Reload tomorrow at 04:00. We've already emitted tomorrow's entries
+        // above, so the bridge across midnight–04:00 is in-timeline.
         let reloadAt = cal.nextDate(
             after: now,
             matching: DateComponents(hour: 4, minute: 0),
