@@ -37,15 +37,17 @@ struct TodayWidgetView: View {
     @Environment(\.widgetFamily) private var family
     @Environment(\.colorScheme) private var colorScheme
 
+    private var maxRows: Int {
+        switch family {
+        case .systemMedium:     return 4
+        case .systemLarge:      return 8
+        case .systemExtraLarge: return 16
+        default:                return 4
+        }
+    }
+
     var body: some View {
         let palette = WidgetPalette.resolve(snapshot: entry.snapshot, colorScheme: colorScheme)
-        let maxRows: Int
-        switch family {
-        case .systemMedium:     maxRows = 4
-        case .systemLarge:      maxRows = 8
-        case .systemExtraLarge: maxRows = 16
-        default:                maxRows = 4
-        }
         TodayListView(snapshot: entry.snapshot, now: entry.date, palette: palette, maxRows: maxRows)
             .padding(12)
             .containerBackground(palette.background, for: .widget)

@@ -21,7 +21,7 @@ final class WidgetReloadCoordinator {
     private let debounce: TimeInterval
     private var pendingTask: Task<Void, Never>?
 
-    init(reloader: Reloader = WidgetKitReloader(), debounceMs: Int = 300) {
+    nonisolated init(reloader: Reloader = WidgetKitReloader(), debounceMs: Int = 300) {
         self.reloader = reloader
         self.debounce = TimeInterval(debounceMs) / 1000.0
     }
