@@ -308,6 +308,7 @@ final class DataCache {
             ("archived_assignments.json", persistentDir),
             ("locally_completed_assignments.json", persistentDir),
             ("bulletin_summaries.json", cacheDir),
+            ("moodle_course_id_map.json", persistentDir),
         ]
         for (name, dir) in filenames {
             let url = dir.appendingPathComponent(name)
