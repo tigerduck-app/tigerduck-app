@@ -25,7 +25,8 @@ enum WidgetSnapshotBuilder {
                 displayName: resolveDisplayName(course: course, customNames: input.customNames),
                 classroom: course.classroom,
                 schedule: course.schedule,
-                colorHex: resolveColor(courseNo: course.courseNo, customColors: input.customColors)
+                colorHex: resolveColor(courseNo: course.courseNo, customColors: input.customColors),
+                skippedDates: Set(course.skippedDates)
             )
         }
 

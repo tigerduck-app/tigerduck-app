@@ -21,13 +21,20 @@ struct WidgetTimelineDerivationTests {
         )
     }
 
-    private func course(courseNo: String, displayName: String, weekday: Int, periods: [String]) -> SnapshotCourse {
+    private func course(
+        courseNo: String,
+        displayName: String,
+        weekday: Int,
+        periods: [String],
+        skippedDates: Set<String> = []
+    ) -> SnapshotCourse {
         SnapshotCourse(
             courseNo: courseNo,
             displayName: displayName,
             classroom: "",
             schedule: [weekday: periods],
-            colorHex: 0
+            colorHex: 0,
+            skippedDates: skippedDates
         )
     }
 
@@ -94,5 +101,53 @@ struct WidgetTimelineDerivationTests {
         let snap = snapshot(courses: [])
         let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 30))
         #expect(derived == .noMoreClasses)
+    }
+
+    /// Marking today's in-progress class as skipped must drop it out of `.ongoing`
+    /// so the widget no longer shows the strikethrough class as the active slot.
+    @Test func skippedToday_removesFromOngoing() {
+        let now = monday(9, 30)
+        let key = WidgetTimelineDerivation.dateKey(for: now)
+        let snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "DS", weekday: 1, periods: ["B"], skippedDates: [key]),
+        ])
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
+        #expect(derived == .noMoreClasses)
+    }
+
+    /// When today's *upcoming* class is skipped but a later non-skipped class
+    /// exists, derivation should skip past the cancelled slot to the next real one.
+    @Test func skippedToday_fallsThroughToNextNonSkipped() {
+        let now = monday(9, 30)
+        let key = WidgetTimelineDerivation.dateKey(for: now)
+        let snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "Skip", weekday: 1, periods: ["C"], skippedDates: [key]),
+            course(courseNo: "B", displayName: "Keep", weekday: 2, periods: ["B"]),
+        ])
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
+        if case .tomorrowFirst(let info) = derived {
+            #expect(info.course.displayName == "Keep")
+        } else {
+            Issue.record("Expected .tomorrowFirst with the non-skipped course, got \(derived)")
+        }
+    }
+
+    /// `tomorrowFirst` advances per-day, so the skip check must use each target
+    /// date's key — not today's — when scanning ahead.
+    @Test func skippedTomorrow_advancesToDayAfter() {
+        let now = monday(18, 0)
+        let tomorrowKey = WidgetTimelineDerivation.dateKey(
+            for: Calendar(identifier: .gregorian).date(byAdding: .day, value: 1, to: now)!
+        )
+        let snap = snapshot(courses: [
+            course(courseNo: "A", displayName: "TuesSkip", weekday: 2, periods: ["B"], skippedDates: [tomorrowKey]),
+            course(courseNo: "B", displayName: "WedKeep", weekday: 3, periods: ["B"]),
+        ])
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
+        if case .tomorrowFirst(let info) = derived {
+            #expect(info.course.displayName == "WedKeep")
+        } else {
+            Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
+        }
     }
 }

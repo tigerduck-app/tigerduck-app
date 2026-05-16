@@ -30,9 +30,11 @@ enum WidgetTimelineDerivation {
         let weekday = weekdayFor(date)
         let nowMin = minuteOfDayFor(date)
         let order = snapshot.periodOrder
+        let todayKey = dateKey(for: date)
 
         // 1. Ongoing courses (any course whose any period contains nowMin)
         let ongoing = snapshot.courses.compactMap { course -> WidgetDerivedState.OngoingInfo? in
+            if course.skippedDates.contains(todayKey) { return nil }
             guard let raw = course.schedule[weekday] else { return nil }
             let periods = sortPeriods(raw, by: order)
             guard !periods.isEmpty else { return nil }
@@ -56,6 +58,7 @@ enum WidgetTimelineDerivation {
 
         // 2. Next today (any course whose first period today starts in the future)
         let candidates = snapshot.courses.compactMap { course -> (SnapshotCourse, Int, String)? in
+            if course.skippedDates.contains(todayKey) { return nil }
             guard let raw = course.schedule[weekday] else { return nil }
             let periods = sortPeriods(raw, by: order)
             for periodId in periods {
@@ -74,9 +77,13 @@ enum WidgetTimelineDerivation {
         }
 
         // 3. Tomorrow first: scan ahead up to 7 weekdays
+        let calendar = Calendar(identifier: .gregorian)
         for offset in 1...7 {
             let target = ((weekday - 1 + offset) % 7) + 1
+            let targetDate = calendar.date(byAdding: .day, value: offset, to: date) ?? date
+            let targetKey = dateKey(for: targetDate)
             let dayCourses = snapshot.courses.compactMap { course -> (SnapshotCourse, String)? in
+                if course.skippedDates.contains(targetKey) { return nil }
                 guard let raw = course.schedule[target] else { return nil }
                 let periods = sortPeriods(raw, by: order)
                 guard let firstPeriod = periods.first else { return nil }
@@ -97,6 +104,21 @@ enum WidgetTimelineDerivation {
 
         return .noMoreClasses
     }
+
+    /// `yyyy-MM-dd` in the device's time zone — must mirror `SDCourse.isoFormatter`
+    /// so a `Set<String>` lookup against `SnapshotCourse.skippedDates` matches.
+    static func dateKey(for date: Date) -> String {
+        return Self.dateKeyFormatter.string(from: date)
+    }
+
+    private static let dateKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     // MARK: - Helpers
 

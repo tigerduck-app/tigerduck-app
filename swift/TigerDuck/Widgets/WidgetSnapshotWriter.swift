@@ -76,6 +76,7 @@ final class WidgetSnapshotWriter {
         let names: [Notification.Name] = [
             AppConstants.dataDidUpdate,
             AppConstants.languageDidChange,
+            AppConstants.courseSkipStateDidChange,
             NSLocale.currentLocaleDidChangeNotification,
         ]
         for name in names {
