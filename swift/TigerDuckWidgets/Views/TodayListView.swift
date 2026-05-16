@@ -52,8 +52,9 @@ struct TodayListView: View {
     }
 
     private func sortedCoursesForToday(weekday: Int, order: [String]) -> [SnapshotCourse] {
-        snapshot.courses
-            .filter { $0.schedule[weekday] != nil }
+        let todayKey = WidgetTimelineDerivation.dateKey(for: now)
+        return snapshot.courses
+            .filter { $0.schedule[weekday] != nil && !$0.skippedDates.contains(todayKey) }
             .sorted { lhs, rhs in
                 let lp = lhs.schedule[weekday] ?? []
                 let rp = rhs.schedule[weekday] ?? []

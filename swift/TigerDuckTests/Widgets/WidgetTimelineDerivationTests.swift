@@ -132,6 +132,38 @@ struct WidgetTimelineDerivationTests {
         }
     }
 
+    /// A course scheduled at A (08:10–09:00) and C (10:20–11:10) — with B
+    /// unscheduled — must NOT report as ongoing during the 09:00–10:20 gap.
+    /// The gap should fall through to `.nextToday(C)`.
+    @Test func nonContiguousPeriods_gapFallsThroughToNextToday() {
+        let snap = snapshot(courses: [
+            course(courseNo: "X", displayName: "Split", weekday: 1, periods: ["A", "C"]),
+        ])
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 30))
+        if case .nextToday(let info) = derived {
+            #expect(info.course.displayName == "Split")
+            #expect(info.periodRange == "C")
+        } else {
+            Issue.record("Expected .nextToday during the A↔C gap, got \(derived)")
+        }
+    }
+
+    /// Adjacent-in-`order` periods (B and C) should still render as one block
+    /// "B–C" while inside that block's envelope — the gap fix must not break
+    /// the contiguous-run span behavior.
+    @Test func contiguousPeriods_renderAsRange() {
+        let snap = snapshot(courses: [
+            course(courseNo: "Y", displayName: "Block", weekday: 1, periods: ["B", "C"]),
+        ])
+        let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 30))
+        if case .ongoing(let list) = derived {
+            #expect(list.count == 1)
+            #expect(list[0].periodRange == "B–C")
+        } else {
+            Issue.record("Expected .ongoing(B–C) during the contiguous block, got \(derived)")
+        }
+    }
+
     /// `tomorrowFirst` advances per-day, so the skip check must use each target
     /// date's key — not today's — when scanning ahead.
     @Test func skippedTomorrow_advancesToDayAfter() {

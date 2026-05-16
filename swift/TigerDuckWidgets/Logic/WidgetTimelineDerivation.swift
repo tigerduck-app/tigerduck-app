@@ -32,27 +32,34 @@ enum WidgetTimelineDerivation {
         let order = snapshot.periodOrder
         let todayKey = dateKey(for: date)
 
-        // 1. Ongoing courses (any course whose any period contains nowMin)
+        // 1. Ongoing courses — only when `nowMin` falls inside a contiguous run
+        // of scheduled periods. A course with non-adjacent slots (e.g. A and C
+        // with B unscheduled) splits into two singleton runs, so the gap
+        // between them correctly falls through to the next-class branch
+        // instead of marking the course as still ongoing across the gap.
         let ongoing = snapshot.courses.compactMap { course -> WidgetDerivedState.OngoingInfo? in
             if course.skippedDates.contains(todayKey) { return nil }
             guard let raw = course.schedule[weekday] else { return nil }
             let periods = sortPeriods(raw, by: order)
             guard !periods.isEmpty else { return nil }
-            let first = periods.first!
-            let last = periods.last!
-            guard let firstStart = parseHm(snapshot.periodTimes[first]?.start),
-                  let lastEnd = parseHm(snapshot.periodTimes[last]?.end),
-                  nowMin >= firstStart, nowMin < lastEnd else { return nil }
-            let progress = lastEnd > firstStart
-                ? Double(nowMin - firstStart) / Double(lastEnd - firstStart)
-                : 0
-            return .init(
-                course: course,
-                startTime: snapshot.periodTimes[first]?.start ?? "",
-                endTime: snapshot.periodTimes[last]?.end ?? "",
-                periodRange: periods.count > 1 ? "\(first)–\(last)" : first,
-                progress: progress.clamped(to: 0...1)
-            )
+            for run in contiguousRuns(periods, by: order) {
+                let first = run.first!
+                let last = run.last!
+                guard let firstStart = parseHm(snapshot.periodTimes[first]?.start),
+                      let lastEnd = parseHm(snapshot.periodTimes[last]?.end),
+                      nowMin >= firstStart, nowMin < lastEnd else { continue }
+                let progress = lastEnd > firstStart
+                    ? Double(nowMin - firstStart) / Double(lastEnd - firstStart)
+                    : 0
+                return .init(
+                    course: course,
+                    startTime: snapshot.periodTimes[first]?.start ?? "",
+                    endTime: snapshot.periodTimes[last]?.end ?? "",
+                    periodRange: run.count > 1 ? "\(first)–\(last)" : first,
+                    progress: progress.clamped(to: 0...1)
+                )
+            }
+            return nil
         }
         if !ongoing.isEmpty { return .ongoing(ongoing) }
 
@@ -155,6 +162,30 @@ enum WidgetTimelineDerivation {
             let ri = order.firstIndex(of: rhs) ?? Int.max
             return li < ri
         }
+    }
+
+    /// Split a chronologically sorted list of period IDs into contiguous runs
+    /// where each successive entry occupies the next slot in `order`. For
+    /// `order = ["A","B","C","D"]` and `periods = ["A","C","D"]` the result is
+    /// `[["A"], ["C","D"]]`, so the unscheduled gap at `B` is preserved
+    /// instead of being absorbed into a single envelope. Periods missing from
+    /// `order` always start a new run.
+    static func contiguousRuns(_ periods: [String], by order: [String]) -> [[String]] {
+        var runs: [[String]] = []
+        var current: [String] = []
+        var prevIndex = Int.min
+        for period in periods {
+            let idx = order.firstIndex(of: period) ?? Int.min
+            if !current.isEmpty, idx == prevIndex + 1 {
+                current.append(period)
+            } else {
+                if !current.isEmpty { runs.append(current) }
+                current = [period]
+            }
+            prevIndex = idx
+        }
+        if !current.isEmpty { runs.append(current) }
+        return runs
     }
 }
 
