@@ -162,14 +162,20 @@ final class PushCoordinator {
 
     // MARK: - Helpers
 
-    /// Public hosts the override path is allowed to target. Production +
-    /// staging only; anything else must resolve to loopback or an RFC1918
-    /// private IPv4 (see ``isOverrideAllowed(_:)``). An attacker-supplied
-    /// override (via UserDefaults seeding from a compromised backup, MDM,
-    /// or a future dev panel) cannot point the app at an arbitrary public
-    /// server outside this list.
+    /// Public hosts a Debug override is allowed to target. Staging only —
+    /// production is intentionally absent: a Debug binary has
+    /// `PushAPNsEnv.resolvedForBuild = "development"` baked in at compile
+    /// time, so pointing it at the prod backend creates an apns_env
+    /// mismatch the production APNs server would reject anyway. Allowing
+    /// it here would let `isOverrideAllowed` pass a URL that
+    /// `assertEnvConsistency()` then crashes on every launch.
+    ///
+    /// Everything else must resolve to loopback or an RFC1918 private
+    /// IPv4 (see ``isOverrideAllowed(_:)``). An attacker-supplied override
+    /// (via UserDefaults seeding from a compromised backup, MDM, or a
+    /// future dev panel) cannot point the app at an arbitrary public
+    /// server outside this list. Release builds bypass this gate entirely.
     private static let publicHostAllowlist: Set<String> = [
-        "api.tigerduck.app",
         "staging.api.tigerduck.app",
     ]
 
