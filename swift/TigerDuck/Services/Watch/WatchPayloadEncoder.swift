@@ -27,14 +27,13 @@ enum WatchPayloadEncoder {
 
     private static func flatten(_ course: SDCourse) -> [WatchCourse] {
         course.schedule.compactMap { weekday, periodIds in
-            guard let first = periodIds.first,
-                  let last = periodIds.last,
+            let sorted = periodIds.sortedByPeriodOrder()
+            guard let first = sorted.first,
+                  let last = sorted.last,
                   let startPeriod = TimetablePeriod.byId[first],
                   let endPeriod = TimetablePeriod.byId[last] else { return nil }
 
-            let classroom = classroomFor(course, weekday: weekday, firstPeriod: first)
-                ?? course.classroom
-            let label = periodIds.count > 1
+            let label = sorted.count > 1
                 ? "\(first)-\(last)"
                 : first
 
@@ -43,7 +42,7 @@ enum WatchPayloadEncoder {
                 courseNo: course.courseNo,
                 name: course.courseName,
                 teacher: course.instructor,
-                classroom: classroom,
+                classroom: course.classroom(for: weekday),
                 colorHex: courseColorHex(course),
                 weekday: weekday,
                 startHHmm: startPeriod.startTime,
@@ -52,13 +51,6 @@ enum WatchPayloadEncoder {
             )
         }
         .sorted { ($0.weekday, $0.startHHmm) < ($1.weekday, $1.startHHmm) }
-    }
-
-    /// Look up the classroom for a specific (weekday, firstPeriod) cell.
-    /// Falls back to the course's default classroom if no override is set.
-    private static func classroomFor(_ course: SDCourse, weekday: Int, firstPeriod: String) -> String? {
-        let key = "\(weekday)-\(firstPeriod)"
-        return course.classroomMap[key]
     }
 
     /// Phone keeps the user's per-course color override in

@@ -74,8 +74,8 @@ final class ScheduleStore: NSObject, ObservableObject {
     func requestSync(force: Bool = false) {
         let now = Date()
         guard force || shouldRequestSync(at: now) else { return }
-        recordSyncRequest(at: now)
         guard WCSession.isSupported(), WCSession.default.isReachable else { return }
+        recordSyncRequest(at: now)
         WCSession.default.sendMessage(
             [WatchWireFormat.MessageKey.kind: WatchWireFormat.MessageKind.syncRequest],
             replyHandler: nil,
