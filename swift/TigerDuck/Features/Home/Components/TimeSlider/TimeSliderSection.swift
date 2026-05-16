@@ -14,7 +14,15 @@ struct TimeSliderSection: View {
         .onAppear {
             viewModel.configure(courses: courses)
         }
-        .onChange(of: courses.map(\.courseNo)) {
+        // Reconfigure whenever any field the slot rendering depends on shifts
+        // — not just enrolment changes. After a sync the same courseNo can
+        // carry a new schedule, classroom map, or rename, and slots tapped
+        // from the slider now ferry the whole `CourseTimeSlot` into the
+        // detail sheet; keeping stale slot data here would surface old
+        // weekday / time / classroom / name in the sheet.
+        .onChange(of: courses.map { course in
+            "\(course.courseNo)|\(course.scheduleJSON)|\(course.classroomMapJSON)|\(course.displayName)"
+        }) {
             viewModel.configure(courses: courses)
         }
     }
