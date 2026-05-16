@@ -235,12 +235,19 @@ final class PushCoordinator {
     }
 
     #if DEBUG
+    /// Reads `Secrets.plist["DebugServerURL"]` and runs it through the same
+    /// gate as the UserDefaults override path. Mis-filled or template values
+    /// (e.g. the literal `http://192.168.X.X:40000/v2` from
+    /// `Secrets.example.plist`) return nil so the resolver falls back to
+    /// `localhost:40000` instead of returning an unreachable URL that would
+    /// either trip `assertEnvConsistency()` at launch or, with assertions
+    /// disabled, silently let the app talk to an arbitrary host.
     nonisolated private static func readDebugServerURL() -> URL? {
         guard let dict = secretsPlistDict(),
               let raw = dict["DebugServerURL"] as? String,
               !raw.isEmpty,
               let url = URL(string: raw),
-              url.host != nil
+              isOverrideAllowed(url)
         else { return nil }
         return url
     }
