@@ -2,9 +2,9 @@ import Foundation
 
 /// Single source of truth for App Group identifiers + paths shared between
 /// the watch app and the widget. Both targets must declare the App Group
-/// `group.tw.smashit.tigerduck.watch` in their entitlements.
+/// `group.org.ntust.app.TigerDuck.watch` in their entitlements.
 enum SharedAppGroup {
-    static let identifier = "group.tw.smashit.tigerduck.watch"
+    static let identifier = "group.org.ntust.app.TigerDuck.watch"
 
     /// Directory inside the App Group container.
     static var containerURL: URL {
