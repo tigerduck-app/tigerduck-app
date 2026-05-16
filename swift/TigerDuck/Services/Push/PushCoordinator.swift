@@ -162,31 +162,90 @@ final class PushCoordinator {
 
     // MARK: - Helpers
 
-    /// Hosts that the push-server URL override is allowed to target. The
-    /// default production endpoint plus a small set of dev/staging hosts.
-    /// An attacker-supplied override (via UserDefaults seeding from a
-    /// compromised backup, MDM, or a future dev panel) cannot point the
-    /// app at an arbitrary server outside this list.
-    private static let pushServerHostAllowlist: Set<String> = [
+    /// Public hosts the override path is allowed to target. Production +
+    /// staging only; anything else must resolve to loopback or an RFC1918
+    /// private IPv4 (see ``isOverrideAllowed(_:)``). An attacker-supplied
+    /// override (via UserDefaults seeding from a compromised backup, MDM,
+    /// or a future dev panel) cannot point the app at an arbitrary public
+    /// server outside this list.
+    private static let publicHostAllowlist: Set<String> = [
         "api.tigerduck.app",
         "staging.api.tigerduck.app",
-        "localhost",
-        "127.0.0.1",
     ]
 
-    static func resolveServerURL() -> URL {
+    /// Resolves the backend URL for this build.
+    ///
+    /// Release builds always return ``AppConstants/productionPushServerURL``.
+    ///
+    /// Debug builds resolve in priority order:
+    ///   1. `Defaults[.pushServerURLOverride]` (UserDefaults escape hatch,
+    ///      gated by ``isOverrideAllowed(_:)``)
+    ///   2. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
+    ///      file is gitignored so each contributor sets their own Mac's IP)
+    ///   3. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
+    ///      `http://localhost:40000/v2`)
+    nonisolated static func resolveServerURL() -> URL {
         #if DEBUG
         if let override = Defaults[.pushServerURLOverride],
            !override.isEmpty,
            let url = URL(string: override),
-           url.scheme == "https" || url.host == "localhost" || url.host == "127.0.0.1",
-           let host = url.host,
-           pushServerHostAllowlist.contains(host) {
+           isOverrideAllowed(url) {
             return url
         }
+        if let url = readDebugServerURL() {
+            return url
+        }
+        return AppConstants.fallbackDebugPushServerURL
+        #else
+        return AppConstants.productionPushServerURL
         #endif
-        return AppConstants.defaultPushServerURL
     }
+
+    /// Whether `url` may be used as a runtime override.
+    ///
+    /// Public hosts are exact-matched against ``publicHostAllowlist``;
+    /// everything else must be loopback or an RFC1918 private IPv4 literal.
+    /// `http://` is allowed only for private/loopback targets — public hosts
+    /// must speak HTTPS.
+    nonisolated static func isOverrideAllowed(_ url: URL) -> Bool {
+        guard let host = url.host else { return false }
+        if publicHostAllowlist.contains(host) {
+            return url.scheme == "https"
+        }
+        if host == "localhost" || host == "127.0.0.1" || isPrivateIPv4(host) {
+            return url.scheme == "http" || url.scheme == "https"
+        }
+        return false
+    }
+
+    /// True if `host` parses as an RFC1918 private IPv4 literal
+    /// (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16). Hostnames, IPv6
+    /// literals, and malformed input return false.
+    nonisolated static func isPrivateIPv4(_ host: String) -> Bool {
+        let parts = host.split(separator: ".")
+        guard parts.count == 4 else { return false }
+        let octets = parts.compactMap { Int($0) }
+        guard octets.count == 4, octets.allSatisfy({ (0...255).contains($0) }) else { return false }
+        switch (octets[0], octets[1]) {
+        case (10, _): return true
+        case (172, 16...31): return true
+        case (192, 168): return true
+        default: return false
+        }
+    }
+
+    #if DEBUG
+    nonisolated private static func readDebugServerURL() -> URL? {
+        guard let plist = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
+              let dict = NSDictionary(contentsOf: plist),
+              let raw = dict["DebugServerURL"] as? String,
+              !raw.isEmpty,
+              let url = URL(string: raw),
+              url.host != nil
+        else { return nil }
+        return url
+    }
+    #endif
 
     /// Read the shared secret from `Secrets.plist` (gitignored) bundled
     /// with the app. The `APIToken` key must match the server's

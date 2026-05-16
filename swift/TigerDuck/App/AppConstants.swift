@@ -44,11 +44,17 @@ nonisolated enum AppConstants {
         static let pushDeviceId = "push_device_id"
     }
 
-    /// Base URL for the push notification server. Production default points at
-    /// the nginx-proxy-manager + Cloudflare-fronted Mac mini. Override via
-    /// ``UserDefaultsKeys/pushServerURLOverride`` during development to talk
-    /// to a LAN instance.
-    static let defaultPushServerURL = URL.knownGood("https://api.tigerduck.app/v2")
+    /// Production push/bulletin backend. Release builds always resolve here.
+    /// Debug builds resolve through ``PushCoordinator/resolveServerURL()``,
+    /// which reads per-developer `Secrets.plist["DebugServerURL"]` (gitignored)
+    /// or falls back to ``fallbackDebugPushServerURL`` for Simulator setups.
+    static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v2")
+
+    /// Default Debug-build endpoint when `Secrets.plist` has no `DebugServerURL`.
+    /// Works on Simulator (localhost = host Mac); on a physical device this
+    /// resolves to the device itself and will fail to connect — physical-device
+    /// contributors must set `DebugServerURL` to their Mac's LAN IP.
+    static let fallbackDebugPushServerURL = URL.knownGood("http://localhost:40000/v2")
 
     /// How many semesters back the relabel sweep walks when display-toggle
     /// settings change. NTUST keeps ~2 active semesters in flight; 4 covers
