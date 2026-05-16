@@ -56,7 +56,7 @@ final class LiveActivityCoordinator {
     /// Apply the resolved snapshot. Starts or updates the single activity
     /// matching the target id and ends stale or unrelated activities.
     func apply(snapshot: LiveActivitySnapshot?) async {
-        let now = Date()
+        let now = AppClock.now()
         await pruneRunningActivities(keeping: snapshot?.composedActivityId, now: now)
 
         // Persist the snapshot to the App Group AFTER the system gate so
@@ -130,7 +130,7 @@ final class LiveActivityCoordinator {
         activityObserverTask = Task { @MainActor [weak self] in
             for await activity in Activity<TigerDuckActivityAttributes>.activityUpdates {
                 guard let self else { return }
-                let now = Date()
+                let now = AppClock.now()
                 await pruneRunningActivities(keeping: nil, now: now, expiredOnly: true)
                 let snapshot = activity.content.state.snapshot
                 if snapshot.countdownTarget.map({ $0 <= now }) == true {
@@ -198,7 +198,7 @@ final class LiveActivityCoordinator {
 
     private func endIfStillExpired(activityId: String, target: Date) async {
         automaticEndTasks[activityId] = nil
-        guard Date() >= target,
+        guard AppClock.now() >= target,
               let activity = Activity<TigerDuckActivityAttributes>.activities
               .first(where: { $0.attributes.activityId == activityId }) else {
             return

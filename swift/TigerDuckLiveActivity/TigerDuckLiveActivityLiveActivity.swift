@@ -260,8 +260,8 @@ private func statusLabel(for scenario: LiveActivityScenarioKind) -> String {
 
 @ViewBuilder
 private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
-    if let target = snapshot.countdownTarget, target > Date() {
-        Text(timerInterval: Date()...target, countsDown: true)
+    if let target = snapshot.countdownTarget, target > AppClock.now() {
+        Text(timerInterval: AppClock.now()...target, countsDown: true)
     } else {
         Text("—")
     }

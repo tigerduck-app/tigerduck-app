@@ -85,7 +85,7 @@ final class AssignmentReminderScheduler {
     func reschedule(
         assignments: [SDAssignment],
         offsets: Set<AssignmentReminderOffset>,
-        now: Date = Date()
+        now: Date = AppClock.now()
     ) async {
         rescheduleGeneration &+= 1
         let myGeneration = rescheduleGeneration
