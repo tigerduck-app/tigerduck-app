@@ -2,7 +2,10 @@ import SwiftUI
 
 struct CourseTimeCard: View {
     let state: CourseState
-    let onSelect: ((SDCourse) -> Void)?
+    /// Hands back the full slot (not just the course) so callers can preserve
+    /// the precise day + start/end of the tapped period — the detail sheet
+    /// uses both to render the right time range and weekday-specific classroom.
+    let onSelect: ((CourseTimeSlot) -> Void)?
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
 
     var body: some View {
@@ -74,7 +77,7 @@ struct CourseTimeCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
         .opacity(opacity)
-        .onTapGesture { onSelect?(course) }
+        .onTapGesture { onSelect?(slot) }
     }
 
     private func subtitle(for course: SDCourse, weekday: Int) -> String {

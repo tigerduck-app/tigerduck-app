@@ -308,6 +308,7 @@ final class DataCache {
             ("archived_assignments.json", persistentDir),
             ("locally_completed_assignments.json", persistentDir),
             ("bulletin_summaries.json", cacheDir),
+            ("moodle_course_id_map.json", persistentDir),
         ]
         for (name, dir) in filenames {
             let url = dir.appendingPathComponent(name)
@@ -354,6 +355,34 @@ final class DataCache {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+    }
+
+    // MARK: - Moodle course id map (idnumber → numeric id)
+
+    /// Persisted map populated by ``AppServiceBridge`` whenever it fetches
+    /// the user's Moodle enrolled-courses list. Exists because Moodle Mobile's
+    /// deep-link router only honors `?id=N` redirects reliably — `?idnumber=…`
+    /// is accepted by the web but not by the in-app handler — so we cache the
+    /// numeric id off the enrolled-courses payload and look it up at deep-link
+    /// build time. Lives in ``persistentDir`` so the map survives cache
+    /// sweeps that wipe localized course data; cleared on logout via
+    /// ``clearUserScopedData()``.
+    ///
+    /// **Always overwrite the whole map** with the fresh enrolled-courses
+    /// snapshot — additive merging would leak stale entries for courses the
+    /// user has been un-enrolled from or whose numeric id got reissued, and
+    /// `SDCourse.moodleDeepLink` would then keep pointing at a dead course.
+    func saveMoodleCourseIdMap(_ map: [String: Int]) {
+        save(map, to: "moodle_course_id_map.json", in: persistentDir)
+    }
+
+    func loadMoodleCourseIdMap() -> [String: Int] {
+        load(from: "moodle_course_id_map.json", in: persistentDir) ?? [:]
+    }
+
+    func lookupMoodleCourseId(idnumber: String) -> Int? {
+        guard !idnumber.isEmpty else { return nil }
+        return loadMoodleCourseIdMap()[idnumber]
     }
 
     // MARK: - Private helpers

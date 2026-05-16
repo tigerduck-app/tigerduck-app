@@ -265,3 +265,35 @@ extension SDCourse {
         NotificationCenter.default.post(name: AppConstants.courseSkipStateDidChange, object: nil)
     }
 }
+
+extension SDCourse {
+    /// Deep link into the Moodle Mobile app for this course. Mirrors
+    /// ``SDAssignment/moodleDeepLink`` — same `moodlemobile://https//<host>?redirect=…`
+    /// envelope pointing at `/course/view.php?id=<N>`. The numeric id is
+    /// looked up from ``DataCache/lookupMoodleCourseId(idnumber:)``, which
+    /// ``AppServiceBridge`` keeps fresh off the enrolled-courses fetch.
+    ///
+    /// Returns `nil` when either no idnumber is recorded for the course
+    /// (e.g. user-added courses), or the id-map cache hasn't been populated
+    /// yet (cold launch before first sync) — UI hides the button in both
+    /// cases so the user never taps into an "app cannot open this URL" sheet.
+    var moodleDeepLink: URL? {
+        guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
+              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {
+            return nil
+        }
+
+        var inner = URLComponents()
+        inner.path = "/course/view.php"
+        inner.queryItems = [URLQueryItem(name: "id", value: String(numericId))]
+        guard let redirectTarget = inner.string else { return nil }
+
+        let host = AppConstants.moodleBaseURL.host ?? "moodle2.ntust.edu.tw"
+        var components = URLComponents()
+        components.scheme = "moodlemobile"
+        components.host = "https"
+        components.path = "//\(host)"
+        components.queryItems = [URLQueryItem(name: "redirect", value: redirectTarget)]
+        return components.url
+    }
+}
