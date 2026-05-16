@@ -41,7 +41,7 @@ struct NowNextView: View {
             }
             .padding(.horizontal, 8)
         }
-        .navigationTitle("TigerDuck")
+        .navigationTitle(String(localized: "watch_now_next_title"))
     }
 }
 
