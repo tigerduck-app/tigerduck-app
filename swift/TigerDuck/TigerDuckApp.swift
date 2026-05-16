@@ -65,10 +65,10 @@ struct TigerDuckApp: App {
         WindowGroup {
             ContentView()
                 .id(rootLanguageId)
-                .environment(appState)
                 .tint(appState.accentColor)
                 .preferredColorScheme(.dark)
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
+                .environment(appState)
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()

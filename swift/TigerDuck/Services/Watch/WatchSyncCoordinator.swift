@@ -1,6 +1,7 @@
 import Foundation
 import WatchConnectivity
 import Combine
+import os
 
 /// Narrow protocol over WCSession so we can stub it in tests.
 protocol WatchSessionPushing: AnyObject {
