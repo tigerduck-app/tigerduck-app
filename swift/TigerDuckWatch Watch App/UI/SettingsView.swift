@@ -14,7 +14,7 @@ struct SettingsView: View {
                         .font(.subheadline)
                 }
                 HStack {
-                    Image(systemName: "calendar.badge.clock")
+                    Image(systemName: "clock")
                     Text(lastSyncedText)
                         .font(.subheadline)
                 }
