@@ -1,6 +1,6 @@
 import XCTest
 import WatchKit
-@testable import TigerDuckWatch
+@testable import TigerDuckWatch_Watch_App
 
 final class ScheduleStoreTests: XCTestCase {
 

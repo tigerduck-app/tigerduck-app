@@ -1,5 +1,5 @@
 import XCTest
-@testable import TigerDuckWatch
+@testable import TigerDuckWatch_Watch_App
 
 final class WatchPayloadCodecTests: XCTestCase {
 
