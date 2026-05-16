@@ -16,6 +16,7 @@ does not search.
 Targets handled here:
   - `swift/TigerDuck/`                 — iOS app
   - `swift/TigerDuckWatch Watch App/`  — watchOS companion app
+  - `swift/TigerDuckWatchWidget/`      — watchOS complication / widget
 
 Run this whenever `localization/source/*.json` changes (typically right
 after a `git submodule update --remote localization`). It's also wired
@@ -45,6 +46,7 @@ GENERATED_APPLE_DIR = LOCALIZATION_DIR / "generated" / "apple"
 TARGET_DIRS = [
     ROOT / "swift" / "TigerDuck",
     ROOT / "swift" / "TigerDuckWatch Watch App",
+    ROOT / "swift" / "TigerDuckWatchWidget",
 ]
 
 # Widget extension's resources live one level deeper, so it uses a separate

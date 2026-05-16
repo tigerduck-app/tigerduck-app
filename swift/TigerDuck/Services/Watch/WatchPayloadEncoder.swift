@@ -34,31 +34,79 @@ enum WatchPayloadEncoder {
     }
 
     private static func flatten(_ course: SDCourse, customNames: [String: String]) -> [WatchCourse] {
-        course.schedule.compactMap { weekday, periodIds in
+        // A course meeting at non-contiguous periods on the same weekday
+        // (e.g. 3,4,6,7) must be emitted as separate runs — otherwise the
+        // watch and complication would render it as one block spanning the
+        // gap and report it as "current" during the unscheduled period.
+        // Mirrors `WidgetTimelineDerivation.contiguousRuns` used by the iOS
+        // widget.
+        let order = AppConstants.Periods.chronologicalOrder
+        let classroomMap = course.classroomMap
+        let flatClassroom = SDCourse.dedup(course.classroom)
+        return course.schedule.flatMap { weekday, periodIds -> [WatchCourse] in
             let sorted = periodIds.sortedByPeriodOrder()
-            guard let first = sorted.first,
-                  let last = sorted.last,
-                  let startPeriod = TimetablePeriod.byId[first],
-                  let endPeriod = TimetablePeriod.byId[last] else { return nil }
-
-            let label = sorted.count > 1
-                ? "\(first)-\(last)"
-                : first
-
-            return WatchCourse(
-                id: "\(course.courseNo)-\(weekday)-\(first)",
-                courseNo: course.courseNo,
-                name: resolveDisplayName(course: course, customNames: customNames),
-                teacher: course.instructor,
-                classroom: course.classroom(for: weekday),
-                colorHex: courseColorHex(course),
-                weekday: weekday,
-                startHHmm: startPeriod.startTime,
-                endHHmm: endPeriod.endTime,
-                periodLabel: label
-            )
+            return contiguousRuns(sorted, by: order).compactMap { run -> WatchCourse? in
+                guard let first = run.first,
+                      let last = run.last,
+                      let startPeriod = TimetablePeriod.byId[first],
+                      let endPeriod = TimetablePeriod.byId[last] else { return nil }
+                let label = run.count > 1 ? "\(first)-\(last)" : first
+                return WatchCourse(
+                    id: "\(course.courseNo)-\(weekday)-\(first)",
+                    courseNo: course.courseNo,
+                    name: resolveDisplayName(course: course, customNames: customNames),
+                    teacher: course.instructor,
+                    classroom: classroomForRun(
+                        weekday: weekday, run: run,
+                        map: classroomMap, fallback: flatClassroom
+                    ),
+                    colorHex: courseColorHex(course),
+                    weekday: weekday,
+                    startHHmm: startPeriod.startTime,
+                    endHHmm: endPeriod.endTime,
+                    periodLabel: label
+                )
+            }
         }
         .sorted { ($0.weekday, $0.startHHmm) < ($1.weekday, $1.startHHmm) }
+    }
+
+    private static func contiguousRuns(_ periods: [String], by order: [String]) -> [[String]] {
+        var runs: [[String]] = []
+        var current: [String] = []
+        var prevIndex = Int.min
+        for period in periods {
+            let idx = order.firstIndex(of: period) ?? Int.min
+            if !current.isEmpty, idx == prevIndex + 1 {
+                current.append(period)
+            } else {
+                if !current.isEmpty { runs.append(current) }
+                current = [period]
+            }
+            prevIndex = idx
+        }
+        if !current.isEmpty { runs.append(current) }
+        return runs
+    }
+
+    private static func classroomForRun(
+        weekday: Int,
+        run: [String],
+        map: [String: String],
+        fallback: String
+    ) -> String {
+        guard !map.isEmpty else { return fallback }
+        var seen = Set<String>()
+        var rooms: [String] = []
+        for period in run {
+            let key = "\(weekday)-\(period)"
+            guard let raw = map[key] else { continue }
+            for part in SDCourse.splitRoom(raw) where !seen.contains(part) {
+                seen.insert(part)
+                rooms.append(part)
+            }
+        }
+        return rooms.isEmpty ? fallback : rooms.joined(separator: ", ")
     }
 
     /// Mirror of `WidgetSnapshotBuilder.resolveDisplayName` — prefer the

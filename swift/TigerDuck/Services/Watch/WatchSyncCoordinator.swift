@@ -18,6 +18,7 @@ final class WatchSyncCoordinator: NSObject {
     private let session: WatchSessionPushing
     private var debounceTask: Task<Void, Never>?
     private var pendingPayload: PendingPayload?
+    private var pendingSnapshot: WatchSnapshot?
     private let debounceInterval: TimeInterval = 0.5
 
     private struct PendingPayload {
@@ -48,17 +49,36 @@ final class WatchSyncCoordinator: NSObject {
         loggedIn: Bool,
         languageTag: String?
     ) {
-        guard session.isPaired, session.isWatchAppInstalled else { return }
         let snapshot = WatchPayloadEncoder.encode(
             courses: courses, customNames: customNames, accentHex: accentHex,
             syncedAt: Date(), loggedIn: loggedIn, languageTag: languageTag
         )
+        deliver(snapshot)
+    }
+
+    /// Attempt to deliver `snapshot` to the watch. If the watch isn't reachable
+    /// yet (session not activated, no paired watch, or app not installed), the
+    /// snapshot is held in `pendingSnapshot` and flushed by the next activation
+    /// completion or `sessionWatchStateDidChange` callback. Delivery errors
+    /// also keep the snapshot pending so a later state change can retry.
+    private func deliver(_ snapshot: WatchSnapshot) {
+        guard session.isPaired, session.isWatchAppInstalled else {
+            pendingSnapshot = snapshot
+            return
+        }
         do {
             let dict = try WatchPayloadCodec.encode(snapshot)
             try session.updateApplicationContext(dict)
+            pendingSnapshot = nil
         } catch {
             AppLogger.network.error("watch context push failed: \(error.localizedDescription)")
+            pendingSnapshot = snapshot
         }
+    }
+
+    private func flushPendingIfReady() {
+        guard let snapshot = pendingSnapshot else { return }
+        deliver(snapshot)
     }
 
     func scheduleDebouncedPush(
@@ -93,6 +113,9 @@ extension WatchSyncCoordinator: WCSessionDelegate {
         if let error {
             AppLogger.network.error("phone WC activation: \(error.localizedDescription)")
         }
+        if state == .activated {
+            Task { @MainActor in self.flushPendingIfReady() }
+        }
     }
 
     // iOS-only delegate methods required by the protocol
@@ -100,7 +123,9 @@ extension WatchSyncCoordinator: WCSessionDelegate {
     nonisolated func sessionDidDeactivate(_ session: WCSession) {
         session.activate()
     }
-    nonisolated func sessionWatchStateDidChange(_ session: WCSession) {}
+    nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor in self.flushPendingIfReady() }
+    }
 
     nonisolated func session(_ session: WCSession,
                              didReceiveMessage message: [String: Any]) {
