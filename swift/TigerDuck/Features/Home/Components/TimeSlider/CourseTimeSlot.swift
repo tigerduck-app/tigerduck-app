@@ -13,7 +13,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
     let date: Date
 
     /// Build slots for a single day.
-    static func buildSlots(from courses: [SDCourse], weekday: Int, on date: Date = Date()) -> [CourseTimeSlot] {
+    static func buildSlots(from courses: [SDCourse], weekday: Int, on date: Date = AppClock.now()) -> [CourseTimeSlot] {
         let calendar = Calendar.current
         var slots: [CourseTimeSlot] = []
 

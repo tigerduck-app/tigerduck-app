@@ -28,7 +28,7 @@ struct HomeView: View {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 // Greeting
                 HStack {
-                    Text(Date().greetingText())
+                    Text(AppClock.now().greetingText())
                         .font(TigerDuckTheme.Typography.title)
                         .foregroundStyle(Color.textPrimary)
                     Spacer()
@@ -124,7 +124,7 @@ struct HomeView: View {
                 course: course,
                 assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
                 timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
-                weekday: slot?.date.scheduleWeekday ?? Date().scheduleWeekday
+                weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday
             )
             .presentationDetents([.medium, .large])
             .onDisappear { viewModel.selectedCourseSlot = nil }
