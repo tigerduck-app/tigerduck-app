@@ -284,4 +284,35 @@ final class PushCoordinator {
         }
         return NSDictionary(contentsOf: url)
     }
+
+    /// Crashes Debug builds at launch when the resolved server URL does not
+    /// match the APNs environment baked into the binary (or each other).
+    /// Compiles down to a no-op in Release builds — `assert` is stripped
+    /// under `-O`, so end users never see this.
+    ///
+    /// Guards against the regression where someone flips `PushAPNsEnv` or
+    /// `AppConstants.productionPushServerURL` without flipping the other,
+    /// or seeds a stale UserDefaults override pointing the wrong way.
+    nonisolated static func assertEnvConsistency() {
+        let resolved = resolveServerURL()
+        let host = resolved.host ?? ""
+        #if DEBUG
+        let expectedEnv = "development"
+        let hostOK = host == "localhost"
+            || host == "127.0.0.1"
+            || isPrivateIPv4(host)
+            || host == "staging.api.tigerduck.app"
+        #else
+        let expectedEnv = "production"
+        let hostOK = host == "api.tigerduck.app"
+        #endif
+        assert(
+            hostOK,
+            "Push env mismatch: \(expectedEnv) build resolved to \(resolved)"
+        )
+        assert(
+            PushAPNsEnv.resolvedForBuild == expectedEnv,
+            "Push env mismatch: build is \(expectedEnv) but PushAPNsEnv = \(PushAPNsEnv.resolvedForBuild)"
+        )
+    }
 }
