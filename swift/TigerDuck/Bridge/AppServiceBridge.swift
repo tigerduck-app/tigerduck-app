@@ -427,7 +427,10 @@ enum AppServiceBridge {
             // the course pipeline on a cold launch, and the deep-link button
             // shouldn't have to wait two cycles to light up. Whole-map
             // overwrite for the same staleness reason — `moodleEnrolled` is
-            // the authoritative current-enrolment list.
+            // the authoritative current-enrolment list. Guarded by the same
+            // login-generation + cancellation checks as the assignments
+            // cache write below: a fetch in flight when the user logs out
+            // must not resurrect that user's enrolled-course ids on disk.
             let moodleIdMapForAssignments = Dictionary(
                 moodleEnrolled.compactMap { entry -> (String, Int)? in
                     guard !entry.idnumber.isEmpty else { return nil }
@@ -435,7 +438,10 @@ enum AppServiceBridge {
                 },
                 uniquingKeysWith: { _, latest in latest }
             )
-            DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
+            if !Task.isCancelled,
+               authService.loginGeneration == startGeneration {
+                DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
+            }
 
             // On first launch the NTUST course cache is empty because
             // backgroundSync runs assignments + courses in parallel.
