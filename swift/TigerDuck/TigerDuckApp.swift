@@ -14,6 +14,7 @@ struct TigerDuckApp: App {
 
     init() {
         AppLogger.start()
+        PushCoordinator.assertEnvConsistency()
         watchSyncCoordinator.activate()
     }
 
