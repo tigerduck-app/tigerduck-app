@@ -10,6 +10,7 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
             current: now ? sampleCourse(name: "現在") : nil,
             next: next ? sampleCourse(name: "下一堂") : nil,
             accentHex: "#FF8800",
+            languageTag: nil,
             relevance: nil
         )
     }

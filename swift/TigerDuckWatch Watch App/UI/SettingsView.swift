@@ -39,8 +39,8 @@ struct SettingsView: View {
 
     private var loginText: String {
         store.snapshot?.loggedIn == true
-            ? String(localized: "watch_settings_signed_in")
-            : String(localized: "watch_settings_signed_out")
+            ? String(localized: "watch_settings_signed_in", locale: locale)
+            : String(localized: "watch_settings_signed_out", locale: locale)
     }
 
     // `locale:` is required so the lookup honors the in-app language pushed

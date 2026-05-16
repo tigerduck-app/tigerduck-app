@@ -10,6 +10,7 @@ struct NextClassProvider: TimelineProvider {
             current: nil,
             next: Self.sampleCourse(),
             accentHex: WatchSnapshot.defaultAccentHex,
+            languageTag: nil,
             relevance: nil
         )
     }
@@ -22,6 +23,7 @@ struct NextClassProvider: TimelineProvider {
             current: r.current,
             next: r.next,
             accentHex: snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex,
+            languageTag: snapshot?.languageTag,
             relevance: relevance(for: r, now: Date())
         ))
     }
@@ -29,6 +31,7 @@ struct NextClassProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextClassEntry>) -> Void) {
         let snapshot = loadSnapshot()
         let accent = snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex
+        let languageTag = snapshot?.languageTag
         let courses = snapshot?.courses ?? []
 
         var entries: [NextClassEntry] = []
@@ -60,6 +63,7 @@ struct NextClassProvider: TimelineProvider {
                 current: r.current,
                 next: r.next,
                 accentHex: accent,
+                languageTag: languageTag,
                 relevance: relevance(for: r, now: ts)
             ))
         }
