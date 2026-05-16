@@ -14,6 +14,12 @@ struct TigerDuckApp: App {
 
     init() {
         AppLogger.start()
+        #if DEBUG
+        // Apply any persisted clock override before any UI reads the clock,
+        // so view models constructed during the first render see the right
+        // "now". Entire branch compiles out in Release.
+        DebugClockController.shared.bootstrap()
+        #endif
         watchSyncCoordinator.activate()
     }
 

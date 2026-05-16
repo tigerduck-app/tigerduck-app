@@ -185,6 +185,14 @@ struct SettingsView: View {
                     SourceCodePickerView()
                 }
             }
+
+            #if DEBUG
+            Section("Developer") {
+                NavigationLink("Time override") {
+                    DebugSettingsView()
+                }
+            }
+            #endif
         }
         .navigationTitle(String(localized: "feature_settings"))
         .sheet(isPresented: $showingTabEditor) {
