@@ -25,11 +25,17 @@ struct NowNextView: View {
                         String(localized: "watch_open_phone_to_sync"),
                         systemImage: "iphone.gen3"
                     )
-                } else {
-                    // Logged out: empty courses array with loggedIn=false
+                } else if store.snapshot?.loggedIn == false {
                     ContentUnavailableView(
                         String(localized: "watch_empty_not_logged_in"),
                         systemImage: "person.crop.circle.badge.exclamationmark"
+                    )
+                } else {
+                    // Signed in but no courses on file (between terms, or
+                    // class table hasn't finished fetching on the phone yet).
+                    ContentUnavailableView(
+                        String(localized: "watch_no_upcoming_classes"),
+                        systemImage: "calendar"
                     )
                 }
             }
