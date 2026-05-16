@@ -15,7 +15,14 @@ enum WatchPayloadEncoder {
         loggedIn: Bool,
         languageTag: String?
     ) -> WatchSnapshot {
-        let watchCourses = courses.flatMap { flatten($0, customNames: customNames) }
+        // Drop cached courses on logout: SwiftData rows for the previous user
+        // may still be present when this push fires, and the watch UI prefers
+        // a non-empty `courses` over the `loggedIn` flag (NowNextView checks
+        // courses first), so emitting them would leave the previous user's
+        // schedule visible on a signed-out watch.
+        let watchCourses = loggedIn
+            ? courses.flatMap { flatten($0, customNames: customNames) }
+            : []
         let syncedAtMs = Int64((syncedAt.timeIntervalSince1970 * 1000).rounded())
         return WatchSnapshot(
             courses: watchCourses,

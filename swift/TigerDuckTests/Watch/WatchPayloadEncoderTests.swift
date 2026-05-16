@@ -104,13 +104,17 @@ final class WatchPayloadEncoderTests: XCTestCase {
         XCTAssertEqual(snap.courses.first?.name, "我的別名")
     }
 
-    func test_loggedOut_stillEmitsCachedCourses() {
+    func test_loggedOut_dropsCachedCourses() {
+        // Logout posts a data update before SwiftData rows are deleted, and
+        // the watch UI shows non-empty `courses` ahead of the signed-out
+        // empty state — so the encoder must strip courses when loggedIn is
+        // false to avoid leaking the previous user's schedule.
         let c = makeCourse()
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",
             syncedAt: Date(), loggedIn: false, languageTag: nil
         )
         XCTAssertFalse(snap.loggedIn)
-        XCTAssertEqual(snap.courses.count, 1)
+        XCTAssertTrue(snap.courses.isEmpty)
     }
 }
