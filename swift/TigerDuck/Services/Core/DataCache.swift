@@ -356,6 +356,38 @@ final class DataCache {
         }
     }
 
+    // MARK: - Moodle course id map (idnumber → numeric id)
+
+    /// Persisted map populated by ``AppServiceBridge`` whenever it fetches
+    /// the user's Moodle enrolled-courses list. Exists because Moodle Mobile's
+    /// deep-link router only honors `?id=N` redirects reliably — `?idnumber=…`
+    /// is accepted by the web but not by the in-app handler — so we cache the
+    /// numeric id off the enrolled-courses payload and look it up at deep-link
+    /// build time. Lives in ``persistentDir`` so the map survives cache
+    /// sweeps that wipe localized course data.
+    func saveMoodleCourseIdMap(_ map: [String: Int]) {
+        save(map, to: "moodle_course_id_map.json", in: persistentDir)
+    }
+
+    func loadMoodleCourseIdMap() -> [String: Int] {
+        load(from: "moodle_course_id_map.json", in: persistentDir) ?? [:]
+    }
+
+    /// Merge new entries into the existing map and persist. Later entries win
+    /// on collision so a course whose numeric id gets reissued mid-semester
+    /// (rare but documented in NTUST archive ops) takes the newer value.
+    func mergeMoodleCourseIdMap(_ additions: [String: Int]) {
+        guard !additions.isEmpty else { return }
+        var current = loadMoodleCourseIdMap()
+        for (key, value) in additions { current[key] = value }
+        saveMoodleCourseIdMap(current)
+    }
+
+    func lookupMoodleCourseId(idnumber: String) -> Int? {
+        guard !idnumber.isEmpty else { return nil }
+        return loadMoodleCourseIdMap()[idnumber]
+    }
+
     // MARK: - Private helpers
 
     private func save<T: Encodable>(_ value: T, to filename: String, in directory: URL? = nil) {

@@ -123,6 +123,19 @@ enum AppServiceBridge {
             } else {
                 try await MoodleEnrolledCoursesService.fetchEnrolled()
             }
+            // Persist idnumber → numeric-id map so `SDCourse.moodleDeepLink`
+            // can build `?id=N` redirects (Moodle Mobile's in-app router
+            // rejects `?idnumber=…`). Refreshes every sync so renamed
+            // courses pick up new ids without manual invalidation.
+            let moodleIdMap = Dictionary(
+                moodleAll.compactMap { entry -> (String, Int)? in
+                    guard !entry.idnumber.isEmpty else { return nil }
+                    return (entry.idnumber, entry.id)
+                },
+                uniquingKeysWith: { _, latest in latest }
+            )
+            DataCache.shared.mergeMoodleCourseIdMap(moodleIdMap)
+
             let moodleForSemester = moodleAll.filter { $0.semester == semester }
             let moodleByNo = Dictionary(
                 moodleForSemester.compactMap { course -> (String, MoodleEnrolledCourse)? in
@@ -399,6 +412,19 @@ enum AppServiceBridge {
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
+            // Same idnumber → numeric-id cache update as the course-table
+            // path. Done here too because the assignments pipeline can run
+            // before the course pipeline on a cold launch, and the deep-link
+            // button shouldn't have to wait two cycles to light up.
+            let moodleIdMapForAssignments = Dictionary(
+                moodleEnrolled.compactMap { entry -> (String, Int)? in
+                    guard !entry.idnumber.isEmpty else { return nil }
+                    return (entry.idnumber, entry.id)
+                },
+                uniquingKeysWith: { _, latest in latest }
+            )
+            DataCache.shared.mergeMoodleCourseIdMap(moodleIdMapForAssignments)
+
             // On first launch the NTUST course cache is empty because
             // backgroundSync runs assignments + courses in parallel.
             // Without this fallback we'd filter against an empty set,
