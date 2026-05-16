@@ -2,7 +2,7 @@ import SwiftUI
 
 struct TimeSliderSection: View {
     let courses: [SDCourse]
-    var onSelectCourse: ((SDCourse) -> Void)? = nil
+    var onSelectCourse: ((CourseTimeSlot) -> Void)? = nil
     @Environment(AppState.self) private var appState
     @State private var viewModel = TimeSliderViewModel()
 

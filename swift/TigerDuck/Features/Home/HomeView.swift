@@ -119,12 +119,15 @@ struct HomeView: View {
             homeDestination(for: feature)
         }
         .sheet(item: $viewModel.selectedCourse) { course in
+            let slot = viewModel.selectedCourseSlot
             CourseDetailSheet(
                 course: course,
                 assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
-                weekday: Date().scheduleWeekday
+                timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
+                weekday: slot?.date.scheduleWeekday ?? Date().scheduleWeekday
             )
             .presentationDetents([.medium, .large])
+            .onDisappear { viewModel.selectedCourseSlot = nil }
         }
         .onChange(of: viewModel.isEditingHome) { _, isEditing in
             if !isEditing {
@@ -350,9 +353,10 @@ private struct HomeSectionView: View {
             case .todayCourses:
                 TimeSliderSection(
                     courses: viewModel.allCourses,
-                    onSelectCourse: { course in
+                    onSelectCourse: { slot in
                         guard !viewModel.isEditingHome else { return }
-                        viewModel.selectedCourse = course
+                        viewModel.selectedCourseSlot = slot
+                        viewModel.selectedCourse = slot.course
                     }
                 )
             case .upcomingAssignments:
