@@ -50,6 +50,35 @@ struct AppClockTests {
         #expect(AppClock.currentOverride() == override)
     }
 
+    // MARK: - realTime(forApp:)
+
+    @Test func realTimeForAppIsIdentityWhenNoOverride() {
+        let target = Date(timeIntervalSinceNow: 60)
+        #expect(AppClock.realTime(forApp: target) == target)
+    }
+
+    @Test func realTimeForApp_frozen_translatesByDeltaFromInstant() {
+        let fake = Date(timeIntervalSince1970: 1_700_000_000)
+        AppClock.setOverride(ClockOverride(instant: fake, frozen: true, savedAtReal: Date()))
+        let appTarget = fake.addingTimeInterval(90)
+        let realTarget = AppClock.realTime(forApp: appTarget)
+        // realTarget should be ~90s after real-now
+        #expect(realTarget.timeIntervalSinceNow > 89)
+        #expect(realTarget.timeIntervalSinceNow < 91)
+    }
+
+    @Test func realTimeForApp_ticking_translatesByOffset() {
+        let fake = Date(timeIntervalSince1970: 1_700_000_000)
+        let savedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        AppClock.setOverride(ClockOverride(instant: fake, frozen: false, savedAtReal: savedAt))
+        // offset = instant - savedAtReal = -100_000_000
+        // realTime(appWall) = appWall - offset = appWall + 100_000_000
+        let appTarget = fake.addingTimeInterval(60)
+        let realTarget = AppClock.realTime(forApp: appTarget)
+        let expected = appTarget.addingTimeInterval(100_000_000)
+        #expect(abs(realTarget.timeIntervalSince(expected)) < 0.001)
+    }
+
     // MARK: - Observers
 
     @Test func versionIncrementsOnEachSetOverride() {

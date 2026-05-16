@@ -37,6 +37,29 @@ enum AppClock {
         Int64(now().timeIntervalSince1970 * 1000)
     }
 
+    /// Translates a target instant in the app's clock (possibly fake) into
+    /// the real wall-clock instant at which it should occur. Used as the
+    /// trigger time for `UNCalendarNotificationTrigger` /
+    /// `UNTimeIntervalNotificationTrigger` so reminders fire at the right
+    /// real moment under fake time.
+    ///
+    /// Identity when no override is active.
+    ///
+    /// Not idempotent in frozen mode: real-now keeps moving while fake-now
+    /// stays put, so two calls for the same target return different values.
+    /// Capture the result once at scheduling time; do not re-call it for
+    /// the same target.
+    static func realTime(forApp appWall: Date) -> Date {
+        guard let o = currentOverride() else { return appWall }
+        if o.frozen {
+            let delta = appWall.timeIntervalSince(o.instant)
+            return Date().addingTimeInterval(delta)
+        } else {
+            let offset = o.instant.timeIntervalSince(o.savedAtReal)
+            return appWall.addingTimeInterval(-offset)
+        }
+    }
+
     static func currentOverride() -> ClockOverride? {
         lock.withLock { state in
             loadPersistedIfNeeded(into: &state)
