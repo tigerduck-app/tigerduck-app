@@ -8,10 +8,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-echo "[start.sh] alembic upgrade head"
+echo "[entrypoint] alembic upgrade head"
 alembic upgrade head
 
-echo "[start.sh] launching uvicorn on :40000"
+echo "[entrypoint] launching uvicorn on :40000"
 # --workers 1 on purpose: APScheduler lives inside the FastAPI lifespan, so
 # every additional worker spawns a duplicate scheduler that re-runs every
 # job (bulletin scrape, LLM classify, APNs dispatch) — no lock coordinates

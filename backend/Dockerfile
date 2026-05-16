@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY server ./server
 COPY scripts ./scripts
 COPY alembic.ini ./
-COPY start.sh ./
+COPY entrypoint.sh ./
 
 # Final install wires the local package into the venv. --no-install-project
 # above skipped this while the cache was cold, so do it now with sources present.
@@ -50,4 +50,4 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     UVICORN_PORT=40000
 
 EXPOSE 40000
-CMD ["./start.sh"]
+CMD ["./entrypoint.sh"]
