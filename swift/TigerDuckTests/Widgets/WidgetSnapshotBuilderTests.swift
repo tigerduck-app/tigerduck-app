@@ -7,6 +7,7 @@ struct WidgetSnapshotBuilderTests {
         let input = WidgetSnapshotBuilder.Input(
             courses: [],
             customNames: [:],
+            customColors: [:],
             isLoggedIn: false,
             accentColorHex: 0x007AFF,
             now: Date(timeIntervalSince1970: 1_700_000_000)
@@ -23,6 +24,7 @@ struct WidgetSnapshotBuilderTests {
         let input = WidgetSnapshotBuilder.Input(
             courses: [course],
             customNames: ["EC1013701": "DS"],
+            customColors: [:],
             isLoggedIn: true,
             accentColorHex: 0x007AFF,
             now: Date()
@@ -35,7 +37,7 @@ struct WidgetSnapshotBuilderTests {
         let course = SDCourse(courseNo: "EC1013701", courseName: "Data Structures",
                               classroom: "TR-313", schedule: [1: ["B"]])
         let input = WidgetSnapshotBuilder.Input(
-            courses: [course], customNames: [:], isLoggedIn: true,
+            courses: [course], customNames: [:], customColors: [:], isLoggedIn: true,
             accentColorHex: 0x007AFF, now: Date()
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
@@ -49,7 +51,7 @@ struct WidgetSnapshotBuilderTests {
                                     schedule: [6: ["2"]])
         let input = WidgetSnapshotBuilder.Input(
             courses: [weekdayOnly, withSaturday],
-            customNames: [:], isLoggedIn: true, accentColorHex: 0, now: Date()
+            customNames: [:], customColors: [:], isLoggedIn: true, accentColorHex: 0, now: Date()
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
         #expect(snapshot.activeWeekdays == [1, 2, 3, 4, 5, 6])
@@ -59,7 +61,7 @@ struct WidgetSnapshotBuilderTests {
         let course = SDCourse(courseNo: "A", courseName: "A", classroom: "",
                               schedule: [1: ["A", "5"], 2: ["10"]])
         let input = WidgetSnapshotBuilder.Input(
-            courses: [course], customNames: [:], isLoggedIn: true,
+            courses: [course], customNames: [:], customColors: [:], isLoggedIn: true,
             accentColorHex: 0, now: Date()
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
@@ -70,7 +72,7 @@ struct WidgetSnapshotBuilderTests {
 
     @Test func periodTimes_mappedFromAppConstants() {
         let input = WidgetSnapshotBuilder.Input(
-            courses: [], customNames: [:], isLoggedIn: true, accentColorHex: 0, now: Date()
+            courses: [], customNames: [:], customColors: [:], isLoggedIn: true, accentColorHex: 0, now: Date()
         )
         let snapshot = WidgetSnapshotBuilder.build(input)
         // Verify the *mapping* is faithful, not the values themselves —

@@ -56,10 +56,12 @@ final class WidgetSnapshotWriter {
     func regenerate() {
         let courses = courseProvider.currentCourses()
         let customNames = cache.loadCourseCustomNames()
+        let customColors = cache.loadCourseCustomColors()
         let snapshot = WidgetSnapshotBuilder.build(
             .init(
                 courses: courses,
                 customNames: customNames,
+                customColors: customColors,
                 isLoggedIn: appState.isNTUSTLoggedIn,
                 accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: appState.accentColorHex)),
                 now: Date()

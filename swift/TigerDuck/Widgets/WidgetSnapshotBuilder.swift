@@ -12,6 +12,7 @@ enum WidgetSnapshotBuilder {
     struct Input {
         let courses: [SDCourse]
         let customNames: [String: String]
+        let customColors: [String: Int]
         let isLoggedIn: Bool
         let accentColorHex: UInt32
         let now: Date
@@ -24,7 +25,7 @@ enum WidgetSnapshotBuilder {
                 displayName: resolveDisplayName(course: course, customNames: input.customNames),
                 classroom: course.classroom,
                 schedule: course.schedule,
-                colorHex: hashPaletteColor(course.courseNo)
+                colorHex: resolveColor(courseNo: course.courseNo, customColors: input.customColors)
             )
         }
 
@@ -49,20 +50,30 @@ enum WidgetSnapshotBuilder {
         return course.courseName
     }
 
-    /// Deterministic per-course color from a placeholder palette. NOTE: this
-    /// does NOT yet match `TigerDuckTheme.courseColor(for:)` — the in-app
-    /// palette has 20 colors and uses a different hash function, so widgets
-    /// and the app currently render the same course in different colors.
-    /// True parity is deferred: it requires sharing the theme palette + hash
-    /// across the widget extension target without dragging in SwiftUI/Theme.
-    /// Tracked as a follow-up to this widgets PR.
-    private static func hashPaletteColor(_ courseNo: String) -> UInt32 {
-        let hash = courseNo.reduce(0) { acc, c in (acc &* 31 &+ Int(c.asciiValue ?? 0)) & 0x7FFFFFFF }
-        let palette: [UInt32] = [
-            0xFF6B6B, 0x4ECDC4, 0xFFE66D, 0x95E1D3, 0xF38181,
-            0xAA96DA, 0xFCBAD3, 0xA8D8EA, 0xFFAAA5, 0xFFD3B6,
-        ]
-        return palette[hash % palette.count]
+    /// 20-color palette mirroring `TigerDuckTheme.courseColors` as raw hex
+    /// so this file stays SwiftUI-free and the builder remains trivially
+    /// unit-testable. Keep in lock-step with `TigerDuckTheme.courseColors`
+    /// (same order, same hex) — any drift here causes the widget to render
+    /// a course in a different color than the app.
+    static let coursePaletteHex: [UInt32] = [
+        0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xF39C12, 0xDDA0DD,
+        0x2ECC71, 0xE74C3C, 0x3498DB, 0xF7DC6F, 0x9B59B6,
+        0x1ABC9C, 0xE67E22, 0x85C1E9, 0xD35400, 0x27AE60,
+        0xC0392B, 0x8E44AD, 0x16A085, 0xF1C40F, 0x2980B9,
+    ]
+
+    /// Resolves the course color the same way the app does:
+    /// 1. Honor an explicit `customColors[courseNo]` palette-index override
+    ///    (out-of-range indices fall through to the hash default).
+    /// 2. Otherwise hash `courseNo.utf8` with the identical polynomial the
+    ///    app uses in `TigerDuckTheme.stableColor(for:)` so a course shows
+    ///    the same color in the widget and on the timetable.
+    private static func resolveColor(courseNo: String, customColors: [String: Int]) -> UInt32 {
+        if let index = customColors[courseNo], coursePaletteHex.indices.contains(index) {
+            return coursePaletteHex[index]
+        }
+        let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
+        return coursePaletteHex[abs(hash) % coursePaletteHex.count]
     }
 
     private static func buildPeriodTimes() -> [String: PeriodTime] {
