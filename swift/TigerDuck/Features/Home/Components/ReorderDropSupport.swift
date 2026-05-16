@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UTType {
-    static let tigerDuckReorderPayload = UTType(exportedAs: "org.ntust.app.tigerduck.reorder-payload")
+    static let tigerDuckReorderPayload = UTType.json
 }
 
 struct ReorderDragPayload: Codable, Hashable, Identifiable, Sendable, Transferable {
