@@ -236,8 +236,7 @@ final class PushCoordinator {
 
     #if DEBUG
     nonisolated private static func readDebugServerURL() -> URL? {
-        guard let plist = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
-              let dict = NSDictionary(contentsOf: plist),
+        guard let dict = secretsPlistDict(),
               let raw = dict["DebugServerURL"] as? String,
               !raw.isEmpty,
               let url = URL(string: raw),
@@ -248,23 +247,41 @@ final class PushCoordinator {
     #endif
 
     /// Read the shared secret from `Secrets.plist` (gitignored) bundled
-    /// with the app. The `APIToken` key must match the server's
-    /// `TIGERDUCK_API_SHARED_SECRET`. A missing file or empty value returns
-    /// nil, which preserves the dev-friendly no-auth path.
+    /// with the app. Must match the corresponding backend's
+    /// `TIGERDUCK_API_SHARED_SECRET` or every write request 401s.
     ///
-    /// Falls back to the legacy Info.plist key so older builds keep
-    /// working if an unrelated CI pipeline still injects there.
+    /// Resolution order:
+    ///   1. Debug builds: `DebugAPIToken` — paired with `DebugServerURL`,
+    ///      so each contributor's local backend can have its own secret
+    ///      without leaking the production one through dev Macs.
+    ///   2. `APIToken` — production secret; also the Debug fallback when
+    ///      a contributor leaves `DebugAPIToken` blank (matches the old
+    ///      "single shared token" workflow).
+    ///   3. Legacy Info.plist `TigerDuckAPIToken` — kept so any CI
+    ///      pipeline that still injects there continues to work.
+    ///   4. nil — preserves the dev-friendly no-auth path.
     static func resolveSharedSecret() -> String? {
-        if let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
-           let dict = NSDictionary(contentsOf: url),
-           let value = dict["APIToken"] as? String,
-           !value.isEmpty {
-            return value
+        if let dict = secretsPlistDict() {
+            #if DEBUG
+            if let value = dict["DebugAPIToken"] as? String, !value.isEmpty {
+                return value
+            }
+            #endif
+            if let value = dict["APIToken"] as? String, !value.isEmpty {
+                return value
+            }
         }
         if let value = Bundle.main.object(forInfoDictionaryKey: "TigerDuckAPIToken") as? String,
            !value.isEmpty {
             return value
         }
         return nil
+    }
+
+    nonisolated private static func secretsPlistDict() -> NSDictionary? {
+        guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist") else {
+            return nil
+        }
+        return NSDictionary(contentsOf: url)
     }
 }
