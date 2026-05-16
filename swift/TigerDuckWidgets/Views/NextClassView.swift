@@ -35,11 +35,10 @@ struct NextClassView: View {
 
     @ViewBuilder
     private func ongoingBody(infos: [WidgetDerivedState.OngoingInfo]) -> some View {
-        let displayCount = min(infos.count, 2)
         if isCompact {
-            // Compact: first ongoing only, with +1 badge if there's a second.
-            compactOngoing(first: infos[0], showsPlusBadge: displayCount > 1)
-        } else if displayCount == 2 {
+            // Compact: first ongoing only, with +N badge counting the rest.
+            compactOngoing(first: infos[0], additionalCount: infos.count - 1)
+        } else if infos.count >= 2 {
             VStack(spacing: 10) {
                 ongoingCard(info: infos[0])
                 ongoingCard(info: infos[1])
@@ -49,7 +48,7 @@ struct NextClassView: View {
         }
     }
 
-    private func compactOngoing(first info: WidgetDerivedState.OngoingInfo, showsPlusBadge: Bool) -> some View {
+    private func compactOngoing(first info: WidgetDerivedState.OngoingInfo, additionalCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text(String(localized: "widget_ongoing"))
@@ -57,8 +56,8 @@ struct NextClassView: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(palette.highlight, in: RoundedRectangle(cornerRadius: 6))
                     .foregroundStyle(.white)
-                if showsPlusBadge {
-                    Text("+1")
+                if additionalCount > 0 {
+                    Text("+\(additionalCount)")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(palette.onSurfaceVariant)
                 }
