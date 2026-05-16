@@ -621,6 +621,9 @@ mono_crash.*
 
 # Build results
 [Dd]ebug/
+# Un-ignore the iOS time-debug developer tool, which sits in a Debug/ folder.
+!swift/TigerDuck/Debug/
+!swift/TigerDuckTests/Debug/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
