@@ -128,7 +128,12 @@ enum AppServiceBridge {
             // rejects `?idnumber=…`). Whole-map overwrite — the fetched list
             // is the authoritative snapshot, so any idnumber missing from
             // it has been dropped on Moodle's side and we must not keep a
-            // stale numeric id pointing at a dead course.
+            // stale numeric id pointing at a dead course. Guarded by the
+            // same login-generation + cancellation checks as the course
+            // cache write below: if the user logged out while this fetch
+            // was in flight, `clearUserScopedData` may have already wiped
+            // the map, and resuming this write would resurrect the
+            // previous user's enrolled-course ids on disk.
             let moodleIdMap = Dictionary(
                 moodleAll.compactMap { entry -> (String, Int)? in
                     guard !entry.idnumber.isEmpty else { return nil }
@@ -136,7 +141,10 @@ enum AppServiceBridge {
                 },
                 uniquingKeysWith: { _, latest in latest }
             )
-            DataCache.shared.saveMoodleCourseIdMap(moodleIdMap)
+            if !Task.isCancelled,
+               authService.loginGeneration == startGeneration {
+                DataCache.shared.saveMoodleCourseIdMap(moodleIdMap)
+            }
 
             let moodleForSemester = moodleAll.filter { $0.semester == semester }
             let moodleByNo = Dictionary(
