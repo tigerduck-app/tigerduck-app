@@ -2,6 +2,7 @@ import Foundation
 import WatchConnectivity
 import WidgetKit
 import Combine
+import os
 
 @MainActor
 final class ScheduleStore: NSObject, ObservableObject {

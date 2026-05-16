@@ -1,5 +1,6 @@
 import WidgetKit
 import Foundation
+import os
 
 struct NextClassProvider: TimelineProvider {
 
