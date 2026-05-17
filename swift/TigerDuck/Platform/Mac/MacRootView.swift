@@ -145,10 +145,7 @@ struct MacFeatureDetail: View {
         case .home:
             MacHomeView()
         case .classTable:
-            MacFeaturePlaceholder(
-                feature: feature,
-                summary: "Your weekly course schedule will appear here once the Class Table view ports to macOS."
-            )
+            MacClassTableView()
         case .calendar:
             MacCalendarView()
         case .announcements:

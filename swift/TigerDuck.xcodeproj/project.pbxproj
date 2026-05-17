@@ -1095,6 +1095,7 @@
 					MacCalendarView.swift,
 					MacScoreView.swift,
 					ScoreViewModel.swift,
+					MacClassTableView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1242,6 +1243,7 @@
 					MacCalendarView.swift,
 					MacScoreView.swift,
 					ScoreViewModel.swift,
+					MacClassTableView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
