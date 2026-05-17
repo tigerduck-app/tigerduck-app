@@ -44,6 +44,24 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
         self.clockOverrideJSON = clockOverrideJSON
     }
 
+    // Tolerate cached JSON written by older builds that predate
+    // `visualPreset` (and `clockOverrideJSON`). The default-value
+    // parameter above is NOT honoured by synthesised `Codable`, so without
+    // this an upgrade would throw `keyNotFound("visualPreset")` and the
+    // watch would fall back to its empty/sign-in state until the next
+    // WC push.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.version = try c.decode(Int.self, forKey: .version)
+        self.courses = try c.decode([WatchCourse].self, forKey: .courses)
+        self.accentHex = try c.decode(String.self, forKey: .accentHex)
+        self.syncedAtMs = try c.decode(Int64.self, forKey: .syncedAtMs)
+        self.loggedIn = try c.decode(Bool.self, forKey: .loggedIn)
+        self.languageTag = try c.decodeIfPresent(String.self, forKey: .languageTag)
+        self.visualPreset = try c.decodeIfPresent(VisualPreset.self, forKey: .visualPreset) ?? .default
+        self.clockOverrideJSON = try c.decodeIfPresent(String.self, forKey: .clockOverrideJSON)
+    }
+
     public var syncedAt: Date {
         Date(timeIntervalSince1970: TimeInterval(syncedAtMs) / 1000.0)
     }
