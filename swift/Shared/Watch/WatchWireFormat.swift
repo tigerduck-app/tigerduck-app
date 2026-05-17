@@ -34,4 +34,19 @@ public enum WatchWireFormat {
     public enum MessageKey {
         public static let kind = "kind"
     }
+
+    /// User-info kinds delivered via `WCSession.transferUserInfo` —
+    /// separate from `MessageKind` (which is for `sendMessage` short-circuit
+    /// requests) and from `Key` (which is for `updateApplicationContext`).
+    public enum UserInfoKind {
+        public static let libraryCredential = "libraryCredential"
+    }
+
+    /// Keys inside a `UserInfoKind.libraryCredential` user-info dict.
+    public enum LibraryCredentialKey {
+        /// Set to `UserInfoKind.libraryCredential`.
+        public static let kind = "kind"
+        /// JSON-encoded `WatchLibraryCredentialPayload`.
+        public static let payload = "payload"
+    }
 }
