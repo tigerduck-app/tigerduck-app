@@ -180,25 +180,8 @@ open swift/TigerDuck.xcodeproj
 
 > 💡 名稱簡稱（`name-abbr/`）與多語系字串（`localization/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
 
-### 推播後端（`backend/`）
-正式環境的 FastAPI 推播服務，負責 APNs Push-to-Start、排程同步、公告抓取與 LLM 分類。
-
-```bash
-cd backend
-
-# 安裝相依（host 端跑測試用）
-uv sync
-
-# 複製環境變數範本，填入 NTUST、APNs、Postgres 等設定
-cp .env.example .env
-
-# 把 APNs 私鑰放到 secrets/AuthKey_<KEY_ID>.p8（已在 .gitignore）
-
-# 啟動完整 stack（postgres + backend）
-docker compose up -d --build
-docker compose logs -f backend          # 觀察 server.startup / llm.ready
-docker compose exec backend curl -sS localhost:40000/health
-```
+### 推播後端
+正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v2/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
 
 ### 網路請求方法驗證（`api-poc/`）
 
@@ -251,24 +234,13 @@ tigerduck-app/
 │       │   └── Migrations/             # 一次性遷移
 │       ├── SharedUI/                   # 共用 UI 元件
 │       └── Theme/                      # 主題、配色、視覺預設
-├── backend/                            # 推播 / 公告後端（FastAPI + Postgres + APNs + LLM）
-│   ├── server/
-│   │   ├── main.py                     # FastAPI 進入點
-│   │   ├── config.py / db.py / models.py
-│   │   ├── routes/                     # devices / schedule / bulletins / live_activities
-│   │   ├── push/                       # APNs payload + sender
-│   │   ├── scheduler/                  # Live Activity 排程派送、retention
-│   │   ├── bulletins/                  # 公告抓取、去重、LLM 分類、taxonomy
-│   │   └── migrations/                 # Alembic
-│   ├── scripts/                        # 一次性腳本（如公告 backfill）
-│   ├── docker-compose.yml / Dockerfile
-│   └── pyproject.toml / uv.lock
 ├── api-poc/                            # 第三方 API 驗證腳本（NTUST / Moodle / Calendar）
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
-├── deploy/                             # 部署用 launchd plist（host 上的 llama-server）
-├── docs/                               # 規劃文件、移轉計畫
+├── docs/                               # 規劃文件、移轉計畫（iOS 端）
 ├── localization/                       # ⤴ git submodule：67+ 語系翻譯
 └── name-abbr/                          # ⤴ git submodule：課程 / 教室簡稱字典
+
+> 推播 / 公告後端（FastAPI + Postgres + APNs + LLM）已分拆至 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend)。
 ```
 
 ## 貢獻

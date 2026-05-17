@@ -179,25 +179,8 @@ open swift/TigerDuck.xcodeproj
 
 > 💡 Name abbreviations (`name-abbr/`) and localization strings (`localization/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
 
-### Push Backend (`backend/`)
-The production FastAPI server. Handles APNs Push-to-Start, schedule sync, bulletin scraping, and LLM-based classification.
-
-```bash
-cd backend
-
-# Install dependencies (host-side, used for tests)
-uv sync
-
-# Copy the env template and fill in NTUST / APNs / Postgres credentials
-cp .env.example .env
-
-# Drop your APNs key at secrets/AuthKey_<KEY_ID>.p8 (already gitignored)
-
-# Boot the full stack (postgres + backend)
-docker compose up -d --build
-docker compose logs -f backend          # watch for server.startup / llm.ready
-docker compose exec backend curl -sS localhost:40000/health
-```
+### Push Backend
+The production FastAPI push service (APNs Push-to-Start, schedule sync, bulletin scraping, and LLM classification) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v2/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
 
 ### Network Request Verification (`api-poc/`)
 
@@ -250,24 +233,13 @@ tigerduck-app/
 │       │   └── Migrations/             # One-shot migrations
 │       ├── SharedUI/                   # Reusable cross-feature views
 │       └── Theme/                      # Tokens, palette, visual presets
-├── backend/                            # Push / bulletin backend (FastAPI + Postgres + APNs + LLM)
-│   ├── server/
-│   │   ├── main.py                     # FastAPI entrypoint
-│   │   ├── config.py / db.py / models.py
-│   │   ├── routes/                     # devices / schedule / bulletins / live_activities
-│   │   ├── push/                       # APNs payload + sender
-│   │   ├── scheduler/                  # Live Activity dispatch + retention
-│   │   ├── bulletins/                  # Scraping, dedup, LLM classification, taxonomy
-│   │   └── migrations/                 # Alembic
-│   ├── scripts/                        # One-shot tools (e.g. bulletin backfill)
-│   ├── docker-compose.yml / Dockerfile
-│   └── pyproject.toml / uv.lock
-├── api-poc/                            # Third-party API validation scripts
+├── api-poc/                            # Third-party API validation scripts (NTUST / Moodle / Calendar)
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
-├── deploy/                             # Deployment artifacts (launchd plist for host llama-server)
-├── docs/                               # Planning docs, migration notes
+├── docs/                               # Planning docs, migration notes (iOS side)
 ├── localization/                       # ⤴ git submodule: 67+ locale translations
 └── name-abbr/                          # ⤴ git submodule: course / classroom abbreviation dictionaries
+
+> The push / bulletin backend (FastAPI + Postgres + APNs + LLM) has been split out into [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend).
 ```
 
 ## Contributing
