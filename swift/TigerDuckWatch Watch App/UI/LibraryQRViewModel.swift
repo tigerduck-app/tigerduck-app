@@ -79,8 +79,8 @@ final class LibraryQRViewModel {
     private func startRefreshCycle() {
         fetchAndRender()
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
-            Task { @MainActor [weak self] in self?.fetchAndRender() }
+        refreshTimer = Self.scheduleCommonModeTimer(interval: 30, repeats: true) { [weak self] in
+            self?.fetchAndRender()
         }
     }
 
@@ -115,25 +115,41 @@ final class LibraryQRViewModel {
         let idx = min(consecutiveErrors - 1, Self.backoffSchedule.count - 1)
         let interval = Self.backoffSchedule[max(0, idx)]
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
-            Task { @MainActor [weak self] in self?.fetchAndRender() }
+        refreshTimer = Self.scheduleCommonModeTimer(interval: interval, repeats: false) { [weak self] in
+            self?.fetchAndRender()
         }
     }
 
     private func restartCountdown() {
         countdown = 30
         countdownTimer?.invalidate()
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if self.countdown > 0 { self.countdown -= 1 }
-            }
+        countdownTimer = Self.scheduleCommonModeTimer(interval: 1, repeats: true) { [weak self] in
+            guard let self else { return }
+            if self.countdown > 0 { self.countdown -= 1 }
         }
     }
 
     private func stopTimers() {
         refreshTimer?.invalidate(); refreshTimer = nil
         countdownTimer?.invalidate(); countdownTimer = nil
+    }
+
+    /// `Timer.scheduledTimer` registers in `.default` mode only, so the timer
+    /// pauses while the user scrolls a SwiftUI view (which runs the main
+    /// run loop in `.tracking` mode) and then "catches up" by firing rapidly
+    /// when scrolling stops. Registering in `.common` includes both
+    /// `.default` and `.tracking`, so the countdown keeps decrementing
+    /// smoothly while paging or scrolling.
+    private static func scheduleCommonModeTimer(
+        interval: TimeInterval,
+        repeats: Bool,
+        action: @escaping @MainActor () -> Void
+    ) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: repeats) { _ in
+            Task { @MainActor in action() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
     }
 
     /// Render the matrix to a `UIImage` via CoreGraphics. We can't reuse the

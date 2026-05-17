@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LibraryQRView: View {
     @State private var viewModel = LibraryQRViewModel()
+    @State private var isFullScreen = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -30,6 +31,11 @@ struct LibraryQRView: View {
                 viewModel.onDisappear()
             }
         }
+        .fullScreenCover(isPresented: $isFullScreen) {
+            if let image = viewModel.qrImage {
+                FullScreenQRView(image: image, dismiss: { isFullScreen = false })
+            }
+        }
     }
 
     // MARK: - States
@@ -52,6 +58,9 @@ struct LibraryQRView: View {
                 .padding(6)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 4)
+                .onTapGesture(count: 2) {
+                    isFullScreen = true
+                }
         } else if viewModel.isLoading {
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 120)
@@ -101,5 +110,44 @@ struct LibraryQRView: View {
                 .lineLimit(2)
         }
         .padding(.top, 4)
+    }
+}
+
+/// Fullscreen QR presentation. Dismissed by an upward or downward drag
+/// past `dismissThreshold`. We don't use the system swipe-down dismissal
+/// because the user requested either direction.
+private struct FullScreenQRView: View {
+    let image: UIImage
+    let dismiss: () -> Void
+
+    @State private var dragOffset: CGFloat = 0
+
+    private static let dismissThreshold: CGFloat = 60
+
+    var body: some View {
+        ZStack {
+            Color.white.ignoresSafeArea()
+            Image(uiImage: image)
+                .interpolation(.none)
+                .resizable()
+                .scaledToFit()
+                .padding(8)
+        }
+        .offset(y: dragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    dragOffset = value.translation.height
+                }
+                .onEnded { value in
+                    if abs(value.translation.height) > Self.dismissThreshold {
+                        dismiss()
+                    } else {
+                        withAnimation(.spring(response: 0.25)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
     }
 }
