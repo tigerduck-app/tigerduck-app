@@ -125,32 +125,34 @@ private struct FullScreenQRView: View {
     private static let dismissThreshold: CGFloat = 60
 
     var body: some View {
-        // Push the image past the safe-area insets so the QR fills
-        // edge to edge — watchOS scanners read better with a larger
-        // matrix, and the white background of the matrix supplies the
-        // quiet zone where the screen rounds off.
-        Image(uiImage: image)
-            .interpolation(.none)
-            .resizable()
-            .scaledToFit()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.white)
-            .ignoresSafeArea()
-            .offset(y: dragOffset)
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        dragOffset = value.translation.height
-                    }
-                    .onEnded { value in
-                        if abs(value.translation.height) > Self.dismissThreshold {
-                            dismiss()
-                        } else {
-                            withAnimation(.spring(response: 0.25)) {
-                                dragOffset = 0
-                            }
+        // White background runs corner-to-corner; the image stays inside
+        // a vertical inset so it clears the watchOS time strip (top-right)
+        // and the system close button (top-left) without them sitting
+        // on top of QR modules.
+        ZStack {
+            Color.white.ignoresSafeArea()
+            Image(uiImage: image)
+                .interpolation(.none)
+                .resizable()
+                .scaledToFit()
+                .padding(.top, 22)
+                .padding(.bottom, 6)
+        }
+        .offset(y: dragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    dragOffset = value.translation.height
+                }
+                .onEnded { value in
+                    if abs(value.translation.height) > Self.dismissThreshold {
+                        dismiss()
+                    } else {
+                        withAnimation(.spring(response: 0.25)) {
+                            dragOffset = 0
                         }
                     }
-            )
+                }
+        )
     }
 }

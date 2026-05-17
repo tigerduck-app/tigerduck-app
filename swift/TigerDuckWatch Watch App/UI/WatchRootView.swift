@@ -51,7 +51,11 @@ struct WatchRootView: View {
                     .frame(width: 5, height: 5)
             }
         }
-        .padding(.bottom, 4)
+        // Push the row into the bottom safe-area so it sits where the
+        // system page indicator normally rides (just above the rounded
+        // edge), not floating above the TabView's safe-area inset.
+        .padding(.bottom, 2)
+        .ignoresSafeArea(.container, edges: .bottom)
         .opacity(dotsVisible ? 1 : 0)
         .animation(.easeInOut(duration: 0.35), value: dotsVisible)
         .allowsHitTesting(false)
