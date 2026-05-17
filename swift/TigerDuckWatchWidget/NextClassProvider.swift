@@ -36,7 +36,13 @@ struct NextClassProvider: TimelineProvider {
 
         var entries: [NextClassEntry] = []
         let now = Date()
-        let cal = Calendar(identifier: .iso8601)
+        // Pin to Taipei so timeline boundaries (class start/end and the
+        // 04:00 reload) land on Taiwan wall time, matching the resolver
+        // and the iOS app. A device-TZ calendar would slide today/
+        // tomorrow's anchors and the reload trigger for a traveling
+        // wearer, leaving the face stale across class transitions and
+        // midnight.
+        let cal = SharedTaipei.calendar
 
         // Build boundary timestamps for today + tomorrow so the post-midnight
         // window doesn't strand the watch face on "no upcoming classes" until
@@ -94,7 +100,12 @@ struct NextClassProvider: TimelineProvider {
     }
 
     private func combine(hhmm: String, with anchor: Date) -> Date? {
-        let cal = Calendar(identifier: .iso8601)
+        // Must match the calendar used in `getTimeline(...)` so the
+        // year/month/day extracted from `anchor` and the hh:mm stitched
+        // back on are interpreted in the same frame — otherwise a
+        // device in a non-Taipei TZ produces start/end instants offset
+        // from what the resolver expects.
+        let cal = SharedTaipei.calendar
         let parts = hhmm.split(separator: ":")
         guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
         var dc = cal.dateComponents([.year, .month, .day], from: anchor)
