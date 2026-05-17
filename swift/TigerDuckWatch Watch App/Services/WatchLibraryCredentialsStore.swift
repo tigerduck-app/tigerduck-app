@@ -69,8 +69,12 @@ final class WatchLibraryCredentialsStore: ObservableObject {
                 return .malformed
             }
         case .wipe:
-            wipeKeychainOnly()
-            clearToken()
+            guard wipeKeychainOnly(), clearToken() else {
+                // Keychain remove can fail if the watch is locked
+                // (whenUnlockedThisDeviceOnly). Don't advance the epoch
+                // so the phone's next republish retries the wipe.
+                return .malformed
+            }
         }
 
         defaults.set(payload.credEpoch, forKey: DefaultsKey.credEpoch)
@@ -93,9 +97,11 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         return (t, ms)
     }
 
-    func clearToken() {
-        WatchKeychain.remove(forKey: Keys.token)
-        WatchKeychain.remove(forKey: Keys.tokenExpiryMs)
+    @discardableResult
+    func clearToken() -> Bool {
+        let t = WatchKeychain.remove(forKey: Keys.token)
+        let e = WatchKeychain.remove(forKey: Keys.tokenExpiryMs)
+        return t && e
     }
 
     // MARK: - Reads with TTL gate
@@ -162,9 +168,11 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         hasCredentials = false
     }
 
-    private func wipeKeychainOnly() {
-        WatchKeychain.remove(forKey: Keys.username)
-        WatchKeychain.remove(forKey: Keys.password)
+    @discardableResult
+    private func wipeKeychainOnly() -> Bool {
+        let u = WatchKeychain.remove(forKey: Keys.username)
+        let p = WatchKeychain.remove(forKey: Keys.password)
+        return u && p
     }
 
     // MARK: - Testing helpers
