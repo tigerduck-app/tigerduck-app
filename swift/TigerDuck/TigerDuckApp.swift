@@ -140,9 +140,18 @@ struct TigerDuckApp: App {
             // Same on-disk-reset → in-memory fallback chain the iOS branch
             // uses.
             let storeURL = modelConfiguration.url
-            for ext in ["", "-wal", "-shm"] {
-                let url = ext.isEmpty ? storeURL : storeURL.appendingPathExtension(String(ext.dropFirst()))
-                try? FileManager.default.removeItem(at: url)
+            // SQLite sidecars use a "-wal" / "-shm" suffix on the full
+            // store filename (e.g. `default.store-wal`), not a
+            // dot-extension — `appendingPathExtension` would target
+            // `default.store.wal`, leaving the real sidecars behind and
+            // letting the retry hit the same stale data.
+            let relatedFiles = [
+                storeURL,
+                URL(fileURLWithPath: storeURL.path + "-wal"),
+                URL(fileURLWithPath: storeURL.path + "-shm"),
+            ]
+            for file in relatedFiles {
+                try? FileManager.default.removeItem(at: file)
             }
             do {
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
