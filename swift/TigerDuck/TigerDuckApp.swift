@@ -138,8 +138,7 @@ struct TigerDuckApp: App {
         } catch {
             AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
             // Same on-disk-reset → in-memory fallback chain the iOS branch
-            // uses, condensed because the Mac stub never raced this path in
-            // production yet.
+            // uses.
             let storeURL = modelConfiguration.url
             for ext in ["", "-wal", "-shm"] {
                 let url = ext.isEmpty ? storeURL : storeURL.appendingPathExtension(String(ext.dropFirst()))
@@ -148,8 +147,14 @@ struct TigerDuckApp: App {
             do {
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
             } catch {
-                let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-                return (try? ModelContainer(for: schema, configurations: [memoryConfig]))!
+                AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
+                do {
+                    let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                    return try ModelContainer(for: schema, configurations: [memoryConfig])
+                } catch {
+                    AppLogger.captureError(error, context: ["phase": "modelContainer.inMemoryFallback"])
+                    fatalError("Could not create ModelContainer (on-disk reset and in-memory both failed): \(error)")
+                }
             }
         }
     }()
