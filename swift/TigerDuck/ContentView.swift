@@ -74,6 +74,17 @@ struct MainTabView: View {
                 evaluateTimezoneAlert()
             }
         }
+        // Mid-foreground transitions matter too: if the user is in the
+        // app when the device crosses a timezone boundary (or the debug
+        // clock flips to a non-Taipei offset), the observer recomputes
+        // immediately and we want to surface the hint right then. Reading
+        // the observable here registers the tracking dependency that
+        // body evaluation alone otherwise misses.
+        .onChange(of: TimezoneObserver.shared.isNonTaipei) { _, isNonTaipei in
+            if isNonTaipei {
+                showTimezoneAlert = true
+            }
+        }
     }
 
     private func evaluateTimezoneAlert() {
