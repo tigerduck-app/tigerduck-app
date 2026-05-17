@@ -34,19 +34,18 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
-            GeometryReader { scrollProxy in
-                ScrollView {
-                    VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                        content()
-                        Spacer(minLength: TigerDuckTheme.Spacing.lg)
-                        actions()
-                    }
-                    .frame(maxWidth: .infinity, minHeight: scrollProxy.size.height)
+            ScrollView {
+                VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    content()
                 }
-                .scrollIndicators(.never)
-                .scrollBounceBehavior(.basedOnSize)
-                .scrollDismissesKeyboard(.interactively)
+                .frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.never)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
+
+            actions()
+                .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.xxl)

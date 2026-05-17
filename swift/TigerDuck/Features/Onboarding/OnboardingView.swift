@@ -51,25 +51,28 @@ struct OnboardingView: View {
             content: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Text(String(localized: "onboarding_welcome_description"))
-                        .font(.footnote)
+                        .font(.callout)
                         .foregroundStyle(Color.textSecondary)
                         .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(12)
+                        .minimumScaleFactor(0.6)
 
                     VStack(spacing: TigerDuckTheme.Spacing.md) {
                         Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
                         Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
                     }
-                    .font(.footnote.weight(.semibold))
+                    .font(.callout.weight(.semibold))
                     .padding(.top, TigerDuckTheme.Spacing.sm)
                 }
             },
             actions: {
-                Button(String(localized: "action_next")) {
-                    withAnimation { currentPage = Page.privacy.rawValue }
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    Button(String(localized: "action_next")) {
+                        withAnimation { currentPage = Page.privacy.rawValue }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
             }
         )
     }
@@ -84,18 +87,19 @@ struct OnboardingView: View {
             accentColor: .blue,
             iconAnimation: .layerFlash,
             content: {
-                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-                    privacyCheckbox(
+                Grid(alignment: .leading, horizontalSpacing: TigerDuckTheme.Spacing.md, verticalSpacing: TigerDuckTheme.Spacing.md) {
+                    privacyCheckboxRow(
                         isOn: $agreedPrivacy,
                         label: String(localized: "onboarding_privacy_policy_label"),
                         destination: AppURLs.privacyPolicy
                     )
-                    privacyCheckbox(
+                    privacyCheckboxRow(
                         isOn: $agreedDeletion,
                         label: String(localized: "onboarding_privacy_delete_account_label"),
                         destination: AppURLs.deleteAccount
                     )
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             },
             actions: {
@@ -117,24 +121,25 @@ struct OnboardingView: View {
         )
     }
 
-    private func privacyCheckbox(
+    private func privacyCheckboxRow(
         isOn: Binding<Bool>, label: String, destination: URL
     ) -> some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
+        GridRow {
             Button {
                 isOn.wrappedValue.toggle()
             } label: {
-                Image(systemName: isOn.wrappedValue ? "checkmark.square.fill" : "square")
-                    .font(.title3)
+                Image(systemName: isOn.wrappedValue ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(isOn.wrappedValue ? Color.accentPrimary : Color.textSecondary)
+                    .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
+            .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
 
             Link(label, destination: destination)
                 .font(.callout)
-            Spacer()
         }
-        .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
     }
 
     // MARK: - Page 2: Apple Watch support
