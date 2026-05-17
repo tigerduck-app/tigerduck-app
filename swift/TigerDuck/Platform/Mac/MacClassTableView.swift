@@ -84,10 +84,21 @@ struct MacClassTableView: View {
 
     private var courses: [SDCourse] {
         _ = cacheRevision
+        // Route through the canonical merge so the deletedCourseNos
+        // tombstone filter and customNames overlay apply here too. The Mac
+        // picker can target a past semester, so we can't call
+        // `CanonicalCourseProvider.currentCourses()` (which is pinned to
+        // the live `CourseSelectionService` semester) — feed the static
+        // `merge` directly with per-semester inputs instead.
         let cached = DataCache.shared.loadCourses(semester: selectedSemester)
         let userAdded = DataCache.shared.loadUserAddedCourses()
             .filter { $0.semester == selectedSemester || $0.semester.isEmpty }
-        return cached + userAdded
+        return CanonicalCourseProvider.merge(
+            primary: cached,
+            userAdded: userAdded,
+            deletedCourseNos: Set(DataCache.shared.loadDeletedCourseNos()),
+            customNames: DataCache.shared.loadCourseCustomNames()
+        )
     }
 
     private var visiblePeriods: [String] {
