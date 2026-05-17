@@ -5,6 +5,7 @@ struct WatchRootView: View {
 
     var body: some View {
         TabView {
+            NavigationStack { LibraryQRView() }
             NavigationStack { NowNextView() }
             NavigationStack { TodayView() }
             NavigationStack { SettingsView() }

@@ -140,4 +140,24 @@ extension ScheduleStore: WCSessionDelegate {
             }
         }
     }
+
+    nonisolated func session(_ session: WCSession,
+                             didReceiveUserInfo userInfo: [String: Any]) {
+        guard let kind = userInfo[WatchWireFormat.LibraryCredentialKey.kind] as? String,
+              kind == WatchWireFormat.UserInfoKind.libraryCredential,
+              let json = userInfo[WatchWireFormat.LibraryCredentialKey.payload] as? String
+        else {
+            WatchAppLogger.wc.notice("ignoring user-info with unknown kind")
+            return
+        }
+        Task { @MainActor in
+            do {
+                let payload = try WatchLibraryCredentialPayload.decode(json: json)
+                let result = WatchLibraryCredentialsStore.shared.apply(payload)
+                WatchAppLogger.wc.notice("credential payload epoch=\(payload.credEpoch) kind=\(payload.kind.rawValue, privacy: .public) result=\(String(describing: result), privacy: .public)")
+            } catch {
+                WatchAppLogger.wc.error("credential payload decode failed: \(error.localizedDescription)")
+            }
+        }
+    }
 }
