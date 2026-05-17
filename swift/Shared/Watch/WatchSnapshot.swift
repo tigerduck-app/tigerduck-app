@@ -9,6 +9,12 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
     public let syncedAtMs: Int64
     public let loggedIn: Bool
     public let languageTag: String?
+    /// User's selected visual style preset on the phone. The watch UI
+    /// reads this to keep its course cards visually aligned with the
+    /// main-app cards (TigerDuck = tinted; Apple = neutral + accent
+    /// stripe). Defaults to `.default` for payloads from older phones
+    /// that don't yet carry the field.
+    public let visualPreset: VisualPreset
     /// JSON-encoded `ClockOverride` payload. Carried as an opaque string
     /// so this struct does not need to know about `ClockOverride`
     /// (`ClockOverride` is not in the `Shared/` target). The watch
@@ -25,6 +31,7 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
         syncedAtMs: Int64,
         loggedIn: Bool,
         languageTag: String?,
+        visualPreset: VisualPreset = .default,
         clockOverrideJSON: String? = nil
     ) {
         self.version = version
@@ -33,6 +40,7 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
         self.syncedAtMs = syncedAtMs
         self.loggedIn = loggedIn
         self.languageTag = languageTag
+        self.visualPreset = visualPreset
         self.clockOverrideJSON = clockOverrideJSON
     }
 

@@ -13,6 +13,12 @@ public enum WatchWireFormat {
         public static let syncedAtMs = "syncedAtMs"
         public static let loggedIn   = "loggedIn"
         public static let languageTag = "languageTag"
+        /// `VisualPreset.rawValue` — controls whether the watch course
+        /// cards render in TigerDuck (course-colour-tinted) or Apple
+        /// (neutral surface with course colour as a small accent stripe)
+        /// styling. Mirrors the phone's `AppState.visualPreset` so the two
+        /// surfaces stay in lockstep.
+        public static let visualPreset = "visualPreset"
         /// JSON-encoded `ClockOverride`. Optional; only present in DEBUG
         /// builds with an active debug time override. Encoded as a JSON
         /// string (rather than a nested dict) to keep watch decoding

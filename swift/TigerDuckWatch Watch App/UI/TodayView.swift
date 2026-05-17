@@ -13,6 +13,10 @@ struct TodayView: View {
             .sorted { $0.startHHmm < $1.startHHmm }
     }
 
+    private var policy: WatchVisualStylePolicy {
+        WatchVisualStylePolicy(preset: store.snapshot?.visualPreset ?? .default)
+    }
+
     var body: some View {
         Group {
             if todaysCourses.isEmpty {
@@ -25,7 +29,7 @@ struct TodayView: View {
                     NavigationLink {
                         CourseDetailView(course: course)
                     } label: {
-                        TodayRow(course: course)
+                        TodayRow(course: course, policy: policy)
                     }
                 }
             }
@@ -36,12 +40,21 @@ struct TodayView: View {
 
 private struct TodayRow: View {
     let course: WatchCourse
+    let policy: WatchVisualStylePolicy
 
     var body: some View {
+        let courseColor = Color(hex: course.colorHex) ?? .accentColor
         HStack(spacing: 8) {
-            Rectangle()
-                .fill(Color(hex: course.colorHex) ?? .accentColor)
-                .frame(width: 3)
+            // The accent stripe only earns its place in the Apple preset,
+            // where the rest of the card is intentionally neutral. The
+            // TigerDuck preset already carries the course identity via
+            // the tinted surface, so we drop the stripe to avoid a
+            // double-strong colour treatment.
+            if !policy.usesTintedCardSurface {
+                Rectangle()
+                    .fill(courseColor)
+                    .frame(width: 3)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(course.name)
                     .font(.headline)
@@ -52,5 +65,8 @@ private struct TodayRow: View {
                     .lineLimit(1)
             }
         }
+        .listRowBackground(
+            policy.cardBackground(for: courseColor)
+        )
     }
 }

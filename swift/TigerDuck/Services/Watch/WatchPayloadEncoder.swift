@@ -13,7 +13,8 @@ enum WatchPayloadEncoder {
         accentHex: String,
         syncedAt: Date,
         loggedIn: Bool,
-        languageTag: String?
+        languageTag: String?,
+        visualPreset: VisualPreset
     ) -> WatchSnapshot {
         // Drop cached courses on logout: SwiftData rows for the previous user
         // may still be present when this push fires, and the watch UI prefers
@@ -30,6 +31,7 @@ enum WatchPayloadEncoder {
             syncedAtMs: syncedAtMs,
             loggedIn: loggedIn,
             languageTag: languageTag,
+            visualPreset: visualPreset,
             clockOverrideJSON: encodedClockOverride()
         )
     }

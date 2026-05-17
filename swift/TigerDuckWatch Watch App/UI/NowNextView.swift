@@ -3,16 +3,20 @@ import SwiftUI
 struct NowNextView: View {
     @EnvironmentObject private var store: ScheduleStore
 
+    private var policy: WatchVisualStylePolicy {
+        WatchVisualStylePolicy(preset: store.snapshot?.visualPreset ?? .default)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
                 if let snapshot = store.snapshot, !snapshot.courses.isEmpty {
                     let result = NextClassResolver.resolve(courses: snapshot.courses, now: AppClock.now())
                     if let current = result.current {
-                        ClassCard(title: String(localized: "watch_now"), course: current)
+                        ClassCard(title: String(localized: "watch_now"), course: current, policy: policy)
                     }
                     if let next = result.next {
-                        ClassCard(title: String(localized: "watch_next"), course: next)
+                        ClassCard(title: String(localized: "watch_next"), course: next, policy: policy)
                     }
                     if result.current == nil && result.next == nil {
                         ContentUnavailableView(
@@ -48,16 +52,22 @@ struct NowNextView: View {
 private struct ClassCard: View {
     let title: String
     let course: WatchCourse
+    let policy: WatchVisualStylePolicy
 
     var body: some View {
+        let courseColor = Color(hex: course.colorHex) ?? .accentColor
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             HStack(spacing: 6) {
-                Rectangle()
-                    .fill(Color(hex: course.colorHex) ?? .accentColor)
-                    .frame(width: 3)
+                // Same rationale as TodayRow: the accent stripe is only
+                // needed when the surface itself is neutral.
+                if !policy.usesTintedCardSurface {
+                    Rectangle()
+                        .fill(courseColor)
+                        .frame(width: 3)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(course.name)
                         .font(.headline)
@@ -74,6 +84,10 @@ private struct ClassCard: View {
                 Spacer(minLength: 0)
             }
         }
-        .padding(.vertical, 6)
+        .padding(8)
+        .background(
+            policy.cardBackground(for: courseColor),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
     }
 }

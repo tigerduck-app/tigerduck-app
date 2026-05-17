@@ -30,7 +30,8 @@ final class WatchPayloadEncoderTests: XCTestCase {
             accentHex: "#FF8800",
             syncedAt: Date(timeIntervalSince1970: 1_747_000_000),
             loggedIn: true,
-            languageTag: "zh-Hant-TW"
+            languageTag: "zh-Hant-TW",
+            visualPreset: .default
         )
         XCTAssertEqual(snap.courses.count, 2)
         XCTAssertTrue(snap.courses.contains { $0.weekday == 1 && $0.periodLabel == "3-4" })
@@ -45,7 +46,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
         )
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000000",
-            syncedAt: Date(), loggedIn: true, languageTag: nil
+            syncedAt: Date(), loggedIn: true, languageTag: nil, visualPreset: .default
         )
         XCTAssertEqual(snap.courses.first?.classroom, "TR-409")
     }
@@ -54,11 +55,11 @@ final class WatchPayloadEncoderTests: XCTestCase {
         let c = makeCourse(no: "X1", schedule: [1: ["3", "4"]])
         let a = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",
-            syncedAt: Date(), loggedIn: true, languageTag: nil
+            syncedAt: Date(), loggedIn: true, languageTag: nil, visualPreset: .default
         )
         let b = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",
-            syncedAt: Date(), loggedIn: true, languageTag: nil
+            syncedAt: Date(), loggedIn: true, languageTag: nil, visualPreset: .default
         )
         XCTAssertEqual(a.courses.first?.id, b.courses.first?.id)
         XCTAssertEqual(a.courses.first?.id, "X1-1-3")
@@ -71,7 +72,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
         let c = makeCourse(schedule: [1: ["3", "4"]])
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",
-            syncedAt: Date(), loggedIn: true, languageTag: nil
+            syncedAt: Date(), loggedIn: true, languageTag: nil, visualPreset: .default
         )
         XCTAssertEqual(snap.courses.first?.startHHmm, "10:20")
         XCTAssertEqual(snap.courses.first?.endHHmm, "12:10")
@@ -81,7 +82,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
         let c = makeCourse(no: "X1")
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#FF8800",
-            syncedAt: Date(), loggedIn: true, languageTag: nil
+            syncedAt: Date(), loggedIn: true, languageTag: nil, visualPreset: .default
         )
         // Encoder must use the user-visible per-course palette, not the
         // global accent — otherwise the watch swatch drifts from the phone.
@@ -99,7 +100,8 @@ final class WatchPayloadEncoderTests: XCTestCase {
             accentHex: "#000",
             syncedAt: Date(),
             loggedIn: true,
-            languageTag: nil
+            languageTag: nil,
+            visualPreset: .default
         )
         XCTAssertEqual(snap.courses.first?.name, "我的別名")
     }
@@ -112,7 +114,7 @@ final class WatchPayloadEncoderTests: XCTestCase {
         let c = makeCourse()
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",
-            syncedAt: Date(), loggedIn: false, languageTag: nil
+            syncedAt: Date(), loggedIn: false, languageTag: nil, visualPreset: .default
         )
         XCTAssertFalse(snap.loggedIn)
         XCTAssertTrue(snap.courses.isEmpty)

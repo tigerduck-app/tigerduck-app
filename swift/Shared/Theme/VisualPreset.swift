@@ -10,7 +10,7 @@ import Foundation
 /// Designed to grow: adding a new preset only requires adding a case here
 /// and extending ``VisualStylePolicy`` — no view is expected to branch on
 /// the raw enum directly.
-enum VisualPreset: String, CaseIterable, Identifiable, Sendable {
+public enum VisualPreset: String, CaseIterable, Identifiable, Sendable, Codable {
     /// TigerDuck's original visual language: saturated course colors on
     /// large surfaces, glass cards throughout, expressive time slider.
     case `default` = "default"
@@ -19,11 +19,11 @@ enum VisualPreset: String, CaseIterable, Identifiable, Sendable {
     /// small accents, restrained time slider, row/metadata-first cards.
     case iosInspired = "iosInspired"
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
     /// Brand name shown in Settings. Not localized: these are platform/
     /// product proper nouns and read the same in every language.
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .default: return "TigerDuck"
         case .iosInspired: return "Apple"

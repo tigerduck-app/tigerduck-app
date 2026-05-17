@@ -52,11 +52,12 @@ struct WatchSyncBridge: View {
 
     /// Stable identity that flips whenever AppState-tracked state changes.
     /// `.task(id:)` fires once on appear (initial push) and again on any
-    /// login / accent / language change. Course-list changes route through
-    /// `AppConstants.dataDidUpdate` instead — `DataCache` writes aren't
-    /// observable, so a digest here would just be a stale snapshot.
+    /// login / accent / language / visual-preset change. Course-list
+    /// changes route through `AppConstants.dataDidUpdate` instead —
+    /// `DataCache` writes aren't observable, so a digest here would just
+    /// be a stale snapshot.
     private var changeToken: String {
-        "\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.isNTUSTLoggedIn)"
+        "\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.isNTUSTLoggedIn)|\(appState.visualPreset.rawValue)"
     }
 
     private func pushNow() {
@@ -68,7 +69,8 @@ struct WatchSyncBridge: View {
             customNames: customNames,
             accentHex: accentHex,
             loggedIn: appState.isNTUSTLoggedIn,
-            languageTag: lang
+            languageTag: lang,
+            visualPreset: appState.visualPreset
         )
     }
 }

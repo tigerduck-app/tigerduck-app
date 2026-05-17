@@ -36,6 +36,7 @@ public enum WatchPayloadCodec {
         if let tag = snapshot.languageTag {
             dict[WatchWireFormat.Key.languageTag] = tag
         }
+        dict[WatchWireFormat.Key.visualPreset] = snapshot.visualPreset.rawValue
         if let json = snapshot.clockOverrideJSON {
             dict[WatchWireFormat.Key.clockOverride] = json
         }
@@ -73,6 +74,8 @@ public enum WatchPayloadCodec {
         let syncedAtMs  = int64(dict[WatchWireFormat.Key.syncedAtMs]) ?? 0
         let loggedIn    = (dict[WatchWireFormat.Key.loggedIn] as? Bool) ?? false
         let languageTag = dict[WatchWireFormat.Key.languageTag] as? String
+        let presetRaw   = dict[WatchWireFormat.Key.visualPreset] as? String
+        let preset      = presetRaw.flatMap(VisualPreset.init(rawValue:)) ?? .default
         let clockJSON   = dict[WatchWireFormat.Key.clockOverride] as? String
 
         return WatchSnapshot(
@@ -82,6 +85,7 @@ public enum WatchPayloadCodec {
             syncedAtMs: syncedAtMs,
             loggedIn: loggedIn,
             languageTag: languageTag,
+            visualPreset: preset,
             clockOverrideJSON: clockJSON
         )
     }

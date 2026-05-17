@@ -55,4 +55,28 @@ final class WatchPayloadCodecTests: XCTestCase {
         XCTAssertEqual(decoded.courses.count, 1)
         XCTAssertEqual(decoded.version, 99)
     }
+
+    func test_visualPreset_roundTrips() throws {
+        let snapshot = WatchSnapshot(
+            courses: [sampleCourse()],
+            accentHex: "#FF8800",
+            syncedAtMs: 1,
+            loggedIn: true,
+            languageTag: nil,
+            visualPreset: .iosInspired
+        )
+        let dict = try WatchPayloadCodec.encode(snapshot)
+        let decoded = try WatchPayloadCodec.decode(dict)
+        XCTAssertEqual(decoded.visualPreset, .iosInspired)
+    }
+
+    func test_decode_missingVisualPreset_defaultsToTigerDuck() throws {
+        var dict = try WatchPayloadCodec.encode(sampleSnapshot())
+        dict.removeValue(forKey: WatchWireFormat.Key.visualPreset)
+        let decoded = try WatchPayloadCodec.decode(dict)
+        // Older phones don't send the field; the watch must keep the
+        // default TigerDuck look rather than drifting to an Apple-style
+        // surface unintentionally.
+        XCTAssertEqual(decoded.visualPreset, .default)
+    }
 }
