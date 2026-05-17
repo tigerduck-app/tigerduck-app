@@ -26,6 +26,7 @@ struct DayEventListView: View {
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.setLocalizedDateFormatFromTemplate("MMMd")
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 

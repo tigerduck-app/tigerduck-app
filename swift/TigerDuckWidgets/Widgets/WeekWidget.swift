@@ -33,7 +33,9 @@ struct WeekProvider: TimelineProvider {
         // independent, so a single entry + .after(midnight) policy
         // is enough.
         let snap = store.readSnapshot() ?? Self.emptySnapshot
-        let appMidnight = Calendar(identifier: .gregorian).startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        // Pin to Taipei so the refresh fires at Taiwan's midnight — that's
+        // when the "today" underline rolls over in the rendered grid.
+        let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps
         // to. Identity when no debug override is active.

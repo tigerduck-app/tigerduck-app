@@ -25,7 +25,10 @@ struct LibraryShortcutProvider: TimelineProvider {
         // scheduling metadata and a fake-future stamp would defer rendering.
         let snapshot = store.readSnapshot()
         let entry = LibraryShortcutEntry(date: Date(), snapshot: snapshot)
-        let appMidnight = Calendar(identifier: .gregorian).startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        // Pin to Taipei — even with no time-of-day content here, day
+        // rollover is computed in the same frame the rest of the widget
+        // surface uses, so the refresh cadence stays consistent.
+        let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
         // WidgetKit interprets `.after(...)` against real wall-clock time,
         // so translate the fake-clock midnight to the real instant it maps
         // to. Identity when no debug override is active.

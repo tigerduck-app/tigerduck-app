@@ -223,7 +223,11 @@ extension SDCourse {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = .current
+        // Pin to Taipei so a traveler marking "today" as skipped still
+        // hits the same calendar day the widget/timeline derivation
+        // computes — both sides must agree on what `yyyy-MM-dd` resolves
+        // to or the skip silently misses.
+        f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()

@@ -30,6 +30,11 @@ struct MainTabView: View {
     }
 
     var body: some View {
+        // Wire `TimezoneObserver.shared.isNonTaipei` into MainTabView's
+        // dependency graph so SwiftUI re-evaluates the banner when the
+        // system posts NSSystemTimeZoneDidChange or the debug clock flips.
+        let isNonTaipei = TimezoneObserver.shared.isNonTaipei
+
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { feature in
                 Tab(feature.tabBarDisplayName, systemImage: feature.iconName, value: feature) {
@@ -39,6 +44,11 @@ struct MainTabView: View {
 
             Tab(AppFeature.more.tabBarDisplayName, systemImage: AppFeature.more.iconName, value: .more) {
                 MoreView()
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if isNonTaipei {
+                NonTaipeiTimezoneBanner()
             }
         }
         .onChange(of: visibleTabs) { _, newTabs in
@@ -91,6 +101,22 @@ struct MainTabView: View {
         case .englishVocab: PlaceholderFeatureView(feature: feature)
         default: PlaceholderFeatureView(feature: feature)
         }
+    }
+}
+
+/// Yellow hint shown above the tab bar while the device is not in Taipei
+/// time. Mirrors the Android implementation's bottom-bar Column injection
+/// and uses the same `app_non_taipei_timezone_hint` string.
+struct NonTaipeiTimezoneBanner: View {
+    var body: some View {
+        Text(String(localized: "app_non_taipei_timezone_hint"))
+            .font(.footnote)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(Color(red: 0x5C / 255.0, green: 0x4A / 255.0, blue: 0x00 / 255.0))
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(red: 1.0, green: 0xF3 / 255.0, blue: 0xB0 / 255.0))
     }
 }
 

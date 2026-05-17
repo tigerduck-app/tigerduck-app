@@ -9,6 +9,7 @@ struct TodayCourseCarousel: View {
     private static let periodTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 
@@ -83,7 +84,7 @@ struct TodayCourseCarousel: View {
     private func courseProgress(_ course: SDCourse) -> Double? {
         guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
         let now = AppClock.now()
-        let cal = Calendar.current
+        let cal = AppConstants.taipeiCalendar
         let formatter = Self.periodTimeFormatter
 
         guard let firstPeriod = periods.first,

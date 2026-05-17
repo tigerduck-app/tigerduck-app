@@ -84,7 +84,7 @@ enum WidgetTimelineDerivation {
         }
 
         // 3. Tomorrow first: scan ahead up to 7 weekdays
-        let calendar = Calendar(identifier: .gregorian)
+        let calendar = WidgetTaipei.calendar
         for offset in 1...7 {
             let target = ((weekday - 1 + offset) % 7) + 1
             let targetDate = calendar.date(byAdding: .day, value: offset, to: date) ?? date
@@ -112,8 +112,11 @@ enum WidgetTimelineDerivation {
         return .noMoreClasses
     }
 
-    /// `yyyy-MM-dd` in the device's time zone — must mirror `SDCourse.isoFormatter`
-    /// so a `Set<String>` lookup against `SnapshotCourse.skippedDates` matches.
+    /// `yyyy-MM-dd` in Asia/Taipei — must mirror `SDCourse.isoFormatter`
+    /// so a `Set<String>` lookup against `SnapshotCourse.skippedDates`
+    /// matches. Both sides pin to Taipei so a student traveling abroad
+    /// still sees their skipped-class state apply on the correct
+    /// Taiwan calendar day.
     static func dateKey(for date: Date) -> String {
         return Self.dateKeyFormatter.string(from: date)
     }
@@ -122,23 +125,25 @@ enum WidgetTimelineDerivation {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = .current
+        f.timeZone = WidgetTaipei.timeZone
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()
 
     // MARK: - Helpers
 
-    /// Returns 1=Mon … 7=Sun. Pinned to the gregorian calendar so device
-    /// locale calendars (e.g. ROC, Buddhist) don't shift weekday math
-    /// against NTUST's gregorian-based schedule.
+    /// Returns 1=Mon … 7=Sun. Pinned to gregorian + Asia/Taipei so neither
+    /// device locale calendars (ROC, Buddhist) nor the device timezone
+    /// shift weekday math against NTUST's gregorian-Taipei schedule. A
+    /// traveler in London at 22:00 Saturday is on Sunday 06:00 in Taipei,
+    /// and the widget must agree.
     static func weekdayFor(_ date: Date) -> Int {
-        let raw = Calendar(identifier: .gregorian).component(.weekday, from: date)
+        let raw = WidgetTaipei.calendar.component(.weekday, from: date)
         return raw == 1 ? 7 : raw - 1
     }
 
     static func minuteOfDayFor(_ date: Date) -> Int {
-        let cal = Calendar(identifier: .gregorian)
+        let cal = WidgetTaipei.calendar
         let h = cal.component(.hour, from: date)
         let m = cal.component(.minute, from: date)
         return h * 60 + m
@@ -208,7 +213,7 @@ extension WidgetTimelineDerivation {
     static func entryDates(
         snapshot: WidgetSnapshot,
         after now: Date,
-        calendar: Calendar = Calendar(identifier: .gregorian)
+        calendar: Calendar = WidgetTaipei.calendar
     ) -> [Date] {
         var result: Set<Date> = [now]
         let weekday = weekdayFor(now)
