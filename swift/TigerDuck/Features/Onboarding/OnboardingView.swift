@@ -356,8 +356,15 @@ struct OnboardingView: View {
         notificationRequestInFlight = true
         defer { notificationRequestInFlight = false }
         let center = UNUserNotificationCenter.current()
-        _ = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshNotificationStatus()
+        // Onboarding is the user's first opt-in to notifications; flip the
+        // `pushServerEnabled` flag so PushCoordinator registers for remote
+        // notifications and the server sync runs. Without this the user
+        // would have to find Settings → Notifications later to actually
+        // start receiving server-backed pushes.
+        guard granted else { return }
+        appState.enablePushServer()
     }
 
     private func refreshNotificationStatus() async {
