@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 
+#if os(iOS)
+
 @main
 struct TigerDuckApp: App {
     @State private var appState = AppState()
@@ -114,3 +116,31 @@ struct TigerDuckApp: App {
         .modelContainer(sharedModelContainer)
     }
 }
+
+#elseif os(macOS)
+
+// Stub Mac entry point. Native macOS port is in progress on feat/macos-native:
+// the iOS app sources are excluded from the macOS build via
+// EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*] so that the Mac destination compiles
+// while the per-feature port lands incrementally.
+@main
+struct TigerDuckApp: App {
+    var body: some Scene {
+        WindowGroup {
+            VStack(spacing: 16) {
+                Text("🦆")
+                    .font(.system(size: 64))
+                Text("TigerDuck for Mac")
+                    .font(.largeTitle)
+                    .bold()
+                Text("Native macOS support is in active development.")
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minWidth: 480, minHeight: 280)
+            .padding()
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+#endif
