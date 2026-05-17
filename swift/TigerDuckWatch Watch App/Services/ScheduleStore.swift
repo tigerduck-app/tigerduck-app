@@ -143,18 +143,31 @@ extension ScheduleStore: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession,
                              didReceiveUserInfo userInfo: [String: Any]) {
-        guard let kind = userInfo[WatchWireFormat.LibraryCredentialKey.kind] as? String,
+        Self.routeCredentialDict(userInfo, source: "userInfo")
+    }
+
+    /// `sendMessage`-delivered credential payloads land here. The
+    /// broadcaster prefers `sendMessage` when reachable because
+    /// `transferUserInfo` is unreliable on paired simulators.
+    nonisolated func session(_ session: WCSession,
+                             didReceiveMessage message: [String: Any]) {
+        Self.routeCredentialDict(message, source: "message")
+    }
+
+    /// Both transports carry the same envelope shape. Dedup the routing.
+    nonisolated private static func routeCredentialDict(_ dict: [String: Any], source: String) {
+        guard let kind = dict[WatchWireFormat.LibraryCredentialKey.kind] as? String,
               kind == WatchWireFormat.UserInfoKind.libraryCredential,
-              let json = userInfo[WatchWireFormat.LibraryCredentialKey.payload] as? String
+              let json = dict[WatchWireFormat.LibraryCredentialKey.payload] as? String
         else {
-            WatchAppLogger.wc.notice("ignoring user-info with unknown kind")
+            WatchAppLogger.wc.notice("ignoring \(source, privacy: .public) with unknown kind")
             return
         }
         Task { @MainActor in
             do {
                 let payload = try WatchLibraryCredentialPayload.decode(json: json)
                 let result = WatchLibraryCredentialsStore.shared.apply(payload)
-                WatchAppLogger.wc.notice("credential payload epoch=\(payload.credEpoch) kind=\(payload.kind.rawValue, privacy: .public) result=\(String(describing: result), privacy: .public)")
+                WatchAppLogger.wc.notice("credential payload from=\(source, privacy: .public) epoch=\(payload.credEpoch) kind=\(payload.kind.rawValue, privacy: .public) result=\(String(describing: result), privacy: .public)")
             } catch {
                 WatchAppLogger.wc.error("credential payload decode failed: \(error.localizedDescription)")
             }

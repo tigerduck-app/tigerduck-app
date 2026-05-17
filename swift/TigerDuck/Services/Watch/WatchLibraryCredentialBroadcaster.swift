@@ -107,6 +107,10 @@ final class WatchLibraryCredentialBroadcaster {
     }
 
     private func send(_ payload: WatchLibraryCredentialPayload) {
+        let wc = WCSession.default
+        logger.notice(
+            "send pre-flight activation=\(wc.activationState.rawValue) paired=\(wc.isPaired) installed=\(wc.isWatchAppInstalled) reachable=\(wc.isReachable)"
+        )
         if !session.isPaired || !session.isWatchAppInstalled {
             logger.notice("watch not present; transferUserInfo will queue for delivery anyway")
         }
@@ -121,7 +125,33 @@ final class WatchLibraryCredentialBroadcaster {
             WatchWireFormat.LibraryCredentialKey.kind: WatchWireFormat.UserInfoKind.libraryCredential,
             WatchWireFormat.LibraryCredentialKey.payload: json,
         ]
-        _ = session.transferUserInfo(userInfo)
-        logger.notice("broadcast \(payload.kind.rawValue, privacy: .public) epoch=\(payload.credEpoch)")
+        // Prefer sendMessage when reachable: synchronous delivery and
+        // works reliably on paired simulators where transferUserInfo can
+        // sit in the queue indefinitely. On failure (watch went
+        // unreachable mid-flight, decode error on the other side, etc.)
+        // fall through to transferUserInfo for durable redelivery —
+        // duplicates are idempotent on the watch via the epoch check.
+        if session.isReachable {
+            session.sendMessage(userInfo, replyHandler: nil) { [weak self] error in
+                // sendMessage's error handler fires on a background queue;
+                // hop to MainActor for the fallback so we don't cross
+                // self's actor isolation.
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.logger.error(
+                        "sendMessage failed: \(error.localizedDescription); falling back to transferUserInfo"
+                    )
+                    _ = self.session.transferUserInfo(userInfo)
+                }
+            }
+            logger.notice(
+                "broadcast \(payload.kind.rawValue, privacy: .public) epoch=\(payload.credEpoch) via=sendMessage"
+            )
+            return
+        }
+        let transfer = session.transferUserInfo(userInfo)
+        logger.notice(
+            "broadcast \(payload.kind.rawValue, privacy: .public) epoch=\(payload.credEpoch) via=transferUserInfo transferring=\(transfer.isTransferring)"
+        )
     }
 }
