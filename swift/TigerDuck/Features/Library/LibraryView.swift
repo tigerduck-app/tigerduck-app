@@ -60,6 +60,7 @@ struct LibraryView: View {
 
     // MARK: - Brightness
 
+    #if os(iOS)
     private func boostBrightness() {
         if savedBrightness == nil {
             savedBrightness = UIScreen.main.brightness
@@ -72,6 +73,10 @@ struct LibraryView: View {
         UIScreen.main.brightness = saved
         savedBrightness = nil
     }
+    #else
+    private func boostBrightness() {}
+    private func restoreBrightness() {}
+    #endif
 
     /// iPad rotates freely, so anchor the QR to vertical center to keep its
     /// on-screen position stable across orientation changes. iPhone is
