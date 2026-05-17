@@ -62,9 +62,14 @@ final class WidgetSnapshotWriter {
                 courses: courses,
                 customNames: customNames,
                 customColors: customColors,
-                isLoggedIn: appState.isNTUSTLoggedIn,
+                // Gate widget UI on stored credentials, not live session
+                // state: `isNTUSTLoggedIn` flips false the moment session
+                // cookies TTL, which would falsely flash the "Please sign in"
+                // empty state on the widget even though the next sync will
+                // silently re-authenticate. Matches `ntustProtectedAccessState`.
+                isLoggedIn: appState.authService.hasStoredCredentials,
                 accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: appState.accentColorHex)),
-                now: Date()
+                now: AppClock.now()
             )
         )
         store.writeSnapshot(snapshot)

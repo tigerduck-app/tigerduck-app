@@ -13,7 +13,8 @@ enum WatchPayloadEncoder {
         accentHex: String,
         syncedAt: Date,
         loggedIn: Bool,
-        languageTag: String?
+        languageTag: String?,
+        visualPreset: VisualPreset
     ) -> WatchSnapshot {
         // Drop cached courses on logout: SwiftData rows for the previous user
         // may still be present when this push fires, and the watch UI prefers
@@ -29,8 +30,24 @@ enum WatchPayloadEncoder {
             accentHex: accentHex,
             syncedAtMs: syncedAtMs,
             loggedIn: loggedIn,
-            languageTag: languageTag
+            languageTag: languageTag,
+            visualPreset: visualPreset,
+            clockOverrideJSON: encodedClockOverride()
         )
+    }
+
+    /// Serialises the current debug time override (if any) for transport
+    /// to the watch. `#if DEBUG`-gated: Release builds never emit the
+    /// field, so the watch receives `nil` and stays on real wall time.
+    private static func encodedClockOverride() -> String? {
+        #if DEBUG
+        guard let override = AppClock.currentOverride() else { return nil }
+        guard let data = try? JSONEncoder().encode(override),
+              let json = String(data: data, encoding: .utf8) else { return nil }
+        return json
+        #else
+        return nil
+        #endif
     }
 
     private static func flatten(_ course: SDCourse, customNames: [String: String]) -> [WatchCourse] {

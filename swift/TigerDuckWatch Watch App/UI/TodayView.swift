@@ -6,42 +6,62 @@ struct TodayView: View {
     private var todaysCourses: [WatchCourse] {
         guard let snapshot = store.snapshot else { return [] }
         let cal = Calendar(identifier: .iso8601)
-        let raw = cal.component(.weekday, from: Date())
+        let raw = cal.component(.weekday, from: AppClock.now())
         let iso = ((raw + 5) % 7) + 1
         return snapshot.courses
             .filter { $0.weekday == iso }
             .sorted { $0.startHHmm < $1.startHHmm }
     }
 
+    private var policy: WatchVisualStylePolicy {
+        WatchVisualStylePolicy(preset: store.snapshot?.visualPreset ?? .default)
+    }
+
     var body: some View {
-        Group {
-            if todaysCourses.isEmpty {
-                ContentUnavailableView(
-                    String(localized: "watch_no_upcoming_classes"),
-                    systemImage: "calendar"
-                )
-            } else {
-                List(todaysCourses) { course in
-                    NavigationLink {
-                        CourseDetailView(course: course)
-                    } label: {
-                        TodayRow(course: course)
+        // `todaysCourses` reads `AppClock.now()` for weekday derivation,
+        // so the view needs a periodic rebuild to advance past midnight
+        // under real or ticking-fake time. Snapshot pushes already kick
+        // a rebuild via `@EnvironmentObject`; this handles the
+        // no-snapshot-change case. 60 s is plenty for daily granularity.
+        TimelineView(.periodic(from: .now, by: 60)) { _ in
+            Group {
+                if todaysCourses.isEmpty {
+                    ContentUnavailableView(
+                        String(localized: "watch_no_upcoming_classes"),
+                        systemImage: "calendar"
+                    )
+                } else {
+                    List(todaysCourses) { course in
+                        NavigationLink {
+                            CourseDetailView(course: course)
+                        } label: {
+                            TodayRow(course: course, policy: policy)
+                        }
                     }
                 }
             }
+            .navigationTitle(String(localized: "watch_today"))
         }
-        .navigationTitle(String(localized: "watch_today"))
     }
 }
 
 private struct TodayRow: View {
     let course: WatchCourse
+    let policy: WatchVisualStylePolicy
 
     var body: some View {
+        let courseColor = Color(hex: course.colorHex) ?? .accentColor
         HStack(spacing: 8) {
-            Rectangle()
-                .fill(Color(hex: course.colorHex) ?? .accentColor)
-                .frame(width: 3)
+            // The accent stripe only earns its place in the Apple preset,
+            // where the rest of the card is intentionally neutral. The
+            // TigerDuck preset already carries the course identity via
+            // the tinted surface, so we drop the stripe to avoid a
+            // double-strong colour treatment.
+            if !policy.usesTintedCardSurface {
+                Rectangle()
+                    .fill(courseColor)
+                    .frame(width: 3)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(course.name)
                     .font(.headline)
@@ -52,5 +72,8 @@ private struct TodayRow: View {
                     .lineLimit(1)
             }
         }
+        .listRowBackground(
+            policy.cardBackground(for: courseColor)
+        )
     }
 }

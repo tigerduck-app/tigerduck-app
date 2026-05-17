@@ -56,10 +56,14 @@ struct MainTabView: View {
         guard let destination = appState.pendingWidgetDestination else { return }
         switch destination {
         case .library:
-            // Library has a feature-disabled flag; if disabled, fall through
-            // to the existing in-app gating UI rather than forcing the tab.
+            // Library has a feature-disabled flag; if disabled, send the user
+            // to the More tab and raise an "enable first" alert there, mirroring
+            // the Android library-shortcut behavior.
             if appState.libraryFeatureEnabled {
                 selectedTab = .library
+            } else {
+                selectedTab = .more
+                appState.pendingLibraryEnablePrompt = true
             }
         case .classTable:
             selectedTab = .classTable

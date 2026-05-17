@@ -25,8 +25,11 @@ struct UpcomingAssignmentsView: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            assignmentList(for: context.date)
+        // TimelineView fires on real wall time (it can't see AppClock); the
+        // body reads `AppClock.now()` so a debug time override flows through
+        // to the past/future partition and the "due in …" labels.
+        TimelineView(.periodic(from: .now, by: 60)) { _ in
+            assignmentList(for: AppClock.now())
         }
     }
 

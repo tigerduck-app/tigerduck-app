@@ -213,7 +213,7 @@ final class SDCourse: Identifiable {
 extension Array where Element == SDCourse {
     /// Courses that have a schedule entry for today's weekday.
     func coursesForToday() -> [SDCourse] {
-        let today = Date().scheduleWeekday
+        let today = AppClock.now().scheduleWeekday
         return filter { $0.schedule[today] != nil }
     }
 }

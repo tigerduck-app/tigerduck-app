@@ -109,6 +109,7 @@ struct LoginSheet: View {
 
     private func submitIfReady() {
         guard !username.isEmpty, !password.isEmpty, !isLoggingIn else { return }
+        focusedField = nil
         onLogin(username, password)
     }
 }

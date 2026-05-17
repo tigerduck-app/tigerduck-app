@@ -13,6 +13,11 @@ struct TodayCourseCarousel: View {
     }()
 
     var body: some View {
+        // The body and its helpers (`today`, `courseProgress`, etc.) read
+        // `AppClock.now()`, which Observation can't track. Pulling
+        // `AppClockState.shared.version` here wires the view's dependency
+        // graph to debug time-override flips.
+        let _ = AppClockState.shared.version
         if courses.isEmpty {
             noCourseView
         } else {
@@ -52,7 +57,7 @@ struct TodayCourseCarousel: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    private var today: Int { Date().scheduleWeekday }
+    private var today: Int { AppClock.now().scheduleWeekday }
 
     private var sortedCourses: [SDCourse] {
         let t = today
@@ -77,7 +82,7 @@ struct TodayCourseCarousel: View {
 
     private func courseProgress(_ course: SDCourse) -> Double? {
         guard let periods = course.schedule[today]?.sortedByPeriodOrder() else { return nil }
-        let now = Date()
+        let now = AppClock.now()
         let cal = Calendar.current
         let formatter = Self.periodTimeFormatter
 
@@ -105,7 +110,7 @@ private struct TodayCourseCard: View {
     var progress: Double? = nil
 
     private var periods: String {
-        course.timeRange(for: Date().scheduleWeekday)?.replacingOccurrences(of: " - ", with: "-") ?? ""
+        course.timeRange(for: AppClock.now().scheduleWeekday)?.replacingOccurrences(of: " - ", with: "-") ?? ""
     }
 
     private var isActive: Bool {
@@ -131,7 +136,7 @@ private struct TodayCourseCard: View {
                 }
             }
 
-            Text(course.classroom(for: Date().scheduleWeekday))
+            Text(course.classroom(for: AppClock.now().scheduleWeekday))
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
 

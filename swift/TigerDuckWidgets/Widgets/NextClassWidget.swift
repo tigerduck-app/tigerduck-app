@@ -19,19 +19,24 @@ struct NextClassProvider: TimelineProvider {
         completion(NextClassEntry(
             date: Date(),
             snapshot: snap,
-            derived: WidgetTimelineDerivation.derive(snapshot: snap, at: Date())
+            derived: WidgetTimelineDerivation.derive(snapshot: snap, at: AppClock.now())
         ))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<NextClassEntry>) -> Void) {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
-        let now = Date()
+        let now = AppClock.now()
         let dates = WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
-        let entries = dates.map { date in
+        // `entryDates` are app-clock boundaries (possibly fake), but
+        // WidgetKit schedules entries on the real wall clock. Derive
+        // the displayed state from the app-clock date, then stamp the
+        // entry with the real-time equivalent so the timeline actually
+        // advances under a fake-clock override.
+        let entries = dates.map { appDate in
             NextClassEntry(
-                date: date,
+                date: AppClock.realTime(forApp: appDate),
                 snapshot: snap,
-                derived: WidgetTimelineDerivation.derive(snapshot: snap, at: date)
+                derived: WidgetTimelineDerivation.derive(snapshot: snap, at: appDate)
             )
         }
         completion(Timeline(entries: entries, policy: .atEnd))

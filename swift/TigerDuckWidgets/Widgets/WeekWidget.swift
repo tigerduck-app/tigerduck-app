@@ -2,7 +2,13 @@ import WidgetKit
 import SwiftUI
 
 struct WeekEntry: TimelineEntry {
+    /// Real wall-clock instant WidgetKit should treat this entry as current.
     let date: Date
+    /// App-clock "now" used to drive the rendered grid state (e.g. which
+    /// weekday is underlined). Diverges from `date` only when the debug
+    /// clock is overridden — kept separate so WidgetKit's scheduling stays
+    /// on the real clock while the UI follows the fake one.
+    let appNow: Date
     let snapshot: WidgetSnapshot
 }
 
@@ -10,11 +16,15 @@ struct WeekProvider: TimelineProvider {
     private let store = WidgetSnapshotStore()
 
     func placeholder(in context: Context) -> WeekEntry {
-        WeekEntry(date: Date(), snapshot: Self.emptySnapshot)
+        WeekEntry(date: Date(), appNow: AppClock.now(), snapshot: Self.emptySnapshot)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WeekEntry) -> Void) {
-        completion(WeekEntry(date: Date(), snapshot: store.readSnapshot() ?? Self.emptySnapshot))
+        completion(WeekEntry(
+            date: Date(),
+            appNow: AppClock.now(),
+            snapshot: store.readSnapshot() ?? Self.emptySnapshot
+        ))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WeekEntry>) -> Void) {
@@ -23,8 +33,15 @@ struct WeekProvider: TimelineProvider {
         // independent, so a single entry + .after(midnight) policy
         // is enough.
         let snap = store.readSnapshot() ?? Self.emptySnapshot
-        let midnight = Calendar(identifier: .gregorian).startOfDay(for: Date().addingTimeInterval(86_400))
-        completion(Timeline(entries: [WeekEntry(date: Date(), snapshot: snap)], policy: .after(midnight)))
+        let appMidnight = Calendar(identifier: .gregorian).startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        // WidgetKit interprets `.after(...)` against real wall-clock time,
+        // so translate the fake-clock midnight to the real instant it maps
+        // to. Identity when no debug override is active.
+        let midnight = AppClock.realTime(forApp: appMidnight)
+        completion(Timeline(
+            entries: [WeekEntry(date: Date(), appNow: AppClock.now(), snapshot: snap)],
+            policy: .after(midnight)
+        ))
     }
 
     private static let emptySnapshot = WidgetSnapshot(
@@ -40,7 +57,7 @@ struct WeekWidgetView: View {
 
     var body: some View {
         let palette = WidgetPalette.resolve(snapshot: entry.snapshot, colorScheme: colorScheme)
-        WeekGridView(snapshot: entry.snapshot, now: entry.date, palette: palette)
+        WeekGridView(snapshot: entry.snapshot, now: entry.appNow, palette: palette)
             .padding(3)
             .containerBackground(palette.background, for: .widget)
             .widgetURL(URL(string: "tigerduck://classtable"))
@@ -56,6 +73,10 @@ struct WeekWidget: Widget {
         }
         .configurationDisplayName(String(localized: "widget_week_light_label"))
         .description(String(localized: "widget_week_light_desc"))
+        // iPad gets the larger family; iPhone-only families are filtered
+        // automatically by WidgetKit. The grid view clamps its own minimum
+        // cell height so the edit-mode resize preview never collapses to
+        // an invisible state when iOS asks for an intermediate size.
         .supportedFamilies([.systemLarge, .systemExtraLarge])
         .contentMarginsDisabled()
     }

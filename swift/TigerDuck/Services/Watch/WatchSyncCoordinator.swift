@@ -27,6 +27,7 @@ final class WatchSyncCoordinator: NSObject {
         let accentHex: String
         let loggedIn: Bool
         let languageTag: String?
+        let visualPreset: VisualPreset
     }
 
     init(session: WatchSessionPushing = WCSession.default) {
@@ -47,11 +48,13 @@ final class WatchSyncCoordinator: NSObject {
         customNames: [String: String],
         accentHex: String,
         loggedIn: Bool,
-        languageTag: String?
+        languageTag: String?,
+        visualPreset: VisualPreset
     ) {
         let snapshot = WatchPayloadEncoder.encode(
             courses: courses, customNames: customNames, accentHex: accentHex,
-            syncedAt: Date(), loggedIn: loggedIn, languageTag: languageTag
+            syncedAt: Date(), loggedIn: loggedIn, languageTag: languageTag,
+            visualPreset: visualPreset
         )
         deliver(snapshot)
     }
@@ -86,11 +89,13 @@ final class WatchSyncCoordinator: NSObject {
         customNames: [String: String],
         accentHex: String,
         loggedIn: Bool,
-        languageTag: String?
+        languageTag: String?,
+        visualPreset: VisualPreset
     ) {
         pendingPayload = PendingPayload(
             courses: courses, customNames: customNames,
-            accentHex: accentHex, loggedIn: loggedIn, languageTag: languageTag
+            accentHex: accentHex, loggedIn: loggedIn, languageTag: languageTag,
+            visualPreset: visualPreset
         )
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
@@ -98,7 +103,8 @@ final class WatchSyncCoordinator: NSObject {
             guard !Task.isCancelled, let self, let p = self.pendingPayload else { return }
             self.pendingPayload = nil
             self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
-                      loggedIn: p.loggedIn, languageTag: p.languageTag)
+                      loggedIn: p.loggedIn, languageTag: p.languageTag,
+                      visualPreset: p.visualPreset)
         }
     }
 }

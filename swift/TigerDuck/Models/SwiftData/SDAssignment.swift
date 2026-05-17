@@ -48,14 +48,14 @@ final class SDAssignment {
     }
 
     var isOverdue: Bool {
-        !isCompleted && dueDate < Date()
+        !isCompleted && dueDate < AppClock.now()
     }
 
     /// Resolves the presentation status against a given reference time.
     /// Centralising this rule here keeps the UI, tests, and Live Activity
     /// views consistent; they all read the same enum instead of each
     /// re-deriving rules from raw dates.
-    func status(now: Date = Date()) -> AssignmentStatus {
+    func status(now: Date = AppClock.now()) -> AssignmentStatus {
         if isCompleted {
             if let submittedAt, submittedAt > dueDate {
                 return .submittedLate

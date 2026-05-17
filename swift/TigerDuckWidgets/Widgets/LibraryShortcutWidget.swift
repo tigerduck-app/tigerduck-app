@@ -20,10 +20,16 @@ struct LibraryShortcutProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<LibraryShortcutEntry>) -> Void) {
         // Library Shortcut is static — single entry, refresh at midnight only
         // so the date used by `containerBackground` rolls over for any future
-        // theme-tied logic. No dependency on snapshot freshness.
+        // theme-tied logic. No dependency on snapshot freshness. The entry
+        // date itself stays on real wall time — WidgetKit treats it as
+        // scheduling metadata and a fake-future stamp would defer rendering.
         let snapshot = store.readSnapshot()
         let entry = LibraryShortcutEntry(date: Date(), snapshot: snapshot)
-        let midnight = Calendar(identifier: .gregorian).startOfDay(for: Date().addingTimeInterval(86_400))
+        let appMidnight = Calendar(identifier: .gregorian).startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        // WidgetKit interprets `.after(...)` against real wall-clock time,
+        // so translate the fake-clock midnight to the real instant it maps
+        // to. Identity when no debug override is active.
+        let midnight = AppClock.realTime(forApp: appMidnight)
         completion(Timeline(entries: [entry], policy: .after(midnight)))
     }
 }

@@ -96,6 +96,7 @@ struct OnboardingView: View {
                     .foregroundStyle(Color.textSecondary)
 
                     Button {
+                        focusedField = nil
                         let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
                         let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
                         Task {

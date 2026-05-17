@@ -1,17 +1,23 @@
 import SwiftUI
-import SwiftData
 
 /// Hidden view that observes the phone's user-facing state (courses, accent
 /// color, language, login flag) and pushes a fresh `WatchSnapshot` whenever
-/// any of them changes. Lives in the view tree so SwiftData `@Query` and the
-/// `@Observable` `AppState` reactivity drive pushes for free — TigerDuckApp
-/// hands us the activated `WatchSyncCoordinator` via init.
+/// any of them changes. Lives in the view tree so the `@Observable` `AppState`
+/// reactivity drives pushes for free — TigerDuckApp hands us the activated
+/// `WatchSyncCoordinator` via init.
+///
+/// Courses are read through `CanonicalCourseProvider` rather than a
+/// SwiftData `@Query`: this app caches the course list in `DataCache` files
+/// and never inserts `SDCourse` rows into the model container, so a `@Query`
+/// here would always return `[]`. Course-list changes are surfaced via
+/// `AppConstants.dataDidUpdate` (posted by `AppState.backgroundSync` after
+/// `DataCache.saveCourses`) — the bridge re-reads on that notification.
 struct WatchSyncBridge: View {
 
     @Environment(AppState.self) private var appState
-    @Query private var courses: [SDCourse]
 
     let coordinator: WatchSyncCoordinator
+    private let courseProvider = CanonicalCourseProvider()
 
     var body: some View {
         Color.clear
@@ -32,44 +38,44 @@ struct WatchSyncBridge: View {
             ) { _ in
                 pushNow()
             }
+            #if DEBUG
+            // Debug time override changes don't touch courses/AppState, so
+            // `changeToken` won't re-fire. Push explicitly so the watch
+            // gets the new override (or the cleared state) immediately.
+            .onReceive(
+                NotificationCenter.default.publisher(for: DebugClockController.didChangeNotification)
+            ) { _ in
+                pushNow()
+            }
+            #endif
     }
 
-    /// Combined value whose stable identity flips whenever any tracked
-    /// piece of state changes. `.task(id:)` re-runs on change, debouncing
-    /// is handled inside the coordinator. Course rows must include the
-    /// user-visible fields (name/alias/instructor/schedule/classroom map)
-    /// so that an in-place edit reruns the push even when the array length
-    /// is unchanged.
+    /// Stable identity that flips whenever AppState-tracked state changes.
+    /// `.task(id:)` fires once on appear (initial push) and again on any
+    /// login / accent / language / visual-preset change. Course-list
+    /// changes route through `AppConstants.dataDidUpdate` instead —
+    /// `DataCache` writes aren't observable, so a digest here would just
+    /// be a stale snapshot.
+    ///
+    /// Gate on `hasStoredCredentials` rather than `isNTUSTLoggedIn` so a
+    /// transient cookie-TTL state (silent re-auth in progress) doesn't
+    /// flip the token and push an empty logged-out payload to the watch.
+    /// Mirrors the widget snapshot writer.
     private var changeToken: String {
-        let courseDigest = courses
-            .map { c in
-                [
-                    c.courseNo,
-                    c.courseName,
-                    c.customName ?? "",
-                    c.instructor,
-                    c.scheduleJSON,
-                    c.classroomMapJSON,
-                ].joined(separator: "·")
-            }
-            .sorted()
-            .joined(separator: ";")
-        return "\(courseDigest)|\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.isNTUSTLoggedIn)"
+        "\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.authService.hasStoredCredentials)|\(appState.visualPreset.rawValue)"
     }
 
     private func pushNow() {
         let accentHex = String(format: "#%06X", UInt(bitPattern: Int(appState.accentColorHex)) & 0xFFFFFF)
         let lang = appState.appLanguage == LanguageManager.system ? nil : appState.appLanguage
-        // `customName` on SDCourse is `@Transient` and not populated for every
-        // instance returned by `@Query`, so load the canonical alias overlay
-        // here and pass it through — matches the iOS widget snapshot path.
         let customNames = DataCache.shared.loadCourseCustomNames()
         coordinator.scheduleDebouncedPush(
-            courses: courses,
+            courses: courseProvider.currentCourses(),
             customNames: customNames,
             accentHex: accentHex,
-            loggedIn: appState.isNTUSTLoggedIn,
-            languageTag: lang
+            loggedIn: appState.authService.hasStoredCredentials,
+            languageTag: lang,
+            visualPreset: appState.visualPreset
         )
     }
 }

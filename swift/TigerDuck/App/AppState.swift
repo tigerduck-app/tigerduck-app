@@ -74,6 +74,21 @@ final class AppState {
             self?.scheduleLiveActivityRefresh()
         }
 
+        #if DEBUG
+        // Flipping the debug clock must drive an LA refresh; otherwise the
+        // coordinator only re-evaluates on scene-active and the user has
+        // to leave/re-enter the app to see the Dynamic Island appear at the
+        // fake instant. Reminder reschedule rides along because reminders
+        // are also AppClock-keyed (see AssignmentReminderScheduler).
+        clockObserver = NotificationCenter.default.addObserver(
+            forName: DebugClockController.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleLiveActivityRefresh()
+        }
+        #endif
+
         runPendingMigrations()
 
         liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
@@ -121,6 +136,11 @@ final class AppState {
         if let observer = skipStateObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        #if DEBUG
+        if let observer = clockObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        #endif
     }
 
     private var _libraryRevision = 0
@@ -137,6 +157,9 @@ final class AppState {
     private var liveActivityObserver: Any?
     private var preferencesObserver: Any?
     private var skipStateObserver: Any?
+    #if DEBUG
+    private var clockObserver: Any?
+    #endif
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
     private var relabelTask: Task<Void, Never>?
@@ -190,6 +213,12 @@ final class AppState {
     /// destination is set before MainTabView appears, and MainTabView's
     /// `.onAppear` drain picks it up.
     var pendingWidgetDestination: WidgetDestination?
+
+    /// Transient signal from the library-shortcut widget: when the user taps
+    /// the widget while the library feature is disabled, `MainTabView` switches
+    /// to the More tab and raises this flag so `MoreView` surfaces an
+    /// "enable first" alert. Not persisted — lives only within the process.
+    var pendingLibraryEnablePrompt = false
 
     func openFromWidget(_ destination: WidgetDestination) {
         pendingWidgetDestination = destination
@@ -500,7 +529,7 @@ final class AppState {
     /// frequently — the coordinator only issues ActivityKit calls when the
     /// snapshot actually changes.
     func refreshLiveActivity() async {
-        let now = Date()
+        let now = AppClock.now()
         let courses = courseProvider.currentCourses()
         let assignments = DataCache.shared.loadAssignments()
         let snapshot = scenarioResolver.resolve(
@@ -538,7 +567,13 @@ final class AppState {
             assignments: assignments,
             now: now
         ) else { return }
-        let delay = boundary.timeIntervalSince(now) + AppConstants.scenarioBoundarySlackSeconds
+        // `boundary` is an app-clock instant; `Task.sleep` runs on the
+        // real clock, so under a frozen override the app-clock delta
+        // would never elapse and the refresh would re-arm itself
+        // forever. Translate to the real instant the boundary maps to
+        // before computing the sleep, mirroring the activity end task.
+        let realBoundary = AppClock.realTime(forApp: boundary)
+        let delay = realBoundary.timeIntervalSinceNow + AppConstants.scenarioBoundarySlackSeconds
         guard delay > 0 else { return }
         boundaryRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))

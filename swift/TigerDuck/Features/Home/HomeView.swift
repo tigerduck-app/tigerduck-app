@@ -24,11 +24,18 @@ struct HomeView: View {
     }
 
     private var content: some View {
-        ScrollView {
+        // Touch AppClockState.version so SwiftUI tracks the override and
+        // re-renders the greeting when the debug clock flips while this
+        // tab is already on screen. Without this read, `AppClock.now()`
+        // is an untracked side-effect and the greeting can sit on the
+        // old fake/real time until something unrelated invalidates the
+        // view.
+        let _ = AppClockState.shared.version
+        return ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 // Greeting
                 HStack {
-                    Text(Date().greetingText())
+                    Text(AppClock.now().greetingText())
                         .font(TigerDuckTheme.Typography.title)
                         .foregroundStyle(Color.textPrimary)
                     Spacer()
@@ -124,7 +131,7 @@ struct HomeView: View {
                 course: course,
                 assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
                 timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
-                weekday: slot?.date.scheduleWeekday ?? Date().scheduleWeekday
+                weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday
             )
             .presentationDetents([.medium, .large])
             .onDisappear { viewModel.selectedCourseSlot = nil }

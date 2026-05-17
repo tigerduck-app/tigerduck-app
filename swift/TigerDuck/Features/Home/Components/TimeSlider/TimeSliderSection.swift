@@ -100,8 +100,13 @@ struct TimeSliderSection: View {
             // evaluation triggers SwiftUI's "Modifying state during
             // view update" warning on recent SDKs and is a documented
             // anti-pattern with `TimelineView`.
-            .onChange(of: context.date) { _, newDate in
-                viewModel.tick(newDate)
+            //
+            // The TimelineView itself is just a real-wall-clock driver
+            // for re-renders; pass `AppClock.now()` (not `context.date`)
+            // so a debug override pins the slider to fake time instead
+            // of being overwritten back to real time on the next tick.
+            .onChange(of: context.date) { _, _ in
+                viewModel.tick(AppClock.now())
             }
         }
     }
