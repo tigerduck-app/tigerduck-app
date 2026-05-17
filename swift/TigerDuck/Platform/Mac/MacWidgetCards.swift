@@ -168,13 +168,17 @@ private struct NextClassWidgetCard: View {
         }
     }
 
-    /// Returns every slot that shares the earliest "current" or "next" start
+    /// Returns every slot that shares the same "current" or "next" start
     /// time so 衝堂 (two simultaneous classes) shows both courses instead of
-    /// silently dropping one to the `.first` selector.
+    /// silently dropping one. The live branch picks the most-recently-started
+    /// live slot as the target so a long-running class that happens to still
+    /// be in progress doesn't get grouped with a different class the user
+    /// just transitioned into.
     private var nextOrCurrent: NextClassTarget? {
         let liveSlots = slots.filter { $0.start <= now && now < $0.end }
-        if !liveSlots.isEmpty {
-            return NextClassTarget(slots: liveSlots, label: String(localized: "live_activity_status_in_class"))
+        if let targetStart = liveSlots.map(\.start).max() {
+            let tiedLive = liveSlots.filter { $0.start == targetStart }
+            return NextClassTarget(slots: tiedLive, label: String(localized: "live_activity_status_in_class"))
         }
         guard let earliestNext = slots.filter({ $0.start > now }).min(by: { $0.start < $1.start })
         else { return nil }

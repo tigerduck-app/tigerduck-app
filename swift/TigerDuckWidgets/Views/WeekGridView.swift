@@ -139,6 +139,19 @@ struct WeekGridView: View {
                 }
                 .zIndex(1)
 
+        case let .conflictMany(courses, combinedSpan):
+            let totalHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
+            Color.clear
+                .overlay(alignment: .top) {
+                    HStack(spacing: 1) {
+                        ForEach(Array(courses.enumerated()), id: \.offset) { _, course in
+                            conflictHalf(course, fontScale: fontScale)
+                        }
+                    }
+                    .frame(height: totalHeight)
+                }
+                .zIndex(1)
+
         case .skip:
             Color.clear
         }

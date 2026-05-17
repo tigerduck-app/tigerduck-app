@@ -16,6 +16,12 @@ public enum ClassTableCellRole<Course> {
         courseB: Course, spanB: Int, offsetB: Int,
         combinedSpan: Int
     )
+    /// 3+ overlapping courses occupying the same row run. Offsets aren't
+    /// tracked individually because callers reach this case through the
+    /// per-slot fallback, where every member shares the same span starting
+    /// at the current row. Renderers should split horizontally across
+    /// `courses` so no course disappears from the grid.
+    case conflictMany(courses: [Course], combinedSpan: Int)
     /// This cell is part of a SoloStart / ConflictStart cluster that began
     /// at an earlier row; the renderer must emit nothing here so the
     /// parent's `combinedSpan` can occupy the rows.
@@ -138,10 +144,13 @@ public enum ClassTableLayout {
         if coursesHere.count == 1 {
             return .solo(coursesHere[0], spanCount: span)
         }
-        return .conflictStart(
-            courseA: coursesHere[0], spanA: span, offsetA: 0,
-            courseB: coursesHere[1], spanB: span, offsetB: 0,
-            combinedSpan: span
-        )
+        if coursesHere.count == 2 {
+            return .conflictStart(
+                courseA: coursesHere[0], spanA: span, offsetA: 0,
+                courseB: coursesHere[1], spanB: span, offsetB: 0,
+                combinedSpan: span
+            )
+        }
+        return .conflictMany(courses: coursesHere, combinedSpan: span)
     }
 }

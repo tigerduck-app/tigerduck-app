@@ -24,9 +24,30 @@ struct MacClassTableView: View {
     @State private var cacheRevision: Int = 0
     @State private var hasWarmedCaches = false
     @State private var isLoadingSemester = false
+    @State private var tripleConflictError: TripleConflictError?
 
-    /// Mon–Fri only — Sat/Sun are hidden on iPhone too unless data forces them.
-    private let weekdays: [Int] = [1, 2, 3, 4, 5]
+    /// Identifies a slot the add path tried to push into when it would
+    /// have become a 3-course slot. `existing` is the two courses already
+    /// scheduled there so the alert can name them.
+    private struct TripleConflictError: Identifiable {
+        let id = UUID()
+        let weekday: Int
+        let periodId: String
+        let newCourseName: String
+        let existingA: SDCourse
+        let existingB: SDCourse
+    }
+
+    /// Mon–Fri by default; weekend columns appear only when a loaded
+    /// schedule actually places a course on Sat/Sun, matching the
+    /// iPhone `activeWeekdays` behavior.
+    private var weekdays: [Int] {
+        let occupied = Set(courses.flatMap { $0.schedule.keys })
+        var days = Array(1...5)
+        if occupied.contains(6) { days.append(6) }
+        if occupied.contains(7) { days.append(7) }
+        return days
+    }
 
     private let cellHeight: CGFloat = 56
     private let rowSpacing: CGFloat = 4
@@ -113,6 +134,27 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
+        }
+        .alert(
+            String(localized: "class_table_conflict_add_failed_title"),
+            isPresented: Binding(
+                get: { tripleConflictError != nil },
+                set: { if !$0 { tripleConflictError = nil } }
+            ),
+            presenting: tripleConflictError
+        ) { _ in
+            Button(String(localized: "action_confirm"), role: .cancel) {
+                tripleConflictError = nil
+            }
+        } message: { err in
+            Text(String(
+                format: String(localized: "class_table_conflict_add_failed_message"),
+                err.newCourseName,
+                "\(err.weekday)",
+                err.periodId,
+                err.existingA.displayName,
+                err.existingB.displayName
+            ))
         }
         .task {
             await warmCachesIfNeeded()
@@ -239,12 +281,21 @@ struct MacClassTableView: View {
     private var headerRow: some View {
         HStack(spacing: rowSpacing) {
             Color.clear.frame(width: periodLabelWidth, height: 22)
-            ForEach(weekdays.indices, id: \.self) { idx in
-                Text(AppConstants.Periods.weekdays[safe: idx] ?? "?")
+            ForEach(weekdays, id: \.self) { weekday in
+                Text(weekdayLabel(weekday))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
             }
+        }
+    }
+
+    private func weekdayLabel(_ weekday: Int) -> String {
+        switch weekday {
+        case 1...5: return AppConstants.Periods.weekdays[safe: weekday - 1] ?? "?"
+        case 6: return AppConstants.Periods.weekendDays[safe: 0] ?? "?"
+        case 7: return AppConstants.Periods.weekendDays[safe: 1] ?? "?"
+        default: return "?"
         }
     }
 
@@ -321,6 +372,15 @@ struct MacClassTableView: View {
                     .accessibilityLabel(Text(b.displayName))
             }
             .frame(height: blockHeight(combinedSpan))
+        case let .conflictMany(courses, combinedSpan):
+            HStack(spacing: rowSpacing) {
+                ForEach(courses, id: \.courseNo) { course in
+                    courseCell(course)
+                        .onTapGesture { selectedCourse = course }
+                        .accessibilityLabel(Text(course.displayName))
+                }
+            }
+            .frame(height: blockHeight(combinedSpan))
         case .skip:
             EmptyView()
         }
@@ -389,14 +449,23 @@ struct MacClassTableView: View {
     /// Mirrors the parts of `ClassTableViewModel.addCourse(_:)` that are load-
     /// bearing on macOS: tombstone clear, NameAbbr cache seeding so toggles
     /// round-trip without a refetch, and a `dataDidUpdate` broadcast so the
-    /// Home page's widget cards also re-render. Triple-conflict guarding is
-    /// left to a future macOS pass (iPhone's `wouldCauseTripleConflict` lives
-    /// inside `ClassTableViewModel` and isn't reusable yet).
+    /// Home page's widget cards also re-render.
     private func addUserCourse(_ course: SDCourse) {
         let existing = DataCache.shared.loadUserAddedCourses()
         guard !existing.contains(where: { $0.courseNo == course.courseNo }),
               !courses.contains(where: { $0.courseNo == course.courseNo })
         else { return }
+
+        // Refuse if any slot the candidate would occupy already has 2
+        // courses. The shared `ClassTableLayout` can render N-way conflicts,
+        // but persisting 3+ in a slot is still a bug surface (Android caps
+        // at 2 and the iPhone path rejects too). Must run BEFORE tombstone
+        // clear, otherwise a rejected add leaves a tombstone cleared and the
+        // next reload would resurrect the course.
+        if let err = firstTripleConflict(for: course) {
+            tripleConflictError = err
+            return
+        }
 
         var deleted = Set(DataCache.shared.loadDeletedCourseNos())
         if deleted.remove(course.courseNo) != nil {
@@ -415,6 +484,29 @@ struct MacClassTableView: View {
         DataCache.shared.saveUserAddedCourses(existing + [course])
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+    }
+
+    /// Scans every slot `candidate` would occupy and returns the first one
+    /// that already has two courses — adding the candidate there would push
+    /// it to three. Returns nil when the add is safe.
+    private func firstTripleConflict(for candidate: SDCourse) -> TripleConflictError? {
+        for (weekday, periodIds) in candidate.schedule {
+            for pid in periodIds {
+                let occupants = courses.filter {
+                    ($0.schedule[weekday] ?? []).contains(pid)
+                }
+                if occupants.count >= 2 {
+                    return TripleConflictError(
+                        weekday: weekday,
+                        periodId: pid,
+                        newCourseName: candidate.displayName,
+                        existingA: occupants[0],
+                        existingB: occupants[1]
+                    )
+                }
+            }
+        }
+        return nil
     }
 
     /// Undo a not-yet-committed user-added course without tombstoning the

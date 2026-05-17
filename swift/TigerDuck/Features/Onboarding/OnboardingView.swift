@@ -10,6 +10,7 @@ struct OnboardingView: View {
     @State private var agreedDeletion = false
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @State private var notificationRequestInFlight = false
+    @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focusedField: Field?
 
     private enum Field { case studentId, password }
@@ -36,6 +37,14 @@ struct OnboardingView: View {
         .onTapGesture { focusedField = nil }
         .onChange(of: currentPage) { _, _ in focusedField = nil }
         .task { await refreshNotificationStatus() }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Catch a System Settings round-trip — if the user enabled
+            // notifications externally, reflect that the moment they
+            // return so the denied row + settings button stop showing.
+            if newPhase == .active {
+                Task { await refreshNotificationStatus() }
+            }
+        }
     }
 
     // MARK: - Page 0: Welcome
@@ -294,11 +303,19 @@ struct OnboardingView: View {
                     }
                     .foregroundStyle(Color.textSecondary)
 
-                    Button(String(localized: "action_next")) {
-                        withAnimation { currentPage = Page.ready.rawValue }
+                    // While the user hasn't answered the system prompt yet,
+                    // the affirmative action lives in `notificationStatusRow`
+                    // (Allow). Don't surface a second prominent Next here —
+                    // it would let the user finish onboarding without ever
+                    // triggering `requestAuthorization`, stranding the app
+                    // in `.notDetermined` with no registration path.
+                    if notificationStatus != .notDetermined {
+                        Button(String(localized: "action_next")) {
+                            withAnimation { currentPage = Page.ready.rawValue }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
                 }
             }
         )
