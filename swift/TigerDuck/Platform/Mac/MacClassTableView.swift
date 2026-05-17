@@ -135,7 +135,9 @@ struct MacClassTableView: View {
             semester: target
         )
         await MainActor.run {
-            isLoadingSemester = false
+            if selectedSemester == target {
+                isLoadingSemester = false
+            }
             cacheRevision &+= 1
         }
     }
