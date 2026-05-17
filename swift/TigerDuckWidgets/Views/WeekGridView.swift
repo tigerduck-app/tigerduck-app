@@ -123,17 +123,18 @@ struct WeekGridView: View {
         case let .solo(course, spanCount):
             courseBlock(course, spanCount: spanCount, cellHeight: cellHeight, fontScale: fontScale)
 
-        case let .conflictStart(courseA, _, _, courseB, _, _, combinedSpan):
-            // Widget cells are tight; render conflicts as a horizontal
-            // half-and-half split rather than the iPhone L-shape interlock.
-            // Each course gets a slim block with its display name; classroom
-            // is dropped for the conflict case to keep the text legible.
+        case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
+            // Two-course 衝堂: each half is a column sized to that course's
+            // own span and positioned at its offset within the cluster, so
+            // an overlap meeting in only part of the cluster (e.g. A on
+            // periods 1–3 overlapping B only on period 2) doesn't extend
+            // either course into the rows where they don't actually meet.
             let totalHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
             Color.clear
                 .overlay(alignment: .top) {
                     HStack(spacing: 1) {
-                        conflictHalf(courseA, fontScale: fontScale)
-                        conflictHalf(courseB, fontScale: fontScale)
+                        conflictColumn(courseA, span: spanA, offset: offsetA, combinedSpan: combinedSpan, cellHeight: cellHeight, fontScale: fontScale)
+                        conflictColumn(courseB, span: spanB, offset: offsetB, combinedSpan: combinedSpan, cellHeight: cellHeight, fontScale: fontScale)
                     }
                     .frame(height: totalHeight)
                 }
@@ -191,6 +192,38 @@ struct WeekGridView: View {
                     .frame(height: totalHeight)
             }
             .zIndex(1)
+    }
+
+    /// One column of a 衝堂 cluster, sized to the course's own span and
+    /// positioned at its offset within the cluster via empty spacers.
+    @ViewBuilder
+    private func conflictColumn(
+        _ course: SnapshotCourse,
+        span: Int,
+        offset: Int,
+        combinedSpan: Int,
+        cellHeight: CGFloat,
+        fontScale: CGFloat
+    ) -> some View {
+        let topRows = offset
+        let bottomRows = max(combinedSpan - offset - span, 0)
+        let topHeight = topRows > 0
+            ? CGFloat(topRows) * cellHeight + CGFloat(topRows - 1) * rowSpacing
+            : 0
+        let bottomHeight = bottomRows > 0
+            ? CGFloat(bottomRows) * cellHeight + CGFloat(bottomRows - 1) * rowSpacing
+            : 0
+        let courseHeight = CGFloat(span) * cellHeight + CGFloat(max(span - 1, 0)) * rowSpacing
+        VStack(spacing: rowSpacing) {
+            if topRows > 0 {
+                Color.clear.frame(height: topHeight)
+            }
+            conflictHalf(course, fontScale: fontScale)
+                .frame(height: courseHeight)
+            if bottomRows > 0 {
+                Color.clear.frame(height: bottomHeight)
+            }
+        }
     }
 
     @ViewBuilder

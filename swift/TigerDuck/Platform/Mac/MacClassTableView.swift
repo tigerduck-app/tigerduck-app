@@ -358,18 +358,16 @@ struct MacClassTableView: View {
             courseCell(course)
                 .frame(height: blockHeight(spanCount))
                 .onTapGesture { selectedCourse = course }
-        case let .conflictStart(a, _, _, b, _, _, combinedSpan):
-            // macOS renders 衝堂 as a horizontal split for the full cluster
-            // height. Cleaner than the iPhone L-shape interlock (which needs
-            // offset-aware geometry) but still surfaces both courses and
-            // makes each independently clickable.
+        case let .conflictStart(a, spanA, offsetA, b, spanB, offsetB, combinedSpan):
+            // 衝堂 renders as a horizontal split where each half is a column
+            // sized to that course's actual span and positioned at its
+            // offset within the cluster. Without offset-aware columns,
+            // mismatched spans (e.g. A on periods 1–3 overlapping B only on
+            // period 2) would show B as a full-height column and make it
+            // clickable in rows where the two courses don't actually meet.
             HStack(spacing: rowSpacing) {
-                courseCell(a)
-                    .onTapGesture { selectedCourse = a }
-                    .accessibilityLabel(Text(a.displayName))
-                courseCell(b)
-                    .onTapGesture { selectedCourse = b }
-                    .accessibilityLabel(Text(b.displayName))
+                conflictColumn(course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan)
+                conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan)
             }
             .frame(height: blockHeight(combinedSpan))
         case let .conflictMany(courses, combinedSpan):
@@ -388,6 +386,26 @@ struct MacClassTableView: View {
 
     private func blockHeight(_ span: Int) -> CGFloat {
         CGFloat(span) * cellHeight + CGFloat(max(span - 1, 0)) * rowSpacing
+    }
+
+    /// One column of a 衝堂 cluster. Empty spacers above/below the course
+    /// block reserve the rows the course isn't scheduled in so an overlap
+    /// only meeting in part of the cluster doesn't extend to the rest.
+    @ViewBuilder
+    private func conflictColumn(course: SDCourse, span: Int, offset: Int, combinedSpan: Int) -> some View {
+        let bottom = max(combinedSpan - offset - span, 0)
+        VStack(spacing: rowSpacing) {
+            if offset > 0 {
+                Color.clear.frame(height: blockHeight(offset))
+            }
+            courseCell(course)
+                .frame(height: blockHeight(span))
+                .onTapGesture { selectedCourse = course }
+                .accessibilityLabel(Text(course.displayName))
+            if bottom > 0 {
+                Color.clear.frame(height: blockHeight(bottom))
+            }
+        }
     }
 
     private var emptyCell: some View {
