@@ -55,9 +55,9 @@ struct MacMoreView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("More")
+            Text(String(localized: "feature_more"))
                 .font(.largeTitle.bold())
-            Text("Browse every feature TigerDuck offers on Mac. Pin the ones you use most so they show in the sidebar.")
+            Text(String(localized: "desktop_more_subtitle"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -101,7 +101,7 @@ struct MacMoreView: View {
                     .font(.body)
                     .foregroundStyle(.primary)
                 if !feature.isImplemented {
-                    Text("Not implemented yet")
+                    Text(String(localized: "desktop_more_not_implemented"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

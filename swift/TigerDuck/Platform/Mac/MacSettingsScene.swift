@@ -17,19 +17,19 @@ struct MacSettingsScene: View {
     var body: some View {
         TabView {
             MacGeneralSettingsView()
-                .tabItem { Label("General", systemImage: "gearshape") }
+                .tabItem { Label(String(localized: "desktop_settings_tab_general"), systemImage: "gearshape") }
             MacAppearanceSettingsView()
-                .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                .tabItem { Label(String(localized: "desktop_settings_tab_appearance"), systemImage: "paintpalette") }
             MacSidebarSettingsView()
-                .tabItem { Label("Sidebar", systemImage: "sidebar.left") }
+                .tabItem { Label(String(localized: "desktop_settings_tab_sidebar"), systemImage: "sidebar.left") }
             MacAccountSettingsView()
-                .tabItem { Label("Account", systemImage: "person.circle") }
+                .tabItem { Label(String(localized: "settings_section_account"), systemImage: "person.circle") }
             #if DEBUG
             MacDeveloperSettingsView()
                 .tabItem { Label("Developer", systemImage: "hammer") }
             #endif
             MacAboutSettingsView()
-                .tabItem { Label("About", systemImage: "info.circle") }
+                .tabItem { Label(String(localized: "settings_section_about"), systemImage: "info.circle") }
         }
         .frame(width: 580, height: 480)
     }
@@ -43,22 +43,22 @@ private struct MacGeneralSettingsView: View {
     var body: some View {
         @Bindable var state = appState
         Form {
-            Section("Language") {
-                Picker("App language", selection: $state.appLanguage) {
-                    Text("System").tag("system")
-                    Text("繁體中文").tag("zh-Hant")
-                    Text("English").tag("en")
+            Section(String(localized: "settings_language")) {
+                Picker(String(localized: "settings_language"), selection: $state.appLanguage) {
+                    Text(String(localized: "settings_language_follow_system")).tag("system")
+                    Text(String(localized: "settings_language_traditional_chinese")).tag("zh-Hant")
+                    Text(String(localized: "settings_language_english")).tag("en")
                 }
                 .pickerStyle(.menu)
             }
 
-            Section("Course display") {
-                Toggle("Use English course abbreviations", isOn: $state.useEnglishCourseAbbreviation)
-                Toggle("Use English classroom abbreviations", isOn: $state.useEnglishClassroomAbbreviation)
-                Picker("Mandarin classroom display", selection: $state.classroomMandarinDisplay) {
-                    Text("Original").tag("original")
-                    Text("Pinyin").tag("pinyin")
-                    Text("Translated").tag("translated")
+            Section(String(localized: "desktop_settings_section_course_display")) {
+                Toggle(String(localized: "settings_use_english_course_abbreviation"), isOn: $state.useEnglishCourseAbbreviation)
+                Toggle(String(localized: "settings_use_english_classroom_abbreviation"), isOn: $state.useEnglishClassroomAbbreviation)
+                Picker(String(localized: "settings_classroom_mandarin_display"), selection: $state.classroomMandarinDisplay) {
+                    Text(String(localized: "settings_classroom_mandarin_display_original")).tag("original")
+                    Text(String(localized: "settings_classroom_mandarin_display_pinyin")).tag("pinyin")
+                    Text(String(localized: "settings_classroom_mandarin_display_translated")).tag("translated")
                 }
                 .pickerStyle(.menu)
             }
@@ -78,7 +78,7 @@ private struct MacAppearanceSettingsView: View {
     var body: some View {
         @Bindable var state = appState
         Form {
-            Section("Accent colour") {
+            Section(String(localized: "settings_accent_color")) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
                     ForEach(AppState.themeColors, id: \.hex) { entry in
                         accentSwatch(hex: entry.hex)
@@ -87,8 +87,8 @@ private struct MacAppearanceSettingsView: View {
                 .padding(.vertical, 4)
             }
 
-            Section("Schedule") {
-                Toggle("Show absolute assignment due time", isOn: $state.showAbsoluteAssignmentTime)
+            Section(String(localized: "desktop_settings_section_schedule")) {
+                Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
             }
         }
         .formStyle(.grouped)
@@ -145,26 +145,26 @@ private struct MacSidebarSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Choose which features appear in the sidebar and what order they show in. Settings is always available at the bottom of the sidebar.")
+            Text(String(localized: "desktop_settings_sidebar_description"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HSplitView {
                 section(
-                    title: "Pinned",
+                    title: String(localized: "desktop_settings_sidebar_pinned"),
                     systemImage: "pin.fill",
                     items: pinned,
-                    emptyMessage: "Nothing pinned. Add a feature from the right."
+                    emptyMessage: String(localized: "desktop_settings_sidebar_empty_pinned")
                 ) { feature, index in
                     pinnedRow(feature, index: index, total: pinned.count)
                 }
 
                 section(
-                    title: "Available",
+                    title: String(localized: "desktop_settings_sidebar_available"),
                     systemImage: "square.grid.2x2",
                     items: available,
-                    emptyMessage: "Every feature is already pinned."
+                    emptyMessage: String(localized: "desktop_settings_sidebar_empty_available")
                 ) { feature, _ in
                     availableRow(feature)
                 }
@@ -219,7 +219,7 @@ private struct MacSidebarSettingsView: View {
             }
             .buttonStyle(.borderless)
             .disabled(index == 0)
-            .help("Move up")
+            .help(String(localized: "desktop_settings_sidebar_move_up"))
 
             Button {
                 moveDown(at: index)
@@ -228,7 +228,7 @@ private struct MacSidebarSettingsView: View {
             }
             .buttonStyle(.borderless)
             .disabled(index == total - 1)
-            .help("Move down")
+            .help(String(localized: "desktop_settings_sidebar_move_down"))
 
             Button {
                 unpin(feature)
@@ -237,7 +237,7 @@ private struct MacSidebarSettingsView: View {
                     .foregroundStyle(.red)
             }
             .buttonStyle(.borderless)
-            .help("Remove from sidebar")
+            .help(String(localized: "desktop_settings_sidebar_remove"))
         }
     }
 
@@ -252,7 +252,7 @@ private struct MacSidebarSettingsView: View {
                     .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.borderless)
-            .help("Pin to sidebar")
+            .help(String(localized: "desktop_settings_sidebar_pin"))
         }
     }
 
@@ -296,20 +296,20 @@ private struct MacAccountSettingsView: View {
 
     var body: some View {
         Form {
-            Section("NTUST") {
+            Section(String(localized: "desktop_settings_section_ntust")) {
                 if appState.authService.hasStoredCredentials {
                     HStack {
                         Image(systemName: "checkmark.seal.fill")
                             .foregroundStyle(.green)
-                        Text("Signed in to NTUST SSO")
+                        Text(String(localized: "desktop_settings_signed_in_ntust"))
                     }
                     Button(role: .destructive) {
                         appState.logoutNTUST()
                     } label: {
-                        Label("Sign out of NTUST", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label(String(localized: "action_logout"), systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } else {
-                    Text("Not signed in.")
+                    Text(String(localized: "common_not_logged_in"))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -442,19 +442,19 @@ private struct MacAboutSettingsView: View {
             Image(systemName: "graduationcap.fill")
                 .font(.system(size: 48))
                 .foregroundStyle(.tint)
-            Text("TigerDuck")
+            Text(String(localized: "app_name"))
                 .font(.title.bold())
-            Text("Version \(appVersion)")
+            Text(String(format: String(localized: "desktop_about_version_value"), appVersion))
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Text("National Taiwan University of Science and Technology — community-built companion app.")
+            Text(String(localized: "desktop_about_subtitle"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 400)
                 .padding(.top, 8)
             Spacer()
-            Text("© TigerDuck contributors. Not affiliated with NTUST.")
+            Text(String(localized: "desktop_about_copyright"))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

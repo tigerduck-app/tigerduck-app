@@ -28,15 +28,15 @@ struct MacLoginView: View {
                 Image(systemName: "graduationcap.fill")
                     .font(.system(size: 52))
                     .foregroundStyle(.tint)
-                Text("TigerDuck")
+                Text(String(localized: "app_name"))
                     .font(.largeTitle.bold())
-                Text("Sign in with your NTUST SSO account")
+                Text(String(localized: "desktop_login_subtitle"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             VStack(spacing: 14) {
-                TextField("Student ID", text: $studentId)
+                TextField(String(localized: "login_student_id"), text: $studentId)
                     .textFieldStyle(.roundedBorder)
                     .focused($focused, equals: .studentId)
                     .onSubmit { focused = .password }
@@ -46,9 +46,9 @@ struct MacLoginView: View {
                 HStack(spacing: 6) {
                     Group {
                         if isPasswordVisible {
-                            TextField("Password", text: $password)
+                            TextField(String(localized: "login_password"), text: $password)
                         } else {
-                            SecureField("Password", text: $password)
+                            SecureField(String(localized: "login_password"), text: $password)
                         }
                     }
                     .textFieldStyle(.roundedBorder)
@@ -63,7 +63,7 @@ struct MacLoginView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel(isPasswordVisible ? "Hide password" : "Show password")
+                    .accessibilityLabel(String(localized: isPasswordVisible ? "password_hide" : "password_show"))
                 }
                 .frame(maxWidth: 340)
             }
@@ -84,7 +84,7 @@ struct MacLoginView: View {
                         .controlSize(.small)
                         .frame(maxWidth: 200)
                 } else {
-                    Text("Sign in")
+                    Text(String(localized: "action_login"))
                         .frame(maxWidth: 200)
                 }
             }
@@ -95,7 +95,7 @@ struct MacLoginView: View {
 
             Spacer(minLength: 0)
 
-            Text("This app is not affiliated with National Taiwan University of Science and Technology.")
+            Text(String(localized: "desktop_login_disclaimer"))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

@@ -43,16 +43,16 @@ private struct TodayScheduleWidgetCard: View {
     let now: Date
 
     var body: some View {
-        widgetCard(title: "Today", systemImage: "calendar.day.timeline.left") {
+        widgetCard(title: String(localized: "calendar_today"), systemImage: "calendar.day.timeline.left") {
             if slots.isEmpty {
-                empty(label: "No classes today")
+                empty(label: String(localized: "widget_no_classes_today"))
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(slots.prefix(6)) { slot in
                         scheduleRow(slot)
                     }
                     if slots.count > 6 {
-                        Text("+\(slots.count - 6) more")
+                        Text(String(format: String(localized: "desktop_widget_more_count"), slots.count - 6))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -79,7 +79,7 @@ private struct TodayScheduleWidgetCard: View {
                 .lineLimit(1)
             Spacer()
             if isLive {
-                Text("NOW")
+                Text(String(localized: "desktop_widget_now"))
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
@@ -98,7 +98,7 @@ private struct NextClassWidgetCard: View {
     let now: Date
 
     var body: some View {
-        widgetCard(title: "Next class", systemImage: "arrow.right.circle") {
+        widgetCard(title: String(localized: "widget_next_class"), systemImage: "arrow.right.circle") {
             if let target = nextOrCurrent {
                 let color = TigerDuckTheme.courseColor(for: target.slot.course.courseNo)
                 VStack(alignment: .leading, spacing: 6) {
@@ -129,17 +129,17 @@ private struct NextClassWidgetCard: View {
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                empty(label: "No more classes today")
+                empty(label: String(localized: "widget_no_more_classes"))
             }
         }
     }
 
     private var nextOrCurrent: NextClassTarget? {
         if let live = slots.first(where: { $0.start <= now && now < $0.end }) {
-            return NextClassTarget(slot: live, label: "In class")
+            return NextClassTarget(slot: live, label: String(localized: "live_activity_status_in_class"))
         }
         if let next = slots.first(where: { $0.start > now }) {
-            return NextClassTarget(slot: next, label: "Up next")
+            return NextClassTarget(slot: next, label: String(localized: "desktop_widget_up_next"))
         }
         return nil
     }

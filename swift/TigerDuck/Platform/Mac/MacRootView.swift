@@ -48,7 +48,7 @@ struct MacContentView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationTitle("TigerDuck")
+                .navigationTitle(String(localized: "app_name"))
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } detail: {
             detail
@@ -100,7 +100,7 @@ struct MacContentView: View {
 
                 Section {
                     NavigationLink(value: MacSidebarItem.more) {
-                        Label("More", systemImage: AppFeature.more.iconName)
+                        Label(String(localized: "feature_more"), systemImage: AppFeature.more.iconName)
                     }
                 }
             }
@@ -108,7 +108,7 @@ struct MacContentView: View {
 
             Divider()
             SettingsLink {
-                Label("Settings", systemImage: "gearshape")
+                Label(String(localized: "feature_settings"), systemImage: "gearshape")
                     .foregroundStyle(.primary)
             }
             .buttonStyle(.plain)
@@ -131,17 +131,17 @@ struct MacContentView: View {
             Button {
                 appState.backgroundSync()
             } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
+                Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
             }
             .keyboardShortcut("r", modifiers: .command)
-            .help("Refresh data (⌘R)")
+            .help(String(localized: "desktop_action_refresh_help"))
             .opacity(isSyncing ? 0 : 1)
             .disabled(isSyncing)
 
             if isSyncing {
                 ProgressView()
                     .controlSize(.small)
-                    .help("Refreshing…")
+                    .help(String(localized: "desktop_action_refreshing"))
             }
         }
     }
@@ -158,7 +158,7 @@ struct MacContentView: View {
                 .navigationTitle(feature.displayName)
         case .more:
             MacMoreView()
-                .navigationTitle("More")
+                .navigationTitle(String(localized: "feature_more"))
         }
     }
 

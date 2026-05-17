@@ -83,7 +83,7 @@ struct MacClassTableView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                Picker("Semester", selection: $selectedSemester) {
+                Picker(String(localized: "class_table_semester_picker_label"), selection: $selectedSemester) {
                     ForEach(availableSemesters, id: \.self) { code in
                         Text(displayLabel(for: code)).tag(code)
                     }
@@ -145,9 +145,14 @@ struct MacClassTableView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Class Table")
+                Text(String(localized: "feature_class_table"))
                     .font(.largeTitle.bold())
-                Text("\(displayLabel(for: selectedSemester)) · \(courses.count) courses · \(totalCredits) credits")
+                Text(String(
+                    format: String(localized: "desktop_class_table_subtitle_value"),
+                    displayLabel(for: selectedSemester),
+                    courses.count,
+                    totalCredits
+                ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -160,9 +165,9 @@ struct MacClassTableView: View {
             Image(systemName: "calendar.day.timeline.left")
                 .font(.title)
                 .foregroundStyle(.secondary)
-            Text("No courses in this semester")
+            Text(String(localized: "desktop_class_table_empty_title"))
                 .font(.headline)
-            Text("⌘R fetches the latest course list from the NTUST portal.")
+            Text(String(localized: "desktop_class_table_empty_hint"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -176,7 +181,7 @@ struct MacClassTableView: View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.regular)
-            Text("Loading \(displayLabel(for: selectedSemester))…")
+            Text(String(format: String(localized: "desktop_class_table_loading_value"), displayLabel(for: selectedSemester)))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -410,11 +415,11 @@ struct MacClassTableView: View {
 
             Divider()
 
-            detailRow(label: "Course no.", value: course.courseNo)
+            detailRow(label: String(localized: "desktop_course_detail_course_no_label"), value: course.courseNo)
             if !course.instructor.isEmpty {
-                detailRow(label: "Instructor", value: course.instructor)
+                detailRow(label: String(localized: "course_detail_instructor_label"), value: course.instructor)
             }
-            detailRow(label: "Credits", value: "\(course.credits)")
+            detailRow(label: String(localized: "course_detail_credits_label"), value: "\(course.credits)")
             ForEach(course.schedule.keys.sorted(), id: \.self) { weekday in
                 let periods = (course.schedule[weekday] ?? []).sortedByPeriodOrder().joined(separator: ", ")
                 let room = course.classroom(for: weekday)

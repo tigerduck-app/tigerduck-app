@@ -72,7 +72,7 @@ struct MacBulletinsView: View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
-            TextField("Search bulletins", text: $searchText)
+            TextField(String(localized: "bulletin_search_prompt"), text: $searchText)
                 .textFieldStyle(.plain)
         }
         .padding(8)
@@ -134,7 +134,7 @@ struct MacBulletinsView: View {
             Image(systemName: "tray")
                 .font(.title)
                 .foregroundStyle(.secondary)
-            Text(searchText.isEmpty ? "No bulletins yet" : "No matches")
+            Text(String(localized: searchText.isEmpty ? "desktop_bulletins_empty" : "desktop_bulletins_no_matches"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -151,7 +151,7 @@ struct MacBulletinsView: View {
                 Image(systemName: "doc.text")
                     .font(.system(size: 48))
                     .foregroundStyle(.secondary)
-                Text("Select a bulletin")
+                Text(String(localized: "desktop_bulletins_select_one"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -169,7 +169,7 @@ struct MacBulletinsView: View {
                 Text(err)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                Button("Retry") {
+                Button(String(localized: "action_retry")) {
                     if let id = selectedId { Task { await loadDetail(id: id) } }
                 }
             }
@@ -205,14 +205,14 @@ struct MacBulletinsView: View {
                         .font(.body)
                         .textSelection(.enabled)
                 } else {
-                    Text("(No body content)")
+                    Text(String(localized: "desktop_bulletins_no_body"))
                         .foregroundStyle(.secondary)
                         .italic()
                 }
 
                 if let url = URL(string: d.sourceUrl) {
                     Link(destination: url) {
-                        Label("View original source", systemImage: "arrow.up.right.square")
+                        Label(String(localized: "bulletin_source_link_label"), systemImage: "arrow.up.right.square")
                     }
                     .padding(.top, 8)
                 }

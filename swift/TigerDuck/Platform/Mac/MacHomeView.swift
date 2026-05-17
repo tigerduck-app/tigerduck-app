@@ -31,12 +31,12 @@ struct MacHomeView: View {
             greetingRow
 
             VStack(alignment: .leading, spacing: 12) {
-                sectionHeader(title: "Today's Classes", systemImage: "calendar.day.timeline.left")
+                sectionHeader(title: String(localized: "home_section_today_courses"), systemImage: "calendar.day.timeline.left")
                 MacHomeWidgetsRow(courses: courses)
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                sectionHeader(title: "Upcoming Assignments", systemImage: "list.bullet.rectangle")
+                sectionHeader(title: String(localized: "desktop_home_section_upcoming_assignments"), systemImage: "list.bullet.rectangle")
                 MacAssignmentsList()
             }
         }

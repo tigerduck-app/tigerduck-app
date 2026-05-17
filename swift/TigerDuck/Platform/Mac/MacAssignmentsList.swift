@@ -29,7 +29,7 @@ struct MacAssignmentsList: View {
         let visible = store.visibleAssignments(filter: filter, now: now)
 
         return VStack(alignment: .leading, spacing: 12) {
-            Picker("Assignment filter", selection: Binding(
+            Picker(String(localized: "desktop_assignment_filter_label"), selection: Binding(
                 get: { store.filter },
                 set: { store.filter = $0 }
             )) {
@@ -108,7 +108,7 @@ struct MacAssignmentsList: View {
             Button {
                 openInBrowser(assignment)
             } label: {
-                Label("Open in Moodle", systemImage: "arrow.up.right.square")
+                Label(String(localized: "desktop_action_open_in_moodle"), systemImage: "arrow.up.right.square")
             }
             Divider()
         }
@@ -118,26 +118,26 @@ struct MacAssignmentsList: View {
             Button {
                 AssignmentStore.shared.markComplete(assignment)
             } label: {
-                Label("Mark complete", systemImage: "checkmark.circle.fill")
+                Label(String(localized: "desktop_assignment_mark_complete"), systemImage: "checkmark.circle.fill")
             }
             Button {
                 AssignmentStore.shared.archive(assignment)
             } label: {
-                Label("Ignore", systemImage: "archivebox.fill")
+                Label(String(localized: "assignment_ignore"), systemImage: "archivebox.fill")
             }
 
         case .locallyCompleted:
             Button {
                 AssignmentStore.shared.undoComplete(assignment)
             } label: {
-                Label("Undo complete", systemImage: "arrow.uturn.backward")
+                Label(String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward")
             }
 
         case .archived:
             Button {
                 AssignmentStore.shared.unarchive(assignment)
             } label: {
-                Label("Undo ignore", systemImage: "arrow.uturn.backward")
+                Label(String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward")
             }
 
         case .submitted, .submittedLate:
