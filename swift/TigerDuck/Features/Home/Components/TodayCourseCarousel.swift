@@ -10,6 +10,14 @@ struct TodayCourseCarousel: View {
     var ongoing: [OngoingCourseInfo] = []
     var onSelect: ((SDCourse) -> Void)? = nil
 
+    /// Tallest card height observed during the lifetime of this view. The
+    /// row pins every card to this value so the "Current class" card and
+    /// the regular today cards line up — once a card grows the row, it
+    /// stays grown until the user leaves the page (parent unmount drops
+    /// this back to 0). `@State` so we can monotonically grow it from
+    /// `onPreferenceChange`.
+    @State private var lockedCardHeight: CGFloat = 0
+
     private static let periodTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
@@ -27,13 +35,22 @@ struct TodayCourseCarousel: View {
             noCourseView
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: TigerDuckTheme.Spacing.md) {
-                    ForEach(ongoing) { info in
+                HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
+                    ForEach(Array(ongoing.enumerated()), id: \.element.id) { index, info in
                         CurrentClassCard(
                             info: info,
                             hasAssignment: hasAssignment(info.course.courseNo),
                             onTap: { onSelect?(info.course) }
                         )
+                        .lockCardHeight(lockedCardHeight)
+                        .reportCardHeight()
+                        // Extra breathing room after the last ongoing card
+                        // before the regular today cards — mirrors the
+                        // Android layout that separates the two groups
+                        // with a wider gap so "Current class" reads as a
+                        // distinct cluster, not just one more card.
+                        .padding(.trailing, index == ongoing.count - 1 && !sortedCourses.isEmpty
+                                 ? TigerDuckTheme.Spacing.md : 0)
                     }
                     ForEach(sortedCourses, id: \.courseNo) { course in
                         Button {
@@ -47,9 +64,14 @@ struct TodayCourseCarousel: View {
                         }
                         .buttonStyle(.plain)
                         .opacity(opacityForCourse(course))
+                        .lockCardHeight(lockedCardHeight)
+                        .reportCardHeight()
                     }
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            }
+            .onPreferenceChange(MaxCardHeightKey.self) { newValue in
+                if newValue > lockedCardHeight { lockedCardHeight = newValue }
             }
         }
     }

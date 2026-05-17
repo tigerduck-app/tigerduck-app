@@ -8,25 +8,44 @@ struct CourseTimeCard: View {
     let onSelect: ((CourseTimeSlot) -> Void)?
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
 
+    /// Tallest content height observed during the slot's lifetime. As the
+    /// user drags the time slider the active state flips between
+    /// .inClass / .between / .beforeFirst / .afterLast — each state can
+    /// produce a card of slightly different intrinsic height (a two-line
+    /// course name in one, one-line in another). Locking to the tallest
+    /// seen value keeps the surrounding layout from jumping while the
+    /// user is on Home; the @State drops back to 0 only when the slot
+    /// (i.e. Home itself) leaves the hierarchy.
+    @State private var lockedHeight: CGFloat = 0
+
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             switch state {
             case .inClass(let slot):
                 cardContent(slot: slot, opacity: 1.0)
+                    .reportCardHeight()
             case .between(let prev, let next):
                 if let prev {
                     cardContent(slot: prev, opacity: 0.5)
                         .frame(maxWidth: .infinity)
+                        .reportCardHeight()
                 }
                 if let next {
                     cardContent(slot: next, opacity: 0.5)
                         .frame(maxWidth: .infinity)
+                        .reportCardHeight()
                 }
             case .beforeFirst(let next):
                 cardContent(slot: next, opacity: 0.5)
+                    .reportCardHeight()
             case .afterLast(let prev):
                 cardContent(slot: prev, opacity: 0.5)
+                    .reportCardHeight()
             }
+        }
+        .lockCardHeight(lockedHeight)
+        .onPreferenceChange(MaxCardHeightKey.self) { newValue in
+            if newValue > lockedHeight { lockedHeight = newValue }
         }
         .animation(.smooth(duration: 0.35), value: state)
     }
