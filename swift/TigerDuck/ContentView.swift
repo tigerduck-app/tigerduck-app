@@ -17,7 +17,9 @@ struct ContentView: View {
 
 struct MainTabView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppFeature = .home
+    @State private var showTimezoneAlert: Bool = false
 
     /// Configured tabs filtered to hide library features when disabled
     private var visibleTabs: [AppFeature] {
@@ -30,11 +32,6 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        // Wire `TimezoneObserver.shared.isNonTaipei` into MainTabView's
-        // dependency graph so SwiftUI re-evaluates the banner when the
-        // system posts NSSystemTimeZoneDidChange or the debug clock flips.
-        let isNonTaipei = TimezoneObserver.shared.isNonTaipei
-
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { feature in
                 Tab(feature.tabBarDisplayName, systemImage: feature.iconName, value: feature) {
@@ -46,19 +43,42 @@ struct MainTabView: View {
                 MoreView()
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if isNonTaipei {
-                NonTaipeiTimezoneBanner()
-            }
+        .alert(
+            String(localized: "app_non_taipei_timezone_hint"),
+            isPresented: $showTimezoneAlert
+        ) {
+            Button(String(localized: "action_got_it"), role: .cancel) { }
         }
         .onChange(of: visibleTabs) { _, newTabs in
             if selectedTab != .more, !newTabs.contains(selectedTab), let first = newTabs.first {
                 selectedTab = first
             }
         }
-        .onAppear { drainPendingWidgetDestination() }
+        .onAppear {
+            drainPendingWidgetDestination()
+            // Fresh launch path. `.onChange(of: scenePhase)` won't fire
+            // for the initial `.active` value, so the first prompt has
+            // to come from here. Subsequent foreground returns go
+            // through the scene-phase observer below.
+            evaluateTimezoneAlert()
+        }
         .onChange(of: appState.pendingWidgetDestination) { _, _ in
             drainPendingWidgetDestination()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Multitask-switch path: every time the app re-enters the
+            // foreground, re-evaluate. The observer keeps `isNonTaipei`
+            // current against NSSystemTimeZoneDidChange while we were
+            // backgrounded, so this read sees the latest decision.
+            if newPhase == .active {
+                evaluateTimezoneAlert()
+            }
+        }
+    }
+
+    private func evaluateTimezoneAlert() {
+        if TimezoneObserver.shared.isNonTaipei {
+            showTimezoneAlert = true
         }
     }
 
@@ -101,22 +121,6 @@ struct MainTabView: View {
         case .englishVocab: PlaceholderFeatureView(feature: feature)
         default: PlaceholderFeatureView(feature: feature)
         }
-    }
-}
-
-/// Yellow hint shown above the tab bar while the device is not in Taipei
-/// time. Mirrors the Android implementation's bottom-bar Column injection
-/// and uses the same `app_non_taipei_timezone_hint` string.
-struct NonTaipeiTimezoneBanner: View {
-    var body: some View {
-        Text(String(localized: "app_non_taipei_timezone_hint"))
-            .font(.footnote)
-            .multilineTextAlignment(.center)
-            .foregroundStyle(Color(red: 0x5C / 255.0, green: 0x4A / 255.0, blue: 0x00 / 255.0))
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(red: 1.0, green: 0xF3 / 255.0, blue: 0xB0 / 255.0))
     }
 }
 
