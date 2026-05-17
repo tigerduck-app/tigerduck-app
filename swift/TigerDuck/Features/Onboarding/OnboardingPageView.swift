@@ -40,8 +40,11 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
                 .padding(.top, TigerDuckTheme.Spacing.xxl)
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl * 2)
                 .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+                .contentShape(Rectangle())
+                .onTapGesture { UIApplication.dismissKeyboard() }
             }
             .scrollIndicators(.never)
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 }
