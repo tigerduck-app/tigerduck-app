@@ -43,7 +43,7 @@ struct DebugSettingsView: View {
             }
 
             Section {
-                Button("Send fake push now") {
+                Button("Send fake local notification") {
                     Task { await viewModel.sendSimulatedPushNow() }
                 }
                 if let status = viewModel.lastSimulatedPushStatus {
@@ -54,7 +54,7 @@ struct DebugSettingsView: View {
             } header: {
                 Text("Notifications")
             } footer: {
-                Text("Backend push notifications use the real wall clock and cannot honor the fake-time override. This button schedules a local notification ~3 s from now so you can verify the LA / widget pipeline visually.")
+                Text("Fires a local lock-screen / banner notification ~3 s from now. This is NOT a Live Activity — the Dynamic Island appears automatically when the fake clock enters a class window above. Backend APNs pushes use the real wall clock and cannot honor the fake-time override.")
             }
         }
         .navigationTitle("Time override")

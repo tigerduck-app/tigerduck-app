@@ -74,6 +74,21 @@ final class AppState {
             self?.scheduleLiveActivityRefresh()
         }
 
+        #if DEBUG
+        // Flipping the debug clock must drive an LA refresh; otherwise the
+        // coordinator only re-evaluates on scene-active and the user has
+        // to leave/re-enter the app to see the Dynamic Island appear at the
+        // fake instant. Reminder reschedule rides along because reminders
+        // are also AppClock-keyed (see AssignmentReminderScheduler).
+        clockObserver = NotificationCenter.default.addObserver(
+            forName: DebugClockController.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleLiveActivityRefresh()
+        }
+        #endif
+
         runPendingMigrations()
 
         liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
@@ -121,6 +136,11 @@ final class AppState {
         if let observer = skipStateObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        #if DEBUG
+        if let observer = clockObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        #endif
     }
 
     private var _libraryRevision = 0
@@ -137,6 +157,9 @@ final class AppState {
     private var liveActivityObserver: Any?
     private var preferencesObserver: Any?
     private var skipStateObserver: Any?
+    #if DEBUG
+    private var clockObserver: Any?
+    #endif
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
     private var relabelTask: Task<Void, Never>?
