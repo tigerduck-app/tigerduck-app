@@ -21,7 +21,7 @@ struct LibraryQRView: View {
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity)
         }
-        .navigationTitle(String(localized: "watch_library_title"))
+        .navigationTitle(String(localized: "library_virtual_pass_title"))
         .onAppear { viewModel.onAppear() }
         .onDisappear {
             // Skip when the cover is presenting on top of us: the cover
@@ -47,8 +47,9 @@ struct LibraryQRView: View {
 
     private var emptyState: some View {
         ContentUnavailableView(
-            String(localized: "watch_library_signin_prompt"),
-            systemImage: "iphone.gen3"
+            String(localized: "library_login_qr_prompt"),
+            systemImage: "iphone.gen3",
+            description: Text(String(localized: "watch_open_phone_to_sync"))
         )
     }
 
@@ -63,6 +64,7 @@ struct LibraryQRView: View {
                 .padding(6)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 4)
+                .accessibilityLabel(String(localized: "library_qr_content_description"))
                 .onTapGesture(count: 2) {
                     isFullScreen = true
                 }
@@ -70,10 +72,15 @@ struct LibraryQRView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 120)
         } else {
-            Image(systemName: "qrcode")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 120)
+            VStack(spacing: 6) {
+                Image(systemName: "qrcode")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+                Text(String(localized: "library_qr_not_generated"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 120)
         }
     }
 
@@ -90,9 +97,10 @@ struct LibraryQRView: View {
             }
             .frame(width: 12, height: 12)
 
-            Text(String(format: String(localized: "watch_library_refresh_in_seconds"), viewModel.countdown))
+            Text("\(viewModel.countdown)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
 
             if let u = viewModel.username {
                 Spacer(minLength: 4)
