@@ -45,13 +45,13 @@ struct LibraryView: View {
             case .active:
                 viewModel.onAppear()
                 if viewModel.isLoggedIn { boostBrightness() }
-            case .background:
+            case .background, .inactive:
                 viewModel.stopTimers()
                 // Don't leave the device pinned at full brightness once
-                // the user is no longer looking at the QR.
+                // the user is no longer looking at the QR. Restore in
+                // `.inactive` too so a force-quit from Control Center
+                // or an incoming call doesn't strand the screen at 1.0.
                 restoreBrightness()
-            case .inactive:
-                viewModel.stopTimers()
             @unknown default:
                 viewModel.stopTimers()
             }

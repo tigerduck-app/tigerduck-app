@@ -42,7 +42,7 @@ extension Array where Element == SDCourse {
                 let lastId = periods[blockEnd]
                 if let startMin = parseHm(AppConstants.PeriodTimes.mapping[firstId]?.start),
                    let endMin = parseHm(AppConstants.PeriodTimes.mapping[lastId]?.end),
-                   (startMin...endMin).contains(minuteOfDay) {
+                   (startMin..<endMin).contains(minuteOfDay) {
                     results.append(
                         OngoingCourseInfo(
                             course: course,
