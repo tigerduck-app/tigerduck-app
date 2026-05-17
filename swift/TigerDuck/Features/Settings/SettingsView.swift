@@ -213,6 +213,9 @@ struct SettingsView: View {
                 NavigationLink("Time override") {
                     DebugSettingsView()
                 }
+                NavigationLink("Notifications") {
+                    DebugNotificationsView()
+                }
             }
             #endif
         }
