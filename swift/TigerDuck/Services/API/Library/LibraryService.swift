@@ -63,18 +63,18 @@ enum LibraryService {
     static func saveCredentials(username: String, password: String) {
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
-        Task { @MainActor in
-            WatchLibraryCredentialBroadcaster.shared.broadcastSet(username: username, password: password)
-        }
+        // Synchronous broadcast: prevents a save/wipe race in which two
+        // deferred Tasks could land out of order on the MainActor queue
+        // and strand credentials on the watch after a logout-then-relogin
+        // (or vice-versa).
+        WatchLibraryCredentialBroadcaster.shared.broadcastSet(username: username, password: password)
     }
 
     static func clearCredentials() {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
         clearToken()
-        Task { @MainActor in
-            WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
-        }
+        WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
     }
 
     private static var storedPassword: String? {

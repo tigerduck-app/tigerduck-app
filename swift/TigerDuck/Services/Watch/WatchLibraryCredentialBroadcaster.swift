@@ -6,11 +6,12 @@ import os
 /// watch. Owns the monotonic `credEpoch` (App Group `UserDefaults`)
 /// and uses `WCSession.transferUserInfo` for FIFO, guaranteed delivery.
 ///
-/// Singleton because `LibraryService` is an `enum` (no instance to
-/// inject through). All public surface is `@MainActor`; the actual WC
-/// send is non-isolated under the hood.
-@MainActor
-final class WatchLibraryCredentialBroadcaster {
+/// Non-isolated by design: callers reach this from both `@MainActor`
+/// (UI tap → logout) and background actors (token refresh background
+/// task → re-save). The epoch counter is protected by an unfair lock so
+/// the read-modify-write of `credEpoch` is atomic across call sites;
+/// `WCSession.transferUserInfo(_:)` is documented thread-safe.
+final class WatchLibraryCredentialBroadcaster: @unchecked Sendable {
 
     static let shared = WatchLibraryCredentialBroadcaster()
 
@@ -20,6 +21,7 @@ final class WatchLibraryCredentialBroadcaster {
         subsystem: "org.ntust.app.TigerDuck",
         category: "watch.credBroadcast"
     )
+    private let epochLock = OSAllocatedUnfairLock<Void>(initialState: ())
 
     private enum DefaultsKey {
         static let epoch = "watchLibraryCredEpoch"
@@ -59,16 +61,21 @@ final class WatchLibraryCredentialBroadcaster {
 
     /// Re-emit the current credentials if the phone still has them.
     /// Idempotent on the watch (rejected-as-replay if the watch already
-    /// holds this epoch). Used by `WatchSyncBridge` on appear so a
-    /// TTL-purged watch recovers credentials the next time the phone
-    /// foregrounds, without any explicit user action.
+    /// holds this epoch). Recovers two cases:
+    /// 1. Watch never received the original set (was off when phone logged in).
+    /// 2. Watch ran TTL purge — which clears `credEpoch` on the watch, so
+    ///    this same-epoch payload now satisfies `payload.credEpoch >
+    ///    storedEpoch` (since storedEpoch is back to 0) and applies cleanly.
     func republishIfCredentialed() {
         guard let username = LibraryService.storedUsername,
               let password = LibraryService.storedPasswordIfAvailable() else {
             return
         }
-        // Don't advance the epoch — re-send with the same epoch.
         let epoch = currentEpoch()
+        // Skip if epoch is 0 — phone never broadcast a set, so there's
+        // nothing to republish (and the watch wouldn't accept epoch 0
+        // anyway because `0 > 0` is false).
+        guard epoch > 0 else { return }
         let payload = WatchLibraryCredentialPayload(
             kind: .set,
             credEpoch: epoch,
@@ -82,20 +89,20 @@ final class WatchLibraryCredentialBroadcaster {
     // MARK: - Internals
 
     private func currentEpoch() -> Int {
-        defaults.integer(forKey: DefaultsKey.epoch)
+        epochLock.withLock { defaults.integer(forKey: DefaultsKey.epoch) }
     }
 
     private func nextEpoch() -> Int {
-        let next = currentEpoch() + 1
-        defaults.set(next, forKey: DefaultsKey.epoch)
-        return next
+        epochLock.withLock {
+            let next = defaults.integer(forKey: DefaultsKey.epoch) + 1
+            defaults.set(next, forKey: DefaultsKey.epoch)
+            return next
+        }
     }
 
     private func send(_ payload: WatchLibraryCredentialPayload) {
         if !session.isPaired || !session.isWatchAppInstalled {
             logger.notice("watch not present; transferUserInfo will queue for delivery anyway")
-            // transferUserInfo will queue and deliver when the watch
-            // appears, so we still call it.
         }
         let json: String
         do {

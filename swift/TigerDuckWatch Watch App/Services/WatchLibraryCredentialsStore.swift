@@ -142,13 +142,19 @@ final class WatchLibraryCredentialsStore: ObservableObject {
 
     // MARK: - Wipes
 
-    /// Wipe everything — credentials, token cache, TTL marker. Used by
-    /// TTL purge and (optionally) testing. The wire-format `.wipe` path
-    /// keeps the epoch in place; this also keeps the epoch in place so
-    /// a future `.set` with `epoch > stored` still applies.
+    /// Local-only wipe used by the TTL purge (and `_resetForTests`). Clears
+    /// credentials, token cache, *and* the epoch/issuedAt markers so the
+    /// next phone push — including the broadcaster's
+    /// `republishIfCredentialed`, which re-sends the same epoch — is
+    /// applied rather than rejected as replay. The wire-format `.wipe`
+    /// payload deliberately does NOT call this; it routes through
+    /// `wipeKeychainOnly()` so the monotonic epoch keeps protecting
+    /// against out-of-order delivery.
     func wipe() {
         wipeKeychainOnly()
         clearToken()
+        defaults.removeObject(forKey: DefaultsKey.credEpoch)
+        defaults.removeObject(forKey: DefaultsKey.issuedAtMs)
         hasCredentials = false
     }
 
@@ -162,8 +168,6 @@ final class WatchLibraryCredentialsStore: ObservableObject {
     #if DEBUG
     func _resetForTests() {
         wipe()
-        defaults.removeObject(forKey: DefaultsKey.credEpoch)
-        defaults.removeObject(forKey: DefaultsKey.issuedAtMs)
     }
     #endif
 }
