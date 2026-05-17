@@ -53,11 +53,6 @@ struct MacContentView: View {
         } detail: {
             detail
                 .frame(minWidth: 640, minHeight: 480)
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        refreshToolbarControl
-                    }
-                }
         }
         .onAppear {
             seedMacDefaultsIfNeeded()
@@ -120,36 +115,6 @@ struct MacContentView: View {
         }
     }
 
-    /// Toolbar refresh affordance. Swaps to a spinner while
-    /// `sessionManager.loadingState == .loading` so the user sees the
-    /// active sync (⌘R still triggers via the hidden button). Keeping
-    /// the button mounted under the spinner lets the keyboard shortcut
-    /// stay registered without us tracking it separately.
-    @ViewBuilder
-    private var refreshToolbarControl: some View {
-        ZStack {
-            Button {
-                appState.backgroundSync()
-            } label: {
-                Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
-            }
-            .keyboardShortcut("r", modifiers: .command)
-            .help(String(localized: "desktop_action_refresh_help"))
-            .opacity(isSyncing ? 0 : 1)
-            .disabled(isSyncing)
-
-            if isSyncing {
-                ProgressView()
-                    .controlSize(.small)
-                    .help(String(localized: "desktop_action_refreshing"))
-            }
-        }
-    }
-
-    private var isSyncing: Bool {
-        appState.sessionManager.loadingState == .loading
-    }
-
     @ViewBuilder
     private var detail: some View {
         switch selection {
@@ -189,10 +154,33 @@ struct MacContentView: View {
 }
 
 /// Switchboard between per-feature detail views.
+///
+/// The global refresh toolbar lives here (rather than on the outer
+/// `NavigationSplitView` detail) so it follows the feature regardless of
+/// entry path — sidebar selection or pushed from `MacMoreView`. Putting
+/// it on the outer split detail loses the button as soon as More's inner
+/// `NavigationStack` pushes a destination, because that inner stack owns
+/// the toolbar slot for the pushed view on macOS.
+///
+/// Scores opts out: it already exposes its own per-feature refresh button
+/// (which re-fetches scores — `backgroundSync` doesn't touch the score
+/// service), so adding the global one would double up in `.primaryAction`.
 struct MacFeatureDetail: View {
     let feature: AppFeature
 
     var body: some View {
+        content
+            .toolbar {
+                if feature != .gpa {
+                    ToolbarItem(placement: .primaryAction) {
+                        MacGlobalRefreshButton()
+                    }
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch feature {
         case .home:
             MacHomeView()
@@ -210,6 +198,37 @@ struct MacFeatureDetail: View {
                 summary: "This feature isn't ported to macOS yet."
             )
         }
+    }
+}
+
+/// Triggers `AppState.backgroundSync()` and swaps to a spinner while
+/// `sessionManager.loadingState == .loading`. The button stays mounted
+/// under the spinner so ⌘R keeps working without separate tracking.
+struct MacGlobalRefreshButton: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        ZStack {
+            Button {
+                appState.backgroundSync()
+            } label: {
+                Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .help(String(localized: "desktop_action_refresh_help"))
+            .opacity(isSyncing ? 0 : 1)
+            .disabled(isSyncing)
+
+            if isSyncing {
+                ProgressView()
+                    .controlSize(.small)
+                    .help(String(localized: "desktop_action_refreshing"))
+            }
+        }
+    }
+
+    private var isSyncing: Bool {
+        appState.sessionManager.loadingState == .loading
     }
 }
 
