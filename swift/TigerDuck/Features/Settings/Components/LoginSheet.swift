@@ -77,16 +77,13 @@ struct LoginSheet: View {
                     Button {
                         submitIfReady()
                     } label: {
-                        HStack {
-                            Spacer()
-                            if isLoggingIn {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .padding(.trailing, 6)
+                        LoadingButtonLabel(isLoading: isLoggingIn) {
+                            HStack {
+                                Spacer()
+                                Text(String(localized: "action_login"))
+                                    .fontWeight(.semibold)
+                                Spacer()
                             }
-                            Text(String(localized: "action_login"))
-                                .fontWeight(.semibold)
-                            Spacer()
                         }
                     }
                     .disabled(username.isEmpty || password.isEmpty || isLoggingIn)

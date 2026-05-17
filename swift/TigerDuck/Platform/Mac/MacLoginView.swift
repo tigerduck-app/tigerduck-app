@@ -79,11 +79,10 @@ struct MacLoginView: View {
             Button {
                 Task { await attemptLogin() }
             } label: {
-                if appState.authService.isLoggingIn {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(maxWidth: 200)
-                } else {
+                LoadingButtonLabel(
+                    isLoading: appState.authService.isLoggingIn,
+                    tint: .white
+                ) {
                     Text(String(localized: "action_login"))
                         .frame(maxWidth: 200)
                 }

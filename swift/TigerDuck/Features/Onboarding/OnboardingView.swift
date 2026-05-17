@@ -217,11 +217,10 @@ struct OnboardingView: View {
                     Button {
                         submitLogin()
                     } label: {
-                        if appState.authService.isLoggingIn {
-                            ProgressView()
-                                .tint(.white)
-                                .controlSize(.small)
-                        } else {
+                        LoadingButtonLabel(
+                            isLoading: appState.authService.isLoggingIn,
+                            tint: .white
+                        ) {
                             Text(String(localized: "onboarding_login_button"))
                                 .font(.callout.weight(.semibold))
                         }
@@ -301,9 +300,10 @@ struct OnboardingView: View {
             Button {
                 Task { await requestNotifications() }
             } label: {
-                if notificationRequestInFlight {
-                    ProgressView()
-                } else {
+                LoadingButtonLabel(
+                    isLoading: notificationRequestInFlight,
+                    tint: .white
+                ) {
                     Label(String(localized: "action_allow"), systemImage: "bell.fill")
                         .font(.callout.weight(.semibold))
                 }

@@ -1113,6 +1113,7 @@
 					CourseDetailSheet.swift,
 					ClassTableLayout.swift,
 					"View+PlatformCompat.swift",
+					LoadingButtonLabel.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1278,6 +1279,7 @@
 					CourseDetailSheet.swift,
 					ClassTableLayout.swift,
 					"View+PlatformCompat.swift",
+					LoadingButtonLabel.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
