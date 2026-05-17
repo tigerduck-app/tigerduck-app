@@ -67,14 +67,22 @@ enum LibraryService {
         // deferred Tasks could land out of order on the MainActor queue
         // and strand credentials on the watch after a logout-then-relogin
         // (or vice-versa).
+        //
+        // iOS-only: macOS has no paired watch surface and the broadcaster
+        // (WatchConnectivity) isn't in the Mac target. Mirrors the
+        // existing iOS-gating pattern used elsewhere in the watch path.
+        #if os(iOS)
         WatchLibraryCredentialBroadcaster.shared.broadcastSet(username: username, password: password)
+        #endif
     }
 
     static func clearCredentials() {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
         clearToken()
+        #if os(iOS)
         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
+        #endif
     }
 
     private static var storedPassword: String? {
