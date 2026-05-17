@@ -188,7 +188,13 @@ final class LiveActivityCoordinator {
             return
         }
 
-        let delay = max(0, target.timeIntervalSince(now)) + 1
+        // `Task.sleep` runs on the real clock, so translate the fake-clock
+        // target to the real instant it maps to. Captured once per the
+        // `AppClock.realTime(forApp:)` contract — re-deriving in frozen
+        // mode would drift as real time advances while fake time stands
+        // still.
+        let realTarget = AppClock.realTime(forApp: target)
+        let delay = max(0, realTarget.timeIntervalSinceNow) + 1
         automaticEndTasks[activityId] = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }

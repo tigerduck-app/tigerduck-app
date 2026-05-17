@@ -23,7 +23,11 @@ struct LibraryShortcutProvider: TimelineProvider {
         // theme-tied logic. No dependency on snapshot freshness.
         let snapshot = store.readSnapshot()
         let entry = LibraryShortcutEntry(date: AppClock.now(), snapshot: snapshot)
-        let midnight = Calendar(identifier: .gregorian).startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        let appMidnight = Calendar(identifier: .gregorian).startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        // WidgetKit interprets `.after(...)` against real wall-clock time,
+        // so translate the fake-clock midnight to the real instant it maps
+        // to. Identity when no debug override is active.
+        let midnight = AppClock.realTime(forApp: appMidnight)
         completion(Timeline(entries: [entry], policy: .after(midnight)))
     }
 }
