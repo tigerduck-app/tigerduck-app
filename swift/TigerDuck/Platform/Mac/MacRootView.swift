@@ -55,13 +55,7 @@ struct MacContentView: View {
                 .frame(minWidth: 640, minHeight: 480)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            appState.backgroundSync()
-                        } label: {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                        }
-                        .keyboardShortcut("r", modifiers: .command)
-                        .help("Refresh data (⌘R)")
+                        refreshToolbarControl
                     }
                 }
         }
@@ -124,6 +118,36 @@ struct MacContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.background)
         }
+    }
+
+    /// Toolbar refresh affordance. Swaps to a spinner while
+    /// `sessionManager.loadingState == .loading` so the user sees the
+    /// active sync (⌘R still triggers via the hidden button). Keeping
+    /// the button mounted under the spinner lets the keyboard shortcut
+    /// stay registered without us tracking it separately.
+    @ViewBuilder
+    private var refreshToolbarControl: some View {
+        ZStack {
+            Button {
+                appState.backgroundSync()
+            } label: {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .help("Refresh data (⌘R)")
+            .opacity(isSyncing ? 0 : 1)
+            .disabled(isSyncing)
+
+            if isSyncing {
+                ProgressView()
+                    .controlSize(.small)
+                    .help("Refreshing…")
+            }
+        }
+    }
+
+    private var isSyncing: Bool {
+        appState.sessionManager.loadingState == .loading
     }
 
     @ViewBuilder

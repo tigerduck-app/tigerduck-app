@@ -3,26 +3,39 @@ import SwiftUI
 
 /// macOS Calendar surface.
 ///
-/// Uses the system-native `DatePicker(.graphical)` month grid for the
-/// month UI — it ships with macOS's familiar look (chevron month nav,
-/// keyboard arrows, today highlight) and stays consistent with the OS
-/// without us reimplementing a custom grid. Below the picker sits a
-/// day-events panel that lists every cached school + Moodle event for
-/// the selected date (similar to the iPhone CalendarTabView, but the
-/// per-day event-dot indicators that the iPhone grid drew aren't
-/// available on the system calendar — the trade-off for native chrome.)
+/// Visual contract follows the iPhone `MonthCalendarView` — month
+/// nav chevrons, weekday header row, day cells with event-source
+/// dots — but cells are sized for a Mac sidebar surface rather than
+/// a phone screen. `DatePicker(.graphical)` was tried first and
+/// looked cramped/unfamiliar at this scale; this hand-rolled grid
+/// matches the iPhone look the user already knows.
 ///
 /// Source-of-truth is `DataCache.loadCalendarEvents()` (populated by
 /// `appState.backgroundSync()`). EventKit overlay (system Calendar
-/// events) and notifications are deliberately out of scope on Mac.
+/// events) is intentionally out of scope on Mac — keeps us out of
+/// the Mac Calendar TCC entitlement.
 struct MacCalendarView: View {
     @Environment(AppState.self) private var appState
 
     @State private var selectedDate: Date = Date()
+    @State private var displayedMonth: Date = Date()
+    @State private var cacheRevision: Int = 0
+
+    private let weekdaySymbols: [String] = [
+        String(localized: "weekday_sun_short"),
+        String(localized: "weekday_mon_short"),
+        String(localized: "weekday_tue_short"),
+        String(localized: "weekday_wed_short"),
+        String(localized: "weekday_thu_short"),
+        String(localized: "weekday_fri_short"),
+        String(localized: "weekday_sat_short"),
+    ]
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+    private let cellHeight: CGFloat = 64
 
     private var allEvents: [SDCalendarEvent] {
-        DataCache.shared.loadCalendarEvents()
-            .sorted { $0.date < $1.date }
+        _ = cacheRevision
+        return DataCache.shared.loadCalendarEvents()
     }
 
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] {
@@ -33,7 +46,17 @@ struct MacCalendarView: View {
     }
 
     private var eventsForSelectedDay: [SDCalendarEvent] {
-        events(on: selectedDate)
+        events(on: selectedDate).sorted { $0.date < $1.date }
+    }
+
+    private var calendarDays: [Date?] {
+        Self.buildCalendarDays(for: displayedMonth)
+    }
+
+    private var monthTitle: String {
+        var style = Date.FormatStyle.dateTime.year().month(.wide)
+        style.timeZone = AppConstants.taipeiTimeZone
+        return displayedMonth.formatted(style)
     }
 
     var body: some View {
@@ -49,27 +72,26 @@ struct MacCalendarView: View {
                 Button {
                     withAnimation(.smooth(duration: 0.25)) {
                         selectedDate = Date()
+                        displayedMonth = Date()
                     }
                 } label: {
-                    Label("Today", systemImage: "circle.fill")
+                    Label(String(localized: "calendar_today"), systemImage: "circle.fill")
                 }
                 .help("Jump to today")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+            cacheRevision &+= 1
+        }
     }
 
-    // MARK: - Month picker card
+    // MARK: - Month card
 
     private var monthCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            DatePicker(
-                "Select a date",
-                selection: $selectedDate,
-                displayedComponents: [.date]
-            )
-            .datePickerStyle(.graphical)
-            .labelsHidden()
-            .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 14) {
+            monthNavRow
+            weekdayRow
+            daysGrid
         }
         .padding(18)
         .background(
@@ -82,18 +104,81 @@ struct MacCalendarView: View {
         )
     }
 
-    // MARK: - Selected day events
+    private var monthNavRow: some View {
+        HStack {
+            Button {
+                withAnimation(.smooth(duration: 0.2)) {
+                    displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
+                }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.headline)
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut(.leftArrow, modifiers: .command)
+
+            Spacer()
+
+            Text(monthTitle)
+                .font(.title3.weight(.semibold))
+
+            Spacer()
+
+            Button {
+                withAnimation(.smooth(duration: 0.2)) {
+                    displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.headline)
+            }
+            .buttonStyle(.borderless)
+            .keyboardShortcut(.rightArrow, modifiers: .command)
+        }
+    }
+
+    private var weekdayRow: some View {
+        LazyVGrid(columns: columns, spacing: 4) {
+            ForEach(weekdaySymbols, id: \.self) { symbol in
+                Text(symbol)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var daysGrid: some View {
+        LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(Array(calendarDays.enumerated()), id: \.offset) { _, date in
+                if let date {
+                    DayCell(
+                        date: date,
+                        isSelected: date.isSameDay(as: selectedDate),
+                        isToday: date.isToday,
+                        events: events(on: date),
+                        cellHeight: cellHeight,
+                        onTap: {
+                            withAnimation(.smooth(duration: 0.18)) {
+                                selectedDate = date
+                            }
+                        }
+                    )
+                } else {
+                    Color.clear
+                        .frame(height: cellHeight)
+                }
+            }
+        }
+    }
+
+    // MARK: - Day events card
 
     private var dayCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(selectedDate, format: .dateTime.weekday(.wide).month(.wide).day())
-                    .font(.headline)
-                Spacer()
-                Text("\(eventsForSelectedDay.count) event\(eventsForSelectedDay.count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(selectedDate, format: .dateTime.weekday(.wide).month(.wide).day())
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             if eventsForSelectedDay.isEmpty {
                 emptyDayState
@@ -121,7 +206,7 @@ struct MacCalendarView: View {
             Image(systemName: "calendar.badge.checkmark")
                 .font(.title2)
                 .foregroundStyle(.secondary)
-            Text("Nothing on this day")
+            Text(String(localized: "calendar_no_events_today"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -158,7 +243,7 @@ struct MacCalendarView: View {
 
     private func events(on date: Date) -> [SDCalendarEvent] {
         let key = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day], from: date)
-        return (eventsByDay[key] ?? []).sorted { $0.date < $1.date }
+        return eventsByDay[key] ?? []
     }
 
     private func macColor(for source: EventSource) -> Color {
@@ -172,10 +257,109 @@ struct MacCalendarView: View {
 
     private func sourceLabel(_ source: EventSource) -> String {
         switch source {
-        case .moodle: "Moodle assignment"
-        case .school: "NTUST academic calendar"
-        case .exam: "Exam"
-        case .system: "System calendar"
+        case .moodle: String(localized: "calendar_source_moodle")
+        case .school: String(localized: "calendar_source_school")
+        case .exam: String(localized: "calendar_source_exam")
+        // Mac never ingests EventKit events, so this branch is dead
+        // for now — fall back to school so we don't crash if a future
+        // ingest path adds them.
+        case .system: String(localized: "calendar_source_school")
+        }
+    }
+
+    /// Mirror of `CalendarViewModel.buildCalendarDays` so the Mac
+    /// surface produces the same Sunday-leading 7-column layout as
+    /// iPhone. Kept inline rather than imported because the iOS
+    /// `CalendarViewModel` also pulls in EventKit which the Mac build
+    /// deliberately omits.
+    private static func buildCalendarDays(for month: Date) -> [Date?] {
+        let cal = AppConstants.taipeiCalendar
+        let start = month.startOfMonth
+        let daysInMonth = month.daysInMonth
+        let firstWeekday = month.firstWeekdayOfMonth
+
+        var days: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
+        for day in 1...daysInMonth {
+            var components = cal.dateComponents([.year, .month], from: start)
+            components.day = day
+            days.append(cal.date(from: components))
+        }
+        while days.count % 7 != 0 { days.append(nil) }
+        return days
+    }
+}
+
+// MARK: - Day cell
+
+private struct DayCell: View {
+    let date: Date
+    let isSelected: Bool
+    let isToday: Bool
+    let events: [SDCalendarEvent]
+    let cellHeight: CGFloat
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 4) {
+                Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
+                    .font(.callout.weight(isToday || isSelected ? .semibold : .regular))
+                    .foregroundStyle(textColor)
+                    .frame(width: 30, height: 30)
+                    .background {
+                        if isSelected {
+                            Circle().fill(Color.accentColor)
+                        } else if isToday {
+                            Circle().stroke(Color.accentColor, lineWidth: 1.5)
+                        }
+                    }
+
+                HStack(spacing: 3) {
+                    let sources = dedupedSources()
+                    ForEach(sources, id: \.self) { src in
+                        Circle()
+                            .fill(color(for: src))
+                            .frame(width: 5, height: 5)
+                    }
+                }
+                .frame(height: 8)
+
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: cellHeight)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.08) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var textColor: Color {
+        if isSelected { return .white }
+        if isToday { return .accentColor }
+        return .primary
+    }
+
+    private func dedupedSources() -> [EventSource] {
+        let order: [EventSource] = [.moodle, .school, .exam, .system]
+        var seen = Set<EventSource>()
+        var result: [EventSource] = []
+        for src in events.map(\.source) where !seen.contains(src) {
+            seen.insert(src)
+            result.append(src)
+        }
+        return order.filter { result.contains($0) }.prefix(3).map { $0 }
+    }
+
+    private func color(for source: EventSource) -> Color {
+        switch source {
+        case .moodle: return .blue
+        case .school: return .orange
+        case .exam: return .red
+        case .system: return .gray
         }
     }
 }

@@ -24,7 +24,7 @@ extension AppFeature {
     /// up-front so the user doesn't have to dig into Settings → Sidebar
     /// to find them.
     static let macDefaultTabs: [AppFeature] = [
-        .home, .classTable, .calendar, .announcements, .gpa,
+        .home, .classTable, .calendar, .gpa, .announcements,
     ]
 }
 #endif

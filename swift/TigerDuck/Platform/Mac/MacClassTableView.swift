@@ -17,6 +17,12 @@ struct MacClassTableView: View {
 
     @State private var selectedSemester: String = Defaults[.classTableSelectedSemester]
     @State private var selectedCourse: SDCourse?
+    /// Bumps whenever an async fetch lands new cache; the body's
+    /// `courses` computed read includes this to trigger re-render
+    /// (Observation can't see plain `DataCache` mutations).
+    @State private var cacheRevision: Int = 0
+    @State private var hasWarmedCaches = false
+    @State private var isLoadingSemester = false
 
     /// Mon–Fri only — Sat/Sun are hidden on iPhone too unless data forces them.
     private let weekdays: [Int] = [1, 2, 3, 4, 5]
@@ -45,6 +51,7 @@ struct MacClassTableView: View {
     }()
 
     private var courses: [SDCourse] {
+        _ = cacheRevision
         let cached = DataCache.shared.loadCourses(semester: selectedSemester)
         let userAdded = DataCache.shared.loadUserAddedCourses()
             .filter { $0.semester == selectedSemester || $0.semester.isEmpty }
@@ -63,7 +70,11 @@ struct MacClassTableView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 if courses.isEmpty {
-                    emptyState
+                    if isLoadingSemester {
+                        loadingState
+                    } else {
+                        emptyState
+                    }
                 } else {
                     glassGridCard
                 }
@@ -83,8 +94,49 @@ struct MacClassTableView: View {
         .sheet(item: $selectedCourse) { course in
             courseDetailSheet(course)
         }
+        .task {
+            await warmCachesIfNeeded()
+            await ensureCurrentSemesterFetched()
+        }
         .onChange(of: selectedSemester) { _, newValue in
             Defaults[.classTableSelectedSemester] = newValue
+            Task { await ensureCurrentSemesterFetched() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+            cacheRevision &+= 1
+        }
+    }
+
+    // MARK: - Async fetch
+
+    /// One-shot warm of historical semester caches when the view first
+    /// appears. iPhone runs the same warm inside `ClassTableViewModel`;
+    /// the Mac picker can offer the past 4 semesters but only the
+    /// current one ships in the day-zero cache, so without this the
+    /// picker silently shows an empty grid for previous terms.
+    private func warmCachesIfNeeded() async {
+        guard !hasWarmedCaches else { return }
+        hasWarmedCaches = true
+        await AppServiceBridge.warmAllSemesterCaches(authService: appState.authService)
+        await MainActor.run { cacheRevision &+= 1 }
+    }
+
+    /// Fetch the currently-selected semester if its cache is empty.
+    /// Covers the case where the user picked a semester before
+    /// `warmCachesIfNeeded` finished (or where the warm skipped it
+    /// because cache was empty for a different reason than "never
+    /// fetched").
+    private func ensureCurrentSemesterFetched() async {
+        let target = selectedSemester
+        guard DataCache.shared.loadCourses(semester: target).isEmpty else { return }
+        await MainActor.run { isLoadingSemester = true }
+        _ = await AppServiceBridge.fetchCourses(
+            authService: appState.authService,
+            semester: target
+        )
+        await MainActor.run {
+            isLoadingSemester = false
+            cacheRevision &+= 1
         }
     }
 
@@ -116,6 +168,18 @@ struct MacClassTableView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: 360)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.regular)
+            Text("Loading \(displayLabel(for: selectedSemester))…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
     }
