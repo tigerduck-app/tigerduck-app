@@ -141,7 +141,20 @@ struct MacClassTableView: View {
                 Button {
                     showAddCourse = true
                 } label: {
-                    Label(String(localized: "class_table_add_course"), systemImage: "plus")
+                    // A bare `Label(...)` in a macOS toolbar renders the
+                    // plus glyph and the title with mismatched baselines
+                    // (image floats high). Spelling out the HStack and
+                    // letting both views use their default alignment
+                    // produces the same row geometry as the semester picker
+                    // sitting beside this button. `.fixedSize` stops AppKit
+                    // from compressing the label down to icon-only (and
+                    // floating the glyph against the right edge) when the
+                    // semester picker grows wide.
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                        Text(String(localized: "class_table_add_course"))
+                    }
+                    .fixedSize()
                 }
                 .help(String(localized: "class_table_add_course"))
             }

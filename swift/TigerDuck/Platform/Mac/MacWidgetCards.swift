@@ -85,28 +85,40 @@ private struct TodayScheduleWidgetCard: View {
         let color = TigerDuckTheme.courseColor(for: slot.course.courseNo)
         let isPast = slot.end < now
         let isLive = slot.start <= now && now < slot.end
+        // Mirror the iPhone Today widget treatment: live row is a solid
+        // course-color pill, upcoming rows get a thin colored leading bar
+        // so the per-course palette reads at a glance instead of being
+        // hidden behind a 6pt dot.
+        let primary: Color = isLive ? .white : .primary
+        let secondary: Color = isLive ? Color.white.opacity(0.85) : .secondary
         return HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(isLive ? Color.white.opacity(0.9) : color)
+                .frame(width: 3, height: 22)
             Text(slot.start, format: .dateTime.hour().minute())
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(secondary)
                 .frame(width: 48, alignment: .leading)
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
             Text(slot.course.displayName)
                 .font(.callout)
-                .foregroundStyle(.primary)
+                .foregroundStyle(primary)
                 .lineLimit(1)
             Spacer()
             if isLive {
                 Text(String(localized: "desktop_widget_now"))
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
+                    .foregroundStyle(color)
+                    .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(color))
+                    .background(Capsule().fill(Color.white.opacity(0.95)))
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isLive ? color : color.opacity(0.10))
+        )
         .opacity(isPast && !isLive ? 0.45 : 1)
     }
 }
@@ -126,7 +138,10 @@ private struct NextClassWidgetCard: View {
                     HStack {
                         Text(target.label.uppercased())
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(color))
                         Spacer()
                         Text(primary.course.timeRange(for: primary.date.scheduleWeekday) ?? "")
                             .font(.title3.monospacedDigit().weight(.semibold))

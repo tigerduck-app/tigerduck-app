@@ -68,10 +68,21 @@ struct TodayWidgetView: View {
 
     var body: some View {
         let palette = WidgetPalette.resolve(snapshot: entry.snapshot, colorScheme: colorScheme)
-        TodayListView(snapshot: entry.snapshot, now: entry.appNow, palette: palette, maxRows: maxRows)
-            .padding(12)
-            .containerBackground(palette.background, for: .widget)
-            .widgetURL(URL(string: "tigerduck://classtable"))
+        // `containerBackground` alone left the homescreen render of this
+        // widget pitch-black in shipping builds (preview was fine because
+        // WidgetKit composites the placeholder against a white card).
+        // Painting `palette.background` as the bottom layer of a ZStack
+        // guarantees the widget surface has a real color even if the OS
+        // skips the container background on this widget family.
+        ZStack(alignment: .topLeading) {
+            palette.background
+            TodayListView(snapshot: entry.snapshot, now: entry.appNow, palette: palette, maxRows: maxRows)
+                .padding(12)
+        }
+        .containerBackground(for: .widget) {
+            palette.background
+        }
+        .widgetURL(URL(string: "tigerduck://classtable"))
     }
 }
 
