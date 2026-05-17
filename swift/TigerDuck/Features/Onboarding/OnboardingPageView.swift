@@ -56,17 +56,26 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
 
     @ViewBuilder
     private var iconView: some View {
-        let image = Image(systemName: icon)
-            .font(.system(size: 64))
-            .foregroundStyle(accentColor)
-
         switch iconAnimation {
         case .pulse:
-            image.symbolEffect(.pulse)
+            Image(systemName: icon)
+                .font(.system(size: 64))
+                .foregroundStyle(accentColor)
+                .symbolEffect(.pulse)
         case .layerFlash:
-            image
-                .symbolRenderingMode(.hierarchical)
-                .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
+            // Compose the shield and lock as separate images so only the
+            // lock animates (the built-in lock.shield.fill effect would
+            // pulse both layers).
+            ZStack {
+                Image(systemName: "shield.fill")
+                    .font(.system(size: 64))
+                    .foregroundStyle(accentColor)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .symbolEffect(.pulse, options: .repeating.speed(0.35))
+                    .offset(y: 3)
+            }
         }
     }
 }
