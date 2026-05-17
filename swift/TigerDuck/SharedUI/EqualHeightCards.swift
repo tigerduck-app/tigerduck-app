@@ -1,16 +1,7 @@
 import SwiftUI
 
-/// Preference key used by horizontally-laid-out card rows (today
-/// carousel, time-machine card slot) to negotiate a shared height: each
-/// child reports its natural height, the parent reduces to the max, and
-/// then pushes that value back down so every card lines up with the
-/// tallest one.
-///
-/// Reduce uses `max` so the *tallest* contributor wins. Combined with a
-/// "monotonically grow" pattern in the consumer's `@State`, this gives a
-/// height that locks to whatever the tallest card seen during the
-/// parent's lifetime was — and only resets when the parent unmounts
-/// (i.e. the user leaves the page).
+/// Preference key shared by the equal-height row's hidden measurement
+/// layer. Reduce uses `max` so the tallest natural-height card wins.
 struct MaxCardHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -18,36 +9,56 @@ struct MaxCardHeightKey: PreferenceKey {
     }
 }
 
-extension View {
-    /// Measures self and emits its height through `MaxCardHeightKey` so a
-    /// surrounding row can pick the tallest. Use on each card that
-    /// participates in the equal-height row.
-    func reportCardHeight() -> some View {
-        background(
+/// Horizontal row that forces every child to the height of the tallest
+/// natural-height child seen so far. The locked height only grows — when
+/// a later-arriving child renders taller, the row grows to match, and it
+/// never shrinks until the row leaves the view hierarchy (the user
+/// navigating away from the page).
+///
+/// Implementation: a visible HStack pinned to `lockedHeight` is shadowed
+/// by a hidden HStack rendering the same `content()` at its intrinsic
+/// (natural) height. The hidden layer feeds the max natural height back
+/// through `MaxCardHeightKey`, the consumer monotonically grows
+/// `lockedHeight`, and the visible layer pins every child to it. We
+/// can't measure the visible layer directly because its `.frame(height:)`
+/// echoes the locked value back — re-rendering `content()` in a hidden
+/// `.fixedSize(vertical:)` layer is the simplest way to get a true
+/// natural measurement without a custom Layout.
+struct EqualHeightHStack<Content: View>: View {
+    var alignment: VerticalAlignment = .top
+    var spacing: CGFloat? = nil
+    @ViewBuilder var content: () -> Content
+
+    @State private var lockedHeight: CGFloat = 0
+
+    var body: some View {
+        HStack(alignment: alignment, spacing: spacing) {
+            content()
+        }
+        .frame(height: lockedHeight > 0 ? lockedHeight : nil, alignment: .top)
+        .background(measurementLayer)
+        .onPreferenceChange(MaxCardHeightKey.self) { newValue in
+            if newValue > lockedHeight { lockedHeight = newValue }
+        }
+    }
+
+    private var measurementLayer: some View {
+        HStack(alignment: alignment, spacing: spacing) {
+            content()
+        }
+        // `.fixedSize(vertical: true)` lets each child report its
+        // intrinsic height regardless of what `.frame(height:)` would
+        // otherwise propose down — that's what makes the natural-height
+        // measurement independent of the visible layer's lock.
+        .fixedSize(horizontal: false, vertical: true)
+        .background(
             GeometryReader { proxy in
                 Color.clear
                     .preference(key: MaxCardHeightKey.self, value: proxy.size.height)
             }
         )
-    }
-
-    /// Grows self to at least `height` when it's > 0. Using `minHeight`
-    /// instead of a fixed `height` keeps a card that's naturally taller
-    /// than the current lock from being clipped — important because
-    /// `reportCardHeight()` is applied AFTER this modifier, so the
-    /// reported value would otherwise echo the locked height back and
-    /// the preference key would never see the real natural height of a
-    /// card that came in tall (e.g. CurrentClassCard rendering after a
-    /// shorter TodayCourseCard had already seeded the lock). The
-    /// consumer monotonically grows its `@State` from preference
-    /// updates, so within a couple of layout passes the row settles on
-    /// the genuine tallest height with no clipping.
-    @ViewBuilder
-    func lockCardHeight(_ height: CGFloat) -> some View {
-        if height > 0 {
-            self.frame(minHeight: height, alignment: .top)
-        } else {
-            self
-        }
+        .hidden()
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
     }
 }
