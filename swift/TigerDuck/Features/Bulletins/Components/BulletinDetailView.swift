@@ -29,8 +29,8 @@ struct BulletinDetailView: View {
     /// the override in Settings is acceptable; the next app launch
     /// rebuilds the client.
     private static let apiClient: BulletinAPIClient = BulletinAPIClient(
-        baseURL: PushCoordinator.resolveServerURL(),
-        sharedSecret: PushCoordinator.resolveSharedSecret()
+        baseURL: PushServerConfig.resolveServerURL(),
+        sharedSecret: PushServerConfig.resolveSharedSecret()
     )
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Detail")
 

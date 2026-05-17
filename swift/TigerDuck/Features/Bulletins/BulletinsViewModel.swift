@@ -54,8 +54,8 @@ final class BulletinsViewModel {
 
     init(apiClient: BulletinAPIClient? = nil) {
         self.apiClient = apiClient ?? BulletinAPIClient(
-            baseURL: PushCoordinator.resolveServerURL(),
-            sharedSecret: PushCoordinator.resolveSharedSecret()
+            baseURL: PushServerConfig.resolveServerURL(),
+            sharedSecret: PushServerConfig.resolveSharedSecret()
         )
         // Seed synchronously from disk so the very first render after
         // launch paints real cards instead of a spinner.

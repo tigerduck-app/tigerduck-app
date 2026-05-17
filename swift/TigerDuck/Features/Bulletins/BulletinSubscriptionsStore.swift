@@ -44,8 +44,8 @@ final class BulletinSubscriptionsStore {
         identity: PushIdentity = .loadOrCreate()
     ) {
         self.apiClient = apiClient ?? BulletinAPIClient(
-            baseURL: PushCoordinator.resolveServerURL(),
-            sharedSecret: PushCoordinator.resolveSharedSecret()
+            baseURL: PushServerConfig.resolveServerURL(),
+            sharedSecret: PushServerConfig.resolveSharedSecret()
         )
         self.deviceId = identity.deviceId
     }
