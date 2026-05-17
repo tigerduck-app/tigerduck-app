@@ -47,29 +47,30 @@ struct OnboardingView: View {
             icon: "graduationcap.fill",
             title: String(localized: "onboarding_welcome_title"),
             subtitle: String(localized: "onboarding_welcome_subtitle"),
-            accentColor: .accentPrimary
-        ) {
-            VStack(spacing: TigerDuckTheme.Spacing.md) {
-                Text(String(localized: "onboarding_welcome_description"))
-                    .font(.footnote)
-                    .foregroundStyle(Color.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+            accentColor: .accentPrimary,
+            content: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    Text(String(localized: "onboarding_welcome_description"))
+                        .font(.footnote)
+                        .foregroundStyle(Color.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                    Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
-                    Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
+                    VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                        Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
+                        Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
+                    }
+                    .font(.footnote.weight(.semibold))
                 }
-                .font(.footnote.weight(.semibold))
-
+            },
+            actions: {
                 Button(String(localized: "action_next")) {
                     withAnimation { currentPage = Page.privacy.rawValue }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .padding(.top, TigerDuckTheme.Spacing.sm)
             }
-        }
+        )
     }
 
     // MARK: - Page 1: Privacy & terms
@@ -159,78 +160,80 @@ struct OnboardingView: View {
             icon: "person.badge.key.fill",
             title: String(localized: "onboarding_login_title"),
             subtitle: String(localized: "onboarding_login_subtitle"),
-            accentColor: .green
-        ) {
-            VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                VStack(spacing: 1) {
-                    HStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Image(systemName: "person.fill")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 20)
-                        TextField(String(localized: "login_student_id"), text: $studentId)
-                            .keyboardType(.asciiCapable)
-                            .focused($focusedField, equals: .studentId)
-                            .textContentType(.username)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.characters)
-                            .submitLabel(.next)
-                            .onSubmit { focusedField = .password }
-                    }
-                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                    .padding(.vertical, TigerDuckTheme.Spacing.md)
-                    .background(.fill.quaternary, in: .rect(topLeadingRadius: TigerDuckTheme.CornerRadius.md, topTrailingRadius: TigerDuckTheme.CornerRadius.md))
-
-                    Divider()
+            accentColor: .green,
+            content: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    VStack(spacing: 1) {
+                        HStack(spacing: TigerDuckTheme.Spacing.md) {
+                            Image(systemName: "person.fill")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 20)
+                            TextField(String(localized: "login_student_id"), text: $studentId)
+                                .keyboardType(.asciiCapable)
+                                .focused($focusedField, equals: .studentId)
+                                .textContentType(.username)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.characters)
+                                .submitLabel(.next)
+                                .onSubmit { focusedField = .password }
+                        }
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                        .padding(.vertical, TigerDuckTheme.Spacing.md)
+                        .background(.fill.quaternary, in: .rect(topLeadingRadius: TigerDuckTheme.CornerRadius.md, topTrailingRadius: TigerDuckTheme.CornerRadius.md))
 
-                    HStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Image(systemName: "lock.fill")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 20)
-                        PasswordField(
-                            placeholder: String(localized: "login_password"),
-                            text: $password,
-                            focusBinding: $focusedField,
-                            focusValue: .password,
-                            onSubmit: { submitLogin() }
-                        )
+                        Divider()
+                            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+
+                        HStack(spacing: TigerDuckTheme.Spacing.md) {
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(.secondary)
+                                .frame(width: 20)
+                            PasswordField(
+                                placeholder: String(localized: "login_password"),
+                                text: $password,
+                                focusBinding: $focusedField,
+                                focusValue: .password,
+                                onSubmit: { submitLogin() }
+                            )
+                        }
+                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                        .padding(.vertical, TigerDuckTheme.Spacing.md)
+                        .background(.fill.quaternary, in: .rect(bottomLeadingRadius: TigerDuckTheme.CornerRadius.md, bottomTrailingRadius: TigerDuckTheme.CornerRadius.md))
                     }
-                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                    .padding(.vertical, TigerDuckTheme.Spacing.md)
-                    .background(.fill.quaternary, in: .rect(bottomLeadingRadius: TigerDuckTheme.CornerRadius.md, bottomTrailingRadius: TigerDuckTheme.CornerRadius.md))
-                }
-                .frame(maxWidth: 320)
+                    .frame(maxWidth: 320)
 
-                Spacer().frame(height: TigerDuckTheme.Spacing.lg)
-
-                if let error = appState.authService.loginError {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-
-                Button(String(localized: "onboarding_skip_for_now")) {
-                    withAnimation { currentPage = Page.notifications.rawValue }
-                }
-                .foregroundStyle(Color.textSecondary)
-
-                Button {
-                    submitLogin()
-                } label: {
-                    if appState.authService.isLoggingIn {
-                        ProgressView()
-                            .tint(.white)
-                            .controlSize(.small)
-                    } else {
-                        Text(String(localized: "onboarding_login_button"))
-                            .font(.callout.weight(.semibold))
+                    if let error = appState.authService.loginError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(studentId.isEmpty || password.isEmpty || appState.authService.isLoggingIn)
+            },
+            actions: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    Button(String(localized: "onboarding_skip_for_now")) {
+                        withAnimation { currentPage = Page.notifications.rawValue }
+                    }
+                    .foregroundStyle(Color.textSecondary)
+
+                    Button {
+                        submitLogin()
+                    } label: {
+                        if appState.authService.isLoggingIn {
+                            ProgressView()
+                                .tint(.white)
+                                .controlSize(.small)
+                        } else {
+                            Text(String(localized: "onboarding_login_button"))
+                                .font(.callout.weight(.semibold))
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(studentId.isEmpty || password.isEmpty || appState.authService.isLoggingIn)
+                }
             }
-        }
+        )
     }
 
     private func submitLogin() {

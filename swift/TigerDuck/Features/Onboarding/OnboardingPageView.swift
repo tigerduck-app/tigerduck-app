@@ -1,10 +1,11 @@
 import SwiftUI
 
-struct OnboardingPageView<Actions: View>: View {
+struct OnboardingPageView<Content: View, Actions: View>: View {
     let icon: String
     let title: String
     let subtitle: String
     var accentColor: Color = .accentPrimary
+    @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
 
     var body: some View {
@@ -29,6 +30,8 @@ struct OnboardingPageView<Actions: View>: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
+                    content()
+
                     Spacer(minLength: TigerDuckTheme.Spacing.lg)
 
                     actions()
@@ -40,5 +43,24 @@ struct OnboardingPageView<Actions: View>: View {
             }
             .scrollIndicators(.never)
         }
+    }
+}
+
+extension OnboardingPageView where Content == EmptyView {
+    init(
+        icon: String,
+        title: String,
+        subtitle: String,
+        accentColor: Color = .accentPrimary,
+        @ViewBuilder actions: @escaping () -> Actions
+    ) {
+        self.init(
+            icon: icon,
+            title: title,
+            subtitle: subtitle,
+            accentColor: accentColor,
+            content: { EmptyView() },
+            actions: actions
+        )
     }
 }
