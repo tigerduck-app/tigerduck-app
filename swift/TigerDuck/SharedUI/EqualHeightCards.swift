@@ -31,14 +31,21 @@ extension View {
         )
     }
 
-    /// Pins self to `height` when it's > 0. While the locked height is
-    /// still being measured (first frame), passes through so the natural
-    /// height is reported back to the preference key — otherwise we'd
-    /// dead-lock at 0.
+    /// Grows self to at least `height` when it's > 0. Using `minHeight`
+    /// instead of a fixed `height` keeps a card that's naturally taller
+    /// than the current lock from being clipped — important because
+    /// `reportCardHeight()` is applied AFTER this modifier, so the
+    /// reported value would otherwise echo the locked height back and
+    /// the preference key would never see the real natural height of a
+    /// card that came in tall (e.g. CurrentClassCard rendering after a
+    /// shorter TodayCourseCard had already seeded the lock). The
+    /// consumer monotonically grows its `@State` from preference
+    /// updates, so within a couple of layout passes the row settles on
+    /// the genuine tallest height with no clipping.
     @ViewBuilder
     func lockCardHeight(_ height: CGFloat) -> some View {
         if height > 0 {
-            self.frame(height: height, alignment: .top)
+            self.frame(minHeight: height, alignment: .top)
         } else {
             self
         }
