@@ -16,5 +16,15 @@ extension AppFeature {
     var isAvailableOnMac: Bool {
         !Self.macHiddenFeatures.contains(self)
     }
+
+    /// Default sidebar pin order on macOS, used the first time the app
+    /// runs on Mac (before the user has customised `configuredTabs`).
+    /// Wider than the iOS default tab bar because Mac sidebars don't
+    /// have iPhone's 4-tab cap — surface the most-used features
+    /// up-front so the user doesn't have to dig into Settings → Sidebar
+    /// to find them.
+    static let macDefaultTabs: [AppFeature] = [
+        .home, .classTable, .calendar, .announcements, .gpa,
+    ]
 }
 #endif

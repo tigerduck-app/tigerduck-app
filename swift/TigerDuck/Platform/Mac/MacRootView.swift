@@ -65,9 +65,22 @@ struct MacContentView: View {
                     }
                 }
         }
-        .onAppear(perform: seedSelectionIfNeeded)
+        .onAppear {
+            seedMacDefaultsIfNeeded()
+            seedSelectionIfNeeded()
+        }
         .onChange(of: pinnedFeatures) { _, _ in
             seedSelectionIfNeeded()
+        }
+    }
+
+    /// First-launch Mac users get a wider default pin set than iOS
+    /// because the sidebar isn't capped at 4. Only kick in when
+    /// `configuredTabs` is still exactly the iOS default — once the
+    /// user has touched their pins, respect their choice.
+    private func seedMacDefaultsIfNeeded() {
+        if appState.configuredTabs == AppFeature.defaultTabs {
+            appState.configuredTabs = AppFeature.macDefaultTabs
         }
     }
 
@@ -142,8 +155,10 @@ struct MacContentView: View {
         if case .feature(let current) = selection, !pinnedFeatures.contains(current) {
             selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
         }
+        // First-launch on Mac: land on Home (the first pinned feature)
+        // rather than on More so the app opens to real content.
         if case .more = selection, !pinnedFeatures.isEmpty,
-           appState.configuredTabs == AppFeature.defaultTabs {
+           appState.configuredTabs == AppFeature.macDefaultTabs {
             selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
         }
     }

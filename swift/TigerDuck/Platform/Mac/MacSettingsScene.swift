@@ -63,14 +63,6 @@ private struct MacGeneralSettingsView: View {
                 .pickerStyle(.menu)
             }
 
-            Section("Browsing") {
-                Picker("Open links in", selection: $state.browserPreference) {
-                    ForEach(BrowserPreference.allCases, id: \.self) { pref in
-                        Text(pref == .system ? "Default browser" : "In-app browser").tag(pref)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
         }
         .formStyle(.grouped)
         .padding(20)

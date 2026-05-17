@@ -1,8 +1,16 @@
 #if os(macOS)
 import SwiftUI
 
-/// macOS Calendar surface — month grid + day-event panel, mirroring
-/// the iPhone `CalendarTabView` layout.
+/// macOS Calendar surface.
+///
+/// Uses the system-native `DatePicker(.graphical)` month grid for the
+/// month UI — it ships with macOS's familiar look (chevron month nav,
+/// keyboard arrows, today highlight) and stays consistent with the OS
+/// without us reimplementing a custom grid. Below the picker sits a
+/// day-events panel that lists every cached school + Moodle event for
+/// the selected date (similar to the iPhone CalendarTabView, but the
+/// per-day event-dot indicators that the iPhone grid drew aren't
+/// available on the system calendar — the trade-off for native chrome.)
 ///
 /// Source-of-truth is `DataCache.loadCalendarEvents()` (populated by
 /// `appState.backgroundSync()`). EventKit overlay (system Calendar
@@ -10,20 +18,7 @@ import SwiftUI
 struct MacCalendarView: View {
     @Environment(AppState.self) private var appState
 
-    @State private var displayedMonth: Date = Date()
     @State private var selectedDate: Date = Date()
-
-    private let weekdaySymbols = [
-        String(localized: "weekday_sun_short"),
-        String(localized: "weekday_mon_short"),
-        String(localized: "weekday_tue_short"),
-        String(localized: "weekday_wed_short"),
-        String(localized: "weekday_thu_short"),
-        String(localized: "weekday_fri_short"),
-        String(localized: "weekday_sat_short"),
-    ]
-
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
 
     private var allEvents: [SDCalendarEvent] {
         DataCache.shared.loadCalendarEvents()
@@ -35,10 +30,6 @@ struct MacCalendarView: View {
         return Dictionary(grouping: allEvents) { event in
             cal.dateComponents([.year, .month, .day], from: event.date)
         }
-    }
-
-    private var calendarDays: [Date?] {
-        Self.buildCalendarDays(for: displayedMonth)
     }
 
     private var eventsForSelectedDay: [SDCalendarEvent] {
@@ -57,7 +48,6 @@ struct MacCalendarView: View {
             ToolbarItem(placement: .automatic) {
                 Button {
                     withAnimation(.smooth(duration: 0.25)) {
-                        displayedMonth = Date()
                         selectedDate = Date()
                     }
                 } label: {
@@ -68,13 +58,18 @@ struct MacCalendarView: View {
         }
     }
 
-    // MARK: - Month grid card
+    // MARK: - Month picker card
 
     private var monthCard: some View {
-        VStack(spacing: 12) {
-            monthNav
-            weekdayHeader
-            monthGrid
+        VStack(alignment: .leading, spacing: 8) {
+            DatePicker(
+                "Select a date",
+                selection: $selectedDate,
+                displayedComponents: [.date]
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
         }
         .padding(18)
         .background(
@@ -85,99 +80,6 @@ struct MacCalendarView: View {
             RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg, style: .continuous)
                 .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
         )
-    }
-
-    private var monthNav: some View {
-        HStack {
-            Button {
-                shift(by: -1)
-            } label: {
-                Image(systemName: "chevron.left")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-
-            Spacer()
-
-            Text(monthTitle)
-                .font(.headline)
-
-            Spacer()
-
-            Button {
-                shift(by: 1)
-            } label: {
-                Image(systemName: "chevron.right")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-        }
-    }
-
-    private var weekdayHeader: some View {
-        LazyVGrid(columns: columns, spacing: 6) {
-            ForEach(weekdaySymbols, id: \.self) { symbol in
-                Text(symbol)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    private var monthGrid: some View {
-        LazyVGrid(columns: columns, spacing: 6) {
-            ForEach(Array(calendarDays.enumerated()), id: \.offset) { _, date in
-                if let date {
-                    dayCell(date)
-                } else {
-                    Color.clear.frame(height: 56)
-                }
-            }
-        }
-    }
-
-    private func dayCell(_ date: Date) -> some View {
-        let isSelected = AppConstants.taipeiCalendar.isDate(date, inSameDayAs: selectedDate)
-        let isToday = AppConstants.taipeiCalendar.isDateInToday(date)
-        let dayEvents = events(on: date)
-        return Button {
-            withAnimation(.smooth(duration: 0.18)) {
-                selectedDate = date
-            }
-        } label: {
-            VStack(spacing: 4) {
-                Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(isSelected ? .white : (isToday ? Color.accentColor : .primary))
-                    .frame(width: 28, height: 28)
-                    .background(
-                        ZStack {
-                            if isSelected {
-                                Circle().fill(Color.accentColor)
-                            } else if isToday {
-                                Circle().stroke(Color.accentColor, lineWidth: 1.5)
-                            }
-                        }
-                    )
-                HStack(spacing: 3) {
-                    let sourceOrder: [EventSource] = [.moodle, .school, .exam]
-                    let sources = Array(
-                        Set(dayEvents.map(\.source))
-                            .sorted { (sourceOrder.firstIndex(of: $0) ?? 99) < (sourceOrder.firstIndex(of: $1) ?? 99) }
-                            .prefix(3)
-                    )
-                    ForEach(sources, id: \.self) { source in
-                        Circle()
-                            .fill(macColor(for: source))
-                            .frame(width: 4, height: 4)
-                    }
-                }
-                .frame(height: 6)
-            }
-            .frame(maxWidth: .infinity, minHeight: 56)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Selected day events
@@ -254,24 +156,9 @@ struct MacCalendarView: View {
 
     // MARK: - Helpers
 
-    private var monthTitle: String {
-        var style = Date.FormatStyle.dateTime.year().month(.wide)
-        style.timeZone = AppConstants.taipeiTimeZone
-        return displayedMonth.formatted(style)
-    }
-
     private func events(on date: Date) -> [SDCalendarEvent] {
         let key = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day], from: date)
         return (eventsByDay[key] ?? []).sorted { $0.date < $1.date }
-    }
-
-    private func shift(by months: Int) {
-        guard let next = AppConstants.taipeiCalendar.date(
-            byAdding: .month, value: months, to: displayedMonth
-        ) else { return }
-        withAnimation(.smooth(duration: 0.25)) {
-            displayedMonth = next
-        }
     }
 
     private func macColor(for source: EventSource) -> Color {
@@ -290,30 +177,6 @@ struct MacCalendarView: View {
         case .exam: "Exam"
         case .system: "System calendar"
         }
-    }
-
-    /// Build a Sun-first week-aligned grid for the month containing
-    /// `date`. Nil slots pad the leading weekdays before the 1st and
-    /// the trailing weekdays after the last day so the grid is always
-    /// a multiple of 7 cells.
-    private static func buildCalendarDays(for month: Date) -> [Date?] {
-        let cal = AppConstants.taipeiCalendar
-        var components = cal.dateComponents([.year, .month], from: month)
-        components.day = 1
-        guard let firstOfMonth = cal.date(from: components),
-              let range = cal.range(of: .day, in: .month, for: firstOfMonth) else {
-            return []
-        }
-        let firstWeekday = cal.component(.weekday, from: firstOfMonth) // 1 = Sunday
-        var days: [Date?] = Array(repeating: nil, count: firstWeekday - 1)
-        for day in 1...range.count {
-            components.day = day
-            days.append(cal.date(from: components))
-        }
-        while days.count % 7 != 0 {
-            days.append(nil)
-        }
-        return days
     }
 }
 #endif
