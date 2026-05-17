@@ -39,8 +39,9 @@ struct MacBulletinsView: View {
             viewModel.searchText = newValue
         }
         .onChange(of: selectedId) { _, newValue in
+            detail = nil
+            detailError = nil
             guard let id = newValue else {
-                detail = nil
                 return
             }
             readStore.markRead(id)
