@@ -22,12 +22,15 @@ struct SettingsView: View {
     @State private var hapticEngine: CHHapticEngine?
     @State private var hapticPlayer: CHHapticPatternPlayer?
     @State private var notificationsAuthorized: Bool = true
+    @State private var showReassignColorsConfirm = false
+    @State private var showOfficialWebsite = false
     @Environment(\.scenePhase) private var scenePhase
 
     private static let feedbackURL = AppURLs.issues
     private static let privacyURL = AppURLs.privacyPolicy
     private static let licenseURL = AppURLs.license
     private static let deleteAccountURL = AppURLs.deleteAccount
+    private static let websiteURL = AppURLs.website
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -90,7 +93,6 @@ struct SettingsView: View {
                     Text(String(localized: "settings_browser_system_default")).tag(BrowserPreference.system)
                     Text(String(localized: "settings_browser_in_app")).tag(BrowserPreference.inApp)
                 }
-                Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
             }
 
             // MARK: - Abbreviations (only when UI is non-Chinese, since the
@@ -121,9 +123,59 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Other Features
+            // MARK: - Other settings
+            // One header'd subsection with the Library toggle, then a string of
+            // header-less Sections so each row (or grouping) gets its own card
+            // — mirrors the Android `OtherSettingsScreen` layout where every
+            // ContentCard is visually separated. iOS Form can't nest Sections,
+            // so the visual grouping is achieved with multiple top-level
+            // Sections sharing the same conceptual "Other settings" header.
             Section(String(localized: "settings_section_other_settings")) {
                 Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
+            }
+            Section {
+                Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
+            }
+            Section {
+                Button {
+                    showReassignColorsConfirm = true
+                } label: {
+                    Text(String(localized: "settings_reset_course_colors"))
+                        .foregroundStyle(.primary)
+                }
+            }
+            Section {
+                Button {
+                    if appState.browserPreference == .inApp {
+                        showFeedback = true
+                    } else {
+                        UIApplication.shared.open(Self.feedbackURL)
+                    }
+                } label: {
+                    Text(String(localized: "settings_feedback_bug_report"))
+                        .foregroundStyle(.primary)
+                }
+                Button {
+                    if appState.browserPreference == .inApp {
+                        showPrivacyPolicy = true
+                    } else {
+                        UIApplication.shared.open(Self.privacyURL)
+                    }
+                } label: {
+                    Text(String(localized: "settings_privacy_policy"))
+                        .foregroundStyle(.primary)
+                }
+                Button(String(localized: "settings_open_source_licenses")) {
+                    if appState.browserPreference == .inApp {
+                        showLicense = true
+                    } else {
+                        UIApplication.shared.open(Self.licenseURL)
+                    }
+                }
+                .foregroundStyle(.primary)
+                NavigationLink(String(localized: "settings_view_source_code")) {
+                    SourceCodePickerView()
+                }
             }
 
             // MARK: - Notifications & Live Activity
@@ -175,36 +227,21 @@ struct SettingsView: View {
                 LabeledContent(String(localized: "settings_version"), value: appVersion)
                 Button {
                     if appState.browserPreference == .inApp {
-                        showFeedback = true
+                        showOfficialWebsite = true
                     } else {
-                        UIApplication.shared.open(Self.feedbackURL)
+                        UIApplication.shared.open(Self.websiteURL)
                     }
                 } label: {
-                    Text(String(localized: "settings_feedback_bug_report"))
-                }
-                Button {
-                    if appState.browserPreference == .inApp {
-                        showPrivacyPolicy = true
-                    } else {
-                        UIApplication.shared.open(Self.privacyURL)
+                    HStack {
+                        Text(String(localized: "settings_official_website"))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: appState.browserPreference == .inApp
+                              ? "rectangle.portrait.and.arrow.right"
+                              : "arrow.up.right.square")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                } label: {
-                    Text(String(localized: "settings_privacy_policy"))
-                }
-                Button {
-                    UIApplication.shared.open(Self.deleteAccountURL)
-                } label: {
-                    Text(String(localized: "settings_delete_account"))
-                }
-                Button(String(localized: "settings_open_source_licenses")) {
-                    if appState.browserPreference == .inApp {
-                        showLicense = true
-                    } else {
-                        UIApplication.shared.open(Self.licenseURL)
-                    }
-                }
-                NavigationLink(String(localized: "settings_view_source_code")) {
-                    SourceCodePickerView()
                 }
             }
 
@@ -243,6 +280,21 @@ struct SettingsView: View {
         .sheet(isPresented: $showLicense) {
             InAppBrowserView(url: Self.licenseURL)
                 .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showOfficialWebsite) {
+            InAppBrowserView(url: Self.websiteURL)
+                .ignoresSafeArea()
+        }
+        .alert(
+            String(localized: "settings_reset_course_colors_confirm_title"),
+            isPresented: $showReassignColorsConfirm
+        ) {
+            Button(String(localized: "action_confirm"), role: .destructive) {
+                reassignAllCourseColors()
+            }
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "settings_reset_course_colors_confirm_message"))
         }
         .sheet(isPresented: $showLibraryLogin) {
             LoginSheet(
@@ -318,6 +370,17 @@ struct SettingsView: View {
             libraryWarningTask?.cancel()
             libraryWarningTask = nil
         }
+    }
+
+    /// Rebuild every course's color assignment from scratch using the
+    /// unique-color algorithm, then broadcast so Home, Class Table, widgets,
+    /// and the Live Activity all pick up the new palette. Reads the
+    /// authoritative roster from the canonical course provider so user-added
+    /// courses participate too.
+    private func reassignAllCourseColors() {
+        let courseNos = CanonicalCourseProvider().currentCourses().map(\.courseNo)
+        TigerDuckTheme.reassignAll(courseNos: courseNos)
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
     private var libraryToggleBinding: Binding<Bool> {

@@ -35,7 +35,7 @@ enum TigerDuckTheme {
     /// `Color` values from this list; the watch-sync encoder reads it via
     /// `courseColorHex(for:)` so its hex output stays in lockstep with what
     /// the phone renders.
-    static let coursePaletteHexes: [UInt] = [
+    static let coursePaletteHexes: [UInt32] = [
         0xFF6B6B, // 珊瑚紅
         0x4ECDC4, // 青綠
         0x45B7D1, // 天藍
@@ -58,151 +58,199 @@ enum TigerDuckTheme {
         0x2980B9, // 鈷藍
     ]
 
-    static let courseColors: [Color] = coursePaletteHexes.map { Color(hex: $0) }
+    static let courseColors: [Color] = coursePaletteHexes.map { Color(hex: UInt($0)) }
 
-    /// "#RRGGBB" hex for the course's current palette index. Mirrors
+    /// "#RRGGBB" hex for the course's currently assigned color. Mirrors
     /// `courseColor(for:)` but returns the wire-format string used by
     /// `WatchPayloadEncoder`.
     static func courseColorHex(for courseNo: String) -> String {
-        let idx = paletteIndex(for: courseNo)
-        let hex = coursePaletteHexes[idx]
-        return String(format: "#%06X", hex)
+        String(format: "#%06X", assignedHex(for: courseNo))
     }
 
-    /// Lock-protected mutable state for the per-course color caches.
-    /// `buildCourseColorMap` runs from background sync while
-    /// `setCustomColor` runs on MainActor (settings UI); without
-    /// synchronization the concurrent mutations race against
-    /// SDCourse-driven reads on the render thread. Swift dictionaries
-    /// are not thread-safe, so the access is funneled through
-    /// `os_unfair_lock` via the wrapper below.
+    /// Lock-protected mutable state for the per-course color map.
+    /// `ensureAssignments` runs from background sync while `setColor` runs on
+    /// MainActor (settings UI); without synchronization the concurrent
+    /// mutations race against SDCourse-driven reads on the render thread.
     private static let state = ColorState()
 
-    /// Snapshot of the current courseNo → palette-index overrides. Read
-    /// rarely (settings sheet) and never concurrently with mutations on
-    /// the same key, so taking the lock for the snapshot is cheap.
-    static var courseCustomColors: [String: Int] {
-        state.snapshotCustom()
+    /// Snapshot of the current courseNo → assigned hex map. Read by the
+    /// widget snapshot writer / watch payload encoder; the snapshot stays
+    /// consistent across `setColor` even when a displacement reassigns
+    /// another course.
+    static var courseColorMap: [String: UInt32] {
+        state.snapshot()
     }
 
-    /// Populate / refresh the color cache for the given courses. Colors are a
-    /// pure function of `courseNo`, so reloading the same (or a different)
-    /// semester never reshuffles already-seen courses. New entries are added;
-    /// existing entries are kept as-is.
-    static func buildCourseColorMap(courseNos: [String]) {
-        state.merge(courseNos: courseNos) { stableColor(for: $0) }
+    /// Ensure every passed-in courseNo has a unique assigned color. New
+    /// courses pick the first unused preset (starting at their hash index for
+    /// stability); once the 20-color palette is exhausted, fresh random hex
+    /// values fill in.
+    static func ensureAssignments(courseNos: [String]) {
+        state.ensureAssignments(courseNos: courseNos, palette: coursePaletteHexes)
     }
 
     static func courseColor(for courseNo: String) -> Color {
-        state.color(for: courseNo, palette: courseColors) ?? stableColor(for: courseNo)
+        Color(hex: UInt(assignedHex(for: courseNo)))
     }
 
-    /// Palette index currently in effect for this course, whether from an
-    /// explicit override or the hash-based default. Used by the color picker
-    /// to highlight the current selection.
-    static func paletteIndex(for courseNo: String) -> Int {
-        if let custom = state.customIndex(for: courseNo), courseColors.indices.contains(custom) {
-            return custom
-        }
-        let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
-        return abs(hash) % courseColors.count
+    /// Resolved hex for this course. Falls back to the deterministic hash
+    /// default if no entry has been assigned yet (callers should invoke
+    /// `ensureAssignments` to persist).
+    static func assignedHex(for courseNo: String) -> UInt32 {
+        state.hex(for: courseNo, palette: coursePaletteHexes)
     }
 
-    /// Whether this course has been explicitly recolored by the user.
-    static func hasCustomColor(for courseNo: String) -> Bool {
-        state.customIndex(for: courseNo) != nil
+    /// Palette index when the assigned color happens to match a preset, else
+    /// `nil` (the course holds a fully custom hex). Drives the picker's
+    /// "ringed preset" highlight.
+    static func paletteIndex(for courseNo: String) -> Int? {
+        let hex = assignedHex(for: courseNo)
+        return coursePaletteHexes.firstIndex(of: hex)
     }
 
-    /// Persist a new palette-index override for this course and invalidate
-    /// the fast-path cache entry so the next read re-derives.
-    static func setCustomColor(index: Int, for courseNo: String) {
-        guard courseColors.indices.contains(index) else { return }
-        let snapshot = state.setCustom(index: index, for: courseNo)
-        DataCache.shared.saveCourseCustomColors(snapshot)
+    /// Persist a user-picked color for this course. If another course
+    /// currently holds the same hex, that other course is reassigned to the
+    /// first unused preset (or a random distinct hex when all 20 are taken)
+    /// so the uniqueness invariant survives the edit.
+    static func setColor(hex: UInt32, for courseNo: String) {
+        state.setColor(hex: hex & 0xFFFFFF, for: courseNo, palette: coursePaletteHexes)
     }
 
-    /// Drop the override for this course so it falls back to the deterministic
-    /// default.
-    static func clearCustomColor(for courseNo: String) {
-        guard let snapshot = state.clearCustom(for: courseNo) else { return }
-        DataCache.shared.saveCourseCustomColors(snapshot)
+    /// Refresh the in-memory map from disk. Called when the underlying
+    /// user-scoped data is swapped (e.g. logout/login).
+    static func reload() {
+        state.reload()
     }
 
-    /// Refresh the in-memory override map from disk. Called when the
-    /// underlying user-scoped data is swapped (e.g. logout/login).
-    static func reloadCustomColors() {
-        let custom = DataCache.shared.loadCourseCustomColors()
-        state.reload(custom: custom)
-    }
-
-    /// Deterministic hash → palette index. Stable across launches and
-    /// independent of the surrounding course list.
-    private static func stableColor(for courseNo: String) -> Color {
-        let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
-        return courseColors[abs(hash) % courseColors.count]
+    /// Clear every assignment and rebuild from scratch using the preset
+    /// palette (falling back to random hex once exhausted). Powers the
+    /// Settings "Reassign course colors" action.
+    static func reassignAll(courseNos: [String]) {
+        state.reassignAll(courseNos: courseNos, palette: coursePaletteHexes)
     }
 }
 
-/// Wraps the lock + state for `TigerDuckTheme`. Hidden behind a class so
-/// the generic `OSAllocatedUnfairLock<T>` is not visible at the use
-/// sites (the prior generic-in-static-let arrangement triggered the
-/// Swift type-checker's complexity budget on the surrounding palette
-/// literal).
+/// Wraps the lock + state for `TigerDuckTheme`. Hidden behind a class so the
+/// generic `OSAllocatedUnfairLock<T>` is not visible at the use sites (the
+/// prior generic-in-static-let arrangement triggered the Swift type-checker's
+/// complexity budget on the surrounding palette literal).
 private final class ColorState: @unchecked Sendable {
-    private nonisolated(unsafe) var map: [String: Color] = [:]
-    private nonisolated(unsafe) var custom: [String: Int]
+    private nonisolated(unsafe) var map: [String: UInt32]
     private let lock = OSAllocatedUnfairLock()
 
     init() {
-        self.custom = DataCache.shared.loadCourseCustomColors()
+        self.map = DataCache.shared.loadCourseColorMap()
     }
 
-    func snapshotCustom() -> [String: Int] {
-        lock.withLock { custom }
+    func snapshot() -> [String: UInt32] {
+        lock.withLock { map }
     }
 
-    func customIndex(for courseNo: String) -> Int? {
-        lock.withLock { custom[courseNo] }
-    }
-
-    func merge(courseNos: [String], stableColor: (String) -> Color) {
-        let resolved = courseNos.map { ($0, stableColor($0)) }
+    /// Returns the assigned hex if one exists; otherwise falls back to the
+    /// deterministic hash default so a course that hasn't gone through
+    /// `ensureAssignments` yet still renders a sensible color.
+    func hex(for courseNo: String, palette: [UInt32]) -> UInt32 {
         lock.withLock {
-            for (courseNo, color) in resolved where map[courseNo] == nil {
-                map[courseNo] = color
+            if let h = map[courseNo] { return h }
+            return palette[Self.hashIndex(for: courseNo, paletteCount: palette.count)]
+        }
+    }
+
+    func ensureAssignments(courseNos: [String], palette: [UInt32]) {
+        let didMutate: Bool = lock.withLock {
+            var used = Set(map.values)
+            var mutated = false
+            // Stable order so an iteration over a fresh roster always assigns
+            // colors the same way — important because the user might re-order
+            // the array between calls.
+            for courseNo in courseNos.sorted() where map[courseNo] == nil {
+                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
+                map[courseNo] = assigned
+                used.insert(assigned)
+                mutated = true
+            }
+            return mutated
+        }
+        if didMutate { persist() }
+    }
+
+    func setColor(hex newHex: UInt32, for courseNo: String, palette: [UInt32]) {
+        let didMutate: Bool = lock.withLock {
+            if map[courseNo] == newHex { return false }
+            // Find every other course holding this hex (normally at most one,
+            // but tolerate duplicates that could survive an aborted migration)
+            // and release them before reassignment so the picker can choose
+            // the just-freed hex if it ends up being the only valid option.
+            let displaced = map.compactMap { entry -> String? in
+                entry.key != courseNo && entry.value == newHex ? entry.key : nil
+            }
+            map[courseNo] = newHex
+            for d in displaced { map.removeValue(forKey: d) }
+            var used = Set(map.values)
+            for d in displaced {
+                let assigned = Self.pickUnusedHex(seed: d, used: used, palette: palette)
+                map[d] = assigned
+                used.insert(assigned)
+            }
+            return true
+        }
+        if didMutate { persist() }
+    }
+
+    func reload() {
+        let fresh = DataCache.shared.loadCourseColorMap()
+        lock.withLock { map = fresh }
+    }
+
+    /// Drop every assignment, then walk `courseNos` and pick fresh unique
+    /// colors for each. The sort matches `ensureAssignments` so the first
+    /// course (alphabetically by courseNo) always lands on its hash-default
+    /// preset when the palette is empty — making the reassignment feel
+    /// deterministic for an unchanged roster.
+    func reassignAll(courseNos: [String], palette: [UInt32]) {
+        lock.withLock {
+            map.removeAll(keepingCapacity: true)
+            var used: Set<UInt32> = []
+            for courseNo in courseNos.sorted() {
+                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
+                map[courseNo] = assigned
+                used.insert(assigned)
             }
         }
+        persist()
     }
 
-    func color(for courseNo: String, palette: [Color]) -> Color? {
-        lock.withLock {
-            if let index = custom[courseNo], palette.indices.contains(index) {
-                return palette[index]
-            }
-            return map[courseNo]
-        }
+    private func persist() {
+        let snapshot = lock.withLock { map }
+        DataCache.shared.saveCourseColorMap(snapshot)
     }
 
-    func setCustom(index: Int, for courseNo: String) -> [String: Int] {
-        lock.withLock {
-            custom[courseNo] = index
-            map.removeValue(forKey: courseNo)
-            return custom
+    /// Pick the first unused preset starting from the seed's hash slot. When
+    /// every preset is already claimed, fall through to a randomly generated
+    /// hex (re-rolled until distinct). The 24-bit color space has 16M values
+    /// against a roster size in the dozens, so the retry loop converges fast
+    /// in practice; the bounded attempt counter guards against a pathological
+    /// `used` set that somehow covers a large fraction of RGB.
+    private static func pickUnusedHex(seed: String, used: Set<UInt32>, palette: [UInt32]) -> UInt32 {
+        let start = hashIndex(for: seed, paletteCount: palette.count)
+        for offset in 0..<palette.count {
+            let candidate = palette[(start + offset) % palette.count]
+            if !used.contains(candidate) { return candidate }
         }
+        for _ in 0..<256 {
+            let candidate = UInt32.random(in: 0...0xFFFFFF)
+            if !used.contains(candidate) { return candidate }
+        }
+        // Pathological fallback: nudge the hash-based pick by the used-set
+        // size so we still return *something* distinct from the input seed's
+        // first guess. Reaching here implies >16M assigned colors, which is
+        // physically impossible for the class roster but keeps the function
+        // total.
+        return palette[start] ^ UInt32(truncatingIfNeeded: used.count)
     }
 
-    func clearCustom(for courseNo: String) -> [String: Int]? {
-        lock.withLock {
-            guard custom.removeValue(forKey: courseNo) != nil else { return nil }
-            map.removeValue(forKey: courseNo)
-            return custom
-        }
-    }
-
-    func reload(custom: [String: Int]) {
-        lock.withLock {
-            self.custom = custom
-            self.map.removeAll()
-        }
+    private static func hashIndex(for courseNo: String, paletteCount: Int) -> Int {
+        let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
+        return abs(hash) % paletteCount
     }
 }

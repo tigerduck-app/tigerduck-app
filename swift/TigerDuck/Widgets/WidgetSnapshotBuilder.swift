@@ -12,7 +12,10 @@ enum WidgetSnapshotBuilder {
     struct Input {
         let courses: [SDCourse]
         let customNames: [String: String]
-        let customColors: [String: Int]
+        /// Per-course assigned 24-bit RGB hex — the unified map the app side
+        /// keeps populated (preset picks, fully custom picks, and auto-
+        /// assigned uniqueness-preserving fallbacks all live in this dict).
+        let colorMap: [String: UInt32]
         let isLoggedIn: Bool
         let accentColorHex: UInt32
         let now: Date
@@ -25,7 +28,7 @@ enum WidgetSnapshotBuilder {
                 displayName: resolveDisplayName(course: course, customNames: input.customNames),
                 classroom: course.classroom,
                 schedule: course.schedule,
-                colorHex: resolveColor(courseNo: course.courseNo, customColors: input.customColors),
+                colorHex: resolveColor(courseNo: course.courseNo, colorMap: input.colorMap),
                 skippedDates: Set(course.skippedDates)
             )
         }
@@ -64,15 +67,15 @@ enum WidgetSnapshotBuilder {
     ]
 
     /// Resolves the course color the same way the app does:
-    /// 1. Honor an explicit `customColors[courseNo]` palette-index override
-    ///    (out-of-range indices fall through to the hash default).
-    /// 2. Otherwise hash `courseNo.utf8` with the identical polynomial the
-    ///    app uses in `TigerDuckTheme.stableColor(for:)` so a course shows
-    ///    the same color in the widget and on the timetable.
-    private static func resolveColor(courseNo: String, customColors: [String: Int]) -> UInt32 {
-        if let index = customColors[courseNo], coursePaletteHex.indices.contains(index) {
-            return coursePaletteHex[index]
-        }
+    /// 1. Honor an explicit `colorMap[courseNo]` assignment — this is the
+    ///    canonical source of truth once `TigerDuckTheme.ensureAssignments`
+    ///    has run (every visible course gets an entry).
+    /// 2. Defensive fallback: hash `courseNo.utf8` with the identical
+    ///    polynomial the app uses in `TigerDuckTheme.ColorState.hex` so a
+    ///    snapshot built before the first assignment cycle still picks the
+    ///    same starter color the app would have shown.
+    private static func resolveColor(courseNo: String, colorMap: [String: UInt32]) -> UInt32 {
+        if let hex = colorMap[courseNo] { return hex }
         let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
         return coursePaletteHex[abs(hash) % coursePaletteHex.count]
     }

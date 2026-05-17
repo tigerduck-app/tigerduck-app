@@ -205,7 +205,7 @@ final class ClassTableViewModel {
         // the app session.
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
-        TigerDuckTheme.reloadCustomColors()
+        TigerDuckTheme.reload()
         reloadCurrentSemesterCourses()
         courses = buildCourseList(
             DataCache.shared.loadCourses(semester: currentSemester),
@@ -258,7 +258,7 @@ final class ClassTableViewModel {
 
     private func refreshCourseColors() {
         let courseNos = Set(courses.map(\.courseNo)).union(currentSemesterCourses.map(\.courseNo))
-        TigerDuckTheme.buildCourseColorMap(courseNos: Array(courseNos))
+        TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos))
     }
 
     var totalCredits: Int {
@@ -703,19 +703,13 @@ final class ClassTableViewModel {
         courseToRecolor = course
     }
 
-    /// Apply a palette index override for this course. Writes through
-    /// TigerDuckTheme (which handles persistence) and broadcasts so Home,
-    /// Class Table, and the Live Activity all refresh.
-    func setCustomColor(paletteIndex: Int, for course: SDCourse) {
-        TigerDuckTheme.setCustomColor(index: paletteIndex, for: course.courseNo)
-        courseToRecolor = nil
-        broadcastLocalChange()
-    }
-
-    /// Remove the user override so the course returns to its deterministic
-    /// default color.
-    func clearCustomColor(for course: SDCourse) {
-        TigerDuckTheme.clearCustomColor(for: course.courseNo)
+    /// Apply a user-picked color (preset or fully custom) for this course.
+    /// Writes through TigerDuckTheme — which also displaces any other course
+    /// currently holding the same hex so the "no two courses share a color"
+    /// invariant survives the edit — then broadcasts so Home, Class Table,
+    /// widgets and the Live Activity all refresh.
+    func setColor(hex: UInt32, for course: SDCourse) {
+        TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
         courseToRecolor = nil
         broadcastLocalChange()
     }

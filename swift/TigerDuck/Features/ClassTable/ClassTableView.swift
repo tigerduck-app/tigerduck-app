@@ -131,10 +131,9 @@ struct ClassTableView: View {
             .sheet(item: $viewModel.courseToRecolor) { course in
                 CourseColorPickerSheet(
                     course: course,
-                    onSelect: { viewModel.setCustomColor(paletteIndex: $0, for: course) },
-                    onReset: { viewModel.clearCustomColor(for: course) }
+                    onSelect: { viewModel.setColor(hex: $0, for: course) }
                 )
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
             }
             .sheet(item: $viewModel.conflictPickerTarget) { target in
                 ConflictCoursePickerSheet(

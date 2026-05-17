@@ -34,6 +34,22 @@ struct AddCourseSheet: View {
     @FocusState private var searchFocused: Bool
 
     var body: some View {
+        #if os(macOS)
+        macBody
+            .onAppear { searchFocused = true }
+            .task(id: searchText) { await debouncedSearch() }
+            .task(id: submitTrigger) { await submitSearch() }
+        #else
+        iosBody
+            .onAppear { searchFocused = true }
+            .task(id: searchText) { await debouncedSearch() }
+            .task(id: submitTrigger) { await submitSearch() }
+        #endif
+    }
+
+    // MARK: - iOS body
+
+    private var iosBody: some View {
         NavigationStack {
             Form {
                 Section {
@@ -80,39 +96,151 @@ struct AddCourseSheet: View {
                     Button(String(localized: "action_close")) { dismiss() }
                 }
             }
-            #if os(macOS)
-            .frame(minWidth: 520, minHeight: 480)
-            #endif
-            .onAppear { searchFocused = true }
-            // Live, debounced search. `.task(id:)` deterministically re-fires
-            // whenever the id changes and auto-cancels the in-flight task —
-            // the older `.onChange` + manual `Task` plumbing was unreliable
-            // inside a Form's TextField (the change closure didn't always
-            // fire mid-typing on iOS 18, so the user only saw results after
-            // pressing Submit).
-            .task(id: searchText) {
-                let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty else {
-                    primaryResults = []
-                    secondaryNamesByNo = [:]
-                    errorMessage = nil
-                    isSearching = false
-                    return
-                }
-                try? await Task.sleep(for: Self.liveSearchDebounce)
-                if Task.isCancelled { return }
-                await runSearch(query: trimmed)
-            }
-            // Submit path — re-runs the current query without waiting for the
-            // debounce window. Bumping `submitTrigger` re-fires this task even
-            // when `searchText` hasn't changed.
-            .task(id: submitTrigger) {
-                guard submitTrigger > 0 else { return }
-                let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-                guard !trimmed.isEmpty else { return }
-                await runSearch(query: trimmed)
-            }
         }
+    }
+
+    // MARK: - macOS body
+    // Native macOS sheet: a compact prominent search field at the top, a
+    // List of results below in `.inset` style (rounded macOS-y rows), and a
+    // bottom-bar Close button. Avoids `Form` because its inline-row sectioned
+    // chrome makes the search field tiny on macOS and the footer label
+    // anchored to the wrong side. Frame stays modest so the sheet doesn't
+    // dwarf the underlying window.
+
+    private var macBody: some View {
+        VStack(spacing: 0) {
+            macSearchBar
+            Divider()
+            macResultsArea
+            Divider()
+            macBottomBar
+        }
+        .frame(minWidth: 460, idealWidth: 520, minHeight: 420, idealHeight: 560)
+    }
+
+    @ViewBuilder
+    private var macSearchBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(String(localized: "add_course_title"))
+                .font(.title3.weight(.semibold))
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(String(localized: "add_course_placeholder"), text: $searchText)
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+                    .focused($searchFocused)
+                    .submitLabel(.search)
+                    .onSubmit { submitTrigger &+= 1 }
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(String(localized: "action_close"))
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.secondary.opacity(0.10))
+            )
+            Label(String(localized: "add_course_example"), systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+    }
+
+    @ViewBuilder
+    private var macResultsArea: some View {
+        if isSearching && primaryResults.isEmpty {
+            VStack(spacing: 8) {
+                ProgressView()
+                Text(String(localized: "add_course_searching"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let errorMessage {
+            VStack(spacing: 8) {
+                Image(systemName: "xmark.circle")
+                    .font(.title2)
+                    .foregroundStyle(.red)
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if primaryResults.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                Text(searchText.trimmingCharacters(in: .whitespaces).isEmpty
+                     ? String(localized: "add_course_placeholder")
+                     : String(localized: "add_course_not_found"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List {
+                resultRows
+            }
+            .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    @ViewBuilder
+    private var macBottomBar: some View {
+        HStack {
+            if isSearching && !primaryResults.isEmpty {
+                ProgressView().controlSize(.small)
+                Text(String(localized: "add_course_searching"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(String(localized: "action_close")) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - Search task helpers
+
+    private func debouncedSearch() async {
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            primaryResults = []
+            secondaryNamesByNo = [:]
+            errorMessage = nil
+            isSearching = false
+            return
+        }
+        try? await Task.sleep(for: Self.liveSearchDebounce)
+        if Task.isCancelled { return }
+        await runSearch(query: trimmed)
+    }
+
+    private func submitSearch() async {
+        guard submitTrigger > 0 else { return }
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        await runSearch(query: trimmed)
     }
 
     @ViewBuilder
@@ -177,18 +305,14 @@ struct AddCourseSheet: View {
         secondaryNamesByNo = [:]
 
         let isCourseCode = Self.looksLikeCourseCode(query)
-        // Primary language follows what the user is typing, not the UI:
-        // a CJK query shows "中文 (English)", a Latin query shows "English (中文)".
-        // Course-code queries are language-neutral — fall back to UI language
-        // so the row's primary name is still in the reader's language.
-        let primaryLanguage: String
-        if isCourseCode {
-            primaryLanguage = LanguageManager.resolvedCourseApiLanguage(
-                appLanguage: Defaults[.appLanguage]
-            )
-        } else {
-            primaryLanguage = Self.queryLanguage(of: query)
-        }
+        // Primary name always follows the UI language: a Chinese UI shows
+        // "中文 (English)" regardless of which language the query was typed
+        // in, an English UI shows "English (中文)". The persisted course also
+        // takes its `courseName` from this primary list, so a course added on
+        // a Chinese device lands with the Chinese canonical name in storage.
+        let primaryLanguage = LanguageManager.resolvedCourseApiLanguage(
+            appLanguage: Defaults[.appLanguage]
+        )
         // Send the traditional form to the zh API so simplified queries
         // ("隐私") still match traditional course names ("隱私與資訊安全").
         let zhQuery = Self.toTraditional(query)

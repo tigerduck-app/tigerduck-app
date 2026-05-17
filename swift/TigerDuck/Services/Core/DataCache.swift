@@ -250,18 +250,46 @@ final class DataCache {
         load(from: "course_custom_names.json", in: persistentDir) ?? [:]
     }
 
-    // MARK: - Course Custom Colors
+    // MARK: - Course Color Map
 
-    /// Per-course palette-index overrides keyed by courseNo. Values index into
-    /// `TigerDuckTheme.courseColors`; consumers must tolerate out-of-range
-    /// indices (e.g. after the palette shrinks between releases).
-    func saveCourseCustomColors(_ colors: [String: Int]) {
-        save(colors, to: "course_custom_colors.json", in: persistentDir)
+    /// Per-course assigned 24-bit RGB hex (e.g. 0xFF6B6B) keyed by courseNo.
+    /// Every visible course gets an entry once `TigerDuckTheme.ensureAssignments`
+    /// has run, so colors stay unique across the roster. User picks (preset or
+    /// fully custom) and auto-assignments share this file.
+    func saveCourseColorMap(_ map: [String: UInt32]) {
+        save(map, to: "course_color_map.json", in: persistentDir)
     }
 
-    func loadCourseCustomColors() -> [String: Int] {
-        load(from: "course_custom_colors.json", in: persistentDir) ?? [:]
+    /// Returns the per-course color map. On first read after upgrading from
+    /// the legacy palette-index format (`course_custom_colors.json`), migrates
+    /// the indices into the new hex map and persists the result.
+    func loadCourseColorMap() -> [String: UInt32] {
+        if let map: [String: UInt32] = load(from: "course_color_map.json", in: persistentDir) {
+            return map
+        }
+        let legacy: [String: Int] = load(from: "course_custom_colors.json", in: persistentDir) ?? [:]
+        guard !legacy.isEmpty else { return [:] }
+        let migrated = legacy.compactMapValues { idx -> UInt32? in
+            guard Self.legacyPaletteHex.indices.contains(idx) else { return nil }
+            return Self.legacyPaletteHex[idx]
+        }
+        if !migrated.isEmpty {
+            saveCourseColorMap(migrated)
+        }
+        return migrated
     }
+
+    /// Mirror of `TigerDuckTheme.coursePaletteHexes` used only for the one-shot
+    /// migration above. Lives here so DataCache stays free of a Theme/SwiftUI
+    /// dependency. Drift between the two arrays only affects already-migrated
+    /// installs (which read the new file directly), so a future palette tweak
+    /// does not need to be replicated here.
+    private static let legacyPaletteHex: [UInt32] = [
+        0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xF39C12, 0xDDA0DD,
+        0x2ECC71, 0xE74C3C, 0x3498DB, 0xF7DC6F, 0x9B59B6,
+        0x1ABC9C, 0xE67E22, 0x85C1E9, 0xD35400, 0x27AE60,
+        0xC0392B, 0x8E44AD, 0x16A085, 0xF1C40F, 0x2980B9,
+    ]
 
     // MARK: - Score Report (per-student)
 
@@ -312,6 +340,7 @@ final class DataCache {
             ("deleted_courses.json", persistentDir),
             ("course_custom_names.json", persistentDir),
             ("course_custom_colors.json", persistentDir),
+            ("course_color_map.json", persistentDir),
             ("archived_assignments.json", persistentDir),
             ("locally_completed_assignments.json", persistentDir),
             ("bulletin_summaries.json", cacheDir),

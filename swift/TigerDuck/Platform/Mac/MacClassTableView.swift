@@ -18,6 +18,10 @@ struct MacClassTableView: View {
     @State private var selectedSemester: String = Defaults[.classTableSelectedSemester]
     @State private var selectedSlot: SelectedSlot?
     @State private var showAddCourse: Bool = false
+    /// Non-nil while the macOS color picker sheet is presented. Set from the
+    /// per-cell context menu; the iOS path stores this on its view-model, but
+    /// the Mac classtable is a plain View so it lives in @State here.
+    @State private var courseToRecolor: SDCourse?
 
     /// Carries the weekday alongside the tapped course so the detail sheet
     /// can render the concrete slot's classroom + time range. Without the
@@ -157,6 +161,17 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
+        }
+        .sheet(item: $courseToRecolor) { course in
+            CourseColorPickerSheet(
+                course: course,
+                onSelect: { hex in
+                    TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
+                    cacheRevision &+= 1
+                    NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+                }
+            )
+            .frame(minWidth: 360, minHeight: 480)
         }
         .alert(
             String(localized: "class_table_conflict_add_failed_title"),
@@ -471,6 +486,13 @@ struct MacClassTableView: View {
                 .stroke(color.opacity(0.6), lineWidth: 0.5)
         )
         .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                courseToRecolor = course
+            } label: {
+                Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
+            }
+        }
     }
 
     // MARK: - Helpers
