@@ -7,6 +7,9 @@ struct LibraryView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = LibraryViewModel()
     @State private var showNotImplementedAlert = false
+    /// Pre-boost brightness, captured the first time we max the screen
+    /// for the QR. `nil` means we are not currently overriding brightness.
+    @State private var savedBrightness: CGFloat?
 
     var body: some View {
         if embedded {
@@ -28,17 +31,46 @@ struct LibraryView: View {
         .onAppear {
             viewModel.load()
             viewModel.onAppear()
+            if viewModel.isLoggedIn { boostBrightness() }
         }
         .onDisappear {
             viewModel.onDisappear()
+            restoreBrightness()
+        }
+        .onChange(of: viewModel.isLoggedIn) { _, loggedIn in
+            if loggedIn { boostBrightness() } else { restoreBrightness() }
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
+            switch newPhase {
+            case .active:
                 viewModel.onAppear()
-            } else {
+                if viewModel.isLoggedIn { boostBrightness() }
+            case .background:
+                viewModel.stopTimers()
+                // Don't leave the device pinned at full brightness once
+                // the user is no longer looking at the QR.
+                restoreBrightness()
+            case .inactive:
+                viewModel.stopTimers()
+            @unknown default:
                 viewModel.stopTimers()
             }
         }
+    }
+
+    // MARK: - Brightness
+
+    private func boostBrightness() {
+        if savedBrightness == nil {
+            savedBrightness = UIScreen.main.brightness
+        }
+        UIScreen.main.brightness = 1.0
+    }
+
+    private func restoreBrightness() {
+        guard let saved = savedBrightness else { return }
+        UIScreen.main.brightness = saved
+        savedBrightness = nil
     }
 
     /// iPad rotates freely, so anchor the QR to vertical center to keep its
