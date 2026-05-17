@@ -119,7 +119,7 @@ struct MacLoginView: View {
             password: password
         )
         if ok {
-            appState.backgroundSync()
+            appState.completeOnboarding()
         }
     }
 }
