@@ -126,20 +126,30 @@ struct TigerDuckApp: App {
 @main
 struct TigerDuckApp: App {
     var body: some Scene {
-        WindowGroup {
+        Window("TigerDuck", id: "main") {
             VStack(spacing: 16) {
-                Text("🦆")
+                Image(systemName: "graduationcap.fill")
                     .font(.system(size: 64))
+                    .foregroundStyle(.tint)
                 Text("TigerDuck for Mac")
                     .font(.largeTitle)
                     .bold()
                 Text("Native macOS support is in active development.")
                     .foregroundStyle(.secondary)
+                Text("Open the iOS app in the meantime — your data syncs automatically once Mac ships.")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 360)
             }
-            .frame(minWidth: 480, minHeight: 280)
-            .padding()
+            .frame(minWidth: 480, minHeight: 320)
+            .padding(32)
         }
         .windowResizability(.contentSize)
+        .commands {
+            // Hide the "New Window" item — there is only one stub window today.
+            CommandGroup(replacing: .newItem) {}
+        }
     }
 }
 
