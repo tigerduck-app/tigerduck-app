@@ -169,6 +169,10 @@ struct TigerDuckApp: App {
                 .id(rootLanguageId)
                 .environment(appState)
                 .onAppear {
+                    // Mirror the iOS launch path: kick off the first
+                    // sync so Home/Class Table/Calendar don't sit on
+                    // stale cache until the user hits Refresh.
+                    appState.backgroundSync()
                     // Widget extension reads its snapshot from the App
                     // Group. Without this regenerate the Mac widget
                     // would render the "Please sign in" placeholder
@@ -179,6 +183,10 @@ struct TigerDuckApp: App {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
                     }
+                }
+                .onOpenURL { url in
+                    guard let destination = WidgetURLRouter.route(url) else { return }
+                    appState.openFromWidget(destination)
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
