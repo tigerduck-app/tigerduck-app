@@ -1093,6 +1093,8 @@
 					BulletinsViewModel.swift,
 					BulletinReadStateStore.swift,
 					MacCalendarView.swift,
+					MacScoreView.swift,
+					ScoreViewModel.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1238,6 +1240,8 @@
 					BulletinsViewModel.swift,
 					BulletinReadStateStore.swift,
 					MacCalendarView.swift,
+					MacScoreView.swift,
+					ScoreViewModel.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

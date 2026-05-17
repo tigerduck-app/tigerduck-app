@@ -154,10 +154,7 @@ struct MacFeatureDetail: View {
         case .announcements:
             MacBulletinsView()
         case .gpa:
-            MacFeaturePlaceholder(
-                feature: feature,
-                summary: "Semester scores + GPA chart will surface here once the Score view ports to macOS."
-            )
+            MacScoreView()
         default:
             MacFeaturePlaceholder(
                 feature: feature,
