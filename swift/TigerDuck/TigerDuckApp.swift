@@ -173,6 +173,11 @@ struct TigerDuckApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
+
+        Settings {
+            MacSettingsScene()
+                .environment(appState)
+        }
     }
 }
 
