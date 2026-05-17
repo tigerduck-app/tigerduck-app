@@ -44,6 +44,7 @@ final class AppState {
             }
         }
 
+        #if os(iOS)
         liveActivityObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.dataDidUpdate,
             object: nil,
@@ -83,9 +84,11 @@ final class AppState {
             self?.scheduleLiveActivityRefresh()
         }
         #endif
+        #endif
 
         runPendingMigrations()
 
+        #if os(iOS)
         liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
             await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
         }
@@ -94,6 +97,7 @@ final class AppState {
         // (e.g. across app launches). The coordinator no-ops when the
         // toggle is off, so this is safe to call unconditionally.
         pushCoordinator.enable()
+        #endif
 
         // Apply a stored in-app language override on launch so string lookups
         // use the user's chosen locale. Skip when "system" — calling apply()
@@ -120,6 +124,7 @@ final class AppState {
     }
 
     deinit {
+        #if os(iOS)
         pendingRefreshTask?.cancel()
         boundaryRefreshTask?.cancel()
         if let observer = liveActivityObserver {
@@ -136,12 +141,16 @@ final class AppState {
             NotificationCenter.default.removeObserver(observer)
         }
         #endif
+        #endif
     }
 
     private var _libraryRevision = 0
     private var syncTask: Task<Void, Never>?
+    private var relabelTask: Task<Void, Never>?
 
-    // MARK: - Live Activity
+    #if os(iOS)
+    // MARK: - Live Activity (iOS only — ActivityKit + reminder scheduler
+    // are platform-restricted; Mac has no equivalent surfaces).
 
     let liveActivityPreferences = LiveActivityPreferencesStore()
     private let liveActivityCoordinator = LiveActivityCoordinator()
@@ -157,11 +166,12 @@ final class AppState {
     #endif
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
-    private var relabelTask: Task<Void, Never>?
 
-    // MARK: - Push server
+    // MARK: - Push server (iOS only — APNs on Mac is a separate decision
+    // and the entire PushCoordinator stack pulls in ActivityKit symbols).
 
     let pushCoordinator = PushCoordinator()
+    #endif
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
@@ -251,16 +261,20 @@ final class AppState {
     func logoutNTUST() {
         syncTask?.cancel()
         syncTask = nil
+        #if os(iOS)
         pendingRefreshTask?.cancel()
         pendingRefreshTask = nil
         boundaryRefreshTask?.cancel()
         boundaryRefreshTask = nil
+        #endif
 
         authService.logout()
         DataCache.shared.clearUserScopedData()
         Task { @MainActor in
+            #if os(iOS)
             await liveActivityCoordinator.endAll()
             await reminderScheduler.cancelAllOwnedRequests()
+            #endif
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
     }
@@ -275,10 +289,12 @@ final class AppState {
     var accentColorHex: Int = Defaults[.accentColorHex] {
         didSet {
             Defaults[.accentColorHex] = accentColorHex
+            #if os(iOS)
             // Accent color only affects the Live Activity snapshot — reminder
             // notifications are content-identical, so skip rescheduling to
             // avoid thrashing UNUserNotificationCenter on slider drags.
             scheduleLiveActivityRefresh(rescheduleReminderNotifications: false)
+            #endif
         }
     }
 
@@ -518,7 +534,8 @@ final class AppState {
         backgroundSync()
     }
 
-    // MARK: - Live Activity / reminder refresh
+    #if os(iOS)
+    // MARK: - Live Activity / reminder refresh (iOS only)
 
     /// Recomputes the scenario and pushes it to the coordinator. Safe to call
     /// frequently — the coordinator only issues ActivityKit calls when the
@@ -706,6 +723,7 @@ final class AppState {
         Defaults[.pushServerEnabled] = false
         await pushCoordinator.disable()
     }
+    #endif // os(iOS) — closes the Live Activity / reminder / push block
 
     /// Background sync all data on app launch.
     ///
