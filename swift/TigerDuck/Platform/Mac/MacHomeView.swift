@@ -42,7 +42,7 @@ struct MacHomeView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 sectionHeader(title: String(localized: "desktop_home_section_upcoming_assignments"), systemImage: "list.bullet.rectangle")
-                MacAssignmentsList()
+                MacAssignmentsList(courses: courses)
             }
         }
     }

@@ -33,4 +33,19 @@ extension SDAssignment {
     /// `Assignment 1 &amp; 2`; rendering the raw string would expose the
     /// encoded entity to the user.
     var displayTitle: String { title.decodingHTMLEntities() }
+
+    /// "課名 • 課程ID" line shown beneath each assignment title. Prefers the
+    /// in-memory `SDCourse` so user renames and the canonical NTUST code are
+    /// reflected; otherwise the cached `courseName` keeps the row useful while
+    /// the roster is still loading. The code is dropped when it's empty or
+    /// already equal to the name (unknown courses whose name falls back to
+    /// the courseNo).
+    func courseLineLabel(matching course: SDCourse?) -> String {
+        let name = displayCourseName(matching: course)
+        let code = course?.courseNo ?? courseNo
+        if code.isEmpty || name.isEmpty || name == code {
+            return name
+        }
+        return "\(name) • \(code)"
+    }
 }
