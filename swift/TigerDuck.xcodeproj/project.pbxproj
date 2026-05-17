@@ -1087,6 +1087,8 @@
 					MacRootView.swift,
 					MacLoginView.swift,
 					MacHomeView.swift,
+					MacMoreView.swift,
+					MacFeatureFiltering.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1226,6 +1228,8 @@
 					MacRootView.swift,
 					MacLoginView.swift,
 					MacHomeView.swift,
+					MacMoreView.swift,
+					MacFeatureFiltering.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

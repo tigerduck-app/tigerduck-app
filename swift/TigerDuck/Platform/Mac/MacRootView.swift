@@ -24,33 +24,35 @@ struct MacRootView: View {
     }
 }
 
-/// Main sidebar layout: a list of implemented features on the left, the
-/// active feature's detail view on the right.
+/// Sidebar-side selection model. Pinned features map 1:1 to
+/// `AppFeature` cases; `.more` is the synthetic destination that
+/// renders `MacMoreView`. Wrapping in an enum keeps the
+/// `NavigationSplitView` selection type Hashable while leaving room
+/// to grow (a future `.settings` case opens the Settings scene).
+enum MacSidebarItem: Hashable {
+    case feature(AppFeature)
+    case more
+}
+
+/// Main sidebar layout: configured features at the top, More at the
+/// bottom, the active item's detail view on the right.
 ///
-/// `AppFeature.isImplemented` is the source of truth for what surfaces
-/// in the sidebar — adding a new Mac-ported feature is purely a matter
-/// of flipping that boolean and adding a switch branch in
-/// `MacFeatureDetail` below. Until the per-feature port lands each
-/// branch renders a `MacFeaturePlaceholder`.
+/// The sidebar is driven by `AppState.configuredTabs` (filtered to
+/// drop features Mac doesn't surface — see `AppFeature.isAvailableOnMac`).
+/// Adding / removing / reordering pinned features happens in
+/// `MacMoreView`; changes propagate live because `configuredTabs` is
+/// `@Observable`.
 struct MacContentView: View {
     @Environment(AppState.self) private var appState
-    @State private var selection: AppFeature = .home
-
-    private static let sidebarFeatures: [AppFeature] = AppFeature.allCases
-        .filter { $0.isImplemented }
+    @State private var selection: MacSidebarItem = .more
 
     var body: some View {
         NavigationSplitView {
-            List(Self.sidebarFeatures, selection: $selection) { feature in
-                NavigationLink(value: feature) {
-                    Label(feature.displayName, systemImage: feature.iconName)
-                }
-            }
-            .navigationTitle("TigerDuck")
-            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 320)
+            sidebar
+                .navigationTitle("TigerDuck")
+                .navigationSplitViewColumnWidth(min: 180, ideal: 180, max: 240)
         } detail: {
-            MacFeatureDetail(feature: selection)
-                .navigationTitle(selection.displayName)
+            detail
                 .frame(minWidth: 520, minHeight: 360)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
@@ -64,12 +66,78 @@ struct MacContentView: View {
                     }
                 }
         }
+        .onAppear(perform: seedSelectionIfNeeded)
+        .onChange(of: pinnedFeatures) { _, _ in
+            seedSelectionIfNeeded()
+        }
+    }
+
+    // MARK: - Sidebar + detail
+
+    @ViewBuilder
+    private var sidebar: some View {
+        List(selection: $selection) {
+            Section {
+                ForEach(pinnedFeatures) { feature in
+                    NavigationLink(value: MacSidebarItem.feature(feature)) {
+                        Label(feature.displayName, systemImage: feature.iconName)
+                    }
+                }
+            }
+
+            Section {
+                NavigationLink(value: MacSidebarItem.more) {
+                    Label("More", systemImage: AppFeature.more.iconName)
+                }
+            }
+        }
+        .listStyle(.sidebar)
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        switch selection {
+        case .feature(let feature):
+            MacFeatureDetail(feature: feature)
+                .navigationTitle(feature.displayName)
+        case .more:
+            MacMoreView()
+                .navigationTitle("More")
+        }
+    }
+
+    // MARK: - Selection bookkeeping
+
+    private var pinnedFeatures: [AppFeature] {
+        appState.configuredTabs.filter { $0.isAvailableOnMac }
+    }
+
+    /// Keep the current selection valid as pinned features mutate.
+    /// Two cases:
+    ///   1. First launch with no prior selection — land on the first
+    ///      pinned feature if any, otherwise on More so the user has a
+    ///      surface to pin from.
+    ///   2. User unpinned the currently-selected feature — fall back
+    ///      to the first remaining pinned feature, else More.
+    private func seedSelectionIfNeeded() {
+        if case .feature(let current) = selection, !pinnedFeatures.contains(current) {
+            selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
+        }
+        // First-launch nudge: leave selection on .more (default) when
+        // the user hasn't pinned anything yet, otherwise jump to the
+        // first pinned item so the app opens on real content.
+        if case .more = selection, !pinnedFeatures.isEmpty,
+           appState.configuredTabs == AppFeature.defaultTabs {
+            // Only auto-jump when the user has the factory defaults —
+            // a deliberate "everything unpinned" state stays on More.
+            selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
+        }
     }
 }
 
 /// Switchboard between the per-feature placeholder views. Each branch
 /// will be replaced with a real Mac-native view as features get ported.
-private struct MacFeatureDetail: View {
+struct MacFeatureDetail: View {
     let feature: AppFeature
 
     var body: some View {
@@ -91,11 +159,6 @@ private struct MacFeatureDetail: View {
                 feature: feature,
                 summary: "NTUST bulletins will surface here once the Bulletins view ports to macOS."
             )
-        case .library:
-            MacFeaturePlaceholder(
-                feature: feature,
-                summary: "Library borrow status + renewals will surface here once the Library view ports to macOS."
-            )
         case .gpa:
             MacFeaturePlaceholder(
                 feature: feature,
@@ -114,7 +177,7 @@ private struct MacFeatureDetail: View {
 /// real feature view ports. Renders the feature icon + name from
 /// `AppFeature` so the placeholder still respects whatever the iOS
 /// localisation file declares.
-private struct MacFeaturePlaceholder: View {
+struct MacFeaturePlaceholder: View {
     let feature: AppFeature
     let summary: String
 
