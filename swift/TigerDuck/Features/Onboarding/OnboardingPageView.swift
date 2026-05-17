@@ -18,40 +18,42 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     @ViewBuilder let actions: () -> Actions
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    iconView
+        VStack(spacing: TigerDuckTheme.Spacing.lg) {
+            iconView
 
-                    Text(title)
-                        .font(TigerDuckTheme.Typography.title)
-                        .foregroundStyle(Color.textPrimary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
+            Text(title)
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
-                    Text(subtitle)
-                        .font(TigerDuckTheme.Typography.body)
-                        .foregroundStyle(Color.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-
-                    content()
-
-                    Spacer(minLength: TigerDuckTheme.Spacing.lg)
-
-                    actions()
-                }
+            Text(subtitle)
+                .font(TigerDuckTheme.Typography.body)
+                .foregroundStyle(Color.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-                .padding(.top, TigerDuckTheme.Spacing.xxl)
-                .padding(.bottom, TigerDuckTheme.Spacing.xxl * 2)
-                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
-                .contentShape(Rectangle())
-                .onTapGesture { UIApplication.dismissKeyboard() }
+
+            GeometryReader { scrollProxy in
+                ScrollView {
+                    VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                        content()
+                        Spacer(minLength: TigerDuckTheme.Spacing.lg)
+                        actions()
+                    }
+                    .frame(maxWidth: .infinity, minHeight: scrollProxy.size.height)
+                }
+                .scrollIndicators(.never)
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollIndicators(.never)
-            .scrollDismissesKeyboard(.interactively)
         }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.top, TigerDuckTheme.Spacing.xxl)
+        .padding(.bottom, TigerDuckTheme.Spacing.xxl * 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { UIApplication.dismissKeyboard() }
     }
 
     @ViewBuilder
@@ -71,10 +73,10 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
                     .font(.system(size: 64))
                     .foregroundStyle(accentColor)
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 32, weight: .semibold))
                     .foregroundStyle(.white)
                     .symbolEffect(.pulse, options: .repeating.speed(0.35))
-                    .offset(y: 3)
+                    .offset(y: 4)
             }
         }
     }
