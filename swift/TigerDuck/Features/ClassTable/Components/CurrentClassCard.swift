@@ -49,7 +49,13 @@ struct CurrentClassCard: View {
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
         }
+        // Inner frame fixes the card's width; outer `maxHeight: .infinity`
+        // lets the colored surface stretch to whatever row height
+        // `EqualHeightHStack` settled on. Harmless when this is the
+        // tallest card in the row, and matches the pattern used in
+        // `TodayCourseCard` so shorter siblings can grow to match.
         .frame(width: width, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .cardPadding()
         .background(info.course.color.opacity(0.22), in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
         .glassCard()

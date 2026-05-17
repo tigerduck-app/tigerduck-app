@@ -10,10 +10,14 @@ struct MaxCardHeightKey: PreferenceKey {
 }
 
 /// Horizontal row that forces every child to the height of the tallest
-/// natural-height child seen so far. The locked height only grows — when
-/// a later-arriving child renders taller, the row grows to match, and it
-/// never shrinks until the row leaves the view hierarchy (the user
-/// navigating away from the page).
+/// natural-height child seen so far. The locked height only grows during
+/// a single on-screen visit — when a later-arriving child renders taller,
+/// the row grows to match. It resets to zero on `.onDisappear` so the
+/// next time the page is shown the row re-measures from scratch; that
+/// matters in `TabView`, where SwiftUI keeps the view identity (and its
+/// `@State`) alive across tab switches, so a one-time tall child like
+/// the "current class" card wouldn't otherwise release its grip on the
+/// row height after the user leaves and comes back.
 ///
 /// Implementation: a visible HStack pinned to `lockedHeight` is shadowed
 /// by a hidden HStack rendering the same `content()` at its intrinsic
@@ -40,6 +44,7 @@ struct EqualHeightHStack<Content: View>: View {
         .onPreferenceChange(MaxCardHeightKey.self) { newValue in
             if newValue > lockedHeight { lockedHeight = newValue }
         }
+        .onDisappear { lockedHeight = 0 }
     }
 
     private var measurementLayer: some View {

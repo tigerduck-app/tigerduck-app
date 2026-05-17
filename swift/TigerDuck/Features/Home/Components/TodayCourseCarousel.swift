@@ -159,16 +159,30 @@ private struct TodayCourseCard: View {
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
 
-            Text(periods)
-                .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(Color.textSecondary)
+            // Push the time row to the bottom so the card visually fills
+            // when stretched to match a taller sibling (e.g. the
+            // `CurrentClassCard`'s progress + time block). `minLength: 0`
+            // keeps short cards from forcing extra height when nothing is
+            // stretching them.
+            Spacer(minLength: 0)
 
             if let progress, isActive {
                 ProgressView(value: progress)
                     .tint(course.color)
             }
+
+            Text(periods)
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textSecondary)
         }
+        // Inner frame fixes the card's width; outer `maxHeight: .infinity`
+        // lets the colored surface stretch to whatever row height
+        // `EqualHeightHStack` settled on, so a short card visually
+        // matches a taller sibling like `CurrentClassCard`. `.topLeading`
+        // keeps content anchored to the top while the background grows
+        // downward.
         .frame(width: 140, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .cardPadding()
         .background(course.color.opacity(0.15), in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
         .glassCard()
