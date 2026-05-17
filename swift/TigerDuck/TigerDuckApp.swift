@@ -123,6 +123,7 @@ struct TigerDuckApp: App {
 struct TigerDuckApp: App {
     @State private var appState = AppState()
     @State private var rootLanguageId = UUID()
+    @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -162,6 +163,18 @@ struct TigerDuckApp: App {
             MacRootView()
                 .id(rootLanguageId)
                 .environment(appState)
+                .onAppear {
+                    // Widget extension reads its snapshot from the App
+                    // Group. Without this regenerate the Mac widget
+                    // would render the "Please sign in" placeholder
+                    // even when credentials exist — the writer pipeline
+                    // is what fills the snapshot store on iPhone and
+                    // we mirror it here.
+                    if widgetSnapshotWriter == nil {
+                        widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
+                        widgetSnapshotWriter?.regenerate()
+                    }
+                }
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
                 ) { _ in
