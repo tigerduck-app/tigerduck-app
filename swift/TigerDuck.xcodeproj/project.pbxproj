@@ -1086,6 +1086,7 @@
 					NTUSTProtectedAccessState.swift,
 					MacRootView.swift,
 					MacLoginView.swift,
+					MacHomeView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1224,6 +1225,7 @@
 					NTUSTProtectedAccessState.swift,
 					MacRootView.swift,
 					MacLoginView.swift,
+					MacHomeView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

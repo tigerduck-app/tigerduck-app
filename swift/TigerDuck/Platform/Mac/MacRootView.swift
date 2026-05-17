@@ -75,10 +75,7 @@ private struct MacFeatureDetail: View {
     var body: some View {
         switch feature {
         case .home:
-            MacFeaturePlaceholder(
-                feature: feature,
-                summary: "Today's classes and upcoming assignments will surface here once the Home view ports to macOS."
-            )
+            MacHomeView()
         case .classTable:
             MacFeaturePlaceholder(
                 feature: feature,
