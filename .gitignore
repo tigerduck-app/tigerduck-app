@@ -1,5 +1,6 @@
 TigerDuck.iml
 swift/buildServer.json
+.idea/
 
 # iOS secrets — real values live only on the developer machine, synced
 # manually with the server's TIGERDUCK_API_SHARED_SECRET. The .example
