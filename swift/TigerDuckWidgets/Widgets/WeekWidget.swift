@@ -56,6 +56,10 @@ struct WeekWidget: Widget {
         }
         .configurationDisplayName(String(localized: "widget_week_light_label"))
         .description(String(localized: "widget_week_light_desc"))
+        // iPad gets the larger family; iPhone-only families are filtered
+        // automatically by WidgetKit. The grid view clamps its own minimum
+        // cell height so the edit-mode resize preview never collapses to
+        // an invisible state when iOS asks for an intermediate size.
         .supportedFamilies([.systemLarge, .systemExtraLarge])
         .contentMarginsDisabled()
     }

@@ -41,7 +41,14 @@ struct WeekGridView: View {
         GeometryReader { geom in
             let totalRowSpacing = CGFloat(max(0, periods.count - 1)) * rowSpacing
             let available = max(0, geom.size.height - headerHeight - rowSpacing - totalRowSpacing)
-            let cellHeight = periods.isEmpty ? 0 : available / CGFloat(periods.count)
+            // Floor at a small but nonzero minimum so the edit-mode drag
+            // preview can't shrink every cell to height 0 and render the
+            // widget as a blank rectangle. The grid is willing to overflow
+            // its container rather than disappear — at the family sizes
+            // this branch never triggers because `available` is plenty.
+            let minCellHeight: CGFloat = 6
+            let computed = periods.isEmpty ? 0 : available / CGFloat(periods.count)
+            let cellHeight = periods.isEmpty ? 0 : max(minCellHeight, computed)
             // Scale text with cell height so systemExtraLarge (iPad, ~38pt
             // cells) doesn't render the same 9pt text as systemLarge (iPhone,
             // ~17pt cells). Clamped so the small-widget case stays compact.
