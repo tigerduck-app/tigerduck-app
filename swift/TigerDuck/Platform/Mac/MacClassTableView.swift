@@ -493,7 +493,16 @@ struct MacClassTableView: View {
     /// Home page's widget cards also re-render.
     private func addUserCourse(_ course: SDCourse) {
         let existing = DataCache.shared.loadUserAddedCourses()
-        guard !existing.contains(where: { $0.courseNo == course.courseNo }),
+        // Dedupe within the selected semester only — the same `courseNo`
+        // legitimately recurs across terms (a recurring elective added
+        // manually in both 1131 and 1132), and `removeUserAddedCourse`
+        // already scopes its undo to `selectedSemester`. `courses`
+        // already reflects the current semester's roster so its
+        // duplicate check stays semester-scoped implicitly.
+        let isInSelectedSemester: (SDCourse) -> Bool = {
+            $0.semester == selectedSemester || $0.semester.isEmpty
+        }
+        guard !existing.contains(where: { $0.courseNo == course.courseNo && isInSelectedSemester($0) }),
               !courses.contains(where: { $0.courseNo == course.courseNo })
         else { return }
 
