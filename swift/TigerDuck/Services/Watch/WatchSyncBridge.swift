@@ -56,8 +56,13 @@ struct WatchSyncBridge: View {
     /// changes route through `AppConstants.dataDidUpdate` instead —
     /// `DataCache` writes aren't observable, so a digest here would just
     /// be a stale snapshot.
+    ///
+    /// Gate on `hasStoredCredentials` rather than `isNTUSTLoggedIn` so a
+    /// transient cookie-TTL state (silent re-auth in progress) doesn't
+    /// flip the token and push an empty logged-out payload to the watch.
+    /// Mirrors the widget snapshot writer.
     private var changeToken: String {
-        "\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.isNTUSTLoggedIn)|\(appState.visualPreset.rawValue)"
+        "\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.authService.hasStoredCredentials)|\(appState.visualPreset.rawValue)"
     }
 
     private func pushNow() {
@@ -68,7 +73,7 @@ struct WatchSyncBridge: View {
             courses: courseProvider.currentCourses(),
             customNames: customNames,
             accentHex: accentHex,
-            loggedIn: appState.isNTUSTLoggedIn,
+            loggedIn: appState.authService.hasStoredCredentials,
             languageTag: lang,
             visualPreset: appState.visualPreset
         )
