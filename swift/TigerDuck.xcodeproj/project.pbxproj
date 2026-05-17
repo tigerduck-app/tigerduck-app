@@ -218,11 +218,6 @@
 			path = "TigerDuckWatch Watch AppTests";
 			sourceTree = "<group>";
 		};
-		B21DC6AB2FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "TigerDuckWatch Watch AppUITests";
-			sourceTree = "<group>";
-		};
 		B21DC7232FB8883500AE2430 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Shared;
@@ -320,7 +315,6 @@
 				B244D7522FB87B580040D6FA /* TigerDuckWidgets */,
 				B21DC6932FB887D900AE2430 /* TigerDuckWatch Watch App */,
 				B21DC6A12FB887DA00AE2430 /* TigerDuckWatch Watch AppTests */,
-				B21DC6AB2FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */,
 				42B9BBFF2F90EBFA00D3B5A1 /* Frameworks */,
 				424C46572F6E763C009D1DDA /* Products */,
 				42D2EEAC2F73B4B300973752 /* tigerduck.icon */,
@@ -514,9 +508,6 @@
 			);
 			dependencies = (
 				B21DC6AA2FB887DA00AE2430 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				B21DC6AB2FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */,
 			);
 			name = "TigerDuckWatch Watch AppUITests";
 			packageProductDependencies = (
@@ -1453,6 +1444,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 43UV8F72V6;
@@ -1475,7 +1467,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.6.1;
-				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckWidgets;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SKIP_INSTALL = YES;
@@ -1496,6 +1488,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 43UV8F72V6;
@@ -1518,7 +1511,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.6.1;
-				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckWidgets;
+				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SKIP_INSTALL = YES;
