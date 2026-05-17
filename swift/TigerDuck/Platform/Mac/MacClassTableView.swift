@@ -553,10 +553,16 @@ struct MacClassTableView: View {
     /// Undo a not-yet-committed user-added course without tombstoning the
     /// `courseNo`. Tap-to-toggle in `AddCourseSheet` routes here when the user
     /// adds and immediately removes a course in the same session.
+    /// Scoped to the currently-selected semester so undoing `X` here doesn't
+    /// also delete a manually-added `X` the user saved for a different
+    /// semester (the sheet's onRemove callback only carries the courseNo).
     private func removeUserAddedCourse(courseNo: String) {
         let existing = DataCache.shared.loadUserAddedCourses()
-        guard existing.contains(where: { $0.courseNo == courseNo }) else { return }
-        DataCache.shared.saveUserAddedCourses(existing.filter { $0.courseNo != courseNo })
+        let updated = existing.filter { course in
+            !(course.courseNo == courseNo && (course.semester == selectedSemester || course.semester.isEmpty))
+        }
+        guard updated.count != existing.count else { return }
+        DataCache.shared.saveUserAddedCourses(updated)
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
