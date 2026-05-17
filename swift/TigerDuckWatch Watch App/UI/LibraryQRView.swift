@@ -125,19 +125,24 @@ private struct FullScreenQRView: View {
     private static let dismissThreshold: CGFloat = 60
 
     var body: some View {
-        // White background runs corner-to-corner; the image stays inside
-        // a vertical inset so it clears the watchOS time strip (top-right)
-        // and the system close button (top-left) without them sitting
-        // on top of QR modules.
+        // White background runs corner-to-corner; the image gets a small
+        // top inset so the watchOS time strip doesn't overlap QR modules.
+        // The full safe-area override on the ZStack lets the matrix
+        // claim almost all of the screen.
         ZStack {
-            Color.white.ignoresSafeArea()
+            Color.white
             Image(uiImage: image)
                 .interpolation(.none)
                 .resizable()
                 .scaledToFit()
-                .padding(.top, 22)
-                .padding(.bottom, 6)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
         }
+        .ignoresSafeArea()
+        // Hide the system close indicator so it stops landing on top of
+        // the matrix. Drag-up or drag-down is the documented dismiss
+        // gesture for this presentation.
+        .toolbar(.hidden, for: .automatic)
         .offset(y: dragOffset)
         .gesture(
             DragGesture()

@@ -20,17 +20,21 @@ struct WatchRootView: View {
     private static let idleHideDelay: Duration = .seconds(2)
 
     var body: some View {
-        TabView(selection: $selection) {
-            NavigationStack { LibraryQRView() }.tag(Tab.libraryQR)
-            NavigationStack { NowNextView() }.tag(Tab.nowNext)
-            NavigationStack { TodayView() }.tag(Tab.today)
-            NavigationStack { SettingsView() }.tag(Tab.settings)
+        ZStack(alignment: .bottom) {
+            TabView(selection: $selection) {
+                NavigationStack { LibraryQRView() }.tag(Tab.libraryQR)
+                NavigationStack { NowNextView() }.tag(Tab.nowNext)
+                NavigationStack { TodayView() }.tag(Tab.today)
+                NavigationStack { SettingsView() }.tag(Tab.settings)
+            }
+            // System dots on `.page` style don't auto-hide on watchOS; we
+            // hide them and float our own with a fade-after-idle timer.
+            .tabViewStyle(.page(indexDisplayMode: .never))
+
+            dotsOverlay
         }
-        // System dots on `.page` style don't auto-hide on watchOS; we
-        // hide them and overlay our own with a fade-after-idle timer.
-        .tabViewStyle(.page(indexDisplayMode: .never))
+        .ignoresSafeArea(.container, edges: .bottom)
         .modifier(WatchTheme(snapshot: store.snapshot))
-        .overlay(alignment: .bottom) { dotsOverlay }
         .onAppear {
             if store.shouldRequestSync() {
                 store.requestSync()
@@ -51,11 +55,10 @@ struct WatchRootView: View {
                     .frame(width: 5, height: 5)
             }
         }
-        // Push the row into the bottom safe-area so it sits where the
-        // system page indicator normally rides (just above the rounded
-        // edge), not floating above the TabView's safe-area inset.
-        .padding(.bottom, 2)
-        .ignoresSafeArea(.container, edges: .bottom)
+        // The whole ZStack ignores the bottom safe area, so the dots sit
+        // close to the rounded edge — matching the y-position the system
+        // page indicator used to occupy.
+        .padding(.bottom, 6)
         .opacity(dotsVisible ? 1 : 0)
         .animation(.easeInOut(duration: 0.35), value: dotsVisible)
         .allowsHitTesting(false)
