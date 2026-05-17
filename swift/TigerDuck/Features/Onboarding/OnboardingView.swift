@@ -133,6 +133,7 @@ struct OnboardingView: View {
                 .font(.callout)
             Spacer()
         }
+        .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
     }
 
     // MARK: - Page 2: Apple Watch support
