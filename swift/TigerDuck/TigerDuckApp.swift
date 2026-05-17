@@ -169,7 +169,7 @@ struct TigerDuckApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
-        .windowResizability(.contentSize)
+        .defaultSize(width: 1180, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }

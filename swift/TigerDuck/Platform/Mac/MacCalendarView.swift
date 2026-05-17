@@ -49,9 +49,7 @@ struct MacCalendarView: View {
                     }
                 }
             }
-            .padding(32)
-            .frame(maxWidth: 760, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .macReadableContent(maxWidth: MacContentWidth.standard)
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {

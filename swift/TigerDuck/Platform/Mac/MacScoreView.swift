@@ -29,9 +29,7 @@ struct MacScoreView: View {
                     semesterSections
                 }
             }
-            .padding(32)
-            .frame(maxWidth: 820, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .macReadableContent(maxWidth: MacContentWidth.standard)
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
