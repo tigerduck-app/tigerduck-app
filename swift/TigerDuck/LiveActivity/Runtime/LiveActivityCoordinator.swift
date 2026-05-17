@@ -83,7 +83,15 @@ final class LiveActivityCoordinator {
         let runningActivities = Activity<TigerDuckActivityAttributes>.activities
 
         let state = TigerDuckActivityAttributes.ContentState(snapshot: snapshot)
-        let content = ActivityContent(state: state, staleDate: snapshot.countdownTarget)
+        // `staleDate` is OS-consumed and validated against the real wall
+        // clock — passing the raw app-clock `countdownTarget` makes
+        // `Activity.request` fail with `ActivityInput error 0` whenever
+        // the debug clock points at a real-future date (the staleDate
+        // would land days away). Translate to the real instant that maps
+        // to the same fake-clock end so the system sees a sensible
+        // short-horizon stale marker.
+        let realStaleDate = snapshot.countdownTarget.map(AppClock.realTime(forApp:))
+        let content = ActivityContent(state: state, staleDate: realStaleDate)
 
         if let matching = runningActivities.first(where: { $0.attributes.activityId == targetId }) {
             if matching.content.state.snapshot != snapshot {
