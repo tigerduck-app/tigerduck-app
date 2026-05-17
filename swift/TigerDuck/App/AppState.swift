@@ -471,7 +471,12 @@ final class AppState {
                         classroomAbbrEnabled: classroomAbbrEnabled,
                         classroomMandarinDisplay: classroomMandarinDisplay
                     )
-                    if changed {
+                    // Re-check cancellation inside the MainActor body: a
+                    // newer toggle can have cancelled this task while it
+                    // was queued for the main actor, and persisting now
+                    // would clobber the newer task's save with stale
+                    // toggle values captured at the top of this closure.
+                    if changed && !Task.isCancelled {
                         DataCache.shared.saveCourses(courses, semester: semesterCode)
                     }
                     return (changed, false)
@@ -502,7 +507,9 @@ final class AppState {
                     classroomAbbrEnabled: classroomAbbrEnabled,
                     classroomMandarinDisplay: classroomMandarinDisplay
                 )
-                if changed {
+                // Same rationale as the per-semester save above: skip the
+                // write if a newer relabel has already superseded this one.
+                if changed && !Task.isCancelled {
                     DataCache.shared.saveUserAddedCourses(userAdded)
                 }
                 return changed
