@@ -218,7 +218,9 @@ struct OnboardingView: View {
                     submitLogin()
                 } label: {
                     if appState.authService.isLoggingIn {
-                        ProgressView().tint(.white)
+                        ProgressView()
+                            .tint(.white)
+                            .controlSize(.small)
                     } else {
                         Text(String(localized: "onboarding_login_button"))
                             .font(.callout.weight(.semibold))
