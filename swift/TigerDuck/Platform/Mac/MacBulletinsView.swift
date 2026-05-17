@@ -260,7 +260,9 @@ struct MacBulletinsView: View {
                 detailError = (error as NSError).localizedDescription
             }
         }
-        isLoadingDetail = false
+        if selectedId == id {
+            isLoadingDetail = false
+        }
     }
 }
 #endif
