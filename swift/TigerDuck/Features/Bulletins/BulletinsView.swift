@@ -54,14 +54,17 @@ struct BulletinsView: View {
         .onChange(of: scenePhase) { oldPhase, newPhase in
             // Only reset search after a meaningful background gap (>5 min);
             // a brief jaunt to another app shouldn't lose the user's query.
+            // Use real wall time — this measures lifecycle idle, not the
+            // app's notion of "now", so a frozen debug clock must not
+            // prevent the timeout from firing.
             if oldPhase == .background, newPhase == .active,
                let last = lastBackgroundedAt,
-               AppClock.now().timeIntervalSince(last) > 300 {
+               Date().timeIntervalSince(last) > 300 {
                 searchIsPresented = false
                 viewModel.searchText = ""
             }
             if newPhase == .background {
-                lastBackgroundedAt = AppClock.now()
+                lastBackgroundedAt = Date()
             }
         }
     }
