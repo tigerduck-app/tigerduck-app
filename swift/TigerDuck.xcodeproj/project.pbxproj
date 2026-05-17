@@ -166,6 +166,7 @@
 			membershipExceptions = (
 				Clock/AppClock.swift,
 				Clock/ClockOverride.swift,
+				Shared/ClassTableLayout.swift,
 				Widgets/WidgetSnapshot.swift,
 			);
 			target = B244D74E2FB87B580040D6FA /* TigerDuckWidgetsExtension */;
@@ -1108,6 +1109,11 @@
 					WidgetSnapshotWriter.swift,
 					WidgetReloadCoordinator.swift,
 					CanonicalCourseProvider.swift,
+					AddCourseSheet.swift,
+					CourseDetailSheet.swift,
+					ClassTableLayout.swift,
+					"View+PlatformCompat.swift",
+					LoadingButtonLabel.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1269,6 +1275,11 @@
 					WidgetSnapshotWriter.swift,
 					WidgetReloadCoordinator.swift,
 					CanonicalCourseProvider.swift,
+					AddCourseSheet.swift,
+					CourseDetailSheet.swift,
+					ClassTableLayout.swift,
+					"View+PlatformCompat.swift",
+					LoadingButtonLabel.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

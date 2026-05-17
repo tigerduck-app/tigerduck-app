@@ -179,21 +179,8 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    /// "課名 • 課程ID" — the line that sits beneath the (possibly wrapped)
-    /// title. Prefers the in-memory `SDCourse` so the label reflects the
-    /// user's custom rename and the canonical NTUST course code; otherwise
-    /// falls back to whatever the assignment was cached with so the line
-    /// still renders something useful when the course roster hasn't loaded
-    /// yet. The code is omitted when it's empty or already echoes the name
-    /// (an unknown course where the name fallback is just the courseNo).
     private func courseLineLabel(for assignment: SDAssignment) -> String {
-        let match = courseByNo[assignment.courseNo]
-        let name = assignment.displayCourseName(matching: match)
-        let code = match?.courseNo ?? assignment.courseNo
-        if code.isEmpty || name.isEmpty || name == code {
-            return name
-        }
-        return "\(name) • \(code)"
+        assignment.courseLineLabel(matching: courseByNo[assignment.courseNo])
     }
 
     @ViewBuilder
@@ -248,16 +235,11 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    /// Resolves the right-side time text. The 全部 tab uses time-based
-    /// branching (past rows always show the absolute deadline as the
-    /// second line); other tabs keep the legacy "relative unless toggled,
-    /// override to absolute for completed-and-past" rule.
+    /// Past rows always render the absolute deadline so an overdue row reads
+    /// `已逾期 / 4/1 23:50` instead of duplicating the "Overdue" badge with
+    /// `relativeTimeString`'s own "Overdue" return. Matches macOS.
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        let isPast = assignment.dueDate < now
-        if filter == .all && isPast {
-            return assignment.dueDate.absoluteTimeString
-        }
-        if showAbsoluteTime || (assignment.isCompleted && isPast) {
+        if showAbsoluteTime || assignment.dueDate < now {
             return assignment.dueDate.absoluteTimeString
         }
         return assignment.dueDate.relativeTimeString(from: now)

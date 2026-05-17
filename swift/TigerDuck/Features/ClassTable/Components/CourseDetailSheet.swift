@@ -11,6 +11,7 @@ import SwiftUI
 /// instead of being buried in the same flat list as the metadata rows.
 struct CourseDetailSheet: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
 
     let course: SDCourse
     let assignments: [SDAssignment]
@@ -30,8 +31,13 @@ struct CourseDetailSheet: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
             }
             .background(Color.backgroundPrimary)
+            #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
+            #endif
         }
+        #if os(macOS)
+        .frame(minWidth: 460, minHeight: 360)
+        #endif
     }
 
     // MARK: - Header
@@ -140,7 +146,7 @@ struct CourseDetailSheet: View {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
                     if let url = assignment.moodleDeepLink {
-                        UIApplication.shared.open(url)
+                        openURL(url)
                     }
                 } label: {
                     HStack {
@@ -172,10 +178,11 @@ struct CourseDetailSheet: View {
 
     /// Always route through the `moodlemobile://` deep link — matches the
     /// assignment-row convention above and keeps the user inside the Moodle
-    /// app instead of bouncing out to Safari.
+    /// app instead of bouncing out to Safari. `openURL` falls back to the
+    /// system browser on macOS when no Moodle app is installed.
     private func openMoodleCourse() {
         guard let deepLink = course.moodleDeepLink else { return }
-        UIApplication.shared.open(deepLink)
+        openURL(deepLink)
     }
 }
 

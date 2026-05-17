@@ -11,7 +11,7 @@ struct MoreView: View {
         return NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    HStack {
+                    HStack(alignment: .top) {
                         Text(String(localized: "feature_more"))
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
@@ -21,9 +21,9 @@ struct MoreView: View {
                                 SettingsView()
                             } label: {
                                 Image(systemName: "gearshape.fill")
-                                    .font(.body)
+                                    .font(.title2)
                                     .foregroundStyle(.primary)
-                                    .frame(width: 34, height: 34)
+                                    .frame(width: 44, height: 44)
                                     .glassEffect(.regular.interactive(), in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -32,9 +32,9 @@ struct MoreView: View {
                                 SettingsView()
                             } label: {
                                 Image(systemName: "gearshape.fill")
-                                    .font(.body)
+                                    .font(.title2)
                                     .foregroundStyle(Color.textPrimary)
-                                    .frame(width: 34, height: 34)
+                                    .frame(width: 44, height: 44)
                                     .background(.ultraThinMaterial, in: Circle())
                             }
                             .buttonStyle(.plain)
@@ -49,7 +49,6 @@ struct MoreView: View {
                         FeatureCategorySection(
                             category: group.category,
                             features: group.features,
-                            isPinned: { viewModel.isPinned($0, in: appState) },
                             onFeatureTap: { feature in
                                 if feature.isImplemented {
                                     navigationPath.append(feature)

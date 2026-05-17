@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreHaptics
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
@@ -20,10 +21,13 @@ struct SettingsView: View {
     @State private var libraryWarningTask: Task<Void, Never>?
     @State private var hapticEngine: CHHapticEngine?
     @State private var hapticPlayer: CHHapticPatternPlayer?
+    @State private var notificationsAuthorized: Bool = true
+    @Environment(\.scenePhase) private var scenePhase
 
-    private static let feedbackURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
-    private static let privacyURL = URL(string: "https://app.ntust.org/tigerduck/privacy")!
-    private static let licenseURL = URL(string: "https://github.com/tigerduck-app/tigerduck-app/blob/main/LICENSE")!
+    private static let feedbackURL = AppURLs.issues
+    private static let privacyURL = AppURLs.privacyPolicy
+    private static let licenseURL = AppURLs.license
+    private static let deleteAccountURL = AppURLs.deleteAccount
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
@@ -124,6 +128,19 @@ struct SettingsView: View {
 
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
+                if !notificationsAuthorized {
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label(
+                            String(localized: "settings_notifications_disabled_warning"),
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundStyle(.orange)
+                    }
+                }
                 NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }
@@ -174,6 +191,11 @@ struct SettingsView: View {
                 } label: {
                     Text(String(localized: "settings_privacy_policy"))
                 }
+                Button {
+                    UIApplication.shared.open(Self.deleteAccountURL)
+                } label: {
+                    Text(String(localized: "settings_delete_account"))
+                }
                 Button(String(localized: "settings_open_source_licenses")) {
                     if appState.browserPreference == .inApp {
                         showLicense = true
@@ -191,10 +213,22 @@ struct SettingsView: View {
                 NavigationLink("Time override") {
                     DebugSettingsView()
                 }
+                NavigationLink("Notifications") {
+                    DebugNotificationsView()
+                }
             }
             #endif
         }
         .navigationTitle(String(localized: "feature_settings"))
+        .task { await refreshNotificationsAuthorization() }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Reflect a System Settings round-trip the moment the user
+            // comes back so the warning row updates without the user
+            // having to leave and re-enter Settings.
+            if newPhase == .active {
+                Task { await refreshNotificationsAuthorization() }
+            }
+        }
         .sheet(isPresented: $showingTabEditor) {
             TabEditorView()
         }
@@ -399,6 +433,18 @@ struct SettingsView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
         }
+    }
+
+    /// Read the current system-level notification authorization so the
+    /// warning row appears whenever the user has revoked permission
+    /// (.denied) or has yet to grant it (.notDetermined). Re-runs on
+    /// every `scenePhase == .active` so a System Settings round-trip
+    /// updates the row without the user leaving Settings.
+    private func refreshNotificationsAuthorization() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        let status = settings.authorizationStatus
+        let authorized = (status == .authorized || status == .provisional || status == .ephemeral)
+        await MainActor.run { notificationsAuthorized = authorized }
     }
 }
 

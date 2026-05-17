@@ -11,7 +11,17 @@ import AppKit
 /// segmented filter (Incomplete / All / Ignored) on top mirrors the
 /// iPhone picker so muscle memory carries across.
 struct MacAssignmentsList: View {
+    /// In-memory course roster so the secondary line on each row reflects
+    /// the user's rename and the canonical NTUST course code (same contract
+    /// as the iPhone `UpcomingAssignmentsView`). Without this, the row falls
+    /// back to the cached `assignment.courseName`.
+    var courses: [SDCourse] = []
+
     @Environment(AppState.self) private var appState
+
+    private var courseByNo: [String: SDCourse] {
+        Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
+    }
 
     var body: some View {
         // TimelineView so "due in 2h" labels and the past/present
@@ -66,7 +76,7 @@ struct MacAssignmentsList: View {
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-                    Text(assignment.courseName)
+                    Text(assignment.courseLineLabel(matching: courseByNo[assignment.courseNo]))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

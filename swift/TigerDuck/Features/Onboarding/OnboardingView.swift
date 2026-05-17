@@ -1,39 +1,183 @@
 import SwiftUI
+import UserNotifications
 
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @State private var currentPage = 0
     @State private var studentId = ""
     @State private var password = ""
+    @State private var agreedPrivacy = false
+    @State private var agreedDeletion = false
+    @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var notificationRequestInFlight = false
+    @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focusedField: Field?
 
     private enum Field { case studentId, password }
 
+    /// Page order matches the Android flow at
+    /// `OnboardingScreen.kt:85-87`: Welcome → Privacy → Apple Watch →
+    /// Login → Notifications → Ready.
+    private enum Page: Int, CaseIterable {
+        case welcome, privacy, watchOS, login, notifications, ready
+    }
+
     var body: some View {
         TabView(selection: $currentPage) {
-            // Page 1: Welcome
-            OnboardingPageView(
-                icon: "graduationcap.fill",
-                title: String(localized: "onboarding_welcome_title"),
-                subtitle: String(localized: "onboarding_welcome_subtitle"),
-                accentColor: .accentPrimary
-            ) {
-                Button(String(localized: "action_next")) {
-                    withAnimation { currentPage = 1 }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+            welcomePage.tag(Page.welcome.rawValue)
+            privacyPage.tag(Page.privacy.rawValue)
+            watchOSPage.tag(Page.watchOS.rawValue)
+            loginPage.tag(Page.login.rawValue)
+            notificationsPage.tag(Page.notifications.rawValue)
+            readyPage.tag(Page.ready.rawValue)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .background(Color.backgroundPrimary)
+        .contentShape(Rectangle())
+        .onTapGesture { focusedField = nil }
+        .onChange(of: currentPage) { _, _ in focusedField = nil }
+        .task { await refreshNotificationStatus() }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Catch a System Settings round-trip — if the user enabled
+            // notifications externally, reflect that the moment they
+            // return so the denied row + settings button stop showing.
+            if newPhase == .active {
+                Task { await refreshNotificationStatus() }
             }
-            .tag(0)
+        }
+    }
 
-            // Page 2: Login
-            OnboardingPageView(
-                icon: "person.badge.key.fill",
-                title: String(localized: "onboarding_login_title"),
-                subtitle: String(localized: "onboarding_login_subtitle"),
-                accentColor: .green
-            ) {
-                VStack(spacing: TigerDuckTheme.Spacing.lg) {
+    // MARK: - Page 0: Welcome
+
+    private var welcomePage: some View {
+        OnboardingPageView(
+            icon: "graduationcap.fill",
+            title: String(localized: "onboarding_welcome_title"),
+            subtitle: String(localized: "onboarding_welcome_subtitle"),
+            accentColor: .accentPrimary,
+            content: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    Text(String(localized: "onboarding_welcome_description"))
+                        .font(.callout)
+                        .foregroundStyle(Color.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(12)
+                        .minimumScaleFactor(0.6)
+
+                    VStack(spacing: TigerDuckTheme.Spacing.md) {
+                        Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
+                        Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
+                    }
+                    .font(.callout.weight(.semibold))
+                    .padding(.top, TigerDuckTheme.Spacing.sm)
+                }
+            },
+            actions: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    Button(String(localized: "action_next")) {
+                        withAnimation { currentPage = Page.privacy.rawValue }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+            }
+        )
+    }
+
+    // MARK: - Page 1: Privacy & terms
+
+    private var privacyPage: some View {
+        OnboardingPageView(
+            icon: "lock.shield.fill",
+            title: String(localized: "onboarding_privacy_title"),
+            subtitle: String(localized: "onboarding_privacy_subtitle"),
+            accentColor: .blue,
+            iconAnimation: .layerFlash,
+            content: {
+                Grid(alignment: .leading, horizontalSpacing: TigerDuckTheme.Spacing.md, verticalSpacing: TigerDuckTheme.Spacing.md) {
+                    privacyCheckboxRow(
+                        isOn: $agreedPrivacy,
+                        label: String(localized: "onboarding_privacy_policy_label"),
+                        destination: AppURLs.privacyPolicy
+                    )
+                    privacyCheckboxRow(
+                        isOn: $agreedDeletion,
+                        label: String(localized: "onboarding_privacy_delete_account_label"),
+                        destination: AppURLs.deleteAccount
+                    )
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            },
+            actions: {
+                VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                    Text(String(localized: "onboarding_privacy_continue_hint"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .opacity(agreedPrivacy && agreedDeletion ? 0 : 1)
+
+                    Button(String(localized: "action_next")) {
+                        withAnimation { currentPage = Page.watchOS.rawValue }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(!(agreedPrivacy && agreedDeletion))
+                }
+            }
+        )
+    }
+
+    private func privacyCheckboxRow(
+        isOn: Binding<Bool>, label: String, destination: URL
+    ) -> some View {
+        GridRow {
+            Button {
+                isOn.wrappedValue.toggle()
+            } label: {
+                Image(systemName: isOn.wrappedValue ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(isOn.wrappedValue ? Color.accentPrimary : Color.textSecondary)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+            .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
+
+            Link(label, destination: destination)
+                .font(.callout)
+        }
+    }
+
+    // MARK: - Page 2: Apple Watch support
+
+    private var watchOSPage: some View {
+        OnboardingPageView(
+            icon: "applewatch",
+            title: String(localized: "onboarding_watchos_title"),
+            subtitle: String(localized: "onboarding_watchos_description"),
+            accentColor: .red
+        ) {
+            Button(String(localized: "action_next")) {
+                withAnimation { currentPage = Page.login.rawValue }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+    }
+
+    // MARK: - Page 3: Login
+
+    private var loginPage: some View {
+        let isSignedIn = appState.authService.hasStoredCredentials
+
+        return OnboardingPageView(
+            icon: "person.badge.key.fill",
+            title: String(localized: "onboarding_login_title"),
+            subtitle: String(localized: "onboarding_login_subtitle"),
+            accentColor: .green,
+            content: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
                     VStack(spacing: 1) {
                         HStack(spacing: TigerDuckTheme.Spacing.md) {
                             Image(systemName: "person.fill")
@@ -64,15 +208,7 @@ struct OnboardingView: View {
                                 text: $password,
                                 focusBinding: $focusedField,
                                 focusValue: .password,
-                                onSubmit: {
-                                    let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
-                                    let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
-                                    guard !trimmedId.isEmpty, !trimmedPwd.isEmpty, !appState.authService.isLoggingIn else { return }
-                                    Task {
-                                        let success = await appState.authService.login(studentId: trimmedId, password: trimmedPwd)
-                                        if success { withAnimation { currentPage = 2 } }
-                                    }
-                                }
+                                onSubmit: { submitLogin() }
                             )
                         }
                         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -81,38 +217,36 @@ struct OnboardingView: View {
                     }
                     .frame(maxWidth: 320)
 
-                    Spacer()
-                        .frame(height: TigerDuckTheme.Spacing.lg)
-
                     if let error = appState.authService.loginError {
                         Text(error)
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
 
+                    if isSignedIn {
+                        Label(
+                            String(localized: "action_done"),
+                            systemImage: "checkmark.circle.fill"
+                        )
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.green)
+                    }
+                }
+            },
+            actions: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Button(String(localized: "onboarding_skip_for_now")) {
-                        withAnimation { currentPage = 2 }
+                        withAnimation { currentPage = Page.notifications.rawValue }
                     }
                     .foregroundStyle(Color.textSecondary)
 
                     Button {
-                        focusedField = nil
-                        let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
-                        let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
-                        Task {
-                            let success = await appState.authService.login(
-                                studentId: trimmedId,
-                                password: trimmedPwd
-                            )
-                            if success {
-                                withAnimation { currentPage = 2 }
-                            }
-                        }
+                        submitLogin()
                     } label: {
-                        if appState.authService.isLoggingIn {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
+                        LoadingButtonLabel(
+                            isLoading: appState.authService.isLoggingIn,
+                            tint: .white
+                        ) {
                             Text(String(localized: "onboarding_login_button"))
                                 .font(.callout.weight(.semibold))
                         }
@@ -122,49 +256,137 @@ struct OnboardingView: View {
                     .disabled(studentId.isEmpty || password.isEmpty || appState.authService.isLoggingIn)
                 }
             }
-            .tag(1)
+        )
+    }
 
-            // Page 3: Feature selection
-            OnboardingPageView(
-                icon: "slider.horizontal.3",
-                title: String(localized: "onboarding_choose_features_title"),
-                subtitle: String(localized: "onboarding_choose_features_subtitle"),
-                accentColor: .orange
-            ) {
-                Button(String(localized: "action_next")) {
-                    withAnimation { currentPage = 3 }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-            }
-            .tag(2)
-
-            // Page 4: Done
-            OnboardingPageView(
-                icon: "checkmark.circle.fill",
-                title: String(localized: "onboarding_ready_title"),
-                subtitle: String(localized: "onboarding_ready_subtitle"),
-                accentColor: .accentPrimary
-            ) {
-                Button(String(localized: "onboarding_start_button")) {
-                    appState.completeOnboarding()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                // Block "Start" while a login is still in flight on the
-                // previous page. Otherwise a user who advances mid-login
-                // (or while backgrounded) lands on the home screen
-                // logged-out, with onboarding already marked done — and
-                // has to discover the Settings → re-login path manually.
-                .disabled(appState.authService.isLoggingIn)
-            }
-            .tag(3)
+    private func submitLogin() {
+        UIApplication.dismissKeyboard()
+        focusedField = nil
+        let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
+        let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
+        guard !trimmedId.isEmpty, !trimmedPwd.isEmpty, !appState.authService.isLoggingIn else { return }
+        Task {
+            let success = await appState.authService.login(
+                studentId: trimmedId, password: trimmedPwd
+            )
+            if success { withAnimation { currentPage = Page.notifications.rawValue } }
         }
-        .tabViewStyle(.page(indexDisplayMode: .always))
-        .background(Color.backgroundPrimary)
-        .contentShape(Rectangle())
-        .onTapGesture { focusedField = nil }
-        .onChange(of: currentPage) { _, _ in focusedField = nil }
+    }
+
+    // MARK: - Page 4: Notifications
+
+    private var notificationsPage: some View {
+        OnboardingPageView(
+            icon: "bell.badge.fill",
+            title: String(localized: "onboarding_permissions_title"),
+            subtitle: String(localized: "onboarding_permissions_subtitle"),
+            accentColor: .orange,
+            content: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    notificationStatusRow
+
+                    if notificationStatus == .denied {
+                        Button(String(localized: "action_go_to_settings")) {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                    }
+                }
+            },
+            actions: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    Button(String(localized: "onboarding_skip_for_now")) {
+                        withAnimation { currentPage = Page.ready.rawValue }
+                    }
+                    .foregroundStyle(Color.textSecondary)
+
+                    // While the user hasn't answered the system prompt yet,
+                    // the affirmative action lives in `notificationStatusRow`
+                    // (Allow). Don't surface a second prominent Next here —
+                    // it would let the user finish onboarding without ever
+                    // triggering `requestAuthorization`, stranding the app
+                    // in `.notDetermined` with no registration path.
+                    if notificationStatus != .notDetermined {
+                        Button(String(localized: "action_next")) {
+                            withAnimation { currentPage = Page.ready.rawValue }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var notificationStatusRow: some View {
+        switch notificationStatus {
+        case .authorized, .provisional, .ephemeral:
+            Label(String(localized: "bulletin_push_status_registration_done"), systemImage: "checkmark.circle.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.green)
+        case .denied:
+            Label(String(localized: "bulletin_push_status_denied"), systemImage: "xmark.octagon.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.red)
+        case .notDetermined:
+            Button {
+                Task { await requestNotifications() }
+            } label: {
+                LoadingButtonLabel(
+                    isLoading: notificationRequestInFlight,
+                    tint: .white
+                ) {
+                    Label(String(localized: "action_allow"), systemImage: "bell.fill")
+                        .font(.callout.weight(.semibold))
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(notificationRequestInFlight)
+        @unknown default:
+            EmptyView()
+        }
+    }
+
+    private func requestNotifications() async {
+        notificationRequestInFlight = true
+        defer { notificationRequestInFlight = false }
+        let center = UNUserNotificationCenter.current()
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+        await refreshNotificationStatus()
+        // Onboarding is the user's first opt-in to notifications; flip the
+        // `pushServerEnabled` flag so PushCoordinator registers for remote
+        // notifications and the server sync runs. Without this the user
+        // would have to find Settings → Notifications later to actually
+        // start receiving server-backed pushes.
+        guard granted else { return }
+        appState.enablePushServer()
+    }
+
+    private func refreshNotificationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        await MainActor.run { notificationStatus = settings.authorizationStatus }
+    }
+
+    // MARK: - Page 5: Done
+
+    private var readyPage: some View {
+        OnboardingPageView(
+            icon: "checkmark.circle.fill",
+            title: String(localized: "onboarding_ready_title"),
+            subtitle: String(localized: "onboarding_ready_subtitle"),
+            accentColor: .accentPrimary
+        ) {
+            Button(String(localized: "onboarding_start_button")) {
+                appState.completeOnboarding()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(appState.authService.isLoggingIn)
+        }
     }
 }
-
