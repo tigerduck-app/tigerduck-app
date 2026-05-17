@@ -1,4 +1,29 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
+extension Color {
+    /// Cross-platform analogue of `UIColor.secondarySystemGroupedBackground`.
+    ///
+    /// iOS exposes a dynamic grouped-list secondary background that lifts
+    /// inset cards a notch above the underlying `systemGroupedBackground`.
+    /// AppKit has no direct equivalent: `NSColor.controlBackgroundColor`
+    /// is the closest dynamic semantic colour for inset content surfaces
+    /// in light + dark mode, and is what we adopt for Mac-side surface
+    /// styles. Renders identically to iOS at first glance; per-mode
+    /// tuning can swap this for a custom asset later without touching
+    /// call sites.
+    static var secondarySystemGroupedBackgroundCompat: Color {
+        #if os(iOS)
+        Color(uiColor: .secondarySystemGroupedBackground)
+        #else
+        Color(nsColor: .controlBackgroundColor)
+        #endif
+    }
+}
 
 extension Color {
     /// Initialise from a 24-bit RGB integer. Higher bits are masked off so

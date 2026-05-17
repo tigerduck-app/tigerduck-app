@@ -2,11 +2,6 @@ import SwiftUI
 import SwiftData
 import Defaults
 
-enum BrowserPreference: String, CaseIterable {
-    case system
-    case inApp
-}
-
 @Observable
 final class AppState {
     var hasCompletedOnboarding = Defaults[.hasCompletedOnboarding]

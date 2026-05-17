@@ -1,6 +1,18 @@
 import Foundation
 
+/// Resolved time window of a single course on a specific day.
+///
+/// Lives in `Models/Domain` so cross-platform code (Mac UI, future
+/// widgets, future watch derivations) can derive timelines without
+/// pulling in the iOS-only TimeSlider view model.
 struct CourseTimeSlot: Identifiable, Equatable {
+    /// Number of days on each side of the focus date that
+    /// `buildMultiDaySlots` materialises by default. The iOS time-slider
+    /// view exposes the same value through `TimeSliderMetrics` so the
+    /// horizontal scroll viewport and the in-memory slot set stay in
+    /// lockstep.
+    static let defaultDayRadius: Int = 28
+
     static func == (lhs: CourseTimeSlot, rhs: CourseTimeSlot) -> Bool {
         lhs.id == rhs.id
     }
@@ -45,7 +57,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
     static func buildMultiDaySlots(
         from courses: [SDCourse],
         centerDate: Date,
-        dayRadius: Int = TimeSliderMetrics.timelineDayRadius
+        dayRadius: Int = CourseTimeSlot.defaultDayRadius
     ) -> [CourseTimeSlot] {
         let calendar = AppConstants.taipeiCalendar
         var allSlots: [CourseTimeSlot] = []
