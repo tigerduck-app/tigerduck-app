@@ -12,6 +12,7 @@ import SwiftUI
 /// (`appState.backgroundSync()`) re-renders them.
 struct MacHomeView: View {
     @Environment(AppState.self) private var appState
+    @State private var cacheRevision: Int = 0
 
     var body: some View {
         // Read AppClockState.version so a debug clock override flips
@@ -19,9 +20,13 @@ struct MacHomeView: View {
         // the next unrelated invalidation. Mirrors the iOS HomeView
         // contract.
         let _ = AppClockState.shared.version
+        let _ = cacheRevision
         ScrollView {
             content
                 .macReadableContent(maxWidth: MacContentWidth.standard)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
+            cacheRevision &+= 1
         }
     }
 
