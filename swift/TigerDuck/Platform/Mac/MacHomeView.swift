@@ -77,11 +77,12 @@ struct MacHomeView: View {
     // MARK: - Data
 
     private func currentCourses() -> [SDCourse] {
-        let semester = CourseSelectionService.currentSemesterCode()
-        let semesterCourses = DataCache.shared.loadCourses(semester: semester)
-        let userAdded = DataCache.shared.loadUserAddedCourses()
-            .filter { $0.semester == semester || $0.semester.isEmpty }
-        return semesterCourses + userAdded
+        // Delegate to the canonical provider so the deletedCourseNos
+        // tombstone filter and customNames overlay are applied. Inlining
+        // the raw load+merge here previously meant a course the user
+        // had hidden from the class table would reappear in the Home
+        // widget cards and assignment course matcher after refresh.
+        CanonicalCourseProvider().currentCourses()
     }
 }
 #endif
