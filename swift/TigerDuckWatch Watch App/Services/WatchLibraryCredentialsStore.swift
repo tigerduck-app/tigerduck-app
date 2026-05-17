@@ -63,10 +63,14 @@ final class WatchLibraryCredentialsStore: ObservableObject {
                   let p = payload.password, !p.isEmpty else {
                 return .malformed
             }
-            WatchKeychain.set(u, forKey: Keys.username)
-            WatchKeychain.set(p, forKey: Keys.password)
+            clearToken()
+            guard WatchKeychain.set(u, forKey: Keys.username),
+                  WatchKeychain.set(p, forKey: Keys.password) else {
+                return .malformed
+            }
         case .wipe:
             wipeKeychainOnly()
+            clearToken()
         }
 
         defaults.set(payload.credEpoch, forKey: DefaultsKey.credEpoch)

@@ -78,12 +78,12 @@ enum WatchLibraryService {
     /// watch has no credentials (or they are past TTL).
     @MainActor
     static func ensureToken() async throws -> String {
-        if let (token, _) = WatchLibraryCredentialsStore.shared.loadToken(), isTokenValid {
-            return token
-        }
-
         guard let creds = WatchLibraryCredentialsStore.shared.loadCredentialsRespectingTTL() else {
             throw WatchLibraryServiceError.credentialsNotFound
+        }
+
+        if let (token, _) = WatchLibraryCredentialsStore.shared.loadToken(), isTokenValid {
+            return token
         }
 
         return try await login(username: creds.username, password: creds.password)

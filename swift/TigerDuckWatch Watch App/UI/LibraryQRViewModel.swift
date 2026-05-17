@@ -90,7 +90,10 @@ final class LibraryQRViewModel {
             errorMessage = nil
             do {
                 let payload = try await WatchLibraryService.generateQRCode()
-                qrImage = Self.makeQRImage(from: payload)
+                guard let image = Self.makeQRImage(from: payload) else {
+                    throw WatchLibraryServiceError.qrGenerationFailed("QR payload is too large")
+                }
+                qrImage = image
                 username = store.currentUsername()
                 countdown = 30
                 isLoading = false
