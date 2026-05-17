@@ -142,17 +142,22 @@ struct BulletinDetailView: View {
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
                 if let summary = bulletin.summary, !summary.isEmpty {
-                    Markdown(Self.normalizeMarkdown(summary))
+                    Markdown(BulletinBodyRenderer.normalize(summary))
                         .markdownTheme(bulletinMarkdownTheme)
                         .padding(.top, TigerDuckTheme.Spacing.md)
                 }
             }
         } else if let detail {
-            Markdown(Self.normalizeMarkdown(markdownSource(for: detail)))
+            Markdown(BulletinBodyRenderer.normalize(
+                BulletinBodyRenderer.bodyMarkdown(
+                    for: detail,
+                    fallbackSummary: bulletin.summary
+                )
+            ))
                 .markdownTheme(bulletinMarkdownTheme)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else if let summary = bulletin.summary, !summary.isEmpty {
-            Markdown(Self.normalizeMarkdown(summary))
+            Markdown(BulletinBodyRenderer.normalize(summary))
                 .markdownTheme(bulletinMarkdownTheme)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -187,69 +192,6 @@ struct BulletinDetailView: View {
             .padding(.vertical, 4)
             .background(Color.orange.opacity(0.18), in: Capsule())
             .foregroundStyle(Color.orange)
-    }
-
-    // MARK: - Content helpers
-
-    /// Prefer the LLM-cleaned `body_clean` (fact-preserving Markdown the
-    /// server classifier produces) over the raw scrape. We fall back to
-    /// body_md when body_clean is missing so older rows still render
-    /// something, and finally to summary as the last resort.
-    private func markdownSource(for detail: BulletinAPI.BulletinDetail) -> String {
-        detail.bodyClean?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-            ?? detail.bodyMd?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-            ?? detail.summary
-            ?? ""
-    }
-
-    /// Pre-process the raw Markdown so MarkdownUI's CommonMark parser
-    /// reliably picks up inline emphasis inside list items. The LLM
-    /// occasionally emits `*   ` (asterisk + multiple spaces) as a list
-    /// marker which some CommonMark profiles render as a plain paragraph,
-    /// and `**` runs flush against full-width CJK punctuation can fail
-    /// CommonMark's flanking rules — both the "punct OUTSIDE the bold"
-    /// and "punct INSIDE right before `**`" shapes misfire because the
-    /// closing run is neither preceded by whitespace nor followed by a
-    /// whitespace/punct. Every observed shape is normalised here so the
-    /// theme's `.strong` styling actually fires.
-    static func normalizeMarkdown(_ source: String) -> String {
-        var text = source
-        // `*   ` / `+   ` at line start → `- ` (standard bullet).
-        text = text.replacingOccurrences(
-            of: #"(?m)^(\s*)[*+]\s+"#,
-            with: "$1- ",
-            options: .regularExpression
-        )
-        // `**text**<fullwidth-punct>` — punct OUTSIDE bold. Insert a
-        // space before the punct so the closing `**` is flanked by a
-        // letter and whitespace, unambiguously right-flanking.
-        text = text.replacingOccurrences(
-            of: #"\*\*([^*\n]+)\*\*([、。，．：；！？」』）])"#,
-            with: "**$1** $2",
-            options: .regularExpression
-        )
-        // `**text<fullwidth-punct>**<non-space>` — punct INSIDE bold,
-        // right before `**`, followed directly by any non-whitespace
-        // character. The closing `**` is neither "not followed by
-        // non-whitespace" nor "preceded by whitespace/punct AND followed
-        // by punct" → fails CommonMark right-flanking. Insert an ASCII
-        // space so the closing run is followed by whitespace. Covers all
-        // known LLM outputs: CJK (`**跨界：**分享`), ASCII digits
-        // (`**日期：**115 年`), ASCII letters (`**主講人：**Alex`), and
-        // link openers (`**報名連結：**[連結](url)`).
-        text = text.replacingOccurrences(
-            of: #"\*\*([^*\n]*?[、。，．：；！？])\*\*(\S)"#,
-            with: "**$1** $2",
-            options: .regularExpression
-        )
-        // `<fullwidth-open-punct>**text**` — punct OUTSIDE bold on the
-        // opening side, mirror case of the first rule.
-        text = text.replacingOccurrences(
-            of: #"([「『（])\*\*([^*\n]+)\*\*"#,
-            with: "$1 **$2**",
-            options: .regularExpression
-        )
-        return text
     }
 
     /// MarkdownUI theme tuned to match the rest of the app — we want the
@@ -307,12 +249,6 @@ struct BulletinDetailView: View {
                 loadError = error.localizedDescription
             }
         }
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? {
-        isEmpty ? nil : self
     }
 }
 

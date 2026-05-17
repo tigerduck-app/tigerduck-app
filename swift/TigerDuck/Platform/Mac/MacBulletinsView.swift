@@ -162,19 +162,37 @@ struct MacBulletinsView: View {
         } else if let detail {
             bulletinDetail(detail)
         } else if let err = detailError {
-            VStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.title)
-                    .foregroundStyle(.red)
-                Text(err)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Button(String(localized: "action_retry")) {
-                    if let id = selectedId { Task { await loadDetail(id: id) } }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            detailErrorPane(message: err)
         }
+    }
+
+    /// Error pane keeps the list-row `summary` visible — the bulletin's
+    /// curated headline + abstract is still useful while the detail fetch
+    /// is down. Mirrors `BulletinDetailView`'s offline-first behaviour.
+    private func detailErrorPane(message: String) -> some View {
+        let fallback = viewModel.filteredItems.first(where: { $0.id == selectedId })?.summary
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                Text(String(localized: "bulletin_body_load_failed"))
+                    .font(.headline)
+            }
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button(String(localized: "action_retry")) {
+                if let id = selectedId { Task { await loadDetail(id: id) } }
+            }
+            if let fallback, !fallback.isEmpty {
+                Divider()
+                Markdown(BulletinBodyRenderer.normalize(fallback))
+                    .markdownTheme(.basic)
+            }
+        }
+        .padding(28)
+        .frame(maxWidth: 720, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func bulletinDetail(_ d: BulletinAPI.BulletinDetail) -> some View {
@@ -197,17 +215,20 @@ struct MacBulletinsView: View {
                     }
                 }
 
-                if let body = d.bodyMd, !body.isEmpty {
-                    Markdown(body)
-                        .markdownTheme(.basic)
-                } else if let clean = d.bodyClean, !clean.isEmpty {
-                    Text(clean)
-                        .font(.body)
-                        .textSelection(.enabled)
-                } else {
+                let fallback = viewModel.filteredItems
+                    .first(where: { $0.id == d.id })?.summary
+                let body = BulletinBodyRenderer.bodyMarkdown(
+                    for: d,
+                    fallbackSummary: fallback
+                )
+                if body.isEmpty {
                     Text(String(localized: "desktop_bulletins_no_body"))
                         .foregroundStyle(.secondary)
                         .italic()
+                } else {
+                    Markdown(BulletinBodyRenderer.normalize(body))
+                        .markdownTheme(.basic)
+                        .textSelection(.enabled)
                 }
 
                 if let url = URL(string: d.sourceUrl) {
