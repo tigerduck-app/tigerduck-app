@@ -76,7 +76,7 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
                     .font(.system(size: 32, weight: .semibold))
                     .foregroundStyle(.white)
                     .symbolEffect(.pulse, options: .repeating.speed(0.35))
-                    .offset(y: 4)
+                    .offset(y: -4)
             }
         }
     }
