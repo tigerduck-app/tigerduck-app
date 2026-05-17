@@ -107,13 +107,6 @@ final class WatchLibraryCredentialBroadcaster {
     }
 
     private func send(_ payload: WatchLibraryCredentialPayload) {
-        let wc = WCSession.default
-        logger.notice(
-            "send pre-flight activation=\(wc.activationState.rawValue) paired=\(wc.isPaired) installed=\(wc.isWatchAppInstalled) reachable=\(wc.isReachable)"
-        )
-        if !session.isPaired || !session.isWatchAppInstalled {
-            logger.notice("watch not present; transferUserInfo will queue for delivery anyway")
-        }
         let json: String
         do {
             json = try payload.encodedJSON()
@@ -144,14 +137,8 @@ final class WatchLibraryCredentialBroadcaster {
                     _ = self.session.transferUserInfo(userInfo)
                 }
             }
-            logger.notice(
-                "broadcast \(payload.kind.rawValue, privacy: .public) epoch=\(payload.credEpoch) via=sendMessage"
-            )
             return
         }
-        let transfer = session.transferUserInfo(userInfo)
-        logger.notice(
-            "broadcast \(payload.kind.rawValue, privacy: .public) epoch=\(payload.credEpoch) via=transferUserInfo transferring=\(transfer.isTransferring)"
-        )
+        _ = session.transferUserInfo(userInfo)
     }
 }
