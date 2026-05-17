@@ -41,6 +41,21 @@ struct DebugSettingsView: View {
                 Text(viewModel.effectiveNow.formatted(date: .complete, time: .standard))
                     .font(.system(.body, design: .monospaced))
             }
+
+            Section {
+                Button("Send fake push now") {
+                    Task { await viewModel.sendSimulatedPushNow() }
+                }
+                if let status = viewModel.lastSimulatedPushStatus {
+                    Text(status)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Notifications")
+            } footer: {
+                Text("Backend push notifications use the real wall clock and cannot honor the fake-time override. This button schedules a local notification ~3 s from now so you can verify the LA / widget pipeline visually.")
+            }
         }
         .navigationTitle("Time override")
         .task { await viewModel.observeEffectiveNow() }
