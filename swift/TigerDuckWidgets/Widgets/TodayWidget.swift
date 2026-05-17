@@ -39,10 +39,9 @@ struct TodayWidgetView: View {
 
     private var maxRows: Int {
         switch family {
-        case .systemMedium:     return 4
         case .systemLarge:      return 8
         case .systemExtraLarge: return 16
-        default:                return 4
+        default:                return 8
         }
     }
 
@@ -64,6 +63,6 @@ struct TodayWidget: Widget {
         }
         .configurationDisplayName(String(localized: "widget_today_light_label"))
         .description(String(localized: "widget_today_light_desc"))
-        .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
+        .supportedFamilies([.systemLarge, .systemExtraLarge])
     }
 }
