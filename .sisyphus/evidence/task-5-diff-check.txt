@@ -1,2 +1,0 @@
-16:    private(set) var loginGeneration: Int = 0
-150:        loginGeneration &+= 1

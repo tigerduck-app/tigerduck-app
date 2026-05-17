@@ -1,5 +1,0 @@
-3:actor MoodleTokenService {
-30:    func obtainToken(studentId: String, password: String) async throws -> String {
-60:    func refreshTokenIfNeeded() async throws -> String {
-101:    func clearToken() async {
-109:    func currentToken() async -> String? {

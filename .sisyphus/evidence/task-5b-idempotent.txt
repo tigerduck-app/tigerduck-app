@@ -1,5 +1,0 @@
-58:        runPendingMigrations()
-66:    func runPendingMigrations() {
-68:            await MoodleTokenMigration.runIfNeeded()
-81:    static let moodleTokenMigrationDone = Key<Bool>(
-82:        "moodleTokenMigrationDone",

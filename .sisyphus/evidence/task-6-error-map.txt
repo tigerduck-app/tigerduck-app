@@ -1,3 +1,0 @@
-21:            token = try await tokenService.refreshTokenIfNeeded()
-32:            await tokenService.clearToken()
-33:            let refreshedToken = try await tokenService.refreshTokenIfNeeded()

@@ -1,9 +1,0 @@
-3 matches in 2F:
-
-[file] 8 (1):
-     0: "https://moodle2.ntust.edu.tw")!
-
-[file] swift/TigerDuck/App/AppConstants.swift (2):
-    17: static let moodleToken = "moodle_token"
-    18: static let moodlePrivateToken = "moodle_private_token"
-
