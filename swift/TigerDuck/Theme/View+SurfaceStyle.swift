@@ -65,7 +65,7 @@ private struct PresetCardModifier: ViewModifier {
             content
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color(.secondarySystemGroupedBackground))
+                        .fill(Color.secondarySystemGroupedBackgroundCompat)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: cornerRadius)
@@ -136,7 +136,7 @@ private struct PresetGroupedListContainerModifier: ViewModifier {
             content
                 .background(
                     RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
-                        .fill(Color(.secondarySystemGroupedBackground))
+                        .fill(Color.secondarySystemGroupedBackgroundCompat)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)

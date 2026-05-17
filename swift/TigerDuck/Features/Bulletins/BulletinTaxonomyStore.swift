@@ -40,8 +40,8 @@ final class BulletinTaxonomyStore {
 
     init(apiClient: BulletinAPIClient? = nil) {
         self.apiClient = apiClient ?? BulletinAPIClient(
-            baseURL: PushCoordinator.resolveServerURL(),
-            sharedSecret: PushCoordinator.resolveSharedSecret()
+            baseURL: PushServerConfig.resolveServerURL(),
+            sharedSecret: PushServerConfig.resolveSharedSecret()
         )
     }
 

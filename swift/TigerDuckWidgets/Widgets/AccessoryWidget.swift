@@ -1,3 +1,4 @@
+#if os(iOS)
 import WidgetKit
 import SwiftUI
 
@@ -77,3 +78,4 @@ struct AccessoryWidget: Widget {
         .supportedFamilies([.accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
 }
+#endif

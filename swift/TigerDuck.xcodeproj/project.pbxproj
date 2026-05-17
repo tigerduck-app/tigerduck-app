@@ -9,14 +9,14 @@
 /* Begin PBXBuildFile section */
 		42B9BC012F90EBFA00D3B5A1 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */; };
 		42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
-		42B9BC142F90EBFB00D3B5A1 /* TigerDuckLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		42B9BC142F90EBFB00D3B5A1 /* TigerDuckLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42D2EEAD2F73B4B300973752 /* tigerduck.icon in Resources */ = {isa = PBXBuildFile; fileRef = 42D2EEAC2F73B4B300973752 /* tigerduck.icon */; };
 		60A0A00130AA000100000001 /* Valet in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20130AA000100000001 /* Valet */; };
 		60A0A00230AA000100000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20230AA000100000001 /* SwiftSoup */; };
 		60A0A00330AA000100000001 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20330AA000100000001 /* Sentry */; };
 		60A0A00430AA000100000001 /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20430AA000100000001 /* Defaults */; };
 		60A0A00530AA000100000001 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20530AA000100000001 /* MarkdownUI */; };
-		B21DC6B22FB887DA00AE2430 /* TigerDuckWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B21DC6922FB887D900AE2430 /* TigerDuckWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B21DC6B22FB887DA00AE2430 /* TigerDuckWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B21DC6922FB887D900AE2430 /* TigerDuckWatch Watch App.app */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B244D7502FB87B580040D6FA /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */; };
 		B244D7512FB87B580040D6FA /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
 		B244D75C2FB87B590040D6FA /* TigerDuckWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B244D74F2FB87B580040D6FA /* TigerDuckWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -841,6 +841,7 @@
 		};
 		42B9BC132F90EBFB00D3B5A1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
 			targetProxy = 42B9BC122F90EBFB00D3B5A1 /* PBXContainerItemProxy */;
 		};
@@ -856,6 +857,7 @@
 		};
 		B21DC6B12FB887DA00AE2430 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
 			targetProxy = B21DC6B02FB887DA00AE2430 /* PBXContainerItemProxy */;
 		};
@@ -992,6 +994,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = TigerDuck/TigerDuck.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuck/TigerDuck_Mac.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -1000,11 +1003,117 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				EXCLUDED_SOURCE_FILE_NAMES = "";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "*.swift";
 				GENERATE_INFOPLIST_FILE = YES;
+				INCLUDED_SOURCE_FILE_NAMES = "";
+				"INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
+					TigerDuckApp.swift,
+					AppConstants.swift,
+					AppDefaults.swift,
+					AppState.swift,
+					BrowserPreference.swift,
+					LanguageManager.swift,
+					WidgetURLRouter.swift,
+					AppFeature.swift,
+					AssignmentFilter.swift,
+					AssignmentStatus.swift,
+					CourseState.swift,
+					HomeSection.swift,
+					MockData.swift,
+					TimetablePeriod.swift,
+					WidgetItem.swift,
+					CourseTimeSlot.swift,
+					SDAnnouncement.swift,
+					SDAssignment.swift,
+					SDCalendarEvent.swift,
+					SDCourse.swift,
+					AuthService.swift,
+					KeychainManager.swift,
+					SecureStore.swift,
+					SSOWebAuthSession.swift,
+					DataCache.swift,
+					HTMLParser.swift,
+					NameAbbrService.swift,
+					NetworkMonitor.swift,
+					AppLogger.swift,
+					ClassroomAbbrCacheMigration.swift,
+					CustomNameCacheMigration.swift,
+					HomeSectionTitleMigration.swift,
+					MoodleTokenMigration.swift,
+					PushServerConfig.swift,
+					BulletinAPIClient.swift,
+					BulletinAPIDTO.swift,
+					CalendarService.swift,
+					LibraryAPIModels.swift,
+					LibraryService.swift,
+					MoodleAPIModels.swift,
+					MoodleAssignmentService.swift,
+					MoodleEnrolledCoursesService.swift,
+					MoodleSiteInfoService.swift,
+					MoodleTokenService.swift,
+					MoodleWebserviceError.swift,
+					CourseLookupService.swift,
+					CourseSelectionService.swift,
+					NTUSTAPIModels.swift,
+					NTUSTScoreModels.swift,
+					NTUSTScoreParser.swift,
+					NTUSTScoreService.swift,
+					NTUSTSessionManager.swift,
+					SSOLoginService.swift,
+					"Animation+Spring.swift",
+					"Color+Extensions.swift",
+					TigerDuckTheme.swift,
+					"View+CardStyle.swift",
+					"View+GlassEffect.swift",
+					"View+SurfaceStyle.swift",
+					VisualStylePolicy.swift,
+					AppServiceBridge.swift,
+					ModelAdapters.swift,
+					AppClock.swift,
+					AppClockState.swift,
+					ClockOverride.swift,
+					TimezoneObserver.swift,
+					VisualPreset.swift,
+					"Array+Assignments.swift",
+					"Array+PeriodOrder.swift",
+					"Collection+Safe.swift",
+					"Data+Hex.swift",
+					"Date+Formatting.swift",
+					"JSONDecoder+ISO8601.swift",
+					"SDAssignment+DisplayName.swift",
+					"String+HTMLEntities.swift",
+					NTUSTProtectedAccessState.swift,
+					MacRootView.swift,
+					MacLoginView.swift,
+					MacHomeView.swift,
+					MacMoreView.swift,
+					MacFeatureFiltering.swift,
+					MacBulletinsView.swift,
+					BulletinsViewModel.swift,
+					BulletinReadStateStore.swift,
+					BulletinBodyRenderer.swift,
+					MacCalendarView.swift,
+					MacScoreView.swift,
+					ScoreViewModel.swift,
+					MacClassTableView.swift,
+					MacSettingsScene.swift,
+					MacContentLayout.swift,
+					MacAssignmentsList.swift,
+					MacWidgetCards.swift,
+					DebugClockController.swift,
+					DebugClockStore.swift,
+					WidgetSnapshot.swift,
+					WidgetSnapshotBuilder.swift,
+					WidgetSnapshotStore.swift,
+					WidgetSnapshotWriter.swift,
+					WidgetReloadCoordinator.swift,
+					CanonicalCourseProvider.swift,
+				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphonesimulator*]" = YES;
 				INFOPLIST_KEY_SENTRY_DSN = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -1019,15 +1128,16 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1045,6 +1155,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = TigerDuck/TigerDuck.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuck/TigerDuck_Mac.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -1053,11 +1164,117 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				EXCLUDED_SOURCE_FILE_NAMES = "";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "*.swift";
 				GENERATE_INFOPLIST_FILE = YES;
+				INCLUDED_SOURCE_FILE_NAMES = "";
+				"INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
+					TigerDuckApp.swift,
+					AppConstants.swift,
+					AppDefaults.swift,
+					AppState.swift,
+					BrowserPreference.swift,
+					LanguageManager.swift,
+					WidgetURLRouter.swift,
+					AppFeature.swift,
+					AssignmentFilter.swift,
+					AssignmentStatus.swift,
+					CourseState.swift,
+					HomeSection.swift,
+					MockData.swift,
+					TimetablePeriod.swift,
+					WidgetItem.swift,
+					CourseTimeSlot.swift,
+					SDAnnouncement.swift,
+					SDAssignment.swift,
+					SDCalendarEvent.swift,
+					SDCourse.swift,
+					AuthService.swift,
+					KeychainManager.swift,
+					SecureStore.swift,
+					SSOWebAuthSession.swift,
+					DataCache.swift,
+					HTMLParser.swift,
+					NameAbbrService.swift,
+					NetworkMonitor.swift,
+					AppLogger.swift,
+					ClassroomAbbrCacheMigration.swift,
+					CustomNameCacheMigration.swift,
+					HomeSectionTitleMigration.swift,
+					MoodleTokenMigration.swift,
+					PushServerConfig.swift,
+					BulletinAPIClient.swift,
+					BulletinAPIDTO.swift,
+					CalendarService.swift,
+					LibraryAPIModels.swift,
+					LibraryService.swift,
+					MoodleAPIModels.swift,
+					MoodleAssignmentService.swift,
+					MoodleEnrolledCoursesService.swift,
+					MoodleSiteInfoService.swift,
+					MoodleTokenService.swift,
+					MoodleWebserviceError.swift,
+					CourseLookupService.swift,
+					CourseSelectionService.swift,
+					NTUSTAPIModels.swift,
+					NTUSTScoreModels.swift,
+					NTUSTScoreParser.swift,
+					NTUSTScoreService.swift,
+					NTUSTSessionManager.swift,
+					SSOLoginService.swift,
+					"Animation+Spring.swift",
+					"Color+Extensions.swift",
+					TigerDuckTheme.swift,
+					"View+CardStyle.swift",
+					"View+GlassEffect.swift",
+					"View+SurfaceStyle.swift",
+					VisualStylePolicy.swift,
+					AppServiceBridge.swift,
+					ModelAdapters.swift,
+					AppClock.swift,
+					AppClockState.swift,
+					ClockOverride.swift,
+					TimezoneObserver.swift,
+					VisualPreset.swift,
+					"Array+Assignments.swift",
+					"Array+PeriodOrder.swift",
+					"Collection+Safe.swift",
+					"Data+Hex.swift",
+					"Date+Formatting.swift",
+					"JSONDecoder+ISO8601.swift",
+					"SDAssignment+DisplayName.swift",
+					"String+HTMLEntities.swift",
+					NTUSTProtectedAccessState.swift,
+					MacRootView.swift,
+					MacLoginView.swift,
+					MacHomeView.swift,
+					MacMoreView.swift,
+					MacFeatureFiltering.swift,
+					MacBulletinsView.swift,
+					BulletinsViewModel.swift,
+					BulletinReadStateStore.swift,
+					BulletinBodyRenderer.swift,
+					MacCalendarView.swift,
+					MacScoreView.swift,
+					ScoreViewModel.swift,
+					MacClassTableView.swift,
+					MacSettingsScene.swift,
+					MacContentLayout.swift,
+					MacAssignmentsList.swift,
+					MacWidgetCards.swift,
+					DebugClockController.swift,
+					DebugClockStore.swift,
+					WidgetSnapshot.swift,
+					WidgetSnapshotBuilder.swift,
+					WidgetSnapshotStore.swift,
+					WidgetSnapshotWriter.swift,
+					WidgetReloadCoordinator.swift,
+					CanonicalCourseProvider.swift,
+				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
-				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphonesimulator*]" = YES;
 				INFOPLIST_KEY_SENTRY_DSN = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -1072,15 +1289,16 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1457,6 +1675,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuckWidgets/TigerDuckWidgets_Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 43UV8F72V6;
@@ -1477,14 +1696,14 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1501,6 +1720,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuckWidgets/TigerDuckWidgets_Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 43UV8F72V6;
@@ -1521,14 +1741,14 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;

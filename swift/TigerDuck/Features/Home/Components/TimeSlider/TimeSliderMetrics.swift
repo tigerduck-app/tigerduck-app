@@ -17,8 +17,10 @@ enum TimeSliderMetrics {
 
     // MARK: - Multi-day Timeline
 
-    /// Number of days loaded on both sides of the selected date.
-    static let timelineDayRadius: Int = 28
+    /// Number of days loaded on both sides of the selected date. Owned
+    /// by the domain type so cross-platform timeline math stays in
+    /// lockstep with what the time-slider view materialises.
+    static let timelineDayRadius: Int = CourseTimeSlot.defaultDayRadius
 
     /// Rebuild when the selection approaches this many days from the loaded edge.
     static let timelineRebuildTriggerDays: Int = 7
