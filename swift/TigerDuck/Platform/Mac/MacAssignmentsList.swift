@@ -231,7 +231,7 @@ final class AssignmentStore {
         switch filter {
         case .incomplete:
             return all
-                .filter { !$0.isCompleted && !$0.isArchived }
+                .filter { !$0.isCompleted && !$0.isArchived && !$0.isLocallyCompleted }
                 .sorted { $0.dueDate < $1.dueDate }
         case .all:
             return all.partitionedByDueDate(now: now)
