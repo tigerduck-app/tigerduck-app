@@ -43,7 +43,7 @@ public enum WatchPayloadCodec {
         return dict
     }
 
-    private static func encodeCourse(_ c: WatchCourse) -> [String: Any] {
+    nonisolated private static func encodeCourse(_ c: WatchCourse) -> [String: Any] {
         [
             CourseKey.id:          c.id,
             CourseKey.courseNo:    c.courseNo,
@@ -90,7 +90,7 @@ public enum WatchPayloadCodec {
         )
     }
 
-    private static func decodeCourse(_ dict: [String: Any]) throws -> WatchCourse {
+    nonisolated private static func decodeCourse(_ dict: [String: Any]) throws -> WatchCourse {
         func req<T>(_ key: String) throws -> T {
             guard let any = dict[key] else { throw DecodingError.missingRequiredKey(key) }
             guard let v = any as? T else { throw DecodingError.invalidType(key) }
