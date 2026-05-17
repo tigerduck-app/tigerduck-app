@@ -251,7 +251,14 @@ final class ClassTableViewModel {
         return course.timeRange(for: weekday)
     }
 
-    var todayCourses: [SDCourse] { currentSemesterCourses.coursesForToday() }
+    var todayCourses: [SDCourse] {
+        // `coursesForToday()` reads `AppClock.now()`, which Observation
+        // can't track because `AppClock` is an enum. Pulling
+        // `AppClockState.shared.version` into the read keeps SwiftUI
+        // dependency tracking aware of debug-time-override flips.
+        _ = AppClockState.shared.version
+        return currentSemesterCourses.coursesForToday()
+    }
 
     var activeWeekdays: [Int] {
         var days = Set<Int>()

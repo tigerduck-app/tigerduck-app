@@ -13,6 +13,11 @@ struct TodayCourseCarousel: View {
     }()
 
     var body: some View {
+        // The body and its helpers (`today`, `courseProgress`, etc.) read
+        // `AppClock.now()`, which Observation can't track. Pulling
+        // `AppClockState.shared.version` here wires the view's dependency
+        // graph to debug time-override flips.
+        let _ = AppClockState.shared.version
         if courses.isEmpty {
             noCourseView
         } else {

@@ -18,12 +18,18 @@ struct DebugSettingsView: View {
 
                 DatePicker(
                     "Date & time",
-                    selection: $viewModel.draftInstant,
+                    selection: Binding(
+                        get: { viewModel.draftInstant },
+                        set: { viewModel.setDraftInstant($0) }
+                    ),
                     displayedComponents: [.date, .hourAndMinute]
                 )
                 .disabled(!viewModel.enabled)
 
-                Picker("Mode", selection: $viewModel.frozen) {
+                Picker("Mode", selection: Binding(
+                    get: { viewModel.frozen },
+                    set: { viewModel.setFrozen($0) }
+                )) {
                     Text("Frozen").tag(true)
                     Text("Ticking").tag(false)
                 }
@@ -34,19 +40,6 @@ struct DebugSettingsView: View {
             Section("Effective now") {
                 Text(viewModel.effectiveNow.formatted(date: .complete, time: .standard))
                     .font(.system(.body, design: .monospaced))
-            }
-
-            Section {
-                HStack {
-                    Button("Reset", role: .destructive) {
-                        viewModel.reset()
-                    }
-                    Spacer()
-                    Button("Apply") {
-                        viewModel.apply()
-                    }
-                    .disabled(!viewModel.enabled)
-                }
             }
         }
         .navigationTitle("Time override")

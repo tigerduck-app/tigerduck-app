@@ -30,31 +30,34 @@ final class DebugSettingsViewModel {
         }
     }
 
-    /// Use for binding from a Toggle. Setter clears the override immediately
-    /// when toggled off so the app returns to real time without needing the
-    /// user to also tap Apply.
     func setEnabled(_ newValue: Bool) {
         enabled = newValue
-        if !newValue {
+        if newValue {
+            pushOverride()
+        } else {
             DebugClockController.shared.setOverride(nil)
         }
     }
 
-    func apply() {
-        guard enabled else { return }
+    func setDraftInstant(_ newValue: Date) {
+        draftInstant = newValue
+        if enabled { pushOverride() }
+    }
+
+    func setFrozen(_ newValue: Bool) {
+        frozen = newValue
+        if enabled { pushOverride() }
+    }
+
+    /// `savedAtReal` is stamped at push time — ticking-mode elapsed math
+    /// keys off this, so every edit while enabled must restamp it.
+    private func pushOverride() {
         let override = ClockOverride(
             instant: draftInstant,
             frozen: frozen,
             savedAtReal: Date()
         )
         DebugClockController.shared.setOverride(override)
-    }
-
-    func reset() {
-        DebugClockController.shared.setOverride(nil)
-        enabled = false
-        draftInstant = Date()
-        frozen = true
     }
 }
 #endif
