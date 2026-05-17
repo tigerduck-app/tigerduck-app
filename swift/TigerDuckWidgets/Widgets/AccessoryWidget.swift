@@ -10,7 +10,7 @@ struct AccessoryProvider: TimelineProvider {
     private let store = WidgetSnapshotStore()
 
     func placeholder(in context: Context) -> AccessoryEntry {
-        AccessoryEntry(date: AppClock.now(), derived: .signInRequired)
+        AccessoryEntry(date: Date(), derived: .signInRequired)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (AccessoryEntry) -> Void) {
@@ -18,13 +18,13 @@ struct AccessoryProvider: TimelineProvider {
         let derived: WidgetDerivedState = snap.map {
             WidgetTimelineDerivation.derive(snapshot: $0, at: AppClock.now())
         } ?? .signInRequired
-        completion(AccessoryEntry(date: AppClock.now(), derived: derived))
+        completion(AccessoryEntry(date: Date(), derived: derived))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<AccessoryEntry>) -> Void) {
         guard let snap = store.readSnapshot() else {
             completion(Timeline(
-                entries: [AccessoryEntry(date: AppClock.now(), derived: .signInRequired)],
+                entries: [AccessoryEntry(date: Date(), derived: .signInRequired)],
                 policy: .atEnd
             ))
             return
