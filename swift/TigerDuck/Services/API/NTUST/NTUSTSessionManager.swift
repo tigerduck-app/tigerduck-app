@@ -1,6 +1,8 @@
 import Foundation
-import UIKit
 import Defaults
+#if os(iOS)
+import UIKit
+#endif
 
 enum LoadingState: Equatable {
     case idle
@@ -13,10 +15,19 @@ enum LoadingState: Equatable {
 final class NTUSTSessionManager {
     static let shared = NTUSTSessionManager()
 
-    /// Browser-like User-Agent built from actual device info so SSO/Moodle sees a consistent device fingerprint.
+    /// Browser-like User-Agent built from actual OS info so SSO/Moodle sees a
+    /// consistent device fingerprint. On Mac we pretend to be an iPhone so
+    /// NTUST renders the same mobile-friendly templates Sam's iOS app sees;
+    /// the SSO and Moodle endpoints already serve those layouts everywhere.
     static let browserUserAgent: String = {
+        #if os(iOS)
         let osVersion = UIDevice.current.systemVersion.replacingOccurrences(of: ".", with: "_")
         let majorVersion = UIDevice.current.systemVersion.components(separatedBy: ".").first ?? "18"
+        #else
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        let osVersion = "\(v.majorVersion)_\(v.minorVersion)_\(v.patchVersion)"
+        let majorVersion = "\(v.majorVersion)"
+        #endif
         return "Mozilla/5.0 (iPhone; CPU iPhone OS \(osVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(majorVersion).0 Mobile/15E148 Safari/604.1"
     }()
 
