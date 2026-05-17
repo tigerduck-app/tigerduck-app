@@ -8,35 +8,37 @@ struct OnboardingPageView<Actions: View>: View {
     @ViewBuilder let actions: () -> Actions
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                Image(systemName: icon)
-                    .font(.system(size: 64))
-                    .foregroundStyle(accentColor)
-                    .symbolEffect(.pulse)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    Image(systemName: icon)
+                        .font(.system(size: 64))
+                        .foregroundStyle(accentColor)
+                        .symbolEffect(.pulse)
 
-                Text(title)
-                    .font(TigerDuckTheme.Typography.title)
-                    .foregroundStyle(Color.textPrimary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text(title)
+                        .font(TigerDuckTheme.Typography.title)
+                        .foregroundStyle(Color.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                Text(subtitle)
-                    .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(Color.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                    Text(subtitle)
+                        .font(TigerDuckTheme.Typography.body)
+                        .foregroundStyle(Color.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
-                Spacer().frame(height: TigerDuckTheme.Spacing.sm)
+                    Spacer(minLength: TigerDuckTheme.Spacing.lg)
 
-                actions()
+                    actions()
+                }
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                .padding(.top, TigerDuckTheme.Spacing.xxl)
+                .padding(.bottom, TigerDuckTheme.Spacing.xxl * 2)
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            .padding(.top, TigerDuckTheme.Spacing.xxl)
-            .padding(.bottom, TigerDuckTheme.Spacing.xxl * 2)
+            .scrollIndicators(.never)
         }
-        .scrollIndicators(.never)
     }
 }
