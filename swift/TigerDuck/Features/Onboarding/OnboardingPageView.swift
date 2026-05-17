@@ -51,6 +51,15 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         .padding(.top, TigerDuckTheme.Spacing.xxl)
         .padding(.bottom, TigerDuckTheme.Spacing.xxl * 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Pin the page to the device's geometry instead of the keyboard's
+        // safe area — when the user focuses a field on the login page, the
+        // default SwiftUI behavior is to push the whole VStack (and so the
+        // "Sign in" / "Skip for now" actions) up above the keyboard. That
+        // makes the buttons jump on focus; we'd rather leave them anchored
+        // and let users dismiss the keyboard with the tap-to-dismiss
+        // gesture already on this view (the inner ScrollView also has
+        // .scrollDismissesKeyboard(.interactively) for finger scroll).
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         .onTapGesture { UIApplication.dismissKeyboard() }
     }

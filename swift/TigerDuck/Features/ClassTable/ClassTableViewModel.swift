@@ -1,6 +1,11 @@
 import Defaults
 import SwiftUI
 
+/// `@MainActor` so the `MinuteTicker` stored property (a `@MainActor`
+/// type) can be constructed in the initializer, and so notification
+/// observer callbacks that mutate `@Observable` state aren't racing
+/// SwiftUI reads. Mirrors `CalendarViewModel` / `ScoreViewModel`.
+@MainActor
 @Observable
 final class ClassTableViewModel {
     var courses: [SDCourse] = [] {
@@ -115,8 +120,16 @@ final class ClassTableViewModel {
 
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
-    private var dataObserver: Any?
-    private var languageObserver: Any?
+    // `nonisolated(unsafe)` so `deinit` (which runs nonisolated even on a
+    // `@MainActor` class) can read these to remove the observers at end-
+    // of-life. `@ObservationIgnored` is required for the isolation
+    // modifier to take effect — without it the `@Observable` macro
+    // replaces the storage with a computed accessor and strips the
+    // modifier. Same pattern as `CalendarViewModel.dataObserver`.
+    @ObservationIgnored
+    private nonisolated(unsafe) var dataObserver: Any?
+    @ObservationIgnored
+    private nonisolated(unsafe) var languageObserver: Any?
 
     /// Guards the fire-and-forget pull-to-refresh path against overlapping
     /// fetches. ``triggerRefresh(authService:)`` flips this to `true` while
@@ -136,8 +149,14 @@ final class ClassTableViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard self?.isUpdatingFromNetwork != true else { return }
-            self?.reloadFromCache()
+            // Notification is delivered on the main queue, but the closure
+            // is `@Sendable` and crosses into a `@MainActor` class — hop
+            // explicitly so accessing `isUpdatingFromNetwork` / calling
+            // `reloadFromCache` is sound under strict concurrency.
+            Task { @MainActor [weak self] in
+                guard let self, !self.isUpdatingFromNetwork else { return }
+                self.reloadFromCache()
+            }
         }
 
         languageObserver = NotificationCenter.default.addObserver(
@@ -257,8 +276,32 @@ final class ClassTableViewModel {
         // `AppClockState.shared.version` into the read keeps SwiftUI
         // dependency tracking aware of debug-time-override flips.
         _ = AppClockState.shared.version
+        _ = minuteTicker.tick
         return currentSemesterCourses.coursesForToday()
     }
+
+    /// Courses whose contiguous period block contains the current
+    /// minute-of-day. Drives the leftmost "Current class" cards in the
+    /// today carousel (matches Android's `ongoingCourses`).
+    var ongoingCourses: [OngoingCourseInfo] {
+        _ = AppClockState.shared.version
+        _ = minuteTicker.tick
+        let now = AppClock.now()
+        let cal = AppConstants.taipeiCalendar
+        let comps = cal.dateComponents([.hour, .minute], from: now)
+        let minuteOfDay = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+        return currentSemesterCourses.ongoingCourses(
+            weekday: now.scheduleWeekday,
+            minuteOfDay: minuteOfDay
+        )
+    }
+
+    /// 5-second ticker that re-publishes minute-of-day-derived state.
+    /// Matches Android's `_currentDayTime` poll so the "Current class"
+    /// card slides into view within a few seconds of the wall-clock
+    /// minute boundary, not up to a minute later.
+    @ObservationIgnored
+    private let minuteTicker = MinuteTicker()
 
     var activeWeekdays: [Int] {
         var days = Set<Int>()

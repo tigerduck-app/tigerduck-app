@@ -9,7 +9,11 @@ struct CourseTimeCard: View {
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
 
     var body: some View {
-        HStack(spacing: 8) {
+        // EqualHeightHStack pins both branches (.inClass single card and
+        // .between dual cards) to the tallest natural height seen during
+        // Home's lifetime, so the slot doesn't jump when the user drags
+        // the slider between states with mildly different content heights.
+        EqualHeightHStack(alignment: .top, spacing: 8) {
             switch state {
             case .inClass(let slot):
                 cardContent(slot: slot, opacity: 1.0)

@@ -1122,6 +1122,10 @@
 					ClassTableLayout.swift,
 					"View+PlatformCompat.swift",
 					LoadingButtonLabel.swift,
+					OngoingCourseInfo.swift,
+					CurrentClassCard.swift,
+					MinuteTicker.swift,
+					EqualHeightCards.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1288,6 +1292,10 @@
 					ClassTableLayout.swift,
 					"View+PlatformCompat.swift",
 					LoadingButtonLabel.swift,
+					OngoingCourseInfo.swift,
+					CurrentClassCard.swift,
+					MinuteTicker.swift,
+					EqualHeightCards.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

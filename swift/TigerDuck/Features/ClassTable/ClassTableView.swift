@@ -215,6 +215,7 @@ struct ClassTableView: View {
                 courses: viewModel.todayCourses,
                 hasAssignment: viewModel.hasAssignment,
                 showProgress: false,
+                ongoing: viewModel.ongoingCourses,
                 onSelect: { viewModel.selectedCourse = $0 }
             )
         }

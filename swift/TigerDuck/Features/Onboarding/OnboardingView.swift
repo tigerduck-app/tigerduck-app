@@ -33,6 +33,15 @@ struct OnboardingView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
         .background(Color.backgroundPrimary)
+        // Keyboard avoidance hits the TabView root, not the inner page
+        // VStacks — without this the login page's overall frame shrinks
+        // to fit above the keyboard, squeezing the credential ScrollView
+        // and dragging the Sign in / Skip-for-now actions up with it.
+        // Ignoring it at the TabView level keeps every page laid out
+        // against the device geometry; tap-to-dismiss on each page (and
+        // the inner ScrollView's interactive scroll-to-dismiss) still
+        // give the user a way to clear the keyboard.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         .onTapGesture { focusedField = nil }
         .onChange(of: currentPage) { _, _ in focusedField = nil }

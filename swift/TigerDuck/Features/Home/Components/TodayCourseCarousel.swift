@@ -4,6 +4,10 @@ struct TodayCourseCarousel: View {
     let courses: [SDCourse]
     let hasAssignment: (String) -> Bool
     var showProgress: Bool = true
+    /// When non-empty, dedicated "Current class" cards render leftmost in
+    /// the carousel, ahead of the regular today cards. Mirrors Android's
+    /// `ongoingCourses` cards.
+    var ongoing: [OngoingCourseInfo] = []
     var onSelect: ((SDCourse) -> Void)? = nil
 
     private static let periodTimeFormatter: DateFormatter = {
@@ -19,11 +23,25 @@ struct TodayCourseCarousel: View {
         // `AppClockState.shared.version` here wires the view's dependency
         // graph to debug time-override flips.
         let _ = AppClockState.shared.version
-        if courses.isEmpty {
+        if courses.isEmpty && ongoing.isEmpty {
             noCourseView
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: TigerDuckTheme.Spacing.md) {
+                EqualHeightHStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
+                    ForEach(Array(ongoing.enumerated()), id: \.element.id) { index, info in
+                        CurrentClassCard(
+                            info: info,
+                            hasAssignment: hasAssignment(info.course.courseNo),
+                            onTap: { onSelect?(info.course) }
+                        )
+                        // Extra breathing room after the last ongoing card
+                        // before the regular today cards — mirrors the
+                        // Android layout that separates the two groups
+                        // with a wider gap so "Current class" reads as a
+                        // distinct cluster, not just one more card.
+                        .padding(.trailing, index == ongoing.count - 1 && !sortedCourses.isEmpty
+                                 ? TigerDuckTheme.Spacing.md : 0)
+                    }
                     ForEach(sortedCourses, id: \.courseNo) { course in
                         Button {
                             onSelect?(course)
@@ -141,16 +159,30 @@ private struct TodayCourseCard: View {
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
 
-            Text(periods)
-                .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(Color.textSecondary)
+            // Push the time row to the bottom so the card visually fills
+            // when stretched to match a taller sibling (e.g. the
+            // `CurrentClassCard`'s progress + time block). `minLength: 0`
+            // keeps short cards from forcing extra height when nothing is
+            // stretching them.
+            Spacer(minLength: 0)
 
             if let progress, isActive {
                 ProgressView(value: progress)
                     .tint(course.color)
             }
+
+            Text(periods)
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textSecondary)
         }
+        // Inner frame fixes the card's width; outer `maxHeight: .infinity`
+        // lets the colored surface stretch to whatever row height
+        // `EqualHeightHStack` settled on, so a short card visually
+        // matches a taller sibling like `CurrentClassCard`. `.topLeading`
+        // keeps content anchored to the top while the background grows
+        // downward.
         .frame(width: 140, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .cardPadding()
         .background(course.color.opacity(0.15), in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
         .glassCard()

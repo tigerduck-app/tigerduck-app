@@ -129,7 +129,7 @@ private struct NextClassWidgetCard: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Text(primary.course.timeRange(for: primary.date.scheduleWeekday) ?? "")
-                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .font(.title3.monospacedDigit().weight(.semibold))
                             .foregroundStyle(color)
                     }
                     if target.slots.count >= 2 {
