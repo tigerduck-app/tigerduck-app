@@ -61,21 +61,21 @@ final class WatchLibraryCredentialBroadcaster: @unchecked Sendable {
 
     /// Re-emit the current credentials if the phone still has them.
     /// Idempotent on the watch (rejected-as-replay if the watch already
-    /// holds this epoch). Recovers two cases:
+    /// holds this epoch). Recovers three cases:
     /// 1. Watch never received the original set (was off when phone logged in).
     /// 2. Watch ran TTL purge — which clears `credEpoch` on the watch, so
     ///    this same-epoch payload now satisfies `payload.credEpoch >
     ///    storedEpoch` (since storedEpoch is back to 0) and applies cleanly.
+    /// 3. Existing user upgraded with credentials already in the iPhone
+    ///    keychain from before this code shipped — `credEpoch` defaults to
+    ///    0, but the watch won't accept epoch 0, so we bootstrap to the
+    ///    next epoch the first time this path runs with stored credentials.
     func republishIfCredentialed() {
         guard let username = LibraryService.storedUsername,
               let password = LibraryService.storedPasswordIfAvailable() else {
             return
         }
-        let epoch = currentEpoch()
-        // Skip if epoch is 0 — phone never broadcast a set, so there's
-        // nothing to republish (and the watch wouldn't accept epoch 0
-        // anyway because `0 > 0` is false).
-        guard epoch > 0 else { return }
+        let epoch = republishEpoch()
         let payload = WatchLibraryCredentialPayload(
             kind: .set,
             credEpoch: epoch,
@@ -97,6 +97,21 @@ final class WatchLibraryCredentialBroadcaster: @unchecked Sendable {
             let next = defaults.integer(forKey: DefaultsKey.epoch) + 1
             defaults.set(next, forKey: DefaultsKey.epoch)
             return next
+        }
+    }
+
+    /// Used by `republishIfCredentialed`: reuse the current epoch when one
+    /// has been broadcast, but bootstrap to epoch 1 if defaults still hold
+    /// the install-time 0 (existing user upgraded with credentials already
+    /// in keychain). Returns the same epoch on subsequent calls so a chatty
+    /// `pushNow` doesn't burn through fresh epochs on every accent/lang flip.
+    private func republishEpoch() -> Int {
+        epochLock.withLock {
+            let current = defaults.integer(forKey: DefaultsKey.epoch)
+            if current > 0 { return current }
+            let bootstrapped = 1
+            defaults.set(bootstrapped, forKey: DefaultsKey.epoch)
+            return bootstrapped
         }
     }
 
