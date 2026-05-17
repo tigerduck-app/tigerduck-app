@@ -80,41 +80,39 @@ struct OnboardingView: View {
             icon: "lock.shield.fill",
             title: String(localized: "onboarding_privacy_title"),
             subtitle: String(localized: "onboarding_privacy_subtitle"),
-            accentColor: .blue
-        ) {
-            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-                privacyCheckbox(
-                    isOn: $agreedPrivacy,
-                    label: String(localized: "onboarding_privacy_policy_label"),
-                    destination: AppURLs.privacyPolicy
-                )
-                privacyCheckbox(
-                    isOn: $agreedDeletion,
-                    label: String(localized: "onboarding_privacy_delete_account_label"),
-                    destination: AppURLs.deleteAccount
-                )
-
-                if !(agreedPrivacy && agreedDeletion) {
+            accentColor: .blue,
+            content: {
+                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
+                    privacyCheckbox(
+                        isOn: $agreedPrivacy,
+                        label: String(localized: "onboarding_privacy_policy_label"),
+                        destination: AppURLs.privacyPolicy
+                    )
+                    privacyCheckbox(
+                        isOn: $agreedDeletion,
+                        label: String(localized: "onboarding_privacy_delete_account_label"),
+                        destination: AppURLs.deleteAccount
+                    )
+                }
+                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            },
+            actions: {
+                VStack(spacing: TigerDuckTheme.Spacing.sm) {
                     Text(String(localized: "onboarding_privacy_continue_hint"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, TigerDuckTheme.Spacing.sm)
-                }
+                        .opacity(agreedPrivacy && agreedDeletion ? 0 : 1)
 
-                HStack {
-                    Spacer()
                     Button(String(localized: "action_next")) {
                         withAnimation { currentPage = Page.watchOS.rawValue }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .disabled(!(agreedPrivacy && agreedDeletion))
-                    Spacer()
                 }
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.xl)
-        }
+        )
     }
 
     private func privacyCheckbox(
