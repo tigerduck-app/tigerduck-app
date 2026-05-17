@@ -6,7 +6,7 @@ struct TodayView: View {
     private var todaysCourses: [WatchCourse] {
         guard let snapshot = store.snapshot else { return [] }
         let cal = Calendar(identifier: .iso8601)
-        let raw = cal.component(.weekday, from: Date())
+        let raw = cal.component(.weekday, from: AppClock.now())
         let iso = ((raw + 5) % 7) + 1
         return snapshot.courses
             .filter { $0.weekday == iso }

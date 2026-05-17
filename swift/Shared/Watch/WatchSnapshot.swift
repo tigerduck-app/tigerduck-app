@@ -9,6 +9,12 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
     public let syncedAtMs: Int64
     public let loggedIn: Bool
     public let languageTag: String?
+    /// JSON-encoded `ClockOverride` payload. Carried as an opaque string
+    /// so this struct does not need to know about `ClockOverride`
+    /// (`ClockOverride` is not in the `Shared/` target). The watch
+    /// decodes it via `JSONDecoder().decode(ClockOverride.self, ...)`.
+    /// `nil` when no debug override is active.
+    public let clockOverrideJSON: String?
 
     public static let defaultAccentHex = "#FF8800"
 
@@ -18,7 +24,8 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
         accentHex: String,
         syncedAtMs: Int64,
         loggedIn: Bool,
-        languageTag: String?
+        languageTag: String?,
+        clockOverrideJSON: String? = nil
     ) {
         self.version = version
         self.courses = courses
@@ -26,6 +33,7 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
         self.syncedAtMs = syncedAtMs
         self.loggedIn = loggedIn
         self.languageTag = languageTag
+        self.clockOverrideJSON = clockOverrideJSON
     }
 
     public var syncedAt: Date {

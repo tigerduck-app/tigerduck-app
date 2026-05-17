@@ -27,7 +27,11 @@ final class ScheduleStore: NSObject, ObservableObject {
         self.defaults = defaults
         self.widgetReloader = widgetReloader
         super.init()
-        self.snapshot = loadFromDisk()
+        let cached = loadFromDisk()
+        self.snapshot = cached
+        // Re-apply any cached override from the last push so the watch
+        // wakes up still pinned to the same fake time the phone is on.
+        if let cached { applyClockOverride(from: cached) }
     }
 
     // MARK: - WC activation
@@ -45,7 +49,24 @@ final class ScheduleStore: NSObject, ObservableObject {
         let data = try JSONEncoder().encode(snapshot)
         try data.write(to: snapshotFileURL, options: .atomic)
         self.snapshot = snapshot
+        applyClockOverride(from: snapshot)
         widgetReloader()
+    }
+
+    /// Mirrors the phone's debug time override into the watch's `AppClock`
+    /// so `NowNextView`/`TodayView` see the same fake "now". When the
+    /// phone clears the override the snapshot carries `nil`, which clears
+    /// the watch side too — keeps the two in lockstep. Watch-side
+    /// persistence isn't needed: on next launch the watch starts at real
+    /// time and the first incoming snapshot re-applies the override.
+    private func applyClockOverride(from snapshot: WatchSnapshot) {
+        guard let json = snapshot.clockOverrideJSON,
+              let data = json.data(using: .utf8),
+              let override = try? JSONDecoder().decode(ClockOverride.self, from: data) else {
+            AppClock.setOverride(nil)
+            return
+        }
+        AppClock.setOverride(override)
     }
 
     private func loadFromDisk() -> WatchSnapshot? {
