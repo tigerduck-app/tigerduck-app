@@ -243,6 +243,10 @@ final class AppState {
         return LibraryService.storedUsername
     }
 
+    /// `@MainActor` because `LibraryService.clearCredentials` is now
+    /// MainActor-isolated (it sync-broadcasts to the watch). The only
+    /// caller is a SwiftUI logout button, which is already on main.
+    @MainActor
     func logoutLibrary() {
         LibraryService.clearCredentials()
         _libraryRevision += 1

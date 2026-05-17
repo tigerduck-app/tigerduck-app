@@ -424,6 +424,7 @@ struct MoodleHomeworkRegressionTests {
         #expect(after.map(\.assignmentId) == ["y", "x"])
     }
 
+    @MainActor
     @Test func classTableViewModel_displayLabel_formatsSemesterCode() {
         let vm = ClassTableViewModel()
         #expect(vm.displayLabel(for: "1142") == "114-2")

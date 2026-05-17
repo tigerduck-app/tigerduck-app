@@ -60,14 +60,15 @@ enum LibraryService {
         KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryUsername)
     }
 
+    /// `@MainActor`-isolated so the broadcaster call below is an in-actor
+    /// sync call (no deferred Task). This preserves serialization — a
+    /// save followed by a clear runs broadcastSet → broadcastWipe in
+    /// program order — and keeps the calling boundary actor-safe under
+    /// strict concurrency.
+    @MainActor
     static func saveCredentials(username: String, password: String) {
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
-        // Synchronous broadcast: prevents a save/wipe race in which two
-        // deferred Tasks could land out of order on the MainActor queue
-        // and strand credentials on the watch after a logout-then-relogin
-        // (or vice-versa).
-        //
         // iOS-only: macOS has no paired watch surface and the broadcaster
         // (WatchConnectivity) isn't in the Mac target. Mirrors the
         // existing iOS-gating pattern used elsewhere in the watch path.
@@ -76,6 +77,8 @@ enum LibraryService {
         #endif
     }
 
+    /// See `saveCredentials` for the `@MainActor` rationale.
+    @MainActor
     static func clearCredentials() {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
@@ -158,7 +161,7 @@ enum LibraryService {
                 throw error
             }
 
-            saveCredentials(username: username, password: password)
+            await saveCredentials(username: username, password: password)
             saveToken(loginData.token, expirationMs: loginData.expirationTimeStamp)
             return loginData.token
         } catch {
