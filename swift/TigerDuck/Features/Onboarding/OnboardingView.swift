@@ -56,11 +56,12 @@ struct OnboardingView: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                    VStack(spacing: TigerDuckTheme.Spacing.md) {
                         Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
                         Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
                     }
                     .font(.footnote.weight(.semibold))
+                    .padding(.top, TigerDuckTheme.Spacing.sm)
                 }
             },
             actions: {
