@@ -267,35 +267,37 @@ struct OnboardingView: View {
             icon: "bell.badge.fill",
             title: String(localized: "onboarding_permissions_title"),
             subtitle: String(localized: "onboarding_permissions_subtitle"),
-            accentColor: .orange
-        ) {
-            VStack(spacing: TigerDuckTheme.Spacing.md) {
-                notificationStatusRow
+            accentColor: .orange,
+            content: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    notificationStatusRow
 
-                if notificationStatus == .denied {
-                    Button(String(localized: "action_go_to_settings")) {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
+                    if notificationStatus == .denied {
+                        Button(String(localized: "action_go_to_settings")) {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
                     }
-                    .buttonStyle(.bordered)
+                }
+            },
+            actions: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    Button(String(localized: "onboarding_skip_for_now")) {
+                        withAnimation { currentPage = Page.ready.rawValue }
+                    }
+                    .foregroundStyle(Color.textSecondary)
+
+                    Button(String(localized: "action_next")) {
+                        withAnimation { currentPage = Page.ready.rawValue }
+                    }
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                 }
-
-                Spacer().frame(height: TigerDuckTheme.Spacing.xl)
-
-                Button(String(localized: "onboarding_skip_for_now")) {
-                    withAnimation { currentPage = Page.ready.rawValue }
-                }
-                .foregroundStyle(Color.textSecondary)
-
-                Button(String(localized: "action_next")) {
-                    withAnimation { currentPage = Page.ready.rawValue }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
             }
-        }
+        )
     }
 
     @ViewBuilder
