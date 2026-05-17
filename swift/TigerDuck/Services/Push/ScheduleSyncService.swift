@@ -111,10 +111,15 @@ final class ScheduleSyncService {
                         slot: slot,
                         accentHex: inputs.accentHex
                     )
+                    // Server delivers pushes on the real wall clock — translate
+                    // app-clock fireAt to its real instant so a fake-time test
+                    // window produces a push that actually arrives during it.
+                    // Snapshot dates stay in app-clock; the device-side LA
+                    // handler already translates them (see staleDate fix).
                     events.append(PushAPI.ScheduleEvent(
                         sourceId: snapshot.sourceId,
                         scenario: .classPreparing,
-                        fireAt: fireAt,
+                        fireAt: AppClock.realTime(forApp: fireAt),
                         snapshot: snapshot
                     ))
                 }
@@ -129,7 +134,7 @@ final class ScheduleSyncService {
                 events.append(PushAPI.ScheduleEvent(
                     sourceId: snapshot.sourceId,
                     scenario: .inClass,
-                    fireAt: slot.start,
+                    fireAt: AppClock.realTime(forApp: slot.start),
                     snapshot: snapshot
                 ))
             }
@@ -153,7 +158,7 @@ final class ScheduleSyncService {
                 events.append(PushAPI.ScheduleEvent(
                     sourceId: snapshot.sourceId,
                     scenario: .assignmentUrgent,
-                    fireAt: fireAt,
+                    fireAt: AppClock.realTime(forApp: fireAt),
                     snapshot: snapshot
                 ))
             }
