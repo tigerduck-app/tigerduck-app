@@ -231,7 +231,7 @@ private final class ColorState: @unchecked Sendable {
     /// against a roster size in the dozens, so the retry loop converges fast
     /// in practice; the bounded attempt counter guards against a pathological
     /// `used` set that somehow covers a large fraction of RGB.
-    private static func pickUnusedHex(seed: String, used: Set<UInt32>, palette: [UInt32]) -> UInt32 {
+    private nonisolated static func pickUnusedHex(seed: String, used: Set<UInt32>, palette: [UInt32]) -> UInt32 {
         let start = hashIndex(for: seed, paletteCount: palette.count)
         for offset in 0..<palette.count {
             let candidate = palette[(start + offset) % palette.count]
@@ -249,7 +249,7 @@ private final class ColorState: @unchecked Sendable {
         return palette[start] ^ UInt32(truncatingIfNeeded: used.count)
     }
 
-    private static func hashIndex(for courseNo: String, paletteCount: Int) -> Int {
+    private nonisolated static func hashIndex(for courseNo: String, paletteCount: Int) -> Int {
         let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
         return abs(hash) % paletteCount
     }
