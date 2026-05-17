@@ -31,10 +31,15 @@ struct AccessoryProvider: TimelineProvider {
         }
         let now = AppClock.now()
         let dates = WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
-        let entries = dates.map { date in
+        // `entryDates` are app-clock boundaries; WidgetKit schedules
+        // entries against the real wall clock. Drive `derived` from the
+        // app-clock date but stamp the entry with the real-time
+        // equivalent so a fake-clock override actually advances the
+        // accessory through its boundaries.
+        let entries = dates.map { appDate in
             AccessoryEntry(
-                date: date,
-                derived: WidgetTimelineDerivation.derive(snapshot: snap, at: date)
+                date: AppClock.realTime(forApp: appDate),
+                derived: WidgetTimelineDerivation.derive(snapshot: snap, at: appDate)
             )
         }
         completion(Timeline(entries: entries, policy: .atEnd))
