@@ -48,7 +48,14 @@ final class ScheduleSyncService {
 
     /// Main entry. Failures are logged but never thrown — schedule sync is
     /// best-effort and must not block UI or app state.
-    func sync(inputs: Inputs, now: Date = Date()) {
+    ///
+    /// `now` defaults to `AppClock.now()` so the server's push event window
+    /// stays consistent with what the on-device LA / widgets / watch are
+    /// displaying under a debug clock override. Auth/network timestamps
+    /// (session TTL, cache age) intentionally remain on real time — see
+    /// the AppClock docstring — but the schedule horizon itself is
+    /// display state.
+    func sync(inputs: Inputs, now: Date = AppClock.now()) {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
         let request = PushAPI.ScheduleSyncRequest(
