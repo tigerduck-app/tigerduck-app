@@ -125,29 +125,32 @@ private struct FullScreenQRView: View {
     private static let dismissThreshold: CGFloat = 60
 
     var body: some View {
-        ZStack {
-            Color.white.ignoresSafeArea()
-            Image(uiImage: image)
-                .interpolation(.none)
-                .resizable()
-                .scaledToFit()
-                .padding(8)
-        }
-        .offset(y: dragOffset)
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    dragOffset = value.translation.height
-                }
-                .onEnded { value in
-                    if abs(value.translation.height) > Self.dismissThreshold {
-                        dismiss()
-                    } else {
-                        withAnimation(.spring(response: 0.25)) {
-                            dragOffset = 0
+        // Push the image past the safe-area insets so the QR fills
+        // edge to edge — watchOS scanners read better with a larger
+        // matrix, and the white background of the matrix supplies the
+        // quiet zone where the screen rounds off.
+        Image(uiImage: image)
+            .interpolation(.none)
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.white)
+            .ignoresSafeArea()
+            .offset(y: dragOffset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        dragOffset = value.translation.height
+                    }
+                    .onEnded { value in
+                        if abs(value.translation.height) > Self.dismissThreshold {
+                            dismiss()
+                        } else {
+                            withAnimation(.spring(response: 0.25)) {
+                                dragOffset = 0
+                            }
                         }
                     }
-                }
-        )
+            )
     }
 }
