@@ -75,6 +75,7 @@ struct MacHomeView: View {
         let semester = CourseSelectionService.currentSemesterCode()
         let semesterCourses = DataCache.shared.loadCourses(semester: semester)
         let userAdded = DataCache.shared.loadUserAddedCourses()
+            .filter { $0.semester == semester || $0.semester.isEmpty }
         return semesterCourses + userAdded
     }
 }
