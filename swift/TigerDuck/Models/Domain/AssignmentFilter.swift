@@ -1,6 +1,6 @@
 import Foundation
 
-enum AssignmentFilter: String, Sendable {
+enum AssignmentFilter: String, Sendable, CaseIterable {
     case incomplete = "未完成"
     case all = "全部"
     case ignored = "已忽略"

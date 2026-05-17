@@ -26,22 +26,21 @@ struct MacRootView: View {
 
 /// Sidebar-side selection model. Pinned features map 1:1 to
 /// `AppFeature` cases; `.more` is the synthetic destination that
-/// renders `MacMoreView`. Wrapping in an enum keeps the
-/// `NavigationSplitView` selection type Hashable while leaving room
-/// to grow (a future `.settings` case opens the Settings scene).
+/// renders `MacMoreView`. Settings is intentionally not in this enum:
+/// it opens as a separate window via the system `Settings` scene
+/// (driven by `SettingsLink` at the bottom of the sidebar).
 enum MacSidebarItem: Hashable {
     case feature(AppFeature)
     case more
 }
 
-/// Main sidebar layout: configured features at the top, More at the
-/// bottom, the active item's detail view on the right.
+/// Main sidebar layout: configured features at the top, More plus
+/// Settings at the bottom, the active item's detail view on the right.
 ///
 /// The sidebar is driven by `AppState.configuredTabs` (filtered to
 /// drop features Mac doesn't surface — see `AppFeature.isAvailableOnMac`).
-/// Adding / removing / reordering pinned features happens in
-/// `MacMoreView`; changes propagate live because `configuredTabs` is
-/// `@Observable`.
+/// Pinning happens in Settings → Sidebar; changes propagate live
+/// because `configuredTabs` is `@Observable`.
 struct MacContentView: View {
     @Environment(AppState.self) private var appState
     @State private var selection: MacSidebarItem = .more
@@ -50,10 +49,10 @@ struct MacContentView: View {
         NavigationSplitView {
             sidebar
                 .navigationTitle("TigerDuck")
-                .navigationSplitViewColumnWidth(min: 180, ideal: 180, max: 240)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } detail: {
             detail
-                .frame(minWidth: 520, minHeight: 360)
+                .frame(minWidth: 640, minHeight: 480)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
@@ -74,24 +73,44 @@ struct MacContentView: View {
 
     // MARK: - Sidebar + detail
 
+    /// The sidebar uses a top-aligned `List` for navigation items plus a
+    /// pinned-bottom `VStack` for Settings. Putting Settings in its own
+    /// `Section` inside the `List` would push it up against the More
+    /// entry; the `Spacer` below the `List` is what holds the Settings
+    /// link at the bottom of the window regardless of how many items
+    /// are pinned above.
     @ViewBuilder
     private var sidebar: some View {
-        List(selection: $selection) {
-            Section {
-                ForEach(pinnedFeatures) { feature in
-                    NavigationLink(value: MacSidebarItem.feature(feature)) {
-                        Label(feature.displayName, systemImage: feature.iconName)
+        VStack(spacing: 0) {
+            List(selection: $selection) {
+                Section {
+                    ForEach(pinnedFeatures) { feature in
+                        NavigationLink(value: MacSidebarItem.feature(feature)) {
+                            Label(feature.displayName, systemImage: feature.iconName)
+                        }
+                    }
+                }
+
+                Section {
+                    NavigationLink(value: MacSidebarItem.more) {
+                        Label("More", systemImage: AppFeature.more.iconName)
                     }
                 }
             }
+            .listStyle(.sidebar)
 
-            Section {
-                NavigationLink(value: MacSidebarItem.more) {
-                    Label("More", systemImage: AppFeature.more.iconName)
-                }
+            Divider()
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+                    .foregroundStyle(.primary)
             }
+            .buttonStyle(.plain)
+            .keyboardShortcut(",", modifiers: .command)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.background)
         }
-        .listStyle(.sidebar)
     }
 
     @ViewBuilder
@@ -123,20 +142,14 @@ struct MacContentView: View {
         if case .feature(let current) = selection, !pinnedFeatures.contains(current) {
             selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
         }
-        // First-launch nudge: leave selection on .more (default) when
-        // the user hasn't pinned anything yet, otherwise jump to the
-        // first pinned item so the app opens on real content.
         if case .more = selection, !pinnedFeatures.isEmpty,
            appState.configuredTabs == AppFeature.defaultTabs {
-            // Only auto-jump when the user has the factory defaults —
-            // a deliberate "everything unpinned" state stays on More.
             selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
         }
     }
 }
 
-/// Switchboard between the per-feature placeholder views. Each branch
-/// will be replaced with a real Mac-native view as features get ported.
+/// Switchboard between per-feature detail views.
 struct MacFeatureDetail: View {
     let feature: AppFeature
 
@@ -161,10 +174,6 @@ struct MacFeatureDetail: View {
     }
 }
 
-/// Single empty-state body used by every sidebar destination until the
-/// real feature view ports. Renders the feature icon + name from
-/// `AppFeature` so the placeholder still respects whatever the iOS
-/// localisation file declares.
 struct MacFeaturePlaceholder: View {
     let feature: AppFeature
     let summary: String
@@ -181,12 +190,6 @@ struct MacFeaturePlaceholder: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
-            Text("Cross-platform service layer is already compiled — only the view is pending.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
-                .padding(.top, 4)
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

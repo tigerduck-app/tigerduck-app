@@ -1,177 +1,126 @@
 #if os(macOS)
 import SwiftUI
 
-/// The "More" sidebar destination: lets the user pin / unpin / reorder
-/// the features that appear in the Mac sidebar.
+/// The "More" sidebar destination.
 ///
-/// Editing happens in place, no separate mode toggle — Mac apps with
-/// sidebar customisation (Mail, Finder Tags) follow the same direct
-/// manipulation pattern. Changes write straight through to
-/// `AppState.configuredTabs`, which is persisted via Defaults and shared
-/// with the iOS app, so a user who unpins a feature on Mac will see the
-/// same sidebar trimming next time they open the iPhone tab bar.
+/// Mirrors the iPhone More tab: a grouped, navigable list of every
+/// feature the app surfaces (Pages, Academic, Life, Language, System),
+/// with a per-row pin/unpin badge so the user can pin straight from
+/// here without dipping into Settings. Implemented features open the
+/// real feature view inside a NavigationStack; unimplemented ones show
+/// the placeholder body so the user can see what's coming.
+///
+/// Library-related entries are filtered out via
+/// `AppFeature.isAvailableOnMac` — Library, Discussion Room, and
+/// Library Lecture never appear here. Settings is intentionally
+/// omitted: it lives at the sidebar bottom (`SettingsLink`) and the
+/// detailed pin / time-override controls are in the Settings window.
 struct MacMoreView: View {
     @Environment(AppState.self) private var appState
 
+    @State private var path = NavigationPath()
+
+    /// One row per feature (the iPhone uses the same `moreFeatures`
+    /// list — we just filter it through `isAvailableOnMac`).
+    private var visibleFeatures: [AppFeature] {
+        AppFeature.moreFeatures.filter { $0.isAvailableOnMac }
+    }
+
+    private var sections: [(FeatureCategory, [AppFeature])] {
+        let grouped = Dictionary(grouping: visibleFeatures, by: { $0.category })
+        return FeatureCategory.allCases.compactMap { category in
+            let items = grouped[category] ?? []
+            return items.isEmpty ? nil : (category, items)
+        }
+    }
+
     var body: some View {
-        List {
-            pinnedSection
-            availableSection
-            if appState.authService.hasStoredCredentials {
-                logoutSection
+        NavigationStack(path: $path) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    header
+
+                    ForEach(sections, id: \.0.id) { category, items in
+                        categorySection(title: category.displayName, items: items)
+                    }
+                }
+                .macReadableContent(maxWidth: MacContentWidth.narrow)
+            }
+            .navigationDestination(for: AppFeature.self) { feature in
+                MacFeatureDetail(feature: feature)
+                    .navigationTitle(feature.displayName)
             }
         }
-        .listStyle(.inset)
-        .frame(maxWidth: 620)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    // MARK: - Sections
-
-    @ViewBuilder
-    private var pinnedSection: some View {
-        let items = pinned
-        Section {
-            if items.isEmpty {
-                Text("Nothing pinned. Add features from the Available section below.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(items.indices, id: \.self) { index in
-                    pinnedRow(items[index], index: index, total: items.count)
-                }
-            }
-        } header: {
-            Label("Pinned to Sidebar", systemImage: "pin.fill")
-        } footer: {
-            Text("Use the arrows to reorder. Changes sync with the iPhone tab bar.")
-                .font(.caption)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("More")
+                .font(.largeTitle.bold())
+            Text("Browse every feature TigerDuck offers on Mac. Pin the ones you use most so they show in the sidebar.")
+                .font(.callout)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     @ViewBuilder
-    private var availableSection: some View {
-        let items = available
-        Section {
-            if items.isEmpty {
-                Text("Every feature is already pinned.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(items.indices, id: \.self) { index in
-                    availableRow(items[index])
+    private func categorySection(title: String, items: [AppFeature]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, feature in
+                    featureRow(feature)
+                    if index < items.count - 1 {
+                        Divider().padding(.leading, 52)
+                    }
                 }
             }
-        } header: {
-            Label("Available Features", systemImage: "square.grid.2x2")
+            .background(
+                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg, style: .continuous)
+                    .fill(.background.secondary)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+            )
         }
     }
 
-    @ViewBuilder
-    private var logoutSection: some View {
-        Section {
-            Button(role: .destructive) {
-                appState.logoutNTUST()
-            } label: {
-                Label("Sign out of NTUST", systemImage: "rectangle.portrait.and.arrow.right")
+    private func featureRow(_ feature: AppFeature) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: feature.iconName)
+                .font(.body)
+                .foregroundStyle(.tint)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(feature.displayName)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                if !feature.isImplemented {
+                    Text("Not implemented yet")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-        }
-    }
-
-    // MARK: - Rows
-
-    private func pinnedRow(_ feature: AppFeature, index: Int, total: Int) -> some View {
-        HStack(spacing: 12) {
-            Label(feature.displayName, systemImage: feature.iconName)
             Spacer()
-            Button {
-                moveUp(at: index)
-            } label: {
-                Image(systemName: "chevron.up")
+            if feature.isImplemented {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
-            .buttonStyle(.borderless)
-            .disabled(index == 0)
-            .help("Move up")
-
-            Button {
-                moveDown(at: index)
-            } label: {
-                Image(systemName: "chevron.down")
-            }
-            .buttonStyle(.borderless)
-            .disabled(index == total - 1)
-            .help("Move down")
-
-            Button {
-                unpin(feature)
-            } label: {
-                Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(.red)
-            }
-            .buttonStyle(.borderless)
-            .help("Remove from sidebar")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard feature.isImplemented else { return }
+            path.append(feature)
         }
     }
 
-    private func availableRow(_ feature: AppFeature) -> some View {
-        HStack {
-            Label(feature.displayName, systemImage: feature.iconName)
-            Spacer()
-            Button {
-                pin(feature)
-            } label: {
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(Color.accentColor)
-            }
-            .buttonStyle(.borderless)
-            .help("Pin to sidebar")
-        }
-    }
-
-    // MARK: - Derived lists
-
-    private var pinned: [AppFeature] {
-        appState.configuredTabs.filter { $0.isAvailableOnMac }
-    }
-
-    private var available: [AppFeature] {
-        AppFeature.allCases.filter {
-            $0.isImplemented && $0.isAvailableOnMac && !appState.configuredTabs.contains($0)
-        }
-    }
-
-    // MARK: - Mutations
-
-    private func pin(_ feature: AppFeature) {
-        guard !appState.configuredTabs.contains(feature) else { return }
-        appState.configuredTabs.append(feature)
-    }
-
-    private func unpin(_ feature: AppFeature) {
-        appState.configuredTabs.removeAll { $0 == feature }
-    }
-
-    /// Reorder pinned features one step. `visible` index space; any
-    /// cross-platform pins that aren't surfaced on Mac (e.g. a Library
-    /// item the user previously pinned on iPhone) ride along
-    /// unchanged at the tail so a Mac reorder doesn't disturb iOS-only
-    /// pins.
-    private func moveUp(at index: Int) {
-        guard index > 0 else { return }
-        rearrange { visible in visible.swapAt(index, index - 1) }
-    }
-
-    private func moveDown(at index: Int) {
-        rearrange { visible in
-            guard index < visible.count - 1 else { return }
-            visible.swapAt(index, index + 1)
-        }
-    }
-
-    private func rearrange(_ mutate: (inout [AppFeature]) -> Void) {
-        var visible = appState.configuredTabs.filter { $0.isAvailableOnMac }
-        let hidden = appState.configuredTabs.filter { !$0.isAvailableOnMac }
-        mutate(&visible)
-        appState.configuredTabs = visible + hidden
-    }
 }
 #endif

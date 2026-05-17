@@ -19,7 +19,7 @@
 		B21DC6B22FB887DA00AE2430 /* TigerDuckWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = B21DC6922FB887D900AE2430 /* TigerDuckWatch Watch App.app */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B244D7502FB87B580040D6FA /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC002F90EBFA00D3B5A1 /* WidgetKit.framework */; };
 		B244D7512FB87B580040D6FA /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
-		B244D75C2FB87B590040D6FA /* TigerDuckWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B244D74F2FB87B580040D6FA /* TigerDuckWidgetsExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B244D75C2FB87B590040D6FA /* TigerDuckWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B244D74F2FB87B580040D6FA /* TigerDuckWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -863,7 +863,6 @@
 		};
 		B244D75B2FB87B590040D6FA /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			platformFilter = ios;
 			target = B244D74E2FB87B580040D6FA /* TigerDuckWidgetsExtension */;
 			targetProxy = B244D75A2FB87B590040D6FA /* PBXContainerItemProxy */;
 		};
@@ -1097,6 +1096,11 @@
 					ScoreViewModel.swift,
 					MacClassTableView.swift,
 					MacSettingsScene.swift,
+					MacContentLayout.swift,
+					MacAssignmentsList.swift,
+					MacWidgetCards.swift,
+					DebugClockController.swift,
+					DebugClockStore.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1246,6 +1250,11 @@
 					ScoreViewModel.swift,
 					MacClassTableView.swift,
 					MacSettingsScene.swift,
+					MacContentLayout.swift,
+					MacAssignmentsList.swift,
+					MacWidgetCards.swift,
+					DebugClockController.swift,
+					DebugClockStore.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1652,6 +1661,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuckWidgets/TigerDuckWidgets_Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 43UV8F72V6;
@@ -1679,7 +1689,7 @@
 				SDKROOT = auto;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1696,6 +1706,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TigerDuckWidgets/TigerDuckWidgets.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = TigerDuckWidgets/TigerDuckWidgets_Mac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 43UV8F72V6;
@@ -1723,7 +1734,7 @@
 				SDKROOT = auto;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;

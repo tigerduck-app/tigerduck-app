@@ -2,25 +2,28 @@
 import SwiftUI
 import Defaults
 
-/// macOS Class Table — weekday × period grid.
+/// macOS Class Table — weekday × period grid that matches the iPhone
+/// visual contract.
 ///
-/// Reads the current semester's courses straight from DataCache and
-/// renders a Grid laid out as 6 columns (1 period column + 5 weekday
-/// columns) × N period rows. Each course occupies one cell per
-/// (weekday, period) entry in its `schedule` dictionary, coloured by
-/// the deterministic `TigerDuckTheme.courseColor`. Clicking a course
-/// surfaces a Mac-native popover with details + classroom + instructor;
-/// a separate top strip shows the active semester picker so users on
-/// long-running terms can sample previous semesters' grids.
+/// Cells share the same glassy treatment as iOS (`.ultraThinMaterial`
+/// + `course.color.opacity(0.4)` + thin tinted stroke), and — like
+/// iPhone — *consecutive periods of the same course are rendered as a
+/// single block* spanning all of those rows rather than as repeated
+/// cells. The grid is implemented as one VStack per weekday so each
+/// weekday can independently span its cells without needing
+/// SwiftUI Grid row-spanning (which doesn't exist).
 struct MacClassTableView: View {
     @Environment(AppState.self) private var appState
 
     @State private var selectedSemester: String = Defaults[.classTableSelectedSemester]
     @State private var selectedCourse: SDCourse?
 
-    /// Weekdays Mon-Fri only — Sat/Sun rarely have classes; iOS hides
-    /// them too unless the data demands. Mac inherits the same default.
+    /// Mon–Fri only — Sat/Sun are hidden on iPhone too unless data forces them.
     private let weekdays: [Int] = [1, 2, 3, 4, 5]
+
+    private let cellHeight: CGFloat = 56
+    private let rowSpacing: CGFloat = 4
+    private let periodLabelWidth: CGFloat = 56
 
     private let availableSemesters: [String] = {
         let code = CourseSelectionService.currentSemesterCode()
@@ -48,9 +51,6 @@ struct MacClassTableView: View {
         return cached + userAdded
     }
 
-    /// Periods that any course in this semester actually occupies, in
-    /// chronological order. Avoids drawing empty trailing periods
-    /// (evening slots) when no class is scheduled there.
     private var visiblePeriods: [String] {
         let occupied = Set(courses.flatMap { $0.schedule.values.flatMap { $0 } })
         return AppConstants.Periods.chronologicalOrder.filter {
@@ -59,17 +59,16 @@ struct MacClassTableView: View {
     }
 
     var body: some View {
-        ScrollView([.vertical]) {
-            VStack(alignment: .leading, spacing: 16) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
                 header
                 if courses.isEmpty {
                     emptyState
                 } else {
-                    grid
+                    glassGridCard
                 }
             }
-            .padding(24)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .macReadableContent(maxWidth: MacContentWidth.wide)
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -95,7 +94,7 @@ struct MacClassTableView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Class Table")
-                    .font(.title2.bold())
+                    .font(.largeTitle.bold())
                 Text("\(displayLabel(for: selectedSemester)) · \(courses.count) courses · \(totalCredits) credits")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -105,7 +104,7 @@ struct MacClassTableView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             Image(systemName: "calendar.day.timeline.left")
                 .font(.title)
                 .foregroundStyle(.secondary)
@@ -121,33 +120,51 @@ struct MacClassTableView: View {
         .padding(.vertical, 40)
     }
 
-    // MARK: - Grid
+    // MARK: - Glass grid card
 
-    private var grid: some View {
-        let weekdayLabels = AppConstants.Periods.weekdays
-        return Grid(horizontalSpacing: 6, verticalSpacing: 6) {
-            // Header row
-            GridRow {
-                Text("")
-                    .frame(width: 64)
-                ForEach(weekdays.indices, id: \.self) { idx in
-                    Text(weekdayLabels.indices.contains(idx) ? weekdayLabels[idx] : "?")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+    private var glassGridCard: some View {
+        VStack(spacing: rowSpacing) {
+            headerRow
+            HStack(alignment: .top, spacing: rowSpacing) {
+                periodLabelColumn
+                ForEach(weekdays, id: \.self) { weekday in
+                    weekdayColumn(weekday)
                         .frame(maxWidth: .infinity)
                 }
             }
-            // Period rows
-            ForEach(visiblePeriods, id: \.self) { period in
-                GridRow {
-                    periodLabel(period)
-                    ForEach(weekdays, id: \.self) { weekday in
-                        cell(weekday: weekday, period: period)
-                    }
-                }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: rowSpacing) {
+            Color.clear.frame(width: periodLabelWidth, height: 22)
+            ForEach(weekdays.indices, id: \.self) { idx in
+                Text(AppConstants.Periods.weekdays[safe: idx] ?? "?")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
             }
         }
-        .padding(.top, 4)
+    }
+
+    private var periodLabelColumn: some View {
+        VStack(spacing: rowSpacing) {
+            ForEach(visiblePeriods, id: \.self) { period in
+                periodLabel(period)
+                    .frame(height: cellHeight)
+            }
+        }
+        .frame(width: periodLabelWidth)
     }
 
     private func periodLabel(_ period: String) -> some View {
@@ -164,47 +181,74 @@ struct MacClassTableView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .frame(width: 64, alignment: .trailing)
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.trailing, 4)
     }
 
-    private func cell(weekday: Int, period: String) -> some View {
-        let matches = courses.filter { ($0.schedule[weekday] ?? []).contains(period) }
-        return Group {
-            if let course = matches.first {
-                courseCell(course, conflicts: matches.count - 1)
-                    .onTapGesture {
-                        selectedCourse = course
-                    }
-            } else {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.gray.opacity(0.06))
-                    .frame(minHeight: 56)
+    /// One vertical stack of cells for `weekday`. Walks `visiblePeriods`
+    /// merging contiguous runs of the same course into a single tall
+    /// block (matching iPhone's `TimetableGridView` semantics). When two
+    /// courses overlap on the same period, the first course's name is
+    /// shown with a "+N" badge — Mac doesn't render the L-shape
+    /// interlock the iOS grid uses, but the conflict is still surfaced.
+    @ViewBuilder
+    private func weekdayColumn(_ weekday: Int) -> some View {
+        let segments = segments(for: weekday)
+        VStack(spacing: rowSpacing) {
+            ForEach(segments.indices, id: \.self) { index in
+                let seg = segments[index]
+                let height = CGFloat(seg.span) * cellHeight + CGFloat(seg.span - 1) * rowSpacing
+                segmentView(seg)
+                    .frame(height: height)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func segmentView(_ segment: CellSegment) -> some View {
+        if let course = segment.course {
+            courseCell(course, conflicts: segment.conflicts)
+                .onTapGesture { selectedCourse = course }
+        } else {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
+                )
         }
     }
 
     private func courseCell(_ course: SDCourse, conflicts: Int) -> some View {
         let color = TigerDuckTheme.courseColor(for: course.courseNo)
         return ZStack(alignment: .topTrailing) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(course.displayName)
-                    .font(.callout.bold())
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
                     .multilineTextAlignment(.leading)
                 if !course.instructor.isEmpty {
                     Text(course.instructor)
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+                Spacer(minLength: 0)
             }
             .padding(8)
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(color)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(color.opacity(0.4))
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(color.opacity(0.6), lineWidth: 0.5)
             )
 
             if conflicts > 0 {
@@ -214,12 +258,68 @@ struct MacClassTableView: View {
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
                     .background(
-                        Capsule().fill(Color.black.opacity(0.45))
+                        Capsule().fill(Color.black.opacity(0.55))
                     )
                     .padding(4)
             }
         }
         .contentShape(Rectangle())
+    }
+
+    // MARK: - Cell segmentation
+
+    /// A contiguous block in one weekday column. `course` is nil for an
+    /// empty gap; `conflicts` is the number of additional courses that
+    /// share the first period of this block (0 for a clean run).
+    private struct CellSegment {
+        let course: SDCourse?
+        let span: Int
+        let conflicts: Int
+    }
+
+    /// Merge contiguous same-course runs into single segments. For
+    /// conflicts (multiple courses on one period), the first course
+    /// wins the cell with a `+N` badge and the run length collapses to
+    /// 1 — we don't try to merge "course A spans periods 1-3 AND
+    /// course B spans periods 2-4" because the L-shape rendering for
+    /// that case is non-trivial and rare on the Mac surface.
+    private func segments(for weekday: Int) -> [CellSegment] {
+        let periods = visiblePeriods
+        var result: [CellSegment] = []
+        var i = 0
+        while i < periods.count {
+            let period = periods[i]
+            let matches = courses.filter { ($0.schedule[weekday] ?? []).contains(period) }
+            if matches.isEmpty {
+                result.append(CellSegment(course: nil, span: 1, conflicts: 0))
+                i += 1
+                continue
+            }
+            if matches.count >= 2 {
+                result.append(CellSegment(
+                    course: matches[0],
+                    span: 1,
+                    conflicts: matches.count - 1
+                ))
+                i += 1
+                continue
+            }
+            // Solo course — find consecutive run length.
+            let course = matches[0]
+            var span = 1
+            while i + span < periods.count {
+                let nextPeriod = periods[i + span]
+                let nextMatches = courses.filter { ($0.schedule[weekday] ?? []).contains(nextPeriod) }
+                if nextMatches.count == 1, nextMatches[0].courseNo == course.courseNo {
+                    span += 1
+                } else {
+                    break
+                }
+            }
+            result.append(CellSegment(course: course, span: span, conflicts: 0))
+            i += span
+        }
+        return result
     }
 
     // MARK: - Course detail sheet
@@ -264,7 +364,7 @@ struct MacClassTableView: View {
             Spacer(minLength: 0)
         }
         .padding(24)
-        .frame(width: 420, height: 320)
+        .frame(width: 440, height: 340)
     }
 
     private func detailRow(label: String, value: String) -> some View {
