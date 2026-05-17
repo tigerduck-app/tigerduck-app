@@ -21,11 +21,15 @@ struct MacHomeWidgetsRow: View {
     }
 
     private func content(now: Date) -> some View {
-        let slots = todaySlots(for: now)
+        let todaySlots = todaySlots(for: now)
+        // Next Class scans forward up to a week so an evening view on
+        // Monday still surfaces Tuesday's first class, matching the
+        // WidgetKit next-class derivation.
+        let upcomingSlots = upcomingSlots(for: now)
         return HStack(alignment: .top, spacing: 14) {
-            TodayScheduleWidgetCard(slots: slots, now: now)
+            TodayScheduleWidgetCard(slots: todaySlots, now: now)
                 .frame(maxWidth: .infinity)
-            NextClassWidgetCard(slots: slots, now: now)
+            NextClassWidgetCard(slots: upcomingSlots, now: now)
                 .frame(maxWidth: .infinity)
         }
     }
@@ -33,6 +37,18 @@ struct MacHomeWidgetsRow: View {
     private func todaySlots(for now: Date) -> [CourseTimeSlot] {
         let weekday = now.scheduleWeekday
         return CourseTimeSlot.buildSlots(from: courses, weekday: weekday, on: now)
+    }
+
+    private func upcomingSlots(for now: Date) -> [CourseTimeSlot] {
+        let calendar = AppConstants.taipeiCalendar
+        let start = calendar.startOfDay(for: now)
+        var slots: [CourseTimeSlot] = []
+        for offset in 0...7 {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { continue }
+            let weekday = date.scheduleWeekday
+            slots.append(contentsOf: CourseTimeSlot.buildSlots(from: courses, weekday: weekday, on: date))
+        }
+        return slots.sorted { $0.start < $1.start }
     }
 }
 
