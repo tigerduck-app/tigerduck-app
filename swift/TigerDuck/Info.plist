@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Partial Info.plist that merges with the keys synthesized from
+    INFOPLIST_KEY_* build settings (GENERATE_INFOPLIST_FILE = YES).
+
+    Lives here because nested dictionary keys (NSAppTransportSecurity)
+    cannot be expressed as flat INFOPLIST_KEY_* settings.
+
+    NSAllowsLocalNetworking only relaxes ATS for loopback, .local, and
+    RFC1918 private IPs. Public hosts still must speak HTTPS — Release
+    builds hit api.tigerduck.app over HTTPS and are unaffected.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+</dict>
+</plist>

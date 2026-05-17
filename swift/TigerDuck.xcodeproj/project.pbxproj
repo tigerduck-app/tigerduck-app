@@ -120,6 +120,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AGENTS.md,
+				Info.plist,
 				LiveActivity/AGENTS.md,
 				Services/AGENTS.md,
 				Services/Migrations/AGENTS.md,
@@ -216,6 +217,11 @@
 		B21DC6A12FB887DA00AE2430 /* TigerDuckWatch Watch AppTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "TigerDuckWatch Watch AppTests";
+			sourceTree = "<group>";
+		};
+		B21DC6AB2FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "TigerDuckWatch Watch AppUITests";
 			sourceTree = "<group>";
 		};
 		B21DC7232FB8883500AE2430 /* Shared */ = {
@@ -315,6 +321,7 @@
 				B244D7522FB87B580040D6FA /* TigerDuckWidgets */,
 				B21DC6932FB887D900AE2430 /* TigerDuckWatch Watch App */,
 				B21DC6A12FB887DA00AE2430 /* TigerDuckWatch Watch AppTests */,
+				B21DC6AB2FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */,
 				42B9BBFF2F90EBFA00D3B5A1 /* Frameworks */,
 				424C46572F6E763C009D1DDA /* Products */,
 				42D2EEAC2F73B4B300973752 /* tigerduck.icon */,
@@ -508,6 +515,9 @@
 			);
 			dependencies = (
 				B21DC6AA2FB887DA00AE2430 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B21DC6AB2FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */,
 			);
 			name = "TigerDuckWatch Watch AppUITests";
 			packageProductDependencies = (
@@ -991,6 +1001,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -1043,6 +1054,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;

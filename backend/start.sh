@@ -1,25 +1,13 @@
 #!/usr/bin/env bash
-# Entrypoint for the backend container / uvicorn service.
+# Bring the TigerDuck stack up (build image if needed, start postgres + backend).
+# Idempotent: safe to re-run after editing code, docker-compose.yml, or .env.
 #
-# alembic before uvicorn so a fresh container always ends up at the latest
-# schema. exec'ing uvicorn makes it PID 1, so docker stop sends SIGTERM
-# straight to uvicorn and it shuts down cleanly.
+# Usage:
+#   ./start.sh
 set -euo pipefail
-
 cd "$(dirname "$0")"
 
-echo "[start.sh] alembic upgrade head"
-alembic upgrade head
-
-echo "[start.sh] launching uvicorn on :40000"
-# --workers 1 on purpose: APScheduler lives inside the FastAPI lifespan, so
-# every additional worker spawns a duplicate scheduler that re-runs every
-# job (bulletin scrape, LLM classify, APNs dispatch) — no lock coordinates
-# them. Stay single-worker until we extract the scheduler into its own
-# process or wire up an advisory-lock leader election.
-exec uvicorn server.main:app \
-    --host 0.0.0.0 \
-    --port 40000 \
-    --proxy-headers \
-    --forwarded-allow-ips '*' \
-    --workers 1
+docker compose up -d --build
+echo
+echo "[start] stack is up. tailing backend log (Ctrl-C to detach, container keeps running)..."
+exec docker compose logs -f --tail=50 backend

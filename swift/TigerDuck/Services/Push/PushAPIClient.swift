@@ -14,7 +14,7 @@ final class PushAPIClient: Sendable {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
     init(
-        baseURL: URL = AppConstants.defaultPushServerURL,
+        baseURL: URL = PushCoordinator.resolveServerURL(),
         session: URLSession? = nil,
         sharedSecret: String? = nil
     ) {

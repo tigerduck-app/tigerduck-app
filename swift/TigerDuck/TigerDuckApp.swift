@@ -20,6 +20,7 @@ struct TigerDuckApp: App {
         // "now". Entire branch compiles out in Release.
         DebugClockController.shared.bootstrap()
         #endif
+        PushCoordinator.assertEnvConsistency()
         watchSyncCoordinator.activate()
     }
 
