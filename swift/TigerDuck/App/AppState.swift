@@ -567,7 +567,13 @@ final class AppState {
             assignments: assignments,
             now: now
         ) else { return }
-        let delay = boundary.timeIntervalSince(now) + AppConstants.scenarioBoundarySlackSeconds
+        // `boundary` is an app-clock instant; `Task.sleep` runs on the
+        // real clock, so under a frozen override the app-clock delta
+        // would never elapse and the refresh would re-arm itself
+        // forever. Translate to the real instant the boundary maps to
+        // before computing the sleep, mirroring the activity end task.
+        let realBoundary = AppClock.realTime(forApp: boundary)
+        let delay = realBoundary.timeIntervalSinceNow + AppConstants.scenarioBoundarySlackSeconds
         guard delay > 0 else { return }
         boundaryRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
