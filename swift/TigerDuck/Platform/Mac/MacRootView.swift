@@ -155,10 +155,7 @@ struct MacFeatureDetail: View {
                 summary: "School + Moodle events will surface here once the Calendar view ports to macOS."
             )
         case .announcements:
-            MacFeaturePlaceholder(
-                feature: feature,
-                summary: "NTUST bulletins will surface here once the Bulletins view ports to macOS."
-            )
+            MacBulletinsView()
         case .gpa:
             MacFeaturePlaceholder(
                 feature: feature,

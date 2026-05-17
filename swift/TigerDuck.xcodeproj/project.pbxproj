@@ -1089,6 +1089,9 @@
 					MacHomeView.swift,
 					MacMoreView.swift,
 					MacFeatureFiltering.swift,
+					MacBulletinsView.swift,
+					BulletinsViewModel.swift,
+					BulletinReadStateStore.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1230,6 +1233,9 @@
 					MacHomeView.swift,
 					MacMoreView.swift,
 					MacFeatureFiltering.swift,
+					MacBulletinsView.swift,
+					BulletinsViewModel.swift,
+					BulletinReadStateStore.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
