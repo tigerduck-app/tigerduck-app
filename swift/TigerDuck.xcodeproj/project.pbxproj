@@ -1084,6 +1084,8 @@
 					"SDAssignment+DisplayName.swift",
 					"String+HTMLEntities.swift",
 					NTUSTProtectedAccessState.swift,
+					MacRootView.swift,
+					MacLoginView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1220,6 +1222,8 @@
 					"SDAssignment+DisplayName.swift",
 					"String+HTMLEntities.swift",
 					NTUSTProtectedAccessState.swift,
+					MacRootView.swift,
+					MacLoginView.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

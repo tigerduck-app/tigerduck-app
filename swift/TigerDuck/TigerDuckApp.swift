@@ -119,35 +119,58 @@ struct TigerDuckApp: App {
 
 #elseif os(macOS)
 
-// Stub Mac entry point. Native macOS port is in progress on feat/macos-native:
-// the iOS app sources are excluded from the macOS build via
-// EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*] so that the Mac destination compiles
-// while the per-feature port lands incrementally.
 @main
 struct TigerDuckApp: App {
+    @State private var appState = AppState()
+    @State private var rootLanguageId = UUID()
+
+    var sharedModelContainer: ModelContainer = {
+        let schema = Schema([
+            SDCourse.self,
+            SDAssignment.self,
+            SDAnnouncement.self,
+            SDCalendarEvent.self,
+        ])
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        do {
+            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "modelContainer.initialCreate"])
+            // Same on-disk-reset → in-memory fallback chain the iOS branch
+            // uses, condensed because the Mac stub never raced this path in
+            // production yet.
+            let storeURL = modelConfiguration.url
+            for ext in ["", "-wal", "-shm"] {
+                let url = ext.isEmpty ? storeURL : storeURL.appendingPathExtension(String(ext.dropFirst()))
+                try? FileManager.default.removeItem(at: url)
+            }
+            do {
+                return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            } catch {
+                let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                return (try? ModelContainer(for: schema, configurations: [memoryConfig]))!
+            }
+        }
+    }()
+
+    init() {
+        AppLogger.start()
+    }
+
     var body: some Scene {
         Window("TigerDuck", id: "main") {
-            VStack(spacing: 16) {
-                Image(systemName: "graduationcap.fill")
-                    .font(.system(size: 64))
-                    .foregroundStyle(.tint)
-                Text("TigerDuck for Mac")
-                    .font(.largeTitle)
-                    .bold()
-                Text("Native macOS support is in active development.")
-                    .foregroundStyle(.secondary)
-                Text("Open the iOS app in the meantime — your data syncs automatically once Mac ships.")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 360)
-            }
-            .frame(minWidth: 480, minHeight: 320)
-            .padding(32)
+            MacRootView()
+                .id(rootLanguageId)
+                .environment(appState)
+                .onReceive(
+                    NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
+                ) { _ in
+                    rootLanguageId = UUID()
+                }
         }
+        .modelContainer(sharedModelContainer)
         .windowResizability(.contentSize)
         .commands {
-            // Hide the "New Window" item — there is only one stub window today.
             CommandGroup(replacing: .newItem) {}
         }
     }
