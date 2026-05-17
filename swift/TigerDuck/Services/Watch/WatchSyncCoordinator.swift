@@ -8,6 +8,8 @@ protocol WatchSessionPushing: AnyObject {
     var isPaired: Bool { get }
     var isWatchAppInstalled: Bool { get }
     func updateApplicationContext(_ context: [String: Any]) throws
+    @discardableResult
+    func transferUserInfo(_ userInfo: [String: Any]) -> WCSessionUserInfoTransfer
 }
 
 extension WCSession: WatchSessionPushing {}
