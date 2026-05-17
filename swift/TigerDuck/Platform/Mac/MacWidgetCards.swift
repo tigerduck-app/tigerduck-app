@@ -37,6 +37,7 @@ struct MacHomeWidgetsRow: View {
     private func todaySlots(for now: Date) -> [CourseTimeSlot] {
         let weekday = now.scheduleWeekday
         return CourseTimeSlot.buildSlots(from: courses, weekday: weekday, on: now)
+            .filter { !$0.course.isSkipped(on: $0.date) }
     }
 
     private func upcomingSlots(for now: Date) -> [CourseTimeSlot] {
@@ -46,7 +47,10 @@ struct MacHomeWidgetsRow: View {
         for offset in 0...7 {
             guard let date = calendar.date(byAdding: .day, value: offset, to: start) else { continue }
             let weekday = date.scheduleWeekday
-            slots.append(contentsOf: CourseTimeSlot.buildSlots(from: courses, weekday: weekday, on: date))
+            slots.append(
+                contentsOf: CourseTimeSlot.buildSlots(from: courses, weekday: weekday, on: date)
+                    .filter { !$0.course.isSkipped(on: $0.date) }
+            )
         }
         return slots.sorted { $0.start < $1.start }
     }
