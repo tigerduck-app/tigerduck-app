@@ -51,23 +51,23 @@ struct OnboardingView: View {
         ) {
             VStack(spacing: TigerDuckTheme.Spacing.md) {
                 Text(String(localized: "onboarding_welcome_description"))
-                    .font(.callout)
+                    .font(.footnote)
                     .foregroundStyle(Color.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, TigerDuckTheme.Spacing.xl)
                     .fixedSize(horizontal: false, vertical: true)
 
                 VStack(spacing: TigerDuckTheme.Spacing.sm) {
                     Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
                     Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
                 }
-                .font(.callout.weight(.semibold))
+                .font(.footnote.weight(.semibold))
 
                 Button(String(localized: "action_next")) {
                     withAnimation { currentPage = Page.privacy.rawValue }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .padding(.top, TigerDuckTheme.Spacing.sm)
             }
         }
     }
@@ -254,7 +254,7 @@ struct OnboardingView: View {
             subtitle: String(localized: "onboarding_permissions_subtitle"),
             accentColor: .orange
         ) {
-            VStack(spacing: TigerDuckTheme.Spacing.lg) {
+            VStack(spacing: TigerDuckTheme.Spacing.md) {
                 notificationStatusRow
 
                 if notificationStatus == .denied {
@@ -267,18 +267,18 @@ struct OnboardingView: View {
                     .controlSize(.large)
                 }
 
-                HStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    Button(String(localized: "onboarding_skip_for_now")) {
-                        withAnimation { currentPage = Page.ready.rawValue }
-                    }
-                    .foregroundStyle(Color.textSecondary)
+                Spacer().frame(height: TigerDuckTheme.Spacing.xl)
 
-                    Button(String(localized: "action_next")) {
-                        withAnimation { currentPage = Page.ready.rawValue }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                Button(String(localized: "onboarding_skip_for_now")) {
+                    withAnimation { currentPage = Page.ready.rawValue }
                 }
+                .foregroundStyle(Color.textSecondary)
+
+                Button(String(localized: "action_next")) {
+                    withAnimation { currentPage = Page.ready.rawValue }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
         }
     }
