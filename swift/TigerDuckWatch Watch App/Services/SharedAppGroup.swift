@@ -11,7 +11,7 @@ import os
 /// shared between the app and widget — they exist so a misconfigured
 /// build degrades to the existing "no snapshot yet" empty state instead
 /// of crashing the process.
-enum SharedAppGroup {
+nonisolated enum SharedAppGroup {
     static let identifier = "group.org.ntust.app.TigerDuck.watch"
 
     private static let logger = Logger(

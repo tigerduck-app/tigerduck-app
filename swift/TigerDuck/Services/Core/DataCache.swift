@@ -3,6 +3,13 @@ import Foundation
 
 /// Persists network-fetched data to disk so it survives app restarts.
 /// Uses JSON files in the app's caches directory.
+///
+/// Stays on `@MainActor` (the module-default isolation under
+/// `SWIFT_APPROACHABLE_CONCURRENCY = YES`) because the public surface
+/// hands back SwiftData-managed types (`SDCourse`, `SDAssignment`,
+/// `SDCalendarEvent`) whose accessors are themselves MainActor-isolated.
+/// Callers running off MainActor (e.g. `Task.detached`) must hop via
+/// `await MainActor.run { … }` before touching the cache.
 final class DataCache {
     static let shared = DataCache()
 

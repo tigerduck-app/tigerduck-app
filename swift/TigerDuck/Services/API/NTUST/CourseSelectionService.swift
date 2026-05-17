@@ -89,20 +89,20 @@ enum CourseSelectionService {
         return courseNos
     }
 
-    static let enrolledCoursesCacheTTL: TimeInterval = 86_400
+    nonisolated static let enrolledCoursesCacheTTL: TimeInterval = 86_400
 
-    private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"
+    nonisolated private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"
 
     // Serializes read-modify-write of the per-(studentId,semester) cache dict
     // so concurrent fetches/invalidations cannot lose updates.
-    private static let cacheLock = OSAllocatedUnfairLock()
+    nonisolated private static let cacheLock = OSAllocatedUnfairLock()
 
-    private struct CachedCourseNos: Codable {
+    nonisolated private struct CachedCourseNos: Codable {
         let courseNos: [String]
         let cachedAt: TimeInterval
     }
 
-    static func invalidateEnrolledCoursesCache(for studentId: String? = nil) {
+    nonisolated static func invalidateEnrolledCoursesCache(for studentId: String? = nil) {
         cacheLock.withLock {
             let defaults = UserDefaults.standard
             guard let studentId else {
@@ -115,7 +115,7 @@ enum CourseSelectionService {
         }
     }
 
-    private static func loadEnrolledCoursesCache(studentId: String, semester: String) -> [String]? {
+    nonisolated private static func loadEnrolledCoursesCache(studentId: String, semester: String) -> [String]? {
         cacheLock.withLock {
             let dict = readCacheDict()
             guard let entry = dict["\(studentId):\(semester)"] else { return nil }
@@ -124,7 +124,7 @@ enum CourseSelectionService {
         }
     }
 
-    private static func saveEnrolledCoursesCache(studentId: String, semester: String, courseNos: [String]) {
+    nonisolated private static func saveEnrolledCoursesCache(studentId: String, semester: String, courseNos: [String]) {
         guard !courseNos.isEmpty else { return }
         cacheLock.withLock {
             var dict = readCacheDict()
@@ -133,7 +133,7 @@ enum CourseSelectionService {
         }
     }
 
-    private static func readCacheDict() -> [String: CachedCourseNos] {
+    nonisolated private static func readCacheDict() -> [String: CachedCourseNos] {
         guard let data = UserDefaults.standard.data(forKey: enrolledCoursesCacheKey),
               let dict = try? JSONDecoder().decode([String: CachedCourseNos].self, from: data) else {
             return [:]
@@ -141,7 +141,7 @@ enum CourseSelectionService {
         return dict
     }
 
-    private static func writeCacheDict(_ dict: [String: CachedCourseNos]) {
+    nonisolated private static func writeCacheDict(_ dict: [String: CachedCourseNos]) {
         let defaults = UserDefaults.standard
         if dict.isEmpty {
             defaults.removeObject(forKey: enrolledCoursesCacheKey)

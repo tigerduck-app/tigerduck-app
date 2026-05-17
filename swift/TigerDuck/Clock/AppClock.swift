@@ -6,7 +6,12 @@ import os
 ///
 /// Auth/network code (session expiry, cookie TTL, login timestamps, cache TTLs)
 /// intentionally does NOT use AppClock — see spec for rationale.
-enum AppClock {
+///
+/// Marked `nonisolated`: synchronisation is provided by `OSAllocatedUnfairLock`
+/// (`State` is the lock's protected payload) and `UserDefaults` is thread-safe,
+/// so any caller — UI, scheduler, Sendable closures, background tasks — can
+/// hit these statics directly without a hop to `MainActor`.
+nonisolated enum AppClock {
 
     private static let lock = OSAllocatedUnfairLock<State>(initialState: State())
 

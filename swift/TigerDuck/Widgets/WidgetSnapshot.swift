@@ -1,6 +1,6 @@
 import Foundation
 
-struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
+nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let version: Int
     let generatedAt: Date
     let isLoggedIn: Bool
@@ -16,7 +16,7 @@ struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     static let appGroupIdentifier = "group.org.ntust.app.TigerDuck"
 }
 
-struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
+nonisolated struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
     let courseNo: String
     let displayName: String
     let classroom: String
@@ -45,7 +45,7 @@ struct SnapshotCourse: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-extension SnapshotCourse {
+nonisolated extension SnapshotCourse {
     private enum CodingKeys: String, CodingKey {
         case courseNo, displayName, classroom, schedule, colorHex, skippedDates
     }
@@ -63,7 +63,7 @@ extension SnapshotCourse {
     }
 }
 
-struct PeriodTime: Codable, Equatable, Hashable, Sendable {
+nonisolated struct PeriodTime: Codable, Equatable, Hashable, Sendable {
     let start: String   // "HH:mm"
     let end: String     // "HH:mm"
 }

@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Wire-format DTO. Decoupled from `SDCourse` so phone-side schema churn does
 /// not ripple to the watch unless this struct's fields change.
-public struct WatchCourse: Codable, Hashable, Identifiable, Sendable {
+public nonisolated struct WatchCourse: Codable, Hashable, Identifiable, Sendable {
     public let id: String         // "<courseNo>-<weekday>-<firstPeriod>"
     public let courseNo: String
     public let name: String
