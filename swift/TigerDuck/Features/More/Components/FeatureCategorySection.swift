@@ -3,7 +3,6 @@ import SwiftUI
 struct FeatureCategorySection: View {
     let category: FeatureCategory
     let features: [AppFeature]
-    var isPinned: (AppFeature) -> Bool = { _ in false }
     var onFeatureTap: ((AppFeature) -> Void)? = nil
 
     private let columns = [
@@ -20,7 +19,7 @@ struct FeatureCategorySection: View {
                     Button {
                         onFeatureTap?(feature)
                     } label: {
-                        FeatureCardView(feature: feature, isPinned: isPinned(feature))
+                        FeatureCardView(feature: feature)
                     }
                     .buttonStyle(.plain)
                 }
