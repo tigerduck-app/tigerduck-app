@@ -191,6 +191,12 @@ final class AppState {
     /// `.onAppear` drain picks it up.
     var pendingWidgetDestination: WidgetDestination?
 
+    /// Transient signal from the library-shortcut widget: when the user taps
+    /// the widget while the library feature is disabled, `MainTabView` switches
+    /// to the More tab and raises this flag so `MoreView` surfaces an
+    /// "enable first" alert. Not persisted — lives only within the process.
+    var pendingLibraryEnablePrompt = false
+
     func openFromWidget(_ destination: WidgetDestination) {
         pendingWidgetDestination = destination
     }

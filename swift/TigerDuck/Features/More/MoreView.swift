@@ -7,7 +7,8 @@ struct MoreView: View {
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
+        @Bindable var appState = appState
+        return NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
                     HStack {
@@ -64,6 +65,14 @@ struct MoreView: View {
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .notImplementedAlert(isPresented: $showNotImplementedAlert)
+            .alert(
+                String(localized: "settings_library_feature_disabled_title"),
+                isPresented: $appState.pendingLibraryEnablePrompt
+            ) {
+                Button(String(localized: "settings_acknowledged"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "settings_library_feature_disabled_message"))
+            }
             .navigationDestination(for: AppFeature.self) { feature in
                 moreDestination(for: feature)
             }
