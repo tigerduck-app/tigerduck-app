@@ -103,13 +103,22 @@ enum AppClock {
 
     /// Reads the persisted override on first access in this process, then caches.
     /// Caller must hold the lock.
+    ///
+    /// DEBUG-only: the writer (`DebugClockStore`) is itself `#if DEBUG`-gated,
+    /// so the only way for the persisted key to exist is via a previous debug
+    /// or TestFlight build. Without this gate, a user who upgrades from such a
+    /// build to a release one would have the stale override loaded into the
+    /// release `AppClock` on cold launch and every UI / scheduler / widget
+    /// surface would render fake time.
     private static func loadPersistedIfNeeded(into state: inout State) {
         guard !state.didLoadPersisted else { return }
         state.didLoadPersisted = true
+        #if DEBUG
         guard let data = defaultsStore().data(forKey: persistenceKey),
               let decoded = try? JSONDecoder().decode(ClockOverride.self, from: data)
         else { return }
         state.override = decoded
+        #endif
     }
 
     static let persistenceKey = "debug.clock.override"
