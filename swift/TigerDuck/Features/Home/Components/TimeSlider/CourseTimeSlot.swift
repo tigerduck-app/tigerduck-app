@@ -14,7 +14,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
 
     /// Build slots for a single day.
     static func buildSlots(from courses: [SDCourse], weekday: Int, on date: Date = AppClock.now()) -> [CourseTimeSlot] {
-        let calendar = Calendar.current
+        let calendar = AppConstants.taipeiCalendar
         var slots: [CourseTimeSlot] = []
 
         for course in courses {
@@ -47,7 +47,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
         centerDate: Date,
         dayRadius: Int = TimeSliderMetrics.timelineDayRadius
     ) -> [CourseTimeSlot] {
-        let calendar = Calendar.current
+        let calendar = AppConstants.taipeiCalendar
         var allSlots: [CourseTimeSlot] = []
 
         for offset in -dayRadius...dayRadius {
@@ -60,7 +60,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
         return allSlots.sorted { $0.start < $1.start }
     }
 
-    static func dateFromTimeString(_ time: String, on date: Date, calendar: Calendar = .current) -> Date? {
+    static func dateFromTimeString(_ time: String, on date: Date, calendar: Calendar = AppConstants.taipeiCalendar) -> Date? {
         let parts = time.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2 else { return nil }
         var dc = calendar.dateComponents([.year, .month, .day], from: date)
@@ -74,6 +74,7 @@ struct CourseTimeSlot: Identifiable, Equatable {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "yyyyMMdd"
         return f
     }()

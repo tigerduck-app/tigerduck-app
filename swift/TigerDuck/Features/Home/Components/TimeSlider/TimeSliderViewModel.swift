@@ -86,7 +86,7 @@ final class TimeSliderViewModel {
                 let next = timeSlots[i + 1]
                 let gapMin = next.start.timeIntervalSince(slot.end) / 60
 
-                let calendar = Calendar.current
+                let calendar = AppConstants.taipeiCalendar
                 let crossesDay = !calendar.isDate(slot.date, inSameDayAs: next.date)
 
                 if crossesDay {
@@ -132,7 +132,7 @@ final class TimeSliderViewModel {
     }
 
     private func checkTimelineRebuildNeeded() {
-        let calendar = Calendar.current
+        let calendar = AppConstants.taipeiCalendar
         let daysSinceCenter = abs(calendar.dateComponents(
             [.day], from: timelineCenterDate, to: selectedTime
         ).day ?? 0)

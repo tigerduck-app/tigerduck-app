@@ -35,7 +35,7 @@ struct CourseTimeCard: View {
     private func cardContent(slot: CourseTimeSlot, opacity: Double) -> some View {
         let course = slot.course
         let weekday = slot.date.scheduleWeekday
-        let isToday = Calendar.current.isDateInToday(slot.date)
+        let isToday = AppConstants.taipeiCalendar.isDateInToday(slot.date)
 
         HStack(alignment: .top, spacing: 10) {
             // Accent stripe — shows the course color as a small accent in
@@ -119,6 +119,7 @@ struct CourseTimeCard: View {
     private static let dateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "M/d (EEEEE)"
         return f
     }()
@@ -127,6 +128,7 @@ struct CourseTimeCard: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "M/d"
         return f
     }()

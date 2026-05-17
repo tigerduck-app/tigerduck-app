@@ -11,8 +11,13 @@ public enum NextClassResolver {
     /// the class currently in progress (if any) and the next class to start
     /// today (if any). Other weekdays are ignored.
     public static func resolve(courses: [WatchCourse], now: Date) -> Result {
-        let cal = Calendar(identifier: .iso8601)
-        // ISO weekday: Calendar gives 1=Sun..7=Sat; convert to 1=Mon..7=Sun.
+        // Pinned to Taipei: NTUST's class times are authored in Taiwan
+        // wall time, so the watch must answer "what's happening now" in
+        // that frame regardless of where the wearer is physically. Without
+        // the pin a student abroad would see no classes during what is
+        // morning in Taipei.
+        let cal = SharedTaipei.calendar
+        // Gregorian weekday: 1=Sun..7=Sat; convert to 1=Mon..7=Sun.
         let raw = cal.component(.weekday, from: now)
         let isoWeekday = ((raw + 5) % 7) + 1
 

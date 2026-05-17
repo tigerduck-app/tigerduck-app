@@ -6,14 +6,14 @@ extension Date {
     /// feeds are gregorian — using `Calendar.current` would shift
     /// month/day arithmetic on a device set to ROC or Buddhist calendar
     /// (already proven by `SDCourse.isoFormatter` pinning the same way).
-    static let scheduleCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
-        return cal
-    }()
+    /// Aliased onto `AppConstants.taipeiCalendar` so app code has one
+    /// canonical handle to the Taiwan-pinned calendar.
+    static let scheduleCalendar: Calendar = AppConstants.taipeiCalendar
 
     var shortDateString: String {
-        formatted(.dateTime.month(.defaultDigits).day())
+        var style = Date.FormatStyle.dateTime.month(.defaultDigits).day()
+        style.timeZone = AppConstants.taipeiTimeZone
+        return formatted(style)
     }
 
     /// Full numeric date — "2026/04/23". Used for article mastheads where
@@ -27,13 +27,17 @@ extension Date {
         f.dateFormat = "yyyy/MM/dd"
         // Pin to gregorian + en_US_POSIX so a device set to ROC /
         // Buddhist calendar doesn't render `2026-04-23` as `0115/04/23`.
+        // Pin time zone too so a traveler sees Taipei's calendar day.
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 
     var timeString: String {
-        formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
+        var style = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
+        style.timeZone = AppConstants.taipeiTimeZone
+        return formatted(style)
     }
 
     var weekdayIndex: Int {
@@ -85,6 +89,7 @@ extension Date {
         f.dateFormat = "M/d HH:mm:ss"
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 
@@ -93,6 +98,7 @@ extension Date {
         f.dateFormat = "M/d HH:mm"
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 

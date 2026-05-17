@@ -35,16 +35,16 @@ final class CalendarViewModel {
     }
 
     func eventsOnDate(_ date: Date) -> [SDCalendarEvent] {
-        let key = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let key = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day], from: date)
         return eventsByDay[key] ?? []
     }
 
     func previousMonth() {
-        displayedMonth = Calendar.current.date(byAdding: .month, value: -1, to: displayedMonth)!
+        displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: -1, to: displayedMonth)!
     }
 
     func nextMonth() {
-        displayedMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth)!
+        displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: 1, to: displayedMonth)!
     }
 
     func goToToday() {
@@ -151,7 +151,7 @@ final class CalendarViewModel {
 
     @MainActor
     private func loadSystemCalendarEvents() {
-        let cal = Calendar.current
+        let cal = AppConstants.taipeiCalendar
         guard let startDate = cal.date(byAdding: .month, value: -1, to: displayedMonth.startOfMonth),
               let endDate = cal.date(byAdding: .month, value: 2, to: displayedMonth.startOfMonth) else { return }
 
@@ -177,7 +177,7 @@ final class CalendarViewModel {
     }
 
     private static func buildCalendarDays(for month: Date) -> [Date?] {
-        let cal = Calendar.current
+        let cal = AppConstants.taipeiCalendar
         let start = month.startOfMonth
         let daysInMonth = month.daysInMonth
         let firstWeekday = month.firstWeekdayOfMonth // 1=Sunday
@@ -194,7 +194,7 @@ final class CalendarViewModel {
 
     private func setEvents(_ newEvents: [SDCalendarEvent]) {
         events = newEvents
-        let cal = Calendar.current
+        let cal = AppConstants.taipeiCalendar
         eventsByDay = Dictionary(grouping: newEvents) { event in
             cal.dateComponents([.year, .month, .day], from: event.date)
         }

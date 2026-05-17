@@ -122,7 +122,7 @@ struct TimeSliderSection: View {
     }
 
     private var timeLabelString: String {
-        let isToday = Calendar.current.isDateInToday(viewModel.selectedTime)
+        let isToday = AppConstants.taipeiCalendar.isDateInToday(viewModel.selectedTime)
         if isToday {
             return Self.timeFormatter.string(from: viewModel.selectedTime)
         } else {
@@ -146,6 +146,7 @@ struct TimeSliderSection: View {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 
@@ -153,6 +154,7 @@ struct TimeSliderSection: View {
         let f = DateFormatter()
         f.locale = .autoupdatingCurrent
         f.dateFormat = "M/d (EEEEE) HH:mm"
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 }

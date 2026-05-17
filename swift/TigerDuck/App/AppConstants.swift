@@ -21,6 +21,21 @@ extension URL {
 nonisolated enum AppConstants {
     static let appName = "TigerDuck"
 
+    /// All "what day/time is it?" logic must read this, not the device
+    /// timezone — NTUST's class table, ICS feed, and Moodle deadlines are
+    /// all authored in Taipei wall time, so a student abroad must still
+    /// see "Monday 08:10" when the schedule says Monday 08:10.
+    static let taipeiTimeZone: TimeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+
+    /// Gregorian + Asia/Taipei. Use everywhere `Calendar.current` would
+    /// otherwise drift the displayed weekday/day on a device set to a
+    /// non-Taiwan timezone or a non-gregorian calendar (ROC, Buddhist).
+    static let taipeiCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = taipeiTimeZone
+        return cal
+    }()
+
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")

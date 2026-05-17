@@ -15,7 +15,9 @@ struct MonthCalendarView: View {
     private let columns = Array(repeating: GridItem(.flexible()), count: 7)
 
     private var monthTitle: String {
-        viewModel.displayedMonth.formatted(.dateTime.year().month(.wide))
+        var style = Date.FormatStyle.dateTime.year().month(.wide)
+        style.timeZone = AppConstants.taipeiTimeZone
+        return viewModel.displayedMonth.formatted(style)
     }
 
     private var calendarDays: [Date?] { viewModel.calendarDays }
@@ -83,7 +85,7 @@ private struct DayCellView: View {
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 2) {
-                Text("\(Calendar.current.component(.day, from: date))")
+                Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(isSelected ? .white : (isToday ? .accentPrimary : .textPrimary))
                     .frame(width: 32, height: 32)
