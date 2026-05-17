@@ -4,6 +4,10 @@ struct TodayCourseCarousel: View {
     let courses: [SDCourse]
     let hasAssignment: (String) -> Bool
     var showProgress: Bool = true
+    /// When non-empty, dedicated "Current class" cards render leftmost in
+    /// the carousel, ahead of the regular today cards. Mirrors Android's
+    /// `ongoingCourses` cards.
+    var ongoing: [OngoingCourseInfo] = []
     var onSelect: ((SDCourse) -> Void)? = nil
 
     private static let periodTimeFormatter: DateFormatter = {
@@ -19,11 +23,18 @@ struct TodayCourseCarousel: View {
         // `AppClockState.shared.version` here wires the view's dependency
         // graph to debug time-override flips.
         let _ = AppClockState.shared.version
-        if courses.isEmpty {
+        if courses.isEmpty && ongoing.isEmpty {
             noCourseView
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: TigerDuckTheme.Spacing.md) {
+                    ForEach(ongoing) { info in
+                        CurrentClassCard(
+                            info: info,
+                            hasAssignment: hasAssignment(info.course.courseNo),
+                            onTap: { onSelect?(info.course) }
+                        )
+                    }
                     ForEach(sortedCourses, id: \.courseNo) { course in
                         Button {
                             onSelect?(course)

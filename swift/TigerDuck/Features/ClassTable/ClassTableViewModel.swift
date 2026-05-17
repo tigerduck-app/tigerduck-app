@@ -257,8 +257,32 @@ final class ClassTableViewModel {
         // `AppClockState.shared.version` into the read keeps SwiftUI
         // dependency tracking aware of debug-time-override flips.
         _ = AppClockState.shared.version
+        _ = minuteTicker.tick
         return currentSemesterCourses.coursesForToday()
     }
+
+    /// Courses whose contiguous period block contains the current
+    /// minute-of-day. Drives the leftmost "Current class" cards in the
+    /// today carousel (matches Android's `ongoingCourses`).
+    var ongoingCourses: [OngoingCourseInfo] {
+        _ = AppClockState.shared.version
+        _ = minuteTicker.tick
+        let now = AppClock.now()
+        let cal = AppConstants.taipeiCalendar
+        let comps = cal.dateComponents([.hour, .minute], from: now)
+        let minuteOfDay = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+        return currentSemesterCourses.ongoingCourses(
+            weekday: now.scheduleWeekday,
+            minuteOfDay: minuteOfDay
+        )
+    }
+
+    /// 5-second ticker that re-publishes minute-of-day-derived state.
+    /// Matches Android's `_currentDayTime` poll so the "Current class"
+    /// card slides into view within a few seconds of the wall-clock
+    /// minute boundary, not up to a minute later.
+    @ObservationIgnored
+    private let minuteTicker = MinuteTicker()
 
     var activeWeekdays: [Int] {
         var days = Set<Int>()

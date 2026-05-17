@@ -36,6 +36,11 @@ struct MacClassTableView: View {
     @State private var isLoadingSemester = false
     @State private var tripleConflictError: TripleConflictError?
 
+    /// Drives the "Current class" row's wall-clock re-evaluation. Mac
+    /// state needs a per-instance ticker (View is a struct), so we
+    /// hold one on the @State graph and read its `tick` in `body`.
+    @State private var minuteTicker = MinuteTicker()
+
     /// Identifies a slot the add path tried to push into when it would
     /// have become a 3-course slot. `existing` is the two courses already
     /// scheduled there so the alert can name them.
@@ -101,6 +106,20 @@ struct MacClassTableView: View {
         )
     }
 
+    /// Courses currently running, computed against `AppClock.now()`.
+    /// Re-evaluated whenever `body` re-fires (via `minuteTicker.tick` /
+    /// `AppClockState.version`).
+    private var ongoingNow: [OngoingCourseInfo] {
+        let now = AppClock.now()
+        let cal = AppConstants.taipeiCalendar
+        let comps = cal.dateComponents([.hour, .minute], from: now)
+        let minuteOfDay = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+        return courses.ongoingCourses(
+            weekday: now.scheduleWeekday,
+            minuteOfDay: minuteOfDay
+        )
+    }
+
     private var visiblePeriods: [String] {
         let occupied = Set(courses.flatMap { $0.schedule.values.flatMap { $0 } })
         return AppConstants.Periods.chronologicalOrder.filter {
@@ -109,6 +128,12 @@ struct MacClassTableView: View {
     }
 
     var body: some View {
+        // Subscribing to the minute ticker re-evaluates body every few
+        // seconds so the "Current class" row appears/disappears around
+        // each period boundary. Same trick we use elsewhere when
+        // observation can't track `AppClock.now()` directly.
+        let _ = AppClockState.shared.version
+        let _ = minuteTicker.tick
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
@@ -119,6 +144,9 @@ struct MacClassTableView: View {
                         emptyState
                     }
                 } else {
+                    if !ongoingNow.isEmpty {
+                        currentClassRow
+                    }
                     glassGridCard
                 }
             }
@@ -277,6 +305,27 @@ struct MacClassTableView: View {
     }
 
     // MARK: - Glass grid card
+
+    /// Horizontal scroll of "Current class" cards rendered above the grid
+    /// when one or more courses are currently running. Matches the iPhone
+    /// today-row treatment so live class state is the first thing the
+    /// user sees on the Mac class table.
+    private var currentClassRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(ongoingNow) { info in
+                    CurrentClassCard(
+                        info: info,
+                        hasAssignment: DataCache.shared.loadAssignments()
+                            .hasUnfinished(for: info.course.courseNo),
+                        width: 220,
+                        onTap: { selectedSlot = SelectedSlot(course: info.course, weekday: info.weekday) }
+                    )
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
 
     private var glassGridCard: some View {
         VStack(spacing: rowSpacing) {
