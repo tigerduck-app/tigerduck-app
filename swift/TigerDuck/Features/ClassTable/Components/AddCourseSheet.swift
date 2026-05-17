@@ -39,7 +39,7 @@ struct AddCourseSheet: View {
                 Section {
                     TextField(String(localized: "add_course_placeholder"), text: $searchText)
                         .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                        .textFieldNeverCapitalized()
                         .focused($searchFocused)
                         .submitLabel(.search)
                         .onSubmit { submitTrigger &+= 1 }
@@ -74,12 +74,15 @@ struct AddCourseSheet: View {
             }
             .background(Color.backgroundPrimary)
             .navigationTitle(String(localized: "add_course_title"))
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "action_close")) { dismiss() }
                 }
             }
+            #if os(macOS)
+            .frame(minWidth: 520, minHeight: 480)
+            #endif
             .onAppear { searchFocused = true }
             // Live, debounced search. `.task(id:)` deterministically re-fires
             // whenever the id changes and auto-cancels the in-flight task —
@@ -174,9 +177,18 @@ struct AddCourseSheet: View {
         secondaryNamesByNo = [:]
 
         let isCourseCode = Self.looksLikeCourseCode(query)
-        let uiLanguage = LanguageManager.resolvedCourseApiLanguage(
-            appLanguage: Defaults[.appLanguage]
-        )
+        // Primary language follows what the user is typing, not the UI:
+        // a CJK query shows "中文 (English)", a Latin query shows "English (中文)".
+        // Course-code queries are language-neutral — fall back to UI language
+        // so the row's primary name is still in the reader's language.
+        let primaryLanguage: String
+        if isCourseCode {
+            primaryLanguage = LanguageManager.resolvedCourseApiLanguage(
+                appLanguage: Defaults[.appLanguage]
+            )
+        } else {
+            primaryLanguage = Self.queryLanguage(of: query)
+        }
         // Send the traditional form to the zh API so simplified queries
         // ("隐私") still match traditional course names ("隱私與資訊安全").
         let zhQuery = Self.toTraditional(query)
@@ -194,8 +206,8 @@ struct AddCourseSheet: View {
             let enResults = try await enTask
             try Task.checkCancellation()
 
-            let primaryResultsRaw = uiLanguage == "en" ? enResults : zhResults
-            let secondaryResultsRaw = uiLanguage == "en" ? zhResults : enResults
+            let primaryResultsRaw = primaryLanguage == "en" ? enResults : zhResults
+            let secondaryResultsRaw = primaryLanguage == "en" ? zhResults : enResults
 
             // Fast path: the primary-language API returned matches. Show them
             // immediately with whatever parentheticals the secondary call
@@ -221,8 +233,8 @@ struct AddCourseSheet: View {
             )
             try Task.checkCancellation()
 
-            let primary = uiLanguage == "en" ? enFilled : zhFilled
-            let secondary = uiLanguage == "en" ? zhFilled : enFilled
+            let primary = primaryLanguage == "en" ? enFilled : zhFilled
+            let secondary = primaryLanguage == "en" ? zhFilled : enFilled
             let secondaryByNo = Dictionary(
                 secondary.map { ($0.CourseNo, $0.CourseName) },
                 uniquingKeysWith: { first, _ in first }
@@ -343,6 +355,27 @@ struct AddCourseSheet: View {
 
     private static func toTraditional(_ text: String) -> String {
         text.applyingTransform(hansHantTransform, reverse: false) ?? text
+    }
+
+    /// Returns "zh" if the query contains any CJK Unified Ideograph
+    /// (traditional, simplified, or extension blocks); otherwise "en".
+    /// The result drives which language's result list is shown as primary,
+    /// independent of the UI language — so an English-typing user gets
+    /// "Calculus (微積分)" and a Mandarin-typing user gets "微積分 (Calculus)".
+    static func queryLanguage(of query: String) -> String {
+        for scalar in query.unicodeScalars {
+            switch scalar.value {
+            case 0x3400...0x4DBF,    // CJK Unified Ideographs Extension A
+                 0x4E00...0x9FFF,    // CJK Unified Ideographs
+                 0x20000...0x2A6DF,  // Extension B
+                 0x2A700...0x2EBEF,  // Extensions C, D, E, F
+                 0x30000...0x3134F:  // Extension G
+                return "zh"
+            default:
+                continue
+            }
+        }
+        return "en"
     }
 
     // MARK: - Group & Add

@@ -120,26 +120,40 @@ private struct NextClassWidgetCard: View {
     var body: some View {
         widgetCard(title: String(localized: "widget_next_class"), systemImage: "arrow.right.circle") {
             if let target = nextOrCurrent {
-                let color = TigerDuckTheme.courseColor(for: target.slot.course.courseNo)
+                let primary = target.slots[0]
+                let color = TigerDuckTheme.courseColor(for: primary.course.courseNo)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text(target.label.uppercased())
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text(target.slot.course.timeRange(for: target.slot.date.scheduleWeekday) ?? "")
+                        Text(primary.course.timeRange(for: primary.date.scheduleWeekday) ?? "")
                             .font(.caption.monospacedDigit().weight(.semibold))
                             .foregroundStyle(color)
                     }
-                    Text(target.slot.course.displayName)
-                        .font(.title3.bold())
-                        .lineLimit(2)
-                    let classroom = target.slot.course.classroom(for: target.slot.date.scheduleWeekday)
-                    if !classroom.isEmpty {
-                        Label(classroom, systemImage: "mappin.and.ellipse")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    if target.slots.count >= 2 {
+                        // 衝堂: list every overlapping course on its own line so
+                        // neither is hidden. Names line-limit individually to
+                        // keep the card height roughly stable.
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(target.slots, id: \.course.courseNo) { slot in
+                                Text(slot.course.displayName)
+                                    .font(.title3.bold())
+                                    .lineLimit(1)
+                            }
+                        }
+                    } else {
+                        Text(primary.course.displayName)
+                            .font(.title3.bold())
+                            .lineLimit(2)
+                        let classroom = primary.course.classroom(for: primary.date.scheduleWeekday)
+                        if !classroom.isEmpty {
+                            Label(classroom, systemImage: "mappin.and.ellipse")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                     Text(target.countdownLabel(from: now))
                         .font(.callout.monospacedDigit())
@@ -154,22 +168,30 @@ private struct NextClassWidgetCard: View {
         }
     }
 
+    /// Returns every slot that shares the earliest "current" or "next" start
+    /// time so 衝堂 (two simultaneous classes) shows both courses instead of
+    /// silently dropping one to the `.first` selector.
     private var nextOrCurrent: NextClassTarget? {
-        if let live = slots.first(where: { $0.start <= now && now < $0.end }) {
-            return NextClassTarget(slot: live, label: String(localized: "live_activity_status_in_class"))
+        let liveSlots = slots.filter { $0.start <= now && now < $0.end }
+        if !liveSlots.isEmpty {
+            return NextClassTarget(slots: liveSlots, label: String(localized: "live_activity_status_in_class"))
         }
-        if let next = slots.first(where: { $0.start > now }) {
-            return NextClassTarget(slot: next, label: String(localized: "desktop_widget_up_next"))
-        }
-        return nil
+        guard let earliestNext = slots.filter({ $0.start > now }).min(by: { $0.start < $1.start })
+        else { return nil }
+        let tied = slots.filter { $0.start == earliestNext.start }
+        return NextClassTarget(slots: tied, label: String(localized: "desktop_widget_up_next"))
     }
 }
 
 private struct NextClassTarget {
-    let slot: CourseTimeSlot
+    /// 1 entry for solo classes, 2+ for 衝堂 (every slot sharing the same
+    /// start). Countdown reads from `slots[0]` since all members share their
+    /// start (and effectively their end, given a one-period block).
+    let slots: [CourseTimeSlot]
     let label: String
 
     func countdownLabel(from now: Date) -> String {
+        let slot = slots[0]
         if slot.start <= now && now < slot.end {
             let remaining = max(0, Int(slot.end.timeIntervalSince(now)))
             return "Ends in \(format(remaining))"

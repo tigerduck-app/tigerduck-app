@@ -36,7 +36,6 @@ struct WeekGridView: View {
         let weekdays = snapshot.activeWeekdays
         let periods = snapshot.activePeriodIds
         let todayWeekday = WidgetTimelineDerivation.weekdayFor(now)
-        let lookup = buildLookup()
 
         GeometryReader { geom in
             let totalRowSpacing = CGFloat(max(0, periods.count - 1)) * rowSpacing
@@ -70,7 +69,6 @@ struct WeekGridView: View {
                                 weekday: weekday,
                                 periodIndex: periodIndex,
                                 periods: periods,
-                                lookup: lookup,
                                 cellHeight: cellHeight,
                                 fontScale: fontScale
                             )
@@ -106,99 +104,100 @@ struct WeekGridView: View {
         weekday: Int,
         periodIndex: Int,
         periods: [String],
-        lookup: [Int: [String: SnapshotCourse]],
         cellHeight: CGFloat,
         fontScale: CGFloat
     ) -> some View {
-        switch cellRole(weekday: weekday, periodIndex: periodIndex, periods: periods, lookup: lookup) {
+        let role = ClassTableLayout.cellRole(
+            courses: snapshot.courses,
+            periodIds: periods,
+            weekday: weekday,
+            periodIndex: periodIndex,
+            keyOf: { $0.courseNo },
+            scheduleOf: { $0.schedule }
+        )
+        switch role {
         case .empty:
             RoundedRectangle(cornerRadius: cornerRadius)
                 .fill(palette.emptyCell)
 
-        case .blockStart(let course, let spanCount):
-            let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
-            let courseColor = Color(widgetHex: course.colorHex)
+        case let .solo(course, spanCount):
+            courseBlock(course, spanCount: spanCount, cellHeight: cellHeight, fontScale: fontScale)
+
+        case let .conflictStart(courseA, _, _, courseB, _, _, combinedSpan):
+            // Widget cells are tight; render conflicts as a horizontal
+            // half-and-half split rather than the iPhone L-shape interlock.
+            // Each course gets a slim block with its display name; classroom
+            // is dropped for the conflict case to keep the text legible.
+            let totalHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
             Color.clear
                 .overlay(alignment: .top) {
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(courseColor.opacity(0.25))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: cornerRadius)
-                                .strokeBorder(courseColor.opacity(0.4), lineWidth: 0.5)
-                        }
-                        .overlay {
-                            VStack(spacing: 1) {
-                                Text(course.displayName)
-                                    .font(.system(size: 9 * fontScale, weight: .medium))
-                                    .foregroundStyle(palette.onSurface)
-                                    .lineLimit(spanCount > 1 ? 3 : 2)
-                                    .multilineTextAlignment(.center)
-                                    .minimumScaleFactor(0.7)
-                                if !course.classroom.isEmpty && spanCount > 1 {
-                                    Text(course.classroom)
-                                        .font(.system(size: 7 * fontScale))
-                                        .foregroundStyle(palette.onSurfaceVariant)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(2)
-                        }
-                        .frame(height: totalHeight)
+                    HStack(spacing: 1) {
+                        conflictHalf(courseA, fontScale: fontScale)
+                        conflictHalf(courseB, fontScale: fontScale)
+                    }
+                    .frame(height: totalHeight)
                 }
                 .zIndex(1)
 
-        case .blockContinuation:
+        case .skip:
             Color.clear
         }
     }
 
-    private enum CellRole {
-        case empty
-        case blockStart(SnapshotCourse, spanCount: Int)
-        case blockContinuation
+    @ViewBuilder
+    private func courseBlock(
+        _ course: SnapshotCourse, spanCount: Int, cellHeight: CGFloat, fontScale: CGFloat
+    ) -> some View {
+        let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
+        let courseColor = Color(widgetHex: course.colorHex)
+        Color.clear
+            .overlay(alignment: .top) {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(courseColor.opacity(0.25))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius)
+                            .strokeBorder(courseColor.opacity(0.4), lineWidth: 0.5)
+                    }
+                    .overlay {
+                        VStack(spacing: 1) {
+                            Text(course.displayName)
+                                .font(.system(size: 9 * fontScale, weight: .medium))
+                                .foregroundStyle(palette.onSurface)
+                                .lineLimit(spanCount > 1 ? 3 : 2)
+                                .multilineTextAlignment(.center)
+                                .minimumScaleFactor(0.7)
+                            if !course.classroom.isEmpty && spanCount > 1 {
+                                Text(course.classroom)
+                                    .font(.system(size: 7 * fontScale))
+                                    .foregroundStyle(palette.onSurfaceVariant)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(2)
+                    }
+                    .frame(height: totalHeight)
+            }
+            .zIndex(1)
     }
 
-    private func buildLookup() -> [Int: [String: SnapshotCourse]] {
-        var lookup: [Int: [String: SnapshotCourse]] = [:]
-        for course in snapshot.courses {
-            for (weekday, ids) in course.schedule {
-                for periodId in ids {
-                    lookup[weekday, default: [:]][periodId] = course
-                }
+    @ViewBuilder
+    private func conflictHalf(_ course: SnapshotCourse, fontScale: CGFloat) -> some View {
+        let courseColor = Color(widgetHex: course.colorHex)
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(courseColor.opacity(0.25))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .strokeBorder(courseColor.opacity(0.4), lineWidth: 0.5)
             }
-        }
-        return lookup
-    }
-
-    private func cellRole(
-        weekday: Int,
-        periodIndex: Int,
-        periods: [String],
-        lookup: [Int: [String: SnapshotCourse]]
-    ) -> CellRole {
-        guard periodIndex >= 0, periodIndex < periods.count else { return .empty }
-        let periodId = periods[periodIndex]
-        guard let course = lookup[weekday]?[periodId] else { return .empty }
-
-        if periodIndex > 0 {
-            let prevId = periods[periodIndex - 1]
-            if let prev = lookup[weekday]?[prevId], prev.courseNo == course.courseNo {
-                return .blockContinuation
+            .overlay {
+                Text(course.displayName)
+                    .font(.system(size: 8 * fontScale, weight: .medium))
+                    .foregroundStyle(palette.onSurface)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.55)
+                    .padding(1)
             }
-        }
-
-        var span = 1
-        var nextIdx = periodIndex + 1
-        while nextIdx < periods.count {
-            let nextId = periods[nextIdx]
-            if let next = lookup[weekday]?[nextId], next.courseNo == course.courseNo {
-                span += 1
-                nextIdx += 1
-            } else {
-                break
-            }
-        }
-        return .blockStart(course, spanCount: span)
     }
 
     private func weekdayKey(_ weekday: Int) -> String {

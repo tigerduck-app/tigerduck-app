@@ -17,6 +17,7 @@ struct MacClassTableView: View {
 
     @State private var selectedSemester: String = Defaults[.classTableSelectedSemester]
     @State private var selectedCourse: SDCourse?
+    @State private var showAddCourse: Bool = false
     /// Bumps whenever an async fetch lands new cache; the body's
     /// `courses` computed read includes this to trigger re-render
     /// (Observation can't see plain `DataCache` mutations).
@@ -90,9 +91,28 @@ struct MacClassTableView: View {
                 }
                 .pickerStyle(.menu)
             }
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    showAddCourse = true
+                } label: {
+                    Label(String(localized: "class_table_add_course"), systemImage: "plus")
+                }
+                .help(String(localized: "class_table_add_course"))
+            }
         }
         .sheet(item: $selectedCourse) { course in
-            courseDetailSheet(course)
+            CourseDetailSheet(
+                course: course,
+                assignments: DataCache.shared.loadAssignments().unfinished(for: course.courseNo)
+            )
+        }
+        .sheet(isPresented: $showAddCourse) {
+            AddCourseSheet(
+                semester: selectedSemester,
+                existingCourseNos: Set(courses.map(\.courseNo)),
+                onAdd: { addUserCourse($0) },
+                onRemove: { removeUserAddedCourse(courseNo: $0) }
+            )
         }
         .task {
             await warmCachesIfNeeded()
@@ -256,199 +276,100 @@ struct MacClassTableView: View {
         .padding(.trailing, 4)
     }
 
-    /// One vertical stack of cells for `weekday`. Walks `visiblePeriods`
-    /// merging contiguous runs of the same course into a single tall
-    /// block (matching iPhone's `TimetableGridView` semantics). When two
-    /// courses overlap on the same period, the first course's name is
-    /// shown with a "+N" badge — Mac doesn't render the L-shape
-    /// interlock the iOS grid uses, but the conflict is still surfaced.
+    /// One vertical stack of cells for `weekday`. Walks `visiblePeriods` one
+    /// row at a time; `ClassTableLayout.cellRole` tells us when a row is the
+    /// start of a multi-row block (solo or 衝堂 cluster) so contiguous runs
+    /// render as a single tall block — same partitioning the iPhone uses.
     @ViewBuilder
     private func weekdayColumn(_ weekday: Int) -> some View {
-        let segments = segments(for: weekday)
+        let periods = visiblePeriods
         VStack(spacing: rowSpacing) {
-            ForEach(segments.indices, id: \.self) { index in
-                let seg = segments[index]
-                let height = CGFloat(seg.span) * cellHeight + CGFloat(seg.span - 1) * rowSpacing
-                segmentView(seg)
-                    .frame(height: height)
+            ForEach(periods.indices, id: \.self) { index in
+                let role = ClassTableLayout.cellRole(
+                    courses: courses,
+                    periodIds: periods,
+                    weekday: weekday,
+                    periodIndex: index,
+                    keyOf: { $0.courseNo },
+                    scheduleOf: { $0.schedule }
+                )
+                cellView(role: role)
             }
         }
     }
 
     @ViewBuilder
-    private func segmentView(_ segment: CellSegment) -> some View {
-        if let course = segment.course {
-            courseCell(course, conflicts: segment.conflicts)
+    private func cellView(role: ClassTableCellRole<SDCourse>) -> some View {
+        switch role {
+        case .empty:
+            emptyCell.frame(height: cellHeight)
+        case let .solo(course, spanCount):
+            courseCell(course)
+                .frame(height: blockHeight(spanCount))
                 .onTapGesture { selectedCourse = course }
-        } else {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
-                )
+        case let .conflictStart(a, _, _, b, _, _, combinedSpan):
+            // macOS renders 衝堂 as a horizontal split for the full cluster
+            // height. Cleaner than the iPhone L-shape interlock (which needs
+            // offset-aware geometry) but still surfaces both courses and
+            // makes each independently clickable.
+            HStack(spacing: rowSpacing) {
+                courseCell(a)
+                    .onTapGesture { selectedCourse = a }
+                    .accessibilityLabel(Text(a.displayName))
+                courseCell(b)
+                    .onTapGesture { selectedCourse = b }
+                    .accessibilityLabel(Text(b.displayName))
+            }
+            .frame(height: blockHeight(combinedSpan))
+        case .skip:
+            EmptyView()
         }
     }
 
-    private func courseCell(_ course: SDCourse, conflicts: Int) -> some View {
-        let color = TigerDuckTheme.courseColor(for: course.courseNo)
-        return ZStack(alignment: .topTrailing) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(course.displayName)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                if !course.instructor.isEmpty {
-                    Text(course.instructor)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(color.opacity(0.4))
-                }
-            )
+    private func blockHeight(_ span: Int) -> CGFloat {
+        CGFloat(span) * cellHeight + CGFloat(max(span - 1, 0)) * rowSpacing
+    }
+
+    private var emptyCell: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.primary.opacity(0.04))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(color.opacity(0.6), lineWidth: 0.5)
+                    .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
             )
-
-            if conflicts > 0 {
-                Text("+\(conflicts)")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule().fill(Color.black.opacity(0.55))
-                    )
-                    .padding(4)
-            }
-        }
-        .contentShape(Rectangle())
     }
 
-    // MARK: - Cell segmentation
-
-    /// A contiguous block in one weekday column. `course` is nil for an
-    /// empty gap; `conflicts` is the number of additional courses that
-    /// share the first period of this block (0 for a clean run).
-    private struct CellSegment {
-        let course: SDCourse?
-        let span: Int
-        let conflicts: Int
-    }
-
-    /// Merge contiguous same-course runs into single segments. For
-    /// conflicts (multiple courses on one period), the first course
-    /// wins the cell with a `+N` badge and the run length collapses to
-    /// 1 — we don't try to merge "course A spans periods 1-3 AND
-    /// course B spans periods 2-4" because the L-shape rendering for
-    /// that case is non-trivial and rare on the Mac surface.
-    private func segments(for weekday: Int) -> [CellSegment] {
-        let periods = visiblePeriods
-        var result: [CellSegment] = []
-        var i = 0
-        while i < periods.count {
-            let period = periods[i]
-            let matches = courses.filter { ($0.schedule[weekday] ?? []).contains(period) }
-            if matches.isEmpty {
-                result.append(CellSegment(course: nil, span: 1, conflicts: 0))
-                i += 1
-                continue
-            }
-            if matches.count >= 2 {
-                result.append(CellSegment(
-                    course: matches[0],
-                    span: 1,
-                    conflicts: matches.count - 1
-                ))
-                i += 1
-                continue
-            }
-            // Solo course — find consecutive run length.
-            let course = matches[0]
-            var span = 1
-            while i + span < periods.count {
-                let nextPeriod = periods[i + span]
-                let nextMatches = courses.filter { ($0.schedule[weekday] ?? []).contains(nextPeriod) }
-                if nextMatches.count == 1, nextMatches[0].courseNo == course.courseNo {
-                    span += 1
-                } else {
-                    break
-                }
-            }
-            result.append(CellSegment(course: course, span: span, conflicts: 0))
-            i += span
-        }
-        return result
-    }
-
-    // MARK: - Course detail sheet
-
-    private func courseDetailSheet(_ course: SDCourse) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Circle()
-                    .fill(TigerDuckTheme.courseColor(for: course.courseNo))
-                    .frame(width: 14, height: 14)
-                Text(course.displayName)
-                    .font(.title2.bold())
-                Spacer()
-                Button {
-                    selectedCourse = nil
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.title3)
-                }
-                .buttonStyle(.borderless)
-                .keyboardShortcut(.cancelAction)
-            }
-
-            Divider()
-
-            detailRow(label: String(localized: "desktop_course_detail_course_no_label"), value: course.courseNo)
+    private func courseCell(_ course: SDCourse) -> some View {
+        let color = TigerDuckTheme.courseColor(for: course.courseNo)
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(course.displayName)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
             if !course.instructor.isEmpty {
-                detailRow(label: String(localized: "course_detail_instructor_label"), value: course.instructor)
+                Text(course.instructor)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            detailRow(label: String(localized: "course_detail_credits_label"), value: "\(course.credits)")
-            ForEach(course.schedule.keys.sorted(), id: \.self) { weekday in
-                let periods = (course.schedule[weekday] ?? []).sortedByPeriodOrder().joined(separator: ", ")
-                let room = course.classroom(for: weekday)
-                let weekdayLabel = AppConstants.Periods.weekdays[safe: weekday - 1] ?? "?"
-                detailRow(
-                    label: weekdayLabel,
-                    value: room.isEmpty ? periods : "\(periods)  ·  \(room)"
-                )
-            }
-
             Spacer(minLength: 0)
         }
-        .padding(24)
-        .frame(width: 440, height: 340)
-    }
-
-    private func detailRow(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 100, alignment: .leading)
-            Text(value)
-                .font(.callout)
-                .textSelection(.enabled)
-            Spacer()
-        }
+        .padding(8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(color.opacity(0.4))
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(color.opacity(0.6), lineWidth: 0.5)
+        )
+        .contentShape(Rectangle())
     }
 
     // MARK: - Helpers
@@ -460,6 +381,51 @@ struct MacClassTableView: View {
     private func displayLabel(for code: String) -> String {
         guard code.count >= 2 else { return code }
         return String(code.dropLast()) + "-" + String(code.last!)
+    }
+
+    // MARK: - User-added courses
+
+    /// Append a user-added course to the on-disk store and refresh the grid.
+    /// Mirrors the parts of `ClassTableViewModel.addCourse(_:)` that are load-
+    /// bearing on macOS: tombstone clear, NameAbbr cache seeding so toggles
+    /// round-trip without a refetch, and a `dataDidUpdate` broadcast so the
+    /// Home page's widget cards also re-render. Triple-conflict guarding is
+    /// left to a future macOS pass (iPhone's `wouldCauseTripleConflict` lives
+    /// inside `ClassTableViewModel` and isn't reusable yet).
+    private func addUserCourse(_ course: SDCourse) {
+        let existing = DataCache.shared.loadUserAddedCourses()
+        guard !existing.contains(where: { $0.courseNo == course.courseNo }),
+              !courses.contains(where: { $0.courseNo == course.courseNo })
+        else { return }
+
+        var deleted = Set(DataCache.shared.loadDeletedCourseNos())
+        if deleted.remove(course.courseNo) != nil {
+            DataCache.shared.saveDeletedCourseNos(Array(deleted))
+        }
+
+        NameAbbrService.shared.storeRawName(
+            courseNo: course.courseNo, name: course.courseName
+        )
+        NameAbbrService.shared.storeRawClassroom(
+            courseNo: course.courseNo,
+            classroom: course.classroom,
+            map: course.classroomMap
+        )
+
+        DataCache.shared.saveUserAddedCourses(existing + [course])
+        cacheRevision &+= 1
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+    }
+
+    /// Undo a not-yet-committed user-added course without tombstoning the
+    /// `courseNo`. Tap-to-toggle in `AddCourseSheet` routes here when the user
+    /// adds and immediately removes a course in the same session.
+    private func removeUserAddedCourse(courseNo: String) {
+        let existing = DataCache.shared.loadUserAddedCourses()
+        guard existing.contains(where: { $0.courseNo == courseNo }) else { return }
+        DataCache.shared.saveUserAddedCourses(existing.filter { $0.courseNo != courseNo })
+        cacheRevision &+= 1
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 }
 #endif
