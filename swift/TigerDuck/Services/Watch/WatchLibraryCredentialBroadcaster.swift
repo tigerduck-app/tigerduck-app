@@ -118,27 +118,25 @@ final class WatchLibraryCredentialBroadcaster {
             WatchWireFormat.LibraryCredentialKey.kind: WatchWireFormat.UserInfoKind.libraryCredential,
             WatchWireFormat.LibraryCredentialKey.payload: json,
         ]
-        // Prefer sendMessage when reachable: synchronous delivery and
-        // works reliably on paired simulators where transferUserInfo can
-        // sit in the queue indefinitely. On failure (watch went
-        // unreachable mid-flight, decode error on the other side, etc.)
-        // fall through to transferUserInfo for durable redelivery —
-        // duplicates are idempotent on the watch via the epoch check.
+        // Always queue transferUserInfo for durable, FIFO redelivery.
+        // sendMessage reports transport success, not apply success — a
+        // wipe can fail on the watch (e.g., keychain locked) even though
+        // the message round-trips cleanly. transferUserInfo survives that
+        // and re-applies whenever the watch can run the apply again.
+        // When also reachable, additionally fire sendMessage for
+        // low-latency foreground delivery; the watch's epoch guard
+        // rejects the duplicate as replay.
+        _ = session.transferUserInfo(userInfo)
         if session.isReachable {
             session.sendMessage(userInfo, replyHandler: nil) { [weak self] error in
                 // sendMessage's error handler fires on a background queue;
-                // hop to MainActor for the fallback so we don't cross
-                // self's actor isolation.
+                // hop to MainActor so we don't cross self's actor isolation.
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.logger.error(
-                        "sendMessage failed: \(error.localizedDescription); falling back to transferUserInfo"
+                    self?.logger.error(
+                        "sendMessage failed: \(error.localizedDescription); transferUserInfo will still deliver"
                     )
-                    _ = self.session.transferUserInfo(userInfo)
                 }
             }
-            return
         }
-        _ = session.transferUserInfo(userInfo)
     }
 }

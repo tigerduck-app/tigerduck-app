@@ -23,7 +23,14 @@ struct LibraryQRView: View {
         }
         .navigationTitle(String(localized: "watch_library_title"))
         .onAppear { viewModel.onAppear() }
-        .onDisappear { viewModel.onDisappear() }
+        .onDisappear {
+            // Skip when the cover is presenting on top of us: the cover
+            // shows the same viewModel.qrImage, so we must keep the 30s
+            // refresh running or the user sees an expired QR.
+            if !isFullScreen {
+                viewModel.onDisappear()
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 viewModel.onAppear()
@@ -32,9 +39,7 @@ struct LibraryQRView: View {
             }
         }
         .fullScreenCover(isPresented: $isFullScreen) {
-            if let image = viewModel.qrImage {
-                FullScreenQRView(image: image, dismiss: { isFullScreen = false })
-            }
+            FullScreenQRView(viewModel: viewModel, dismiss: { isFullScreen = false })
         }
     }
 
@@ -117,7 +122,7 @@ struct LibraryQRView: View {
 /// past `dismissThreshold`. We don't use the system swipe-down dismissal
 /// because the user requested either direction.
 private struct FullScreenQRView: View {
-    let image: UIImage
+    let viewModel: LibraryQRViewModel
     let dismiss: () -> Void
 
     @State private var dragOffset: CGFloat = 0
@@ -128,15 +133,18 @@ private struct FullScreenQRView: View {
         // White background runs corner-to-corner; the image gets a small
         // top inset so the watchOS time strip doesn't overlap QR modules.
         // The full safe-area override on the ZStack lets the matrix
-        // claim almost all of the screen.
+        // claim almost all of the screen. Reads viewModel.qrImage so the
+        // refresh timer's updates propagate while the cover is up.
         ZStack {
             Color.white
-            Image(uiImage: image)
-                .interpolation(.none)
-                .resizable()
-                .scaledToFit()
-                .padding(.top, 8)
-                .padding(.bottom, 2)
+            if let image = viewModel.qrImage {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(.top, 8)
+                    .padding(.bottom, 2)
+            }
         }
         .ignoresSafeArea()
         // Hide the system close indicator so it stops landing on top of
@@ -144,6 +152,12 @@ private struct FullScreenQRView: View {
         // gesture for this presentation.
         .toolbar(.hidden, for: .automatic)
         .offset(y: dragOffset)
+        .onChange(of: viewModel.hasCredentials) { _, hasCreds in
+            // Credentials wiped (phone logout, TTL purge) — drop the
+            // cover so the user lands back on the empty state instead
+            // of staring at a stale QR with no way to refresh it.
+            if !hasCreds { dismiss() }
+        }
         .gesture(
             DragGesture()
                 .onChanged { value in
