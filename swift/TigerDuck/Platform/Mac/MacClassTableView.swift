@@ -16,8 +16,18 @@ struct MacClassTableView: View {
     @Environment(AppState.self) private var appState
 
     @State private var selectedSemester: String = Defaults[.classTableSelectedSemester]
-    @State private var selectedCourse: SDCourse?
+    @State private var selectedSlot: SelectedSlot?
     @State private var showAddCourse: Bool = false
+
+    /// Carries the weekday alongside the tapped course so the detail sheet
+    /// can render the concrete slot's classroom + time range. Without the
+    /// weekday context, `CourseDetailSheet` falls back to the aggregate
+    /// classroom and shows `—` for the time card.
+    private struct SelectedSlot: Identifiable {
+        let course: SDCourse
+        let weekday: Int
+        var id: String { "\(course.courseNo)-\(weekday)" }
+    }
     /// Bumps whenever an async fetch lands new cache; the body's
     /// `courses` computed read includes this to trigger re-render
     /// (Observation can't see plain `DataCache` mutations).
@@ -121,10 +131,12 @@ struct MacClassTableView: View {
                 .help(String(localized: "class_table_add_course"))
             }
         }
-        .sheet(item: $selectedCourse) { course in
+        .sheet(item: $selectedSlot) { slot in
             CourseDetailSheet(
-                course: course,
-                assignments: DataCache.shared.loadAssignments().unfinished(for: course.courseNo)
+                course: slot.course,
+                assignments: DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo),
+                timeRange: slot.course.timeRange(for: slot.weekday),
+                weekday: slot.weekday
             )
         }
         .sheet(isPresented: $showAddCourse) {
@@ -344,20 +356,20 @@ struct MacClassTableView: View {
                     keyOf: { $0.courseNo },
                     scheduleOf: { $0.schedule }
                 )
-                cellView(role: role)
+                cellView(role: role, weekday: weekday)
             }
         }
     }
 
     @ViewBuilder
-    private func cellView(role: ClassTableCellRole<SDCourse>) -> some View {
+    private func cellView(role: ClassTableCellRole<SDCourse>, weekday: Int) -> some View {
         switch role {
         case .empty:
             emptyCell.frame(height: cellHeight)
         case let .solo(course, spanCount):
             courseCell(course)
                 .frame(height: blockHeight(spanCount))
-                .onTapGesture { selectedCourse = course }
+                .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
         case let .conflictStart(a, spanA, offsetA, b, spanB, offsetB, combinedSpan):
             // 衝堂 renders as a horizontal split where each half is a column
             // sized to that course's actual span and positioned at its
@@ -366,15 +378,15 @@ struct MacClassTableView: View {
             // period 2) would show B as a full-height column and make it
             // clickable in rows where the two courses don't actually meet.
             HStack(spacing: rowSpacing) {
-                conflictColumn(course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan)
-                conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan)
+                conflictColumn(course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan, weekday: weekday)
+                conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan, weekday: weekday)
             }
             .frame(height: blockHeight(combinedSpan))
         case let .conflictMany(courses, combinedSpan):
             HStack(spacing: rowSpacing) {
                 ForEach(courses, id: \.courseNo) { course in
                     courseCell(course)
-                        .onTapGesture { selectedCourse = course }
+                        .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
                         .accessibilityLabel(Text(course.displayName))
                 }
             }
@@ -392,7 +404,7 @@ struct MacClassTableView: View {
     /// block reserve the rows the course isn't scheduled in so an overlap
     /// only meeting in part of the cluster doesn't extend to the rest.
     @ViewBuilder
-    private func conflictColumn(course: SDCourse, span: Int, offset: Int, combinedSpan: Int) -> some View {
+    private func conflictColumn(course: SDCourse, span: Int, offset: Int, combinedSpan: Int, weekday: Int) -> some View {
         let bottom = max(combinedSpan - offset - span, 0)
         VStack(spacing: rowSpacing) {
             if offset > 0 {
@@ -400,7 +412,7 @@ struct MacClassTableView: View {
             }
             courseCell(course)
                 .frame(height: blockHeight(span))
-                .onTapGesture { selectedCourse = course }
+                .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
                 .accessibilityLabel(Text(course.displayName))
             if bottom > 0 {
                 Color.clear.frame(height: blockHeight(bottom))
