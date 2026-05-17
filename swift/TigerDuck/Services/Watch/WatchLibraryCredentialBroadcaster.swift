@@ -3,15 +3,15 @@ import WatchConnectivity
 import os
 
 /// Phone-side sender of library-credential push events to the paired
-/// watch. Owns the monotonic `credEpoch` (App Group `UserDefaults`)
-/// and uses `WCSession.transferUserInfo` for FIFO, guaranteed delivery.
+/// watch. Owns the monotonic `credEpoch` (App Group `UserDefaults`) and
+/// uses `WCSession.transferUserInfo` for FIFO, guaranteed delivery.
 ///
-/// Non-isolated by design: callers reach this from both `@MainActor`
-/// (UI tap → logout) and background actors (token refresh background
-/// task → re-save). The epoch counter is protected by an unfair lock so
-/// the read-modify-write of `credEpoch` is atomic across call sites;
-/// `WCSession.transferUserInfo(_:)` is documented thread-safe.
-final class WatchLibraryCredentialBroadcaster: @unchecked Sendable {
+/// MainActor-isolated: the only callers (`LibraryService.saveCredentials`
+/// /`clearCredentials` and `WatchSyncBridge.pushNow`) are all on the main
+/// actor, and synchronous MainActor → MainActor calls avoid the deferred-
+/// `Task` race we hit in the original Combine-style broadcast path.
+@MainActor
+final class WatchLibraryCredentialBroadcaster {
 
     static let shared = WatchLibraryCredentialBroadcaster()
 
@@ -21,18 +21,17 @@ final class WatchLibraryCredentialBroadcaster: @unchecked Sendable {
         subsystem: "org.ntust.app.TigerDuck",
         category: "watch.credBroadcast"
     )
-    private let epochLock = OSAllocatedUnfairLock<Void>(initialState: ())
 
     private enum DefaultsKey {
         static let epoch = "watchLibraryCredEpoch"
     }
 
     init(
-        session: WatchSessionPushing = WCSession.default,
-        defaults: UserDefaults = UserDefaults(suiteName: "group.org.ntust.app.TigerDuck") ?? .standard
+        session: WatchSessionPushing? = nil,
+        defaults: UserDefaults? = nil
     ) {
-        self.session = session
-        self.defaults = defaults
+        self.session = session ?? WCSession.default
+        self.defaults = defaults ?? UserDefaults(suiteName: "group.org.ntust.app.TigerDuck") ?? .standard
     }
 
     // MARK: - Public
@@ -88,16 +87,10 @@ final class WatchLibraryCredentialBroadcaster: @unchecked Sendable {
 
     // MARK: - Internals
 
-    private func currentEpoch() -> Int {
-        epochLock.withLock { defaults.integer(forKey: DefaultsKey.epoch) }
-    }
-
     private func nextEpoch() -> Int {
-        epochLock.withLock {
-            let next = defaults.integer(forKey: DefaultsKey.epoch) + 1
-            defaults.set(next, forKey: DefaultsKey.epoch)
-            return next
-        }
+        let next = defaults.integer(forKey: DefaultsKey.epoch) + 1
+        defaults.set(next, forKey: DefaultsKey.epoch)
+        return next
     }
 
     /// Used by `republishIfCredentialed`: reuse the current epoch when one
@@ -106,13 +99,11 @@ final class WatchLibraryCredentialBroadcaster: @unchecked Sendable {
     /// in keychain). Returns the same epoch on subsequent calls so a chatty
     /// `pushNow` doesn't burn through fresh epochs on every accent/lang flip.
     private func republishEpoch() -> Int {
-        epochLock.withLock {
-            let current = defaults.integer(forKey: DefaultsKey.epoch)
-            if current > 0 { return current }
-            let bootstrapped = 1
-            defaults.set(bootstrapped, forKey: DefaultsKey.epoch)
-            return bootstrapped
-        }
+        let current = defaults.integer(forKey: DefaultsKey.epoch)
+        if current > 0 { return current }
+        let bootstrapped = 1
+        defaults.set(bootstrapped, forKey: DefaultsKey.epoch)
+        return bootstrapped
     }
 
     private func send(_ payload: WatchLibraryCredentialPayload) {

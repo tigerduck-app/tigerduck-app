@@ -3,7 +3,7 @@ import Foundation
 /// Key constants for the WatchConnectivity applicationContext payload.
 /// Bumping `Self.version` indicates an incompatible payload — receivers
 /// SHOULD still attempt to decode but MAY discard if unsupported.
-public enum WatchWireFormat {
+nonisolated public enum WatchWireFormat {
     public static let version = 1
 
     public enum Key {

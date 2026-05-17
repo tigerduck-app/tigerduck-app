@@ -24,14 +24,15 @@ final class LibraryQRViewModel {
 
     private let store: WatchLibraryCredentialsStore
 
-    init(store: WatchLibraryCredentialsStore = .shared) {
-        self.store = store
-        self.hasCredentials = store.hasCredentials
-        self.username = store.currentUsername()
+    init(store: WatchLibraryCredentialsStore? = nil) {
+        let resolvedStore = store ?? WatchLibraryCredentialsStore.shared
+        self.store = resolvedStore
+        self.hasCredentials = resolvedStore.hasCredentials
+        self.username = resolvedStore.currentUsername()
 
         // React to credential set/wipe pushes so the empty/loaded state
         // flips without requiring a view rebuild.
-        self.credentialsCancellable = store.$hasCredentials
+        self.credentialsCancellable = resolvedStore.$hasCredentials
             .receive(on: RunLoop.main)
             .sink { [weak self] newValue in
                 guard let self else { return }
@@ -78,8 +79,8 @@ final class LibraryQRViewModel {
     private func startRefreshCycle() {
         fetchAndRender()
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.fetchAndRender() }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+            Task { @MainActor [weak self] in self?.fetchAndRender() }
         }
     }
 
@@ -114,16 +115,16 @@ final class LibraryQRViewModel {
         let idx = min(consecutiveErrors - 1, Self.backoffSchedule.count - 1)
         let interval = Self.backoffSchedule[max(0, idx)]
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.fetchAndRender() }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
+            Task { @MainActor [weak self] in self?.fetchAndRender() }
         }
     }
 
     private func restartCountdown() {
         countdown = 30
         countdownTimer?.invalidate()
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 if self.countdown > 0 { self.countdown -= 1 }
             }

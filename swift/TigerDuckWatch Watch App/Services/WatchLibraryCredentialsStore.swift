@@ -38,8 +38,8 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         static let issuedAtMs = "watch_library_cred_issued_at_ms"
     }
 
-    init(defaults: UserDefaults = SharedAppGroup.defaults) {
-        self.defaults = defaults
+    init(defaults: UserDefaults? = nil) {
+        self.defaults = defaults ?? SharedAppGroup.defaults
         self.hasCredentials = WatchKeychain.string(forKey: Keys.username) != nil
             && WatchKeychain.string(forKey: Keys.password) != nil
     }
