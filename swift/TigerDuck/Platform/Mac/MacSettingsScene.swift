@@ -126,20 +126,21 @@ private struct MacAppearanceSettingsView: View {
 
 /// Pin / unpin / reorder the features that appear in the Mac sidebar.
 ///
-/// Writes straight through to `AppState.configuredTabs` so the change
-/// also syncs back to iPhone (the same Defaults-backed list drives both
-/// surfaces). Library-related features are filtered out — they don't
-/// exist on Mac per `AppFeature.macHiddenFeatures`.
+/// Writes straight through to `AppState.macConfiguredTabs`, which is a
+/// Mac-only preference. The iOS tab bar uses `configuredTabs` and is
+/// capped at four user tabs — Mac sidebar edits must not leak into it.
+/// Library-related features are filtered out — they don't exist on Mac
+/// per `AppFeature.macHiddenFeatures`.
 private struct MacSidebarSettingsView: View {
     @Environment(AppState.self) private var appState
 
     private var pinned: [AppFeature] {
-        appState.configuredTabs.filter { $0.isAvailableOnMac }
+        appState.macConfiguredTabs.filter { $0.isAvailableOnMac }
     }
 
     private var available: [AppFeature] {
         AppFeature.allCases.filter {
-            $0.isImplemented && $0.isAvailableOnMac && !appState.configuredTabs.contains($0)
+            $0.isImplemented && $0.isAvailableOnMac && !appState.macConfiguredTabs.contains($0)
         }
     }
 
@@ -257,12 +258,12 @@ private struct MacSidebarSettingsView: View {
     }
 
     private func pin(_ feature: AppFeature) {
-        guard !appState.configuredTabs.contains(feature) else { return }
-        appState.configuredTabs.append(feature)
+        guard !appState.macConfiguredTabs.contains(feature) else { return }
+        appState.macConfiguredTabs.append(feature)
     }
 
     private func unpin(_ feature: AppFeature) {
-        appState.configuredTabs.removeAll { $0 == feature }
+        appState.macConfiguredTabs.removeAll { $0 == feature }
     }
 
     private func moveUp(at index: Int) {
@@ -278,14 +279,14 @@ private struct MacSidebarSettingsView: View {
     }
 
     /// Reorder pinned features one step. `visible` index space; any
-    /// cross-platform pins that aren't surfaced on Mac (e.g. a Library
-    /// item the user previously pinned on iPhone) ride along unchanged
-    /// at the tail so a Mac reorder doesn't disturb iOS-only pins.
+    /// Mac-hidden pins (e.g. a Library item previously pinned on
+    /// iPhone) ride along unchanged at the tail so a Mac reorder
+    /// doesn't disturb non-Mac entries.
     private func rearrange(_ mutate: (inout [AppFeature]) -> Void) {
-        var visible = appState.configuredTabs.filter { $0.isAvailableOnMac }
-        let hidden = appState.configuredTabs.filter { !$0.isAvailableOnMac }
+        var visible = appState.macConfiguredTabs.filter { $0.isAvailableOnMac }
+        let hidden = appState.macConfiguredTabs.filter { !$0.isAvailableOnMac }
         mutate(&visible)
-        appState.configuredTabs = visible + hidden
+        appState.macConfiguredTabs = visible + hidden
     }
 }
 

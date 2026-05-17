@@ -528,6 +528,30 @@ final class AppState {
         }
     }
 
+    /// Mac-only sidebar pin list. Kept separate from `configuredTabs`
+    /// because the Mac sidebar isn't capped at four items: writing Mac
+    /// pins into `configuredTabs` would leak a 5+ item list into iOS's
+    /// tab bar, which only supports four user tabs plus More.
+    #if os(macOS)
+    var macConfiguredTabs: [AppFeature] = {
+        if let data = Defaults[.macConfiguredTabsData],
+           let rawValues = try? JSONDecoder().decode([String].self, from: data) {
+            let features = rawValues.compactMap { AppFeature(rawValue: $0) }
+            return features.isEmpty ? AppFeature.macDefaultTabs : features
+        }
+        return AppFeature.macDefaultTabs
+    }() {
+        didSet {
+            do {
+                let data = try JSONEncoder().encode(macConfiguredTabs.map(\.rawValue))
+                Defaults[.macConfiguredTabsData] = data
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "macConfiguredTabs.encode"])
+            }
+        }
+    }
+    #endif
+
     func completeOnboarding() {
         hasCompletedOnboarding = true
         Defaults[.hasCompletedOnboarding] = true

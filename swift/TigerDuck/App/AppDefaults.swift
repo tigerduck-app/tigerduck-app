@@ -35,6 +35,9 @@ extension Defaults.Keys {
     static let configuredTabsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.configuredTabs
     )
+    static let macConfiguredTabsData = Key<Data?>(
+        AppConstants.UserDefaultsKeys.macConfiguredTabs
+    )
     static let invertSliderDirection = Key<Bool>(
         AppConstants.UserDefaultsKeys.invertSliderDirection,
         default: false

@@ -37,10 +37,10 @@ enum MacSidebarItem: Hashable {
 /// Main sidebar layout: configured features at the top, More plus
 /// Settings at the bottom, the active item's detail view on the right.
 ///
-/// The sidebar is driven by `AppState.configuredTabs` (filtered to
+/// The sidebar is driven by `AppState.macConfiguredTabs` (filtered to
 /// drop features Mac doesn't surface — see `AppFeature.isAvailableOnMac`).
 /// Pinning happens in Settings → Sidebar; changes propagate live
-/// because `configuredTabs` is `@Observable`.
+/// because `macConfiguredTabs` is `@Observable`.
 struct MacContentView: View {
     @Environment(AppState.self) private var appState
     @State private var selection: MacSidebarItem = .more
@@ -56,24 +56,44 @@ struct MacContentView: View {
         }
         .onAppear {
             seedSelectionIfNeeded()
+            drainPendingWidgetDestination()
         }
         .onChange(of: pinnedFeatures) { _, _ in
             seedSelectionIfNeeded()
         }
+        .onChange(of: appState.pendingWidgetDestination) { _, _ in
+            drainPendingWidgetDestination()
+        }
     }
 
-    /// First-launch Mac users get a wider default pin set than iOS
-    /// because the sidebar isn't capped at 4. We derive Mac pins from
-    /// `macDefaultTabs` while `configuredTabs` is still exactly the iOS
-    /// default — writing the Mac defaults into the shared preference
-    /// would leak five user tabs into the iOS tab bar (which only
-    /// supports four user tabs plus More).
+    /// Route incoming widget URLs to the matching sidebar selection.
+    /// Library is not surfaced on Mac (`macHiddenFeatures`), so library
+    /// taps fall back to More — the same place a user goes to enable
+    /// Library on iOS — even though the Mac currently offers no toggle.
+    private func drainPendingWidgetDestination() {
+        guard let destination = appState.pendingWidgetDestination else { return }
+        switch destination {
+        case .classTable:
+            if pinnedFeatures.contains(.classTable) {
+                selection = .feature(.classTable)
+            } else {
+                selection = .more
+            }
+        case .library:
+            selection = .more
+        }
+        appState.clearPendingWidgetDestination()
+    }
+
+    /// Mac sidebar pins live in `macConfiguredTabs`, kept distinct from
+    /// `configuredTabs` so Mac pinning doesn't leak past the iOS tab
+    /// bar's four-tab cap. First-launch sees `macDefaultTabs`.
     private var isUsingMacFallbackTabs: Bool {
-        appState.configuredTabs == AppFeature.defaultTabs
+        appState.macConfiguredTabs == AppFeature.macDefaultTabs
     }
 
     private var sourceConfiguredTabs: [AppFeature] {
-        isUsingMacFallbackTabs ? AppFeature.macDefaultTabs : appState.configuredTabs
+        appState.macConfiguredTabs
     }
 
     // MARK: - Sidebar + detail
