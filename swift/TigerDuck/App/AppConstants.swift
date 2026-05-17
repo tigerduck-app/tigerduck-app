@@ -9,7 +9,7 @@ extension URL {
     /// string in the diagnostic so the regression is obvious in crash
     /// reports. Also throws at the type-load site so static service
     /// URLs cannot ship with a malformed literal.
-    static func knownGood(_ string: StaticString) -> URL {
+    nonisolated static func knownGood(_ string: StaticString) -> URL {
         let raw = "\(string)"
         guard let url = URL(string: raw) else {
             preconditionFailure("URL.knownGood received a malformed literal: \(raw)")

@@ -30,18 +30,24 @@ final class WidgetSnapshotWriter {
 
     private var observers: [NSObjectProtocol] = []
 
+    // Defaults are resolved in the init body rather than as parameter
+    // default expressions because `DataCache.shared` and the nested
+    // `WidgetReloadCoordinator()` factory call land in MainActor-isolated
+    // code; under Swift 6 strict concurrency parameter default
+    // expressions evaluate in a nonisolated context even on a
+    // MainActor-isolated init, so the MainActor references warn there.
     init(
         appState: AppState,
-        cache: DataCache = .shared,
-        store: WidgetSnapshotStore = WidgetSnapshotStore(),
-        coordinator: WidgetReloadCoordinator = WidgetReloadCoordinator(),
-        courseProvider: CanonicalCourseProvider = CanonicalCourseProvider()
+        cache: DataCache? = nil,
+        store: WidgetSnapshotStore? = nil,
+        coordinator: WidgetReloadCoordinator? = nil,
+        courseProvider: CanonicalCourseProvider? = nil
     ) {
         self.appState = appState
-        self.cache = cache
-        self.store = store
-        self.coordinator = coordinator
-        self.courseProvider = courseProvider
+        self.cache = cache ?? .shared
+        self.store = store ?? WidgetSnapshotStore()
+        self.coordinator = coordinator ?? WidgetReloadCoordinator()
+        self.courseProvider = courseProvider ?? CanonicalCourseProvider()
         attachObservers()
     }
 

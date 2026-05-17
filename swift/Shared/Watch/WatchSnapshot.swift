@@ -2,7 +2,7 @@ import Foundation
 
 /// Decoded watch-side view of one applicationContext push. Lives in the
 /// shared App Group file so the widget can read it without WC.
-public struct WatchSnapshot: Codable, Equatable, Sendable {
+public nonisolated struct WatchSnapshot: Codable, Equatable, Sendable {
     public let version: Int
     public let courses: [WatchCourse]
     public let accentHex: String

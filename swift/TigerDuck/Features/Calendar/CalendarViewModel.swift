@@ -21,9 +21,14 @@ final class CalendarViewModel {
     private let eventStore = EKEventStore()
     var calendarAccessGranted = false
     private var hasLoaded = false
-    // `nonisolated` so `deinit` (which is nonisolated under Swift 6 on
-    // a @MainActor class) can read this to remove the
-    // NotificationCenter observer at end-of-life.
+    // `nonisolated(unsafe)` so `deinit` (which is nonisolated under
+    // Swift 6 on a @MainActor class) can read this to remove the
+    // NotificationCenter observer at end-of-life. `@ObservationIgnored`
+    // is required for the isolation modifier to take effect — without
+    // it the `@Observable` macro replaces the stored var with a
+    // computed accessor, which strips the modifier and produces a
+    // "'nonisolated(unsafe)' has no effect" warning.
+    @ObservationIgnored
     private nonisolated(unsafe) var dataObserver: Any? = nil
 
     /// Pre-grouped events by day for O(1) lookups in the month grid.

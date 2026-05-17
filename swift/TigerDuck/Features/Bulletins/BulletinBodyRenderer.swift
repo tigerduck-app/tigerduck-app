@@ -68,7 +68,7 @@ nonisolated enum BulletinBodyRenderer {
     }
 }
 
-private extension String {
+private nonisolated extension String {
     var trimmedNilIfEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed

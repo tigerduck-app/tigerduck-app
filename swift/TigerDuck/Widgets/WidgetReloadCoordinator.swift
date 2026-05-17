@@ -5,11 +5,11 @@ import WidgetKit
 
 @MainActor
 final class WidgetReloadCoordinator {
-    protocol Reloader {
+    nonisolated protocol Reloader: Sendable {
         func reloadAllTimelines()
     }
 
-    struct WidgetKitReloader: Reloader {
+    nonisolated struct WidgetKitReloader: Reloader {
         func reloadAllTimelines() {
             #if canImport(WidgetKit)
             WidgetCenter.shared.reloadAllTimelines()
@@ -17,8 +17,8 @@ final class WidgetReloadCoordinator {
         }
     }
 
-    private let reloader: Reloader
-    private let debounce: TimeInterval
+    nonisolated private let reloader: Reloader
+    nonisolated private let debounce: TimeInterval
     private var pendingTask: Task<Void, Never>?
 
     nonisolated init(reloader: Reloader = WidgetKitReloader(), debounceMs: Int = 300) {

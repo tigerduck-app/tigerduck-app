@@ -191,7 +191,13 @@ enum AppServiceBridge {
 
             let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
                 for courseNo in orderedCourseNos {
-                    group.addTask {
+                    // Hop into MainActor for the body. `buildSDCourse` returns
+                    // a SwiftData-managed `SDCourse` whose accessors are
+                    // MainActor-isolated, and `NameAbbrService.shared` is a
+                    // MainActor singleton — running the closure on MainActor
+                    // avoids per-statement `MainActor.run` while leaving the
+                    // network `lookupCourse(…)` to suspend cooperatively.
+                    group.addTask { @MainActor in
                         do {
                             let results = try await CourseLookupService.lookupCourse(
                                 semester: semester, courseNo: courseNo, language: courseApiLanguage

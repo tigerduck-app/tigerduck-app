@@ -4,7 +4,7 @@ import Foundation
 extension BrowserPreference: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 
-extension Defaults.Keys {
+nonisolated extension Defaults.Keys {
     static let hasCompletedOnboarding = Key<Bool>(
         AppConstants.UserDefaultsKeys.hasCompletedOnboarding,
         default: false

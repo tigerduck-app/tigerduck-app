@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Shared webservice session
 
-enum MoodleWebserviceClient {
+nonisolated enum MoodleWebserviceClient {
     static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
     static let webservicePath = "/webservice/rest/server.php"
     static let session: URLSession = {

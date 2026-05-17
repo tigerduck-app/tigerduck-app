@@ -1,6 +1,6 @@
 import Foundation
 
-extension Data {
+nonisolated extension Data {
     /// Lowercase hex encoding. Used for APNs/PTS token hex strings sent to the
     /// push server.
     func hexEncodedString() -> String {
