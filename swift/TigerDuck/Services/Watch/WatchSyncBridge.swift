@@ -77,5 +77,11 @@ struct WatchSyncBridge: View {
             languageTag: lang,
             visualPreset: appState.visualPreset
         )
+        // Idempotent re-push so a TTL-purged watch (or a watch that
+        // never received the original transfer because it was off
+        // when the user logged in on the phone) gets credentials
+        // back the next time the phone foregrounds. Same epoch as
+        // last send → watch rejects as replay if it already has them.
+        WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed()
     }
 }

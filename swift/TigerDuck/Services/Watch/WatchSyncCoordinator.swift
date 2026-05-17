@@ -7,7 +7,13 @@ import os
 protocol WatchSessionPushing: AnyObject {
     var isPaired: Bool { get }
     var isWatchAppInstalled: Bool { get }
+    var isReachable: Bool { get }
     func updateApplicationContext(_ context: [String: Any]) throws
+    @discardableResult
+    func transferUserInfo(_ userInfo: [String: Any]) -> WCSessionUserInfoTransfer
+    func sendMessage(_ message: [String: Any],
+                     replyHandler: (([String: Any]) -> Void)?,
+                     errorHandler: ((Error) -> Void)?)
 }
 
 extension WCSession: WatchSessionPushing {}
