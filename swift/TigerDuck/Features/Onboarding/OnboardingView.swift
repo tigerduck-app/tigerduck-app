@@ -21,8 +21,6 @@ struct OnboardingView: View {
         case welcome, privacy, watchOS, login, notifications, ready
     }
 
-    private let lastPageIndex = Page.allCases.count - 1
-
     var body: some View {
         TabView(selection: $currentPage) {
             welcomePage.tag(Page.welcome.rawValue)

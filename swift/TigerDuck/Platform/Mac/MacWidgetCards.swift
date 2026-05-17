@@ -185,18 +185,21 @@ private struct NextClassWidgetCard: View {
 
 private struct NextClassTarget {
     /// 1 entry for solo classes, 2+ for 衝堂 (every slot sharing the same
-    /// start). Countdown reads from `slots[0]` since all members share their
-    /// start (and effectively their end, given a one-period block).
+    /// start). Countdown reads start from `slots[0]` (all members share it)
+    /// and end from the latest finishing slot so a conflict block built from
+    /// courses with different period spans still ticks down to the moment
+    /// the block is fully over.
     let slots: [CourseTimeSlot]
     let label: String
 
     func countdownLabel(from now: Date) -> String {
-        let slot = slots[0]
-        if slot.start <= now && now < slot.end {
-            let remaining = max(0, Int(slot.end.timeIntervalSince(now)))
+        let start = slots[0].start
+        let end = slots.map(\.end).max() ?? slots[0].end
+        if start <= now && now < end {
+            let remaining = max(0, Int(end.timeIntervalSince(now)))
             return "Ends in \(format(remaining))"
         }
-        let until = max(0, Int(slot.start.timeIntervalSince(now)))
+        let until = max(0, Int(start.timeIntervalSince(now)))
         return "Starts in \(format(until))"
     }
 
