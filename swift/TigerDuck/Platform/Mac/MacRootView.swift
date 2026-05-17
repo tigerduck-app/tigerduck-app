@@ -55,7 +55,6 @@ struct MacContentView: View {
                 .frame(minWidth: 640, minHeight: 480)
         }
         .onAppear {
-            seedMacDefaultsIfNeeded()
             seedSelectionIfNeeded()
         }
         .onChange(of: pinnedFeatures) { _, _ in
@@ -64,13 +63,17 @@ struct MacContentView: View {
     }
 
     /// First-launch Mac users get a wider default pin set than iOS
-    /// because the sidebar isn't capped at 4. Only kick in when
-    /// `configuredTabs` is still exactly the iOS default — once the
-    /// user has touched their pins, respect their choice.
-    private func seedMacDefaultsIfNeeded() {
-        if appState.configuredTabs == AppFeature.defaultTabs {
-            appState.configuredTabs = AppFeature.macDefaultTabs
-        }
+    /// because the sidebar isn't capped at 4. We derive Mac pins from
+    /// `macDefaultTabs` while `configuredTabs` is still exactly the iOS
+    /// default — writing the Mac defaults into the shared preference
+    /// would leak five user tabs into the iOS tab bar (which only
+    /// supports four user tabs plus More).
+    private var isUsingMacFallbackTabs: Bool {
+        appState.configuredTabs == AppFeature.defaultTabs
+    }
+
+    private var sourceConfiguredTabs: [AppFeature] {
+        isUsingMacFallbackTabs ? AppFeature.macDefaultTabs : appState.configuredTabs
     }
 
     // MARK: - Sidebar + detail
@@ -130,7 +133,7 @@ struct MacContentView: View {
     // MARK: - Selection bookkeeping
 
     private var pinnedFeatures: [AppFeature] {
-        appState.configuredTabs.filter { $0.isAvailableOnMac }
+        sourceConfiguredTabs.filter { $0.isAvailableOnMac }
     }
 
     /// Keep the current selection valid as pinned features mutate.
@@ -146,8 +149,7 @@ struct MacContentView: View {
         }
         // First-launch on Mac: land on Home (the first pinned feature)
         // rather than on More so the app opens to real content.
-        if case .more = selection, !pinnedFeatures.isEmpty,
-           appState.configuredTabs == AppFeature.macDefaultTabs {
+        if case .more = selection, !pinnedFeatures.isEmpty, isUsingMacFallbackTabs {
             selection = pinnedFeatures.first.map(MacSidebarItem.feature) ?? .more
         }
     }
