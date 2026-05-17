@@ -75,7 +75,7 @@ struct MacCalendarView: View {
                         displayedMonth = Date()
                     }
                 } label: {
-                    Label(String(localized: "calendar_today"), systemImage: "circle.fill")
+                    Text(String(localized: "calendar_today"))
                 }
                 .help(String(localized: "desktop_action_jump_to_today"))
             }
