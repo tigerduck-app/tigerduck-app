@@ -8,44 +8,55 @@ struct NowNextView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                if let snapshot = store.snapshot, !snapshot.courses.isEmpty {
-                    let result = NextClassResolver.resolve(courses: snapshot.courses, now: AppClock.now())
-                    if let current = result.current {
-                        ClassCard(title: String(localized: "watch_now"), course: current, policy: policy)
-                    }
-                    if let next = result.next {
-                        ClassCard(title: String(localized: "watch_next"), course: next, policy: policy)
-                    }
-                    if result.current == nil && result.next == nil {
+        // `NextClassResolver.resolve(now:)` reads `AppClock.now()`, but
+        // SwiftUI has no way to know the clock advanced unless a state
+        // change pokes the view. Without this periodic rebuild, the
+        // watch would freeze on the resolution computed at snapshot
+        // arrival even as real (or ticking-fake) time moves past the
+        // next boundary. Snapshot-driven override flips already kick a
+        // rebuild via `@EnvironmentObject`, so this only needs to cover
+        // the no-snapshot-change case. 60 s matches class-boundary
+        // granularity and keeps watch power use trivial.
+        TimelineView(.periodic(from: .now, by: 60)) { _ in
+            ScrollView {
+                VStack(spacing: 12) {
+                    if let snapshot = store.snapshot, !snapshot.courses.isEmpty {
+                        let result = NextClassResolver.resolve(courses: snapshot.courses, now: AppClock.now())
+                        if let current = result.current {
+                            ClassCard(title: String(localized: "watch_now"), course: current, policy: policy)
+                        }
+                        if let next = result.next {
+                            ClassCard(title: String(localized: "watch_next"), course: next, policy: policy)
+                        }
+                        if result.current == nil && result.next == nil {
+                            ContentUnavailableView(
+                                String(localized: "watch_no_upcoming_classes"),
+                                systemImage: "calendar"
+                            )
+                        }
+                    } else if store.snapshot == nil {
+                        ContentUnavailableView(
+                            String(localized: "watch_open_phone_to_sync"),
+                            systemImage: "iphone.gen3"
+                        )
+                    } else if store.snapshot?.loggedIn == false {
+                        ContentUnavailableView(
+                            String(localized: "watch_empty_not_logged_in"),
+                            systemImage: "person.crop.circle.badge.exclamationmark"
+                        )
+                    } else {
+                        // Signed in but no courses on file (between terms, or
+                        // class table hasn't finished fetching on the phone yet).
                         ContentUnavailableView(
                             String(localized: "watch_no_upcoming_classes"),
                             systemImage: "calendar"
                         )
                     }
-                } else if store.snapshot == nil {
-                    ContentUnavailableView(
-                        String(localized: "watch_open_phone_to_sync"),
-                        systemImage: "iphone.gen3"
-                    )
-                } else if store.snapshot?.loggedIn == false {
-                    ContentUnavailableView(
-                        String(localized: "watch_empty_not_logged_in"),
-                        systemImage: "person.crop.circle.badge.exclamationmark"
-                    )
-                } else {
-                    // Signed in but no courses on file (between terms, or
-                    // class table hasn't finished fetching on the phone yet).
-                    ContentUnavailableView(
-                        String(localized: "watch_no_upcoming_classes"),
-                        systemImage: "calendar"
-                    )
                 }
+                .padding(.horizontal, 8)
             }
-            .padding(.horizontal, 8)
+            .navigationTitle(String(localized: "watch_now_next_title"))
         }
-        .navigationTitle(String(localized: "watch_now_next_title"))
     }
 }
 

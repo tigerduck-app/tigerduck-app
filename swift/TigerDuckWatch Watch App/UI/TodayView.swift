@@ -18,23 +18,30 @@ struct TodayView: View {
     }
 
     var body: some View {
-        Group {
-            if todaysCourses.isEmpty {
-                ContentUnavailableView(
-                    String(localized: "watch_no_upcoming_classes"),
-                    systemImage: "calendar"
-                )
-            } else {
-                List(todaysCourses) { course in
-                    NavigationLink {
-                        CourseDetailView(course: course)
-                    } label: {
-                        TodayRow(course: course, policy: policy)
+        // `todaysCourses` reads `AppClock.now()` for weekday derivation,
+        // so the view needs a periodic rebuild to advance past midnight
+        // under real or ticking-fake time. Snapshot pushes already kick
+        // a rebuild via `@EnvironmentObject`; this handles the
+        // no-snapshot-change case. 60 s is plenty for daily granularity.
+        TimelineView(.periodic(from: .now, by: 60)) { _ in
+            Group {
+                if todaysCourses.isEmpty {
+                    ContentUnavailableView(
+                        String(localized: "watch_no_upcoming_classes"),
+                        systemImage: "calendar"
+                    )
+                } else {
+                    List(todaysCourses) { course in
+                        NavigationLink {
+                            CourseDetailView(course: course)
+                        } label: {
+                            TodayRow(course: course, policy: policy)
+                        }
                     }
                 }
             }
+            .navigationTitle(String(localized: "watch_today"))
         }
-        .navigationTitle(String(localized: "watch_today"))
     }
 }
 
