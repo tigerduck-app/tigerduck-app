@@ -137,8 +137,7 @@ struct ClassTableView: View {
             }
             .sheet(item: $viewModel.conflictPickerTarget) { target in
                 ConflictCoursePickerSheet(
-                    courseA: target.courseA,
-                    courseB: target.courseB,
+                    courses: target.courses,
                     onPick: { viewModel.pickFromConflict($0) }
                 )
                 .presentationDetents([.medium])

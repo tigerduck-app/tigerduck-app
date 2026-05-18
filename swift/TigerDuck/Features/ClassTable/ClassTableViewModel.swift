@@ -437,18 +437,16 @@ final class ClassTableViewModel {
             return role
         }
 
-        // Cap at two entries: the L-cluster payload only carries two
-        // courses, and a 3+ closure (e.g. course A overlaps B at one
-        // slot and C at another) is rendered as a single cluster anchored
-        // at clusterStart. Prefer courses anchored in *this* slot —
-        // `closure[0...1]` follows recursive-insertion order, which can
-        // pick a course from a later period over one that actually
-        // occupies this slot, both hiding it visually and stranding it
-        // outside the conflict picker. Earlier code fell back to a
-        // per-slot path so every course stayed visible, but that
-        // re-emitted the L at every slot inside A's block and produced
-        // two Ls for the same course when A's conflicts spanned two
-        // slots. Match Android's behavior (drop the 3rd course) instead.
+        // Cap the L-cluster *display* at two entries: the payload only
+        // carries two courses, and a 3+ closure (e.g. course A overlaps
+        // B at one slot and C at another) is rendered as a single cluster
+        // anchored at clusterStart. Prefer courses anchored in *this*
+        // slot — `closure[0...1]` follows recursive-insertion order,
+        // which can pick a course from a later period over one that
+        // actually occupies this slot, hiding it visually. The picker
+        // resolves the full closure independently (see
+        // `presentConflictPicker`) so every conflicting course stays
+        // reachable on tap, even though only two are drawn.
         let anchored = coursesHere.compactMap { c in
             closure.first(where: { $0.course.courseNo == c.courseNo })
         }
@@ -476,8 +474,7 @@ final class ClassTableViewModel {
 
     struct ConflictPickerTarget: Identifiable {
         let id = UUID()
-        let courseA: SDCourse
-        let courseB: SDCourse
+        let courses: [SDCourse]
         let weekday: Int
         let periodId: String
     }
@@ -513,10 +510,55 @@ final class ClassTableViewModel {
     }
 
     func presentConflictPicker(courseA: SDCourse, courseB: SDCourse, weekday: Int, periodId: String) {
+        // Surface every course in the cluster's transitive closure — the
+        // L-render is capped at two courses, but a 3+ chain (e.g. A+C
+        // anchored here and A+B at the next period) must keep all of
+        // them reachable through the picker so the third never becomes
+        // unselectable.
+        var resolved = conflictClosureCourses(weekday: weekday, periodId: periodId)
+        if resolved.isEmpty {
+            resolved = [courseA, courseB]
+        } else {
+            // Guarantee the two displayed courses lead the list — the
+            // picker rows then match the L cluster the user just tapped.
+            let displayed = [courseA, courseB]
+            let displayedNos = Set(displayed.map(\.courseNo))
+            resolved = displayed + resolved.filter { !displayedNos.contains($0.courseNo) }
+        }
         conflictPickerTarget = ConflictPickerTarget(
-            courseA: courseA, courseB: courseB,
-            weekday: weekday, periodId: periodId
+            courses: resolved,
+            weekday: weekday,
+            periodId: periodId
         )
+    }
+
+    /// Walk the same transitive-closure logic `cellRole` uses, but return
+    /// the full list of courses involved in the conflict cluster anchored
+    /// at `(weekday, periodId)`. Used by the picker so a 3+ course chain
+    /// surfaces every course, even though the L-cluster only renders two.
+    private func conflictClosureCourses(weekday: Int, periodId: String) -> [SDCourse] {
+        let periods = activePeriods
+        guard let periodIndex = periods.firstIndex(where: { $0.id == periodId }) else {
+            return []
+        }
+        var resolved: [SDCourse] = []
+        var seen: Set<String> = []
+        func add(_ c: SDCourse, seedIndex: Int) {
+            guard seen.insert(c.courseNo).inserted else { return }
+            resolved.append(c)
+            let block = blockFor(weekday: weekday, startIndex: seedIndex, course: c)
+            for i in block.first..<(block.first + block.span) {
+                guard let pid = periods[safe: i]?.id else { continue }
+                for other in courses(for: weekday, period: pid)
+                where !seen.contains(other.courseNo) {
+                    add(other, seedIndex: i)
+                }
+            }
+        }
+        for c in courses(for: weekday, period: periodId) {
+            add(c, seedIndex: periodIndex)
+        }
+        return resolved
     }
 
     func pickFromConflict(_ course: SDCourse) {

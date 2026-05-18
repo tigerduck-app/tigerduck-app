@@ -158,8 +158,21 @@ private final class ColorState: @unchecked Sendable {
 
     func ensureAssignments(courseNos: [String], palette: [UInt32]) {
         let didMutate: Bool = lock.withLock {
-            var used = Set(map.values)
             var mutated = false
+            // Repair duplicate hexes left over from the legacy migration
+            // (the pre-uniqueness map could persist multiple courses on
+            // the same palette index). Walk by sorted courseNo so the
+            // keeper is deterministic, drop the rest from `map`, and let
+            // the missing-assignment loop below pick fresh unique colors
+            // for any of them still in the current roster.
+            var seenHexes: Set<UInt32> = []
+            for courseNo in map.keys.sorted() {
+                guard let hex = map[courseNo] else { continue }
+                if seenHexes.insert(hex).inserted { continue }
+                map.removeValue(forKey: courseNo)
+                mutated = true
+            }
+            var used = Set(map.values)
             // Stable order so an iteration over a fresh roster always assigns
             // colors the same way — important because the user might re-order
             // the array between calls.
