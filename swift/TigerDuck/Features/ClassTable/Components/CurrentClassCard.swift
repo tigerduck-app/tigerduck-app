@@ -59,14 +59,7 @@ struct CurrentClassCard: View {
         .cardPadding()
         .background(info.course.color.opacity(0.22), in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
         .glassCard()
-        .overlay(alignment: .bottomTrailing) {
-            if hasAssignment {
-                Image(systemName: "book.closed")
-                    .font(.caption2)
-                    .foregroundStyle(Color.textSecondary)
-                    .padding(8)
-            }
-        }
+        .assignmentBadge(show: hasAssignment)
 
         if let onTap {
             Button(action: onTap) { card }

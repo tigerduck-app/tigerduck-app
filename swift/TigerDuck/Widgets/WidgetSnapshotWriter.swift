@@ -62,12 +62,12 @@ final class WidgetSnapshotWriter {
     func regenerate() {
         let courses = courseProvider.currentCourses()
         let customNames = cache.loadCourseCustomNames()
-        let customColors = cache.loadCourseCustomColors()
+        let colorMap = cache.loadCourseColorMap()
         let snapshot = WidgetSnapshotBuilder.build(
             .init(
                 courses: courses,
                 customNames: customNames,
-                customColors: customColors,
+                colorMap: colorMap,
                 // Gate widget UI on stored credentials, not live session
                 // state: `isNTUSTLoggedIn` flips false the moment session
                 // cookies TTL, which would falsely flash the "Please sign in"
@@ -88,6 +88,7 @@ final class WidgetSnapshotWriter {
             AppConstants.dataDidUpdate,
             AppConstants.languageDidChange,
             AppConstants.courseSkipStateDidChange,
+            AppConstants.courseColorMapDidChange,
             NSLocale.currentLocaleDidChangeNotification,
         ]
         for name in names {

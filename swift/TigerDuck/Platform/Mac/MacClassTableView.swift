@@ -18,6 +18,10 @@ struct MacClassTableView: View {
     @State private var selectedSemester: String = Defaults[.classTableSelectedSemester]
     @State private var selectedSlot: SelectedSlot?
     @State private var showAddCourse: Bool = false
+    /// Non-nil while the macOS color picker sheet is presented. Set from the
+    /// per-cell context menu; the iOS path stores this on its view-model, but
+    /// the Mac classtable is a plain View so it lives in @State here.
+    @State private var courseToRecolor: SDCourse?
 
     /// Carries the weekday alongside the tapped course so the detail sheet
     /// can render the concrete slot's classroom + time range. Without the
@@ -137,7 +141,20 @@ struct MacClassTableView: View {
                 Button {
                     showAddCourse = true
                 } label: {
-                    Label(String(localized: "class_table_add_course"), systemImage: "plus")
+                    // A bare `Label(...)` in a macOS toolbar renders the
+                    // plus glyph and the title with mismatched baselines
+                    // (image floats high). Spelling out the HStack and
+                    // letting both views use their default alignment
+                    // produces the same row geometry as the semester picker
+                    // sitting beside this button. `.fixedSize` stops AppKit
+                    // from compressing the label down to icon-only (and
+                    // floating the glyph against the right edge) when the
+                    // semester picker grows wide.
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                        Text(String(localized: "class_table_add_course"))
+                    }
+                    .fixedSize()
                 }
                 .help(String(localized: "class_table_add_course"))
             }
@@ -157,6 +174,17 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
+        }
+        .sheet(item: $courseToRecolor) { course in
+            CourseColorPickerSheet(
+                course: course,
+                onSelect: { hex in
+                    TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
+                    cacheRevision &+= 1
+                    NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+                }
+            )
+            .frame(minWidth: 360, minHeight: 480)
         }
         .alert(
             String(localized: "class_table_conflict_add_failed_title"),
@@ -393,12 +421,21 @@ struct MacClassTableView: View {
                 conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan, weekday: weekday)
             }
             .frame(height: blockHeight(combinedSpan))
-        case let .conflictMany(courses, combinedSpan):
+        case let .conflictMany(segments, combinedSpan):
+            // Same offset-aware column layout as the 2-course case
+            // above, just N columns wide. Each segment gets a column
+            // sized to its own span and positioned at its offset, so a
+            // staircase like A(rows 0-1) / B(rows 1-2) / C(rows 2-3)
+            // paints each course only in the rows it actually occupies.
             HStack(spacing: rowSpacing) {
-                ForEach(courses, id: \.courseNo) { course in
-                    courseCell(course)
-                        .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
-                        .accessibilityLabel(Text(course.displayName))
+                ForEach(segments, id: \.course.courseNo) { segment in
+                    conflictColumn(
+                        course: segment.course,
+                        span: segment.span,
+                        offset: segment.offset,
+                        combinedSpan: combinedSpan,
+                        weekday: weekday
+                    )
                 }
             }
             .frame(height: blockHeight(combinedSpan))
@@ -471,6 +508,13 @@ struct MacClassTableView: View {
                 .stroke(color.opacity(0.6), lineWidth: 0.5)
         )
         .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                courseToRecolor = course
+            } label: {
+                Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
+            }
+        }
     }
 
     // MARK: - Helpers

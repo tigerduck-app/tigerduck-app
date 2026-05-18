@@ -105,14 +105,13 @@ struct TimetableGridView: View {
                 }
                 .zIndex(1)
 
-        case .conflictStart(let cA, let sA, let oA, let cB, let sB, let oB, let combinedSpan):
+        case .conflictStart(let segments, let combinedSpan):
             let clusterHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
             Color.clear
                 .overlay(alignment: .top) {
                     ConflictClusterView(
                         viewModel: viewModel,
-                        courseA: cA, spanA: sA, offsetA: oA,
-                        courseB: cB, spanB: sB, offsetB: oB,
+                        segments: segments,
                         combinedSpan: combinedSpan,
                         cellHeight: cellHeight,
                         rowSpacing: rowSpacing,
@@ -129,26 +128,38 @@ struct TimetableGridView: View {
     }
 }
 
-/// Renders two interlocking L-shapes for a conflict cluster. Geometry follows
-/// the Android `ConflictCourseCell` — each course occupies its own absolute
-/// box inside the cluster, clipped to a Γ or mirror-L so the two regions tile
-/// without overlap. Course-name text sits in each shape's "bar" rectangle so
-/// neither name is hidden behind the other course's color.
+/// Renders a conflict cluster. For two courses we draw the interlocking
+/// L-shapes (Γ + mirror-L) that follow the Android `ConflictCourseCell`
+/// geometry; for three or more we fall back to a column layout so every
+/// course keeps a visible region — the L-shape geometry only resolves
+/// cleanly for two interlocking blocks, and an N>=3 chain would otherwise
+/// bury a course's tail under a `.skip` with nothing drawn on top.
 private struct ConflictClusterView: View {
     let viewModel: ClassTableViewModel
-    let courseA: SDCourse
-    let spanA: Int
-    let offsetA: Int
-    let courseB: SDCourse
-    let spanB: Int
-    let offsetB: Int
+    let segments: [ClassTableViewModel.ConflictSegment]
     let combinedSpan: Int
     let cellHeight: CGFloat
     let rowSpacing: CGFloat
     let weekday: Int
     let periodId: String
 
+    private var courseA: SDCourse { segments[0].course }
+    private var spanA: Int { segments[0].span }
+    private var offsetA: Int { segments[0].offset }
+    private var courseB: SDCourse { segments[1].course }
+    private var spanB: Int { segments[1].span }
+    private var offsetB: Int { segments[1].offset }
+
+    // The L-cluster visual is capped at the two leading segments to
+    // match Android — a 3+ chain would otherwise stack into N visible
+    // columns and lose the Γ / mirror-L geometry. The hidden segments
+    // stay reachable through `presentConflictPicker`, which resolves
+    // the full transitive closure of conflicting courses on tap.
     var body: some View {
+        lShapeLayout
+    }
+
+    private var lShapeLayout: some View {
         GeometryReader { proxy in
             // Step matches the surrounding grid exactly (cell + rowSpacing),
             // so each course's L sits where the corresponding solo block
@@ -239,38 +250,23 @@ private struct ConflictClusterView: View {
 
     @ViewBuilder
     private func conflictContextMenu() -> some View {
-        Section(courseA.displayName) {
-            Button {
-                viewModel.startRename(courseA)
-            } label: {
-                Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
-            }
-            Button {
-                viewModel.startRecolor(courseA)
-            } label: {
-                Label(String(localized: "class_table_pick_color"), systemImage: "paintpalette")
-            }
-            Button(role: .destructive) {
-                viewModel.deleteCourse(courseA)
-            } label: {
-                Label(String(localized: "class_table_delete"), systemImage: "trash")
-            }
-        }
-        Section(courseB.displayName) {
-            Button {
-                viewModel.startRename(courseB)
-            } label: {
-                Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
-            }
-            Button {
-                viewModel.startRecolor(courseB)
-            } label: {
-                Label(String(localized: "class_table_pick_color"), systemImage: "paintpalette")
-            }
-            Button(role: .destructive) {
-                viewModel.deleteCourse(courseB)
-            } label: {
-                Label(String(localized: "class_table_delete"), systemImage: "trash")
+        ForEach(segments, id: \.course.courseNo) { segment in
+            Section(segment.course.displayName) {
+                Button {
+                    viewModel.startRename(segment.course)
+                } label: {
+                    Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
+                }
+                Button {
+                    viewModel.startRecolor(segment.course)
+                } label: {
+                    Label(String(localized: "class_table_pick_color"), systemImage: "paintpalette")
+                }
+                Button(role: .destructive) {
+                    viewModel.deleteCourse(segment.course)
+                } label: {
+                    Label(String(localized: "class_table_delete"), systemImage: "trash")
+                }
             }
         }
     }

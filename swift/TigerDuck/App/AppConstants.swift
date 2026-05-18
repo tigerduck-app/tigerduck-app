@@ -44,6 +44,12 @@ nonisolated enum AppConstants {
     /// skipped sees the lock-screen activity update without waiting
     /// for the next sync tick.
     static let courseSkipStateDidChange = Notification.Name("TigerDuck.courseSkipStateDidChange")
+    /// Posted when the per-course color assignment map mutates (user
+    /// picked a custom color, reassigned all, or a course got displaced
+    /// during a setColor uniqueness rebalance). Drives the widget
+    /// snapshot rewrite so home-screen widgets follow in-app colors
+    /// without waiting for the next data sync.
+    static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
     nonisolated enum KeychainKeys {

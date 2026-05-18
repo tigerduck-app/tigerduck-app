@@ -1,21 +1,25 @@
 import SwiftUI
 
-/// Bottom sheet shown when the user taps a conflict cell. Lets them disambiguate
-/// which of the two overlapping courses to inspect.
+/// Bottom sheet shown when the user taps a conflict cell. Lets the user
+/// disambiguate which overlapping course to inspect — the L-cluster only
+/// draws two, but a 3+ chain can be passed here so every conflicting
+/// course stays reachable.
 struct ConflictCoursePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let courseA: SDCourse
-    let courseB: SDCourse
+    let courses: [SDCourse]
     let onPick: (SDCourse) -> Void
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                row(course: courseA)
-                Divider()
-                    .padding(.leading, 56)
-                row(course: courseB)
+                ForEach(Array(courses.enumerated()), id: \.element.courseNo) { index, course in
+                    row(course: course)
+                    if index < courses.count - 1 {
+                        Divider()
+                            .padding(.leading, 56)
+                    }
+                }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

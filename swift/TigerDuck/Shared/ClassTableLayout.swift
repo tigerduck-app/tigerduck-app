@@ -1,5 +1,22 @@
 import Foundation
 
+/// One member of a 3+ course conflict cluster. `offset` is the
+/// 0-indexed row inside the cluster where this course's block begins
+/// (measured from the cluster's earliest row); `span` is the course's
+/// own contiguous block length. Renderers stack these as offset-aware
+/// columns so a course only paints rows it's actually scheduled in.
+public struct ClassTableConflictSegment<Course> {
+    public let course: Course
+    public let span: Int
+    public let offset: Int
+
+    public init(course: Course, span: Int, offset: Int) {
+        self.course = course
+        self.span = span
+        self.offset = offset
+    }
+}
+
 /// Per-cell role produced by the class-table conflict-detection algorithm.
 /// Generic so the same value can carry an `SDCourse` (main app), a
 /// `SnapshotCourse` (WidgetKit), or any future surface's course model.
@@ -16,12 +33,18 @@ public enum ClassTableCellRole<Course> {
         courseB: Course, spanB: Int, offsetB: Int,
         combinedSpan: Int
     )
-    /// 3+ overlapping courses occupying the same row run. Offsets aren't
-    /// tracked individually because callers reach this case through the
-    /// per-slot fallback, where every member shares the same span starting
-    /// at the current row. Renderers should split horizontally across
-    /// `courses` so no course disappears from the grid.
-    case conflictMany(courses: [Course], combinedSpan: Int)
+    /// 3+ overlapping courses sharing a single cluster. Each segment
+    /// carries its own offset/span inside `combinedSpan` so renderers
+    /// can place a course only in the rows it's actually scheduled in —
+    /// previously this case dropped offsets and the cluster was emitted
+    /// per-slot instead, which duplicated middle courses across rows
+    /// (e.g. B appeared in both the A+B and the B+C clusters of an A/B/C
+    /// chain). Anchored-slot courses lead the array so column ordering
+    /// matches the cell the user tapped.
+    case conflictMany(
+        segments: [ClassTableConflictSegment<Course>],
+        combinedSpan: Int
+    )
     /// This cell is part of a SoloStart / ConflictStart cluster that began
     /// at an earlier row; the renderer must emit nothing here so the
     /// parent's `combinedSpan` can occupy the rows.
@@ -30,10 +53,11 @@ public enum ClassTableCellRole<Course> {
 
 /// Pure conflict-detection algorithm shared between the iPhone main view,
 /// the macOS class table, and the WeekWidget. Mirrors the iPhone
-/// `ClassTableViewModel.cellRole` semantics: 2-course overlaps emit a
-/// `conflictStart` at the cluster's earliest row plus `.skip` for every
-/// later cell in that cluster; a transitive closure of 3+ courses falls
-/// back to per-slot rendering so no course is dropped.
+/// `ClassTableViewModel.cellRole` semantics: each cluster — whether 2-
+/// or N-course — emits one `conflictStart` / `conflictMany` at its
+/// earliest row plus `.skip` for every later cell. Renderers carry
+/// per-course offset/span so the cluster is drawn as one staircase of
+/// offset-aware columns, not a chain of overlapping per-slot pairs.
 public enum ClassTableLayout {
     /// Returns the role for one cell, given a flat list of courses, the
     /// chronologically-ordered period ids for the grid, and key/schedule
@@ -87,17 +111,6 @@ public enum ClassTableLayout {
 
         let clusterStart = closure.map(\.first).min() ?? periodIndex
 
-        // 3+ closure → per-slot fallback so every course stays on the grid.
-        if closure.count >= 3 {
-            return perSlotRole(
-                periodIds: periodIds,
-                periodIndex: periodIndex,
-                coursesHere: coursesHere,
-                coursesAt: coursesAt,
-                keyOf: keyOf
-            )
-        }
-
         if clusterStart < periodIndex { return .skip }
 
         if closure.count == 1 {
@@ -105,52 +118,37 @@ public enum ClassTableLayout {
             return .solo(only.course, spanCount: only.span)
         }
 
-        let a = closure[0]
-        let b = closure[1]
-        let clusterEnd = max(a.first + a.span, b.first + b.span)
-        return .conflictStart(
-            courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,
-            courseB: b.course, spanB: b.span, offsetB: b.first - clusterStart,
-            combinedSpan: clusterEnd - clusterStart
-        )
-    }
-
-    private static func perSlotRole<C>(
-        periodIds: [String],
-        periodIndex: Int,
-        coursesHere: [C],
-        coursesAt: (Int) -> [C],
-        keyOf: (C) -> String
-    ) -> ClassTableCellRole<C> {
-        let mySet = Set(coursesHere.map(keyOf))
-
-        if periodIndex > 0 {
-            let prev = coursesAt(periodIndex - 1)
-            if Set(prev.map(keyOf)) == mySet { return .skip }
-        }
-
-        var span = 1
-        var i = periodIndex + 1
-        while i < periodIds.count {
-            let next = coursesAt(i)
-            if Set(next.map(keyOf)) == mySet {
-                span += 1
-                i += 1
-            } else {
-                break
-            }
-        }
-
-        if coursesHere.count == 1 {
-            return .solo(coursesHere[0], spanCount: span)
-        }
-        if coursesHere.count == 2 {
+        if closure.count == 2 {
+            let a = closure[0]
+            let b = closure[1]
+            let clusterEnd = max(a.first + a.span, b.first + b.span)
             return .conflictStart(
-                courseA: coursesHere[0], spanA: span, offsetA: 0,
-                courseB: coursesHere[1], spanB: span, offsetB: 0,
-                combinedSpan: span
+                courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,
+                courseB: b.course, spanB: b.span, offsetB: b.first - clusterStart,
+                combinedSpan: clusterEnd - clusterStart
             )
         }
-        return .conflictMany(courses: coursesHere, combinedSpan: span)
+
+        // 3+ closure: emit one cluster with per-course offset/span so
+        // renderers can place each course only in the rows it actually
+        // occupies. Anchored-slot courses lead the array so column
+        // order matches the cell the user tapped — recursive insertion
+        // order can otherwise put a later-period course first.
+        let anchoredKeys = Set(coursesHere.map(keyOf))
+        let anchoredFirst = closure.filter { anchoredKeys.contains(keyOf($0.course)) }
+        let rest = closure.filter { !anchoredKeys.contains(keyOf($0.course)) }
+        let ordered = anchoredFirst + rest
+        let segments = ordered.map { entry in
+            ClassTableConflictSegment(
+                course: entry.course,
+                span: entry.span,
+                offset: entry.first - clusterStart
+            )
+        }
+        let clusterEnd = closure.map { $0.first + $0.span }.max() ?? periodIndex
+        return .conflictMany(
+            segments: segments,
+            combinedSpan: clusterEnd - clusterStart
+        )
     }
 }

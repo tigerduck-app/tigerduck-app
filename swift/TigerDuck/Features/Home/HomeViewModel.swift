@@ -62,7 +62,7 @@ final class HomeViewModel {
     private func reloadFromCache() {
         let courses = courseProvider.currentCourses()
         let assignments = DataCache.shared.loadAssignments()
-        TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
+        TigerDuckTheme.ensureAssignments(courseNos: courses.map(\.courseNo))
         allCourses = courses
         todayCourses = courses.coursesForToday()
         allAssignmentsCache = filterToCurrentSemester(assignments, courses: courses)
@@ -172,7 +172,7 @@ final class HomeViewModel {
 
         await MainActor.run {
             isUpdatingFromNetwork = true
-            TigerDuckTheme.buildCourseColorMap(courseNos: allCourses.map(\.courseNo))
+            TigerDuckTheme.ensureAssignments(courseNos: allCourses.map(\.courseNo))
             self.allCourses = allCourses
             todayCourses = todayFiltered
             allAssignmentsCache = semesterFiltered

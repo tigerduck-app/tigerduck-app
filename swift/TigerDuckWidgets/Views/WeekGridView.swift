@@ -140,13 +140,24 @@ struct WeekGridView: View {
                 }
                 .zIndex(1)
 
-        case let .conflictMany(courses, combinedSpan):
+        case let .conflictMany(segments, combinedSpan):
+            // Same offset-aware column layout as the 2-course path, just
+            // N columns wide. Each segment is placed by its own
+            // span/offset so a chain like A(rows 0-1)/B(rows 1-2)/C(rows
+            // 2-3) paints each course only where it actually meets.
             let totalHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
             Color.clear
                 .overlay(alignment: .top) {
                     HStack(spacing: 1) {
-                        ForEach(Array(courses.enumerated()), id: \.offset) { _, course in
-                            conflictHalf(course, fontScale: fontScale)
+                        ForEach(segments, id: \.course.courseNo) { segment in
+                            conflictColumn(
+                                segment.course,
+                                span: segment.span,
+                                offset: segment.offset,
+                                combinedSpan: combinedSpan,
+                                cellHeight: cellHeight,
+                                fontScale: fontScale
+                            )
                         }
                     }
                     .frame(height: totalHeight)

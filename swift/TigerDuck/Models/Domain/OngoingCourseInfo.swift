@@ -23,12 +23,15 @@ extension Array where Element == SDCourse {
     /// the Android shared `computeOngoingCourses` so iOS and Android
     /// surface the same "Current class" set.
     ///
-    /// Periods are considered contiguous when adjacent in
-    /// `AppConstants.Periods.chronologicalOrder` AND the prior period's
-    /// end time equals the next period's start time. Most periods have a
-    /// real break between them (e.g. P1 ends 09:00, P2 starts 09:10), so
-    /// without the touch-check we'd report a course as ongoing through
-    /// the break. Only the first running block per course is returned.
+    /// Periods are merged into one block whenever they sit next to each
+    /// other in `AppConstants.Periods.chronologicalOrder`, even if the
+    /// official period times leave a gap between them (e.g. P1 ends
+    /// 09:00, P2 starts 09:10). Treating the inter-period break as part
+    /// of the same class lets the "Current class" card stay up through
+    /// the break and — more importantly — lets its progress bar measure
+    /// against the whole class span instead of resetting at every
+    /// individual period. Only the first running block per course is
+    /// returned.
     func ongoingCourses(weekday: Int, minuteOfDay: Int) -> [OngoingCourseInfo] {
         var results: [OngoingCourseInfo] = []
         for course in self {
@@ -38,8 +41,7 @@ extension Array where Element == SDCourse {
             while blockStart < periods.count {
                 var blockEnd = blockStart
                 while blockEnd + 1 < periods.count,
-                      periodOrder(periods[blockEnd + 1]) == periodOrder(periods[blockEnd]) + 1,
-                      periodsTouch(periods[blockEnd], periods[blockEnd + 1]) {
+                      periodOrder(periods[blockEnd + 1]) == periodOrder(periods[blockEnd]) + 1 {
                     blockEnd += 1
                 }
                 let firstId = periods[blockStart]
@@ -67,15 +69,6 @@ extension Array where Element == SDCourse {
 
 private func periodOrder(_ periodId: String) -> Int {
     AppConstants.Periods.chronologicalOrder.firstIndex(of: periodId) ?? Int.max
-}
-
-/// True when `a` ends at the exact minute `b` starts (no break between
-/// them). Used to keep a course's running block from spanning a break.
-private func periodsTouch(_ a: String, _ b: String) -> Bool {
-    guard let aEnd = parseHm(AppConstants.PeriodTimes.mapping[a]?.end),
-          let bStart = parseHm(AppConstants.PeriodTimes.mapping[b]?.start)
-    else { return false }
-    return aEnd == bStart
 }
 
 private func parseHm(_ hhmm: String?) -> Int? {

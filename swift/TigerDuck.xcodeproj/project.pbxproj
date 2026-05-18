@@ -1118,6 +1118,7 @@
 					WidgetReloadCoordinator.swift,
 					CanonicalCourseProvider.swift,
 					AddCourseSheet.swift,
+					CourseColorPickerSheet.swift,
 					CourseDetailSheet.swift,
 					ClassTableLayout.swift,
 					"View+PlatformCompat.swift",
@@ -1126,6 +1127,7 @@
 					CurrentClassCard.swift,
 					MinuteTicker.swift,
 					EqualHeightCards.swift,
+					BadgeOverlay.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1288,6 +1290,7 @@
 					WidgetReloadCoordinator.swift,
 					CanonicalCourseProvider.swift,
 					AddCourseSheet.swift,
+					CourseColorPickerSheet.swift,
 					CourseDetailSheet.swift,
 					ClassTableLayout.swift,
 					"View+PlatformCompat.swift",
@@ -1296,6 +1299,7 @@
 					CurrentClassCard.swift,
 					MinuteTicker.swift,
 					EqualHeightCards.swift,
+					BadgeOverlay.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

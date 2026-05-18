@@ -205,7 +205,7 @@ final class ClassTableViewModel {
         // the app session.
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
-        TigerDuckTheme.reloadCustomColors()
+        TigerDuckTheme.reload()
         reloadCurrentSemesterCourses()
         courses = buildCourseList(
             DataCache.shared.loadCourses(semester: currentSemester),
@@ -258,7 +258,7 @@ final class ClassTableViewModel {
 
     private func refreshCourseColors() {
         let courseNos = Set(courses.map(\.courseNo)).union(currentSemesterCourses.map(\.courseNo))
-        TigerDuckTheme.buildCourseColorMap(courseNos: Array(courseNos))
+        TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos))
     }
 
     var totalCredits: Int {
@@ -343,20 +343,27 @@ final class ClassTableViewModel {
         assignments.unfinished(for: courseNo)
     }
 
+    struct ConflictSegment: Equatable {
+        let course: SDCourse
+        /// Contiguous block length in rows.
+        let span: Int
+        /// 0-indexed row offset from the cluster's `clusterStart` where
+        /// this course's block begins.
+        let offset: Int
+    }
+
     enum CellRole {
         case empty
         case solo(SDCourse, spanCount: Int)
-        /// Two overlapping courses occupying (possibly partially) this
-        /// cluster. `combinedSpan` is the total row count of the union;
-        /// `offsetA` / `offsetB` are 0-indexed row positions within the
-        /// cluster where each course's block begins; `spanA` / `spanB` are
-        /// each course's own contiguous block length. The L-split is drawn
-        /// only on rows where both appear.
-        case conflictStart(
-            courseA: SDCourse, spanA: Int, offsetA: Int,
-            courseB: SDCourse, spanB: Int, offsetB: Int,
-            combinedSpan: Int
-        )
+        /// Two or more overlapping courses sharing a cluster.
+        /// `combinedSpan` is the total row count of the union of every
+        /// segment's block; each segment's `offset` / `span` place it
+        /// inside that union. The renderer keeps the L-split layout for
+        /// the 2-course case and falls back to a column layout when a
+        /// chain pulls in 3+ courses (so every scheduled period stays
+        /// visible — no row gets buried under a `.skip` with nothing
+        /// drawn on top).
+        case conflictStart(segments: [ConflictSegment], combinedSpan: Int)
         /// This cell is part of a SoloStart / ConflictStart cluster that
         /// began at an earlier row; the renderer must emit nothing here so
         /// the parent's `combinedSpan` overlay can occupy the rows.
@@ -425,20 +432,6 @@ final class ClassTableViewModel {
 
         let clusterStart = closure.map(\.first).min() ?? periodIndex
 
-        // A 3+ closure means a chain like A(1-2) B(2-3) C(3-4): pairwise
-        // overlaps without any 3-way slot. Rendering as one cluster would
-        // drop everything past index 2 (and emit .skip in C's solo rows,
-        // hiding C entirely). Fall back to per-slot rendering so every
-        // course stays on the table; the 2-course case still uses the
-        // L-cluster with its block-spanning visual continuity.
-        if closure.count >= 3 {
-            let role = perSlotRole(
-                weekday: weekday, periodIndex: periodIndex, coursesHere: coursesHere
-            )
-            cellRoleCache[key] = role
-            return role
-        }
-
         if clusterStart < periodIndex {
             cellRoleCache[key] = .skip
             return .skip
@@ -451,62 +444,37 @@ final class ClassTableViewModel {
             return role
         }
 
-        let a = closure[0]
-        let b = closure[1]
-        let clusterEnd = max(a.first + a.span, b.first + b.span)
+        // Emit a segment per course in the closure so a 3+ chain
+        // (e.g. A on periods 1-2, B on 2-3, C on 3-4) keeps every
+        // scheduled period visible. Earlier code capped the cluster at
+        // two segments, which left the third course's tail covered by
+        // `.skip` but not drawn over — hiding scheduled class time.
+        // Anchored-slot courses lead the array so the rendering order
+        // matches the cell the user tapped; the rest follow in
+        // closure-insertion order.
+        let anchoredNos = Set(coursesHere.map(\.courseNo))
+        let anchoredFirst = closure.filter { anchoredNos.contains($0.course.courseNo) }
+        let rest = closure.filter { !anchoredNos.contains($0.course.courseNo) }
+        let ordered = anchoredFirst + rest
+        let segments = ordered.map { entry in
+            ConflictSegment(
+                course: entry.course,
+                span: entry.span,
+                offset: entry.first - clusterStart
+            )
+        }
+        let clusterEnd = closure.map { $0.first + $0.span }.max() ?? periodIndex
         let role = CellRole.conflictStart(
-            courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,
-            courseB: b.course, spanB: b.span, offsetB: b.first - clusterStart,
+            segments: segments,
             combinedSpan: clusterEnd - clusterStart
         )
         cellRoleCache[key] = role
         return role
     }
 
-    /// Chain-conflict fallback: render the current cell based only on the
-    /// courses physically present in THIS slot, with span = number of
-    /// consecutive forward periods where the exact same course set appears.
-    /// Used when the transitive closure spans 3+ courses without any 3-way
-    /// slot, so a cluster rendering would hide some of them.
-    private func perSlotRole(
-        weekday: Int, periodIndex: Int, coursesHere: [SDCourse]
-    ) -> CellRole {
-        let periods = activePeriods
-        let mySet = Set(coursesHere.map(\.courseNo))
-
-        if periodIndex > 0 {
-            let prev = courses(for: weekday, period: periods[periodIndex - 1].id)
-            if Set(prev.map(\.courseNo)) == mySet { return .skip }
-        }
-
-        var span = 1
-        var i = periodIndex + 1
-        while i < periods.count {
-            let next = courses(for: weekday, period: periods[i].id)
-            if Set(next.map(\.courseNo)) == mySet {
-                span += 1
-                i += 1
-            } else {
-                break
-            }
-        }
-
-        if coursesHere.count == 1 {
-            return .solo(coursesHere[0], spanCount: span)
-        }
-        let a = coursesHere[0]
-        let b = coursesHere[1]
-        return .conflictStart(
-            courseA: a, spanA: span, offsetA: 0,
-            courseB: b, spanB: span, offsetB: 0,
-            combinedSpan: span
-        )
-    }
-
     struct ConflictPickerTarget: Identifiable {
         let id = UUID()
-        let courseA: SDCourse
-        let courseB: SDCourse
+        let courses: [SDCourse]
         let weekday: Int
         let periodId: String
     }
@@ -542,10 +510,55 @@ final class ClassTableViewModel {
     }
 
     func presentConflictPicker(courseA: SDCourse, courseB: SDCourse, weekday: Int, periodId: String) {
+        // Surface every course in the cluster's transitive closure — the
+        // L-render is capped at two courses, but a 3+ chain (e.g. A+C
+        // anchored here and A+B at the next period) must keep all of
+        // them reachable through the picker so the third never becomes
+        // unselectable.
+        var resolved = conflictClosureCourses(weekday: weekday, periodId: periodId)
+        if resolved.isEmpty {
+            resolved = [courseA, courseB]
+        } else {
+            // Guarantee the two displayed courses lead the list — the
+            // picker rows then match the L cluster the user just tapped.
+            let displayed = [courseA, courseB]
+            let displayedNos = Set(displayed.map(\.courseNo))
+            resolved = displayed + resolved.filter { !displayedNos.contains($0.courseNo) }
+        }
         conflictPickerTarget = ConflictPickerTarget(
-            courseA: courseA, courseB: courseB,
-            weekday: weekday, periodId: periodId
+            courses: resolved,
+            weekday: weekday,
+            periodId: periodId
         )
+    }
+
+    /// Walk the same transitive-closure logic `cellRole` uses, but return
+    /// the full list of courses involved in the conflict cluster anchored
+    /// at `(weekday, periodId)`. Used by the picker so a 3+ course chain
+    /// surfaces every course, even though the L-cluster only renders two.
+    private func conflictClosureCourses(weekday: Int, periodId: String) -> [SDCourse] {
+        let periods = activePeriods
+        guard let periodIndex = periods.firstIndex(where: { $0.id == periodId }) else {
+            return []
+        }
+        var resolved: [SDCourse] = []
+        var seen: Set<String> = []
+        func add(_ c: SDCourse, seedIndex: Int) {
+            guard seen.insert(c.courseNo).inserted else { return }
+            resolved.append(c)
+            let block = blockFor(weekday: weekday, startIndex: seedIndex, course: c)
+            for i in block.first..<(block.first + block.span) {
+                guard let pid = periods[safe: i]?.id else { continue }
+                for other in courses(for: weekday, period: pid)
+                where !seen.contains(other.courseNo) {
+                    add(other, seedIndex: i)
+                }
+            }
+        }
+        for c in courses(for: weekday, period: periodId) {
+            add(c, seedIndex: periodIndex)
+        }
+        return resolved
     }
 
     func pickFromConflict(_ course: SDCourse) {
@@ -703,20 +716,20 @@ final class ClassTableViewModel {
         courseToRecolor = course
     }
 
-    /// Apply a palette index override for this course. Writes through
-    /// TigerDuckTheme (which handles persistence) and broadcasts so Home,
-    /// Class Table, and the Live Activity all refresh.
-    func setCustomColor(paletteIndex: Int, for course: SDCourse) {
-        TigerDuckTheme.setCustomColor(index: paletteIndex, for: course.courseNo)
-        courseToRecolor = nil
-        broadcastLocalChange()
-    }
-
-    /// Remove the user override so the course returns to its deterministic
-    /// default color.
-    func clearCustomColor(for course: SDCourse) {
-        TigerDuckTheme.clearCustomColor(for: course.courseNo)
-        courseToRecolor = nil
+    /// Apply a user-picked color (preset or fully custom) for this course.
+    /// Writes through TigerDuckTheme — which also displaces any other course
+    /// currently holding the same hex so the "no two courses share a color"
+    /// invariant survives the edit — then broadcasts so Home, Class Table,
+    /// widgets and the Live Activity all refresh.
+    ///
+    /// Intentionally does *not* clear `courseToRecolor`: the ColorPicker
+    /// emits a continuous stream of `onSelect` ticks while the user drags
+    /// the slider, so auto-dismissing here would close the sheet after the
+    /// first intermediate value and strand the rest of the gesture.
+    /// `CourseColorPickerSheet` calls `dismiss()` itself when a preset tap
+    /// (or the Close button) actually finishes the picking session.
+    func setColor(hex: UInt32, for course: SDCourse) {
+        TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
         broadcastLocalChange()
     }
 
