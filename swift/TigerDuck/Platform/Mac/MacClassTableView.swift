@@ -421,12 +421,21 @@ struct MacClassTableView: View {
                 conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan, weekday: weekday)
             }
             .frame(height: blockHeight(combinedSpan))
-        case let .conflictMany(courses, combinedSpan):
+        case let .conflictMany(segments, combinedSpan):
+            // Same offset-aware column layout as the 2-course case
+            // above, just N columns wide. Each segment gets a column
+            // sized to its own span and positioned at its offset, so a
+            // staircase like A(rows 0-1) / B(rows 1-2) / C(rows 2-3)
+            // paints each course only in the rows it actually occupies.
             HStack(spacing: rowSpacing) {
-                ForEach(courses, id: \.courseNo) { course in
-                    courseCell(course)
-                        .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
-                        .accessibilityLabel(Text(course.displayName))
+                ForEach(segments, id: \.course.courseNo) { segment in
+                    conflictColumn(
+                        course: segment.course,
+                        span: segment.span,
+                        offset: segment.offset,
+                        combinedSpan: combinedSpan,
+                        weekday: weekday
+                    )
                 }
             }
             .frame(height: blockHeight(combinedSpan))

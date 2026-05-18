@@ -1127,6 +1127,7 @@
 					CurrentClassCard.swift,
 					MinuteTicker.swift,
 					EqualHeightCards.swift,
+					BadgeOverlay.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1298,6 +1299,7 @@
 					CurrentClassCard.swift,
 					MinuteTicker.swift,
 					EqualHeightCards.swift,
+					BadgeOverlay.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
