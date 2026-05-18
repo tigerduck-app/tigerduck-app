@@ -181,18 +181,25 @@ struct CourseColorPickerSheet: View {
     }
 
     /// Extract a 24-bit RGB hex from a SwiftUI `Color`. The picker hands us
-    /// a `Color` that resolves through the active environment — `cgColor`
-    /// returns sRGB components on iOS/macOS for the picker output, which is
-    /// what the on-disk hex map stores.
+    /// a `Color` that resolves through the active environment.
+    ///
+    /// On macOS, `NSColor(color)` may land in a color space whose
+    /// `cgColor` representation isn't directly available — the API is
+    /// declared non-optional but is documented to return nil in that
+    /// case, and the picker's output catalog colors trip this in
+    /// practice. Convert through `.sRGB` first so we always read RGBA
+    /// from a well-defined space, and treat an unresolved CGColor as
+    /// black (0) rather than crashing.
     private func hexFrom(color: Color) -> UInt32 {
         #if canImport(UIKit)
-        let resolved = UIColor(color).cgColor
+        let resolved: CGColor? = UIColor(color).cgColor
         #elseif canImport(AppKit)
-        let resolved = NSColor(color).cgColor
+        let resolved: CGColor? = NSColor(color).usingColorSpace(.sRGB)?.cgColor
         #else
-        return 0
+        let resolved: CGColor? = nil
         #endif
-        let components = resolved.components ?? [0, 0, 0, 1]
+        guard let cg = resolved else { return 0 }
+        let components = cg.components ?? [0, 0, 0, 1]
         let r = UInt32(max(0, min(1, components[0])) * 255)
         let g = UInt32(max(0, min(1, components.count > 1 ? components[1] : components[0])) * 255)
         let b = UInt32(max(0, min(1, components.count > 2 ? components[2] : components[0])) * 255)

@@ -150,61 +150,13 @@ private struct ConflictClusterView: View {
     private var spanB: Int { segments[1].span }
     private var offsetB: Int { segments[1].offset }
 
+    // The L-cluster visual is capped at the two leading segments to
+    // match Android — a 3+ chain would otherwise stack into N visible
+    // columns and lose the Γ / mirror-L geometry. The hidden segments
+    // stay reachable through `presentConflictPicker`, which resolves
+    // the full transitive closure of conflicting courses on tap.
     var body: some View {
-        if segments.count >= 3 {
-            multiCourseColumnLayout
-        } else {
-            lShapeLayout
-        }
-    }
-
-    private var multiCourseColumnLayout: some View {
-        GeometryReader { proxy in
-            let step = cellHeight + rowSpacing
-            let columnWidth = proxy.size.width / CGFloat(segments.count)
-            ZStack(alignment: .topLeading) {
-                ForEach(Array(segments.enumerated()), id: \.element.course.courseNo) { index, segment in
-                    let top = CGFloat(segment.offset) * step
-                    let height = CGFloat(segment.span) * cellHeight
-                        + CGFloat(max(0, segment.span - 1)) * rowSpacing
-                    courseColumnRegion(course: segment.course)
-                        .frame(width: columnWidth, height: height)
-                        .offset(x: CGFloat(index) * columnWidth, y: top)
-                }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                viewModel.presentConflictPicker(
-                    courseA: segments[0].course,
-                    courseB: segments[1].course,
-                    weekday: weekday,
-                    periodId: periodId
-                )
-            }
-            .contextMenu {
-                conflictContextMenu()
-            }
-        }
-    }
-
-    private func courseColumnRegion(course: SDCourse) -> some View {
-        let hasBadge = viewModel.hasAssignment(for: course.courseNo)
-        return ZStack(alignment: .top) {
-            course.color.opacity(0.4)
-            Text(course.displayName)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.textPrimary)
-                .lineLimit(3)
-                .multilineTextAlignment(.center)
-                .padding(2)
-            if hasBadge {
-                Image(systemName: "book.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(Color.textPrimary.opacity(0.7))
-                    .padding(3)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            }
-        }
+        lShapeLayout
     }
 
     private var lShapeLayout: some View {
