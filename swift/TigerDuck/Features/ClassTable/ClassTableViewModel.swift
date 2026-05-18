@@ -462,7 +462,14 @@ final class ClassTableViewModel {
             a = closure[0]
             b = closure[1]
         }
-        let clusterEnd = max(a.first + a.span, b.first + b.span)
+        // Span the union of the *entire* closure, not just the displayed
+        // pair. A 3-course chain like A on periods 1-2, B on 2-3, C on
+        // 3-4 has clusterStart=1 from A; if combinedSpan only covered
+        // a/b's blocks, period 4 would resolve to `.skip` (closure starts
+        // at 1 < periodIndex 4) while the cluster overlay ends at 3,
+        // leaving C's last period invisible and untappable.
+        let clusterEnd = closure.map { $0.first + $0.span }.max()
+            ?? max(a.first + a.span, b.first + b.span)
         let role = CellRole.conflictStart(
             courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,
             courseB: b.course, spanB: b.span, offsetB: b.first - clusterStart,
