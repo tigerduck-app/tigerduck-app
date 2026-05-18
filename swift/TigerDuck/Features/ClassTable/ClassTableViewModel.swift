@@ -425,20 +425,6 @@ final class ClassTableViewModel {
 
         let clusterStart = closure.map(\.first).min() ?? periodIndex
 
-        // A 3+ closure means a chain like A(1-2) B(2-3) C(3-4): pairwise
-        // overlaps without any 3-way slot. Rendering as one cluster would
-        // drop everything past index 2 (and emit .skip in C's solo rows,
-        // hiding C entirely). Fall back to per-slot rendering so every
-        // course stays on the table; the 2-course case still uses the
-        // L-cluster with its block-spanning visual continuity.
-        if closure.count >= 3 {
-            let role = perSlotRole(
-                weekday: weekday, periodIndex: periodIndex, coursesHere: coursesHere
-            )
-            cellRoleCache[key] = role
-            return role
-        }
-
         if clusterStart < periodIndex {
             cellRoleCache[key] = .skip
             return .skip
@@ -451,6 +437,15 @@ final class ClassTableViewModel {
             return role
         }
 
+        // Cap at the first two entries: the L-cluster payload only carries
+        // two courses, and a 3+ closure (e.g. course A overlaps B at one
+        // slot and C at another) is rendered as a single cluster anchored
+        // at clusterStart. Earlier code fell back to a per-slot path so
+        // every course stayed visible, but that re-emitted the L at every
+        // slot inside A's block and produced two Ls for the same course
+        // when A's conflicts spanned two slots. Match Android's behavior
+        // (drop the 3rd course) instead — the conflict picker still
+        // surfaces it via the underlying schedule check.
         let a = closure[0]
         let b = closure[1]
         let clusterEnd = max(a.first + a.span, b.first + b.span)
@@ -461,46 +456,6 @@ final class ClassTableViewModel {
         )
         cellRoleCache[key] = role
         return role
-    }
-
-    /// Chain-conflict fallback: render the current cell based only on the
-    /// courses physically present in THIS slot, with span = number of
-    /// consecutive forward periods where the exact same course set appears.
-    /// Used when the transitive closure spans 3+ courses without any 3-way
-    /// slot, so a cluster rendering would hide some of them.
-    private func perSlotRole(
-        weekday: Int, periodIndex: Int, coursesHere: [SDCourse]
-    ) -> CellRole {
-        let periods = activePeriods
-        let mySet = Set(coursesHere.map(\.courseNo))
-
-        if periodIndex > 0 {
-            let prev = courses(for: weekday, period: periods[periodIndex - 1].id)
-            if Set(prev.map(\.courseNo)) == mySet { return .skip }
-        }
-
-        var span = 1
-        var i = periodIndex + 1
-        while i < periods.count {
-            let next = courses(for: weekday, period: periods[i].id)
-            if Set(next.map(\.courseNo)) == mySet {
-                span += 1
-                i += 1
-            } else {
-                break
-            }
-        }
-
-        if coursesHere.count == 1 {
-            return .solo(coursesHere[0], spanCount: span)
-        }
-        let a = coursesHere[0]
-        let b = coursesHere[1]
-        return .conflictStart(
-            courseA: a, spanA: span, offsetA: 0,
-            courseB: b, spanB: span, offsetB: 0,
-            combinedSpan: span
-        )
     }
 
     struct ConflictPickerTarget: Identifiable {

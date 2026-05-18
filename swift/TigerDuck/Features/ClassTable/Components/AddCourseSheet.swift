@@ -115,7 +115,7 @@ struct AddCourseSheet: View {
             Divider()
             macBottomBar
         }
-        .frame(minWidth: 460, idealWidth: 520, minHeight: 420, idealHeight: 560)
+        .frame(minWidth: 580, idealWidth: 660, minHeight: 460, idealHeight: 600)
     }
 
     @ViewBuilder
@@ -200,6 +200,12 @@ struct AddCourseSheet: View {
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
+            // Strip the default macOS bordered-button chrome from each row
+            // — otherwise every result renders inside its own rounded button
+            // frame, which shifts the leading text edge and makes the
+            // course-no / instructor / classroom column stack look uneven
+            // across rows.
+            .buttonStyle(.plain)
         }
     }
 
@@ -258,7 +264,7 @@ struct AddCourseSheet: View {
                     addCourse(from: group)
                 }
             } label: {
-                HStack {
+                HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(group.displayName)
                             .font(TigerDuckTheme.Typography.headline)
@@ -277,7 +283,7 @@ struct AddCourseSheet: View {
                                 .foregroundStyle(Color.textSecondary)
                         }
                     }
-                    Spacer()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     if isPresent {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
@@ -286,6 +292,7 @@ struct AddCourseSheet: View {
                             .foregroundStyle(Color.accentPrimary)
                     }
                 }
+                .contentShape(Rectangle())
             }
             // Pre-existing enrolled courses are not removable from this sheet
             // — the user already has them, and tap-to-remove here would be a

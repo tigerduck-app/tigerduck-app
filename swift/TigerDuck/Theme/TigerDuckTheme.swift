@@ -223,6 +223,9 @@ private final class ColorState: @unchecked Sendable {
     private func persist() {
         let snapshot = lock.withLock { map }
         DataCache.shared.saveCourseColorMap(snapshot)
+        // Drives the widget snapshot rewrite. NotificationCenter post is
+        // thread-safe, so we don't need to hop back to MainActor for it.
+        NotificationCenter.default.post(name: AppConstants.courseColorMapDidChange, object: nil)
     }
 
     /// Pick the first unused preset starting from the seed's hash slot. When

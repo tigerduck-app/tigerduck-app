@@ -88,6 +88,7 @@ final class WidgetSnapshotWriter {
             AppConstants.dataDidUpdate,
             AppConstants.languageDidChange,
             AppConstants.courseSkipStateDidChange,
+            AppConstants.courseColorMapDidChange,
             NSLocale.currentLocaleDidChangeNotification,
         ]
         for name in names {
