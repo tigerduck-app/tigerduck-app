@@ -214,7 +214,15 @@ struct ClassTableView: View {
                 hasAssignment: viewModel.hasAssignment,
                 showProgress: false,
                 ongoing: viewModel.ongoingCourses,
-                onSelect: { viewModel.selectedCourse = $0 }
+                onSelect: { course in
+                    // Carousel only ever surfaces today's courses, so pin
+                    // the sheet's weekday context to today. Without this
+                    // `selectedCourseTimeRange` stays nil and the time
+                    // card collapses to `—`. Set weekday before course so
+                    // the sheet's first read sees both populated.
+                    viewModel.selectedWeekday = AppClock.now().scheduleWeekday
+                    viewModel.selectedCourse = course
+                }
             )
         }
     }
