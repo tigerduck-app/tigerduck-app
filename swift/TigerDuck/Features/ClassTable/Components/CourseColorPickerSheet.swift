@@ -89,6 +89,11 @@ struct CourseColorPickerSheet: View {
                     suppressNextColorChange = true
                     customColor = Color(hex: UInt(hex))
                     onSelect(hex)
+                    // Preset tap is a one-shot pick — close the sheet
+                    // now. The custom ColorPicker path deliberately does
+                    // *not* dismiss here because its `.onChange` fires on
+                    // every drag tick.
+                    dismiss()
                 } label: {
                     swatch(color: color, isSelected: index == activePresetIndex)
                 }

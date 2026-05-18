@@ -343,20 +343,27 @@ final class ClassTableViewModel {
         assignments.unfinished(for: courseNo)
     }
 
+    struct ConflictSegment: Equatable {
+        let course: SDCourse
+        /// Contiguous block length in rows.
+        let span: Int
+        /// 0-indexed row offset from the cluster's `clusterStart` where
+        /// this course's block begins.
+        let offset: Int
+    }
+
     enum CellRole {
         case empty
         case solo(SDCourse, spanCount: Int)
-        /// Two overlapping courses occupying (possibly partially) this
-        /// cluster. `combinedSpan` is the total row count of the union;
-        /// `offsetA` / `offsetB` are 0-indexed row positions within the
-        /// cluster where each course's block begins; `spanA` / `spanB` are
-        /// each course's own contiguous block length. The L-split is drawn
-        /// only on rows where both appear.
-        case conflictStart(
-            courseA: SDCourse, spanA: Int, offsetA: Int,
-            courseB: SDCourse, spanB: Int, offsetB: Int,
-            combinedSpan: Int
-        )
+        /// Two or more overlapping courses sharing a cluster.
+        /// `combinedSpan` is the total row count of the union of every
+        /// segment's block; each segment's `offset` / `span` place it
+        /// inside that union. The renderer keeps the L-split layout for
+        /// the 2-course case and falls back to a column layout when a
+        /// chain pulls in 3+ courses (so every scheduled period stays
+        /// visible — no row gets buried under a `.skip` with nothing
+        /// drawn on top).
+        case conflictStart(segments: [ConflictSegment], combinedSpan: Int)
         /// This cell is part of a SoloStart / ConflictStart cluster that
         /// began at an earlier row; the renderer must emit nothing here so
         /// the parent's `combinedSpan` overlay can occupy the rows.
@@ -437,42 +444,28 @@ final class ClassTableViewModel {
             return role
         }
 
-        // Cap the L-cluster *display* at two entries: the payload only
-        // carries two courses, and a 3+ closure (e.g. course A overlaps
-        // B at one slot and C at another) is rendered as a single cluster
-        // anchored at clusterStart. Prefer courses anchored in *this*
-        // slot — `closure[0...1]` follows recursive-insertion order,
-        // which can pick a course from a later period over one that
-        // actually occupies this slot, hiding it visually. The picker
-        // resolves the full closure independently (see
-        // `presentConflictPicker`) so every conflicting course stays
-        // reachable on tap, even though only two are drawn.
-        let anchored = coursesHere.compactMap { c in
-            closure.first(where: { $0.course.courseNo == c.courseNo })
+        // Emit a segment per course in the closure so a 3+ chain
+        // (e.g. A on periods 1-2, B on 2-3, C on 3-4) keeps every
+        // scheduled period visible. Earlier code capped the cluster at
+        // two segments, which left the third course's tail covered by
+        // `.skip` but not drawn over — hiding scheduled class time.
+        // Anchored-slot courses lead the array so the rendering order
+        // matches the cell the user tapped; the rest follow in
+        // closure-insertion order.
+        let anchoredNos = Set(coursesHere.map(\.courseNo))
+        let anchoredFirst = closure.filter { anchoredNos.contains($0.course.courseNo) }
+        let rest = closure.filter { !anchoredNos.contains($0.course.courseNo) }
+        let ordered = anchoredFirst + rest
+        let segments = ordered.map { entry in
+            ConflictSegment(
+                course: entry.course,
+                span: entry.span,
+                offset: entry.first - clusterStart
+            )
         }
-        let a: (course: SDCourse, first: Int, span: Int)
-        let b: (course: SDCourse, first: Int, span: Int)
-        if anchored.count >= 2 {
-            a = anchored[0]
-            b = anchored[1]
-        } else if let only = anchored.first {
-            a = only
-            b = closure.first(where: { $0.course.courseNo != only.course.courseNo }) ?? closure[1]
-        } else {
-            a = closure[0]
-            b = closure[1]
-        }
-        // Span the union of the *entire* closure, not just the displayed
-        // pair. A 3-course chain like A on periods 1-2, B on 2-3, C on
-        // 3-4 has clusterStart=1 from A; if combinedSpan only covered
-        // a/b's blocks, period 4 would resolve to `.skip` (closure starts
-        // at 1 < periodIndex 4) while the cluster overlay ends at 3,
-        // leaving C's last period invisible and untappable.
-        let clusterEnd = closure.map { $0.first + $0.span }.max()
-            ?? max(a.first + a.span, b.first + b.span)
+        let clusterEnd = closure.map { $0.first + $0.span }.max() ?? periodIndex
         let role = CellRole.conflictStart(
-            courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,
-            courseB: b.course, spanB: b.span, offsetB: b.first - clusterStart,
+            segments: segments,
             combinedSpan: clusterEnd - clusterStart
         )
         cellRoleCache[key] = role
@@ -728,9 +721,15 @@ final class ClassTableViewModel {
     /// currently holding the same hex so the "no two courses share a color"
     /// invariant survives the edit — then broadcasts so Home, Class Table,
     /// widgets and the Live Activity all refresh.
+    ///
+    /// Intentionally does *not* clear `courseToRecolor`: the ColorPicker
+    /// emits a continuous stream of `onSelect` ticks while the user drags
+    /// the slider, so auto-dismissing here would close the sheet after the
+    /// first intermediate value and strand the rest of the gesture.
+    /// `CourseColorPickerSheet` calls `dismiss()` itself when a preset tap
+    /// (or the Close button) actually finishes the picking session.
     func setColor(hex: UInt32, for course: SDCourse) {
         TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
-        courseToRecolor = nil
         broadcastLocalChange()
     }
 
