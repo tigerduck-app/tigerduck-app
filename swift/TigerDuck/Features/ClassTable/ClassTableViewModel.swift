@@ -437,17 +437,33 @@ final class ClassTableViewModel {
             return role
         }
 
-        // Cap at the first two entries: the L-cluster payload only carries
-        // two courses, and a 3+ closure (e.g. course A overlaps B at one
+        // Cap at two entries: the L-cluster payload only carries two
+        // courses, and a 3+ closure (e.g. course A overlaps B at one
         // slot and C at another) is rendered as a single cluster anchored
-        // at clusterStart. Earlier code fell back to a per-slot path so
-        // every course stayed visible, but that re-emitted the L at every
-        // slot inside A's block and produced two Ls for the same course
-        // when A's conflicts spanned two slots. Match Android's behavior
-        // (drop the 3rd course) instead — the conflict picker still
-        // surfaces it via the underlying schedule check.
-        let a = closure[0]
-        let b = closure[1]
+        // at clusterStart. Prefer courses anchored in *this* slot —
+        // `closure[0...1]` follows recursive-insertion order, which can
+        // pick a course from a later period over one that actually
+        // occupies this slot, both hiding it visually and stranding it
+        // outside the conflict picker. Earlier code fell back to a
+        // per-slot path so every course stayed visible, but that
+        // re-emitted the L at every slot inside A's block and produced
+        // two Ls for the same course when A's conflicts spanned two
+        // slots. Match Android's behavior (drop the 3rd course) instead.
+        let anchored = coursesHere.compactMap { c in
+            closure.first(where: { $0.course.courseNo == c.courseNo })
+        }
+        let a: (course: SDCourse, first: Int, span: Int)
+        let b: (course: SDCourse, first: Int, span: Int)
+        if anchored.count >= 2 {
+            a = anchored[0]
+            b = anchored[1]
+        } else if let only = anchored.first {
+            a = only
+            b = closure.first(where: { $0.course.courseNo != only.course.courseNo }) ?? closure[1]
+        } else {
+            a = closure[0]
+            b = closure[1]
+        }
         let clusterEnd = max(a.first + a.span, b.first + b.span)
         let role = CellRole.conflictStart(
             courseA: a.course, spanA: a.span, offsetA: a.first - clusterStart,

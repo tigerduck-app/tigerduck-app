@@ -22,7 +22,6 @@ struct SettingsView: View {
     @State private var showOfficialWebsite = false
     @Environment(\.scenePhase) private var scenePhase
 
-    private static let deleteAccountURL = AppURLs.deleteAccount
     private static let websiteURL = AppURLs.website
 
     private var appVersion: String {

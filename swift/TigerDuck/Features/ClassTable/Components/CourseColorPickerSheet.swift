@@ -14,6 +14,12 @@ struct CourseColorPickerSheet: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: 5)
 
     @State private var customColor: Color
+    /// Set by the preset-button path so the next `.onChange(of: customColor)`
+    /// tick is skipped — preset taps already call `onSelect` directly, and
+    /// the change observer would otherwise double-apply on macOS (where the
+    /// sheet stays open) because `currentHex` can still be stale for that
+    /// render pass.
+    @State private var suppressNextColorChange = false
 
     init(course: SDCourse, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
@@ -80,6 +86,7 @@ struct CourseColorPickerSheet: View {
             ForEach(Array(TigerDuckTheme.courseColors.enumerated()), id: \.offset) { index, color in
                 Button {
                     let hex = TigerDuckTheme.coursePaletteHexes[index]
+                    suppressNextColorChange = true
                     customColor = Color(hex: UInt(hex))
                     onSelect(hex)
                 } label: {
@@ -129,6 +136,10 @@ struct CourseColorPickerSheet: View {
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             .onChange(of: customColor) { _, newValue in
+                if suppressNextColorChange {
+                    suppressNextColorChange = false
+                    return
+                }
                 let hex = hexFrom(color: newValue)
                 // Guard against the no-op tick SwiftUI emits when the picker
                 // is first shown with the current course color — without this,
