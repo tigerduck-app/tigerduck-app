@@ -143,7 +143,12 @@ private struct NextClassWidgetCard: View {
                             .padding(.vertical, 2)
                             .background(Capsule().fill(color))
                         Spacer()
-                        Text(primary.course.timeRange(for: primary.date.scheduleWeekday) ?? "")
+                        // Render the chosen slot's bounds, not the day's
+                        // first-to-last span — the countdown above counts
+                        // down to `primary.start`, so a split same-day
+                        // course (e.g. P3-P4 + P7-P8) would otherwise show
+                        // a gap-spanning time that doesn't match the timer.
+                        Text("\(primary.start.timeString) - \(primary.end.timeString)")
                             .font(.title3.monospacedDigit().weight(.semibold))
                             .foregroundStyle(color)
                     }

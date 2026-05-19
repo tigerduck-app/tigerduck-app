@@ -70,7 +70,11 @@ struct LiveActivityScenarioResolver {
         return LiveActivitySnapshot(
             scenario: .inClass,
             title: slot.course.displayName,
-            subtitle: slot.course.timeRange(for: weekday) ?? "",
+            // Render the active block's own range, not the day's first-to-last
+            // span — for a split same-day course (e.g. P3-P4 + P7-P8) the
+            // countdown/progress are scoped to this slot, so the subtitle
+            // must match or it announces a gap-spanning window.
+            subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.end,
@@ -86,7 +90,10 @@ struct LiveActivityScenarioResolver {
         return LiveActivitySnapshot(
             scenario: .classPreparing,
             title: slot.course.displayName,
-            subtitle: slot.course.timeRange(for: weekday) ?? "",
+            // Same reason as inClassSnapshot: the upcoming slot is one
+            // specific block, so subtitle must reflect that block — not
+            // an earlier block plus the gap leading to this one.
+            subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.start,

@@ -54,7 +54,12 @@ struct CourseTimeCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(course.timeRange(for: weekday) ?? "──:── - ──:──")
+                    // Render this slot's bounds (one contiguous block),
+                    // not `course.timeRange(for:)` — that returns the whole
+                    // day's first-to-last span, which would mismatch the
+                    // selected card whenever a course has split same-day
+                    // blocks (e.g. P3-P4 + P7-P8).
+                    Text("\(slot.start.timeString) - \(slot.end.timeString)")
                         .font(.caption.bold())
                         .foregroundStyle(timeRangeColor)
                         .lineLimit(1)
