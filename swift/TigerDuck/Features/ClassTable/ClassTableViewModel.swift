@@ -597,16 +597,22 @@ final class ClassTableViewModel {
         selectedCourse = info.course
     }
 
-    func addCourse(_ course: SDCourse) {
+    /// Returns `true` iff `course` was newly appended to `courses`. The
+    /// AddCourseSheet uses this signal to gate its session checkmark so
+    /// a rejected add (duplicate, triple-period conflict) can't trick
+    /// the next tap into routing through `removeUserAddedCourse`.
+    @discardableResult
+    func addCourse(_ course: SDCourse) -> Bool {
         // Self-heal the inconsistent state where a course is BOTH tombstoned
         // and currently present in `courses` (e.g. a refresh re-fetched it
         // while a stale tombstone lingered). Done before the early-return so
-        // future reloads stop filtering it.
+        // future reloads stop filtering it. Reports `false` since nothing
+        // was newly appended — the row was already in the timetable.
         if courses.contains(where: { $0.courseNo == course.courseNo }) {
             if deletedCourseNos.remove(course.courseNo) != nil {
                 DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
             }
-            return
+            return false
         }
 
         // Refuse if any slot it occupies already has 2 courses — three
@@ -616,7 +622,7 @@ final class ClassTableViewModel {
         // the tombstone cleared and the next reload resurrects the course.
         if let err = wouldCauseTripleConflict(course) {
             tripleConflictError = err
-            return
+            return false
         }
 
         if deletedCourseNos.remove(course.courseNo) != nil {
@@ -654,6 +660,7 @@ final class ClassTableViewModel {
         courses.append(course)
         persistUserAddedCourses()
         broadcastLocalChange()
+        return true
     }
 
     private func persistUserAddedCourses() {

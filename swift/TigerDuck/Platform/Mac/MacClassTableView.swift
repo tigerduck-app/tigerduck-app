@@ -534,8 +534,13 @@ struct MacClassTableView: View {
     /// Mirrors the parts of `ClassTableViewModel.addCourse(_:)` that are load-
     /// bearing on macOS: tombstone clear, NameAbbr cache seeding so toggles
     /// round-trip without a refetch, and a `dataDidUpdate` broadcast so the
-    /// Home page's widget cards also re-render.
-    private func addUserCourse(_ course: SDCourse) {
+    /// Home page's widget cards also re-render. Returns `true` iff the
+    /// course was newly persisted so the AddCourseSheet only flips its
+    /// session checkmark on real adds — otherwise a duplicate-rejected tap
+    /// would route the next tap through `removeUserAddedCourse` and delete
+    /// the pre-existing user-added course for this semester.
+    @discardableResult
+    private func addUserCourse(_ course: SDCourse) -> Bool {
         let existing = DataCache.shared.loadUserAddedCourses()
         // Dedupe within the selected semester only — the same `courseNo`
         // legitimately recurs across terms (a recurring elective added
@@ -548,7 +553,7 @@ struct MacClassTableView: View {
         }
         guard !existing.contains(where: { $0.courseNo == course.courseNo && isInSelectedSemester($0) }),
               !courses.contains(where: { $0.courseNo == course.courseNo })
-        else { return }
+        else { return false }
 
         // Refuse if any slot the candidate would occupy already has 2
         // courses. The shared `ClassTableLayout` can render N-way conflicts,
@@ -558,7 +563,7 @@ struct MacClassTableView: View {
         // next reload would resurrect the course.
         if let err = firstTripleConflict(for: course) {
             tripleConflictError = err
-            return
+            return false
         }
 
         var deleted = Set(DataCache.shared.loadDeletedCourseNos())
@@ -578,6 +583,7 @@ struct MacClassTableView: View {
         DataCache.shared.saveUserAddedCourses(existing + [course])
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        return true
     }
 
     /// Scans every slot `candidate` would occupy and returns the first one

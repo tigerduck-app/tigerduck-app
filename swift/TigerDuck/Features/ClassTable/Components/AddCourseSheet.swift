@@ -6,7 +6,13 @@ struct AddCourseSheet: View {
 
     let semester: String
     let existingCourseNos: Set<String>
-    let onAdd: (SDCourse) -> Void
+    /// Returns `true` iff the course was actually persisted. The sheet
+    /// uses this signal to gate `sessionAddedCourseNos` — without it, a
+    /// rejected add (duplicate, triple-period conflict, ...) would still
+    /// flip the row to a green checkmark and route the next tap through
+    /// `onRemove`, which on macOS deletes the existing user-added course
+    /// for the selected semester.
+    let onAdd: (SDCourse) -> Bool
     var onRemove: ((String) -> Void)? = nil
 
     /// Course codes are ASCII alphanumeric and always contain at least one digit
@@ -635,7 +641,8 @@ struct AddCourseSheet: View {
             semester: semester,
             classroomMap: group.classroomMap
         )
-        onAdd(course)
-        sessionAddedCourseNos.insert(group.courseNo)
+        if onAdd(course) {
+            sessionAddedCourseNos.insert(group.courseNo)
+        }
     }
 }
