@@ -24,33 +24,57 @@ struct CourseTimeSlot: Identifiable, Equatable {
     /// The calendar date this slot belongs to (for display purposes).
     let date: Date
 
-    /// Build slots for a single day.
+    /// Build slots for a single day. Emits one slot per contiguous run of
+    /// periods (consecutive in `AppConstants.Periods.chronologicalOrder`)
+    /// rather than one first-to-last span — otherwise a course scheduled
+    /// at P1 and P3 with P2 free would collapse into a single
+    /// 08:10-12:10 slot, and `CourseTimelineResolver` would report
+    /// `.inClass` during the P2 gap. The block-merge rule matches
+    /// `OngoingCourseInfo.ongoingCourses(weekday:minuteOfDay:)`, so the
+    /// time-slider, Live Activity, and Mac dashboard cards all draw
+    /// blocks consistently with the "Current class" carousel.
     static func buildSlots(from courses: [SDCourse], weekday: Int, on date: Date = AppClock.now()) -> [CourseTimeSlot] {
         let calendar = AppConstants.taipeiCalendar
         var slots: [CourseTimeSlot] = []
+        let dayKey = Self.dayKeyFormatter.string(from: date)
 
         for course in courses {
-            guard let periods = course.schedule[weekday], !periods.isEmpty else { continue }
-            let sorted = periods.sortedByPeriodOrder()
-            guard let firstPeriod = sorted.first,
-                  let lastPeriod = sorted.last,
-                  let firstTime = AppConstants.PeriodTimes.mapping[firstPeriod],
-                  let lastTime = AppConstants.PeriodTimes.mapping[lastPeriod],
-                  let startDate = Self.dateFromTimeString(firstTime.start, on: date, calendar: calendar),
-                  let endDate = Self.dateFromTimeString(lastTime.end, on: date, calendar: calendar)
-            else { continue }
+            guard let raw = course.schedule[weekday], !raw.isEmpty else { continue }
+            let periods = raw.sortedByPeriodOrder()
 
-            let dayKey = Self.dayKeyFormatter.string(from: date)
-            slots.append(CourseTimeSlot(
-                id: "\(course.courseNo)_\(dayKey)",
-                course: course,
-                start: startDate,
-                end: endDate,
-                date: date
-            ))
+            var blockStart = 0
+            while blockStart < periods.count {
+                var blockEnd = blockStart
+                while blockEnd + 1 < periods.count,
+                      Self.periodOrder(periods[blockEnd + 1]) == Self.periodOrder(periods[blockEnd]) + 1 {
+                    blockEnd += 1
+                }
+                let firstPeriod = periods[blockStart]
+                let lastPeriod = periods[blockEnd]
+                if let firstTime = AppConstants.PeriodTimes.mapping[firstPeriod],
+                   let lastTime = AppConstants.PeriodTimes.mapping[lastPeriod],
+                   let startDate = Self.dateFromTimeString(firstTime.start, on: date, calendar: calendar),
+                   let endDate = Self.dateFromTimeString(lastTime.end, on: date, calendar: calendar) {
+                    slots.append(CourseTimeSlot(
+                        // Suffix the run's first period so two disjoint
+                        // blocks on the same day yield distinct ids
+                        // (Identifiable + LiveActivity sourceId).
+                        id: "\(course.courseNo)_\(dayKey)_\(firstPeriod)",
+                        course: course,
+                        start: startDate,
+                        end: endDate,
+                        date: date
+                    ))
+                }
+                blockStart = blockEnd + 1
+            }
         }
 
         return slots.sorted { $0.start < $1.start }
+    }
+
+    private static func periodOrder(_ periodId: String) -> Int {
+        AppConstants.Periods.chronologicalOrder.firstIndex(of: periodId) ?? Int.max
     }
 
     /// Build a multi-day timeline centered on `centerDate`, spanning ±`dayRadius` days.
