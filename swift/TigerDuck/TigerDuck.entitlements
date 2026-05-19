@@ -4,6 +4,14 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- TODO: Apple 尚未核准 `com.apple.developer.passkit.pass-presentation-suppression`
+	     的特殊權限申請。在通過審核並於 Developer Portal 啟用前,簽署 production
+	     build 時這個 key 會被剝除,`PKPassLibrary.requestAutomaticPassPresentationSuppression`
+	     會回傳 `.notSupported`。等核准後移除這段 TODO 並確認 provisioning profile
+	     已重新產生。申請表單: https://developer.apple.com/contact/request/pass-presentation-suppression/
+	<key>com.apple.developer.passkit.pass-presentation-suppression</key>
+	<true/>
+	-->
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.org.ntust.app.TigerDuck</string>

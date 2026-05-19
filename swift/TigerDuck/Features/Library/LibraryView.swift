@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import PassKit
+#endif
 
 struct LibraryView: View {
     var embedded = false
@@ -7,9 +10,12 @@ struct LibraryView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = LibraryViewModel()
     @State private var showNotImplementedAlert = false
-    /// Pre-boost brightness, captured the first time we max the screen
-    /// for the QR. `nil` means we are not currently overriding brightness.
-    @State private var savedBrightness: CGFloat?
+    #if os(iOS)
+    /// Token returned by `PKPassLibrary.requestAutomaticPassPresentationSuppression`.
+    /// Held only while the QR page is on-screen so a side-button double-press
+    /// can't fire up Apple Pay / Express Transit and cover the library QR.
+    @State private var passSuppressionToken: PKSuppressionRequestToken?
+    #endif
 
     var body: some View {
         if embedded {
@@ -31,51 +37,54 @@ struct LibraryView: View {
         .onAppear {
             viewModel.load()
             viewModel.onAppear()
-            if viewModel.isLoggedIn { boostBrightness() }
+            if viewModel.isLoggedIn { suppressExpressTransit() }
         }
         .onDisappear {
             viewModel.onDisappear()
-            restoreBrightness()
+            releaseExpressTransit()
         }
         .onChange(of: viewModel.isLoggedIn) { _, loggedIn in
-            if loggedIn { boostBrightness() } else { restoreBrightness() }
+            if loggedIn { suppressExpressTransit() } else { releaseExpressTransit() }
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
                 viewModel.onAppear()
-                if viewModel.isLoggedIn { boostBrightness() }
+                if viewModel.isLoggedIn { suppressExpressTransit() }
             case .background, .inactive:
                 viewModel.stopTimers()
-                // Don't leave the device pinned at full brightness once
-                // the user is no longer looking at the QR. Restore in
-                // `.inactive` too so a force-quit from Control Center
-                // or an incoming call doesn't strand the screen at 1.0.
-                restoreBrightness()
+                // Re-enable Express Transit as soon as the QR leaves the
+                // foreground — a backgrounded app should not keep the
+                // user's transit card globally suppressed.
+                releaseExpressTransit()
             @unknown default:
                 viewModel.stopTimers()
             }
         }
     }
 
-    // MARK: - Brightness
+    // MARK: - Express Transit suppression
 
     #if os(iOS)
-    private func boostBrightness() {
-        if savedBrightness == nil {
-            savedBrightness = UIScreen.main.brightness
-        }
-        UIScreen.main.brightness = 1.0
+    // TODO: 此 API 需要 `com.apple.developer.passkit.pass-presentation-suppression`
+    // 特殊權限,目前尚未向 Apple 申請核准。entitlement key 已先加在
+    // `TigerDuck.entitlements`,但核准前 production build 簽署時會被剝除,
+    // 呼叫只會拿到 `.notSupported`,Express Transit 仍可被側鍵雙擊喚起。
+    // 待 Apple 核准後移除本 TODO。
+    private func suppressExpressTransit() {
+        guard passSuppressionToken == nil else { return }
+        let token = PKPassLibrary.requestAutomaticPassPresentationSuppression { _ in }
+        passSuppressionToken = token
     }
 
-    private func restoreBrightness() {
-        guard let saved = savedBrightness else { return }
-        UIScreen.main.brightness = saved
-        savedBrightness = nil
+    private func releaseExpressTransit() {
+        guard let token = passSuppressionToken else { return }
+        PKPassLibrary.endAutomaticPassPresentationSuppression(withRequestToken: token)
+        passSuppressionToken = nil
     }
     #else
-    private func boostBrightness() {}
-    private func restoreBrightness() {}
+    private func suppressExpressTransit() {}
+    private func releaseExpressTransit() {}
     #endif
 
     /// iPad rotates freely, so anchor the QR to vertical center to keep its

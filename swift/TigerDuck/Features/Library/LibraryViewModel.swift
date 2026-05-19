@@ -149,6 +149,11 @@ final class LibraryViewModel {
     }
 
     private static func generateQRImage(from string: String) -> UIImage? {
+        // Plain SDR black/white render. HDR brightness is applied at draw
+        // time by `HDRQRCodeImage` via a Metal shader against an EDR-enabled
+        // CAMetalLayer — doing it here through CoreImage's filter chain
+        // proved unreliable (false-color clamping + SwiftUI not tagging
+        // synthetic UIImages as HDR).
         let context = CIContext()
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(string.utf8)

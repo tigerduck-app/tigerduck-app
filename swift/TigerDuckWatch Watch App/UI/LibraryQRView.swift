@@ -1,5 +1,13 @@
 import SwiftUI
 
+// Express Transit suppression note:
+// PassKit's `requestAutomaticPassPresentationSuppression` is iOS-only —
+// watchOS exposes `PKPassLibrary` but not the suppression API, so there is
+// no public way to block a side-button double-press from invoking Apple
+// Pay / Express Transit while this view is on screen. If Apple ships an
+// equivalent watchOS API later, mirror `LibraryView`'s suppress / release
+// pattern here. (Last checked against the watchOS 11 SDK.)
+
 struct LibraryQRView: View {
     @State private var viewModel = LibraryQRViewModel()
     @State private var isFullScreen = false
