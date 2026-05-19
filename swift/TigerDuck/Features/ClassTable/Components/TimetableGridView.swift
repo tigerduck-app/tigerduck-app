@@ -150,13 +150,26 @@ private struct ConflictClusterView: View {
     private var spanB: Int { segments[1].span }
     private var offsetB: Int { segments[1].offset }
 
-    // The L-cluster visual is capped at the two leading segments to
-    // match Android — a 3+ chain would otherwise stack into N visible
-    // columns and lose the Γ / mirror-L geometry. The hidden segments
-    // stay reachable through `presentConflictPicker`, which resolves
-    // the full transitive closure of conflicting courses on tap.
+    @ViewBuilder
     var body: some View {
-        lShapeLayout
+        if segments.count == 2 {
+            lShapeLayout
+        } else {
+            // 3+ chain (e.g. A on periods 1-2, B on 2-3, C on 3-4):
+            // the Γ / mirror-L geometry only resolves for two
+            // interlocking blocks, so fall back to the N-column layout
+            // the Mac and widget renderers use. Without this branch
+            // `cellRole` emits one cluster with N segments but only the
+            // first two drew, leaving C's tail covered by `.skip` with
+            // nothing on top.
+            //
+            // TODO: design a proper 衝堂 visual for transitive 3-course
+            // clusters. Today (e.g. PE115B022 @ 6-7, CS3005302 @ 6-8,
+            // FE1792702 @ 8-9) renders as three vertical bars side-by-
+            // side, which loses the interlocking-L look the 2-course
+            // case has.
+            columnLayout
+        }
     }
 
     private var lShapeLayout: some View {
@@ -246,6 +259,77 @@ private struct ConflictClusterView: View {
                 conflictContextMenu()
             }
         }
+    }
+
+    /// N-column layout for 3+ overlapping courses. Each segment owns a
+    /// column sized to its own `span` and offset by `offset` rows so a
+    /// staircase like A(0-1) / B(1-2) / C(2-3) paints each course only
+    /// in the rows it actually meets. Per-column tap selects that course
+    /// directly — unlike the L-shape, there's no seam ambiguity that
+    /// requires routing through the picker.
+    private var columnLayout: some View {
+        // `rowSpacing` doubles as the horizontal seam between columns,
+        // matching the Mac renderer's `HStack(spacing: rowSpacing)`.
+        HStack(spacing: rowSpacing) {
+            ForEach(segments, id: \.course.courseNo) { segment in
+                conflictColumn(segment: segment)
+            }
+        }
+    }
+
+    private func conflictColumn(segment: ClassTableViewModel.ConflictSegment) -> some View {
+        let course = segment.course
+        let span = segment.span
+        let offset = segment.offset
+        let bottomRows = max(combinedSpan - offset - span, 0)
+        let hasBadge = viewModel.hasAssignment(for: course.courseNo)
+
+        return VStack(spacing: rowSpacing) {
+            if offset > 0 {
+                Color.clear.frame(height: blockHeight(offset))
+            }
+            Button {
+                viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
+            } label: {
+                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                    .fill(course.color.opacity(0.4))
+                    .overlay {
+                        Text(course.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.textPrimary)
+                            .lineLimit(span > 1 ? 3 : 2)
+                            .multilineTextAlignment(.center)
+                            .padding(2)
+                    }
+                    .assignmentBadge(show: hasBadge, iconSize: 8, padding: 4)
+                    .frame(height: blockHeight(span))
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Button {
+                    viewModel.startRename(course)
+                } label: {
+                    Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
+                }
+                Button {
+                    viewModel.startRecolor(course)
+                } label: {
+                    Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
+                }
+                Button(role: .destructive) {
+                    viewModel.deleteCourse(course)
+                } label: {
+                    Label(String(localized: "class_table_delete"), systemImage: "trash")
+                }
+            }
+            if bottomRows > 0 {
+                Color.clear.frame(height: blockHeight(bottomRows))
+            }
+        }
+    }
+
+    private func blockHeight(_ span: Int) -> CGFloat {
+        CGFloat(span) * cellHeight + CGFloat(max(span - 1, 0)) * rowSpacing
     }
 
     @ViewBuilder
