@@ -81,9 +81,15 @@ struct LibraryView: View {
     /// iPad rotates freely, so anchor the QR to vertical center to keep its
     /// on-screen position stable across orientation changes. iPhone is
     /// portrait-locked by Info.plist and stays on the regular top-aligned
-    /// scroll layout.
+    /// scroll layout. macOS has no `UIDevice`; the Mac surface doesn't
+    /// expose LibraryView today but the file still compiles into the Mac
+    /// target, so fall through to the regular layout instead.
     private var shouldCenterQRForRotation: Bool {
+        #if os(iOS)
         UIDevice.current.userInterfaceIdiom == .pad && viewModel.isLoggedIn
+        #else
+        false
+        #endif
     }
 
     private var qrCenteredLayout: some View {

@@ -269,7 +269,9 @@ struct OnboardingView: View {
     }
 
     private func submitLogin() {
+        #if canImport(UIKit)
         UIApplication.dismissKeyboard()
+        #endif
         focusedField = nil
         let trimmedId = studentId.trimmingCharacters(in: .whitespaces)
         let trimmedPwd = password.trimmingCharacters(in: .whitespaces)
@@ -294,6 +296,7 @@ struct OnboardingView: View {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     notificationStatusRow
 
+                    #if canImport(UIKit)
                     if notificationStatus == .denied {
                         Button(String(localized: "action_go_to_settings")) {
                             if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -303,6 +306,7 @@ struct OnboardingView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.large)
                     }
+                    #endif
                 }
             },
             actions: {

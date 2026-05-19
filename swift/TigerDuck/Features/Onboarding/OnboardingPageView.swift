@@ -61,7 +61,9 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         // .scrollDismissesKeyboard(.interactively) for finger scroll).
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
+        #if canImport(UIKit)
         .onTapGesture { UIApplication.dismissKeyboard() }
+        #endif
     }
 
     @ViewBuilder
