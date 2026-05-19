@@ -45,7 +45,7 @@ struct CurrentClassCard: View {
                 .progressViewStyle(.linear)
                 .tint(info.course.color)
 
-            Text(timeRange)
+            Text(info.formattedTimeRange)
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
         }
@@ -76,13 +76,5 @@ struct CurrentClassCard: View {
         let comps = AppConstants.taipeiCalendar.dateComponents([.hour, .minute], from: now)
         let minute = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
         return min(max(Double(minute - info.startMinute) / Double(span), 0), 1)
-    }
-
-    private var timeRange: String {
-        "\(format(info.startMinute)) - \(format(info.endMinute))"
-    }
-
-    private func format(_ minutes: Int) -> String {
-        String(format: "%02d:%02d", minutes / 60, minutes % 60)
     }
 }

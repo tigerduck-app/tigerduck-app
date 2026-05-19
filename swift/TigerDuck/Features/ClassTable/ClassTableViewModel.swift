@@ -16,6 +16,14 @@ final class ClassTableViewModel {
 
     var selectedWeekday: Int? = nil
     var selectedPeriodId: String? = nil
+    /// Explicit time-range string for the detail sheet, set when the
+    /// caller knows the precise block (e.g. an `OngoingCourseInfo`
+    /// carousel card whose period block is a strict subset of the
+    /// day's schedule). Takes precedence over `course.timeRange(for:)`
+    /// in `selectedCourseTimeRange` so split same-day periods don't
+    /// collapse into a single whole-day span. Cleared by every other
+    /// selection entry point.
+    var selectedCourseBlockTimeRange: String? = nil
 
     var currentSemester: String = Defaults[.classTableSelectedSemester] {
         didSet {
@@ -266,6 +274,7 @@ final class ClassTableViewModel {
     }
 
     var selectedCourseTimeRange: String? {
+        if let override = selectedCourseBlockTimeRange { return override }
         guard let course = selectedCourse, let weekday = selectedWeekday else { return nil }
         return course.timeRange(for: weekday)
     }
@@ -572,7 +581,20 @@ final class ClassTableViewModel {
     func selectCourse(_ course: SDCourse, weekday: Int, periodId: String) {
         selectedWeekday = weekday
         selectedPeriodId = periodId
+        selectedCourseBlockTimeRange = nil
         selectedCourse = course
+    }
+
+    /// Carousel "Current class" card tap. Carries the block's exact
+    /// start/end so the detail sheet shows the tapped block's time
+    /// (e.g. periods 3-4 → "10:20 - 12:10") instead of falling back
+    /// to `course.timeRange(for:)`, which lumps split same-day blocks
+    /// into one whole-day span.
+    func selectOngoing(_ info: OngoingCourseInfo) {
+        selectedWeekday = info.weekday
+        selectedPeriodId = info.firstPeriodId
+        selectedCourseBlockTimeRange = info.formattedTimeRange
+        selectedCourse = info.course
     }
 
     func addCourse(_ course: SDCourse) {

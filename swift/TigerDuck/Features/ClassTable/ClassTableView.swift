@@ -219,9 +219,17 @@ struct ClassTableView: View {
                     // the sheet's weekday context to today. Without this
                     // `selectedCourseTimeRange` stays nil and the time
                     // card collapses to `—`. Set weekday before course so
-                    // the sheet's first read sees both populated.
+                    // the sheet's first read sees both populated. Clear
+                    // the block-time override too — a prior Current-class
+                    // tap could otherwise leak its block range into the
+                    // sheet for an unrelated today card.
+                    viewModel.selectedCourseBlockTimeRange = nil
+                    viewModel.selectedPeriodId = nil
                     viewModel.selectedWeekday = AppClock.now().scheduleWeekday
                     viewModel.selectedCourse = course
+                },
+                onSelectOngoing: { info in
+                    viewModel.selectOngoing(info)
                 }
             )
         }

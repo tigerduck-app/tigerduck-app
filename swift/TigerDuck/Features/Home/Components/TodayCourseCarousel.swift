@@ -9,6 +9,11 @@ struct TodayCourseCarousel: View {
     /// `ongoingCourses` cards.
     var ongoing: [OngoingCourseInfo] = []
     var onSelect: ((SDCourse) -> Void)? = nil
+    /// Dedicated callback for "Current class" cards so callers can
+    /// thread the tapped block's specific period range (start/end
+    /// minutes) into the detail sheet instead of losing it to the
+    /// course-only `onSelect` path. Falls back to `onSelect` when nil.
+    var onSelectOngoing: ((OngoingCourseInfo) -> Void)? = nil
 
     private static let periodTimeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -32,7 +37,13 @@ struct TodayCourseCarousel: View {
                         CurrentClassCard(
                             info: info,
                             hasAssignment: hasAssignment(info.course.courseNo),
-                            onTap: { onSelect?(info.course) }
+                            onTap: {
+                                if let onSelectOngoing {
+                                    onSelectOngoing(info)
+                                } else {
+                                    onSelect?(info.course)
+                                }
+                            }
                         )
                         // Extra breathing room after the last ongoing card
                         // before the regular today cards — mirrors the
