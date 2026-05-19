@@ -72,9 +72,11 @@ struct AddCourseSheet: View {
 
                 if isSearching {
                     Section {
-                        HStack {
+                        HStack(spacing: 8) {
                             Spacer()
-                            ProgressView(String(localized: "add_course_searching"))
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(String(localized: "add_course_searching"))
                             Spacer()
                         }
                     }
@@ -94,7 +96,19 @@ struct AddCourseSheet: View {
                     }
                 }
             }
-            .background(Color.backgroundPrimary)
+            // Tap-to-dismiss the keyboard lives on the background ONLY — a
+            // `.simultaneousGesture` on the Form swallows row Buttons (the
+            // "+" add-course button stops firing). Putting the tap on the
+            // background means row Buttons still get their taps; only taps
+            // that fall through the section gaps / footer reach the
+            // background and dismiss. `.scrollDismissesKeyboard` covers the
+            // drag-down gesture independently.
+            .background(
+                Color.backgroundPrimary
+                    .contentShape(Rectangle())
+                    .onTapGesture { searchFocused = false }
+            )
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(String(localized: "add_course_title"))
             .inlineNavigationTitle()
             .toolbar {
