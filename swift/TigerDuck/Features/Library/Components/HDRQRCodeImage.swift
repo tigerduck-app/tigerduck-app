@@ -16,6 +16,12 @@ import UIKit
 /// is the supported path documented in Apple's "EDR for video" / Core
 /// Animation HDR sessions.
 struct HDRQRCodeImage: UIViewRepresentable {
+    /// `true` when this device exposes a Metal device — i.e. the EDR-backed
+    /// renderer can run. When `false`, callers should fall back to the
+    /// SDR `Image` plus a `UIScreen.brightness` boost so the scanner has
+    /// something readable.
+    static let isSupported: Bool = MTLCreateSystemDefaultDevice() != nil
+
     let image: UIImage
     /// Multiplier applied to "white" QR cells. 5.0 sits comfortably inside
     /// the EDR headroom on modern iPhones without dipping into the OS's
@@ -50,6 +56,12 @@ final class EDRMetalQRView: UIView {
     private var commandQueue: MTLCommandQueue?
     private var pipeline: MTLRenderPipelineState?
     private var texture: MTLTexture?
+    /// Reference-identity key for the most recently uploaded QR. The
+    /// SwiftUI parent observes a 1 Hz countdown, so `updateUIView` fires
+    /// every tick even when `viewModel.qrCodeImage` hasn't actually
+    /// changed — re-uploading the same texture each second would waste
+    /// IOSurface allocations and burn battery.
+    private var lastUploadedImage: UIImage?
 
     var brightness: Float = 5.0 {
         didSet { redraw() }
@@ -66,12 +78,15 @@ final class EDRMetalQRView: UIView {
     }
 
     private func commonInit() {
+        // Configure transparency BEFORE the no-Metal early-return so the
+        // SDR fallback the caller stacks underneath us stays visible if
+        // `MTLCreateSystemDefaultDevice()` returns nil.
         backgroundColor = .clear
+        metalLayer.isOpaque = false
         guard let device else { return }
         metalLayer.device = device
         metalLayer.pixelFormat = .rgba16Float
         metalLayer.framebufferOnly = true
-        metalLayer.isOpaque = false
         metalLayer.wantsExtendedDynamicRangeContent = true
         // extendedLinearDisplayP3 keeps pixel values in linear light, which
         // is what the EDR compositor expects when it scales above 1.0.
@@ -132,6 +147,10 @@ final class EDRMetalQRView: UIView {
     }
 
     func setImage(_ image: UIImage) {
+        // Reference-equality dedupe — `LibraryViewModel` only allocates a
+        // new UIImage on the 30 s QR refresh, so identity is a reliable
+        // signal that we genuinely need to re-upload.
+        if lastUploadedImage === image { return }
         guard let device, let cgImage = image.cgImage else { return }
         let loader = MTKTextureLoader(device: device)
         let options: [MTKTextureLoader.Option: Any] = [
@@ -141,6 +160,7 @@ final class EDRMetalQRView: UIView {
         ]
         if let tex = try? loader.newTexture(cgImage: cgImage, options: options) {
             self.texture = tex
+            self.lastUploadedImage = image
             redraw()
         }
     }

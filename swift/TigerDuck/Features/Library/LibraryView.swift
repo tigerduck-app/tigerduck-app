@@ -15,6 +15,10 @@ struct LibraryView: View {
     /// Held only while the QR page is on-screen so a side-button double-press
     /// can't fire up Apple Pay / Express Transit and cover the library QR.
     @State private var passSuppressionToken: PKSuppressionRequestToken?
+    /// Pre-boost screen brightness, captured the first time we max the
+    /// screen on devices where the EDR renderer is unavailable. `nil`
+    /// means we are not currently overriding brightness.
+    @State private var savedBrightness: CGFloat?
     #endif
 
     var body: some View {
@@ -37,26 +41,42 @@ struct LibraryView: View {
         .onAppear {
             viewModel.load()
             viewModel.onAppear()
-            if viewModel.isLoggedIn { suppressExpressTransit() }
+            if viewModel.isLoggedIn {
+                suppressExpressTransit()
+                boostBrightnessIfNoEDR()
+            }
         }
         .onDisappear {
             viewModel.onDisappear()
             releaseExpressTransit()
+            restoreBrightness()
         }
         .onChange(of: viewModel.isLoggedIn) { _, loggedIn in
-            if loggedIn { suppressExpressTransit() } else { releaseExpressTransit() }
+            if loggedIn {
+                suppressExpressTransit()
+                boostBrightnessIfNoEDR()
+            } else {
+                releaseExpressTransit()
+                restoreBrightness()
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
                 viewModel.onAppear()
-                if viewModel.isLoggedIn { suppressExpressTransit() }
+                if viewModel.isLoggedIn {
+                    suppressExpressTransit()
+                    boostBrightnessIfNoEDR()
+                }
             case .background, .inactive:
                 viewModel.stopTimers()
                 // Re-enable Express Transit as soon as the QR leaves the
                 // foreground — a backgrounded app should not keep the
                 // user's transit card globally suppressed.
                 releaseExpressTransit()
+                // Same reasoning for brightness: don't pin the screen at
+                // 1.0 if the user is no longer looking at the QR.
+                restoreBrightness()
             @unknown default:
                 viewModel.stopTimers()
             }
@@ -85,6 +105,31 @@ struct LibraryView: View {
     #else
     private func suppressExpressTransit() {}
     private func releaseExpressTransit() {}
+    #endif
+
+    // MARK: - Brightness fallback (no-EDR devices)
+
+    #if os(iOS)
+    /// Only pin the screen at full brightness on devices where
+    /// `HDRQRCodeImage` can't drive EDR (no Metal device). On EDR-capable
+    /// iPhones the Metal renderer already makes the QR pop above SDR, so
+    /// global brightness boost is unnecessary noise.
+    private func boostBrightnessIfNoEDR() {
+        guard !HDRQRCodeImage.isSupported else { return }
+        if savedBrightness == nil {
+            savedBrightness = UIScreen.main.brightness
+        }
+        UIScreen.main.brightness = 1.0
+    }
+
+    private func restoreBrightness() {
+        guard let saved = savedBrightness else { return }
+        UIScreen.main.brightness = saved
+        savedBrightness = nil
+    }
+    #else
+    private func boostBrightnessIfNoEDR() {}
+    private func restoreBrightness() {}
     #endif
 
     /// iPad rotates freely, so anchor the QR to vertical center to keep its
