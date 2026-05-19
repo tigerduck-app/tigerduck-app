@@ -4,12 +4,19 @@
     Partial Info.plist that merges with the keys synthesized from
     INFOPLIST_KEY_* build settings (GENERATE_INFOPLIST_FILE = YES).
 
-    Lives here because nested dictionary keys (NSAppTransportSecurity)
-    cannot be expressed as flat INFOPLIST_KEY_* settings.
+    Lives here because nested-array/dictionary keys
+    (NSAppTransportSecurity, CFBundleURLTypes) cannot be expressed as
+    flat INFOPLIST_KEY_* settings.
 
     NSAllowsLocalNetworking only relaxes ATS for loopback, .local, and
     RFC1918 private IPs. Public hosts still must speak HTTPS — Release
     builds hit api.tigerduck.app over HTTPS and are unaffected.
+
+    CFBundleURLTypes registers the `tigerduck://` scheme used by the
+    widget `widgetURL(...)` deep links (TigerDuckWidgets). Without
+    this, WidgetKit has no host to hand the tap to and Library /
+    classtable shortcuts silently no-op. Router lives in
+    TigerDuckApp.onOpenURL.
 -->
 <plist version="1.0">
 <dict>
@@ -18,5 +25,18 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>org.ntust.app.TigerDuck</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>tigerduck</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
