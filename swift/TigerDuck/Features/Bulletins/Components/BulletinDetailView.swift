@@ -17,6 +17,7 @@ struct BulletinDetailView: View {
     var readState: BulletinReadStateStore? = nil
 
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @State private var detail: BulletinAPI.BulletinDetail?
     @State private var loadError: String?
     @State private var isLoading: Bool = false
@@ -170,7 +171,7 @@ struct BulletinDetailView: View {
                 if appState.browserPreference == .inApp {
                     showInAppBrowser = true
                 } else {
-                    UIApplication.shared.open(url)
+                    openURL(url)
                 }
             } label: {
                 Label(String(localized: "bulletin_source_link_label"), systemImage: "safari")

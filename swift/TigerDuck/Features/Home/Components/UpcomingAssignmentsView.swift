@@ -19,6 +19,7 @@ struct UpcomingAssignmentsView: View {
     var onUndoComplete: ((SDAssignment) -> Void)? = nil
 
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
 
     private var courseByNo: [String: SDCourse] {
         Dictionary(courses.map { ($0.courseNo, $0) }, uniquingKeysWith: { first, _ in first })
@@ -231,7 +232,7 @@ struct UpcomingAssignmentsView: View {
 
     private func openAssignment(_ assignment: SDAssignment) {
         if let url = assignment.moodleDeepLink {
-            UIApplication.shared.open(url)
+            openURL(url)
         }
     }
 

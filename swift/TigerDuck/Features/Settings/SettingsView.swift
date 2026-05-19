@@ -4,6 +4,7 @@ import UserNotifications
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @State private var notifyAssignments = true
     @State private var notifyAnnouncements = true
     @State private var notifyFreeLunch = true
@@ -128,6 +129,9 @@ struct SettingsView: View {
 
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
+                #if os(iOS)
+                // The "denied -> open System Settings" deeplink is iOS-only;
+                // macOS has its own MacSettingsScene and no openSettingsURLString.
                 if !notificationsAuthorized {
                     Button {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -141,6 +145,7 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
                     }
                 }
+                #endif
                 NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }
@@ -155,9 +160,11 @@ struct SettingsView: View {
             // which is why we don't need an in-app picker.
             Section(String(localized: "feature_category_language")) {
                 Button {
+                    #if os(iOS)
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         UIApplication.shared.open(url)
                     }
+                    #endif
                 } label: {
                     HStack {
                         Text(String(localized: "settings_language"))
@@ -177,7 +184,7 @@ struct SettingsView: View {
                     if appState.browserPreference == .inApp {
                         showOfficialWebsite = true
                     } else {
-                        UIApplication.shared.open(Self.websiteURL)
+                        openURL(Self.websiteURL)
                     }
                 } label: {
                     HStack {

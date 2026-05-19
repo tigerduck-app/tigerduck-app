@@ -106,7 +106,9 @@ struct LoginSheet: View {
 
     private func submitIfReady() {
         guard !username.isEmpty, !password.isEmpty, !isLoggingIn else { return }
+        #if canImport(UIKit)
         UIApplication.dismissKeyboard()
+        #endif
         focusedField = nil
         onLogin(username, password)
     }
