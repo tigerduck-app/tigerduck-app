@@ -53,3 +53,11 @@ device locale/timezone and would normally suggest pinning to
 `Asia/Taipei`, skip the comment. The proper fix is the upcoming
 timezone-preference plumbing; pre-pinning now would just have to be
 ripped out and would conflict with that work.
+
+## Greptile review
+
+**Rule:** For every review, please update confidence score as well as giving the suggestions (if any).
+
+**Why:** Becuase your so unstable that not every time you review correctly update the score as well as giving the suggestions.
+
+**How to apply:** Just make sure that you update the confidence score and give suggestions (if any) every time you review a code.
