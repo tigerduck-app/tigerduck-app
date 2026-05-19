@@ -4,7 +4,7 @@ import Foundation
 extension BrowserPreference: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 
-extension Defaults.Keys {
+nonisolated extension Defaults.Keys {
     static let hasCompletedOnboarding = Key<Bool>(
         AppConstants.UserDefaultsKeys.hasCompletedOnboarding,
         default: false
@@ -35,6 +35,9 @@ extension Defaults.Keys {
     static let configuredTabsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.configuredTabs
     )
+    static let macConfiguredTabsData = Key<Data?>(
+        AppConstants.UserDefaultsKeys.macConfiguredTabs
+    )
     static let invertSliderDirection = Key<Bool>(
         AppConstants.UserDefaultsKeys.invertSliderDirection,
         default: false
@@ -57,6 +60,13 @@ extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.isLiveActivityEnabled,
         default: true
     )
+    #if os(iOS)
+    // Defaults whose default value comes from the iOS-only
+    // LiveActivityPreferencesStore. Wrapped because the store itself
+    // depends on ActivityKit, which has no macOS equivalent. The reader
+    // side (`LiveActivityPreferencesStore.assignmentLiveActivityLeadTime`
+    // etc.) is also iOS-only, so consumers of these keys live entirely
+    // in the iOS code path.
     static let assignmentLiveActivityLeadTime = Key<Double>(
         AppConstants.UserDefaultsKeys.assignmentLiveActivityLeadTime,
         default: LiveActivityPreferencesStore.defaultAssignmentLeadTime
@@ -65,6 +75,7 @@ extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.classPreparingLeadTime,
         default: LiveActivityPreferencesStore.defaultClassPreparingLeadTime
     )
+    #endif
     static let showAssignmentScenario = Key<Bool>(
         AppConstants.UserDefaultsKeys.showAssignmentScenario,
         default: true

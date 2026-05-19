@@ -7,6 +7,9 @@ struct LibraryView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = LibraryViewModel()
     @State private var showNotImplementedAlert = false
+    /// Pre-boost brightness, captured the first time we max the screen
+    /// for the QR. `nil` means we are not currently overriding brightness.
+    @State private var savedBrightness: CGFloat?
 
     var body: some View {
         if embedded {
@@ -17,6 +20,90 @@ struct LibraryView: View {
     }
 
     private var content: some View {
+        Group {
+            if shouldCenterQRForRotation {
+                qrCenteredLayout
+            } else {
+                scrollableLayout
+            }
+        }
+        .background(Color.backgroundPrimary)
+        .onAppear {
+            viewModel.load()
+            viewModel.onAppear()
+            if viewModel.isLoggedIn { boostBrightness() }
+        }
+        .onDisappear {
+            viewModel.onDisappear()
+            restoreBrightness()
+        }
+        .onChange(of: viewModel.isLoggedIn) { _, loggedIn in
+            if loggedIn { boostBrightness() } else { restoreBrightness() }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                viewModel.onAppear()
+                if viewModel.isLoggedIn { boostBrightness() }
+            case .background, .inactive:
+                viewModel.stopTimers()
+                // Don't leave the device pinned at full brightness once
+                // the user is no longer looking at the QR. Restore in
+                // `.inactive` too so a force-quit from Control Center
+                // or an incoming call doesn't strand the screen at 1.0.
+                restoreBrightness()
+            @unknown default:
+                viewModel.stopTimers()
+            }
+        }
+    }
+
+    // MARK: - Brightness
+
+    #if os(iOS)
+    private func boostBrightness() {
+        if savedBrightness == nil {
+            savedBrightness = UIScreen.main.brightness
+        }
+        UIScreen.main.brightness = 1.0
+    }
+
+    private func restoreBrightness() {
+        guard let saved = savedBrightness else { return }
+        UIScreen.main.brightness = saved
+        savedBrightness = nil
+    }
+    #else
+    private func boostBrightness() {}
+    private func restoreBrightness() {}
+    #endif
+
+    /// iPad rotates freely, so anchor the QR to vertical center to keep its
+    /// on-screen position stable across orientation changes. iPhone is
+    /// portrait-locked by Info.plist and stays on the regular top-aligned
+    /// scroll layout. macOS has no `UIDevice`; the Mac surface doesn't
+    /// expose LibraryView today but the file still compiles into the Mac
+    /// target, so fall through to the regular layout instead.
+    private var shouldCenterQRForRotation: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .pad && viewModel.isLoggedIn
+        #else
+        false
+        #endif
+    }
+
+    private var qrCenteredLayout: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.lg) {
+            headerSection
+            errorBanner
+            Spacer(minLength: 0)
+            qrSection
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, TigerDuckTheme.Spacing.xxl)
+    }
+
+    private var scrollableLayout: some View {
         ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 headerSection
@@ -26,25 +113,8 @@ struct LibraryView: View {
                 } else {
                     loginPrompt
                 }
-                /// Temporary comments until feature is implemented.
-                //  libraryFeaturesSection
             }
             .padding(.bottom, TigerDuckTheme.Spacing.xxl)
-        }
-        .background(Color.backgroundPrimary)
-        .onAppear {
-            viewModel.load()
-            viewModel.onAppear()
-        }
-        .onDisappear {
-            viewModel.onDisappear()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                viewModel.onAppear()
-            } else {
-                viewModel.stopTimers()
-            }
         }
     }
 

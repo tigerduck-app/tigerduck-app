@@ -62,7 +62,7 @@ final class HomeViewModel {
     private func reloadFromCache() {
         let courses = courseProvider.currentCourses()
         let assignments = DataCache.shared.loadAssignments()
-        TigerDuckTheme.buildCourseColorMap(courseNos: courses.map(\.courseNo))
+        TigerDuckTheme.ensureAssignments(courseNos: courses.map(\.courseNo))
         allCourses = courses
         todayCourses = courses.coursesForToday()
         allAssignmentsCache = filterToCurrentSemester(assignments, courses: courses)
@@ -92,7 +92,11 @@ final class HomeViewModel {
         case .incomplete:
             upcomingAssignments = allAssignmentsCache.upcomingSorted()
         case .all:
-            upcomingAssignments = allAssignmentsCache.allSorted()
+            // Time-agnostic on purpose — the past/future partition runs in
+            // `UpcomingAssignmentsView` under its `TimelineView`, so rows
+            // re-bucket as the clock advances instead of staying frozen
+            // against the `Date()` captured here.
+            upcomingAssignments = allAssignmentsCache.allCandidates()
         case .ignored:
             upcomingAssignments = allAssignmentsCache.ignoredSorted()
         }
@@ -168,7 +172,7 @@ final class HomeViewModel {
 
         await MainActor.run {
             isUpdatingFromNetwork = true
-            TigerDuckTheme.buildCourseColorMap(courseNos: allCourses.map(\.courseNo))
+            TigerDuckTheme.ensureAssignments(courseNos: allCourses.map(\.courseNo))
             self.allCourses = allCourses
             todayCourses = todayFiltered
             allAssignmentsCache = semesterFiltered
@@ -203,6 +207,11 @@ final class HomeViewModel {
     }
 
     var selectedCourse: SDCourse? = nil
+    /// Set together with ``selectedCourse`` when the detail sheet is opened
+    /// from the TimeSlider so the sheet can render the exact slot the user
+    /// tapped (right weekday, right start/end). Nil when the sheet was
+    /// opened from somewhere that doesn't have slot context.
+    var selectedCourseSlot: CourseTimeSlot? = nil
 
     func archiveAssignment(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }

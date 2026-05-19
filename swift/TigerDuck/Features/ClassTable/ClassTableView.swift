@@ -98,7 +98,15 @@ struct ClassTableView: View {
                 AddCourseSheet(
                     semester: viewModel.currentSemester,
                     existingCourseNos: Set(viewModel.courses.map(\.courseNo)),
-                    onAdd: { viewModel.addCourse($0) }
+                    onAdd: { viewModel.addCourse($0) },
+                    onRemove: { courseNo in
+                        // AddCourseSheet only invokes onRemove for courses// added in this session, so route through the
+                        // user-added-only path. Using deleteCourse here
+                        // would tombstone the courseNo in deletedCourseNos
+                        // and later hide any real enrolled course sharing
+                        // the same code from cache/network merges.
+                        viewModel.removeUserAddedCourse(courseNo: courseNo)
+                    }
                 )
                 .presentationDetents([.medium, .large])
             }
@@ -107,17 +115,53 @@ struct ClassTableView: View {
                 Button(String(localized: "action_confirm")) {
                     viewModel.confirmRename()
                 }
+                if let course = viewModel.courseToRename, course.customName != nil {
+                    Button(String(localized: "class_table_rename_revert"), role: .destructive) {
+                        viewModel.revertRename(course)
+                    }
+                }
                 Button(String(localized: "action_cancel"), role: .cancel) {
                     viewModel.courseToRename = nil
+                }
+            } message: {
+                if let course = viewModel.courseToRename {
+                    Text(String(format: String(localized: "class_table_rename_default_label"), course.courseName))
                 }
             }
             .sheet(item: $viewModel.courseToRecolor) { course in
                 CourseColorPickerSheet(
                     course: course,
-                    onSelect: { viewModel.setCustomColor(paletteIndex: $0, for: course) },
-                    onReset: { viewModel.clearCustomColor(for: course) }
+                    onSelect: { viewModel.setColor(hex: $0, for: course) }
+                )
+                .presentationDetents([.medium, .large])
+            }
+            .sheet(item: $viewModel.conflictPickerTarget) { target in
+                ConflictCoursePickerSheet(
+                    courses: target.courses,
+                    onPick: { viewModel.pickFromConflict($0) }
                 )
                 .presentationDetents([.medium])
+            }
+            .alert(
+                String(localized: "class_table_conflict_add_failed_title"),
+                isPresented: Binding(
+                    get: { viewModel.tripleConflictError != nil },
+                    set: { if !$0 { viewModel.tripleConflictError = nil } }
+                ),
+                presenting: viewModel.tripleConflictError
+            ) { _ in
+                Button(String(localized: "action_confirm"), role: .cancel) {
+                    viewModel.tripleConflictError = nil
+                }
+            } message: { err in
+                Text(String(
+                    format: String(localized: "class_table_conflict_add_failed_message"),
+                    err.newCourseName,
+                    "\(err.weekday)",
+                    err.periodId,
+                    err.existingA.displayName,
+                    err.existingB.displayName
+                ))
             }
     }
 
@@ -169,7 +213,24 @@ struct ClassTableView: View {
                 courses: viewModel.todayCourses,
                 hasAssignment: viewModel.hasAssignment,
                 showProgress: false,
-                onSelect: { viewModel.selectedCourse = $0 }
+                ongoing: viewModel.ongoingCourses,
+                onSelect: { course in
+                    // Carousel only ever surfaces today's courses, so pin
+                    // the sheet's weekday context to today. Without this
+                    // `selectedCourseTimeRange` stays nil and the time
+                    // card collapses to `—`. Set weekday before course so
+                    // the sheet's first read sees both populated. Clear
+                    // the block-time override too — a prior Current-class
+                    // tap could otherwise leak its block range into the
+                    // sheet for an unrelated today card.
+                    viewModel.selectedCourseBlockTimeRange = nil
+                    viewModel.selectedPeriodId = nil
+                    viewModel.selectedWeekday = AppClock.now().scheduleWeekday
+                    viewModel.selectedCourse = course
+                },
+                onSelectOngoing: { info in
+                    viewModel.selectOngoing(info)
+                }
             )
         }
     }

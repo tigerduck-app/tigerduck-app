@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "generatedAt": 1700000000,
+  "isLoggedIn": true,
+  "accentColorHex": 32191,
+  "courses": [
+    {
+      "courseNo": "EC1013701",
+      "displayName": "Data Structures",
+      "classroom": "TR-313",
+      "schedule": { "1": ["B", "C"], "3": ["D"] },
+      "colorHex": 16733525
+    }
+  ],
+  "periodTimes": {
+    "B": { "start": "09:10", "end": "10:00" },
+    "C": { "start": "10:20", "end": "11:10" },
+    "D": { "start": "11:20", "end": "12:10" }
+  },
+  "periodOrder": ["A", "B", "C", "D"],
+  "activeWeekdays": [1, 3, 5],
+  "activePeriodIds": ["B", "C", "D"]
+}

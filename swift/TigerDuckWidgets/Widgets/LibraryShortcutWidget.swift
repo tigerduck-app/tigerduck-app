@@ -1,0 +1,77 @@
+import WidgetKit
+import SwiftUI
+
+struct LibraryShortcutEntry: TimelineEntry {
+    let date: Date
+    let snapshot: WidgetSnapshot?
+}
+
+struct LibraryShortcutProvider: TimelineProvider {
+    private let store = WidgetSnapshotStore()
+
+    func placeholder(in context: Context) -> LibraryShortcutEntry {
+        LibraryShortcutEntry(date: Date(), snapshot: nil)
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (LibraryShortcutEntry) -> Void) {
+        completion(LibraryShortcutEntry(date: Date(), snapshot: store.readSnapshot()))
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<LibraryShortcutEntry>) -> Void) {
+        // Library Shortcut is static — single entry, refresh at midnight only
+        // so the date used by `containerBackground` rolls over for any future
+        // theme-tied logic. No dependency on snapshot freshness. The entry
+        // date itself stays on real wall time — WidgetKit treats it as
+        // scheduling metadata and a fake-future stamp would defer rendering.
+        let snapshot = store.readSnapshot()
+        let entry = LibraryShortcutEntry(date: Date(), snapshot: snapshot)
+        // Pin to Taipei — even with no time-of-day content here, day
+        // rollover is computed in the same frame the rest of the widget
+        // surface uses, so the refresh cadence stays consistent.
+        let appMidnight = WidgetTaipei.calendar.startOfDay(for: AppClock.now().addingTimeInterval(86_400))
+        // WidgetKit interprets `.after(...)` against real wall-clock time,
+        // so translate the fake-clock midnight to the real instant it maps
+        // to. Identity when no debug override is active.
+        let midnight = AppClock.realTime(forApp: appMidnight)
+        completion(Timeline(entries: [entry], policy: .after(midnight)))
+    }
+}
+
+struct LibraryShortcutWidgetView: View {
+    let entry: LibraryShortcutEntry
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let palette = entry.snapshot.map {
+            WidgetPalette.resolve(snapshot: $0, colorScheme: colorScheme)
+        } ?? WidgetPalette.resolve(snapshot: Self.fallbackSnapshot, colorScheme: colorScheme)
+        LibraryShortcutView(palette: palette)
+            .containerBackground(palette.background, for: .widget)
+            .widgetURL(URL(string: "tigerduck://library"))
+    }
+
+    private static let fallbackSnapshot = WidgetSnapshot(
+        version: 1,
+        generatedAt: Date(timeIntervalSince1970: 0),
+        isLoggedIn: false,
+        accentColorHex: 0x007AFF,
+        courses: [],
+        periodTimes: [:],
+        periodOrder: [],
+        activeWeekdays: [],
+        activePeriodIds: []
+    )
+}
+
+struct LibraryShortcutWidget: Widget {
+    let kind: String = "LibraryShortcutWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: LibraryShortcutProvider()) { entry in
+            LibraryShortcutWidgetView(entry: entry)
+        }
+        .configurationDisplayName(String(localized: "widget_library_shortcut_label", defaultValue: "Library QR Shortcut"))
+        .description(String(localized: "widget_library_shortcut_desc", defaultValue: "Open the virtual library pass QR code in one tap"))
+        .supportedFamilies([.systemSmall])
+    }
+}

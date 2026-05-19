@@ -2,11 +2,6 @@ import SwiftUI
 import SwiftData
 import Defaults
 
-enum BrowserPreference: String, CaseIterable {
-    case system
-    case inApp
-}
-
 @Observable
 final class AppState {
     var hasCompletedOnboarding = Defaults[.hasCompletedOnboarding]
@@ -49,6 +44,7 @@ final class AppState {
             }
         }
 
+        #if os(iOS)
         liveActivityObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.dataDidUpdate,
             object: nil,
@@ -74,8 +70,25 @@ final class AppState {
             self?.scheduleLiveActivityRefresh()
         }
 
+        #if DEBUG
+        // Flipping the debug clock must drive an LA refresh; otherwise the
+        // coordinator only re-evaluates on scene-active and the user has
+        // to leave/re-enter the app to see the Dynamic Island appear at the
+        // fake instant. Reminder reschedule rides along because reminders
+        // are also AppClock-keyed (see AssignmentReminderScheduler).
+        clockObserver = NotificationCenter.default.addObserver(
+            forName: DebugClockController.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.scheduleLiveActivityRefresh()
+        }
+        #endif
+        #endif
+
         runPendingMigrations()
 
+        #if os(iOS)
         liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
             await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
         }
@@ -84,6 +97,7 @@ final class AppState {
         // (e.g. across app launches). The coordinator no-ops when the
         // toggle is off, so this is safe to call unconditionally.
         pushCoordinator.enable()
+        #endif
 
         // Apply a stored in-app language override on launch so string lookups
         // use the user's chosen locale. Skip when "system" — calling apply()
@@ -104,11 +118,13 @@ final class AppState {
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
             ClassroomAbbrCacheMigration.runIfNeeded()
+            CustomNameCacheMigration.runIfNeeded()
             // Add future migrations here in sequence.
         }
     }
 
     deinit {
+        #if os(iOS)
         pendingRefreshTask?.cancel()
         boundaryRefreshTask?.cancel()
         if let observer = liveActivityObserver {
@@ -120,12 +136,21 @@ final class AppState {
         if let observer = skipStateObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        #if DEBUG
+        if let observer = clockObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        #endif
+        #endif
     }
 
     private var _libraryRevision = 0
     private var syncTask: Task<Void, Never>?
+    private var relabelTask: Task<Void, Never>?
 
-    // MARK: - Live Activity
+    #if os(iOS)
+    // MARK: - Live Activity (iOS only — ActivityKit + reminder scheduler
+    // are platform-restricted; Mac has no equivalent surfaces).
 
     let liveActivityPreferences = LiveActivityPreferencesStore()
     private let liveActivityCoordinator = LiveActivityCoordinator()
@@ -136,13 +161,17 @@ final class AppState {
     private var liveActivityObserver: Any?
     private var preferencesObserver: Any?
     private var skipStateObserver: Any?
+    #if DEBUG
+    private var clockObserver: Any?
+    #endif
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
-    private var relabelTask: Task<Void, Never>?
 
-    // MARK: - Push server
+    // MARK: - Push server (iOS only — APNs on Mac is a separate decision
+    // and the entire PushCoordinator stack pulls in ActivityKit symbols).
 
     let pushCoordinator = PushCoordinator()
+    #endif
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
 
@@ -180,6 +209,30 @@ final class AppState {
         isShowingNTUSTLoginSheet = false
     }
 
+    // MARK: - Widget deep linking
+
+    /// Set by `TigerDuckApp.onOpenURL` when a widget tap deep-links into the
+    /// app. `MainTabView` observes this and updates its local `selectedTab`,
+    /// then calls `clearPendingWidgetDestination()`. Stored here (rather than
+    /// on the tab view) so a cold-launch tap still resolves correctly: the
+    /// destination is set before MainTabView appears, and MainTabView's
+    /// `.onAppear` drain picks it up.
+    var pendingWidgetDestination: WidgetDestination?
+
+    /// Transient signal from the library-shortcut widget: when the user taps
+    /// the widget while the library feature is disabled, `MainTabView` switches
+    /// to the More tab and raises this flag so `MoreView` surfaces an
+    /// "enable first" alert. Not persisted — lives only within the process.
+    var pendingLibraryEnablePrompt = false
+
+    func openFromWidget(_ destination: WidgetDestination) {
+        pendingWidgetDestination = destination
+    }
+
+    func clearPendingWidgetDestination() {
+        pendingWidgetDestination = nil
+    }
+
     var isLibraryLoggedIn: Bool {
         _ = _libraryRevision
         return LibraryService.isTokenValid
@@ -190,6 +243,10 @@ final class AppState {
         return LibraryService.storedUsername
     }
 
+    /// `@MainActor` because `LibraryService.clearCredentials` is now
+    /// MainActor-isolated (it sync-broadcasts to the watch). The only
+    /// caller is a SwiftUI logout button, which is already on main.
+    @MainActor
     func logoutLibrary() {
         LibraryService.clearCredentials()
         _libraryRevision += 1
@@ -208,16 +265,20 @@ final class AppState {
     func logoutNTUST() {
         syncTask?.cancel()
         syncTask = nil
+        #if os(iOS)
         pendingRefreshTask?.cancel()
         pendingRefreshTask = nil
         boundaryRefreshTask?.cancel()
         boundaryRefreshTask = nil
+        #endif
 
         authService.logout()
         DataCache.shared.clearUserScopedData()
         Task { @MainActor in
+            #if os(iOS)
             await liveActivityCoordinator.endAll()
             await reminderScheduler.cancelAllOwnedRequests()
+            #endif
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
     }
@@ -232,10 +293,12 @@ final class AppState {
     var accentColorHex: Int = Defaults[.accentColorHex] {
         didSet {
             Defaults[.accentColorHex] = accentColorHex
+            #if os(iOS)
             // Accent color only affects the Live Activity snapshot — reminder
             // notifications are content-identical, so skip rescheduling to
             // avoid thrashing UNUserNotificationCenter on slider drags.
             scheduleLiveActivityRefresh(rescheduleReminderNotifications: false)
+            #endif
         }
     }
 
@@ -383,6 +446,11 @@ final class AppState {
     /// so the latest settings always win the save race.
     private func relabelAllCachedCourses() {
         relabelTask?.cancel()
+        // `Task.detached` lets the loop body yield to the runtime between
+        // iterations, so a long relabel sweep doesn't pin the MainActor.
+        // The actual disk/SwiftData work hops to MainActor per iteration
+        // because `DataCache` and `NameAbbrService.relabelInPlace` touch
+        // SwiftData-managed types that are themselves MainActor-isolated.
         relabelTask = Task.detached(priority: .userInitiated) {
             let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
             let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
@@ -393,28 +461,40 @@ final class AppState {
             var consecutiveEmpty = 0
             for _ in 0..<AppConstants.cachedSemesterRelabelDepth {
                 if Task.isCancelled { return }
-                let courses = DataCache.shared.loadCourses(semester: code)
-                if courses.isEmpty {
-                    consecutiveEmpty += 1
-                    // Two empty semesters in a row means we've walked past
-                    // any data the user has fetched; further iterations just
-                    // hit disk for nothing.
-                    if consecutiveEmpty >= 2 { break }
-                } else {
-                    consecutiveEmpty = 0
-                }
-                if !courses.isEmpty {
+                // Snapshot `code` into a `let` so the Sendable closure passed
+                // to `MainActor.run` captures an immutable value — Swift 6
+                // rejects capturing the mutating outer `var` from a
+                // concurrently-executing context.
+                let semesterCode = code
+                let iter = await MainActor.run { () -> (changed: Bool, wasEmpty: Bool) in
+                    let courses = DataCache.shared.loadCourses(semester: semesterCode)
+                    if courses.isEmpty { return (false, true) }
                     let changed = NameAbbrService.shared.relabelInPlace(
                         courses,
                         courseAbbrEnabled: courseAbbrEnabled,
                         classroomAbbrEnabled: classroomAbbrEnabled,
                         classroomMandarinDisplay: classroomMandarinDisplay
                     )
-                    if changed {
-                        DataCache.shared.saveCourses(courses, semester: code)
-                        anyChanged = true
+                    // Re-check cancellation inside the MainActor body: a
+                    // newer toggle can have cancelled this task while it
+                    // was queued for the main actor, and persisting now
+                    // would clobber the newer task's save with stale
+                    // toggle values captured at the top of this closure.
+                    if changed && !Task.isCancelled {
+                        DataCache.shared.saveCourses(courses, semester: semesterCode)
                     }
+                    return (changed, false)
                 }
+                if iter.wasEmpty {
+                    consecutiveEmpty += 1
+                    // Two empty semesters in a row means we've walked past any
+                    // data the user has fetched; further iterations just hit
+                    // disk for nothing.
+                    if consecutiveEmpty >= 2 { break }
+                } else {
+                    consecutiveEmpty = 0
+                }
+                if iter.changed { anyChanged = true }
                 code = CourseSelectionService.previousSemesterCode(code)
             }
 
@@ -422,19 +502,23 @@ final class AppState {
             // fetch cache, so the loop above never sees them. Relabel separately
             // so manually-added Mandarin classrooms also honor the display toggle.
             if Task.isCancelled { return }
-            let userAdded = DataCache.shared.loadUserAddedCourses()
-            if !userAdded.isEmpty {
+            let userChanged = await MainActor.run { () -> Bool in
+                let userAdded = DataCache.shared.loadUserAddedCourses()
+                guard !userAdded.isEmpty else { return false }
                 let changed = NameAbbrService.shared.relabelInPlace(
                     userAdded,
                     courseAbbrEnabled: courseAbbrEnabled,
                     classroomAbbrEnabled: classroomAbbrEnabled,
                     classroomMandarinDisplay: classroomMandarinDisplay
                 )
-                if changed {
+                // Same rationale as the per-semester save above: skip the
+                // write if a newer relabel has already superseded this one.
+                if changed && !Task.isCancelled {
                     DataCache.shared.saveUserAddedCourses(userAdded)
-                    anyChanged = true
                 }
+                return changed
             }
+            if userChanged { anyChanged = true }
 
             if anyChanged && !Task.isCancelled {
                 await MainActor.run {
@@ -469,19 +553,44 @@ final class AppState {
         }
     }
 
+    /// Mac-only sidebar pin list. Kept separate from `configuredTabs`
+    /// because the Mac sidebar isn't capped at four items: writing Mac
+    /// pins into `configuredTabs` would leak a 5+ item list into iOS's
+    /// tab bar, which only supports four user tabs plus More.
+    #if os(macOS)
+    var macConfiguredTabs: [AppFeature] = {
+        if let data = Defaults[.macConfiguredTabsData],
+           let rawValues = try? JSONDecoder().decode([String].self, from: data) {
+            let features = rawValues.compactMap { AppFeature(rawValue: $0) }
+            return features.isEmpty ? AppFeature.macDefaultTabs : features
+        }
+        return AppFeature.macDefaultTabs
+    }() {
+        didSet {
+            do {
+                let data = try JSONEncoder().encode(macConfiguredTabs.map(\.rawValue))
+                Defaults[.macConfiguredTabsData] = data
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "macConfiguredTabs.encode"])
+            }
+        }
+    }
+    #endif
+
     func completeOnboarding() {
         hasCompletedOnboarding = true
         Defaults[.hasCompletedOnboarding] = true
         backgroundSync()
     }
 
-    // MARK: - Live Activity / reminder refresh
+    #if os(iOS)
+    // MARK: - Live Activity / reminder refresh (iOS only)
 
     /// Recomputes the scenario and pushes it to the coordinator. Safe to call
     /// frequently — the coordinator only issues ActivityKit calls when the
     /// snapshot actually changes.
     func refreshLiveActivity() async {
-        let now = Date()
+        let now = AppClock.now()
         let courses = courseProvider.currentCourses()
         let assignments = DataCache.shared.loadAssignments()
         let snapshot = scenarioResolver.resolve(
@@ -519,7 +628,13 @@ final class AppState {
             assignments: assignments,
             now: now
         ) else { return }
-        let delay = boundary.timeIntervalSince(now) + AppConstants.scenarioBoundarySlackSeconds
+        // `boundary` is an app-clock instant; `Task.sleep` runs on the
+        // real clock, so under a frozen override the app-clock delta
+        // would never elapse and the refresh would re-arm itself
+        // forever. Translate to the real instant the boundary maps to
+        // before computing the sleep, mirroring the activity end task.
+        let realBoundary = AppClock.realTime(forApp: boundary)
+        let delay = realBoundary.timeIntervalSinceNow + AppConstants.scenarioBoundarySlackSeconds
         guard delay > 0 else { return }
         boundaryRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
@@ -657,6 +772,7 @@ final class AppState {
         Defaults[.pushServerEnabled] = false
         await pushCoordinator.disable()
     }
+    #endif // os(iOS) — closes the Live Activity / reminder / push block
 
     /// Background sync all data on app launch.
     ///
@@ -687,7 +803,7 @@ final class AppState {
 
             // Build moodle calendar events from assignments and merge with school events
             let moodleEvents = fetchedAssignments.map {
-                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.title, date: $0.dueDate, source: .moodle)
+                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.displayTitle, date: $0.dueDate, source: .moodle)
             }
             // Bail out before persisting if logout cancelled this sync while
             // the network calls were in flight. Without the guard the merged

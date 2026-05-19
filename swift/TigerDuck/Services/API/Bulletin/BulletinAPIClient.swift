@@ -14,7 +14,7 @@ final class BulletinAPIClient: Sendable {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
 
     init(
-        baseURL: URL = AppConstants.defaultPushServerURL,
+        baseURL: URL = PushServerConfig.resolveServerURL(),
         session: URLSession? = nil,
         sharedSecret: String? = nil
     ) {

@@ -48,7 +48,14 @@ final class ScheduleSyncService {
 
     /// Main entry. Failures are logged but never thrown — schedule sync is
     /// best-effort and must not block UI or app state.
-    func sync(inputs: Inputs, now: Date = Date()) {
+    ///
+    /// `now` defaults to `AppClock.now()` so the server's push event window
+    /// stays consistent with what the on-device LA / widgets / watch are
+    /// displaying under a debug clock override. Auth/network timestamps
+    /// (session TTL, cache age) intentionally remain on real time — see
+    /// the AppClock docstring — but the schedule horizon itself is
+    /// display state.
+    func sync(inputs: Inputs, now: Date = AppClock.now()) {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
         let request = PushAPI.ScheduleSyncRequest(
@@ -104,10 +111,15 @@ final class ScheduleSyncService {
                         slot: slot,
                         accentHex: inputs.accentHex
                     )
+                    // Server delivers pushes on the real wall clock — translate
+                    // app-clock fireAt to its real instant so a fake-time test
+                    // window produces a push that actually arrives during it.
+                    // Snapshot dates stay in app-clock; the device-side LA
+                    // handler already translates them (see staleDate fix).
                     events.append(PushAPI.ScheduleEvent(
                         sourceId: snapshot.sourceId,
                         scenario: .classPreparing,
-                        fireAt: fireAt,
+                        fireAt: AppClock.realTime(forApp: fireAt),
                         snapshot: snapshot
                     ))
                 }
@@ -122,7 +134,7 @@ final class ScheduleSyncService {
                 events.append(PushAPI.ScheduleEvent(
                     sourceId: snapshot.sourceId,
                     scenario: .inClass,
-                    fireAt: slot.start,
+                    fireAt: AppClock.realTime(forApp: slot.start),
                     snapshot: snapshot
                 ))
             }
@@ -146,7 +158,7 @@ final class ScheduleSyncService {
                 events.append(PushAPI.ScheduleEvent(
                     sourceId: snapshot.sourceId,
                     scenario: .assignmentUrgent,
-                    fireAt: fireAt,
+                    fireAt: AppClock.realTime(forApp: fireAt),
                     snapshot: snapshot
                 ))
             }

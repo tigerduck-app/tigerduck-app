@@ -144,12 +144,7 @@ struct BulletinNotificationSettingsView: View {
                 Button {
                     Task { await enablePush() }
                 } label: {
-                    if isAskingPermission {
-                        HStack(spacing: TigerDuckTheme.Spacing.xs) {
-                            ProgressView()
-                            Text(String(localized: "bulletin_push_requesting"))
-                        }
-                    } else {
+                    LoadingButtonLabel(isLoading: isAskingPermission) {
                         Label(String(localized: "bulletin_push_enable_action"), systemImage: "bell.badge")
                     }
                 }

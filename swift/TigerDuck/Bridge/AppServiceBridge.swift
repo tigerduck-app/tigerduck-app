@@ -123,6 +123,29 @@ enum AppServiceBridge {
             } else {
                 try await MoodleEnrolledCoursesService.fetchEnrolled()
             }
+            // Persist idnumber → numeric-id map so `SDCourse.moodleDeepLink`
+            // can build `?id=N` redirects (Moodle Mobile's in-app router
+            // rejects `?idnumber=…`). Whole-map overwrite — the fetched list
+            // is the authoritative snapshot, so any idnumber missing from
+            // it has been dropped on Moodle's side and we must not keep a
+            // stale numeric id pointing at a dead course. Guarded by the
+            // same login-generation + cancellation checks as the course
+            // cache write below: if the user logged out while this fetch
+            // was in flight, `clearUserScopedData` may have already wiped
+            // the map, and resuming this write would resurrect the
+            // previous user's enrolled-course ids on disk.
+            let moodleIdMap = Dictionary(
+                moodleAll.compactMap { entry -> (String, Int)? in
+                    guard !entry.idnumber.isEmpty else { return nil }
+                    return (entry.idnumber, entry.id)
+                },
+                uniquingKeysWith: { _, latest in latest }
+            )
+            if !Task.isCancelled,
+               authService.loginGeneration == startGeneration {
+                DataCache.shared.saveMoodleCourseIdMap(moodleIdMap)
+            }
+
             let moodleForSemester = moodleAll.filter { $0.semester == semester }
             let moodleByNo = Dictionary(
                 moodleForSemester.compactMap { course -> (String, MoodleEnrolledCourse)? in
@@ -168,7 +191,13 @@ enum AppServiceBridge {
 
             let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
                 for courseNo in orderedCourseNos {
-                    group.addTask {
+                    // Hop into MainActor for the body. `buildSDCourse` returns
+                    // a SwiftData-managed `SDCourse` whose accessors are
+                    // MainActor-isolated, and `NameAbbrService.shared` is a
+                    // MainActor singleton — running the closure on MainActor
+                    // avoids per-statement `MainActor.run` while leaving the
+                    // network `lookupCourse(…)` to suspend cooperatively.
+                    group.addTask { @MainActor in
                         do {
                             let results = try await CourseLookupService.lookupCourse(
                                 semester: semester, courseNo: courseNo, language: courseApiLanguage
@@ -399,6 +428,27 @@ enum AppServiceBridge {
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
+            // Same idnumber → numeric-id snapshot as the course-table path.
+            // Done here too because the assignments pipeline can run before
+            // the course pipeline on a cold launch, and the deep-link button
+            // shouldn't have to wait two cycles to light up. Whole-map
+            // overwrite for the same staleness reason — `moodleEnrolled` is
+            // the authoritative current-enrolment list. Guarded by the same
+            // login-generation + cancellation checks as the assignments
+            // cache write below: a fetch in flight when the user logs out
+            // must not resurrect that user's enrolled-course ids on disk.
+            let moodleIdMapForAssignments = Dictionary(
+                moodleEnrolled.compactMap { entry -> (String, Int)? in
+                    guard !entry.idnumber.isEmpty else { return nil }
+                    return (entry.idnumber, entry.id)
+                },
+                uniquingKeysWith: { _, latest in latest }
+            )
+            if !Task.isCancelled,
+               authService.loginGeneration == startGeneration {
+                DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
+            }
+
             // On first launch the NTUST course cache is empty because
             // backgroundSync runs assignments + courses in parallel.
             // Without this fallback we'd filter against an empty set,
@@ -449,19 +499,25 @@ enum AppServiceBridge {
                 return result
             }
 
+            let locallyCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
+            let archivedIds = DataCache.shared.loadArchivedAssignmentIds()
+
             let freshAssignments: [SDAssignment] = records.compactMap { record in
                 guard let dueDate = record.dueDate else { return nil }
                 guard !record.noSubmissions else { return nil }
 
                 let moodleCourse = moodleCoursesById[record.courseId]
                 let status = statuses[record.assignId]
+                let assignmentId = String(record.assignId)
                 return SDAssignment(
-                    assignmentId: String(record.assignId),
+                    assignmentId: assignmentId,
                     courseNo: moodleCourse?.courseNo ?? "",
                     courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
                     title: record.name,
                     dueDate: dueDate,
                     isCompleted: status?.isSubmitted ?? false,
+                    isArchived: archivedIds.contains(assignmentId),
+                    isLocallyCompleted: locallyCompletedIds.contains(assignmentId),
                     moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(record.cmId)",
                     cutoffDate: record.cutoffDate,
                     submittedAt: status?.submittedAt

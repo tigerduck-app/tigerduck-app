@@ -6,14 +6,14 @@ extension Date {
     /// feeds are gregorian — using `Calendar.current` would shift
     /// month/day arithmetic on a device set to ROC or Buddhist calendar
     /// (already proven by `SDCourse.isoFormatter` pinning the same way).
-    static let scheduleCalendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
-        return cal
-    }()
+    /// Aliased onto `AppConstants.taipeiCalendar` so app code has one
+    /// canonical handle to the Taiwan-pinned calendar.
+    static let scheduleCalendar: Calendar = AppConstants.taipeiCalendar
 
     var shortDateString: String {
-        formatted(.dateTime.month(.defaultDigits).day())
+        var style = Date.FormatStyle.dateTime.month(.defaultDigits).day()
+        style.timeZone = AppConstants.taipeiTimeZone
+        return formatted(style)
     }
 
     /// Full numeric date — "2026/04/23". Used for article mastheads where
@@ -27,13 +27,17 @@ extension Date {
         f.dateFormat = "yyyy/MM/dd"
         // Pin to gregorian + en_US_POSIX so a device set to ROC /
         // Buddhist calendar doesn't render `2026-04-23` as `0115/04/23`.
+        // Pin time zone too so a traveler sees Taipei's calendar day.
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 
     var timeString: String {
-        formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
+        var style = Date.FormatStyle.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)
+        style.timeZone = AppConstants.taipeiTimeZone
+        return formatted(style)
     }
 
     var weekdayIndex: Int {
@@ -85,12 +89,28 @@ extension Date {
         f.dateFormat = "M/d HH:mm:ss"
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 
-    /// Absolute time: "3/24 23:59:00"
+    private static let absoluteFormatterNoSeconds: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
+        return f
+    }()
+
+    /// Absolute time. Drops the `:ss` component when seconds are zero
+    /// (Moodle deadlines are typically minute-aligned), so the common case
+    /// reads as "3/24 23:59" instead of the noisier "3/24 23:59:00".
     var absoluteTimeString: String {
-        Self.absoluteFormatter.string(from: self)
+        let seconds = Self.scheduleCalendar.component(.second, from: self)
+        if seconds == 0 {
+            return Self.absoluteFormatterNoSeconds.string(from: self)
+        }
+        return Self.absoluteFormatter.string(from: self)
     }
 
     /// Relative time, e.g. "5 days later", "30 hours later", or "Overdue".

@@ -24,11 +24,18 @@ struct HomeView: View {
     }
 
     private var content: some View {
-        ScrollView {
+        // Touch AppClockState.version so SwiftUI tracks the override and
+        // re-renders the greeting when the debug clock flips while this
+        // tab is already on screen. Without this read, `AppClock.now()`
+        // is an untracked side-effect and the greeting can sit on the
+        // old fake/real time until something unrelated invalidates the
+        // view.
+        let _ = AppClockState.shared.version
+        return ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 // Greeting
                 HStack {
-                    Text(Date().greetingText())
+                    Text(AppClock.now().greetingText())
                         .font(TigerDuckTheme.Typography.title)
                         .foregroundStyle(Color.textPrimary)
                     Spacer()
@@ -119,12 +126,15 @@ struct HomeView: View {
             homeDestination(for: feature)
         }
         .sheet(item: $viewModel.selectedCourse) { course in
+            let slot = viewModel.selectedCourseSlot
             CourseDetailSheet(
                 course: course,
                 assignments: viewModel.assignmentsFor(courseNo: course.courseNo),
-                weekday: Date().scheduleWeekday
+                timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
+                weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday
             )
             .presentationDetents([.medium, .large])
+            .onDisappear { viewModel.selectedCourseSlot = nil }
         }
         .onChange(of: viewModel.isEditingHome) { _, isEditing in
             if !isEditing {
@@ -316,6 +326,8 @@ private struct HomeSectionView: View {
             case .content:
                 UpcomingAssignmentsView(
                     assignments: viewModel.upcomingAssignments,
+                    courses: viewModel.allCourses,
+                    filter: viewModel.assignmentFilter,
                     showAbsoluteTime: appState.showAbsoluteAssignmentTime,
                     onArchive: { viewModel.archiveAssignment($0) },
                     onMarkComplete: { viewModel.markAssignmentAsLocallyCompleted($0) },
@@ -348,9 +360,10 @@ private struct HomeSectionView: View {
             case .todayCourses:
                 TimeSliderSection(
                     courses: viewModel.allCourses,
-                    onSelectCourse: { course in
+                    onSelectCourse: { slot in
                         guard !viewModel.isEditingHome else { return }
-                        viewModel.selectedCourse = course
+                        viewModel.selectedCourseSlot = slot
+                        viewModel.selectedCourse = slot.course
                     }
                 )
             case .upcomingAssignments:

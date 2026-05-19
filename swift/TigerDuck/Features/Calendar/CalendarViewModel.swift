@@ -21,9 +21,14 @@ final class CalendarViewModel {
     private let eventStore = EKEventStore()
     var calendarAccessGranted = false
     private var hasLoaded = false
-    // `nonisolated` so `deinit` (which is nonisolated under Swift 6 on
-    // a @MainActor class) can read this to remove the
-    // NotificationCenter observer at end-of-life.
+    // `nonisolated(unsafe)` so `deinit` (which is nonisolated under
+    // Swift 6 on a @MainActor class) can read this to remove the
+    // NotificationCenter observer at end-of-life. `@ObservationIgnored`
+    // is required for the isolation modifier to take effect — without
+    // it the `@Observable` macro replaces the stored var with a
+    // computed accessor, which strips the modifier and produces a
+    // "'nonisolated(unsafe)' has no effect" warning.
+    @ObservationIgnored
     private nonisolated(unsafe) var dataObserver: Any? = nil
 
     /// Pre-grouped events by day for O(1) lookups in the month grid.
@@ -35,16 +40,16 @@ final class CalendarViewModel {
     }
 
     func eventsOnDate(_ date: Date) -> [SDCalendarEvent] {
-        let key = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let key = AppConstants.taipeiCalendar.dateComponents([.year, .month, .day], from: date)
         return eventsByDay[key] ?? []
     }
 
     func previousMonth() {
-        displayedMonth = Calendar.current.date(byAdding: .month, value: -1, to: displayedMonth)!
+        displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: -1, to: displayedMonth)!
     }
 
     func nextMonth() {
-        displayedMonth = Calendar.current.date(byAdding: .month, value: 1, to: displayedMonth)!
+        displayedMonth = AppConstants.taipeiCalendar.date(byAdding: .month, value: 1, to: displayedMonth)!
     }
 
     func goToToday() {
@@ -123,7 +128,7 @@ final class CalendarViewModel {
         return assignments.map { assignment in
             SDCalendarEvent(
                 eventId: "moodle-\(assignment.assignmentId)",
-                title: "\(assignment.title)",
+                title: assignment.displayTitle,
                 date: assignment.dueDate,
                 source: .moodle
             )
@@ -151,7 +156,7 @@ final class CalendarViewModel {
 
     @MainActor
     private func loadSystemCalendarEvents() {
-        let cal = Calendar.current
+        let cal = AppConstants.taipeiCalendar
         guard let startDate = cal.date(byAdding: .month, value: -1, to: displayedMonth.startOfMonth),
               let endDate = cal.date(byAdding: .month, value: 2, to: displayedMonth.startOfMonth) else { return }
 
@@ -177,7 +182,7 @@ final class CalendarViewModel {
     }
 
     private static func buildCalendarDays(for month: Date) -> [Date?] {
-        let cal = Calendar.current
+        let cal = AppConstants.taipeiCalendar
         let start = month.startOfMonth
         let daysInMonth = month.daysInMonth
         let firstWeekday = month.firstWeekdayOfMonth // 1=Sunday
@@ -194,7 +199,7 @@ final class CalendarViewModel {
 
     private func setEvents(_ newEvents: [SDCalendarEvent]) {
         events = newEvents
-        let cal = Calendar.current
+        let cal = AppConstants.taipeiCalendar
         eventsByDay = Dictionary(grouping: newEvents) { event in
             cal.dateComponents([.year, .month, .day], from: event.date)
         }

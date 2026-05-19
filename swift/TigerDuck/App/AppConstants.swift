@@ -9,7 +9,7 @@ extension URL {
     /// string in the diagnostic so the regression is obvious in crash
     /// reports. Also throws at the type-load site so static service
     /// URLs cannot ship with a malformed literal.
-    static func knownGood(_ string: StaticString) -> URL {
+    nonisolated static func knownGood(_ string: StaticString) -> URL {
         let raw = "\(string)"
         guard let url = URL(string: raw) else {
             preconditionFailure("URL.knownGood received a malformed literal: \(raw)")
@@ -21,6 +21,21 @@ extension URL {
 nonisolated enum AppConstants {
     static let appName = "TigerDuck"
 
+    /// All "what day/time is it?" logic must read this, not the device
+    /// timezone — NTUST's class table, ICS feed, and Moodle deadlines are
+    /// all authored in Taipei wall time, so a student abroad must still
+    /// see "Monday 08:10" when the schedule says Monday 08:10.
+    static let taipeiTimeZone: TimeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+
+    /// Gregorian + Asia/Taipei. Use everywhere `Calendar.current` would
+    /// otherwise drift the displayed weekday/day on a device set to a
+    /// non-Taiwan timezone or a non-gregorian calendar (ROC, Buddhist).
+    static let taipeiCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = taipeiTimeZone
+        return cal
+    }()
+
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
@@ -29,6 +44,12 @@ nonisolated enum AppConstants {
     /// skipped sees the lock-screen activity update without waiting
     /// for the next sync tick.
     static let courseSkipStateDidChange = Notification.Name("TigerDuck.courseSkipStateDidChange")
+    /// Posted when the per-course color assignment map mutates (user
+    /// picked a custom color, reassigned all, or a course got displaced
+    /// during a setColor uniqueness rebalance). Drives the widget
+    /// snapshot rewrite so home-screen widgets follow in-app colors
+    /// without waiting for the next data sync.
+    static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
     nonisolated enum KeychainKeys {
@@ -44,11 +65,17 @@ nonisolated enum AppConstants {
         static let pushDeviceId = "push_device_id"
     }
 
-    /// Base URL for the push notification server. Production default points at
-    /// the nginx-proxy-manager + Cloudflare-fronted Mac mini. Override via
-    /// ``UserDefaultsKeys/pushServerURLOverride`` during development to talk
-    /// to a LAN instance.
-    static let defaultPushServerURL = URL.knownGood("https://api.tigerduck.app/v2")
+    /// Production push/bulletin backend. Release builds always resolve here.
+    /// Debug builds resolve through ``PushCoordinator/resolveServerURL()``,
+    /// which reads per-developer `Secrets.plist["DebugServerURL"]` (gitignored)
+    /// or falls back to ``fallbackDebugPushServerURL`` for Simulator setups.
+    static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v2")
+
+    /// Default Debug-build endpoint when `Secrets.plist` has no `DebugServerURL`.
+    /// Works on Simulator (localhost = host Mac); on a physical device this
+    /// resolves to the device itself and will fail to connect — physical-device
+    /// contributors must set `DebugServerURL` to their Mac's LAN IP.
+    static let fallbackDebugPushServerURL = URL.knownGood("http://localhost:40000/v2")
 
     /// How many semesters back the relabel sweep walks when display-toggle
     /// settings change. NTUST keeps ~2 active semesters in flight; 4 covers
@@ -69,6 +96,7 @@ nonisolated enum AppConstants {
         static let browserPreference = "browserPreference"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let configuredTabs = "configuredTabs"
+        static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"
         static let libraryFeatureEnabled = "libraryFeatureEnabled"
         static let homeSectionLayout = "homeSectionLayout"

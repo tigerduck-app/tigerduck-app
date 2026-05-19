@@ -2,11 +2,18 @@ import SwiftUI
 
 struct CourseTimeCard: View {
     let state: CourseState
-    let onSelect: ((SDCourse) -> Void)?
+    /// Hands back the full slot (not just the course) so callers can preserve
+    /// the precise day + start/end of the tapped period — the detail sheet
+    /// uses both to render the right time range and weekday-specific classroom.
+    let onSelect: ((CourseTimeSlot) -> Void)?
     var policy: VisualStylePolicy = VisualStylePolicy(preset: .default)
 
     var body: some View {
-        HStack(spacing: 8) {
+        // EqualHeightHStack pins both branches (.inClass single card and
+        // .between dual cards) to the tallest natural height seen during
+        // Home's lifetime, so the slot doesn't jump when the user drags
+        // the slider between states with mildly different content heights.
+        EqualHeightHStack(alignment: .top, spacing: 8) {
             switch state {
             case .inClass(let slot):
                 cardContent(slot: slot, opacity: 1.0)
@@ -32,7 +39,7 @@ struct CourseTimeCard: View {
     private func cardContent(slot: CourseTimeSlot, opacity: Double) -> some View {
         let course = slot.course
         let weekday = slot.date.scheduleWeekday
-        let isToday = Calendar.current.isDateInToday(slot.date)
+        let isToday = AppConstants.taipeiCalendar.isDateInToday(slot.date)
 
         HStack(alignment: .top, spacing: 10) {
             // Accent stripe — shows the course color as a small accent in
@@ -47,7 +54,12 @@ struct CourseTimeCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(course.timeRange(for: weekday) ?? "──:── - ──:──")
+                    // Render this slot's bounds (one contiguous block),
+                    // not `course.timeRange(for:)` — that returns the whole
+                    // day's first-to-last span, which would mismatch the
+                    // selected card whenever a course has split same-day
+                    // blocks (e.g. P3-P4 + P7-P8).
+                    Text("\(slot.start.timeString) - \(slot.end.timeString)")
                         .font(.caption.bold())
                         .foregroundStyle(timeRangeColor)
                         .lineLimit(1)
@@ -59,7 +71,7 @@ struct CourseTimeCard: View {
                     }
                 }
 
-                Text(course.courseName)
+                Text(course.displayName)
                     .font(.headline)
                     .foregroundStyle(courseNameColor(for: course))
                     .lineLimit(1)
@@ -74,7 +86,7 @@ struct CourseTimeCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
         .opacity(opacity)
-        .onTapGesture { onSelect?(course) }
+        .onTapGesture { onSelect?(slot) }
     }
 
     private func subtitle(for course: SDCourse, weekday: Int) -> String {
@@ -116,6 +128,7 @@ struct CourseTimeCard: View {
     private static let dateLabelFormatter: DateFormatter = {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "M/d (EEEEE)"
         return f
     }()
@@ -124,6 +137,7 @@ struct CourseTimeCard: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "M/d"
         return f
     }()

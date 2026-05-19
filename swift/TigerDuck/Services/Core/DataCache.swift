@@ -3,6 +3,13 @@ import Foundation
 
 /// Persists network-fetched data to disk so it survives app restarts.
 /// Uses JSON files in the app's caches directory.
+///
+/// Stays on `@MainActor` (the module-default isolation under
+/// `SWIFT_APPROACHABLE_CONCURRENCY = YES`) because the public surface
+/// hands back SwiftData-managed types (`SDCourse`, `SDAssignment`,
+/// `SDCalendarEvent`) whose accessors are themselves MainActor-isolated.
+/// Callers running off MainActor (e.g. `Task.detached`) must hop via
+/// `await MainActor.run { … }` before touching the cache.
 final class DataCache {
     static let shared = DataCache()
 
@@ -50,7 +57,14 @@ final class DataCache {
     /// network refresh will repopulate it.
     func loadCourses(semester: String) -> [SDCourse] {
         let dtos: [CachedCourse] = load(from: coursesFilename(semester, currentCourseApiLanguage())) ?? []
-        return dtos.map { $0.toSDCourse() }
+        let customNames = loadCourseCustomNames()
+        return dtos.map { dto in
+            applyCustomNameOverlay(
+                dto.toSDCourse(),
+                customNames: customNames,
+                clearPollutedCanonical: true
+            )
+        }
     }
 
     private func coursesFilename(_ semester: String, _ language: String) -> String {
@@ -70,7 +84,46 @@ final class DataCache {
 
     func loadUserAddedCourses() -> [SDCourse] {
         let dtos: [CachedCourse] = load(from: "user_added_courses.json", in: persistentDir) ?? []
-        return dtos.map { $0.toSDCourse() }
+        let customNames = loadCourseCustomNames()
+        return dtos.map { dto in
+            // User-added courses have no network refresh source, so we must
+            // never blank `courseName` even when it matches the alias — the
+            // cached value is the only fallback label after the user reverts
+            // the rename. The semester load path opts in via
+            // `clearPollutedCanonical: true` because a fresh API fetch will
+            // restore the real name.
+            applyCustomNameOverlay(
+                dto.toSDCourse(),
+                customNames: customNames,
+                clearPollutedCanonical: false
+            )
+        }
+    }
+
+    /// Apply the persisted alias overlay to a freshly-decoded SDCourse.
+    ///
+    /// When `clearPollutedCanonical` is true and `customNames[courseNo]`
+    /// equals the cached `courseName`, treat that as the pre-PR overwrite
+    /// signature (where the rename flow wrote the alias straight into
+    /// `courseName`) and clear `courseName` so `displayName` resolves to
+    /// the alias via `customName` only — and "Revert to default" surfaces
+    /// an empty canonical until the next network refresh repopulates it.
+    /// Callers that have no network refresh source (e.g. user-added
+    /// courses) MUST pass `false` so we never destroy the only available
+    /// fallback label; for those entries revert may visibly preserve the
+    /// alias-as-canonical, which is the most truthful recovery available.
+    private func applyCustomNameOverlay(
+        _ course: SDCourse,
+        customNames: [String: String],
+        clearPollutedCanonical: Bool
+    ) -> SDCourse {
+        if let alias = customNames[course.courseNo] {
+            if clearPollutedCanonical, alias == course.courseName {
+                course.courseName = ""
+            }
+            course.customName = alias
+        }
+        return course
     }
 
     // MARK: - Assignments
@@ -197,18 +250,46 @@ final class DataCache {
         load(from: "course_custom_names.json", in: persistentDir) ?? [:]
     }
 
-    // MARK: - Course Custom Colors
+    // MARK: - Course Color Map
 
-    /// Per-course palette-index overrides keyed by courseNo. Values index into
-    /// `TigerDuckTheme.courseColors`; consumers must tolerate out-of-range
-    /// indices (e.g. after the palette shrinks between releases).
-    func saveCourseCustomColors(_ colors: [String: Int]) {
-        save(colors, to: "course_custom_colors.json", in: persistentDir)
+    /// Per-course assigned 24-bit RGB hex (e.g. 0xFF6B6B) keyed by courseNo.
+    /// Every visible course gets an entry once `TigerDuckTheme.ensureAssignments`
+    /// has run, so colors stay unique across the roster. User picks (preset or
+    /// fully custom) and auto-assignments share this file.
+    func saveCourseColorMap(_ map: [String: UInt32]) {
+        save(map, to: "course_color_map.json", in: persistentDir)
     }
 
-    func loadCourseCustomColors() -> [String: Int] {
-        load(from: "course_custom_colors.json", in: persistentDir) ?? [:]
+    /// Returns the per-course color map. On first read after upgrading from
+    /// the legacy palette-index format (`course_custom_colors.json`), migrates
+    /// the indices into the new hex map and persists the result.
+    func loadCourseColorMap() -> [String: UInt32] {
+        if let map: [String: UInt32] = load(from: "course_color_map.json", in: persistentDir) {
+            return map
+        }
+        let legacy: [String: Int] = load(from: "course_custom_colors.json", in: persistentDir) ?? [:]
+        guard !legacy.isEmpty else { return [:] }
+        let migrated = legacy.compactMapValues { idx -> UInt32? in
+            guard Self.legacyPaletteHex.indices.contains(idx) else { return nil }
+            return Self.legacyPaletteHex[idx]
+        }
+        if !migrated.isEmpty {
+            saveCourseColorMap(migrated)
+        }
+        return migrated
     }
+
+    /// Mirror of `TigerDuckTheme.coursePaletteHexes` used only for the one-shot
+    /// migration above. Lives here so DataCache stays free of a Theme/SwiftUI
+    /// dependency. Drift between the two arrays only affects already-migrated
+    /// installs (which read the new file directly), so a future palette tweak
+    /// does not need to be replicated here.
+    private static let legacyPaletteHex: [UInt32] = [
+        0xFF6B6B, 0x4ECDC4, 0x45B7D1, 0xF39C12, 0xDDA0DD,
+        0x2ECC71, 0xE74C3C, 0x3498DB, 0xF7DC6F, 0x9B59B6,
+        0x1ABC9C, 0xE67E22, 0x85C1E9, 0xD35400, 0x27AE60,
+        0xC0392B, 0x8E44AD, 0x16A085, 0xF1C40F, 0x2980B9,
+    ]
 
     // MARK: - Score Report (per-student)
 
@@ -259,9 +340,11 @@ final class DataCache {
             ("deleted_courses.json", persistentDir),
             ("course_custom_names.json", persistentDir),
             ("course_custom_colors.json", persistentDir),
+            ("course_color_map.json", persistentDir),
             ("archived_assignments.json", persistentDir),
             ("locally_completed_assignments.json", persistentDir),
             ("bulletin_summaries.json", cacheDir),
+            ("moodle_course_id_map.json", persistentDir),
         ]
         for (name, dir) in filenames {
             let url = dir.appendingPathComponent(name)
@@ -308,6 +391,34 @@ final class DataCache {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+    }
+
+    // MARK: - Moodle course id map (idnumber → numeric id)
+
+    /// Persisted map populated by ``AppServiceBridge`` whenever it fetches
+    /// the user's Moodle enrolled-courses list. Exists because Moodle Mobile's
+    /// deep-link router only honors `?id=N` redirects reliably — `?idnumber=…`
+    /// is accepted by the web but not by the in-app handler — so we cache the
+    /// numeric id off the enrolled-courses payload and look it up at deep-link
+    /// build time. Lives in ``persistentDir`` so the map survives cache
+    /// sweeps that wipe localized course data; cleared on logout via
+    /// ``clearUserScopedData()``.
+    ///
+    /// **Always overwrite the whole map** with the fresh enrolled-courses
+    /// snapshot — additive merging would leak stale entries for courses the
+    /// user has been un-enrolled from or whose numeric id got reissued, and
+    /// `SDCourse.moodleDeepLink` would then keep pointing at a dead course.
+    func saveMoodleCourseIdMap(_ map: [String: Int]) {
+        save(map, to: "moodle_course_id_map.json", in: persistentDir)
+    }
+
+    func loadMoodleCourseIdMap() -> [String: Int] {
+        load(from: "moodle_course_id_map.json", in: persistentDir) ?? [:]
+    }
+
+    func lookupMoodleCourseId(idnumber: String) -> Int? {
+        guard !idnumber.isEmpty else { return nil }
+        return loadMoodleCourseIdMap()[idnumber]
     }
 
     // MARK: - Private helpers

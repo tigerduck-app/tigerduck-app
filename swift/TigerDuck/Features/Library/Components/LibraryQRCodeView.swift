@@ -6,6 +6,11 @@ struct LibraryQRCodeView: View {
     let isLoading: Bool
     let username: String?
 
+    /// Caps the rendered QR width so it stays comfortable on iPad and tunable
+    /// for field testing. Adjust here; the view squares itself via the
+    /// 1:1 aspect ratio below.
+    private static let qrCodeMaxWidth: CGFloat = 250
+
     var body: some View {
         VStack(spacing: 0) {
             // Title bar
@@ -26,7 +31,7 @@ struct LibraryQRCodeView: View {
 
             // QR Code
             qrCodeContent
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: Self.qrCodeMaxWidth)
                 .aspectRatio(1, contentMode: .fit)
                 .padding(.horizontal, TigerDuckTheme.Spacing.xxl)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct TimeSliderSection: View {
     let courses: [SDCourse]
-    var onSelectCourse: ((SDCourse) -> Void)? = nil
+    var onSelectCourse: ((CourseTimeSlot) -> Void)? = nil
     @Environment(AppState.self) private var appState
     @State private var viewModel = TimeSliderViewModel()
 
@@ -14,7 +14,15 @@ struct TimeSliderSection: View {
         .onAppear {
             viewModel.configure(courses: courses)
         }
-        .onChange(of: courses.map(\.courseNo)) {
+        // Reconfigure whenever any field the slot rendering depends on shifts
+        // — not just enrolment changes. After a sync the same courseNo can
+        // carry a new schedule, classroom map, or rename, and slots tapped
+        // from the slider now ferry the whole `CourseTimeSlot` into the
+        // detail sheet; keeping stale slot data here would surface old
+        // weekday / time / classroom / name in the sheet.
+        .onChange(of: courses.map { course in
+            "\(course.courseNo)|\(course.scheduleJSON)|\(course.classroomMapJSON)|\(course.displayName)"
+        }) {
             viewModel.configure(courses: courses)
         }
     }
@@ -92,8 +100,13 @@ struct TimeSliderSection: View {
             // evaluation triggers SwiftUI's "Modifying state during
             // view update" warning on recent SDKs and is a documented
             // anti-pattern with `TimelineView`.
-            .onChange(of: context.date) { _, newDate in
-                viewModel.tick(newDate)
+            //
+            // The TimelineView itself is just a real-wall-clock driver
+            // for re-renders; pass `AppClock.now()` (not `context.date`)
+            // so a debug override pins the slider to fake time instead
+            // of being overwritten back to real time on the next tick.
+            .onChange(of: context.date) { _, _ in
+                viewModel.tick(AppClock.now())
             }
         }
     }
@@ -109,7 +122,7 @@ struct TimeSliderSection: View {
     }
 
     private var timeLabelString: String {
-        let isToday = Calendar.current.isDateInToday(viewModel.selectedTime)
+        let isToday = AppConstants.taipeiCalendar.isDateInToday(viewModel.selectedTime)
         if isToday {
             return Self.timeFormatter.string(from: viewModel.selectedTime)
         } else {
@@ -133,6 +146,7 @@ struct TimeSliderSection: View {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 
@@ -140,6 +154,7 @@ struct TimeSliderSection: View {
         let f = DateFormatter()
         f.locale = .autoupdatingCurrent
         f.dateFormat = "M/d (EEEEE) HH:mm"
+        f.timeZone = AppConstants.taipeiTimeZone
         return f
     }()
 }

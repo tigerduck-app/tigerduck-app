@@ -1,0 +1,120 @@
+name: Version bumped
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check MARKETING_VERSION / CURRENT_PROJECT_VERSION follow SemVer rules
+        run: |
+          set -e
+          base="origin/${{ github.base_ref }}"
+          git fetch origin "${{ github.base_ref }}" --quiet --depth=1
+
+          pbxproj="swift/TigerDuck.xcodeproj/project.pbxproj"
+
+          # The pbxproj repeats MARKETING_VERSION per build configuration *per*
+          # target (main app, Live Activity extension, etc). We gate releases
+          # on the main TigerDuck target — that's always the first occurrence
+          # because Xcode writes target sections in dependency order.
+          extract_marketing() {
+            grep -E '^[[:space:]]*MARKETING_VERSION[[:space:]]*=' "$1" \
+              | head -n1 \
+              | sed -E 's/.*=[[:space:]]*([^;[:space:]]+).*/\1/'
+          }
+          extract_build() {
+            grep -E '^[[:space:]]*CURRENT_PROJECT_VERSION[[:space:]]*=' "$1" \
+              | head -n1 \
+              | sed -E 's/.*=[[:space:]]*([^;[:space:]]+).*/\1/'
+          }
+
+          new_marketing=$(extract_marketing "$pbxproj")
+          new_build=$(extract_build "$pbxproj")
+          old_marketing=$(git show "$base:$pbxproj" | extract_marketing /dev/stdin)
+          old_build=$(git show "$base:$pbxproj" | extract_build /dev/stdin)
+
+          echo "MARKETING_VERSION:       $old_marketing -> $new_marketing"
+          echo "CURRENT_PROJECT_VERSION: $old_build -> $new_build"
+
+          fail=0
+
+          # Strict SemVer MAJOR.MINOR.PATCH (optional pre-release `-suffix`,
+          # stripped before numeric comparison). Validating both sides up
+          # front means the parsing below can trust well-formed inputs.
+          marketing_re='^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?$'
+          int_re='^[0-9]+$'
+
+          if ! [[ "$new_marketing" =~ $marketing_re ]]; then
+            echo "::error file=$pbxproj::MARKETING_VERSION must be SemVer MAJOR.MINOR.PATCH (e.g. 1.6.2, optional -suffix); got '$new_marketing'."
+            fail=1
+          fi
+          if ! [[ "$old_marketing" =~ $marketing_re ]]; then
+            echo "::error file=$pbxproj::base MARKETING_VERSION is not SemVer MAJOR.MINOR.PATCH (got '$old_marketing'); cannot verify bump."
+            fail=1
+          fi
+          if ! [[ "$new_build" =~ $int_re ]]; then
+            echo "::error file=$pbxproj::CURRENT_PROJECT_VERSION must be a non-negative integer (got '$new_build')."
+            fail=1
+          fi
+          if ! [[ "$old_build" =~ $int_re ]]; then
+            echo "::error file=$pbxproj::base CURRENT_PROJECT_VERSION is not an integer (got '$old_build'); cannot verify bump."
+            fail=1
+          fi
+          [ "$fail" -eq 0 ] || exit "$fail"
+
+          # Compare only the numeric core; suffix-only changes (e.g.
+          # 1.6.1 → 1.6.1-rc1) don't count as a marketing bump and fall
+          # through to the build-number rule.
+          new_core="${new_marketing%%-*}"
+          old_core="${old_marketing%%-*}"
+
+          IFS='.' read -r new_major new_minor new_patch <<< "$new_core"
+          IFS='.' read -r old_major old_minor old_patch <<< "$old_core"
+
+          if [ "$new_core" != "$old_core" ]; then
+            # Industry-standard SemVer step: exactly one component advances
+            # by 1 and every lower component resets to 0. Rejects skips
+            # (1.6.1 → 1.6.3), downgrades, and dirty bumps (1.6.1 → 1.7.5).
+            # CURRENT_PROJECT_VERSION is intentionally unconstrained here —
+            # App Store only requires uniqueness within a marketing
+            # version, so a fresh MARKETING_VERSION may recycle build 1.
+            bump_ok=0
+            if [ "$new_major" -eq "$old_major" ] \
+               && [ "$new_minor" -eq "$old_minor" ] \
+               && [ "$new_patch" -eq $((old_patch + 1)) ]; then
+              bump_ok=1
+            fi
+            if [ "$new_major" -eq "$old_major" ] \
+               && [ "$new_minor" -eq $((old_minor + 1)) ] \
+               && [ "$new_patch" -eq 0 ]; then
+              bump_ok=1
+            fi
+            if [ "$new_major" -eq $((old_major + 1)) ] \
+               && [ "$new_minor" -eq 0 ] \
+               && [ "$new_patch" -eq 0 ]; then
+              bump_ok=1
+            fi
+            if [ "$bump_ok" -eq 0 ]; then
+              echo "::error file=$pbxproj::MARKETING_VERSION bump must be exactly patch+1, minor+1 (patch=0), or major+1 (minor=0, patch=0). Got $old_marketing -> $new_marketing."
+              fail=1
+            fi
+          else
+            # No marketing change → require a build-number tick so every PR
+            # produces a distinguishable TestFlight artifact. Strict +1
+            # (not just >) so successive PRs can't burn through a range of
+            # build numbers and silently leave gaps.
+            if [ "$new_build" -ne $((old_build + 1)) ]; then
+              echo "::error file=$pbxproj::MARKETING_VERSION unchanged at $new_marketing, so CURRENT_PROJECT_VERSION must increment by exactly 1 (base $old_build, expected $((old_build + 1)), got $new_build). Run /release-bump if you intended a marketing bump."
+              fail=1
+            fi
+          fi
+
+          exit $fail

@@ -159,7 +159,13 @@ private struct AutoProgressBar: View {
         if let start = snapshot.progressStart,
            let target = snapshot.countdownTarget,
            start < target {
-            ProgressView(timerInterval: start...target, countsDown: false) {
+            // `ProgressView(timerInterval:)` interpolates against the real
+            // wall clock, but the snapshot dates are in app-clock time
+            // (possibly fake). Translate the endpoints once so the bar
+            // animates over the matching real-time span.
+            let realStart = AppClock.realTime(forApp: start)
+            let realTarget = AppClock.realTime(forApp: target)
+            ProgressView(timerInterval: realStart...realTarget, countsDown: false) {
                 EmptyView()
             } currentValueLabel: {
                 EmptyView()
@@ -203,14 +209,18 @@ private struct MetadataRowView: View {
                 }
 
             case .inClass, .classPreparing:
-                HStack(spacing: 4) {
-                    if let loc = snapshot.locationText, !loc.isEmpty {
-                        Image(systemName: "mappin.and.ellipse")
-                        Text(loc)
-                    }
-                }
+                let hasLocation = snapshot.locationText?.isEmpty == false
 
-                Spacer(minLength: 8)
+                if hasLocation {
+                    HStack(spacing: 4) {
+                        if let loc = snapshot.locationText {
+                            Image(systemName: "mappin.and.ellipse")
+                            Text(loc)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+                }
 
                 HStack(spacing: 4) {
                     if !snapshot.subtitle.isEmpty {
@@ -256,8 +266,11 @@ private func statusLabel(for scenario: LiveActivityScenarioKind) -> String {
 
 @ViewBuilder
 private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
-    if let target = snapshot.countdownTarget, target > Date() {
-        Text(timerInterval: Date()...target, countsDown: true)
+    // Compare in app-clock space (fake time aware), but hand SwiftUI a
+    // real-time range — `Text(timerInterval:)` ticks against the system
+    // clock and would otherwise show ~a day off when fake time is set.
+    if let target = snapshot.countdownTarget, target > AppClock.now() {
+        Text(timerInterval: Date()...AppClock.realTime(forApp: target), countsDown: true)
     } else {
         Text("—")
     }

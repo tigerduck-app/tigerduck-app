@@ -2,7 +2,6 @@ import SwiftUI
 
 struct FeatureCardView: View {
     let feature: AppFeature
-    var isPinned: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
@@ -12,11 +11,6 @@ struct FeatureCardView: View {
                     .foregroundStyle(Color.accentPrimary)
                     .frame(width: 28, height: 28)
                 Spacer()
-                if isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(Color.textSecondary)
-                }
             }
             Text(feature.displayName)
                 .font(TigerDuckTheme.Typography.headline)

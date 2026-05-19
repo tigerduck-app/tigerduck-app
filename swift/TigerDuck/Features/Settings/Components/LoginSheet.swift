@@ -51,12 +51,13 @@ struct LoginSheet: View {
                         .submitLabel(.next)
                         .onSubmit { focusedField = .password }
 
-                    SecureField(passwordPlaceholder, text: $password)
-                        .keyboardType(.asciiCapable)
-                        .textContentType(.password)
-                        .focused($focusedField, equals: .password)
-                        .submitLabel(.go)
-                        .onSubmit { submitIfReady() }
+                    PasswordField(
+                        placeholder: passwordPlaceholder,
+                        text: $password,
+                        focusBinding: $focusedField,
+                        focusValue: .password,
+                        onSubmit: { submitIfReady() }
+                    )
                 } footer: {
                     if let subtitle {
                         Label(subtitle, systemImage: "info.circle")
@@ -76,16 +77,13 @@ struct LoginSheet: View {
                     Button {
                         submitIfReady()
                     } label: {
-                        HStack {
-                            Spacer()
-                            if isLoggingIn {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .padding(.trailing, 6)
+                        LoadingButtonLabel(isLoading: isLoggingIn) {
+                            HStack {
+                                Spacer()
+                                Text(String(localized: "action_login"))
+                                    .fontWeight(.semibold)
+                                Spacer()
                             }
-                            Text(String(localized: "action_login"))
-                                .fontWeight(.semibold)
-                            Spacer()
                         }
                     }
                     .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
@@ -108,6 +106,10 @@ struct LoginSheet: View {
 
     private func submitIfReady() {
         guard !username.isEmpty, !password.isEmpty, !isLoggingIn else { return }
+        #if canImport(UIKit)
+        UIApplication.dismissKeyboard()
+        #endif
+        focusedField = nil
         onLogin(username, password)
     }
 }

@@ -29,7 +29,7 @@ struct LiveActivityScenarioResolver {
         assignments: [SDAssignment],
         preferences: LiveActivityPreferencesStore,
         accentHex: Int,
-        now: Date = Date()
+        now: Date = AppClock.now()
     ) -> LiveActivitySnapshot? {
         guard preferences.isLiveActivityEnabled else { return nil }
 
@@ -69,8 +69,12 @@ struct LiveActivityScenarioResolver {
         let weekday = slot.date.scheduleWeekday
         return LiveActivitySnapshot(
             scenario: .inClass,
-            title: slot.course.courseName,
-            subtitle: slot.course.timeRange(for: weekday) ?? "",
+            title: slot.course.displayName,
+            // Render the active block's own range, not the day's first-to-last
+            // span — for a split same-day course (e.g. P3-P4 + P7-P8) the
+            // countdown/progress are scoped to this slot, so the subtitle
+            // must match or it announces a gap-spanning window.
+            subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.end,
@@ -85,8 +89,11 @@ struct LiveActivityScenarioResolver {
         let weekday = slot.date.scheduleWeekday
         return LiveActivitySnapshot(
             scenario: .classPreparing,
-            title: slot.course.courseName,
-            subtitle: slot.course.timeRange(for: weekday) ?? "",
+            title: slot.course.displayName,
+            // Same reason as inClassSnapshot: the upcoming slot is one
+            // specific block, so subtitle must reflect that block — not
+            // an earlier block plus the gap leading to this one.
+            subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),
             countdownTarget: slot.start,
@@ -103,16 +110,15 @@ struct LiveActivityScenarioResolver {
         leadTime: TimeInterval,
         accentHex: Int
     ) -> LiveActivitySnapshot {
-        let instructor = courses
-            .first { $0.courseNo == assignment.courseNo }
-            .flatMap { nonEmpty($0.instructor) }
+        let matchingCourse = courses.first { $0.courseNo == assignment.courseNo }
+        let instructor = matchingCourse.flatMap { nonEmpty($0.instructor) }
         let progressStart: Date? = leadTime > 0
             ? assignment.dueDate.addingTimeInterval(-leadTime)
             : nil
         return LiveActivitySnapshot(
             scenario: .assignmentUrgent,
-            title: assignment.title,
-            subtitle: assignment.courseName,
+            title: assignment.displayTitle,
+            subtitle: assignment.displayCourseName(matching: matchingCourse),
             locationText: nil,
             instructor: instructor,
             countdownTarget: assignment.dueDate,

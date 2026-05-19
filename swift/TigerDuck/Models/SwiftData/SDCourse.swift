@@ -12,6 +12,19 @@ final class SDCourse: Identifiable {
     var enrolledCount: Int
     var maxCount: Int
 
+    /// User-supplied alias for `courseName`. Kept transient because the
+    /// canonical store is `DataCache.loadCourseCustomNames()`; persisting it
+    /// here would let SwiftData round-trip the override through cache rebuilds
+    /// and bypass the rename mechanism (see `CanonicalCourseProvider.merge`).
+    /// Read via `displayName`.
+    @Transient var customName: String? = nil
+
+    /// What to show to the user — custom name when set, otherwise the
+    /// canonical API name. Use this anywhere a course label is rendered
+    /// (UI / widget / Live Activity / notification body); keep
+    /// `courseName` for matching, persistence, and search.
+    var displayName: String { customName ?? courseName }
+
     /// Schedule stored as JSON: {"1":["3","4"],"3":["6","7"]}
     /// Keys = weekday (1=Mon..7=Sun), Values = period IDs
     var scheduleJSON: String {
@@ -200,7 +213,7 @@ final class SDCourse: Identifiable {
 extension Array where Element == SDCourse {
     /// Courses that have a schedule entry for today's weekday.
     func coursesForToday() -> [SDCourse] {
-        let today = Date().scheduleWeekday
+        let today = AppClock.now().scheduleWeekday
         return filter { $0.schedule[today] != nil }
     }
 }
@@ -210,7 +223,11 @@ extension SDCourse {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = .current
+        // Pin to Taipei so a traveler marking "today" as skipped still
+        // hits the same calendar day the widget/timeline derivation
+        // computes — both sides must agree on what `yyyy-MM-dd` resolves
+        // to or the skip silently misses.
+        f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()
@@ -250,5 +267,37 @@ extension SDCourse {
         // the in-progress class as skipped would still see it on the
         // lock screen until something else triggers a refresh.
         NotificationCenter.default.post(name: AppConstants.courseSkipStateDidChange, object: nil)
+    }
+}
+
+extension SDCourse {
+    /// Deep link into the Moodle Mobile app for this course. Mirrors
+    /// ``SDAssignment/moodleDeepLink`` — same `moodlemobile://https//<host>?redirect=…`
+    /// envelope pointing at `/course/view.php?id=<N>`. The numeric id is
+    /// looked up from ``DataCache/lookupMoodleCourseId(idnumber:)``, which
+    /// ``AppServiceBridge`` keeps fresh off the enrolled-courses fetch.
+    ///
+    /// Returns `nil` when either no idnumber is recorded for the course
+    /// (e.g. user-added courses), or the id-map cache hasn't been populated
+    /// yet (cold launch before first sync) — UI hides the button in both
+    /// cases so the user never taps into an "app cannot open this URL" sheet.
+    var moodleDeepLink: URL? {
+        guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
+              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {
+            return nil
+        }
+
+        var inner = URLComponents()
+        inner.path = "/course/view.php"
+        inner.queryItems = [URLQueryItem(name: "id", value: String(numericId))]
+        guard let redirectTarget = inner.string else { return nil }
+
+        let host = AppConstants.moodleBaseURL.host ?? "moodle2.ntust.edu.tw"
+        var components = URLComponents()
+        components.scheme = "moodlemobile"
+        components.host = "https"
+        components.path = "//\(host)"
+        components.queryItems = [URLQueryItem(name: "redirect", value: redirectTarget)]
+        return components.url
     }
 }

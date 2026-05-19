@@ -1,10 +1,12 @@
 <div align="center">
-<img width="2000" src="https://github.com/user-attachments/assets/cf6a1d18-a348-4b83-adfd-81c6dc82855f" />
+<a href="https://tigerduck.app/">
+  <img width="2000" src="https://github.com/user-attachments/assets/cf6a1d18-a348-4b83-adfd-81c6dc82855f" alt="TigerDuck Banner"/>
+</a>
 <!-- ![TigerDuck Banner](.github/assets/banner.png) -->
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.6.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.6.1)
+[![Version](https://img.shields.io/badge/Version-v1.7.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
@@ -84,6 +86,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v1.7.0`** | 2026-05-18 | 🔔 **Apple Watch App 上線** — Library QR 作為左側分頁、WatchConnectivity 即時推送憑證、全螢幕 QR 與閒置淡出頁碼、QR 頁面字串在地化；macOS 儀表板與課表統一走 `CanonicalCourseProvider`、下一堂課時間區間加長；Home / 課表卡片等高鎖定、衝堂並排顯示各自時段；圖書館 QR 顯示時自動最大亮度；Onboarding 登入鍵盤錨點與授權後推播啟用修正；後端拆出獨立 `tigerduck-backend` repo；升級至 Xcode 26.4、Swift 6 strict concurrency 全綠 |
 | **`v1.6.1`** | 2026-05-01 | 🤖 **Android FCM 推播通道**（為 Android 版鋪路、批次 fan-out、bad-token 分類）、API base path 從 `/v1` 升 `/v2`（`/v1` 保留為 deprecated alias）、iOS 註冊裝置帶 `platform=apple` |
 | **`v1.6.0`** | 2026-05-01 | 🌏 **多語言（67+ 語系）**、in-app 語言切換、RTL 版面修正、課程/教室**簡稱**子模組、locale 隔離的課表快取 |
 | **`v1.5.2`** | 2026-04-24 | Live Activity 推播 token 重送/清理、Push 排程器 token 修剪、mismatched snapshot 防護 |
@@ -178,25 +181,8 @@ open swift/TigerDuck.xcodeproj
 
 > 💡 名稱簡稱（`name-abbr/`）與多語系字串（`localization/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
 
-### 推播後端（`backend/`）
-正式環境的 FastAPI 推播服務，負責 APNs Push-to-Start、排程同步、公告抓取與 LLM 分類。
-
-```bash
-cd backend
-
-# 安裝相依（host 端跑測試用）
-uv sync
-
-# 複製環境變數範本，填入 NTUST、APNs、Postgres 等設定
-cp .env.example .env
-
-# 把 APNs 私鑰放到 secrets/AuthKey_<KEY_ID>.p8（已在 .gitignore）
-
-# 啟動完整 stack（postgres + backend）
-docker compose up -d --build
-docker compose logs -f backend          # 觀察 server.startup / llm.ready
-docker compose exec backend curl -sS localhost:40000/health
-```
+### 推播後端
+正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v2/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
 
 ### 網路請求方法驗證（`api-poc/`）
 
@@ -249,24 +235,13 @@ tigerduck-app/
 │       │   └── Migrations/             # 一次性遷移
 │       ├── SharedUI/                   # 共用 UI 元件
 │       └── Theme/                      # 主題、配色、視覺預設
-├── backend/                            # 推播 / 公告後端（FastAPI + Postgres + APNs + LLM）
-│   ├── server/
-│   │   ├── main.py                     # FastAPI 進入點
-│   │   ├── config.py / db.py / models.py
-│   │   ├── routes/                     # devices / schedule / bulletins / live_activities
-│   │   ├── push/                       # APNs payload + sender
-│   │   ├── scheduler/                  # Live Activity 排程派送、retention
-│   │   ├── bulletins/                  # 公告抓取、去重、LLM 分類、taxonomy
-│   │   └── migrations/                 # Alembic
-│   ├── scripts/                        # 一次性腳本（如公告 backfill）
-│   ├── docker-compose.yml / Dockerfile
-│   └── pyproject.toml / uv.lock
 ├── api-poc/                            # 第三方 API 驗證腳本（NTUST / Moodle / Calendar）
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
-├── deploy/                             # 部署用 launchd plist（host 上的 llama-server）
-├── docs/                               # 規劃文件、移轉計畫
+├── docs/                               # 規劃文件、移轉計畫（iOS 端）
 ├── localization/                       # ⤴ git submodule：67+ 語系翻譯
 └── name-abbr/                          # ⤴ git submodule：課程 / 教室簡稱字典
+
+> 推播 / 公告後端（FastAPI + Postgres + APNs + LLM）已分拆至 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend)。
 ```
 
 ## 貢獻

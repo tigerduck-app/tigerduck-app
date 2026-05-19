@@ -44,8 +44,8 @@ final class PushCoordinator {
     ) {
         self.identity = identity
         let resolvedClient = apiClient ?? PushAPIClient(
-            baseURL: Self.resolveServerURL(),
-            sharedSecret: Self.resolveSharedSecret()
+            baseURL: PushServerConfig.resolveServerURL(),
+            sharedSecret: PushServerConfig.resolveSharedSecret()
         )
         self.apiClient = resolvedClient
         self.registration = PushRegistrationService(
@@ -110,7 +110,7 @@ final class PushCoordinator {
             liveActivitiesEnabled: liveActivitiesEnabled,
             notificationAuthStatus: notificationStatus,
             registration: reg,
-            resolvedServerURL: Self.resolveServerURL()
+            resolvedServerURL: PushServerConfig.resolveServerURL()
         )
     }
 
@@ -160,52 +160,36 @@ final class PushCoordinator {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Build-time env sanity
 
-    /// Hosts that the push-server URL override is allowed to target. The
-    /// default production endpoint plus a small set of dev/staging hosts.
-    /// An attacker-supplied override (via UserDefaults seeding from a
-    /// compromised backup, MDM, or a future dev panel) cannot point the
-    /// app at an arbitrary server outside this list.
-    private static let pushServerHostAllowlist: Set<String> = [
-        "api.tigerduck.app",
-        "staging.api.tigerduck.app",
-        "localhost",
-        "127.0.0.1",
-    ]
-
-    static func resolveServerURL() -> URL {
-        #if DEBUG
-        if let override = Defaults[.pushServerURLOverride],
-           !override.isEmpty,
-           let url = URL(string: override),
-           url.scheme == "https" || url.host == "localhost" || url.host == "127.0.0.1",
-           let host = url.host,
-           pushServerHostAllowlist.contains(host) {
-            return url
-        }
-        #endif
-        return AppConstants.defaultPushServerURL
-    }
-
-    /// Read the shared secret from `Secrets.plist` (gitignored) bundled
-    /// with the app. The `APIToken` key must match the server's
-    /// `TIGERDUCK_API_SHARED_SECRET`. A missing file or empty value returns
-    /// nil, which preserves the dev-friendly no-auth path.
+    /// Crashes Debug builds at launch when the resolved server URL does not
+    /// match the APNs environment baked into the binary (or each other).
+    /// Compiles down to a no-op in Release builds — `assert` is stripped
+    /// under `-O`, so end users never see this.
     ///
-    /// Falls back to the legacy Info.plist key so older builds keep
-    /// working if an unrelated CI pipeline still injects there.
-    static func resolveSharedSecret() -> String? {
-        if let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
-           let dict = NSDictionary(contentsOf: url),
-           let value = dict["APIToken"] as? String,
-           !value.isEmpty {
-            return value
-        }
-        if let value = Bundle.main.object(forInfoDictionaryKey: "TigerDuckAPIToken") as? String,
-           !value.isEmpty {
-            return value
-        }
-        return nil
+    /// Guards against the regression where someone flips `PushAPNsEnv` or
+    /// `AppConstants.productionPushServerURL` without flipping the other,
+    /// or seeds a stale UserDefaults override pointing the wrong way.
+    nonisolated static func assertEnvConsistency() {
+        let resolved = PushServerConfig.resolveServerURL()
+        let host = resolved.host ?? ""
+        #if DEBUG
+        let expectedEnv = "development"
+        let hostOK = host == "localhost"
+            || host == "127.0.0.1"
+            || PushServerConfig.isPrivateIPv4(host)
+            || host == "staging.api.tigerduck.app"
+        #else
+        let expectedEnv = "production"
+        let hostOK = host == "api.tigerduck.app"
+        #endif
+        assert(
+            hostOK,
+            "Push env mismatch: \(expectedEnv) build resolved to \(resolved)"
+        )
+        assert(
+            PushAPNsEnv.resolvedForBuild == expectedEnv,
+            "Push env mismatch: build is \(expectedEnv) but PushAPNsEnv = \(PushAPNsEnv.resolvedForBuild)"
+        )
     }
 }

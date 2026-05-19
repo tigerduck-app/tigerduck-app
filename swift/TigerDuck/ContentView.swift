@@ -17,7 +17,9 @@ struct ContentView: View {
 
 struct MainTabView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppFeature = .home
+    @State private var showTimezoneAlert: Bool = false
 
     /// Configured tabs filtered to hide library features when disabled
     private var visibleTabs: [AppFeature] {
@@ -32,20 +34,82 @@ struct MainTabView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { feature in
-                Tab(feature.displayName, systemImage: feature.iconName, value: feature) {
+                Tab(feature.tabBarDisplayName, systemImage: feature.iconName, value: feature) {
                     viewForFeature(feature)
                 }
             }
 
-            Tab(AppFeature.more.displayName, systemImage: AppFeature.more.iconName, value: .more) {
+            Tab(AppFeature.more.tabBarDisplayName, systemImage: AppFeature.more.iconName, value: .more) {
                 MoreView()
             }
+        }
+        .alert(
+            String(localized: "app_non_taipei_timezone_hint"),
+            isPresented: $showTimezoneAlert
+        ) {
+            Button(String(localized: "action_got_it"), role: .cancel) { }
         }
         .onChange(of: visibleTabs) { _, newTabs in
             if selectedTab != .more, !newTabs.contains(selectedTab), let first = newTabs.first {
                 selectedTab = first
             }
         }
+        .onAppear {
+            drainPendingWidgetDestination()
+            // Fresh launch path. `.onChange(of: scenePhase)` won't fire
+            // for the initial `.active` value, so the first prompt has
+            // to come from here. Subsequent foreground returns go
+            // through the scene-phase observer below.
+            evaluateTimezoneAlert()
+        }
+        .onChange(of: appState.pendingWidgetDestination) { _, _ in
+            drainPendingWidgetDestination()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Multitask-switch path: every time the app re-enters the
+            // foreground, re-evaluate. The observer keeps `isNonTaipei`
+            // current against NSSystemTimeZoneDidChange while we were
+            // backgrounded, so this read sees the latest decision.
+            if newPhase == .active {
+                evaluateTimezoneAlert()
+            }
+        }
+        // Mid-foreground transitions matter too: if the user is in the
+        // app when the device crosses a timezone boundary (or the debug
+        // clock flips to a non-Taipei offset), the observer recomputes
+        // immediately and we want to surface the hint right then. Reading
+        // the observable here registers the tracking dependency that
+        // body evaluation alone otherwise misses.
+        .onChange(of: TimezoneObserver.shared.isNonTaipei) { _, isNonTaipei in
+            if isNonTaipei {
+                showTimezoneAlert = true
+            }
+        }
+    }
+
+    private func evaluateTimezoneAlert() {
+        if TimezoneObserver.shared.isNonTaipei {
+            showTimezoneAlert = true
+        }
+    }
+
+    private func drainPendingWidgetDestination() {
+        guard let destination = appState.pendingWidgetDestination else { return }
+        switch destination {
+        case .library:
+            // Library has a feature-disabled flag; if disabled, send the user
+            // to the More tab and raise an "enable first" alert there, mirroring
+            // the Android library-shortcut behavior.
+            if appState.libraryFeatureEnabled {
+                selectedTab = .library
+            } else {
+                selectedTab = .more
+                appState.pendingLibraryEnablePrompt = true
+            }
+        case .classTable:
+            selectedTab = .classTable
+        }
+        appState.clearPendingWidgetDestination()
     }
 
     @ViewBuilder

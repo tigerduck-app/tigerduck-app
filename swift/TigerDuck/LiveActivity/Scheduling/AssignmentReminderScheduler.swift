@@ -85,7 +85,7 @@ final class AssignmentReminderScheduler {
     func reschedule(
         assignments: [SDAssignment],
         offsets: Set<AssignmentReminderOffset>,
-        now: Date = Date()
+        now: Date = AppClock.now()
     ) async {
         rescheduleGeneration &+= 1
         let myGeneration = rescheduleGeneration
@@ -157,7 +157,12 @@ final class AssignmentReminderScheduler {
                 "offset": payload.offset.rawValue
             ]
 
-            guard payload.fireDate.timeIntervalSinceNow > 0 else { continue }
+            // `payload.fireDate` is in app-clock time (possibly fake).
+            // UN* triggers always interpret components / intervals against
+            // the real wall clock, so translate once here and use the real
+            // instant for both the future-check and the calendar match.
+            let realFireDate = AppClock.realTime(forApp: payload.fireDate)
+            guard realFireDate.timeIntervalSinceNow > 0 else { continue }
 
             // Calendar trigger (not interval) so DST transitions, sleep
             // gaps, or reschedules don't drift the "48h before" anchor
@@ -166,7 +171,7 @@ final class AssignmentReminderScheduler {
             // of the schedule math (see Date+Formatting.scheduleCalendar).
             let components = Date.scheduleCalendar.dateComponents(
                 [.year, .month, .day, .hour, .minute, .second],
-                from: payload.fireDate
+                from: realFireDate
             )
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             let request = UNNotificationRequest(
@@ -220,10 +225,10 @@ final class AssignmentReminderScheduler {
                     ReminderPayload(
                         id: "\(assignment.assignmentId)::\(offset.rawValue)",
                         fireDate: fireDate,
-                        title: String(format: String(localized: "notification_assignment_reminder_title"), assignment.courseName),
+                        title: String(format: String(localized: "notification_assignment_reminder_title"), assignment.displayCourseName),
                         body: offset.notificationBody(
-                            assignmentTitle: assignment.title,
-                            courseName: assignment.courseName
+                            assignmentTitle: assignment.displayTitle,
+                            courseName: assignment.displayCourseName
                         ),
                         assignmentId: assignment.assignmentId,
                         offset: offset

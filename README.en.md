@@ -1,10 +1,12 @@
 <div align="center">
-<img width="2000" src="https://github.com/user-attachments/assets/cf6a1d18-a348-4b83-adfd-81c6dc82855f" />
+<a href="https://tigerduck.app/">
+  <img width="2000" src="https://github.com/user-attachments/assets/cf6a1d18-a348-4b83-adfd-81c6dc82855f" alt="TigerDuck Banner"/>
+</a>
 <!-- ![TigerDuck Banner](.github/assets/banner.png) -->
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.6.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.6.1)
+[![Version](https://img.shields.io/badge/Version-v1.7.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
@@ -83,6 +85,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v1.7.0`** | 2026-05-18 | 🔔 **Apple Watch app launch** — Library QR as the leftmost tab, WatchConnectivity credential push, fullscreen QR + idle-fade page dots, localized QR-page strings; macOS dashboard and class-table unified through `CanonicalCourseProvider`, longer next-class time range; Home / class-table card rows lock to the tallest seen, conflicting (衝堂) classes laid out side-by-side at their own offsets; max screen brightness while Library QR is shown; onboarding keyboard anchoring + post-grant push enablement fixes; backend split into a dedicated `tigerduck-backend` repo; bumped to Xcode 26.4 with Swift 6 strict concurrency clean |
 | **`v1.6.1`** | 2026-05-01 | 🤖 **Android FCM push delivery** (groundwork for the Android client; batched fan-out, bad-token classification), API base path bumped from `/v1` to `/v2` (`/v1` kept as deprecated alias), iOS device registration now reports `platform=apple` |
 | **`v1.6.0`** | 2026-05-01 | 🌏 **i18n (67+ locales)**, in-app language switcher, RTL layout fixes, course/classroom **abbreviation** submodule, locale-scoped course cache |
 | **`v1.5.2`** | 2026-04-24 | Live Activity push-token retry/cleanup, scheduler token pruning, mismatched-snapshot guard |
@@ -177,25 +180,8 @@ open swift/TigerDuck.xcodeproj
 
 > 💡 Name abbreviations (`name-abbr/`) and localization strings (`localization/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
 
-### Push Backend (`backend/`)
-The production FastAPI server. Handles APNs Push-to-Start, schedule sync, bulletin scraping, and LLM-based classification.
-
-```bash
-cd backend
-
-# Install dependencies (host-side, used for tests)
-uv sync
-
-# Copy the env template and fill in NTUST / APNs / Postgres credentials
-cp .env.example .env
-
-# Drop your APNs key at secrets/AuthKey_<KEY_ID>.p8 (already gitignored)
-
-# Boot the full stack (postgres + backend)
-docker compose up -d --build
-docker compose logs -f backend          # watch for server.startup / llm.ready
-docker compose exec backend curl -sS localhost:40000/health
-```
+### Push Backend
+The production FastAPI push service (APNs Push-to-Start, schedule sync, bulletin scraping, and LLM classification) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v2/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
 
 ### Network Request Verification (`api-poc/`)
 
@@ -248,24 +234,13 @@ tigerduck-app/
 │       │   └── Migrations/             # One-shot migrations
 │       ├── SharedUI/                   # Reusable cross-feature views
 │       └── Theme/                      # Tokens, palette, visual presets
-├── backend/                            # Push / bulletin backend (FastAPI + Postgres + APNs + LLM)
-│   ├── server/
-│   │   ├── main.py                     # FastAPI entrypoint
-│   │   ├── config.py / db.py / models.py
-│   │   ├── routes/                     # devices / schedule / bulletins / live_activities
-│   │   ├── push/                       # APNs payload + sender
-│   │   ├── scheduler/                  # Live Activity dispatch + retention
-│   │   ├── bulletins/                  # Scraping, dedup, LLM classification, taxonomy
-│   │   └── migrations/                 # Alembic
-│   ├── scripts/                        # One-shot tools (e.g. bulletin backfill)
-│   ├── docker-compose.yml / Dockerfile
-│   └── pyproject.toml / uv.lock
-├── api-poc/                            # Third-party API validation scripts
+├── api-poc/                            # Third-party API validation scripts (NTUST / Moodle / Calendar)
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
-├── deploy/                             # Deployment artifacts (launchd plist for host llama-server)
-├── docs/                               # Planning docs, migration notes
+├── docs/                               # Planning docs, migration notes (iOS side)
 ├── localization/                       # ⤴ git submodule: 67+ locale translations
 └── name-abbr/                          # ⤴ git submodule: course / classroom abbreviation dictionaries
+
+> The push / bulletin backend (FastAPI + Postgres + APNs + LLM) has been split out into [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend).
 ```
 
 ## Contributing

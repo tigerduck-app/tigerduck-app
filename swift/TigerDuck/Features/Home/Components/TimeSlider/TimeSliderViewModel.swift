@@ -7,12 +7,12 @@ final class TimeSliderViewModel {
     var timeSlots: [CourseTimeSlot] = []
 
     // MARK: - State
-    var selectedTime: Date = Date()
+    var selectedTime: Date = AppClock.now()
     var isUserDragging: Bool = false
 
     // MARK: - Private
     private var allCourses: [SDCourse] = []
-    private var timelineCenterDate: Date = Date()
+    private var timelineCenterDate: Date = AppClock.now()
     /// Tracks which haptic interval the user was last in, to fire once per crossing.
     private var lastHapticSlot: Int = 0
     private let hapticGenerator = UISelectionFeedbackGenerator()
@@ -33,9 +33,9 @@ final class TimeSliderViewModel {
 
     func configure(courses: [SDCourse]) {
         allCourses = courses
-        rebuildTimeline(around: Date())
+        rebuildTimeline(around: AppClock.now())
         if !isUserDragging {
-            selectedTime = Date()
+            selectedTime = AppClock.now()
         }
     }
 
@@ -86,7 +86,7 @@ final class TimeSliderViewModel {
                 let next = timeSlots[i + 1]
                 let gapMin = next.start.timeIntervalSince(slot.end) / 60
 
-                let calendar = Calendar.current
+                let calendar = AppConstants.taipeiCalendar
                 let crossesDay = !calendar.isDate(slot.date, inSameDayAs: next.date)
 
                 if crossesDay {
@@ -132,7 +132,7 @@ final class TimeSliderViewModel {
     }
 
     private func checkTimelineRebuildNeeded() {
-        let calendar = Calendar.current
+        let calendar = AppConstants.taipeiCalendar
         let daysSinceCenter = abs(calendar.dateComponents(
             [.day], from: timelineCenterDate, to: selectedTime
         ).day ?? 0)
@@ -277,7 +277,7 @@ final class TimeSliderViewModel {
     func returnToNow() {
         withAnimation(.bouncy(duration: 0.6)) {
             isUserDragging = false
-            selectedTime = Date()
+            selectedTime = AppClock.now()
         }
     }
 

@@ -1,6 +1,6 @@
 import Foundation
 
-enum LanguageManager {
+nonisolated enum LanguageManager {
     static let system = "system"
     private static let zhHant = "zh-Hant"
     private static let zhHans = "zh-Hans"

@@ -56,7 +56,7 @@ final class LiveActivityCoordinator {
     /// Apply the resolved snapshot. Starts or updates the single activity
     /// matching the target id and ends stale or unrelated activities.
     func apply(snapshot: LiveActivitySnapshot?) async {
-        let now = Date()
+        let now = AppClock.now()
         await pruneRunningActivities(keeping: snapshot?.composedActivityId, now: now)
 
         // Persist the snapshot to the App Group AFTER the system gate so
@@ -83,7 +83,15 @@ final class LiveActivityCoordinator {
         let runningActivities = Activity<TigerDuckActivityAttributes>.activities
 
         let state = TigerDuckActivityAttributes.ContentState(snapshot: snapshot)
-        let content = ActivityContent(state: state, staleDate: snapshot.countdownTarget)
+        // `staleDate` is OS-consumed and validated against the real wall
+        // clock — passing the raw app-clock `countdownTarget` makes
+        // `Activity.request` fail with `ActivityInput error 0` whenever
+        // the debug clock points at a real-future date (the staleDate
+        // would land days away). Translate to the real instant that maps
+        // to the same fake-clock end so the system sees a sensible
+        // short-horizon stale marker.
+        let realStaleDate = snapshot.countdownTarget.map(AppClock.realTime(forApp:))
+        let content = ActivityContent(state: state, staleDate: realStaleDate)
 
         if let matching = runningActivities.first(where: { $0.attributes.activityId == targetId }) {
             if matching.content.state.snapshot != snapshot {
@@ -130,7 +138,7 @@ final class LiveActivityCoordinator {
         activityObserverTask = Task { @MainActor [weak self] in
             for await activity in Activity<TigerDuckActivityAttributes>.activityUpdates {
                 guard let self else { return }
-                let now = Date()
+                let now = AppClock.now()
                 await pruneRunningActivities(keeping: nil, now: now, expiredOnly: true)
                 let snapshot = activity.content.state.snapshot
                 if snapshot.countdownTarget.map({ $0 <= now }) == true {
@@ -188,7 +196,13 @@ final class LiveActivityCoordinator {
             return
         }
 
-        let delay = max(0, target.timeIntervalSince(now)) + 1
+        // `Task.sleep` runs on the real clock, so translate the fake-clock
+        // target to the real instant it maps to. Captured once per the
+        // `AppClock.realTime(forApp:)` contract — re-deriving in frozen
+        // mode would drift as real time advances while fake time stands
+        // still.
+        let realTarget = AppClock.realTime(forApp: target)
+        let delay = max(0, realTarget.timeIntervalSinceNow) + 1
         automaticEndTasks[activityId] = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
@@ -198,7 +212,7 @@ final class LiveActivityCoordinator {
 
     private func endIfStillExpired(activityId: String, target: Date) async {
         automaticEndTasks[activityId] = nil
-        guard Date() >= target,
+        guard AppClock.now() >= target,
               let activity = Activity<TigerDuckActivityAttributes>.activities
               .first(where: { $0.attributes.activityId == activityId }) else {
             return
