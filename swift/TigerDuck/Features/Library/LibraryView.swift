@@ -110,15 +110,26 @@ struct LibraryView: View {
     // MARK: - Brightness boost (scanner readability)
 
     #if os(iOS)
+    /// `true` when EDR is *actually* delivering extra luminance to the QR
+    /// right now, so the Metal renderer's local highlight is enough and we
+    /// can leave global brightness alone.
+    ///
+    /// Neither `HDRQRCodeImage.isSupported` (only proves a Metal device
+    /// exists) nor `potentialEDRHeadroom` (the display's *theoretical* max,
+    /// still > 1 while EDR is thermally throttled) is a reliable signal.
+    /// `currentEDRHeadroom` reflects the headroom usable at this moment and
+    /// collapses to `1.0` on SDR panels or when EDR is unavailable.
+    private var edrIsActive: Bool {
+        HDRQRCodeImage.isSupported && UIScreen.main.currentEDRHeadroom > 1.0
+    }
+
     /// Pin the screen at full brightness while the QR is on-screen — the
-    /// same behaviour Apple Wallet uses when presenting a pass. Whether the
-    /// display can drive EDR is not a reliable signal to skip this:
-    /// `HDRQRCodeImage.isSupported` only proves a Metal device exists, and
-    /// even `potentialEDRHeadroom` reports the display's *theoretical* max
-    /// rather than the headroom usable right now (thermal throttling or a
-    /// dimmed screen can collapse it). Rather than guess, always guarantee a
-    /// scannable QR; the EDR renderer simply adds extra punch on top.
+    /// fallback Apple Wallet-style behaviour for displays that can't drive
+    /// EDR. When EDR is genuinely active the Metal renderer already makes
+    /// the QR pop locally, so the global brightness override is skipped to
+    /// preserve the local-highlight behaviour this view is built around.
     private func boostBrightnessForQR() {
+        guard !edrIsActive else { return }
         if savedBrightness == nil {
             savedBrightness = UIScreen.main.brightness
         }
