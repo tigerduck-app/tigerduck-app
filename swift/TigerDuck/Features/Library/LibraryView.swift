@@ -110,12 +110,22 @@ struct LibraryView: View {
     // MARK: - Brightness fallback (no-EDR devices)
 
     #if os(iOS)
-    /// Only pin the screen at full brightness on devices where
-    /// `HDRQRCodeImage` can't drive EDR (no Metal device). On EDR-capable
-    /// iPhones the Metal renderer already makes the QR pop above SDR, so
-    /// global brightness boost is unnecessary noise.
+    /// `HDRQRCodeImage.isSupported` only proves a Metal device exists — it
+    /// does not prove the *display* can actually emit EDR. A Metal-capable
+    /// but SDR panel (older iPad, external monitor) renders the QR at
+    /// ordinary SDR luminance, so we must still pin brightness there.
+    /// `potentialEDRHeadroom` reports `1.0` on SDR displays and `> 1.0`
+    /// only when extended-range output is genuinely available.
+    private var displayCanRenderEDR: Bool {
+        HDRQRCodeImage.isSupported && UIScreen.main.potentialEDRHeadroom > 1.0
+    }
+
+    /// Only pin the screen at full brightness on devices/displays that
+    /// can't drive EDR. When EDR is genuinely available the Metal renderer
+    /// already makes the QR pop above SDR, so the global brightness boost
+    /// is unnecessary noise.
     private func boostBrightnessIfNoEDR() {
-        guard !HDRQRCodeImage.isSupported else { return }
+        guard !displayCanRenderEDR else { return }
         if savedBrightness == nil {
             savedBrightness = UIScreen.main.brightness
         }
