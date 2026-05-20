@@ -10,9 +10,9 @@
 	     未核准前 production 簽署會把 key 剝除,呼叫只會拿到 `.notSupported`。
 	     等核准並於 Developer Portal 啟用後,移除這段 TODO 並確認 provisioning
 	     profile 已重新產生。申請表單:
-	     https://developer.apple.com/contact/request/pass-presentation-suppression/ -->
+	     https://developer.apple.com/contact/request/pass-presentation-suppression/
 	<key>com.apple.developer.passkit.pass-presentation-suppression</key>
-	<true/>
+	<true/> -->
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.org.ntust.app.TigerDuck</string>
