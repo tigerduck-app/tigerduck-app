@@ -2,10 +2,16 @@ name: Version bumped
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
     branches: [main]
+
+concurrency:
+  group: version-bumped-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   check:
+    if: github.event.pull_request.head.ref == 'dev'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4

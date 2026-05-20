@@ -66,10 +66,26 @@ struct LibraryQRCodeView: View {
                 .scaleEffect(1.5)
                 .frame(maxWidth: .infinity, minHeight: 200)
         } else if let image = qrImage {
+            #if os(iOS)
+            // EDR-backed Metal renderer — drives pixels >1.0 on HDR-capable
+            // displays so the QR "pops" out of the surrounding glass card
+            // without changing system brightness. Falls back to the SDR
+            // `Image` below if Metal can't initialise (no MTLDevice / shader
+            // build failure), since the Metal view then draws transparent.
+            ZStack {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                HDRQRCodeImage(image: image)
+                    .aspectRatio(1, contentMode: .fit)
+            }
+            #else
             Image(uiImage: image)
                 .interpolation(.none)
                 .resizable()
                 .scaledToFit()
+            #endif
         } else {
             Image(systemName: "qrcode")
                 .font(.system(size: 48))
