@@ -16,8 +16,8 @@ struct LibraryView: View {
     /// can't fire up Apple Pay / Express Transit and cover the library QR.
     @State private var passSuppressionToken: PKSuppressionRequestToken?
     /// Pre-boost screen brightness, captured the first time we max the
-    /// screen on devices where the EDR renderer is unavailable. `nil`
-    /// means we are not currently overriding brightness.
+    /// screen for the QR page. `nil` means we are not currently
+    /// overriding brightness.
     @State private var savedBrightness: CGFloat?
     #endif
 
@@ -43,7 +43,7 @@ struct LibraryView: View {
             viewModel.onAppear()
             if viewModel.isLoggedIn {
                 suppressExpressTransit()
-                boostBrightnessIfNoEDR()
+                boostBrightnessForQR()
             }
         }
         .onDisappear {
@@ -54,7 +54,7 @@ struct LibraryView: View {
         .onChange(of: viewModel.isLoggedIn) { _, loggedIn in
             if loggedIn {
                 suppressExpressTransit()
-                boostBrightnessIfNoEDR()
+                boostBrightnessForQR()
             } else {
                 releaseExpressTransit()
                 restoreBrightness()
@@ -66,7 +66,7 @@ struct LibraryView: View {
                 viewModel.onAppear()
                 if viewModel.isLoggedIn {
                     suppressExpressTransit()
-                    boostBrightnessIfNoEDR()
+                    boostBrightnessForQR()
                 }
             case .background, .inactive:
                 viewModel.stopTimers()
@@ -107,25 +107,18 @@ struct LibraryView: View {
     private func releaseExpressTransit() {}
     #endif
 
-    // MARK: - Brightness fallback (no-EDR devices)
+    // MARK: - Brightness boost (scanner readability)
 
     #if os(iOS)
-    /// `HDRQRCodeImage.isSupported` only proves a Metal device exists — it
-    /// does not prove the *display* can actually emit EDR. A Metal-capable
-    /// but SDR panel (older iPad, external monitor) renders the QR at
-    /// ordinary SDR luminance, so we must still pin brightness there.
-    /// `potentialEDRHeadroom` reports `1.0` on SDR displays and `> 1.0`
-    /// only when extended-range output is genuinely available.
-    private var displayCanRenderEDR: Bool {
-        HDRQRCodeImage.isSupported && UIScreen.main.potentialEDRHeadroom > 1.0
-    }
-
-    /// Only pin the screen at full brightness on devices/displays that
-    /// can't drive EDR. When EDR is genuinely available the Metal renderer
-    /// already makes the QR pop above SDR, so the global brightness boost
-    /// is unnecessary noise.
-    private func boostBrightnessIfNoEDR() {
-        guard !displayCanRenderEDR else { return }
+    /// Pin the screen at full brightness while the QR is on-screen — the
+    /// same behaviour Apple Wallet uses when presenting a pass. Whether the
+    /// display can drive EDR is not a reliable signal to skip this:
+    /// `HDRQRCodeImage.isSupported` only proves a Metal device exists, and
+    /// even `potentialEDRHeadroom` reports the display's *theoretical* max
+    /// rather than the headroom usable right now (thermal throttling or a
+    /// dimmed screen can collapse it). Rather than guess, always guarantee a
+    /// scannable QR; the EDR renderer simply adds extra punch on top.
+    private func boostBrightnessForQR() {
         if savedBrightness == nil {
             savedBrightness = UIScreen.main.brightness
         }
@@ -138,7 +131,7 @@ struct LibraryView: View {
         savedBrightness = nil
     }
     #else
-    private func boostBrightnessIfNoEDR() {}
+    private func boostBrightnessForQR() {}
     private func restoreBrightness() {}
     #endif
 
