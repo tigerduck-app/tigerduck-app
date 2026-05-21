@@ -152,9 +152,13 @@ struct OnboardingView: View {
             }
             .buttonStyle(.plain)
             .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
+            .accessibilityRepresentation {
+                Toggle(label, isOn: isOn)
+            }
 
             Link(label, destination: destination)
                 .font(.callout)
+                .accessibilityHidden(true)
         }
     }
 
