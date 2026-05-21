@@ -171,6 +171,7 @@ private struct ConflictClusterView: View {
     let weekday: Int
     let periodId: String
 
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
 
     private var courseA: SDCourse { segments[0].course }
@@ -274,6 +275,15 @@ private struct ConflictClusterView: View {
                 .frame(width: proxy.size.width, height: bHeight)
                 .offset(y: bTop)
             }
+            .overlay(alignment: .topTrailing) {
+                if diffWithoutColor {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .padding(2)
+                        .accessibilityHidden(true)
+                }
+            }
             // One tap anywhere in the cluster opens the picker; the picker
             // resolves which course to inspect. Per-shape hit-testing would
             // bypass the picker entirely, but the Android version still goes
@@ -311,6 +321,15 @@ private struct ConflictClusterView: View {
         HStack(spacing: rowSpacing) {
             ForEach(segments, id: \.course.courseNo) { segment in
                 conflictColumn(segment: segment)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if diffWithoutColor {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .padding(2)
+                    .accessibilityHidden(true)
             }
         }
     }
