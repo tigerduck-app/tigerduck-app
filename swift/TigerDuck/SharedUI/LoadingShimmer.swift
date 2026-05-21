@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct LoadingShimmer: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: CGFloat = -1
 
     var body: some View {
@@ -23,6 +24,7 @@ struct LoadingShimmer: View {
                 }
                 .clipped()
                 .onAppear {
+                    guard !reduceMotion else { return }
                     withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
                         phase = 1
                     }
