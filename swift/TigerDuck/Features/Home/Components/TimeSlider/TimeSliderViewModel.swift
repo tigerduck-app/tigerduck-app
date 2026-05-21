@@ -3,6 +3,8 @@ import UIKit
 
 @Observable
 final class TimeSliderViewModel {
+    private var prefersReducedMotion: Bool { UIAccessibility.isReduceMotionEnabled }
+
     // MARK: - Data
     var timeSlots: [CourseTimeSlot] = []
 
@@ -275,7 +277,7 @@ final class TimeSliderViewModel {
     }
 
     func returnToNow() {
-        withAnimation(.bouncy(duration: 0.6)) {
+        withAnimation(prefersReducedMotion ? nil : .bouncy(duration: 0.6)) {
             isUserDragging = false
             selectedTime = AppClock.now()
         }
