@@ -1,5 +1,24 @@
 import SwiftUI
 
+/// Maps the codebase weekday convention (1=Mon, 2=Tue, ..., 7=Sun) to a
+/// localized short weekday name. DateFormatter's symbol arrays use a
+/// 1=Sunday convention, so we remap before indexing. The fallback to the
+/// raw int keeps VoiceOver labels usable even if symbol lookup fails.
+private func weekdayDisplayName(_ weekday: Int) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale.current
+    let symbols = formatter.shortStandaloneWeekdaySymbols ?? formatter.shortWeekdaySymbols ?? []
+    // Codebase: 1=Mon...6=Sat,7=Sun → DateFormatter index: 2=Mon...7=Sat,1=Sun
+    let dfIndex: Int
+    switch weekday {
+    case 1...6: dfIndex = weekday + 1 // Mon..Sat → 2..7
+    case 7: dfIndex = 1               // Sun → 1
+    default: dfIndex = 0
+    }
+    guard dfIndex >= 1, dfIndex <= symbols.count else { return "\(weekday)" }
+    return symbols[dfIndex - 1]
+}
+
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
 
@@ -85,6 +104,14 @@ struct TimetableGridView: View {
                             .frame(height: totalHeight)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        Text(String(
+                            format: String(localized: "a11y_timetable_cell"),
+                            weekdayDisplayName(weekday),
+                            viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                            course.displayName
+                        ))
+                    )
                     .contextMenu {
                         Button {
                             viewModel.startRename(course)
@@ -255,6 +282,14 @@ private struct ConflictClusterView: View {
                     weekday: weekday, periodId: periodId
                 )
             }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(
+                Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
+                     String(format: String(localized: "a11y_timetable_cell"),
+                            weekdayDisplayName(weekday),
+                            viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                            "\(courseA.displayName), \(courseB.displayName)"))
+            )
             .contextMenu {
                 conflictContextMenu()
             }
@@ -305,6 +340,13 @@ private struct ConflictClusterView: View {
                     .frame(height: blockHeight(span))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(
+                Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
+                     String(format: String(localized: "a11y_timetable_cell"),
+                            weekdayDisplayName(weekday),
+                            viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                            course.displayName))
+            )
             .contextMenu {
                 Button {
                     viewModel.startRename(course)
