@@ -171,7 +171,7 @@ struct CourseColorPickerSheet: View {
                 }
             if isSelected {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.headline)
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.25), radius: 1)
             }

@@ -53,7 +53,7 @@ struct CourseDetailSheet: View {
                 if course.moodleDeepLink != nil {
                     Button(action: openMoodleCourse) {
                         Image(systemName: "arrow.up.right.square.fill")
-                            .font(.system(size: 22))
+                            .font(.title2)
                             .foregroundStyle(Color.accentPrimary)
                     }
                     .accessibilityLabel(String(localized: "a11y_course_detail_open_moodle"))

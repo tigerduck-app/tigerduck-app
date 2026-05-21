@@ -56,7 +56,7 @@ struct TimetableGridView: View {
                 HStack(spacing: colSpacing) {
                     // Period label
                     Text(period.displayLabel)
-                        .font(.system(size: 10))
+                        .font(.caption2)
                         .foregroundStyle(Color.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -94,9 +94,10 @@ struct TimetableGridView: View {
                             .fill(course.color.opacity(0.4))
                             .overlay {
                                 Text(course.displayName)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.caption.weight(.medium))
                                     .foregroundStyle(Color.textPrimary)
                                     .lineLimit(spanCount > 1 ? 3 : 2)
+                                    .minimumScaleFactor(0.7)
                                     .multilineTextAlignment(.center)
                                     .padding(2)
                             }
@@ -169,6 +170,8 @@ private struct ConflictClusterView: View {
     let rowSpacing: CGFloat
     let weekday: Int
     let periodId: String
+
+    @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
 
     private var courseA: SDCourse { segments[0].course }
     private var spanA: Int { segments[0].span }
@@ -330,9 +333,10 @@ private struct ConflictClusterView: View {
                     .fill(course.color.opacity(0.4))
                     .overlay {
                         Text(course.displayName)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.caption.weight(.medium))
                             .foregroundStyle(Color.textPrimary)
                             .lineLimit(span > 1 ? 3 : 2)
+                            .minimumScaleFactor(0.7)
                             .multilineTextAlignment(.center)
                             .padding(2)
                     }
@@ -412,9 +416,10 @@ private struct ConflictClusterView: View {
                 // tail width). Aligning top-right (Γ) / bottom-left (L)
                 // keeps the text inside the visible color region.
                 Text(course.displayName)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.7)
                     .multilineTextAlignment(.center)
                     .padding(2)
                     .frame(
@@ -424,7 +429,7 @@ private struct ConflictClusterView: View {
 
                 if hasBadge {
                     Image(systemName: "book.fill")
-                        .font(.system(size: 8))
+                        .font(.system(size: badgeIconSize))
                         .foregroundStyle(Color.textPrimary.opacity(0.7))
                         .padding(3)
                 }
