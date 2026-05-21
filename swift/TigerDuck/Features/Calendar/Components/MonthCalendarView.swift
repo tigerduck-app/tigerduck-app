@@ -30,6 +30,7 @@ struct MonthCalendarView: View {
                     Image(systemName: "chevron.left")
                         .foregroundStyle(Color.accentPrimary)
                 }
+                .accessibilityLabel(String(localized: "a11y_calendar_nav_prev"))
                 Spacer()
                 Text(monthTitle)
                     .font(TigerDuckTheme.Typography.headline)
@@ -39,6 +40,7 @@ struct MonthCalendarView: View {
                     Image(systemName: "chevron.right")
                         .foregroundStyle(Color.accentPrimary)
                 }
+                .accessibilityLabel(String(localized: "a11y_calendar_nav_next"))
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
@@ -115,5 +117,14 @@ private struct DayCellView: View {
         }
         .buttonStyle(.plain)
         .frame(height: 40)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            Text(String(
+                format: String(localized: "a11y_calendar_day"),
+                date.formatted(date: .complete, time: .omitted),
+                events.count
+            ))
+        )
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
