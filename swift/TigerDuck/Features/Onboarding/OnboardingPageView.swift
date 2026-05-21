@@ -17,6 +17,8 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
 
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 64
+
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             iconView
@@ -71,7 +73,7 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         switch iconAnimation {
         case .pulse:
             Image(systemName: icon)
-                .font(.system(size: 64))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(accentColor)
                 .symbolEffect(.pulse)
         case .layerFlash:
@@ -80,7 +82,7 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
             // pulse both layers).
             ZStack {
                 Image(systemName: "shield.fill")
-                    .font(.system(size: 64))
+                    .font(.system(size: heroIconSize))
                     .foregroundStyle(accentColor)
                 Image(systemName: "lock.fill")
                     .font(.system(size: 32, weight: .semibold))

@@ -137,12 +137,13 @@ struct MainTabView: View {
 
 struct PlaceholderFeatureView: View {
     let feature: AppFeature
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 48
 
     var body: some View {
         NavigationStack {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 Image(systemName: feature.iconName)
-                    .font(.system(size: 48))
+                    .font(.system(size: heroIconSize))
                     .foregroundStyle(Color.accentPrimary)
                 Text(feature.displayName)
                     .font(TigerDuckTheme.Typography.title)

@@ -5,10 +5,12 @@ struct EmptyStateView: View {
     let title: String
     var message: String? = nil
 
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 48
+
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.md) {
             Image(systemName: icon)
-                .font(.system(size: 48))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.textSecondary)
             Text(title)
                 .font(TigerDuckTheme.Typography.headline)
