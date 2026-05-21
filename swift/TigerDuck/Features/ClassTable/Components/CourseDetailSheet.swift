@@ -202,7 +202,7 @@ private struct EmphasisCard: View {
                 .foregroundStyle(Color.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(value)
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(2)
                 .minimumScaleFactor(0.7)

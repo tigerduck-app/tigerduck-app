@@ -75,7 +75,9 @@ private struct GradeChip: View {
                     .font(.caption2)
             }
             Text(descriptor.label)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.system(.title3, design: .rounded).weight(.bold).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .foregroundStyle(descriptor.color)
         .padding(.horizontal, 10)
