@@ -111,6 +111,7 @@ struct BulletinDetailView: View {
             .font(TigerDuckTheme.Typography.title)
             .foregroundStyle(Color.textPrimary)
             .fixedSize(horizontal: false, vertical: true)
+            .accessibilityHeading(.h1)
     }
 
     private var footerTagStrip: some View {
