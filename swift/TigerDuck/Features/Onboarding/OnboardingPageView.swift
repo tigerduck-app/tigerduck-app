@@ -85,10 +85,10 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
                     .font(.system(size: heroIconSize))
                     .foregroundStyle(accentColor)
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 32, weight: .semibold))
+                    .font(.system(size: heroIconSize * 0.5, weight: .semibold))
                     .foregroundStyle(.white)
                     .symbolEffect(.pulse, options: .repeating.speed(0.35))
-                    .offset(y: -4)
+                    .offset(y: -heroIconSize / 16)
             }
         }
     }
