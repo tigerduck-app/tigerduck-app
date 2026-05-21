@@ -149,7 +149,7 @@ struct OnboardingView: View {
                     .font(.title2)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(isOn.wrappedValue ? Color.accentPrimary : Color.textSecondary)
-                    .contentTransition(.symbolEffect(.replace))
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
             }
             .buttonStyle(.plain)
             .sensoryFeedback(.selection, trigger: isOn.wrappedValue)

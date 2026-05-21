@@ -31,6 +31,10 @@ struct NetworkStatusOverlay: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: loadingState)
+        // Drive the fade off `visible` here rather than inside the delayed
+        // task: this modifier re-reads `reduceMotion` at render time, so a
+        // toggle made during the two-second delay is always respected.
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.5), value: visible)
         .onChange(of: loadingState) { _, newValue in
             hideTask?.cancel()
             if newValue == .loaded {
@@ -38,9 +42,7 @@ struct NetworkStatusOverlay: View {
                 hideTask = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(2))
                     guard !Task.isCancelled else { return }
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.5)) {
-                        visible = false
-                    }
+                    visible = false
                 }
             } else {
                 visible = false
