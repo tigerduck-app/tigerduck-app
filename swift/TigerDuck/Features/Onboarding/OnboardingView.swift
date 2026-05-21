@@ -156,9 +156,11 @@ struct OnboardingView: View {
                 Toggle(label, isOn: isOn)
             }
 
+            // Kept reachable by VoiceOver: the checkbox above is exposed as
+            // a Toggle, so this is the only way an assistive-tech user can
+            // open the privacy / delete-account page before accepting it.
             Link(label, destination: destination)
                 .font(.callout)
-                .accessibilityHidden(true)
         }
     }
 

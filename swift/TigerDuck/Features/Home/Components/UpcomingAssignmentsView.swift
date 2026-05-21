@@ -107,10 +107,16 @@ struct UpcomingAssignmentsView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         let actions = rowSwipeActions(for: assignment, now: now)
+        // Tapping the row opens the Moodle assignment link; when there is no
+        // deep link the tap is a no-op, so don't expose a button trait/hint.
+        let tapHint = assignment.moodleDeepLink == nil
+            ? nil
+            : String(localized: "a11y_course_detail_open_moodle")
         return SwipeableRow(
             leadingAction: actions.leading,
             trailingAction: actions.trailing,
             onTap: { openAssignment(assignment) },
+            tapHint: tapHint,
             content: content
         )
     }
@@ -273,6 +279,10 @@ private struct SwipeableRow<Content: View>: View {
     let leadingAction: SwipeActionDescriptor?
     let trailingAction: SwipeActionDescriptor?
     let onTap: () -> Void
+    /// VoiceOver hint describing what a tap does. `nil` when the row has no
+    /// tap destination — the row then exposes neither a button trait nor a
+    /// hint so assistive tech doesn't advertise an action that does nothing.
+    let tapHint: String?
     let content: Content
 
     @State private var offset: CGFloat = 0
@@ -284,30 +294,42 @@ private struct SwipeableRow<Content: View>: View {
         leadingAction: SwipeActionDescriptor?,
         trailingAction: SwipeActionDescriptor?,
         onTap: @escaping () -> Void,
+        tapHint: String?,
         @ViewBuilder content: () -> Content
     ) {
         self.leadingAction = leadingAction
         self.trailingAction = trailingAction
         self.onTap = onTap
+        self.tapHint = tapHint
         self.content = content()
     }
 
     var body: some View {
         ZStack {
             actionBackdrop
-            content
-                .contentShape(Rectangle())
-                .offset(x: offset)
-                .gesture(dragGesture)
-                .onTapGesture {
-                    if offset != 0 {
-                        snapBack()
-                    } else {
-                        onTap()
-                    }
+            tappableContent
+        }
+    }
+
+    @ViewBuilder
+    private var tappableContent: some View {
+        let row = content
+            .contentShape(Rectangle())
+            .offset(x: offset)
+            .gesture(dragGesture)
+            .onTapGesture {
+                if offset != 0 {
+                    snapBack()
+                } else {
+                    onTap()
                 }
+            }
+        if let tapHint {
+            row
                 .accessibilityAddTraits(.isButton)
-                .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
+                .accessibilityHint(Text(tapHint))
+        } else {
+            row
         }
     }
 
