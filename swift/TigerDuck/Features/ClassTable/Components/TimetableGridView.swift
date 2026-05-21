@@ -28,6 +28,8 @@ struct TimetableGridView: View {
     private let headerHeight: CGFloat = 30
     private let periodWidth: CGFloat = 12
 
+    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
+
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
     private var weekdayLabels: [String] {
@@ -94,7 +96,7 @@ struct TimetableGridView: View {
                             .fill(course.color.opacity(0.4))
                             .overlay {
                                 Text(course.displayName)
-                                    .font(.caption.weight(.medium))
+                                    .font(.system(size: courseNameSize, weight: .medium))
                                     .foregroundStyle(Color.textPrimary)
                                     .lineLimit(spanCount > 1 ? 3 : 2)
                                     .minimumScaleFactor(0.7)
@@ -173,6 +175,7 @@ private struct ConflictClusterView: View {
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
+    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
 
     private var courseA: SDCourse { segments[0].course }
     private var spanA: Int { segments[0].span }
@@ -352,7 +355,7 @@ private struct ConflictClusterView: View {
                     .fill(course.color.opacity(0.4))
                     .overlay {
                         Text(course.displayName)
-                            .font(.caption.weight(.medium))
+                            .font(.system(size: courseNameSize, weight: .medium))
                             .foregroundStyle(Color.textPrimary)
                             .lineLimit(span > 1 ? 3 : 2)
                             .minimumScaleFactor(0.7)
@@ -435,7 +438,7 @@ private struct ConflictClusterView: View {
                 // tail width). Aligning top-right (Γ) / bottom-left (L)
                 // keeps the text inside the visible color region.
                 Text(course.displayName)
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: courseNameSize, weight: .medium))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)
