@@ -3,6 +3,7 @@ import SwiftUI
 struct TabEditorView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var tabs: [AppFeature] = []
     @State private var draggingTab: AppFeature?
     @State private var tabDragLocation: CGPoint = .zero
@@ -35,7 +36,7 @@ struct TabEditorView: View {
                             HStack(spacing: TigerDuckTheme.Spacing.md) {
                                 ForEach(tabs, id: \.self) { feature in
                                     TabPreviewItem(feature: feature, isDragging: draggingTab == feature) {
-                                        withAnimation(.smoothSpring) {
+                                        withAnimation(reduceMotion ? nil : .smoothSpring) {
                                             tabs.removeAll { $0 == feature }
                                         }
                                     }
@@ -64,7 +65,7 @@ struct TabEditorView: View {
                                                 reorderTabsIfNeeded(at: value.location)
                                             }
                                             .onEnded { _ in
-                                                withAnimation(.smoothSpring) {
+                                                withAnimation(reduceMotion ? nil : .smoothSpring) {
                                                     draggingTab = nil
                                                 }
                                             }
@@ -125,7 +126,7 @@ struct TabEditorView: View {
                             ) {
                                 ForEach(availableFeatures) { feature in
                                     Button {
-                                        withAnimation(.smoothSpring) {
+                                        withAnimation(reduceMotion ? nil : .smoothSpring) {
                                             tabs.append(feature)
                                         }
                                     } label: {
@@ -152,7 +153,7 @@ struct TabEditorView: View {
                     }
 
                     Button(String(localized: "tab_editor_reset_default")) {
-                        withAnimation(.smoothSpring) {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) {
                             tabs = AppFeature.defaultTabs
                         }
                     }
