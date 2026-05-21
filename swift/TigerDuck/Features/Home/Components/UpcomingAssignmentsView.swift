@@ -306,6 +306,8 @@ private struct SwipeableRow<Content: View>: View {
                         onTap()
                     }
                 }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
         }
     }
 
