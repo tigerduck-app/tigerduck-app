@@ -3,6 +3,7 @@ import UserNotifications
 
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage = 0
     @State private var studentId = ""
     @State private var password = ""
@@ -84,7 +85,7 @@ struct OnboardingView: View {
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Button(String(localized: "action_next")) {
-                        withAnimation { currentPage = Page.privacy.rawValue }
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.privacy.rawValue }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -127,7 +128,7 @@ struct OnboardingView: View {
                         .opacity(agreedPrivacy && agreedDeletion ? 0 : 1)
 
                     Button(String(localized: "action_next")) {
-                        withAnimation { currentPage = Page.watchOS.rawValue }
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.watchOS.rawValue }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -172,7 +173,7 @@ struct OnboardingView: View {
             accentColor: .red
         ) {
             Button(String(localized: "action_next")) {
-                withAnimation { currentPage = Page.login.rawValue }
+                withAnimation(reduceMotion ? nil : .default) { currentPage = Page.login.rawValue }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -249,7 +250,7 @@ struct OnboardingView: View {
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Button(String(localized: "onboarding_skip_for_now")) {
-                        withAnimation { currentPage = Page.notifications.rawValue }
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue }
                     }
                     .foregroundStyle(Color.textSecondary)
 
@@ -284,7 +285,7 @@ struct OnboardingView: View {
             let success = await appState.authService.login(
                 studentId: trimmedId, password: trimmedPwd
             )
-            if success { withAnimation { currentPage = Page.notifications.rawValue } }
+            if success { withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue } }
         }
     }
 
@@ -316,7 +317,7 @@ struct OnboardingView: View {
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Button(String(localized: "onboarding_skip_for_now")) {
-                        withAnimation { currentPage = Page.ready.rawValue }
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.ready.rawValue }
                     }
                     .foregroundStyle(Color.textSecondary)
 
@@ -328,7 +329,7 @@ struct OnboardingView: View {
                     // in `.notDetermined` with no registration path.
                     if notificationStatus != .notDetermined {
                         Button(String(localized: "action_next")) {
-                            withAnimation { currentPage = Page.ready.rawValue }
+                            withAnimation(reduceMotion ? nil : .default) { currentPage = Page.ready.rawValue }
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
