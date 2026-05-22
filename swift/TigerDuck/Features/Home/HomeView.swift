@@ -6,6 +6,7 @@ struct HomeView: View {
     var embedded = false
 
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
@@ -74,7 +75,7 @@ struct HomeView: View {
             .contentShape(Rectangle())
             .onLongPressGesture {
                 if !viewModel.isEditingHome {
-                    withAnimation(.smoothSpring) {
+                    withAnimation(reduceMotion ? nil : .smoothSpring) {
                         viewModel.isEditingHome = true
                     }
                 }
@@ -109,7 +110,7 @@ struct HomeView: View {
                         .accessibilityLabel(Text("home_add_section_title"))
                     }
                     Button(String(localized: "action_done")) {
-                        withAnimation(.smoothSpring) {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) {
                             finishSectionDrag()
                             viewModel.isEditingHome = false
                         }
@@ -201,7 +202,7 @@ struct HomeView: View {
         .overlay(alignment: .topTrailing) {
             if viewModel.isEditingHome {
                 Button {
-                    withAnimation(.smoothSpring) {
+                    withAnimation(reduceMotion ? nil : .smoothSpring) {
                         viewModel.removeSection(section)
                     }
                 } label: {
@@ -297,6 +298,8 @@ private struct HomeSectionView: View {
     let appState: AppState
     var onFeatureTap: ((AppFeature) -> Void)? = nil
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @ViewBuilder
     private var upcomingAssignmentsContent: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -386,7 +389,7 @@ private struct HomeSectionView: View {
                     ),
                     dragContainerID: section.id,
                     onRemove: { widget in
-                        withAnimation(.smoothSpring) {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) {
                             viewModel.removeWidget(from: section.id, widget: widget)
                         }
                     },

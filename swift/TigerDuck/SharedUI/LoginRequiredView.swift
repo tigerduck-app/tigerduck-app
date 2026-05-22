@@ -21,6 +21,8 @@ struct LoginRequiredView: View {
     let onPrimary: () -> Void
     var onSecondary: (() -> Void)? = nil
 
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 48
+
     var body: some View {
         switch layout {
         case .page:
@@ -33,7 +35,7 @@ struct LoginRequiredView: View {
     private var pageBody: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             Image(systemName: "lock.shield")
-                .font(.system(size: 48))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.accentPrimary)
             Text(title)
                 .font(TigerDuckTheme.Typography.title)

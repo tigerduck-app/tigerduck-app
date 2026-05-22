@@ -27,6 +27,9 @@ struct TimetableGridView: View {
     private let colSpacing: CGFloat = 3
     private let headerHeight: CGFloat = 30
     private let periodWidth: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
+
+    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
@@ -56,7 +59,7 @@ struct TimetableGridView: View {
                 HStack(spacing: colSpacing) {
                     // Period label
                     Text(period.displayLabel)
-                        .font(.system(size: 10))
+                        .font(.caption2)
                         .foregroundStyle(Color.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -94,13 +97,14 @@ struct TimetableGridView: View {
                             .fill(course.color.opacity(0.4))
                             .overlay {
                                 Text(course.displayName)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.system(size: courseNameSize, weight: .medium))
                                     .foregroundStyle(Color.textPrimary)
                                     .lineLimit(spanCount > 1 ? 3 : 2)
+                                    .minimumScaleFactor(0.7)
                                     .multilineTextAlignment(.center)
                                     .padding(2)
                             }
-                            .assignmentBadge(show: hasBadge, iconSize: 8, padding: 4)
+                            .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
                             .frame(height: totalHeight)
                     }
                     .buttonStyle(.plain)
@@ -169,6 +173,10 @@ private struct ConflictClusterView: View {
     let rowSpacing: CGFloat
     let weekday: Int
     let periodId: String
+
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
+    @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
+    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
 
     private var courseA: SDCourse { segments[0].course }
     private var spanA: Int { segments[0].span }
@@ -271,6 +279,15 @@ private struct ConflictClusterView: View {
                 .frame(width: proxy.size.width, height: bHeight)
                 .offset(y: bTop)
             }
+            .overlay(alignment: .topTrailing) {
+                if diffWithoutColor {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .padding(2)
+                        .accessibilityHidden(true)
+                }
+            }
             // One tap anywhere in the cluster opens the picker; the picker
             // resolves which course to inspect. Per-shape hit-testing would
             // bypass the picker entirely, but the Android version still goes
@@ -310,6 +327,15 @@ private struct ConflictClusterView: View {
                 conflictColumn(segment: segment)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if diffWithoutColor {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .padding(2)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     private func conflictColumn(segment: ClassTableViewModel.ConflictSegment) -> some View {
@@ -330,13 +356,14 @@ private struct ConflictClusterView: View {
                     .fill(course.color.opacity(0.4))
                     .overlay {
                         Text(course.displayName)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: courseNameSize, weight: .medium))
                             .foregroundStyle(Color.textPrimary)
                             .lineLimit(span > 1 ? 3 : 2)
+                            .minimumScaleFactor(0.7)
                             .multilineTextAlignment(.center)
                             .padding(2)
                     }
-                    .assignmentBadge(show: hasBadge, iconSize: 8, padding: 4)
+                    .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
                     .frame(height: blockHeight(span))
             }
             .buttonStyle(.plain)
@@ -412,9 +439,10 @@ private struct ConflictClusterView: View {
                 // tail width). Aligning top-right (Γ) / bottom-left (L)
                 // keeps the text inside the visible color region.
                 Text(course.displayName)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: courseNameSize, weight: .medium))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.7)
                     .multilineTextAlignment(.center)
                     .padding(2)
                     .frame(
@@ -424,7 +452,7 @@ private struct ConflictClusterView: View {
 
                 if hasBadge {
                     Image(systemName: "book.fill")
-                        .font(.system(size: 8))
+                        .font(.system(size: badgeIconSize))
                         .foregroundStyle(Color.textPrimary.opacity(0.7))
                         .padding(3)
                 }

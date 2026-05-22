@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct LoadingShimmer: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: CGFloat = -1
 
     var body: some View {
@@ -22,11 +23,22 @@ struct LoadingShimmer: View {
                         .offset(x: phase * proxy.size.width)
                 }
                 .clipped()
-                .onAppear {
-                    withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                        phase = 1
-                    }
-                }
+                .onAppear { syncShimmer() }
+                // Reduce Motion can be switched on while the shimmer is still
+                // mounted — re-sync so an in-flight sweep stops.
+                .onChange(of: reduceMotion) { _, _ in syncShimmer() }
+        }
+    }
+
+    private func syncShimmer() {
+        guard !reduceMotion else {
+            // Reissue a non-repeating animation so the running
+            // `repeatForever` sweep settles instead of looping forever.
+            withAnimation(.linear(duration: 0)) { phase = -1 }
+            return
+        }
+        withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+            phase = 1
         }
     }
 }
