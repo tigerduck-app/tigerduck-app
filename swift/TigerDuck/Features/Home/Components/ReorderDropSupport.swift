@@ -1,5 +1,6 @@
 import CoreTransferable
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 extension UTType {
@@ -77,7 +78,7 @@ struct ReorderDropDelegate: DropDelegate {
             return
         }
 
-        withAnimation(.smoothSpring) {
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .smoothSpring) {
             moveAction(fromOffsets, destination)
         }
         didReorder = true

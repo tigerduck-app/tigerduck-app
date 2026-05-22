@@ -1,9 +1,12 @@
 import SwiftUI
+import UIKit
 import Defaults
 
 @Observable
 final class HomeViewModel {
     private static let assignmentMutationAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
+
+    private var prefersReducedMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
     var sections: [HomeSection] = []
     var allCourses: [SDCourse] = []
@@ -215,7 +218,7 @@ final class HomeViewModel {
 
     func archiveAssignment(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
-        withAnimation(Self.assignmentMutationAnimation) {
+        withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isArchived = true
             DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()
@@ -224,7 +227,7 @@ final class HomeViewModel {
 
     func unarchiveAssignment(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
-        withAnimation(Self.assignmentMutationAnimation) {
+        withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isArchived = false
             DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()
@@ -233,7 +236,7 @@ final class HomeViewModel {
 
     func markAssignmentAsLocallyCompleted(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
-        withAnimation(Self.assignmentMutationAnimation) {
+        withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isLocallyCompleted = true
             DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()
@@ -242,7 +245,7 @@ final class HomeViewModel {
 
     func undoLocallyCompleted(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
-        withAnimation(Self.assignmentMutationAnimation) {
+        withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isLocallyCompleted = false
             DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()

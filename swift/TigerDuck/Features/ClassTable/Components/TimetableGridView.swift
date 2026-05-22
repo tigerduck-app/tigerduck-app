@@ -22,14 +22,17 @@ private func weekdayDisplayName(_ weekday: Int) -> String {
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
 
-    // Course-name cells render a dynamic `.caption` font; scale the row
-    // height with it so larger text gets more room instead of clipping.
-    @ScaledMetric(relativeTo: .caption) private var cellHeight: CGFloat = 52
+    // Scale the row height on the same Dynamic Type curve as the course
+    // name (`courseNameSize`, caption2-relative) so larger text gets more
+    // room instead of clipping.
+    @ScaledMetric(relativeTo: .caption2) private var cellHeight: CGFloat = 52
     private let rowSpacing: CGFloat = 3
     private let colSpacing: CGFloat = 3
     private let headerHeight: CGFloat = 30
     private let periodWidth: CGFloat = 12
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
+
+    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
@@ -97,7 +100,7 @@ struct TimetableGridView: View {
                             .fill(course.color.opacity(0.4))
                             .overlay {
                                 Text(course.displayName)
-                                    .font(.caption.weight(.medium))
+                                    .font(.system(size: courseNameSize, weight: .medium))
                                     .foregroundStyle(Color.textPrimary)
                                     .lineLimit(spanCount > 1 ? 3 : 2)
                                     .minimumScaleFactor(0.7)
@@ -174,7 +177,9 @@ private struct ConflictClusterView: View {
     let weekday: Int
     let periodId: String
 
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
+    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
 
     private var courseA: SDCourse { segments[0].course }
     private var spanA: Int { segments[0].span }
@@ -277,6 +282,15 @@ private struct ConflictClusterView: View {
                 .frame(width: proxy.size.width, height: bHeight)
                 .offset(y: bTop)
             }
+            .overlay(alignment: .topTrailing) {
+                if diffWithoutColor {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .padding(2)
+                        .accessibilityHidden(true)
+                }
+            }
             // One tap anywhere in the cluster opens the picker; the picker
             // resolves which course to inspect. Per-shape hit-testing would
             // bypass the picker entirely, but the Android version still goes
@@ -316,6 +330,15 @@ private struct ConflictClusterView: View {
                 conflictColumn(segment: segment)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if diffWithoutColor {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .padding(2)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     private func conflictColumn(segment: ClassTableViewModel.ConflictSegment) -> some View {
@@ -336,7 +359,7 @@ private struct ConflictClusterView: View {
                     .fill(course.color.opacity(0.4))
                     .overlay {
                         Text(course.displayName)
-                            .font(.caption.weight(.medium))
+                            .font(.system(size: courseNameSize, weight: .medium))
                             .foregroundStyle(Color.textPrimary)
                             .lineLimit(span > 1 ? 3 : 2)
                             .minimumScaleFactor(0.7)
@@ -419,7 +442,7 @@ private struct ConflictClusterView: View {
                 // tail width). Aligning top-right (Γ) / bottom-left (L)
                 // keeps the text inside the visible color region.
                 Text(course.displayName)
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: courseNameSize, weight: .medium))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(2)
                     .minimumScaleFactor(0.7)

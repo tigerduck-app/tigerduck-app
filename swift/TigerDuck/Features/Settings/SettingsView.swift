@@ -5,6 +5,7 @@ import UserNotifications
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var notifyAssignments = true
     @State private var notifyAnnouncements = true
     @State private var notifyFreeLunch = true
@@ -52,7 +53,7 @@ struct SettingsView: View {
                     HStack(spacing: 12) {
                         ForEach(AppState.themeColors, id: \.hex) { theme in
                             Button {
-                                withAnimation(.smoothSpring) {
+                                withAnimation(reduceMotion ? nil : .smoothSpring) {
                                     appState.accentColorHex = theme.hex
                                 }
                             } label: {
@@ -283,8 +284,10 @@ struct SettingsView: View {
                 )
                 .onAppear {
                     warningFlash = false
-                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                        warningFlash = true
+                    if !reduceMotion {
+                        withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                            warningFlash = true
+                        }
                     }
                     triggerWarningVibration()
                 }
@@ -439,6 +442,7 @@ private struct LibraryWarningOverlay: View {
     let onCancel: () -> Void
     let onConfirm: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var countdown = 5
     @State private var confirmEnabled = false
 
@@ -509,7 +513,7 @@ private struct LibraryWarningOverlay: View {
                 try? await Task.sleep(for: .seconds(1))
                 countdown = i
             }
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                 confirmEnabled = true
             }
         }

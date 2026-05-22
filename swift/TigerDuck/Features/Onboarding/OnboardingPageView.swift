@@ -17,6 +17,7 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 64
 
     var body: some View {
@@ -75,7 +76,7 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
             Image(systemName: icon)
                 .font(.system(size: heroIconSize))
                 .foregroundStyle(accentColor)
-                .symbolEffect(.pulse)
+                .symbolEffect(.pulse, isActive: !reduceMotion)
         case .layerFlash:
             // Compose the shield and lock as separate images so only the
             // lock animates (the built-in lock.shield.fill effect would
@@ -87,7 +88,7 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
                 Image(systemName: "lock.fill")
                     .font(.system(size: heroIconSize * 0.5, weight: .semibold))
                     .foregroundStyle(.white)
-                    .symbolEffect(.pulse, options: .repeating.speed(0.35))
+                    .symbolEffect(.pulse, options: .repeating.speed(0.35), isActive: !reduceMotion)
                     .offset(y: -heroIconSize / 16)
             }
         }

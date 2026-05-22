@@ -9,6 +9,7 @@ struct WidgetGridView: View {
     var onAdd: (() -> Void)? = nil
     var onReorder: (() -> Void)? = nil
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var activeWidgetDrag: ReorderDragPayload?
     @State private var didReorder = false
 
@@ -76,7 +77,7 @@ struct WidgetGridView: View {
             card
                 .onTapGesture { onTap?(widget.feature) }
                 .onLongPressGesture {
-                    withAnimation(.smoothSpring) { isEditing = true }
+                    withAnimation(reduceMotion ? nil : .smoothSpring) { isEditing = true }
                 }
         }
     }
@@ -160,26 +161,27 @@ extension View {
 
 struct WiggleModifier: ViewModifier {
     let isWiggling: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var angle: Double = 0
 
     func body(content: Content) -> some View {
         content
-            .rotationEffect(.degrees(isWiggling ? angle : 0))
+            .rotationEffect(.degrees(isWiggling && !reduceMotion ? angle : 0))
             .onAppear {
-                if isWiggling {
+                if isWiggling, !reduceMotion {
                     withAnimation(.linear(duration: 0.15).repeatForever(autoreverses: true)) {
                         angle = 1.5
                     }
                 }
             }
             .onChange(of: isWiggling) { _, newValue in
-                if newValue {
+                if newValue, !reduceMotion {
                     angle = -1.5
                     withAnimation(.linear(duration: 0.15).repeatForever(autoreverses: true)) {
                         angle = 1.5
                     }
                 } else {
-                    withAnimation(.quickSpring) {
+                    withAnimation(reduceMotion ? nil : .quickSpring) {
                         angle = 0
                     }
                 }
