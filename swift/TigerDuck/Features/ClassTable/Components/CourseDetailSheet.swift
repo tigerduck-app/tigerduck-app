@@ -56,9 +56,7 @@ struct CourseDetailSheet: View {
                             .font(.system(size: 22))
                             .foregroundStyle(Color.accentPrimary)
                     }
-                    // TODO(l10n): add `course_detail_open_moodle_a11y` —
-                    // "在 Moodle 開啟課程" / "Open course in Moodle"
-                    // .accessibilityLabel(String(localized: "course_detail_open_moodle_a11y"))
+                    .accessibilityLabel(String(localized: "a11y_course_detail_open_moodle"))
                 }
             }
 

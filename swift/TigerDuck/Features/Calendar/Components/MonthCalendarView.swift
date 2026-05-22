@@ -30,6 +30,7 @@ struct MonthCalendarView: View {
                     Image(systemName: "chevron.left")
                         .foregroundStyle(Color.accentPrimary)
                 }
+                .accessibilityLabel(String(localized: "a11y_calendar_nav_prev"))
                 Spacer()
                 Text(monthTitle)
                     .font(TigerDuckTheme.Typography.headline)
@@ -39,6 +40,7 @@ struct MonthCalendarView: View {
                     Image(systemName: "chevron.right")
                         .foregroundStyle(Color.accentPrimary)
                 }
+                .accessibilityLabel(String(localized: "a11y_calendar_nav_next"))
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
@@ -82,6 +84,20 @@ private struct DayCellView: View {
     let events: [SDCalendarEvent]
     let onTap: () -> Void
 
+    /// `a11y_calendar_day`'s date argument, pinned to the app's
+    /// Taipei/Gregorian calendar. The grid and the visible day-of-month label
+    /// both use `AppConstants.taipeiCalendar`; formatting with the device
+    /// default could announce the previous local day for a user west of
+    /// Taiwan, so the spoken date would disagree with the cell.
+    private var accessibleDateString: String {
+        date.formatted(Date.FormatStyle(
+            date: .complete,
+            time: .omitted,
+            calendar: AppConstants.taipeiCalendar,
+            timeZone: AppConstants.taipeiTimeZone
+        ))
+    }
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 2) {
@@ -115,5 +131,14 @@ private struct DayCellView: View {
         }
         .buttonStyle(.plain)
         .frame(height: 40)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            Text(String(
+                format: String(localized: "a11y_calendar_day"),
+                accessibleDateString,
+                events.count
+            ))
+        )
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }

@@ -86,7 +86,10 @@ struct CourseTimeCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
         .opacity(opacity)
+        .contentShape(Rectangle())
         .onTapGesture { onSelect?(slot) }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
     }
 
     private func subtitle(for course: SDCourse, weekday: Int) -> String {
