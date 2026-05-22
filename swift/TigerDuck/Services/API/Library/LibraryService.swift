@@ -161,7 +161,7 @@ enum LibraryService {
                 throw error
             }
 
-            await saveCredentials(username: username, password: password)
+            saveCredentials(username: username, password: password)
             saveToken(loginData.token, expirationMs: loginData.expirationTimeStamp)
             return loginData.token
         } catch {
