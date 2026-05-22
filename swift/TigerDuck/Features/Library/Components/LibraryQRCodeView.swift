@@ -11,6 +11,8 @@ struct LibraryQRCodeView: View {
     /// 1:1 aspect ratio below.
     private static let qrCodeMaxWidth: CGFloat = 250
 
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 48
+
     var body: some View {
         VStack(spacing: 0) {
             // Title bar
@@ -88,7 +90,7 @@ struct LibraryQRCodeView: View {
             #endif
         } else {
             Image(systemName: "qrcode")
-                .font(.system(size: 48))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.textSecondary)
                 .frame(maxWidth: .infinity, minHeight: 200)
         }

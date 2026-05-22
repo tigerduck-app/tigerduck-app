@@ -21,6 +21,8 @@ struct LibraryView: View {
     @State private var savedBrightness: CGFloat?
     #endif
 
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 56
+
     var body: some View {
         if embedded {
             content
@@ -245,7 +247,7 @@ struct LibraryView: View {
     private var loginPrompt: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             Image(systemName: "qrcode")
-                .font(.system(size: 56))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.accentPrimary)
 
             Text(String(localized: "library_login_qr_prompt"))

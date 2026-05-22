@@ -35,6 +35,8 @@ struct BulletinsView: View {
     @State private var searchIsPresented: Bool = false
     @State private var lastBackgroundedAt: Date?
 
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
+
     var body: some View {
         Group {
             if embedded {
@@ -300,7 +302,7 @@ struct BulletinsView: View {
     private func errorState(message: String) -> some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 36))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.orange)
             Text(String(localized: "bulletin_load_failed_title"))
                 .font(TigerDuckTheme.Typography.headline)
