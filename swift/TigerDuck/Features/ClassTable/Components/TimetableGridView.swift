@@ -29,7 +29,7 @@ struct TimetableGridView: View {
     private let periodWidth: CGFloat = 12
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
 
-    private let courseNameSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
@@ -176,7 +176,7 @@ private struct ConflictClusterView: View {
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
-    private let courseNameSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
 
     private var courseA: SDCourse { segments[0].course }
     private var spanA: Int { segments[0].span }
