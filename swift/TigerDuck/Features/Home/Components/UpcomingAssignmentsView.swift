@@ -111,7 +111,7 @@ struct UpcomingAssignmentsView: View {
         // deep link the tap is a no-op, so don't expose a button trait/hint.
         let tapHint = assignment.moodleDeepLink == nil
             ? nil
-            : String(localized: "a11y_course_detail_open_moodle")
+            : String(localized: "a11y_assignment_open_moodle_hint")
         return SwipeableRow(
             leadingAction: actions.leading,
             trailingAction: actions.trailing,
