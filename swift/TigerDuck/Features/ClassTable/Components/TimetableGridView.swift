@@ -22,11 +22,15 @@ private func weekdayDisplayName(_ weekday: Int) -> String {
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
 
-    private let cellHeight: CGFloat = 52
+    // Scale the row height on the same Dynamic Type curve as the course
+    // name (`courseNameSize`, caption2-relative) so larger text gets more
+    // room instead of clipping.
+    @ScaledMetric(relativeTo: .caption2) private var cellHeight: CGFloat = 52
     private let rowSpacing: CGFloat = 3
     private let colSpacing: CGFloat = 3
     private let headerHeight: CGFloat = 30
     private let periodWidth: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
 
     @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
 
@@ -103,7 +107,7 @@ struct TimetableGridView: View {
                                     .multilineTextAlignment(.center)
                                     .padding(2)
                             }
-                            .assignmentBadge(show: hasBadge, iconSize: 8, padding: 4)
+                            .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
                             .frame(height: totalHeight)
                     }
                     .buttonStyle(.plain)
@@ -362,7 +366,7 @@ private struct ConflictClusterView: View {
                             .multilineTextAlignment(.center)
                             .padding(2)
                     }
-                    .assignmentBadge(show: hasBadge, iconSize: 8, padding: 4)
+                    .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
                     .frame(height: blockHeight(span))
             }
             .buttonStyle(.plain)
