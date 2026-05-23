@@ -117,7 +117,21 @@ final class BulletinAPIClient: Sendable {
     }
 
     private func execute(_ request: URLRequest) async throws -> Data {
-        let (data, response) = try await session.data(for: request)
+        // Surface the URL host+path before the call so a hung or DNS-failed
+        // request still leaves a breadcrumb (the `await` below can block
+        // for `timeoutIntervalForResource` without ever logging otherwise).
+        let method = request.httpMethod ?? "GET"
+        let host = request.url?.host ?? "?"
+        let path = request.url?.path ?? "?"
+        logger.info("Bulletin.API → \(method, privacy: .public) \(host, privacy: .public)\(path, privacy: .public)")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            logger.error("Bulletin.API ✗ \(method, privacy: .public) \(host, privacy: .public)\(path, privacy: .public) — \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else {
             throw BulletinAPIError.invalidResponse
         }
@@ -126,9 +140,10 @@ final class BulletinAPIClient: Sendable {
             // Body snippet stays .private — error responses occasionally
             // echo headers (incl. X-Push-Token) or correlation tokens that
             // must not be retained in the system log indefinitely.
-            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
+            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(path, privacy: .public): \(snippet, privacy: .private)")
             throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
         }
+        logger.info("Bulletin.API ← \(http.statusCode, privacy: .public) \(path, privacy: .public) (\(data.count, privacy: .public)B)")
         return data
     }
 
