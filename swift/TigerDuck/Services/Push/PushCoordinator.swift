@@ -12,6 +12,7 @@ struct PushDiagnostic: Sendable {
     let notificationAuthStatus: UNAuthorizationStatus
     let registration: PushRegistrationSnapshot
     let resolvedServerURL: URL
+    let deviceId: String
 }
 
 /// Owns the push-server lifecycle for the app.
@@ -113,7 +114,8 @@ final class PushCoordinator {
             liveActivitiesEnabled: liveActivitiesEnabled,
             notificationAuthStatus: notificationStatus,
             registration: reg,
-            resolvedServerURL: PushServerConfig.resolveServerURL()
+            resolvedServerURL: PushServerConfig.resolveServerURL(),
+            deviceId: identity.deviceId
         )
     }
 
