@@ -8,17 +8,24 @@ import os
 /// ISO-8601 with fractional seconds for Date, matching what the Python
 /// server emits from `datetime.isoformat()`.
 final class PushAPIClient: Sendable {
-    private let baseURL: URL
+    private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
     private let sharedSecret: String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
+    /// `baseURLProvider` is re-evaluated on every request rather than
+    /// captured once at construction, so a Debug build that changes the
+    /// API endpoint at runtime (via `DebugEndpointView`) takes effect on
+    /// the next push call without needing an app relaunch. `PushCoordinator`
+    /// is built once at launch and held by `AppState` for the process
+    /// lifetime, so a frozen base URL would otherwise pin the push client
+    /// to whatever URL was resolved before the override was saved.
     init(
-        baseURL: URL = PushServerConfig.resolveServerURL(),
+        baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
         sharedSecret: String? = nil
     ) {
-        self.baseURL = baseURL
+        self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
         // Only keep non-empty secrets — empty strings mean "auth disabled"
         // on the server side, and we want the client to behave identically.
@@ -53,7 +60,7 @@ final class PushAPIClient: Sendable {
     func cancelSchedule(deviceId: String, sourceId: String) async throws {
         let safeDevice = Self.percentEncoded(deviceId)
         let safeSource = Self.percentEncoded(sourceId)
-        let url = baseURL.appendingPathComponent("schedule/\(safeDevice)/\(safeSource)")
+        let url = baseURLProvider().appendingPathComponent("schedule/\(safeDevice)/\(safeSource)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         applyAuth(to: &request)
@@ -64,7 +71,7 @@ final class PushAPIClient: Sendable {
     /// `/ping` is public so connectivity / TLS / DNS can be diagnosed
     /// without needing the shared secret.
     func ping() async throws {
-        let url = baseURL.appendingPathComponent("ping")
+        let url = baseURLProvider().appendingPathComponent("ping")
         _ = try await execute(URLRequest(url: url))
     }
 
@@ -95,7 +102,7 @@ final class PushAPIClient: Sendable {
     }
 
     private func makePostRequest<Request: Encodable>(path: String, body: Request) throws -> URLRequest {
-        let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        let url = baseURLProvider().appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
