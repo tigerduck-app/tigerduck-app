@@ -331,6 +331,7 @@ private struct MacSidebarSettingsView: View {
 
 private struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
+    @State private var showSignIn = false
 
     var body: some View {
         Form {
@@ -349,12 +350,32 @@ private struct MacAccountSettingsView: View {
                 } else {
                     Text(String(localized: "common_not_logged_in"))
                         .foregroundStyle(.secondary)
+                    // Closes the loop for users who took the "Skip for
+                    // now" path on `MacLoginView`: without this they'd
+                    // have no way back to the login form short of
+                    // resetting onboarding state.
+                    Button {
+                        showSignIn = true
+                    } label: {
+                        Label(String(localized: "action_login"), systemImage: "person.badge.key.fill")
+                    }
                 }
             }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showSignIn) {
+            MacLoginView()
+                .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
+                // `MacLoginView` already calls `completeOnboarding()` on
+                // success; here we just observe the resulting credential
+                // flip and dismiss the sheet so the user lands back on
+                // the Account tab with the signed-in state showing.
+                .onChange(of: appState.authService.hasStoredCredentials) { _, signedIn in
+                    if signedIn { showSignIn = false }
+                }
+        }
     }
 }
 

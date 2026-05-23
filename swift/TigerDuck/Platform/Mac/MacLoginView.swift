@@ -92,6 +92,19 @@ struct MacLoginView: View {
             .keyboardShortcut(.defaultAction)
             .disabled(!canSubmit)
 
+            // Secondary, less-prominent escape hatch so users without
+            // NTUST credentials can still explore the public surfaces
+            // (e.g. bulletin board). The flag is intentionally in-memory
+            // only — first launch and post-logout return the user to
+            // this screen, matching the desktop convention of a login
+            // form on every launch until creds are saved.
+            Button(String(localized: "onboarding_skip_for_now")) {
+                appState.didSkipMacLogin = true
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .disabled(appState.authService.isLoggingIn)
+
             Spacer(minLength: 0)
 
             Text(String(localized: "desktop_login_disclaimer"))
