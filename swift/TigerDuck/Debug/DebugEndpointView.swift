@@ -72,7 +72,7 @@ struct DebugEndpointView: View {
             } header: {
                 Text("Override (Keychain — survives reinstall)")
             } footer: {
-                Text("Allowed: `https://staging.api.tigerduck.app/...`, loopback, or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x). LAN dev backend speaks plain HTTP — `https://192.168.X.X:…` is auto-rewritten to `http://` at save time. Production is intentionally blocked — Debug builds register on the APNs sandbox and would be rejected by the prod backend.")
+                Text("Allowed: `https://api.tigerduck.app/...` (apex or any subdomain), loopback, or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x). LAN dev backend speaks plain HTTP — `https://192.168.X.X:…` is auto-rewritten to `http://` at save time. Pointing a Debug build at the prod apex still breaks push (apns_env mismatch crashes `assertEnvConsistency`), but read-only API surfaces work for testing.")
             }
         }
         .navigationTitle("API endpoint")
@@ -128,7 +128,7 @@ final class DebugEndpointViewModel {
         case .malformed:
             validationError = "URL is malformed — expected something like `http://192.168.X.X:40000/v2` or `https://staging.api.tigerduck.app/v2`."
         case .rejected:
-            validationError = "Rejected by allowlist. Only loopback, RFC1918 (10.x / 172.16–31.x / 192.168.x), or `staging.api.tigerduck.app` are accepted."
+            validationError = "Rejected by allowlist. Only loopback, RFC1918 (10.x / 172.16–31.x / 192.168.x), or `*.api.tigerduck.app` (apex + subdomains) are accepted."
         case .keychainWriteFailed:
             validationError = "Keychain write failed — the URL passed validation but couldn't be persisted. Try again; if it keeps failing, the device may be locked or out of secure storage."
         }

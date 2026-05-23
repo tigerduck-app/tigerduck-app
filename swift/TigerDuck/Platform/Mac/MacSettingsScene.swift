@@ -422,7 +422,7 @@ private struct MacDeveloperSettingsView: View {
             }
 
             Section {
-                TextField("https://staging.api.tigerduck.app/v2", text: $endpointVM.draft)
+                TextField("http://192.168.X.X:40000/v2", text: $endpointVM.draft)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
                     .autocorrectionDisabled()
@@ -443,7 +443,7 @@ private struct MacDeveloperSettingsView: View {
             } header: {
                 Text("Override (Keychain — survives reinstall)")
             } footer: {
-                Text("Allowed: staging.api.tigerduck.app over HTTPS, loopback, or any RFC1918 IPv4. Production is intentionally blocked because Debug builds use APNs sandbox tokens.")
+                Text("Allowed: api.tigerduck.app (apex + any subdomain) over HTTPS, loopback, or any RFC1918 IPv4. Pointing a Debug build at the prod apex breaks push (apns_env mismatch), but read-side API surfaces still work for testing.")
             }
         }
         .formStyle(.grouped)

@@ -11,23 +11,39 @@ import Foundation
 /// behaviour is identical to the previous `PushCoordinator.resolveXxx`
 /// surface — this is a pure move.
 nonisolated enum PushServerConfig {
-    /// Public hosts a Debug override is allowed to target. Staging only —
-    /// production is intentionally absent: a Debug binary has
-    /// `PushAPNsEnv.resolvedForBuild = "development"` baked in at compile
-    /// time, so pointing it at the prod backend creates an apns_env
-    /// mismatch the production APNs server would reject anyway. Allowing
-    /// it here would let `isOverrideAllowed` pass a URL that
-    /// `PushCoordinator.assertEnvConsistency()` then crashes on every
-    /// launch.
+    /// Public hosts a Debug override is allowed to target. Apex
+    /// (`api.tigerduck.app`) plus any `*.api.tigerduck.app` subdomain.
+    ///
+    /// WARNING: pointing a Debug build at the prod apex still creates an
+    /// apns_env mismatch (Debug binaries bake in
+    /// `PushAPNsEnv.resolvedForBuild = "development"` and the production
+    /// APNs server rejects sandbox tokens), so `PushCoordinator.assertEnvConsistency()`
+    /// will crash on launch if the resolver hands prod to the push stack.
+    /// The bulletin / read-only API clients don't care about apns_env,
+    /// so the allowlist is widened here for read-side testing — push
+    /// flows on a prod-pointed Debug build remain broken by design.
     ///
     /// Everything else must resolve to loopback or an RFC1918 private
     /// IPv4 (see ``isOverrideAllowed(_:)``). An attacker-supplied override
     /// (via UserDefaults seeding from a compromised backup, MDM, or a
     /// future dev panel) cannot point the app at an arbitrary public
     /// server outside this list. Release builds bypass this gate entirely.
-    private static let publicHostAllowlist: Set<String> = [
-        "staging.api.tigerduck.app",
+    private static let publicHostExactAllowlist: Set<String> = [
+        "api.tigerduck.app",
     ]
+    private static let publicHostSuffixAllowlist: [String] = [
+        ".api.tigerduck.app",
+    ]
+
+    private static func isAllowedPublicHost(_ host: String) -> Bool {
+        if publicHostExactAllowlist.contains(host) { return true }
+        return publicHostSuffixAllowlist.contains { suffix in
+            // host must be longer than the suffix so we don't double-count
+            // the apex (e.g. ".api.tigerduck.app" as suffix shouldn't match
+            // "api.tigerduck.app" on its own — exact list handles that).
+            host.count > suffix.count && host.hasSuffix(suffix)
+        }
+    }
 
     /// Resolves the backend URL for this build.
     ///
@@ -66,13 +82,13 @@ nonisolated enum PushServerConfig {
 
     /// Whether `url` may be used as a runtime override.
     ///
-    /// Public hosts are exact-matched against ``publicHostAllowlist``;
-    /// everything else must be loopback or an RFC1918 private IPv4 literal.
-    /// `http://` is allowed only for private/loopback targets — public hosts
-    /// must speak HTTPS.
+    /// Public hosts are matched against ``isAllowedPublicHost(_:)`` (apex
+    /// + `*.api.tigerduck.app`); everything else must be loopback or an
+    /// RFC1918 private IPv4 literal. `http://` is allowed only for
+    /// private/loopback targets — public hosts must speak HTTPS.
     static func isOverrideAllowed(_ url: URL) -> Bool {
         guard let host = url.host else { return false }
-        if publicHostAllowlist.contains(host) {
+        if isAllowedPublicHost(host) {
             return url.scheme == "https"
         }
         if host == "localhost" || host == "127.0.0.1" || isPrivateIPv4(host) {
