@@ -68,7 +68,7 @@ struct MacAssignmentsList: View {
         Button {
             openInBrowser(assignment)
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
                 statusDot(for: status)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(assignment.displayTitle)
@@ -114,7 +114,7 @@ struct MacAssignmentsList: View {
 
     @ViewBuilder
     private func menuItems(for assignment: SDAssignment, status: AssignmentStatus) -> some View {
-        if assignment.moodleDeepLink != nil {
+        if assignment.moodleOpenURL != nil {
             Button {
                 openInBrowser(assignment)
             } label: {
@@ -161,7 +161,6 @@ struct MacAssignmentsList: View {
         Circle()
             .fill(status.tint)
             .frame(width: 8, height: 8)
-            .padding(.top, 7)
     }
 
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
@@ -181,7 +180,7 @@ struct MacAssignmentsList: View {
     }
 
     private func openInBrowser(_ assignment: SDAssignment) {
-        guard let url = assignment.moodleDeepLink else { return }
+        guard let url = assignment.moodleOpenURL else { return }
         NSWorkspace.shared.open(url)
     }
 

@@ -305,7 +305,7 @@ private struct DayCell: View {
                 Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
                     .font(.callout.weight(isToday || isSelected ? .semibold : .regular))
                     .foregroundStyle(textColor)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 28, height: 28)
                     .background {
                         if isSelected {
                             Circle().fill(Color.accentColor)
@@ -313,6 +313,7 @@ private struct DayCell: View {
                             Circle().stroke(Color.accentColor, lineWidth: 1.5)
                         }
                     }
+                    .padding(.top, 4)
 
                 HStack(spacing: 3) {
                     let sources = dedupedSources()
@@ -330,8 +331,13 @@ private struct DayCell: View {
             .frame(height: cellHeight)
             .contentShape(Rectangle())
             .background(
+                // Inset by 3pt so the cell highlight doesn't kiss the
+                // day-number circle or the neighbouring column — the bug
+                // in #135 was that the today/selected ring touched the
+                // outer rounded fill with zero breathing room.
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isSelected ? Color.accentColor.opacity(0.08) : Color.clear)
+                    .padding(3)
             )
         }
         .buttonStyle(.plain)

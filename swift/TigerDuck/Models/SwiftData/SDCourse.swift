@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import SwiftData
 import SwiftUI
@@ -299,5 +300,39 @@ extension SDCourse {
         components.path = "//\(host)"
         components.queryItems = [URLQueryItem(name: "redirect", value: redirectTarget)]
         return components.url
+    }
+
+    /// HTTPS equivalent of ``moodleDeepLink``. No Moodle Mac app exists, so
+    /// the deep link's `moodlemobile://` scheme resolves to an unhandled-URL
+    /// error there; macOS callers open this directly in the default browser.
+    var moodleWebURL: URL? {
+        guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
+              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {
+            return nil
+        }
+        let host = AppConstants.moodleBaseURL.host ?? "moodle2.ntust.edu.tw"
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = host
+        components.path = "/course/view.php"
+        components.queryItems = [URLQueryItem(name: "id", value: String(numericId))]
+        return components.url
+    }
+
+    /// Platform-appropriate URL for "open in Moodle" actions. iOS uses the
+    /// deep link so Moodle Mobile picks it up when installed; macOS reads
+    /// the user's `macMoodleOpenTarget` preference — the iPad Moodle app
+    /// installed via Mac App Store also registers `moodlemobile://`, so
+    /// users who opted in get the deep link too. Default is `.browser`
+    /// (HTTPS) since the iPad app isn't installed by default.
+    var moodleOpenURL: URL? {
+        #if os(macOS)
+        switch Defaults[.macMoodleOpenTarget] {
+        case .app: return moodleDeepLink
+        case .browser: return moodleWebURL
+        }
+        #else
+        return moodleDeepLink
+        #endif
     }
 }

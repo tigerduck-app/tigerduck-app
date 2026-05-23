@@ -348,6 +348,14 @@ final class AppState {
         didSet { Defaults[.browserPreference] = browserPreference }
     }
 
+    /// Mac-only: where the "open in Moodle" actions route to. The iPad
+    /// Moodle app installed via Mac App Store registers `moodlemobile://`
+    /// too, so users who installed it can opt into the deep-link path.
+    /// iOS ignores this — it always uses the deep link.
+    var macMoodleOpenTarget: MoodleOpenTarget = Defaults[.macMoodleOpenTarget] {
+        didSet { Defaults[.macMoodleOpenTarget] = macMoodleOpenTarget }
+    }
+
     /// Invert slider scroll direction: false = natural scroll (drag right → past), true = reversed
     var invertSliderDirection: Bool = Defaults[.invertSliderDirection] {
         didSet { Defaults[.invertSliderDirection] = invertSliderDirection }

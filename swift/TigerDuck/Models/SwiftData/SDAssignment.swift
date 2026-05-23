@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 import SwiftData
 
@@ -88,5 +89,28 @@ final class SDAssignment {
         components.path = "//\(host)"
         components.queryItems = [URLQueryItem(name: "redirect", value: redirectTarget)]
         return components.url
+    }
+
+    /// HTTPS equivalent of ``moodleDeepLink``. Mirrors `SDCourse.moodleWebURL`
+    /// — macOS has no Moodle app, so the deep link fails there; this opens
+    /// the same page directly in the default browser.
+    var moodleWebURL: URL? {
+        guard let moodleUrl else { return nil }
+        return URL(string: moodleUrl)
+    }
+
+    /// Platform-appropriate URL for opening this assignment in Moodle.
+    /// macOS reads `Defaults[.macMoodleOpenTarget]` so users with the
+    /// iPad Moodle app installed can opt into the deep link instead of
+    /// the HTTPS fallback.
+    var moodleOpenURL: URL? {
+        #if os(macOS)
+        switch Defaults[.macMoodleOpenTarget] {
+        case .app: return moodleDeepLink
+        case .browser: return moodleWebURL
+        }
+        #else
+        return moodleDeepLink
+        #endif
     }
 }
