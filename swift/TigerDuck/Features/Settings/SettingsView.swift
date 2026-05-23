@@ -209,6 +209,9 @@ struct SettingsView: View {
                 NavigationLink("Notifications") {
                     DebugNotificationsView()
                 }
+                NavigationLink("API endpoint") {
+                    DebugEndpointView()
+                }
             }
             #endif
         }

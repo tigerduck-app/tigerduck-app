@@ -34,14 +34,21 @@ nonisolated enum PushServerConfig {
     /// Release builds always return ``AppConstants/productionPushServerURL``.
     ///
     /// Debug builds resolve in priority order:
-    ///   1. `Defaults[.pushServerURLOverride]` (UserDefaults escape hatch,
+    ///   1. ``DebugEndpointStore/currentOverride()`` (Keychain — set via
+    ///      the in-app Developer settings; persists across reinstall)
+    ///   2. `Defaults[.pushServerURLOverride]` (UserDefaults escape hatch,
     ///      gated by ``isOverrideAllowed(_:)``)
-    ///   2. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
+    ///   3. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
     ///      file is gitignored so each contributor sets their own Mac's IP)
-    ///   3. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
+    ///   4. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
     ///      `http://localhost:40000/v2`)
     static func resolveServerURL() -> URL {
         #if DEBUG
+        if let raw = DebugEndpointStore.currentOverride(),
+           let url = URL(string: raw),
+           isOverrideAllowed(url) {
+            return url
+        }
         if let override = Defaults[.pushServerURLOverride],
            !override.isEmpty,
            let url = URL(string: override),

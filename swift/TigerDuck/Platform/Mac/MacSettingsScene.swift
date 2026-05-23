@@ -408,12 +408,51 @@ private struct MacDeveloperSettingsView: View {
             } header: {
                 Text("Notes")
             }
+
+            // MARK: API endpoint
+
+            Section {
+                Text(endpointVM.effectiveURL)
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
+            } header: {
+                Text("Effective endpoint")
+            } footer: {
+                Text("Resolved by PushServerConfig — Keychain override → UserDefaults override → Secrets.plist → localhost fallback.")
+            }
+
+            Section {
+                TextField("https://staging.api.tigerduck.app/v2", text: $endpointVM.draft)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .autocorrectionDisabled()
+
+                if let error = endpointVM.validationError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+
+                HStack {
+                    Button("Save") { endpointVM.save() }
+                        .disabled(endpointVM.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Spacer()
+                    Button("Clear override", role: .destructive) { endpointVM.clear() }
+                        .disabled(endpointVM.storedOverride == nil)
+                }
+            } header: {
+                Text("Override (Keychain — survives reinstall)")
+            } footer: {
+                Text("Allowed: staging.api.tigerduck.app over HTTPS, loopback, or any RFC1918 IPv4. Production is intentionally blocked because Debug builds use APNs sandbox tokens.")
+            }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { await viewModel.observeEffectiveNow() }
     }
+
+    @State private var endpointVM = DebugEndpointViewModel()
 }
 
 @MainActor
