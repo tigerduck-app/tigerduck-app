@@ -366,7 +366,10 @@ private struct MacAccountSettingsView: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $showSignIn) {
-            MacLoginView()
+            // `showsSkipButton: false` — the user is already inside the
+            // app, so "Skip for now" would only re-flip an already-true
+            // `didSkipMacLogin` and leave the sheet visually stuck.
+            MacLoginView(showsSkipButton: false)
                 .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
                 // `MacLoginView` already calls `completeOnboarding()` on
                 // success; here we just observe the resulting credential

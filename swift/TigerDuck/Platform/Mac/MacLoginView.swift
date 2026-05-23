@@ -13,12 +13,26 @@ import SwiftUI
 struct MacLoginView: View {
     @Environment(AppState.self) private var appState
 
+    /// Whether to surface the "Skip for now" escape hatch.
+    ///
+    /// `true` for the root login wall — first-launch users without
+    /// NTUST credentials need a way past it. `false` when presented
+    /// from inside the app (e.g. the Account settings re-login sheet):
+    /// the user is already past the wall, so skip would only flip the
+    /// already-true `didSkipMacLogin` flag and leave the sheet stuck
+    /// with no visible state change.
+    let showsSkipButton: Bool
+
     @State private var studentId = ""
     @State private var password = ""
     @State private var isPasswordVisible = false
     @FocusState private var focused: Field?
 
     private enum Field { case studentId, password }
+
+    init(showsSkipButton: Bool = true) {
+        self.showsSkipButton = showsSkipButton
+    }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -98,12 +112,14 @@ struct MacLoginView: View {
             // only — first launch and post-logout return the user to
             // this screen, matching the desktop convention of a login
             // form on every launch until creds are saved.
-            Button(String(localized: "onboarding_skip_for_now")) {
-                appState.didSkipMacLogin = true
+            if showsSkipButton {
+                Button(String(localized: "onboarding_skip_for_now")) {
+                    appState.didSkipMacLogin = true
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .disabled(appState.authService.isLoggingIn)
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .disabled(appState.authService.isLoggingIn)
 
             Spacer(minLength: 0)
 
