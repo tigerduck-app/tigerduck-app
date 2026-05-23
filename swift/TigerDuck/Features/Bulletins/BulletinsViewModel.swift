@@ -53,13 +53,11 @@ final class BulletinsViewModel {
     private var prefetchTask: Task<Void, Never>?
 
     init(apiClient: BulletinAPIClient? = nil) {
-        // No `baseURL:` argument — defaults to a provider that re-resolves
-        // through PushServerConfig on every request, so a Debug endpoint
-        // override applies to bulletin fetches immediately, matching the
-        // push stack's behaviour.
-        self.apiClient = apiClient ?? BulletinAPIClient(
-            sharedSecret: PushServerConfig.resolveSharedSecret()
-        )
+        // Defaults to providers that re-resolve through PushServerConfig
+        // on every request, so a Debug endpoint override applies to bulletin
+        // fetches immediately and the shared secret tracks the endpoint —
+        // matching the push stack's behaviour.
+        self.apiClient = apiClient ?? BulletinAPIClient()
         // Seed synchronously from disk so the very first render after
         // launch paints real cards instead of a spinner.
         let cached = DataCache.shared.loadBulletinSummaries()

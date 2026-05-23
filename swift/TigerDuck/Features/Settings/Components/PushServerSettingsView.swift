@@ -1,7 +1,9 @@
 import Defaults
 import SwiftUI
-import UIKit
 import UserNotifications
+#if os(iOS)
+import UIKit
+#endif
 
 /// Settings page for the push notification server.
 ///
@@ -18,7 +20,7 @@ struct PushServerSettingsView: View {
     @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
     @State private var disableTask: Task<Void, Never>?
-    #if DEBUG
+    #if os(iOS) && DEBUG
     @State private var deviceIdCopyState: DeviceIdCopyState = .idle
 
     private enum DeviceIdCopyState { case idle, copied, blocked }
@@ -68,7 +70,7 @@ struct PushServerSettingsView: View {
                     Button(String(localized: "push_server_sync_now_action")) { appState.requestPushScheduleSync() }
                 }
 
-                #if DEBUG
+                #if os(iOS) && DEBUG
                 Section {
                     Button {
                         let pb = UIPasteboard.general
@@ -118,7 +120,7 @@ struct PushServerSettingsView: View {
         }
     }
 
-    #if DEBUG
+    #if os(iOS) && DEBUG
     private var deviceIdCopyFooter: String {
         switch deviceIdCopyState {
         case .idle: return "Tap to copy. Use this in the backend portal's test page to target this device."

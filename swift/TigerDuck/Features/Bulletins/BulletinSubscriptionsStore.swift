@@ -43,9 +43,7 @@ final class BulletinSubscriptionsStore {
         apiClient: BulletinAPIClient? = nil,
         identity: PushIdentity = .loadOrCreate()
     ) {
-        self.apiClient = apiClient ?? BulletinAPIClient(
-            sharedSecret: PushServerConfig.resolveSharedSecret()
-        )
+        self.apiClient = apiClient ?? BulletinAPIClient()
         self.deviceId = identity.deviceId
     }
 

@@ -10,23 +10,23 @@ import os
 final class PushAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    private let sharedSecret: String?
+    private let sharedSecretProvider: @Sendable () -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
-    /// `baseURLProvider` is re-evaluated on every request rather than
-    /// captured once at construction, so a Debug build that changes the
-    /// API endpoint at runtime (via `DebugEndpointView`) takes effect on
-    /// the next push call without needing an app relaunch.
+    /// Both `baseURLProvider` and `sharedSecretProvider` are re-evaluated on
+    /// every request rather than captured once at construction, so a Debug
+    /// build that switches the API endpoint at runtime (via
+    /// `DebugEndpointView`) takes effect on the next push call without an
+    /// app relaunch — and the shared secret tracks the endpoint, so a new
+    /// host isn't called with the old `X-Push-Token`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        sharedSecret: String? = nil
+        sharedSecretProvider: @escaping @Sendable () -> String? = { PushServerConfig.resolveSharedSecret() }
     ) {
         self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
-        // Only keep non-empty secrets — empty strings mean "auth disabled"
-        // on the server side, and we want the client to behave identically.
-        self.sharedSecret = sharedSecret.flatMap { $0.isEmpty ? nil : $0 }
+        self.sharedSecretProvider = sharedSecretProvider
     }
 
     // MARK: - Public surface
@@ -115,8 +115,10 @@ final class PushAPIClient: Sendable {
     /// Attach the `X-Push-Token` shared-secret header when one is configured.
     /// No-op for dev builds that leave the secret unset; mirrors the
     /// server's behaviour when `TIGERDUCK_API_SHARED_SECRET` is empty.
+    /// Resolved per-request so a Debug endpoint change picks up the
+    /// matching secret instead of replaying the one captured at init time.
     private func applyAuth(to request: inout URLRequest) {
-        guard let secret = sharedSecret else { return }
+        guard let secret = sharedSecretProvider(), !secret.isEmpty else { return }
         request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
     }
 

@@ -24,9 +24,7 @@ struct MacBulletinsView: View {
     @State private var detailError: String?
     @State private var searchText: String = ""
 
-    private let api = BulletinAPIClient(
-        sharedSecret: PushServerConfig.resolveSharedSecret()
-    )
+    private let api = BulletinAPIClient()
 
     var body: some View {
         HSplitView {

@@ -44,13 +44,13 @@ final class PushCoordinator {
         apiClient: PushAPIClient? = nil
     ) {
         self.identity = identity
-        // No `baseURL:` argument — `PushAPIClient` defaults to a provider
-        // that re-resolves through `PushServerConfig` on every request, so
-        // a Debug build's runtime endpoint override (Settings → Developer
-        // → API endpoint) takes effect without an app relaunch.
-        let resolvedClient = apiClient ?? PushAPIClient(
-            sharedSecret: PushServerConfig.resolveSharedSecret()
-        )
+        // No `baseURL:` argument — `PushAPIClient` defaults to providers
+        // that re-resolve the URL *and* shared secret through
+        // `PushServerConfig` on every request, so a Debug build's runtime
+        // endpoint override (Settings → Developer → API endpoint) takes
+        // effect without an app relaunch and the auth header tracks
+        // whichever backend the override points at.
+        let resolvedClient = apiClient ?? PushAPIClient()
         self.apiClient = resolvedClient
         self.registration = PushRegistrationService(
             identity: identity,

@@ -10,21 +10,22 @@ import os
 final class BulletinAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    private let sharedSecret: String?
+    private let sharedSecretProvider: @Sendable () -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
 
-    /// `baseURLProvider` is re-evaluated on every request, matching
-    /// `PushAPIClient`'s behaviour — so a Debug build that changes the
-    /// API endpoint at runtime (via `DebugEndpointView`) takes effect on
-    /// the next bulletin call without needing an app relaunch.
+    /// Both `baseURLProvider` and `sharedSecretProvider` are re-evaluated on
+    /// every request — a Debug build that switches the endpoint at runtime
+    /// (via `DebugEndpointView`) takes effect on the next bulletin call
+    /// without an app relaunch, and the secret tracks the endpoint so
+    /// requests don't go to the new host with the old `X-Push-Token`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        sharedSecret: String? = nil
+        sharedSecretProvider: @escaping @Sendable () -> String? = { PushServerConfig.resolveSharedSecret() }
     ) {
         self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
-        self.sharedSecret = sharedSecret.flatMap { $0.isEmpty ? nil : $0 }
+        self.sharedSecretProvider = sharedSecretProvider
     }
 
     // MARK: - Public surface
@@ -116,7 +117,10 @@ final class BulletinAPIClient: Sendable {
     }
 
     private func applyAuth(to request: inout URLRequest) {
-        guard let secret = sharedSecret else { return }
+        // Resolve per-request so a Debug endpoint change picks up the
+        // matching shared secret instead of replaying the secret captured
+        // at construction time.
+        guard let secret = sharedSecretProvider(), !secret.isEmpty else { return }
         request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
     }
 
