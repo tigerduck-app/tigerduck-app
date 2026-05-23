@@ -173,6 +173,32 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
+            // Conflict alert lives on the sheet's content (#152): on iPhone
+            // hosting an alert on the parent forces SwiftUI to dismiss the
+            // sheet to present it. macOS doesn't have the same dismissal,
+            // but keeping both platforms anchored to the sheet keeps the
+            // alert visually attached to the search results either way.
+            .alert(
+                String(localized: "class_table_conflict_add_failed_title"),
+                isPresented: Binding(
+                    get: { tripleConflictError != nil },
+                    set: { if !$0 { tripleConflictError = nil } }
+                ),
+                presenting: tripleConflictError
+            ) { _ in
+                Button(String(localized: "action_confirm"), role: .cancel) {
+                    tripleConflictError = nil
+                }
+            } message: { err in
+                Text(String(
+                    format: String(localized: "class_table_conflict_add_failed_message"),
+                    err.newCourseName,
+                    "\(err.weekday)",
+                    err.periodId,
+                    err.existingA.displayName,
+                    err.existingB.displayName
+                ))
+            }
         }
         .sheet(item: $courseToRecolor) { course in
             CourseColorPickerSheet(
@@ -184,27 +210,6 @@ struct MacClassTableView: View {
                 }
             )
             .frame(minWidth: 360, minHeight: 480)
-        }
-        .alert(
-            String(localized: "class_table_conflict_add_failed_title"),
-            isPresented: Binding(
-                get: { tripleConflictError != nil },
-                set: { if !$0 { tripleConflictError = nil } }
-            ),
-            presenting: tripleConflictError
-        ) { _ in
-            Button(String(localized: "action_confirm"), role: .cancel) {
-                tripleConflictError = nil
-            }
-        } message: { err in
-            Text(String(
-                format: String(localized: "class_table_conflict_add_failed_message"),
-                err.newCourseName,
-                "\(err.weekday)",
-                err.periodId,
-                err.existingA.displayName,
-                err.existingB.displayName
-            ))
         }
         .alert(String(localized: "class_table_rename_title"), isPresented: $showRenameAlert) {
             TextField(String(localized: "class_table_course_name"), text: $renameText)

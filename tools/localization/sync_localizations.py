@@ -47,6 +47,7 @@ TARGET_DIRS = [
     ROOT / "swift" / "TigerDuck",
     ROOT / "swift" / "TigerDuckWatch Watch App",
     ROOT / "swift" / "TigerDuckWatchWidget",
+    ROOT / "swift" / "TigerDuckLiveActivity",
 ]
 
 # Widget extension's resources live one level deeper, so it uses a separate
