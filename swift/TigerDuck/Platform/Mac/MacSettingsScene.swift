@@ -442,10 +442,20 @@ private struct MacDeveloperSettingsView: View {
             }
 
             Section {
-                TextField("http://192.168.X.X:40000/v2", text: $endpointVM.draft)
+                // Show the example URL above the field instead of as the
+                // TextField's leading label — on macOS Form's grouped
+                // style the title-string initializer renders a left-side
+                // label that eats horizontal space and pushes the input
+                // into a sliver. Putting the hint on its own row keeps
+                // the input field full-width and easier to paste into.
+                Text(verbatim: "http://192.168.X.X:40000/v2")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                TextField("", text: $endpointVM.draft, prompt: Text(verbatim: "http://192.168.X.X:40000/v2"))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
                     .autocorrectionDisabled()
+                    .labelsHidden()
 
                 if let error = endpointVM.validationError {
                     Text(error)
