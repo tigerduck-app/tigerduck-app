@@ -10,18 +10,21 @@ import os
 final class BulletinAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    private let sharedSecretProvider: @Sendable () -> String?
+    private let sharedSecretProvider: @Sendable (URL) -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
 
-    /// Both `baseURLProvider` and `sharedSecretProvider` are re-evaluated on
-    /// every request — a Debug build that switches the endpoint at runtime
-    /// (via `DebugEndpointView`) takes effect on the next bulletin call
-    /// without an app relaunch, and the secret tracks the endpoint so
-    /// requests don't go to the new host with the old `X-Push-Token`.
+    /// `baseURLProvider` is re-evaluated on every request, and the
+    /// resolved URL is then fed to `sharedSecretProvider` so the secret
+    /// is selected as a pair with the host actually being hit. A Debug
+    /// build that switches the endpoint at runtime (via
+    /// `DebugEndpointView`) takes effect on the next bulletin call —
+    /// and if the override points at the public host, the request
+    /// carries the production `APIToken` instead of replaying the local
+    /// `DebugAPIToken` that pairs with `DebugServerURL`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        sharedSecretProvider: @escaping @Sendable () -> String? = { PushServerConfig.resolveSharedSecret() }
+        sharedSecretProvider: @escaping @Sendable (URL) -> String? = { PushServerConfig.resolveSharedSecret(for: $0) }
     ) {
         self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
@@ -87,11 +90,15 @@ final class BulletinAPIClient: Sendable {
         query: [URLQueryItem] = [],
         returning _: Response.Type
     ) async throws -> Response {
-        let url = try Self.resolveURL(baseURL: baseURLProvider(), path: path, query: query)
+        // Resolve baseURL once so the secret provider sees the same host
+        // the request is actually going to — avoids any window where the
+        // override could flip between URL and secret lookups.
+        let baseURL = baseURLProvider()
+        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: query)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        applyAuth(to: &request)
+        applyAuth(to: &request, baseURL: baseURL)
         let data = try await execute(request)
         return try decode(data, path: path)
     }
@@ -101,12 +108,13 @@ final class BulletinAPIClient: Sendable {
         body: Request,
         returning _: Response.Type
     ) async throws -> Response {
-        let url = try Self.resolveURL(baseURL: baseURLProvider(), path: path, query: [])
+        let baseURL = baseURLProvider()
+        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request)
+        applyAuth(to: &request, baseURL: baseURL)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -116,11 +124,8 @@ final class BulletinAPIClient: Sendable {
         return try decode(data, path: path)
     }
 
-    private func applyAuth(to request: inout URLRequest) {
-        // Resolve per-request so a Debug endpoint change picks up the
-        // matching shared secret instead of replaying the secret captured
-        // at construction time.
-        guard let secret = sharedSecretProvider(), !secret.isEmpty else { return }
+    private func applyAuth(to request: inout URLRequest, baseURL: URL) {
+        guard let secret = sharedSecretProvider(baseURL), !secret.isEmpty else { return }
         request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
     }
 

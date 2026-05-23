@@ -177,20 +177,31 @@ nonisolated enum PushServerConfig {
     /// with the app. Must match the corresponding backend's
     /// `TIGERDUCK_API_SHARED_SECRET` or every write request 401s.
     ///
-    /// Resolution order:
-    ///   1. Debug builds: `DebugAPIToken` — paired with `DebugServerURL`,
-    ///      so each contributor's local backend can have its own secret
-    ///      without leaking the production one through dev Macs.
-    ///   2. `APIToken` — production secret; also the Debug fallback when
-    ///      a contributor leaves `DebugAPIToken` blank (matches the old
-    ///      "single shared token" workflow).
+    /// The secret is selected by the *resolved* destination URL so a
+    /// Debug build whose Keychain/UserDefaults override points at the
+    /// public staging/prod apex does not send the local `DebugAPIToken`
+    /// to a backend that expects `APIToken`. Resolution order, applied
+    /// against `url.host`:
+    ///   1. Debug builds + non-public host (loopback / RFC1918):
+    ///      `DebugAPIToken` — paired with a local `DebugServerURL`, so
+    ///      each contributor's local backend can have its own secret.
+    ///   2. `APIToken` — production secret; used for the public allowlist
+    ///      apex/subdomains in every build, and the Debug fallback for
+    ///      local hosts when `DebugAPIToken` is blank.
     ///   3. Legacy Info.plist `TigerDuckAPIToken` — kept so any CI
     ///      pipeline that still injects there continues to work.
     ///   4. nil — preserves the dev-friendly no-auth path.
-    static func resolveSharedSecret() -> String? {
+    static func resolveSharedSecret(for url: URL) -> String? {
+        let targetsPublicHost = url.host.map { isAllowedPublicHost($0.lowercased()) } ?? false
         if let dict = secretsPlistDict() {
             #if DEBUG
-            if let value = dict["DebugAPIToken"] as? String, !value.isEmpty {
+            // `DebugAPIToken` only pairs with `DebugServerURL` (local
+            // dev backend). When a runtime override has sent us at the
+            // public host, fall through to `APIToken` so we don't 401
+            // against a backend that doesn't know the local secret.
+            if !targetsPublicHost,
+               let value = dict["DebugAPIToken"] as? String,
+               !value.isEmpty {
                 return value
             }
             #endif
