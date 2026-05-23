@@ -2,6 +2,7 @@ import Defaults
 import Foundation
 
 extension BrowserPreference: Defaults.Serializable, Defaults.PreferRawRepresentable {}
+extension MoodleOpenTarget: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 
 nonisolated extension Defaults.Keys {
@@ -27,6 +28,13 @@ nonisolated extension Defaults.Keys {
     static let browserPreference = Key<BrowserPreference>(
         AppConstants.UserDefaultsKeys.browserPreference,
         default: .system
+    )
+    /// Mac-only. Default `.browser` because the iPad Moodle app isn't
+    /// installed by default on Mac; sending the user there before they
+    /// opt in would fail with "no app handles this URL".
+    static let macMoodleOpenTarget = Key<MoodleOpenTarget>(
+        AppConstants.UserDefaultsKeys.macMoodleOpenTarget,
+        default: .browser
     )
     static let showAbsoluteAssignmentTime = Key<Bool>(
         AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime,

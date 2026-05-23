@@ -94,6 +94,7 @@ nonisolated enum AppConstants {
         static let rememberAnnouncementFilter = "rememberAnnouncementFilter"
         static let savedAnnouncementDepartments = "savedAnnouncementDepartments"
         static let browserPreference = "browserPreference"
+        static let macMoodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"

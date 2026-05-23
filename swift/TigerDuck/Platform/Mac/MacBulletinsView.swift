@@ -12,6 +12,9 @@ struct MacBulletinsView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = BulletinsViewModel()
     @State private var readStore = BulletinReadStateStore()
+    // Shared with iPhone: same fetch-once taxonomy cache, so org/tag rawIds
+    // resolve to localized labels instead of leaking the raw SQL key.
+    private let taxonomy = BulletinTaxonomyStore.shared
 
     @State private var selectedId: Int?
     @State private var detail: BulletinAPI.BulletinDetail?
@@ -27,13 +30,20 @@ struct MacBulletinsView: View {
     var body: some View {
         HSplitView {
             listPane
-                .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
+                // Tighter cap than before: HSplitView lets `maxWidth: 420`
+                // drift the divider past the user's intent when the right
+                // pane has short content, and the list column ends up
+                // hogging width. Pinning a narrower ceiling keeps the
+                // bulletin reader the visual focus once one is selected.
+                .frame(minWidth: 260, idealWidth: 300, maxWidth: 340)
             detailPane
-                .frame(minWidth: 380)
+                .frame(minWidth: 420, maxWidth: .infinity)
+                .layoutPriority(1)
         }
         .task {
             viewModel.searchText = searchText
             await viewModel.loadIfNeeded()
+            await taxonomy.loadIfNeeded()
         }
         .onChange(of: searchText) { _, newValue in
             viewModel.searchText = newValue
@@ -103,7 +113,7 @@ struct MacBulletinsView: View {
                     .lineLimit(2)
                 HStack(spacing: 6) {
                     if let org = b.canonicalOrg, !org.isEmpty {
-                        Text(org)
+                        Text(taxonomy.orgLabel(for: org))
                             .font(.caption2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -204,7 +214,7 @@ struct MacBulletinsView: View {
                         .font(.title.bold())
                     HStack(spacing: 8) {
                         if let org = d.canonicalOrg, !org.isEmpty {
-                            Label(org, systemImage: "building.2")
+                            Label(taxonomy.orgLabel(for: org), systemImage: "building.2")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
