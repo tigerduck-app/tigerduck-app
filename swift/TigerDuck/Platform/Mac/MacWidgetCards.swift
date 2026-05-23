@@ -136,6 +136,18 @@ private struct NextClassWidgetCard: View {
                 let color = TigerDuckTheme.courseColor(for: primary.course.courseNo)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
+                        // Render the chosen slot's bounds, not the day's
+                        // first-to-last span — the countdown above counts
+                        // down to `primary.start`, so a split same-day
+                        // course (e.g. P3-P4 + P7-P8) would otherwise show
+                        // a gap-spanning time that doesn't match the timer.
+                        // Lives on the leading edge so the eye lands on the
+                        // time first, with the live badge (when present) as
+                        // a trailing accent.
+                        Text("\(primary.start.timeString) - \(primary.end.timeString)")
+                            .font(.title3.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(color)
+                        Spacer()
                         // Only show a badge when the class is actively in
                         // session — the "next up" caption used to duplicate
                         // the card title (#136) and the white-on-course-color
@@ -150,15 +162,6 @@ private struct NextClassWidgetCard: View {
                                 .padding(.vertical, 2)
                                 .background(Capsule().fill(color))
                         }
-                        Spacer()
-                        // Render the chosen slot's bounds, not the day's
-                        // first-to-last span — the countdown above counts
-                        // down to `primary.start`, so a split same-day
-                        // course (e.g. P3-P4 + P7-P8) would otherwise show
-                        // a gap-spanning time that doesn't match the timer.
-                        Text("\(primary.start.timeString) - \(primary.end.timeString)")
-                            .font(.title3.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(color)
                     }
                     if target.slots.count >= 2 {
                         // 衝堂: list every overlapping course on its own line so
