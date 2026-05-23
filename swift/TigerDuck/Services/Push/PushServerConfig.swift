@@ -15,13 +15,15 @@ nonisolated enum PushServerConfig {
     /// (`api.tigerduck.app`) plus any `*.api.tigerduck.app` subdomain.
     ///
     /// WARNING: pointing a Debug build at the prod apex still creates an
-    /// apns_env mismatch (Debug binaries bake in
-    /// `PushAPNsEnv.resolvedForBuild = "development"` and the production
-    /// APNs server rejects sandbox tokens), so `PushCoordinator.assertEnvConsistency()`
-    /// will crash on launch if the resolver hands prod to the push stack.
-    /// The bulletin / read-only API clients don't care about apns_env,
-    /// so the allowlist is widened here for read-side testing — push
-    /// flows on a prod-pointed Debug build remain broken by design.
+    /// apns_env mismatch — Debug binaries bake in
+    /// `PushAPNsEnv.resolvedForBuild = "development"`, and the production
+    /// APNs server rejects sandbox tokens. The bulletin / read-only API
+    /// clients don't care about apns_env, so the allowlist is widened
+    /// here for read-side testing; push registration on a prod-pointed
+    /// Debug build will fail at the server, but the app still launches
+    /// (see `PushCoordinator.assertEnvConsistency()`, which now accepts
+    /// any host this allowlist accepts so a saved Keychain override
+    /// can't brick the next launch).
     ///
     /// Everything else must resolve to loopback or an RFC1918 private
     /// IPv4 (see ``isOverrideAllowed(_:)``). An attacker-supplied override
@@ -35,13 +37,21 @@ nonisolated enum PushServerConfig {
         ".api.tigerduck.app",
     ]
 
-    private static func isAllowedPublicHost(_ host: String) -> Bool {
-        if publicHostExactAllowlist.contains(host) { return true }
+    /// Internal so `PushCoordinator.assertEnvConsistency()` can use the
+    /// same gate as the runtime override path — keeping the two in sync
+    /// avoids the trap where a host the resolver accepts at runtime then
+    /// crashes the next launch's assert.
+    static func isAllowedPublicHost(_ host: String) -> Bool {
+        // DNS is case-insensitive; `URL.host` preserves whatever case the
+        // user typed, so normalize before matching to avoid rejecting
+        // legitimate input like `API.tigerduck.app`.
+        let normalized = host.lowercased()
+        if publicHostExactAllowlist.contains(normalized) { return true }
         return publicHostSuffixAllowlist.contains { suffix in
             // host must be longer than the suffix so we don't double-count
             // the apex (e.g. ".api.tigerduck.app" as suffix shouldn't match
             // "api.tigerduck.app" on its own — exact list handles that).
-            host.count > suffix.count && host.hasSuffix(suffix)
+            normalized.count > suffix.count && normalized.hasSuffix(suffix)
         }
     }
 
@@ -87,7 +97,7 @@ nonisolated enum PushServerConfig {
     /// RFC1918 private IPv4 literal. `http://` is allowed only for
     /// private/loopback targets — public hosts must speak HTTPS.
     static func isOverrideAllowed(_ url: URL) -> Bool {
-        guard let host = url.host else { return false }
+        guard let host = url.host?.lowercased() else { return false }
         if isAllowedPublicHost(host) {
             return url.scheme == "https"
         }
@@ -107,7 +117,7 @@ nonisolated enum PushServerConfig {
     /// the allowlist's HTTPS requirement still bites.
     static func normalize(_ url: URL) -> URL {
         guard url.scheme == "https",
-              let host = url.host,
+              let host = url.host?.lowercased(),
               host == "localhost" || host == "127.0.0.1" || isPrivateIPv4(host),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         else { return url }

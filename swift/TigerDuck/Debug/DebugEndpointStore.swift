@@ -38,10 +38,11 @@ nonisolated enum DebugEndpointStore {
     }
 
     /// Returns a value that was previously saved but no longer passes the
-    /// allowlist (e.g. ``PushServerConfig/publicHostAllowlist`` tightened
-    /// in a later build). Lets the UI explain why the override the user
-    /// set last week silently stopped taking effect, instead of just
-    /// falling back to localhost without a breadcrumb.
+    /// allowlist (e.g. ``PushServerConfig/isAllowedPublicHost(_:)`` or
+    /// the loopback/RFC1918 gate tightened in a later build). Lets the UI
+    /// explain why the override the user set last week silently stopped
+    /// taking effect, instead of just falling back to localhost without
+    /// a breadcrumb.
     static func storedButRejectedOverride() -> String? {
         guard let raw = KeychainManager.loadString(key: keychainKey),
               !raw.isEmpty

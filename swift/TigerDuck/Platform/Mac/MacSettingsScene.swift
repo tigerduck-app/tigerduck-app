@@ -421,6 +421,26 @@ private struct MacDeveloperSettingsView: View {
                 Text("Resolved by PushServerConfig — Keychain override → UserDefaults override → Secrets.plist → localhost fallback.")
             }
 
+            // Surface a previously-saved override that no longer passes
+            // the allowlist (e.g. allowlist tightened in a later build).
+            // Mirrors the iOS DebugEndpointView — without this section,
+            // the Mac user only sees the effective URL silently fall
+            // through to the next priority with no breadcrumb explaining
+            // why their saved override stopped taking effect.
+            if let stale = endpointVM.staleOverride {
+                Section {
+                    Text(stale)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                } header: {
+                    Text("Stored override no longer accepted")
+                } footer: {
+                    Text("The allowlist tightened since this value was saved, so it's being ignored and the resolver is using the next priority. Save a new value or clear the override.")
+                        .foregroundStyle(.orange)
+                }
+            }
+
             Section {
                 TextField("http://192.168.X.X:40000/v2", text: $endpointVM.draft)
                     .textFieldStyle(.roundedBorder)
@@ -443,7 +463,7 @@ private struct MacDeveloperSettingsView: View {
             } header: {
                 Text("Override (Keychain — survives reinstall)")
             } footer: {
-                Text("Allowed: api.tigerduck.app (apex + any subdomain) over HTTPS, loopback, or any RFC1918 IPv4. Pointing a Debug build at the prod apex breaks push (apns_env mismatch), but read-side API surfaces still work for testing.")
+                Text("Allowed: api.tigerduck.app (apex + any subdomain) over HTTPS, loopback, or any RFC1918 IPv4. Pointing a Debug build at the prod apex breaks push (apns_env mismatch — sandbox tokens get rejected at registration), but read-side API surfaces still work for testing.")
             }
         }
         .formStyle(.grouped)

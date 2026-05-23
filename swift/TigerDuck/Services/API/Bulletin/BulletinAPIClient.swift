@@ -8,17 +8,21 @@ import os
 /// attach `X-Push-Token` when one is configured — the server ignores it
 /// on the public routes.
 final class BulletinAPIClient: Sendable {
-    private let baseURL: URL
+    private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
     private let sharedSecret: String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
 
+    /// `baseURLProvider` is re-evaluated on every request, matching
+    /// `PushAPIClient`'s behaviour — so a Debug build that changes the
+    /// API endpoint at runtime (via `DebugEndpointView`) takes effect on
+    /// the next bulletin call without needing an app relaunch.
     init(
-        baseURL: URL = PushServerConfig.resolveServerURL(),
+        baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
         sharedSecret: String? = nil
     ) {
-        self.baseURL = baseURL
+        self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
         self.sharedSecret = sharedSecret.flatMap { $0.isEmpty ? nil : $0 }
     }
@@ -82,7 +86,7 @@ final class BulletinAPIClient: Sendable {
         query: [URLQueryItem] = [],
         returning _: Response.Type
     ) async throws -> Response {
-        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: query)
+        let url = try Self.resolveURL(baseURL: baseURLProvider(), path: path, query: query)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -96,7 +100,7 @@ final class BulletinAPIClient: Sendable {
         body: Request,
         returning _: Response.Type
     ) async throws -> Response {
-        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
+        let url = try Self.resolveURL(baseURL: baseURLProvider(), path: path, query: [])
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Accept")

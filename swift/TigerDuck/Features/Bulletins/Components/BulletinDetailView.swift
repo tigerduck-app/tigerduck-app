@@ -25,12 +25,11 @@ struct BulletinDetailView: View {
 
     /// Hoisted to a static so the bulletin-detail nav push doesn't hit
     /// Defaults + Keychain on every appearance just to reconstruct the
-    /// same client. The push-server URL / shared secret are stable for
-    /// the app's lifetime — a stale resolution after the user changes
-    /// the override in Settings is acceptable; the next app launch
-    /// rebuilds the client.
+    /// same client. The shared secret is captured at first access (stable
+    /// for the app's lifetime), while the base URL is re-resolved on
+    /// every request through the default `baseURLProvider`, so a Debug
+    /// endpoint override picks up immediately without an app relaunch.
     private static let apiClient: BulletinAPIClient = BulletinAPIClient(
-        baseURL: PushServerConfig.resolveServerURL(),
         sharedSecret: PushServerConfig.resolveSharedSecret()
     )
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Detail")

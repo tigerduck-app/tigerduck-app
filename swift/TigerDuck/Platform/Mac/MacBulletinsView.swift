@@ -25,7 +25,6 @@ struct MacBulletinsView: View {
     @State private var searchText: String = ""
 
     private let api = BulletinAPIClient(
-        baseURL: PushServerConfig.resolveServerURL(),
         sharedSecret: PushServerConfig.resolveSharedSecret()
     )
 
@@ -47,7 +46,12 @@ struct MacBulletinsView: View {
             viewModel.searchText = searchText
             await viewModel.loadIfNeeded()
             await taxonomy.loadIfNeeded()
-            logger.info("MacBulletinsView .task done — items=\(viewModel.filteredItems.count, privacy: .public) state=\(String(describing: viewModel.loadState), privacy: .public)")
+            // `loadState` is `.private` because `.failed(String)` carries
+            // `error.localizedDescription` from `BulletinAPIError`, which
+            // for `.httpStatus` embeds up to 512 bytes of server-controlled
+            // response body — the same payload `execute(_:)` already marks
+            // `.private` for (correlation tokens, echoed headers, etc).
+            logger.info("MacBulletinsView .task done — items=\(viewModel.filteredItems.count, privacy: .public) state=\(String(describing: viewModel.loadState), privacy: .private)")
         }
         .onChange(of: searchText) { _, newValue in
             viewModel.searchText = newValue

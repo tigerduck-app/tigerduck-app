@@ -72,7 +72,7 @@ struct DebugEndpointView: View {
             } header: {
                 Text("Override (Keychain — survives reinstall)")
             } footer: {
-                Text("Allowed: `https://api.tigerduck.app/...` (apex or any subdomain), loopback, or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x). LAN dev backend speaks plain HTTP — `https://192.168.X.X:…` is auto-rewritten to `http://` at save time. Pointing a Debug build at the prod apex still breaks push (apns_env mismatch crashes `assertEnvConsistency`), but read-only API surfaces work for testing.")
+                Text("Allowed: `https://api.tigerduck.app/...` (apex or any subdomain), loopback, or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x). LAN dev backend speaks plain HTTP — `https://192.168.X.X:…` is auto-rewritten to `http://` at save time. Pointing a Debug build at the prod apex breaks push (apns_env mismatch — sandbox tokens get rejected at registration), but read-only API surfaces (bulletin, etc.) work for testing.")
             }
         }
         .navigationTitle("API endpoint")

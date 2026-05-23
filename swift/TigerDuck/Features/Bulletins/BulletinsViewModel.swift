@@ -53,8 +53,11 @@ final class BulletinsViewModel {
     private var prefetchTask: Task<Void, Never>?
 
     init(apiClient: BulletinAPIClient? = nil) {
+        // No `baseURL:` argument — defaults to a provider that re-resolves
+        // through PushServerConfig on every request, so a Debug endpoint
+        // override applies to bulletin fetches immediately, matching the
+        // push stack's behaviour.
         self.apiClient = apiClient ?? BulletinAPIClient(
-            baseURL: PushServerConfig.resolveServerURL(),
             sharedSecret: PushServerConfig.resolveSharedSecret()
         )
         // Seed synchronously from disk so the very first render after
