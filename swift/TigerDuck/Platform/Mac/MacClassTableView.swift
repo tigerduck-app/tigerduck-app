@@ -261,7 +261,12 @@ struct MacClassTableView: View {
                 timeRange: slot.course.timeRange(for: slot.weekday),
                 weekday: slot.weekday
             )
-            .frame(width: 520, height: 520)
+            // Max-bound rather than fixed: a small window (e.g. MacBook Air
+            // with the inspector open) shrinks the overlay to fit, while
+            // larger windows give the inner ScrollView more room before it
+            // has to scroll. `CourseDetailSheet` enforces its own minWidth
+            // 460 / minHeight 360 so the lower bound is preserved.
+            .frame(maxWidth: 560, maxHeight: 620)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
             // Swallow taps on the content so they don't reach the backdrop.
@@ -274,6 +279,7 @@ struct MacClassTableView: View {
                 .keyboardShortcut(.escape, modifiers: [])
                 .opacity(0)
                 .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
         .transition(.opacity)
