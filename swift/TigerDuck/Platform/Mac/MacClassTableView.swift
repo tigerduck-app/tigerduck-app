@@ -568,21 +568,28 @@ struct MacClassTableView: View {
         )
         .contentShape(Rectangle())
         .contextMenu {
-            Button {
-                startRename(course)
-            } label: {
-                Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
+            // Rename writes to a courseNo-keyed store shared across semesters;
+            // only expose it from the current semester to avoid leaking aliases
+            // into other terms. See `isViewingCurrentSemester`.
+            if isViewingCurrentSemester {
+                Button {
+                    startRename(course)
+                } label: {
+                    Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
+                }
             }
             Button {
                 courseToRecolor = course
             } label: {
                 Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
             }
-            Divider()
-            Button(role: .destructive) {
-                deleteCourse(course)
-            } label: {
-                Label(String(localized: "class_table_delete"), systemImage: "trash")
+            if isViewingCurrentSemester {
+                Divider()
+                Button(role: .destructive) {
+                    deleteCourse(course)
+                } label: {
+                    Label(String(localized: "class_table_delete"), systemImage: "trash")
+                }
             }
         }
     }
@@ -596,6 +603,16 @@ struct MacClassTableView: View {
     private func displayLabel(for code: String) -> String {
         guard code.count >= 2 else { return code }
         return String(code.dropLast()) + "-" + String(code.last!)
+    }
+
+    /// True when the Mac picker is on the currently-enrolled semester.
+    /// Rename and Delete are gated on this because their on-disk stores
+    /// (`courseCustomNames`, `deletedCourseNos`) are keyed by `courseNo`
+    /// only — a write made while viewing a past term would leak into the
+    /// current schedule, widgets, and Live Activity for any course that
+    /// reuses the same code.
+    private var isViewingCurrentSemester: Bool {
+        selectedSemester == CourseSelectionService.currentSemesterCode()
     }
 
     // MARK: - User-added courses
