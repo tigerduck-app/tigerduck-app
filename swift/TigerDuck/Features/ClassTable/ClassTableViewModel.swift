@@ -829,6 +829,13 @@ final class ClassTableViewModel {
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
         let targetSemester = currentSemester
+        // Captive-portal pre-flight before the NTUST + Moodle round-trip,
+        // so refreshing the timetable under a hotel/campus login page
+        // shows "no internet" instead of a TLS pin failure.
+        guard await NetworkMonitor.shared.isReachable() else {
+            await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
+            return
+        }
         await MainActor.run { manager.loadingState = .loading }
 
         // ClassTable pull-to-refresh is the explicit "show me the

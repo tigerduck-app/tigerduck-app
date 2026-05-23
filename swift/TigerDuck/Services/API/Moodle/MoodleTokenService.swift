@@ -237,7 +237,16 @@ actor MoodleTokenService {
                 "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         ]
-        let session = URLSession(configuration: config)
+        // SPKI pinning on the OIDC bootstrap session — this is where
+        // the raw NTUST password is POSTed and where the moodlemobile
+        // token triple gets handed back, so MITM here is the
+        // worst-case path. `invalidateAndCancel()` in the defer below
+        // releases the URLSession's strong retain on the delegate.
+        let session = URLSession(
+            configuration: config,
+            delegate: TLSPinningDelegate.shared,
+            delegateQueue: nil,
+        )
         defer { session.invalidateAndCancel() }
 
         // Step 1: GET launch.php — URLSession auto-follows 303s to SSO login.

@@ -107,6 +107,14 @@ final class ScoreViewModel {
         isRefreshing = true
         errorMessage = nil
         let manager = NTUSTSessionManager.shared
+        // Captive-portal pre-flight: NTUSTScoreService rides the pinned
+        // SSO chain, so a login-required Wi-Fi would otherwise surface
+        // as a confusing TLS error. Reset state and bail clean.
+        guard await NetworkMonitor.shared.isReachable() else {
+            isRefreshing = false
+            errorMessage = String(localized: "error_network_unavailable")
+            return
+        }
         manager.loadingState = .loading
 
         // Capture the auth generation that owns this fetch. If the user

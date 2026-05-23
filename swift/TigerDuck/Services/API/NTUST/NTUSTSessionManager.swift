@@ -112,12 +112,6 @@ final class NTUSTSessionManager {
 
     private init() {
         let config = URLSessionConfiguration.default
-        // TODO(security §2.1): pin TLS for ssoam2/courseselection/
-        // stuinfosys/moodle2.ntust.edu.tw via URLSessionDelegate +
-        // SPKI hashes before relying on this session over hostile
-        // networks (campus Wi-Fi w/ MDM-installed root CA). Deferred
-        // because pin material must be provisioned and rotated with
-        // releases; brick-on-rotation risk if shipped naively.
         config.httpCookieStorage = cookieStorage
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
@@ -132,7 +126,17 @@ final class NTUSTSessionManager {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9",
         ]
-        session = URLSession(configuration: config)
+        // SPKI pin against the *.ntust.edu.tw pin set so an MDM-pushed
+        // root CA on hostile campus Wi-Fi cannot MITM SSO credentials.
+        // The per-task `NoRedirectSessionDelegate` used by
+        // `probeCookiesValid()` only overrides the redirect callback,
+        // so server-trust challenges still fall through to the
+        // session-level pinning delegate here.
+        session = URLSession(
+            configuration: config,
+            delegate: TLSPinningDelegate.shared,
+            delegateQueue: nil,
+        )
     }
 
     func markLoginSuccess() {

@@ -154,7 +154,12 @@ final class HomeViewModel {
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
 
-        guard NetworkMonitor.shared.isConnected else {
+        // `isReachable()` adds Apple's captive-portal probe on top of
+        // the bare interface-up check, so refreshing under a hotel /
+        // campus login Wi-Fi surfaces "no internet" instead of the
+        // ATS pin failure that would otherwise come from the actual
+        // NTUST / Moodle call.
+        guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
         }

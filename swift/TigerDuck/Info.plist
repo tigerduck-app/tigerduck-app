@@ -12,6 +12,19 @@
     RFC1918 private IPs. Public hosts still must speak HTTPS — Release
     builds hit api.tigerduck.app over HTTPS and are unaffected.
 
+    TLS pinning is **not** declared here via `NSPinnedDomains` despite
+    that being the natural fit. We tested it (mitmproxy-style
+    experiment against a host with deliberately bogus pins) and
+    confirmed that `NSPinnedDomains` is enforced at a layer beneath
+    `URLSessionDelegate` — even returning `useCredential(URLCredential(
+    trust:))` with no pre-check still gets rejected. Apple's ATS pin
+    has no fail-soft expiry mechanism, and there is no way for app
+    code to bypass a stale-pin rejection. Since issue #92 requires
+    fail-soft after the pin set's expiration date (to spare users on
+    un-updated builds when TWCA rotates the chain), pinning is done
+    programmatically via `TLSPinningDelegate` (swift/Shared/) wired
+    onto every URLSession that talks to a pinned host.
+
     CFBundleURLTypes registers the `tigerduck://` scheme used by the
     widget `widgetURL(...)` deep links (TigerDuckWidgets). Without
     this, WidgetKit has no host to hand the tap to and Library /
