@@ -258,9 +258,9 @@ private func iconName(for scenario: LiveActivityScenarioKind) -> String {
 
 private func statusLabel(for scenario: LiveActivityScenarioKind) -> String {
     switch scenario {
-    case .inClass: return "上課"
-    case .classPreparing: return "即將上課"
-    case .assignmentUrgent: return "作業"
+    case .inClass: return String(localized: "live_activity_status_in_class_short")
+    case .classPreparing: return String(localized: "live_activity_status_class_preparing")
+    case .assignmentUrgent: return String(localized: "live_activity_status_assignment_short")
     }
 }
 
