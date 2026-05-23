@@ -141,9 +141,6 @@ private struct NextClassWidgetCard: View {
                         // down to `primary.start`, so a split same-day
                         // course (e.g. P3-P4 + P7-P8) would otherwise show
                         // a gap-spanning time that doesn't match the timer.
-                        // Lives on the leading edge so the eye lands on the
-                        // time first, with the live badge (when present) as
-                        // a trailing accent.
                         Text("\(primary.start.timeString) - \(primary.end.timeString)")
                             .font(.title3.monospacedDigit().weight(.semibold))
                             .foregroundStyle(color)

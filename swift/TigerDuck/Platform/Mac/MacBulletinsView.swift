@@ -1,6 +1,7 @@
 #if os(macOS)
 import SwiftUI
 import MarkdownUI
+import os
 
 /// macOS bulletins surface — Mail-style list/detail split.
 ///
@@ -15,6 +16,7 @@ struct MacBulletinsView: View {
     // Shared with iPhone: same fetch-once taxonomy cache, so org/tag rawIds
     // resolve to localized labels instead of leaking the raw SQL key.
     private let taxonomy = BulletinTaxonomyStore.shared
+    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.MacView")
 
     @State private var selectedId: Int?
     @State private var detail: BulletinAPI.BulletinDetail?
@@ -22,10 +24,7 @@ struct MacBulletinsView: View {
     @State private var detailError: String?
     @State private var searchText: String = ""
 
-    private let api = BulletinAPIClient(
-        baseURL: PushServerConfig.resolveServerURL(),
-        sharedSecret: PushServerConfig.resolveSharedSecret()
-    )
+    private let api = BulletinAPIClient()
 
     var body: some View {
         HSplitView {
@@ -41,9 +40,16 @@ struct MacBulletinsView: View {
                 .layoutPriority(1)
         }
         .task {
+            logger.info("MacBulletinsView .task fired — calling loadIfNeeded against \(PushServerConfig.resolveServerURL().absoluteString, privacy: .public)")
             viewModel.searchText = searchText
             await viewModel.loadIfNeeded()
             await taxonomy.loadIfNeeded()
+            // `loadState` is `.private` because `.failed(String)` carries
+            // `error.localizedDescription` from `BulletinAPIError`, which
+            // for `.httpStatus` embeds up to 512 bytes of server-controlled
+            // response body — the same payload `execute(_:)` already marks
+            // `.private` for (correlation tokens, echoed headers, etc).
+            logger.info("MacBulletinsView .task done — items=\(viewModel.filteredItems.count, privacy: .public) state=\(String(describing: viewModel.loadState), privacy: .private)")
         }
         .onChange(of: searchText) { _, newValue in
             viewModel.searchText = newValue
@@ -139,18 +145,44 @@ struct MacBulletinsView: View {
         .padding(.vertical, 4)
     }
 
+    @ViewBuilder
     private var emptyListPlaceholder: some View {
-        VStack(spacing: 8) {
-            Spacer()
-            Image(systemName: "tray")
-                .font(.title)
-                .foregroundStyle(.secondary)
-            Text(String(localized: searchText.isEmpty ? "desktop_bulletins_empty" : "desktop_bulletins_no_matches"))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Spacer()
+        // Failed-fetch state was previously indistinguishable from
+        // successful-but-empty — both rendered the tray icon. Split them
+        // so a network failure surfaces the actual error.
+        if case let .failed(message) = viewModel.loadState {
+            VStack(spacing: 10) {
+                Spacer()
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.title)
+                    .foregroundStyle(.orange)
+                Text(String(localized: "bulletin_body_load_failed"))
+                    .font(.callout)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                Button(String(localized: "action_retry")) {
+                    Task { await viewModel.refresh() }
+                }
+                .controlSize(.small)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        } else {
+            VStack(spacing: 8) {
+                Spacer()
+                Image(systemName: "tray")
+                    .font(.title)
+                    .foregroundStyle(.secondary)
+                Text(String(localized: searchText.isEmpty ? "desktop_bulletins_empty" : "desktop_bulletins_no_matches"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Detail pane

@@ -12,6 +12,14 @@ final class AppState {
     /// separate `.sheet` modifier.
     var isShowingNTUSTLoginSheet = false
 
+    /// Mac-only, intentionally non-persisted: set by `MacLoginView`'s
+    /// "Skip for now" button so the user can preview the app without
+    /// credentials. Resets on every app launch (so first-launch always
+    /// shows the login wall) and on logout (so signing out returns the
+    /// user to the login screen rather than stranding them in an
+    /// unauthenticated `MacContentView`).
+    var didSkipMacLogin = false
+
     let authService = AuthService()
     let sessionManager = NTUSTSessionManager.shared
 
@@ -273,6 +281,10 @@ final class AppState {
         #endif
 
         authService.logout()
+        // Drop the Mac skip-login bypass too; otherwise a Mac user who
+        // skipped, then logged in, then logged out, would stay in
+        // `MacContentView` instead of returning to `MacLoginView`.
+        didSkipMacLogin = false
         DataCache.shared.clearUserScopedData()
         Task { @MainActor in
             #if os(iOS)

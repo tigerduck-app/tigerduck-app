@@ -113,8 +113,7 @@ struct ClassTableView: View {
                 // parent — when it lived on the parent, iOS dismissed the
                 // sheet to present the alert (only one presentation at a
                 // time per host view). Anchoring it here lets the alert
-                // surface above the search results without exiting search
-                // (#152).
+                // surface above the search results without exiting search.
                 .alert(
                     String(localized: "class_table_conflict_add_failed_title"),
                     isPresented: Binding(

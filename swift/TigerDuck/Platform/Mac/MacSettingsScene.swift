@@ -331,6 +331,7 @@ private struct MacSidebarSettingsView: View {
 
 private struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
+    @State private var showSignIn = false
 
     var body: some View {
         Form {
@@ -349,12 +350,35 @@ private struct MacAccountSettingsView: View {
                 } else {
                     Text(String(localized: "common_not_logged_in"))
                         .foregroundStyle(.secondary)
+                    // Closes the loop for users who took the "Skip for
+                    // now" path on `MacLoginView`: without this they'd
+                    // have no way back to the login form short of
+                    // resetting onboarding state.
+                    Button {
+                        showSignIn = true
+                    } label: {
+                        Label(String(localized: "action_login"), systemImage: "person.badge.key.fill")
+                    }
                 }
             }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showSignIn) {
+            // `showsSkipButton: false` — the user is already inside the
+            // app, so "Skip for now" would only re-flip an already-true
+            // `didSkipMacLogin` and leave the sheet visually stuck.
+            MacLoginView(showsSkipButton: false)
+                .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
+                // `MacLoginView` already calls `completeOnboarding()` on
+                // success; here we just observe the resulting credential
+                // flip and dismiss the sheet so the user lands back on
+                // the Account tab with the signed-in state showing.
+                .onChange(of: appState.authService.hasStoredCredentials) { _, signedIn in
+                    if signedIn { showSignIn = false }
+                }
+        }
     }
 }
 
@@ -408,12 +432,81 @@ private struct MacDeveloperSettingsView: View {
             } header: {
                 Text("Notes")
             }
+
+            // MARK: API endpoint
+
+            Section {
+                Text(endpointVM.effectiveURL)
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
+            } header: {
+                Text("Effective endpoint")
+            } footer: {
+                Text("Resolved by PushServerConfig — Keychain override → UserDefaults override → Secrets.plist → localhost fallback.")
+            }
+
+            // Surface a previously-saved override that no longer passes
+            // the allowlist (e.g. allowlist tightened in a later build).
+            // Mirrors the iOS DebugEndpointView — without this section,
+            // the Mac user only sees the effective URL silently fall
+            // through to the next priority with no breadcrumb explaining
+            // why their saved override stopped taking effect.
+            if let stale = endpointVM.staleOverride {
+                Section {
+                    Text(stale)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                } header: {
+                    Text("Stored override no longer accepted")
+                } footer: {
+                    Text("The allowlist tightened since this value was saved, so it's being ignored and the resolver is using the next priority. Save a new value or clear the override.")
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Section {
+                // Show the example URL above the field instead of as the
+                // TextField's leading label — on macOS Form's grouped
+                // style the title-string initializer renders a left-side
+                // label that eats horizontal space and pushes the input
+                // into a sliver. Putting the hint on its own row keeps
+                // the input field full-width and easier to paste into.
+                Text(verbatim: "http://192.168.X.X:40000/v2")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                TextField("", text: $endpointVM.draft, prompt: Text(verbatim: "http://192.168.X.X:40000/v2"))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .autocorrectionDisabled()
+                    .labelsHidden()
+
+                if let error = endpointVM.validationError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+
+                HStack {
+                    Button("Save") { endpointVM.save() }
+                        .disabled(endpointVM.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Spacer()
+                    Button("Clear override", role: .destructive) { endpointVM.clear() }
+                        .disabled(endpointVM.storedOverride == nil)
+                }
+            } header: {
+                Text("Override (Keychain — survives reinstall)")
+            } footer: {
+                Text("Allowed: api.tigerduck.app (apex + any subdomain) over HTTPS, loopback, or any RFC1918 IPv4. Pointing a Debug build at the prod apex breaks push (apns_env mismatch — sandbox tokens get rejected at registration), but read-side API surfaces still work for testing.")
+            }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { await viewModel.observeEffectiveNow() }
     }
+
+    @State private var endpointVM = DebugEndpointViewModel()
 }
 
 @MainActor

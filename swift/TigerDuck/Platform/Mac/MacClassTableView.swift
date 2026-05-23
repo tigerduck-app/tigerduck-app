@@ -173,7 +173,7 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
-            // Conflict alert lives on the sheet's content (#152): on iPhone
+            // Conflict alert lives on the sheet's content: on iPhone
             // hosting an alert on the parent forces SwiftUI to dismiss the
             // sheet to present it. macOS doesn't have the same dismissal,
             // but keeping both platforms anchored to the sheet keeps the

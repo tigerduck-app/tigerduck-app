@@ -39,10 +39,7 @@ final class BulletinTaxonomyStore {
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Taxonomy")
 
     init(apiClient: BulletinAPIClient? = nil) {
-        self.apiClient = apiClient ?? BulletinAPIClient(
-            baseURL: PushServerConfig.resolveServerURL(),
-            sharedSecret: PushServerConfig.resolveSharedSecret()
-        )
+        self.apiClient = apiClient ?? BulletinAPIClient()
     }
 
     /// Fetch the taxonomy if we do not already have a loaded copy. Safe

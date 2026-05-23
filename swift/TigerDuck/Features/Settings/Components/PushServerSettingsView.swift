@@ -1,6 +1,9 @@
 import Defaults
 import SwiftUI
 import UserNotifications
+#if os(iOS)
+import UIKit
+#endif
 
 /// Settings page for the push notification server.
 ///
@@ -17,6 +20,11 @@ struct PushServerSettingsView: View {
     @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
     @State private var disableTask: Task<Void, Never>?
+    #if os(iOS) && DEBUG
+    @State private var deviceIdCopyState: DeviceIdCopyState = .idle
+
+    private enum DeviceIdCopyState { case idle, copied, blocked }
+    #endif
 
     var body: some View {
         Form {
@@ -61,6 +69,40 @@ struct PushServerSettingsView: View {
                     }
                     Button(String(localized: "push_server_sync_now_action")) { appState.requestPushScheduleSync() }
                 }
+
+                #if os(iOS) && DEBUG
+                Section {
+                    Button {
+                        let pb = UIPasteboard.general
+                        pb.string = s.deviceId
+                        // MDM-managed devices can block pasteboard writes
+                        // silently (`UIPasteboard.string =` is non-throwing),
+                        // so confirm via read-back rather than assuming
+                        // success. Compare to s.deviceId (not just
+                        // hasStrings) so we don't falsely confirm when an
+                        // unrelated string was already on the pasteboard.
+                        deviceIdCopyState = (pb.string == s.deviceId) ? .copied : .blocked
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            deviceIdCopyState = .idle
+                        }
+                    } label: {
+                        LabeledContent("Device ID") {
+                            Text(s.deviceId)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } header: {
+                    Text("Developer")
+                } footer: {
+                    Text(deviceIdCopyFooter)
+                        .foregroundStyle(deviceIdCopyFooterColor)
+                }
+                #endif
             }
         }
         .navigationTitle(String(localized: "push_server_settings_title"))
@@ -77,6 +119,24 @@ struct PushServerSettingsView: View {
             refreshTimer = nil
         }
     }
+
+    #if os(iOS) && DEBUG
+    private var deviceIdCopyFooter: String {
+        switch deviceIdCopyState {
+        case .idle: return "Tap to copy. Use this in the backend portal's test page to target this device."
+        case .copied: return "Copied."
+        case .blocked: return "Copy blocked — pasteboard access is restricted on this device (likely an MDM profile)."
+        }
+    }
+
+    private var deviceIdCopyFooterColor: Color {
+        switch deviceIdCopyState {
+        case .idle: return .secondary
+        case .copied: return .green
+        case .blocked: return .orange
+        }
+    }
+    #endif
 
     private var toggleBinding: Binding<Bool> {
         Binding(
