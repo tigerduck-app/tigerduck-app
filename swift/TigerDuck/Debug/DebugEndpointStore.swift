@@ -42,11 +42,10 @@ nonisolated enum DebugEndpointStore {
     @discardableResult
     static func setOverride(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let url = URL(string: trimmed),
-              PushServerConfig.isOverrideAllowed(url)
-        else { return false }
-        KeychainManager.saveString(key: keychainKey, value: trimmed)
+        guard !trimmed.isEmpty, let parsed = URL(string: trimmed) else { return false }
+        let url = PushServerConfig.normalize(parsed)
+        guard PushServerConfig.isOverrideAllowed(url) else { return false }
+        KeychainManager.saveString(key: keychainKey, value: url.absoluteString)
         return true
     }
 

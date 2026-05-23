@@ -47,16 +47,16 @@ nonisolated enum PushServerConfig {
         if let raw = DebugEndpointStore.currentOverride(),
            let url = URL(string: raw),
            isOverrideAllowed(url) {
-            return url
+            return normalize(url)
         }
         if let override = Defaults[.pushServerURLOverride],
            !override.isEmpty,
            let url = URL(string: override),
            isOverrideAllowed(url) {
-            return url
+            return normalize(url)
         }
         if let url = readDebugServerURL() {
-            return url
+            return normalize(url)
         }
         return AppConstants.fallbackDebugPushServerURL
         #else
@@ -79,6 +79,24 @@ nonisolated enum PushServerConfig {
             return url.scheme == "http" || url.scheme == "https"
         }
         return false
+    }
+
+    /// Normalizes a candidate override URL so the most common typo —
+    /// pasting `https://192.168.X.X:40000/v2` for a LAN dev backend that
+    /// doesn't terminate TLS — resolves to a working `http://` URL instead
+    /// of failing at handshake time with `WRONG_VERSION_NUMBER`.
+    ///
+    /// Only loopback and RFC1918 private IPv4 hosts are rewritten. Public
+    /// hosts (e.g. `staging.api.tigerduck.app`) are returned unchanged so
+    /// the allowlist's HTTPS requirement still bites.
+    static func normalize(_ url: URL) -> URL {
+        guard url.scheme == "https",
+              let host = url.host,
+              host == "localhost" || host == "127.0.0.1" || isPrivateIPv4(host),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        else { return url }
+        components.scheme = "http"
+        return components.url ?? url
     }
 
     /// True if `host` parses as an RFC1918 private IPv4 literal

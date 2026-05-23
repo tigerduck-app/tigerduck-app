@@ -61,7 +61,7 @@ struct DebugEndpointView: View {
             } header: {
                 Text("Override (Keychain — survives reinstall)")
             } footer: {
-                Text("Allowed: `https://staging.api.tigerduck.app/...`, loopback, or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x). Production is intentionally blocked — Debug builds register on the APNs sandbox and would be rejected by the prod backend.")
+                Text("Allowed: `https://staging.api.tigerduck.app/...`, loopback, or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x). LAN dev backend speaks plain HTTP — `https://192.168.X.X:…` is auto-rewritten to `http://` at save time. Production is intentionally blocked — Debug builds register on the APNs sandbox and would be rejected by the prod backend.")
             }
         }
         .navigationTitle("API endpoint")
@@ -73,14 +73,14 @@ struct DebugEndpointView: View {
     @ViewBuilder
     private var textField: some View {
         #if os(iOS)
-        TextField("https://staging.api.tigerduck.app/v2", text: $viewModel.draft)
+        TextField("http://192.168.X.X:40000/v2", text: $viewModel.draft)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .keyboardType(.URL)
             .font(.system(.body, design: .monospaced))
             .focused($fieldFocused)
         #else
-        TextField("https://staging.api.tigerduck.app/v2", text: $viewModel.draft)
+        TextField("http://192.168.X.X:40000/v2", text: $viewModel.draft)
             .textFieldStyle(.roundedBorder)
             .autocorrectionDisabled()
             .font(.system(.body, design: .monospaced))
@@ -108,6 +108,7 @@ final class DebugEndpointViewModel {
         if ok {
             validationError = nil
             storedOverride = DebugEndpointStore.currentOverride()
+            if let stored = storedOverride { draft = stored }
             effectiveURL = PushServerConfig.resolveServerURL().absoluteString
         } else {
             validationError = "Rejected: URL is malformed or not in the allowlist (loopback, RFC1918, or staging.api.tigerduck.app)."
