@@ -30,4 +30,20 @@ nonisolated enum KeychainManager {
         guard let data = value.data(using: .utf8) else { return }
         save(key: key, data: data)
     }
+
+    /// Like ``saveString(key:value:)`` but surfaces the Keychain write
+    /// status to the caller. Returns true only when the new value is
+    /// confirmed written; false on any encoding or Keychain error.
+    /// Use when a silent persistence failure would mislead the user —
+    /// e.g. the Debug endpoint override, which must not pretend to have
+    /// saved a URL it never actually stored.
+    static func saveStringReportingSuccess(key: String, value: String) -> Bool {
+        guard let data = value.data(using: .utf8) else { return false }
+        do {
+            try SecureStore.save(data, forKey: key)
+            return true
+        } catch {
+            return false
+        }
+    }
 }

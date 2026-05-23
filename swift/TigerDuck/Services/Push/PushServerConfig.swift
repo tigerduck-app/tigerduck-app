@@ -96,7 +96,20 @@ nonisolated enum PushServerConfig {
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         else { return url }
         components.scheme = "http"
-        return components.url ?? url
+        if let rewritten = components.url {
+            return rewritten
+        }
+        // Should be unreachable: we only flipped the scheme on a URL that
+        // already round-tripped through URLComponents above. If it ever
+        // fires, returning `url` would silently re-enable the
+        // WRONG_VERSION_NUMBER handshake failure this helper exists to
+        // prevent — log loudly so we notice in Sentry.
+        assertionFailure("PushServerConfig.normalize: URLComponents.url returned nil after scheme rewrite for \(url.absoluteString)")
+        AppLogger.captureError(
+            PushServerConfigError.schemeRewriteProducedNilURL,
+            context: ["originalURL": url.absoluteString]
+        )
+        return url
     }
 
     /// True if `host` parses as an RFC1918 private IPv4 literal
@@ -168,8 +181,28 @@ nonisolated enum PushServerConfig {
 
     static func secretsPlistDict() -> NSDictionary? {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist") else {
+            // Missing file is the intentional dev path — contributors who
+            // don't need a backend secret simply don't ship `Secrets.plist`.
+            // Stay silent here so we don't spam Sentry on every cold start.
             return nil
         }
-        return NSDictionary(contentsOf: url)
+        do {
+            let data = try Data(contentsOf: url)
+            let parsed = try PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil
+            )
+            return parsed as? NSDictionary
+        } catch {
+            // File exists but can't be parsed (corrupt, wrong root type,
+            // wrong format). In Release this previously fell through to a
+            // nil shared secret and every authed push call 401'd with no
+            // breadcrumb — log so the failure is diagnosable in Sentry.
+            AppLogger.captureError(error, context: ["phase": "secretsPlist.parse"])
+            return nil
+        }
     }
+}
+
+private enum PushServerConfigError: Error {
+    case schemeRewriteProducedNilURL
 }

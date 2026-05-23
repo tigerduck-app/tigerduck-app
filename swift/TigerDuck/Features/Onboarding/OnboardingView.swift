@@ -24,8 +24,8 @@ struct OnboardingView: View {
     }
 
     /// iPad has no Apple Watch pairing affordance — there's no Watch app to
-    /// install from the iPad, so the slide is pure noise there (#146). Keep
-    /// it for iPhone (the canonical pairing host) and for any non-iOS host.
+    /// install from the iPad, so the slide is pure noise there. Keep it for
+    /// iPhone (the canonical pairing host) and for any non-iOS host.
     private var showsWatchPage: Bool {
         #if os(iOS)
         UIDevice.current.userInterfaceIdiom != .pad
@@ -141,7 +141,6 @@ struct OnboardingView: View {
                         .opacity(agreedPrivacy && agreedDeletion ? 0 : 1)
 
                     Button(String(localized: "action_next")) {
-                        // Skip the watchOS slide on iPad — see `showsWatchPage`.
                         let nextPage = showsWatchPage ? Page.watchOS.rawValue : Page.login.rawValue
                         withAnimation(reduceMotion ? nil : .default) { currentPage = nextPage }
                     }

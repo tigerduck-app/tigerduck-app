@@ -16,10 +16,7 @@ final class PushAPIClient: Sendable {
     /// `baseURLProvider` is re-evaluated on every request rather than
     /// captured once at construction, so a Debug build that changes the
     /// API endpoint at runtime (via `DebugEndpointView`) takes effect on
-    /// the next push call without needing an app relaunch. `PushCoordinator`
-    /// is built once at launch and held by `AppState` for the process
-    /// lifetime, so a frozen base URL would otherwise pin the push client
-    /// to whatever URL was resolved before the override was saved.
+    /// the next push call without needing an app relaunch.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
