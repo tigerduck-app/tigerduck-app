@@ -110,9 +110,15 @@ final class ScoreViewModel {
         // Captive-portal pre-flight: NTUSTScoreService rides the pinned
         // SSO chain, so a login-required Wi-Fi would otherwise surface
         // as a confusing TLS error. Reset state and bail clean.
+        // Mirror the manager.loadingState write the other migrated bail
+        // paths do (Home / ClassTable / Calendar / AppState) so the
+        // NetworkStatusOverlay in ScoreView reflects the same offline
+        // state as every other tab.
         guard await NetworkMonitor.shared.isReachable() else {
             isRefreshing = false
-            errorMessage = String(localized: "error_network_unavailable")
+            let message = String(localized: "error_network_unavailable")
+            errorMessage = message
+            manager.loadingState = .error(message)
             return
         }
         manager.loadingState = .loading

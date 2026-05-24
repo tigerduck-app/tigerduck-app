@@ -806,6 +806,19 @@ final class ClassTableViewModel {
         isRefreshing = true
         Task { [weak self] in
             guard let self else { return }
+            // Pre-flight gates BOTH the fetchData round-trip and the
+            // semester-rollover fetchCourses below — gating only
+            // fetchData leaves the rollover path firing pinned-host
+            // calls under captive Wi-Fi, surfacing the exact TLS-pin
+            // error the pre-flight is meant to hide.
+            guard await NetworkMonitor.shared.isReachable() else {
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    NTUSTSessionManager.shared.loadingState = .error(String(localized: "error_network_unavailable"))
+                    self.isRefreshing = false
+                }
+                return
+            }
             await self.fetchData(authService: authService)
             let latestSemester = CourseSelectionService.currentSemesterCode()
             if latestSemester != self.currentSemester {
@@ -829,9 +842,10 @@ final class ClassTableViewModel {
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
         let targetSemester = currentSemester
-        // Captive-portal pre-flight before the NTUST + Moodle round-trip,
-        // so refreshing the timetable under a hotel/campus login page
-        // shows "no internet" instead of a TLS pin failure.
+        // Pre-flight here too so the `refresh(authService:)` entry
+        // point (used outside triggerRefresh) is also gated. The probe
+        // is memoised inside NetworkMonitor so paying for it twice on
+        // the triggerRefresh path is effectively free.
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return

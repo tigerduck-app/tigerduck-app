@@ -137,7 +137,10 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         if Date() >= pinSet.expiration {
             // Fail-soft per the issue's acceptance criteria. Bricking
             // a stale build is worse than reverting to system trust.
-            logger.warning(
+            // `.fault` (not `.warning`) so sysdiagnose / Console flags
+            // this prominently — missed rotations have no other in-app
+            // surface, and stale-pin builds silently lose MITM defence.
+            logger.fault(
                 "TLS pin for \(host, privacy: .public) expired (\(pinSet.expiration, privacy: .public)) — falling back to system trust; rotate pins"
             )
             completionHandler(.performDefaultHandling, nil)
@@ -149,8 +152,12 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         // only narrows which valid chains are acceptable.
         var trustError: CFError?
         guard SecTrustEvaluateWithError(trust, &trustError) else {
+            // CFError describe can carry the attacker cert's subject/
+            // issuer via `NSUnderlyingError`. Hash it so the host stays
+            // operationally useful but cert details don't leak into
+            // Console / sysdiagnose attachments.
             logger.error(
-                "TLS trust evaluation failed for \(host, privacy: .public): \(String(describing: trustError), privacy: .public)"
+                "TLS trust evaluation failed for \(host, privacy: .public): \(String(describing: trustError), privacy: .private(mask: .hash))"
             )
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
@@ -179,24 +186,34 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
     // MARK: - Internals
 
     private func matchingPinSet(for host: String) -> PinSet? {
-        let lowercased = host.lowercased()
+        // Strip a trailing dot — some resolver / proxy paths inject
+        // FQDN form (`ssoam2.ntust.edu.tw.`) which would otherwise
+        // miss both the equality and the `.suffix` suffix branches and
+        // silently fall through to system trust on a pinned host.
+        var normalised = host.lowercased()
+        if normalised.hasSuffix(".") { normalised.removeLast() }
         var best: PinSet?
+        var bestLabelCount = 0
         for set in Self.pinSets {
             let suffix = set.hostSuffix.lowercased()
             let matches: Bool
             if set.includeSubdomains {
-                matches = lowercased == suffix
-                    || lowercased.hasSuffix("." + suffix)
+                matches = normalised == suffix
+                    || normalised.hasSuffix("." + suffix)
             } else {
-                matches = lowercased == suffix
+                matches = normalised == suffix
             }
             if matches {
-                // Most-specific match wins. For `api.lib.ntust.edu.tw`
-                // both pin sets match — pick the library-specific one
-                // so the library's distinct chain doesn't get checked
-                // against the generic ntust.edu.tw pins.
-                if best == nil || suffix.count > best!.hostSuffix.count {
+                // Most-specific match wins on LABEL count, not raw
+                // character count: `api.lib.ntust.edu.tw` has 5 labels
+                // vs `ntust.edu.tw`'s 3, so the library set is picked
+                // for the library host. Character-count tiebreaking
+                // would mis-rank a hypothetical short-label sibling
+                // sharing the library's distinct chain.
+                let labelCount = suffix.split(separator: ".").count
+                if best == nil || labelCount > bestLabelCount {
                     best = set
+                    bestLabelCount = labelCount
                 }
             }
         }
@@ -263,6 +280,13 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                 0x03, 0x62, 0x00,
             ]
         default:
+            // `.fault` because a silent miss here mimics a generic pin
+            // mismatch — triage starts from the wrong hypothesis and
+            // delays rotating the spkiData table. Logging the type +
+            // size points straight at the missing header entry.
+            logger.fault(
+                "TLS pin: unsupported key (type=\(keyType, privacy: .public), bits=\(keySize, privacy: .public)) — add SPKI header to spkiData or this cert is silently skipped during chain walk"
+            )
             return nil
         }
         var spki = Data(header)

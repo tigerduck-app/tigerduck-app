@@ -9,7 +9,14 @@ enum CourseLookupService {
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         config.waitsForConnectivity = false
-        return URLSession(configuration: config)
+        // querycourse.ntust.edu.tw is in the *.ntust.edu.tw pin scope —
+        // course search bodies and responses ride the SSO trust chain,
+        // so MITM defence here matches the rest of the NTUST surface.
+        return URLSession(
+            configuration: config,
+            delegate: TLSPinningDelegate.shared,
+            delegateQueue: nil,
+        )
     }()
 
     static func lookupCourse(semester: String, courseNo: String, language: String = "zh") async throws -> [CourseSearchResult] {

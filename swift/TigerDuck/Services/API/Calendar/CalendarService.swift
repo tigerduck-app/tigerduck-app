@@ -10,13 +10,22 @@ enum CalendarService {
     )
     private static let yearRegex = try! NSRegularExpression(pattern: "(\\d{3})")
 
-    /// URLSession with browser-like User-Agent (NTUST server returns 403 without one)
+    /// URLSession with browser-like User-Agent (NTUST server returns 403 without one).
+    /// Pinned because the ICS download URL scraped from r.xinshou.tw can
+    /// resolve to an *.ntust.edu.tw host (covered by the pin set); the
+    /// delegate's host-matcher falls through to system trust for the
+    /// non-NTUST r.xinshou.tw fetch itself, so this is safe to install
+    /// on a mixed-host session.
     private static let browserSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpAdditionalHeaders = [
             "User-Agent": NTUSTSessionManager.browserUserAgent
         ]
-        return URLSession(configuration: config)
+        return URLSession(
+            configuration: config,
+            delegate: TLSPinningDelegate.shared,
+            delegateQueue: nil,
+        )
     }()
 
     /// Fetch NTUST academic calendar ICS download URLs (public, no auth)
