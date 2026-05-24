@@ -16,13 +16,23 @@ import UIKit
 /// recording) keyboard at that point is consistent with the exposure the
 /// user just opted into — it isn't a new leak. To minimize the surface,
 /// the eye tap dismisses the keyboard first; the user can tap the field
-/// again to bring it up in whichever mode matches the current state. This
-/// is the same trade-off 1Password, Apple Keychain, and similar use.
+/// again to bring it up in whichever mode matches the current state.
 ///
-/// The whole field is wrapped in `.screenCaptureProtected(true)` so both
-/// masked and revealed pixels stay out of screenshots; for masked entry
-/// iOS already handles it, for revealed entry our secure-canvas wrapper
-/// does.
+/// Two extra defense-in-depth layers on top of the always-on
+/// `.screenCaptureProtected(true)` (which keeps the field's pixels out of
+/// screenshots/recording even when revealed):
+///
+/// - **Lock reveal during active capture.** While `UIScreen.main.isCaptured`
+///   is true (screen recording, mirroring, AirPlay), the eye button is
+///   disabled and any current reveal is force-masked. The user can't
+///   accidentally expose the password to whoever is on the other end of
+///   the stream.
+/// - **Auto-mask on screenshot.** iOS doesn't expose a pre-screenshot
+///   hook (only `userDidTakeScreenshotNotification`, which fires *after*
+///   the volume+power press). The secure canvas already blanks the
+///   password area in the captured image, but we additionally flip back
+///   to masked on the notification so any subsequent glance / second
+///   screenshot also sees the dots.
 struct PasswordField<Field: Hashable>: View {
     let placeholder: String
     @Binding var text: String
@@ -32,6 +42,7 @@ struct PasswordField<Field: Hashable>: View {
     var onSubmit: () -> Void = {}
 
     @State private var isVisible = false
+    @State private var isScreenCaptured = UIScreen.main.isCaptured
 
     var body: some View {
         HStack(spacing: 4) {
@@ -61,27 +72,49 @@ struct PasswordField<Field: Hashable>: View {
                 // currently hidden. (Mirror-the-state reading, not
                 // tap-to-action.)
                 Image(systemName: isVisible ? "eye" : "eye.slash")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isScreenCaptured ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(isScreenCaptured)
             .accessibilityLabel(isVisible
                 ? String(localized: "password_hide")
                 : String(localized: "password_show"))
         }
+        .onAppear {
+            // Re-sync in case the capture state changed while this view
+            // wasn't in the hierarchy (notifications aren't queued).
+            isScreenCaptured = UIScreen.main.isCaptured
+            if isScreenCaptured { forceMask() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
+            isScreenCaptured = UIScreen.main.isCaptured
+            if isScreenCaptured { forceMask() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+            forceMask()
+        }
     }
 
-    /// Dismiss the keyboard before toggling so the keyboard-mode
-    /// transition (passcode ↔ normal) doesn't happen with the keyboard
-    /// on screen — that transition is what would briefly render a normal
-    /// keyboard in a screen recording while masked-mode entry is in
-    /// progress. After dismissal the user can tap the field again to
-    /// bring up a keyboard whose mode matches the new state.
+    /// The eye is locked while a capture is in progress (see the
+    /// `.disabled` modifier above), so toggling can only happen when
+    /// nothing is being recorded — meaning the brief passcode↔normal
+    /// keyboard-mode transition that happens when `isSecureTextEntry`
+    /// flips on a focused field is safe to render in place. Keeping
+    /// the keyboard up means the user doesn't have to re-tap the field
+    /// to keep typing after they've checked their password.
     private func handleEyeTap() {
+        isVisible.toggle()
+    }
+
+    /// Force-mask without changing focus state if there's nothing to
+    /// mask. Called from the capture / screenshot observers.
+    private func forceMask() {
+        guard isVisible else { return }
         UIApplication.dismissKeyboard()
         focusBinding.wrappedValue = nil
-        isVisible.toggle()
+        isVisible = false
     }
 }
 
