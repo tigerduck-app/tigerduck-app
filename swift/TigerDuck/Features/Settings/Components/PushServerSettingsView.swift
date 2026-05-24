@@ -16,6 +16,7 @@ struct PushServerSettingsView: View {
     @Default(.pushServerEnabled) private var pushServerEnabled
     @Default(.pushLastRegistrationAt) private var lastRegistrationAt
     @Default(.pushLastSyncAt) private var lastSyncAt
+    @Default(.serverPushUserOptOut) private var serverPushOptOut
 
     @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
@@ -32,6 +33,12 @@ struct PushServerSettingsView: View {
                 Toggle(String(localized: "push_server_enable_toggle"), isOn: toggleBinding)
             } footer: {
                 Text(String(localized: "push_server_footer"))
+            }
+
+            Section {
+                Toggle(String(localized: "settings_server_push_label"), isOn: serverPushBinding)
+            } footer: {
+                Text(String(localized: "settings_server_push_footer"))
             }
 
             if pushServerEnabled, let s = snapshot {
@@ -149,6 +156,18 @@ struct PushServerSettingsView: View {
                     disableTask = Task { await appState.disablePushServer() }
                 }
                 Task { await refreshSnapshot() }
+            }
+        )
+    }
+
+    /// User-facing opt-out for operator-issued "server" pushes. Bound as
+    /// `isOn` (i.e. ON = user wants to receive them); we invert into
+    /// `serverPushUserOptOut` for storage.
+    private var serverPushBinding: Binding<Bool> {
+        Binding(
+            get: { !serverPushOptOut },
+            set: { isOn in
+                Task { await appState.updateServerPushOptOut(!isOn) }
             }
         )
     }
