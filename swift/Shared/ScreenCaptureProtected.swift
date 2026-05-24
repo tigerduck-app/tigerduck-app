@@ -44,12 +44,26 @@ private struct ScreenCaptureProtectedModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         #if os(iOS)
-        if active {
-            SecureCaptureContainer(content: content)
-        } else {
-            content
-        }
+        // The wrapper is ALWAYS applied on iOS, regardless of `active`.
+        // Toggling between `SecureCaptureContainer { content }` and the
+        // bare `content` is a structural change in SwiftUI's view tree,
+        // which re-creates the hosted UIView subtree on every flip — and
+        // any bridged UITextField inside (e.g. PasswordField's underlying
+        // input) loses first responder, dismissing the keyboard while the
+        // user was typing. A permanently-present wrapper costs only one
+        // hidden UITextField plus a UIHostingController and is otherwise
+        // transparent (sizing forwards the parent's proposal verbatim).
+        // When `active` is conceptually false, the wrapper's secure
+        // canvas is still in place; it just protects content that the
+        // caller didn't consider sensitive, which is harmless.
+        SecureCaptureContainer(content: content)
         #elseif os(macOS)
+        // macOS doesn't have the iOS structural-identity problem: the
+        // marker is an `NSViewRepresentable` placed as `.background`, so
+        // toggling `active` updates the same marker instance without
+        // disturbing the foreground content tree. Keeping the conditional
+        // here lets the window's `sharingType` revert to its prior value
+        // when protection is no longer needed.
         content.background(MacSecureWindowMarker(active: active))
         #else
         content
