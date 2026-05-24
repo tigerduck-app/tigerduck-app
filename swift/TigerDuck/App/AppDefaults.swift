@@ -118,12 +118,13 @@ nonisolated extension Defaults.Keys {
     )
 
     // MARK: Push server
-    /// Default off: device tokens / metadata are POSTed to the push server
-    /// only after the user explicitly opts in. The previous default sent
-    /// device data on first launch with no consent surface.
+    /// Default on as of the custom-push feature: every device registers on
+    /// launch so operator-issued pushes can target it. Notification
+    /// *permission* is still requested only via onboarding; the device row
+    /// just exists either way. Users can opt out via `serverPushUserOptOut`.
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
-        default: false
+        default: true
     )
     static let pushServerURLOverride = Key<String?>(
         AppConstants.UserDefaultsKeys.pushServerURLOverride
@@ -133,6 +134,20 @@ nonisolated extension Defaults.Keys {
     )
     static let pushLastSyncAt = Key<Date?>(
         AppConstants.UserDefaultsKeys.pushLastSyncAt
+    )
+    /// User-facing opt-out for operator-issued "server" pushes. Default off
+    /// (i.e. user is opted in). Backend reads the inverse as
+    /// `server_push_enabled` and the dispatcher filters on
+    /// `server_push_enabled = true`.
+    static let serverPushUserOptOut = Key<Bool>(
+        AppConstants.UserDefaultsKeys.serverPushUserOptOut,
+        default: false
+    )
+    /// FIFO-capped set of custom-push popup ids the client has already
+    /// rendered. Caps at 100 entries to dedupe replayed taps.
+    static let shownServerPopupIds = Key<[String]>(
+        AppConstants.UserDefaultsKeys.shownServerPopupIds,
+        default: []
     )
 
     // MARK: Bulletins
