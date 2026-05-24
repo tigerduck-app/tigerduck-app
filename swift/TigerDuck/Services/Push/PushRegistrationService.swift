@@ -1,5 +1,8 @@
 import Defaults
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 import os
 
 /// Orchestrates the `device ↔ server` binding.
@@ -29,12 +32,30 @@ nonisolated enum PushAPNsEnv {
     #endif
 }
 
+/// `device_class` value the iOS client reports. Drives operator-side
+/// targeting (iPhone vs iPad vs Mac) without needing the backend to
+/// re-parse build metadata.
+nonisolated enum PushDeviceClass {
+    static var resolvedForBuild: String {
+        #if os(macOS)
+        return "mac"
+        #else
+        switch UIDevice.current.userInterfaceIdiom {
+        case .pad:   return "ipad"
+        case .phone: return "iphone"
+        default:     return "iphone"
+        }
+        #endif
+    }
+}
+
 actor PushRegistrationService {
     private let identity: PushIdentity
     private let apiClient: PushAPIClient
     private let bundleId: String
     private let attrsType: String
     private let apnsEnv: String
+    private let deviceClass: String
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Register")
 
     private var deviceTokenHex: String?
@@ -67,13 +88,15 @@ actor PushRegistrationService {
         apiClient: PushAPIClient,
         bundleId: String = "org.ntust.app.TigerDuck",
         attrsType: String = "TigerDuckActivityAttributes",
-        apnsEnv: String = PushAPNsEnv.resolvedForBuild
+        apnsEnv: String = PushAPNsEnv.resolvedForBuild,
+        deviceClass: String = PushDeviceClass.resolvedForBuild
     ) {
         self.identity = identity
         self.apiClient = apiClient
         self.bundleId = bundleId
         self.attrsType = attrsType
         self.apnsEnv = apnsEnv
+        self.deviceClass = deviceClass
     }
 
     // MARK: - Token intake
@@ -107,6 +130,23 @@ actor PushRegistrationService {
     func registrationFailed(_ error: Error) {
         lastError = "APNs register failed: \(error.localizedDescription)"
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+    }
+
+    /// Called from the settings toggle. Writes the local pref and PATCHes
+    /// the backend immediately. On transient failure we don't retry here —
+    /// the next `/devices/register` call will re-send the value, so
+    /// eventual consistency is preserved.
+    func updateServerPushOptOut(_ optOut: Bool) async {
+        await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
+        let id = identity.deviceId
+        do {
+            _ = try await apiClient.updateDevicePreferences(
+                deviceId: id, serverPushEnabled: !optOut
+            )
+            logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
+        } catch {
+            logger.error("server push opt-out PATCH failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Snapshot of internal state for UI display. Safe to call from any isolation.
@@ -175,6 +215,7 @@ actor PushRegistrationService {
     /// stale `let`s from the enqueue site.
     private func performRegister(logger: Logger) async {
         guard let pts = ptsTokenHex else { return }
+        let optOut = await MainActor.run { Defaults[.serverPushUserOptOut] }
         let request = PushAPI.DeviceRegisterRequest(
             userId: identity.userId,
             deviceId: identity.deviceId,
@@ -183,7 +224,9 @@ actor PushRegistrationService {
             deviceTokenHex: deviceTokenHex,
             bundleId: bundleId,
             attrsType: attrsType,
-            apnsEnv: apnsEnv
+            apnsEnv: apnsEnv,
+            deviceClass: deviceClass,
+            serverPushEnabled: !optOut
         )
         do {
             let response = try await apiClient.registerDevice(request)
