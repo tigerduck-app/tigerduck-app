@@ -89,8 +89,16 @@ struct PasswordField<Field: Hashable>: View {
             if isScreenCaptured { forceMask() }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
-            isScreenCaptured = UIScreen.main.isCaptured
-            if isScreenCaptured { forceMask() }
+            // When recording stops, iOS posts the notification a tick
+            // before `UIScreen.main.isCaptured` actually flips to false.
+            // Reading it synchronously here would see the stale `true`
+            // and the eye button would stay disabled until something
+            // else nudged the view. Hop to the next runloop turn so the
+            // read picks up the updated value.
+            DispatchQueue.main.async {
+                isScreenCaptured = UIScreen.main.isCaptured
+                if isScreenCaptured { forceMask() }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
             forceMask()
