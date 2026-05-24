@@ -43,6 +43,12 @@ struct PasswordField<Field: Hashable>: View {
 
     @State private var isVisible = false
     @State private var isScreenCaptured = UIScreen.main.isCaptured
+    @State private var showsCaptureExplanation = false
+    /// Monotonically incremented each time the explanation popover opens;
+    /// the deferred auto-dismiss closure ignores its work if a newer open
+    /// has happened in the meantime, so rapid re-taps don't get their
+    /// fresh popover dismissed by a stale timer.
+    @State private var captureExplanationGen = 0
 
     var body: some View {
         HStack(spacing: 4) {
@@ -66,7 +72,15 @@ struct PasswordField<Field: Hashable>: View {
             .screenCaptureProtected(true)
 
             Button {
-                handleEyeTap()
+                if isScreenCaptured {
+                    // Tapping the eye while capture is active surfaces an
+                    // inline popover explaining why reveal is unavailable
+                    // rather than just being inert. See the `.popover`
+                    // modifier below.
+                    showsCaptureExplanation = true
+                } else {
+                    handleEyeTap()
+                }
             } label: {
                 // Open eye = password is currently visible; eye.slash =
                 // currently hidden. (Mirror-the-state reading, not
@@ -77,10 +91,27 @@ struct PasswordField<Field: Hashable>: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(isScreenCaptured)
             .accessibilityLabel(isVisible
                 ? String(localized: "password_hide")
                 : String(localized: "password_show"))
+            .popover(isPresented: $showsCaptureExplanation, arrowEdge: .top) {
+                Text(String(localized: "password_eye_unavailable_during_capture"))
+                    .font(.callout)
+                    .multilineTextAlignment(.leading)
+                    // `.fixedSize(vertical: true)` lets the text grow
+                    // downward to fit; the surrounding `.frame(width:)`
+                    // gives it a stable horizontal budget. Without
+                    // fixedSize, the popover assigns a 1-line slot and
+                    // truncates with an ellipsis.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding()
+                    .frame(width: 260)
+                    // Forces a real popover with arrow on compact-width
+                    // (iPhone) instead of SwiftUI's default sheet
+                    // adaptation, so the arrow can actually point at the
+                    // eye glyph.
+                    .presentationCompactAdaptation(.popover)
+            }
         }
         .onAppear {
             // Re-sync in case the capture state changed while this view
@@ -97,7 +128,26 @@ struct PasswordField<Field: Hashable>: View {
             // read picks up the updated value.
             DispatchQueue.main.async {
                 isScreenCaptured = UIScreen.main.isCaptured
-                if isScreenCaptured { forceMask() }
+                if isScreenCaptured {
+                    forceMask()
+                } else {
+                    // Capture ended — the "unavailable" explanation is no
+                    // longer accurate, so close it if it was open.
+                    showsCaptureExplanation = false
+                }
+            }
+        }
+        .onChange(of: showsCaptureExplanation) { _, isShown in
+            // Auto-dismiss after ~4s; users can also dismiss by tapping
+            // outside (default popover behavior). The gen counter
+            // prevents a stale timer from closing a newer popover that
+            // was opened after a quick re-tap.
+            guard isShown else { return }
+            captureExplanationGen &+= 1
+            let gen = captureExplanationGen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                guard gen == captureExplanationGen else { return }
+                showsCaptureExplanation = false
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
@@ -105,13 +155,14 @@ struct PasswordField<Field: Hashable>: View {
         }
     }
 
-    /// The eye is locked while a capture is in progress (see the
-    /// `.disabled` modifier above), so toggling can only happen when
-    /// nothing is being recorded — meaning the brief passcode↔normal
-    /// keyboard-mode transition that happens when `isSecureTextEntry`
-    /// flips on a focused field is safe to render in place. Keeping
-    /// the keyboard up means the user doesn't have to re-tap the field
-    /// to keep typing after they've checked their password.
+    /// The eye is gated while a capture is in progress (tap routes to
+    /// the explainer popover instead — see the button action above), so
+    /// toggling can only happen when nothing is being recorded. That
+    /// means the brief passcode↔normal keyboard-mode transition when
+    /// `isSecureTextEntry` flips on a focused field is safe to render
+    /// in place. Keeping the keyboard up means the user doesn't have
+    /// to re-tap the field to keep typing after they've checked their
+    /// password.
     private func handleEyeTap() {
         isVisible.toggle()
     }
