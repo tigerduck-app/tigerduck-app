@@ -30,6 +30,28 @@ struct OtherSettingsView: View {
             Section {
                 Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
             }
+            Section {
+                NavigationLink {
+                    FontSizeSettingsView()
+                } label: {
+                    HStack {
+                        Text(String(localized: "settings_font_size_title"))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        // Locale-aware decimal separator: en "1.20×",
+                        // de/fr/es/it "1,20×". `String(format:)` would
+                        // be POSIX-only and break the non-period locales.
+                        Text(CourseCardFontScale
+                            .normalize(appState.courseCardFontScale)
+                            .formatted(.number.precision(.fractionLength(2))) + "×")
+                            .font(.body.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            } footer: {
+                Text(String(localized: "settings_font_size_summary"))
+            }
             #if os(iOS)
             // Flip-to-Library: only meaningful when the library feature is
             // on (the gesture routes to the Library tab) and only available

@@ -21,6 +21,7 @@ private func weekdayDisplayName(_ weekday: Int) -> String {
 
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
+    @Environment(AppState.self) private var appState
 
     private let cellHeight: CGFloat = 52
     private let rowSpacing: CGFloat = 3
@@ -29,7 +30,25 @@ struct TimetableGridView: View {
     private let periodWidth: CGFloat = 12
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
 
-    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
+    @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
+
+    /// User multiplier from Settings → Font size. Multiplied into the
+    /// Dynamic-Type-scaled base so the cell respects both the system
+    /// Dynamic Type preference and the user's per-app override. Reads
+    /// from `AppState` (not the store directly) so SwiftUI tracks the
+    /// `@Observable` dependency and re-renders the grid the instant the
+    /// slider moves — without that hop the cells stayed at the old size
+    /// until the app was relaunched.
+    ///
+    /// We normalize the raw in-memory value here so the live timetable
+    /// stays consistent with the App-Group-persisted value the widgets
+    /// read. The Slider's `step:` snaps interactively, but any non-Slider
+    /// writer (debug menu, migration, tests) could land us at a
+    /// non-stepped raw value — normalizing at the read site keeps all
+    /// three surfaces (timetable / Settings readout / widget) in sync.
+    private var courseNameSize: CGFloat {
+        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
+    }
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
@@ -175,8 +194,17 @@ private struct ConflictClusterView: View {
     let periodId: String
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
+    @Environment(AppState.self) private var appState
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
-    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
+    @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
+
+    /// Same convention as `TimetableGridView.courseNameSize` — see there
+    /// for the rationale, including why we read through `AppState`
+    /// rather than `CourseCardFontScaleStore` directly, and why we
+    /// normalize at the read site.
+    private var courseNameSize: CGFloat {
+        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
+    }
 
     private var courseA: SDCourse { segments[0].course }
     private var spanA: Int { segments[0].span }

@@ -101,6 +101,12 @@ nonisolated enum AppConstants {
         static let invertSliderDirection = "invertSliderDirection"
         static let libraryFeatureEnabled = "libraryFeatureEnabled"
         static let flipToLibraryEnabled = "flipToLibraryEnabled"
+        /// Multiplier (0.8…1.6) applied to the course-name font in the
+        /// class table and widget course-name labels. Stored in the App
+        /// Group `UserDefaults` suite (NOT `.standard`) so the widget
+        /// extension reads the same value — see `CourseCardFontScaleStore`.
+        /// Listed here for discoverability; the literal lives on the store.
+        static let courseCardFontScale = "courseCardFontScale"
         static let homeSectionLayout = "homeSectionLayout"
         static let visualPreset = "visualPreset"
 

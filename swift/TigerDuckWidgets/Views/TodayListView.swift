@@ -7,6 +7,19 @@ struct TodayListView: View {
     let palette: WidgetPalette
     let maxRows: Int
 
+    /// User-chosen multiplier for course-name font, read from the App
+    /// Group at struct init. The main app reloads widget timelines after
+    /// changing the value, so the next render picks up the new scale.
+    private let userScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
+
+    /// Dynamic-Type-anchored baseline for the system `.caption` font.
+    /// `@ScaledMetric(relativeTo:)` keeps the course-name label moving
+    /// with the user's system text-size preference so the surrounding
+    /// `.caption.weight(.bold)` / `.caption2` row metadata (still
+    /// semantic) doesn't drift away from it under Accessibility text
+    /// sizes.
+    @ScaledMetric(relativeTo: .caption) private var captionBase: CGFloat = 12
+
     var body: some View {
         Group {
             if !snapshot.isLoggedIn {
@@ -109,9 +122,10 @@ struct TodayListView: View {
             .frame(width: 60, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(course.displayName)
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: captionBase * userScale, weight: .medium))
                     .foregroundStyle(primary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 if !course.classroom.isEmpty {
                     Text(course.classroom)
                         .font(.caption2)
