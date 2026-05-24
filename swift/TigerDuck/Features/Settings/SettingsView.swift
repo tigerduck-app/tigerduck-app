@@ -237,9 +237,11 @@ struct SettingsView: View {
                 NavigationLink("API endpoint") {
                     DebugEndpointView()
                 }
+                #if os(iOS)
                 NavigationLink("Triggers") {
                     TriggersDebugView()
                 }
+                #endif
                 // Bypass `.screenCaptureProtected(...)` system-wide for
                 // demo recordings / layout debugging. Backed by
                 // `@AppStorage` so toggling immediately re-evaluates
