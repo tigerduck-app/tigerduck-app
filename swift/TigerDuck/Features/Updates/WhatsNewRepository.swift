@@ -13,12 +13,13 @@ import Foundation
 /// bug-fix releases can be skipped — the gate stays quiet when no
 /// entry is registered.
 ///
-/// **Locale resolution**: Traditional Chinese tags (`zh-Hant*`, bare
-/// `zh`, `zh-TW`, `zh-HK`, …) map to the `zh-TW` block; Simplified
-/// tags (`zh-Hans*`, `zh-CN`, `zh-SG`) map to a `zh-Hans` block when
-/// authored, otherwise fall through to `en` — a Simplified reader
-/// gets English rather than Traditional, which would otherwise render
-/// awkwardly. Everything non-Chinese falls back to `en`.
+/// **Locale resolution**: every Sinitic-family language (Mandarin
+/// `zh-Hant*` / `zh-Hans*`, Cantonese `yue`, Wu `wuu`, Min Nan `nan`,
+/// Hakka `hak`, Classical `lzh`) falls back to the `zh-TW` block when
+/// no closer match is authored — a Chinese-language reader gets
+/// readable Chinese text rather than English. Simplified-script tags
+/// additionally prefer a `zh-Hans` block first when one is authored.
+/// Non-Sinitic languages fall back to `en`.
 struct WhatsNewRepository {
     /// Resolved entry for the current locale — what the UI actually
     /// renders. Decoupled from the on-disk ``WhatsNewEntry`` so the
@@ -101,33 +102,17 @@ struct WhatsNewRepository {
     }
 
     /// Pure selector — kept static so tests can drive it without mounting
-    /// a bundle. Matches the Android `select` logic.
+    /// a bundle. See the type doc comment for the locale fallback policy.
     static func select(
         versionEntry: [String: WhatsNewEntry]?,
         version: String,
         languageTag: String
     ) -> ResolvedWhatsNew? {
         guard let versionEntry else { return nil }
-        let localeKey: String = {
-            // Distinguish Simplified ("zh-Hans*", "zh-CN", "zh-SG") from
-            // Traditional ("zh-Hant*", "zh-TW", "zh-HK", bare "zh").
-            // Simplified resolves to "zh-Hans", which is intentionally
-            // allowed to fall through to "en" below when whatsnew.json
-            // has no Simplified block — preferable to serving Traditional
-            // text to a Simplified reader.
-            guard languageTag.lowercased().hasPrefix("zh") else { return "en" }
-            let locale = Locale(identifier: languageTag)
-            switch locale.language.script?.identifier {
-            case "Hans": return "zh-Hans"
-            case "Hant": return "zh-TW"
-            default:
-                switch locale.region?.identifier {
-                case "CN", "SG": return "zh-Hans"
-                default: return "zh-TW"
-                }
-            }
-        }()
-        let entry = versionEntry[localeKey] ?? versionEntry["en"]
+        let entry = localeCandidates(for: languageTag)
+            .lazy
+            .compactMap { versionEntry[$0] }
+            .first
         guard let entry,
               let title = entry.title?.trimmingCharacters(in: .whitespacesAndNewlines),
               !title.isEmpty,
@@ -137,6 +122,31 @@ struct WhatsNewRepository {
             return nil
         }
         return ResolvedWhatsNew(version: version, title: title, highlights: highlights)
+    }
+
+    /// ISO 639 codes treated as "Chinese-family" for locale fallback —
+    /// mirrors ``LanguageManager/chineseLanguageCodes`` (kept local
+    /// because that one is private). A reader of any of these prefers
+    /// Traditional Chinese over English when no closer block exists.
+    private static let sinitic: Set<String> = ["zh", "yue", "nan", "hak", "wuu", "lzh"]
+
+    /// Ordered list of `whatsnew.json` locale keys to try for a given
+    /// language tag. The lookup walks this until it finds an authored
+    /// block; only the universal `en` tail catches non-Sinitic locales.
+    private static func localeCandidates(for languageTag: String) -> [String] {
+        let locale = Locale(identifier: languageTag)
+        let code = locale.language.languageCode?.identifier ?? ""
+        guard sinitic.contains(code) else { return ["en"] }
+        // Simplified-script readers (`zh-Hans*`, `zh-CN`, `zh-SG`) prefer
+        // an authored Simplified block when one exists; everyone in the
+        // Sinitic family — including Cantonese, Wu, Hakka, etc. — falls
+        // back to Traditional (`zh-TW`) before ever reaching English.
+        let isSimplified: Bool = {
+            if let script = locale.language.script?.identifier { return script == "Hans" }
+            if let region = locale.region?.identifier { return region == "CN" || region == "SG" }
+            return false
+        }()
+        return isSimplified ? ["zh-Hans", "zh-TW", "en"] : ["zh-TW", "en"]
     }
 }
 #endif
