@@ -232,14 +232,34 @@ private final class SecureCaptureHostView: UIView {
         return field
     }()
 
-    private let hostingController = UIHostingController<AnyView>(rootView: AnyView(EmptyView()))
+    private let hostingController: UIHostingController<AnyView> = {
+        let controller = UIHostingController<AnyView>(rootView: AnyView(EmptyView()))
+        // Make the hosted SwiftUI tree's natural size drive
+        // `hostingController.view.intrinsicContentSize` automatically when
+        // it eventually mounts. Belt + suspenders: we also pre-measure
+        // in `setRootView` and cache the result on `cachedNaturalHeight`
+        // so the first Form layout pass (which can fire BEFORE the hosted
+        // view is in any hierarchy) has a sized answer ready.
+        if #available(iOS 16.0, *) {
+            controller.sizingOptions = .intrinsicContentSize
+        }
+        return controller
+    }()
     private var didInstallContent = false
+    /// Natural height of the hosted SwiftUI content, computed eagerly when
+    /// `setRootView` is called. Used as the intrinsic height before UIKit
+    /// has mounted the hosting controller's view. Without this, the first
+    /// `UICollectionViewListLayout` sizing pass — which runs before our
+    /// hosted view is in any hierarchy — sees `noIntrinsicMetric` and
+    /// falls back to the cell's fitting-expanded default, rendering the
+    /// password row at full sheet height for one frame.
+    private var cachedNaturalHeight: CGFloat = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         // The text field is added first so its private canvas view is the
         // direct sibling of the hosted view. The hosting controller's view
-        // gets re-parented onto the canvas in `layoutSubviews` once UIKit
+        // gets parented onto the canvas in `layoutSubviews` once UIKit
         // has materialised it.
         addSubview(textField)
         textField.frame = bounds
@@ -254,13 +274,71 @@ private final class SecureCaptureHostView: UIView {
 
     func setRootView(_ view: AnyView) {
         hostingController.rootView = view
+        // Pre-measure with a "wide but compact" probe — gives the SwiftUI
+        // tree plenty of horizontal room and asks for its minimum natural
+        // height. `UIHostingController.sizeThatFits(in:)` works even when
+        // the controller's view isn't yet in any hierarchy, so this
+        // resolves to a real height (~30pt for the password row) before
+        // the first Form sizing pass.
+        let probe = CGSize(
+            width: UIView.layoutFittingExpandedSize.width,
+            height: UIView.layoutFittingCompressedSize.height
+        )
+        let measured = hostingController.sizeThatFits(in: probe)
+        if measured.height > 0 {
+            cachedNaturalHeight = measured.height
+        }
+        invalidateIntrinsicContentSize()
     }
 
-    /// See the call site for the full strategy. Summary: honor a finite
-    /// proposal in either dimension; measure via `UIHostingController` only
-    /// for an unspecified dimension when the *other* dimension is bounded;
-    /// return `nil` when both are unspecified so the wrapper falls back to
-    /// `UIView`'s no-intrinsic-preference behavior (which SwiftUI flex-fills).
+    /// UIKit layout systems that pre-size before SwiftUI's `sizeThatFits`
+    /// gets a finite proposal (notably `UICollectionViewListLayout`, which
+    /// backs SwiftUI `Form`) ask for `intrinsicContentSize` first. Reporting
+    /// `noIntrinsicMetric` here means the cell falls back to its layout-
+    /// fitting-expanded default — which is the full screen — for one frame,
+    /// producing the "tall password row flash, then snaps to normal" you
+    /// see when a login sheet first appears.
+    ///
+    /// Forwarding to the hosting controller's view (which is itself wired up
+    /// with `sizingOptions = .intrinsicContentSize` in the initialiser)
+    /// gives the SwiftUI tree's natural size directly. Width is dropped to
+    /// no-intrinsic so HStacks still flex-fill horizontally.
+    override var intrinsicContentSize: CGSize {
+        // Prefer the hosting controller's live intrinsic size (kept fresh
+        // by `sizingOptions = .intrinsicContentSize` once mounted); fall
+        // back to the eager pre-measurement from `setRootView` so first-pass
+        // sizing has a real answer before the hosted view is in any
+        // hierarchy.
+        let inner = hostingController.view.intrinsicContentSize.height
+        let height: CGFloat
+        if inner > 0 {
+            height = inner
+        } else if cachedNaturalHeight > 0 {
+            height = cachedNaturalHeight
+        } else {
+            height = UIView.noIntrinsicMetric
+        }
+        return CGSize(width: UIView.noIntrinsicMetric, height: height)
+    }
+
+    /// Sizing strategy:
+    ///
+    /// - **Width**: when the parent supplies a finite proposal, return it
+    ///   verbatim. The wrapper is a transparent protection layer for
+    ///   horizontal flex layouts (HStack rows, full-width cards) — the
+    ///   parent has decided how wide we are.
+    /// - **Height**: ALWAYS return the inner content's measured height
+    ///   from `UIHostingController.sizeThatFits`, never the parent's
+    ///   proposed height. SwiftUI's height proposal means "this is the
+    ///   space available," not "use this much." Returning a finite parent
+    ///   proposal verbatim caused initial-layout flicker in Form / UICVC
+    ///   rows: the first layout pass proposed an oversized height, the
+    ///   wrapper honored it, and the row rendered tall for a frame
+    ///   before the next pass settled to the natural row height.
+    /// - **Both unspecified**: return `nil` so the wrapper falls back to
+    ///   `UIView`'s no-intrinsic-preference behavior (SwiftUI flex-fills).
+    ///   Returning a concrete measurement here makes empty
+    ///   `UITextField`s collapse to their tiny intrinsic size.
     func fitting(_ proposal: ProposedViewSize) -> CGSize? {
         let pw = finiteProposal(proposal.width)
         let ph = finiteProposal(proposal.height)
@@ -269,19 +347,34 @@ private final class SecureCaptureHostView: UIView {
             return nil
         }
 
-        // Use a large but finite probe in the unspecified dimension so the
-        // hosting controller has something to lay out against. The probe
-        // never appears in the returned size — only the measured-back
-        // value (or the original proposal) does.
+        // Probe the hosting controller for the content's preferred size.
+        // Use compressed-fit for the height probe so the SwiftUI tree
+        // returns its minimum required vertical extent — proposing
+        // expanded-fit height to a tree that hasn't yet evaluated risks
+        // the controller echoing the probe back as the "preferred" size,
+        // which is the tall-row-on-first-paint bug.
         let probe = CGSize(
             width: pw ?? UIView.layoutFittingExpandedSize.width,
-            height: ph ?? UIView.layoutFittingExpandedSize.height
+            height: UIView.layoutFittingCompressedSize.height
         )
         let measured = hostingController.sizeThatFits(in: probe)
 
+        // If the live measurement came back as 0 (hosted tree not yet
+        // ready), fall back to the eager pre-measurement we cached when
+        // `setRootView` was called. That value was computed against the
+        // same compressed-height probe, so it's the right comparison.
+        let height: CGFloat
+        if measured.height > 0 {
+            height = measured.height
+        } else if cachedNaturalHeight > 0 {
+            height = cachedNaturalHeight
+        } else {
+            height = measured.height
+        }
+
         return CGSize(
             width: pw ?? measured.width,
-            height: ph ?? measured.height
+            height: height
         )
     }
 
