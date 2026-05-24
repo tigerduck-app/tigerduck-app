@@ -7,6 +7,16 @@ struct TodayListView: View {
     let palette: WidgetPalette
     let maxRows: Int
 
+    /// User-chosen multiplier for course-name font, read from the App
+    /// Group at struct init. The main app reloads widget timelines after
+    /// changing the value, so the next render picks up the new scale.
+    private let userScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
+
+    /// Default Dynamic Type point size for system `.caption`, kept as a
+    /// constant so we can multiply by `userScale` while matching the
+    /// pre-feature visual at scale 1.0.
+    private static let captionBase: CGFloat = 12
+
     var body: some View {
         Group {
             if !snapshot.isLoggedIn {
@@ -109,7 +119,7 @@ struct TodayListView: View {
             .frame(width: 60, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(course.displayName)
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: Self.captionBase * userScale, weight: .medium))
                     .foregroundStyle(primary)
                     .lineLimit(1)
                 if !course.classroom.isEmpty {

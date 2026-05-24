@@ -21,6 +21,7 @@ private func weekdayDisplayName(_ weekday: Int) -> String {
 
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
+    @Environment(AppState.self) private var appState
 
     private let cellHeight: CGFloat = 52
     private let rowSpacing: CGFloat = 3
@@ -29,7 +30,18 @@ struct TimetableGridView: View {
     private let periodWidth: CGFloat = 12
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
 
-    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
+    @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
+
+    /// User multiplier from Settings → Font size. Multiplied into the
+    /// Dynamic-Type-scaled base so the cell respects both the system
+    /// Dynamic Type preference and the user's per-app override. Reads
+    /// from `AppState` (not the store directly) so SwiftUI tracks the
+    /// `@Observable` dependency and re-renders the grid the instant the
+    /// slider moves — without that hop the cells stayed at the old size
+    /// until the app was relaunched.
+    private var courseNameSize: CGFloat {
+        courseNameBaseSize * CGFloat(appState.courseCardFontScale)
+    }
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
@@ -175,8 +187,16 @@ private struct ConflictClusterView: View {
     let periodId: String
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
+    @Environment(AppState.self) private var appState
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
-    @ScaledMetric(relativeTo: .caption2) private var courseNameSize: CGFloat = 8
+    @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
+
+    /// Same convention as `TimetableGridView.courseNameSize` — see there
+    /// for the rationale, including why we read through `AppState`
+    /// rather than `CourseCardFontScaleStore` directly.
+    private var courseNameSize: CGFloat {
+        courseNameBaseSize * CGFloat(appState.courseCardFontScale)
+    }
 
     private var courseA: SDCourse { segments[0].course }
     private var spanA: Int { segments[0].span }

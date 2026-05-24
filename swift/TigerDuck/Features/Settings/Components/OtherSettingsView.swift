@@ -30,6 +30,24 @@ struct OtherSettingsView: View {
             Section {
                 Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
             }
+            Section {
+                NavigationLink {
+                    FontSizeSettingsView()
+                } label: {
+                    HStack {
+                        Text(String(localized: "settings_font_size_title"))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text(String(format: "%.2f×",
+                                    CourseCardFontScale.normalize(appState.courseCardFontScale)))
+                            .font(.body.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            } footer: {
+                Text(String(localized: "settings_font_size_summary"))
+            }
             #if os(iOS)
             // Flip-to-Library: only meaningful when the library feature is
             // on (the gesture routes to the Library tab) and only available

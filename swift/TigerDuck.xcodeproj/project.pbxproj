@@ -167,6 +167,7 @@
 				Clock/AppClock.swift,
 				Clock/ClockOverride.swift,
 				Shared/ClassTableLayout.swift,
+				Shared/CourseCardFontScale.swift,
 				Widgets/WidgetSnapshot.swift,
 			);
 			target = B244D74E2FB87B580040D6FA /* TigerDuckWidgetsExtension */;
@@ -1020,6 +1021,7 @@
 					AppConstants.swift,
 					AppDefaults.swift,
 					AppState.swift,
+					CourseCardFontScale.swift,
 					BrowserPreference.swift,
 					MoodleOpenTarget.swift,
 					LanguageManager.swift,
@@ -1198,6 +1200,7 @@
 					AppConstants.swift,
 					AppDefaults.swift,
 					AppState.swift,
+					CourseCardFontScale.swift,
 					BrowserPreference.swift,
 					MoodleOpenTarget.swift,
 					LanguageManager.swift,

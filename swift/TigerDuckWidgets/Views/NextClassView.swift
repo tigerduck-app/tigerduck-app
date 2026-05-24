@@ -6,6 +6,19 @@ struct NextClassView: View {
     let palette: WidgetPalette
     let family: WidgetFamily
 
+    /// User-chosen multiplier for course-name font, read from the App
+    /// Group at struct init. The main app reloads widget timelines after
+    /// changing the value, so the next render picks up a fresh struct
+    /// with the new scale.
+    private let userScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
+
+    /// Default Dynamic Type point sizes for the system fonts we replaced
+    /// to multiply in `userScale`. Hard-coding the baselines keeps the
+    /// font matching system `.subheadline` / `.title3` at scale 1.0 while
+    /// letting us multiply by the user override.
+    private static let subheadlineBase: CGFloat = 15
+    private static let title3Base: CGFloat = 20
+
     var body: some View {
         switch derived {
         case .signInRequired:
@@ -63,7 +76,7 @@ struct NextClassView: View {
                 }
             }
             Text(info.course.displayName)
-                .font(.subheadline.weight(.bold))
+                .font(.system(size: Self.subheadlineBase * userScale, weight: .bold))
                 .foregroundStyle(palette.onSurface)
                 .lineLimit(1)
             Text(String.localizedStringWithFormat(
@@ -83,7 +96,7 @@ struct NextClassView: View {
                 .background(palette.highlight, in: RoundedRectangle(cornerRadius: 8))
                 .foregroundStyle(.white)
             Text(info.course.displayName)
-                .font(.title3.weight(.bold))
+                .font(.system(size: Self.title3Base * userScale, weight: .bold))
                 .foregroundStyle(palette.onSurface)
                 .lineLimit(2)
             Text("\(info.startTime)–\(info.endTime)  \(info.periodRange)")
@@ -114,7 +127,10 @@ struct NextClassView: View {
                     .foregroundStyle(palette.onSurfaceVariant)
             }
             Text(info.course.displayName)
-                .font(isCompact ? .subheadline.weight(.bold) : .title3.weight(.bold))
+                .font(.system(
+                    size: (isCompact ? Self.subheadlineBase : Self.title3Base) * userScale,
+                    weight: .bold
+                ))
                 .foregroundStyle(palette.onSurface)
                 .lineLimit(2)
             Text(info.startTime)

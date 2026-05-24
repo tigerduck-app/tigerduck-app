@@ -1,6 +1,9 @@
 import SwiftUI
 import SwiftData
 import Defaults
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 @Observable
 final class AppState {
@@ -395,6 +398,37 @@ final class AppState {
     /// `Defaults` since the property lives on the cross-platform `AppState`.
     var flipToLibraryEnabled: Bool = Defaults[.flipToLibraryEnabled] {
         didSet { Defaults[.flipToLibraryEnabled] = flipToLibraryEnabled }
+    }
+
+    /// User-selected multiplier applied to the course-name font in the
+    /// class table (`TimetableGridView`) and the course-name labels
+    /// inside home-screen widgets. 1.0 = pre-feature baseline.
+    ///
+    /// Persisted through ``CourseCardFontScaleStore`` (App Group
+    /// `UserDefaults`) rather than the `Defaults` library because the
+    /// widget extension also reads this key — keeping it in the same
+    /// suite avoids a second source-of-truth for the widget side.
+    var courseCardFontScale: Double = CourseCardFontScaleStore().read() {
+        didSet {
+            // Compare on the normalized (snapped) values so the slider's
+            // every-frame writes during a drag don't all trigger a
+            // widget reload — only when the user crossed a step boundary
+            // do we persist + reload. The store always writes the
+            // normalized value, so downstream readers (widgets,
+            // TimetableGridView) see snapped sizes regardless of the
+            // raw in-memory binding state.
+            let newSnapped = CourseCardFontScale.normalize(courseCardFontScale)
+            let oldSnapped = CourseCardFontScale.normalize(oldValue)
+            guard newSnapped != oldSnapped else { return }
+            CourseCardFontScaleStore().write(newSnapped)
+            #if canImport(WidgetKit)
+            // Widgets render in a separate process; reload all timelines
+            // so the next render of each widget reads the new scale from
+            // the App Group store. Snapshot data is unchanged, so we
+            // skip the WidgetSnapshotWriter regenerate pipeline.
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        }
     }
 
     /// User-selected visual preset controlling presentation-layer decisions

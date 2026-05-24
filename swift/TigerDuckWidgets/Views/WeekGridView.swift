@@ -18,6 +18,14 @@ struct WeekGridView: View {
     private let periodWidth: CGFloat = 12
     private let cornerRadius: CGFloat = 4
 
+    /// User-chosen multiplier for course-name font, read from the App
+    /// Group at struct init. Multiplied into the cell-height-driven
+    /// `fontScale` so the user override stacks on top of the widget's
+    /// own size adaptation (small iPhone widget vs. iPad systemExtraLarge).
+    /// Only the course-name labels in `courseBlock` / `conflictHalf`
+    /// consume this; period/weekday rails stay un-scaled.
+    private let userCourseNameScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
+
     var body: some View {
         Group {
             if !snapshot.isLoggedIn {
@@ -186,7 +194,7 @@ struct WeekGridView: View {
                     .overlay {
                         VStack(spacing: 1) {
                             Text(course.displayName)
-                                .font(.system(size: 9 * fontScale, weight: .medium))
+                                .font(.system(size: 9 * fontScale * userCourseNameScale, weight: .medium))
                                 .foregroundStyle(palette.onSurface)
                                 .lineLimit(spanCount > 1 ? 3 : 2)
                                 .multilineTextAlignment(.center)
@@ -248,7 +256,7 @@ struct WeekGridView: View {
             }
             .overlay {
                 Text(course.displayName)
-                    .font(.system(size: 8 * fontScale, weight: .medium))
+                    .font(.system(size: 8 * fontScale * userCourseNameScale, weight: .medium))
                     .foregroundStyle(palette.onSurface)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
