@@ -82,11 +82,24 @@ private struct SecureCaptureContainer<Content: View>: UIViewRepresentable {
         uiView.setRootView(AnyView(content))
     }
 
-    /// Without this, the host view has no intrinsic content size and SwiftUI
-    /// hands it a zero frame; `installHostedContentIfNeeded` never fires
-    /// because its `bounds.width > 0` guard fails, and the protected subtree
-    /// silently vanishes. Delegate to the `UIHostingController`, which can
-    /// measure SwiftUI content even while not attached to the view hierarchy.
+    /// SwiftUI sizing for the wrapper. The strategy is dimension-by-dimension:
+    ///
+    /// - When the parent supplies a finite value for a dimension, return it
+    ///   verbatim. The wrapper is a transparent protection layer; if the
+    ///   parent has decided how wide / tall we are, we have no business
+    ///   overriding that.
+    /// - When the parent leaves a dimension unspecified, ask the
+    ///   `UIHostingController` for the hosted SwiftUI tree's preferred
+    ///   value in that dimension (e.g. a QR card's natural height).
+    /// - When BOTH dimensions are unspecified — typically an HStack's
+    ///   intrinsic-sizing probe asking "how wide do you want to be?" —
+    ///   return `nil`. This defers to the default `UIView`
+    ///   `intrinsicContentSize = (noIntrinsicMetric, noIntrinsicMetric)`,
+    ///   which SwiftUI reads as "no preference, fill me." That's how the
+    ///   unwrapped `_PasswordTextField` already behaves; returning a
+    ///   concrete measurement here was making the host controller report
+    ///   the empty textfield's tiny intrinsic size, collapsing the field
+    ///   when the password is revealed.
     func sizeThatFits(
         _ proposal: ProposedViewSize,
         uiView: SecureCaptureHostView,
@@ -135,19 +148,38 @@ private final class SecureCaptureHostView: UIView {
         hostingController.rootView = view
     }
 
-    /// Resolves the SwiftUI representable's intrinsic size for SwiftUI's
-    /// parent. Uses `UIHostingController.sizeThatFits(in:)`, which produces
-    /// the SwiftUI root view's natural size for the proposed dimensions
-    /// without requiring the controller to be attached to a parent VC or
-    /// window. `unspecified` proposals map to an unbounded target so the
-    /// content reports its own preferred size (typical for QR cards, which
-    /// have a square aspect ratio of fixed maxWidth).
-    func fitting(_ proposal: ProposedViewSize) -> CGSize {
-        let target = CGSize(
-            width: proposal.width ?? UIView.layoutFittingExpandedSize.width,
-            height: proposal.height ?? UIView.layoutFittingExpandedSize.height
+    /// See the call site for the full strategy. Summary: honor a finite
+    /// proposal in either dimension; measure via `UIHostingController` only
+    /// for an unspecified dimension when the *other* dimension is bounded;
+    /// return `nil` when both are unspecified so the wrapper falls back to
+    /// `UIView`'s no-intrinsic-preference behavior (which SwiftUI flex-fills).
+    func fitting(_ proposal: ProposedViewSize) -> CGSize? {
+        let pw = finiteProposal(proposal.width)
+        let ph = finiteProposal(proposal.height)
+
+        if pw == nil && ph == nil {
+            return nil
+        }
+
+        // Use a large but finite probe in the unspecified dimension so the
+        // hosting controller has something to lay out against. The probe
+        // never appears in the returned size — only the measured-back
+        // value (or the original proposal) does.
+        let probe = CGSize(
+            width: pw ?? UIView.layoutFittingExpandedSize.width,
+            height: ph ?? UIView.layoutFittingExpandedSize.height
         )
-        return hostingController.sizeThatFits(in: target)
+        let measured = hostingController.sizeThatFits(in: probe)
+
+        return CGSize(
+            width: pw ?? measured.width,
+            height: ph ?? measured.height
+        )
+    }
+
+    private func finiteProposal(_ value: CGFloat?) -> CGFloat? {
+        guard let value, value.isFinite else { return nil }
+        return value
     }
 
     override func layoutSubviews() {
