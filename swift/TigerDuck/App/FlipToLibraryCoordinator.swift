@@ -86,17 +86,7 @@ private struct FlipToLibraryModifier: ViewModifier {
         // navigation happens on this first event so the user is not
         // jump-scared into an unfamiliar tab.
         if !FirstTriggerPromptCenter.shared.hasSeen(.flipToLibrary) {
-            FirstTriggerPromptCenter.shared.requestIfFirstTime(.flipToLibrary) {
-                FirstTriggerPromptContent(
-                    title: String(localized: "first_trigger_flip_to_library_title"),
-                    message: String(localized: "first_trigger_flip_to_library_message"),
-                    animation: .phoneFlip,
-                    acceptLabel: String(localized: "first_trigger_flip_to_library_keep"),
-                    declineLabel: String(localized: "first_trigger_flip_to_library_turn_off"),
-                    onAccept: { /* leave toggle on, no nav this time */ },
-                    onDecline: { appState.flipToLibraryEnabled = false }
-                )
-            }
+            FlipToLibraryPromptPresenter.requestFirstTriggerPrompt(appState: appState)
             return
         }
 
@@ -138,6 +128,31 @@ extension View {
             modifier(FlipToLibraryModifier())
         } else {
             self
+        }
+    }
+}
+
+/// Shared builder for the flip-to-library first-trigger prompt content.
+/// Extracted from ``FlipToLibraryModifier`` so the Debug → Triggers page
+/// can replay the same prompt as a real face-down gesture would, without
+/// having to duplicate the localization keys or the callback semantics.
+enum FlipToLibraryPromptPresenter {
+    /// Queue the first-trigger prompt for the flip gesture. No-ops when
+    /// the prompt has already been seen — call
+    /// `FirstTriggerPromptCenter.shared.reset(.flipToLibrary)` first if
+    /// you specifically want to re-test the first-trigger surface
+    /// (debug Triggers page does this).
+    static func requestFirstTriggerPrompt(appState: AppState) {
+        FirstTriggerPromptCenter.shared.requestIfFirstTime(.flipToLibrary) {
+            FirstTriggerPromptContent(
+                title: String(localized: "first_trigger_flip_to_library_title"),
+                message: String(localized: "first_trigger_flip_to_library_message"),
+                animation: .phoneFlip,
+                acceptLabel: String(localized: "first_trigger_flip_to_library_keep"),
+                declineLabel: String(localized: "first_trigger_flip_to_library_turn_off"),
+                onAccept: { /* leave toggle on, no nav this time */ },
+                onDecline: { appState.flipToLibraryEnabled = false }
+            )
         }
     }
 }

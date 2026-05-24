@@ -86,6 +86,12 @@ struct TigerDuckApp: App {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
                     }
+                    // First-launch path. `.onChange(of: scenePhase)` does
+                    // not fire for the initial `.active` value, so the
+                    // first background check needs an explicit kickoff
+                    // here; subsequent foreground returns go through the
+                    // scene-phase observer.
+                    appState.updateNotifyCoordinator.checkInBackground()
                 }
                 .onOpenURL { url in
                     guard let destination = WidgetURLRouter.route(url) else { return }
@@ -110,6 +116,12 @@ struct TigerDuckApp: App {
                             appState.requestPushScheduleSync()
                         }
                         widgetSnapshotWriter?.regenerate()
+                        // Background "is there a newer build on the App
+                        // Store?" check. Internally throttled to once
+                        // per ``AppConstants/updateCheckThrottle`` so
+                        // rapid scene toggles don't generate iTunes
+                        // Lookup traffic.
+                        appState.updateNotifyCoordinator.checkInBackground()
                     }
                 }
         }

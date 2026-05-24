@@ -1,0 +1,20 @@
+{
+  "1.7.0": {
+    "zh-TW": {
+      "title": "1.7.0 有什麼新功能",
+      "highlights": [
+        "可以調整課表與主畫面小工具中的課名字型大小。",
+        "App Store 上推出新版本時，會在 App 內提醒你更新。",
+        "升級後首次開啟會顯示這個「新功能」說明。"
+      ]
+    },
+    "en": {
+      "title": "What's new in 1.7.0",
+      "highlights": [
+        "Resize course names in the class table and home-screen widgets.",
+        "We'll let you know when a new release is ready on the App Store.",
+        "After upgrading, this 'What's new' summary appears on first launch."
+      ]
+    }
+  }
+}

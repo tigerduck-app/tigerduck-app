@@ -77,6 +77,33 @@ future Mac-native widget extension. The doc comment on
 `CourseCardFontScale` (in `swift/TigerDuck/Shared/CourseCardFontScale.swift`)
 spells out the exclusion.
 
+## Sinitic-family locales fall back to `zh-TW`, not `en`
+
+**Rule:** Do not flag the locale selector in
+`swift/TigerDuck/Features/Updates/WhatsNewRepository.swift`
+(`localeCandidates(for:)`) for "serving Traditional Chinese to a
+Simplified Chinese reader" or "missing English fallback for non-Hant
+Chinese tags". Every Sinitic-family tag (`zh`, `zh-Hant*`, `zh-Hans*`,
+`yue`, `wuu`, `nan`, `hak`, `lzh`) is intentionally routed to the
+`zh-TW` block before ever reaching `en`. Simplified-script tags
+additionally try a `zh-Hans` block first when one is authored, but
+still fall through to `zh-TW` (not `en`) when it is absent.
+
+**Why:** The maintainer's explicit preference: any Chinese-language
+reader (Mandarin in either script, Cantonese, Wu, Hakka, Min Nan,
+Classical) gets readable Chinese — Traditional being the universal
+in-family fallback — rather than being dropped to English. An earlier
+review iteration suggested the opposite (Simplified → English when no
+`zh-Hans` block exists); that suggestion was rejected on this repo.
+
+**How to apply:** If you see `WhatsNewRepository.localeCandidates(for:)`
+or any other Sinitic-aware selector in this codebase returning a chain
+that ends with `zh-TW` for non-Hant Chinese tags (and only falls back
+to `en` for non-Sinitic languages), do NOT flag it. The Sinitic code
+set (`["zh", "yue", "nan", "hak", "wuu", "lzh"]`) mirrors
+`LanguageManager.chineseLanguageCodes` and is the source of truth for
+which tags get the Traditional fallback.
+
 ## Greptile review
 
 **Rule:** For every review, please update confidence score as well as giving the suggestions (if any).
