@@ -383,6 +383,13 @@ final class AppState {
         didSet { Defaults[.libraryFeatureEnabled] = libraryFeatureEnabled }
     }
 
+    /// Whether the "flip phone face-down to open Library QR" gesture is armed.
+    /// iPhone-only at the read site; macOS still persists the bool via
+    /// `Defaults` since the property lives on the cross-platform `AppState`.
+    var flipToLibraryEnabled: Bool = Defaults[.flipToLibraryEnabled] {
+        didSet { Defaults[.flipToLibraryEnabled] = flipToLibraryEnabled }
+    }
+
     /// User-selected visual preset controlling presentation-layer decisions
     /// (card surfaces, accent usage, slider color prominence, etc). This is
     /// a pure UI concern — changes MUST NOT trigger Live Activity refreshes,

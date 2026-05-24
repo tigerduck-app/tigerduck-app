@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// Sub-page collecting the "miscellaneous" settings that used to live as a
 /// run of header-less Sections at the bottom of `SettingsView`'s
@@ -27,6 +30,25 @@ struct OtherSettingsView: View {
             Section {
                 Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
             }
+            #if os(iOS)
+            // Flip-to-Library: only meaningful when the library feature is
+            // on (the gesture routes to the Library tab) and only available
+            // on iPhone (iPad use case is unclear and the issue scope says
+            // "phone only"). Mirrors the Android equivalent in
+            // `Settings → 圖書館 → 翻轉開啟圖書館 QR`.
+            if appState.libraryFeatureEnabled
+                && UIDevice.current.userInterfaceIdiom == .phone
+                && FlipDetector.isSupported {
+                Section {
+                    Toggle(
+                        String(localized: "settings_flip_to_library_title"),
+                        isOn: $appState.flipToLibraryEnabled
+                    )
+                } footer: {
+                    Text(String(localized: "settings_flip_to_library_summary"))
+                }
+            }
+            #endif
             Section {
                 Button {
                     showReassignColorsConfirm = true

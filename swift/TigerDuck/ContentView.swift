@@ -85,6 +85,10 @@ struct MainTabView: View {
                 showTimezoneAlert = true
             }
         }
+        #if os(iOS)
+        .flipToLibraryAttached()
+        .firstTriggerPromptHost()
+        #endif
     }
 
     private func evaluateTimezoneAlert() {
