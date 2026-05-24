@@ -1,12 +1,17 @@
 import SwiftUI
 import SwiftData
 import Defaults
-#if canImport(WidgetKit)
-import WidgetKit
-#endif
 
 @Observable
 final class AppState {
+    /// Debounced reload channel for widgets when course-name font scale
+    /// changes. The slider's stepped binding fires didSet on every step
+    /// crossing during a drag (up to 16 across the 0.8–1.6 range), so
+    /// routing through the coordinator collapses a fast drag into a
+    /// single 300ms-debounced WidgetKit reload instead of saturating
+    /// the per-app reload budget.
+    private let widgetReloadCoordinator = WidgetReloadCoordinator()
+
     var hasCompletedOnboarding = Defaults[.hasCompletedOnboarding]
 
     /// App-level presenter flag for the NTUST login sheet. Owned by
@@ -421,13 +426,15 @@ final class AppState {
             let oldSnapped = CourseCardFontScale.normalize(oldValue)
             guard newSnapped != oldSnapped else { return }
             CourseCardFontScaleStore().write(newSnapped)
-            #if canImport(WidgetKit)
-            // Widgets render in a separate process; reload all timelines
-            // so the next render of each widget reads the new scale from
-            // the App Group store. Snapshot data is unchanged, so we
-            // skip the WidgetSnapshotWriter regenerate pipeline.
-            WidgetCenter.shared.reloadAllTimelines()
-            #endif
+            // Widgets render in a separate process; ask the coordinator
+            // for a debounced reload so a fast slider drag collapses
+            // into a single timeline refresh instead of one-per-step.
+            // Snapshot data is unchanged, so we skip the
+            // WidgetSnapshotWriter regenerate pipeline.
+            let coordinator = widgetReloadCoordinator
+            Task { @MainActor in
+                coordinator.requestReload()
+            }
         }
     }
 

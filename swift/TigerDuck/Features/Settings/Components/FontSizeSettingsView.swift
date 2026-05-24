@@ -28,7 +28,10 @@ struct FontSizeSettingsView: View {
     /// Tracks the most recent snapped scale we've fired a haptic for, so
     /// the slider's high-frequency `onChange` callbacks only buzz when
     /// the value crosses a step boundary instead of on every drag tick.
-    @State private var lastHapticScale: Double = -1
+    /// `nil` is the "no baseline yet" state — the first observation
+    /// silently records the baseline so a layout-pass tick before
+    /// `onAppear` can never fire a spurious haptic.
+    @State private var lastHapticScale: Double?
 
     var body: some View {
         @Bindable var appState = appState
@@ -79,8 +82,10 @@ struct FontSizeSettingsView: View {
                 // cadence the user already knows from Home.
                 .onChange(of: appState.courseCardFontScale) { _, newValue in
                     let snapped = CourseCardFontScale.normalize(newValue)
-                    guard snapped != lastHapticScale else { return }
-                    lastHapticScale = snapped
+                    defer { lastHapticScale = snapped }
+                    // First observation establishes the baseline
+                    // silently — only subsequent boundary crossings buzz.
+                    guard let last = lastHapticScale, snapped != last else { return }
                     hapticGenerator.selectionChanged()
                     // Re-prime for the next tick so the kernel keeps the
                     // engine warm — `selectionChanged()` invalidates the
@@ -91,7 +96,9 @@ struct FontSizeSettingsView: View {
                     // Warm the engine up front so the first drag doesn't
                     // eat the priming latency.
                     hapticGenerator.prepare()
-                    lastHapticScale = CourseCardFontScale.normalize(appState.courseCardFontScale)
+                    if lastHapticScale == nil {
+                        lastHapticScale = CourseCardFontScale.normalize(appState.courseCardFontScale)
+                    }
                 }
                 #endif
 
@@ -115,12 +122,13 @@ struct FontSizeSettingsView: View {
         #endif
     }
 
-    /// Format: `1.20×`. Uses `String(format:)` rather than a
-    /// `NumberFormatter` because the trailing `×` matches the iOS
-    /// Accessibility text-size readout style and we want consistent
-    /// width across digits via `.monospacedDigit()`.
+    /// Format: `1.20×` (en) / `1,20×` (de/fr/...). Uses
+    /// `.formatted(.number...)` so the decimal separator follows
+    /// `Locale.current`. `.monospacedDigit()` is applied at the call
+    /// site for stable column width during drags.
     private func scaleLabel(_ scale: Double) -> String {
-        String(format: "%.2f×", CourseCardFontScale.normalize(scale))
+        let normalized = CourseCardFontScale.normalize(scale)
+        return normalized.formatted(.number.precision(.fractionLength(2))) + "×"
     }
 }
 

@@ -39,8 +39,15 @@ struct TimetableGridView: View {
     /// `@Observable` dependency and re-renders the grid the instant the
     /// slider moves — without that hop the cells stayed at the old size
     /// until the app was relaunched.
+    ///
+    /// We normalize the raw in-memory value here so the live timetable
+    /// stays consistent with the App-Group-persisted value the widgets
+    /// read. The Slider's `step:` snaps interactively, but any non-Slider
+    /// writer (debug menu, migration, tests) could land us at a
+    /// non-stepped raw value — normalizing at the read site keeps all
+    /// three surfaces (timetable / Settings readout / widget) in sync.
     private var courseNameSize: CGFloat {
-        courseNameBaseSize * CGFloat(appState.courseCardFontScale)
+        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
     }
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
@@ -193,9 +200,10 @@ private struct ConflictClusterView: View {
 
     /// Same convention as `TimetableGridView.courseNameSize` — see there
     /// for the rationale, including why we read through `AppState`
-    /// rather than `CourseCardFontScaleStore` directly.
+    /// rather than `CourseCardFontScaleStore` directly, and why we
+    /// normalize at the read site.
     private var courseNameSize: CGFloat {
-        courseNameBaseSize * CGFloat(appState.courseCardFontScale)
+        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
     }
 
     private var courseA: SDCourse { segments[0].course }

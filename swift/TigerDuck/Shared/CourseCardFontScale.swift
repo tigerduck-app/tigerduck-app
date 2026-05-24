@@ -1,16 +1,25 @@
 import Foundation
+import os
 import SwiftUI
 
 /// Multiplier applied to the course-name font size in the class table
-/// (`TimetableGridView`) and the course-name labels inside the home-screen
-/// widgets (Next Class, Today, Week). 1.0 = the baseline size every cell
-/// would render at without the user override.
+/// (`TimetableGridView`) and the course-name labels inside the iOS /
+/// iPadOS / macOS home-screen widgets (Next Class, Today, Week). 1.0 =
+/// the baseline size every cell would render at without the user
+/// override.
+///
+/// Scope: the watchOS widgets use a separate App Group
+/// (`group.org.ntust.app.TigerDuck.watch`) and are NOT wired up to this
+/// scale — Watch font sizing is governed by Apple's complication ramps
+/// and a sync channel would need to be added before the user-facing
+/// toggle could honor Watch surfaces.
 ///
 /// Persisted via ``CourseCardFontScaleStore`` in the App Group
 /// `UserDefaults` suite so the widget extension can read the same value
-/// the main app writes. Changing the value in the main app triggers
-/// `WidgetCenter.shared.reloadAllTimelines()` so widgets pick it up on
-/// their next render.
+/// the main app writes. Changing the value in the main app triggers a
+/// debounced widget timeline reload (see `AppState.courseCardFontScale`
+/// and `WidgetReloadCoordinator`) so widgets pick it up on their next
+/// render.
 ///
 /// The scale is intentionally narrow (0.8…1.6×): below 0.8 the names
 /// become unreadable inside the timetable cells, above 1.6× they overflow
@@ -43,16 +52,31 @@ enum CourseCardFontScale {
 
 /// App-group-backed reader/writer for the course-card font scale. Used
 /// by both the main app (read + write) and the widget extension
-/// (read-only at view body render time). Falls back to `.standard` if
-/// the App Group suite is missing so a provisioning hiccup degrades
-/// gracefully instead of crashing.
+/// (read-only at view body render time).
+///
+/// In DEBUG we crash hard if the suite is unavailable so an empty
+/// `com.apple.security.application-groups` regression cannot ship
+/// silently — same protocol as `WidgetSnapshotStore`. In release we
+/// still fall back to `.standard` with a loud error so a user with a
+/// provisioning hiccup still launches, but the divergence is no longer
+/// invisible (main app vs. widget extension would otherwise persist to
+/// different process-local stores).
 nonisolated final class CourseCardFontScaleStore {
     static let storageKey = "courseCardFontScale"
 
     private let defaults: UserDefaults
+    private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "FontScale")
 
     init(appGroupIdentifier: String = "group.org.ntust.app.TigerDuck") {
-        self.defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+        if let suite = UserDefaults(suiteName: appGroupIdentifier) {
+            self.defaults = suite
+        } else {
+            assertionFailure(
+                "App Group suite '\(appGroupIdentifier)' unavailable — verify `com.apple.security.application-groups` is populated in BOTH the TigerDuck app AND TigerDuckWidgets extension entitlements and that the App Group capability is enabled on each target."
+            )
+            self.defaults = .standard
+            logger.error("App Group suite '\(appGroupIdentifier, privacy: .public)' unavailable — course-name font scale will diverge between main app and widget process")
+        }
     }
 
     /// Read the user's scale, falling back to `1.0` when unset. Always
