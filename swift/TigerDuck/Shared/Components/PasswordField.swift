@@ -18,6 +18,12 @@ import UIKit
 /// painted with `textColor = .clear` while the overlay is showing — the
 /// field still owns input, the keyboard never leaves passcode mode, and
 /// the cleartext is what the user sees.
+///
+/// Both layers use a monospaced body font. That keeps the bullet glyphs
+/// underneath at the same advance width as the cleartext characters on
+/// top, so the native UITextField caret (which UIKit positions from the
+/// bullet layout) lands exactly at the end of the visible cleartext in
+/// reveal mode — no custom caret needed.
 struct PasswordField<Field: Hashable>: View {
     let placeholder: String
     @Binding var text: String
@@ -53,27 +59,21 @@ struct PasswordField<Field: Hashable>: View {
                 )
 
                 if isVisible, !text.isEmpty {
-                    // Caret painted at the end of the cleartext. The
-                    // native UITextField caret is hidden in reveal mode
-                    // (see `applyDotsVisibility`) because bullet glyphs
-                    // are wider than typical password characters, so the
-                    // native caret floats off to the right of the visible
-                    // text. Drawn always-on (no blink) because TimelineView
-                    // can stall inside a UIHostingController hosted under
-                    // a UITextField's secure canvas.
-                    HStack(spacing: 2) {
-                        Text(text)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .truncationMode(.head)
-                        Rectangle()
-                            .fill(Color.primary)
-                            .frame(width: 2, height: 20)
-                        Spacer(minLength: 0)
-                    }
-                    .allowsHitTesting(false)
-                    .screenCaptureProtected(true)
+                    // The field and the overlay both use a monospaced
+                    // body font, so the bullet glyphs underneath have the
+                    // same advance width as the cleartext characters on
+                    // top. The native UITextField caret — which UIKit
+                    // positions from the bullet layout — lands exactly at
+                    // the end of the cleartext, and we get the standard
+                    // blinking blue caret for free in both modes.
+                    Text(text)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .allowsHitTesting(false)
+                        .screenCaptureProtected(true)
                 }
             }
 
@@ -122,7 +122,13 @@ private struct _PasswordTextField: UIViewRepresentable {
         field.smartInsertDeleteType = .no
         field.returnKeyType = returnKeyType
         field.clearButtonMode = .never
-        field.font = .preferredFont(forTextStyle: .body)
+        // Monospaced so each bullet has the same advance width as the
+        // cleartext characters in the reveal-mode overlay — keeps the
+        // native blinking caret in the right spot in both modes. Scaled
+        // through UIFontMetrics so it still respects Dynamic Type.
+        field.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: UIFont.monospacedSystemFont(ofSize: UIFont.systemFontSize, weight: .regular)
+        )
         field.adjustsFontForContentSizeCategory = true
         field.delegate = context.coordinator
         field.addTarget(
@@ -171,16 +177,12 @@ private struct _PasswordTextField: UIViewRepresentable {
     }
 
     /// Hide or restore the dot glyphs without touching `isSecureTextEntry`.
-    /// Also hides the native caret while the cleartext overlay is showing
-    /// (the native caret sits past the end of the bullets, which are wider
-    /// than typical password characters — making it look detached from the
-    /// visible cleartext). The overlay paints its own caret in the right
-    /// place via `CleartextCaret`.
+    /// The native caret is left alone — because both the field and the
+    /// overlay use a monospaced font, the caret position computed from the
+    /// bullet layout matches the end of the cleartext overlay.
     private func applyDotsVisibility(_ hide: Bool, on field: UITextField) {
         let textTarget: UIColor = hide ? .clear : .label
         if field.textColor != textTarget { field.textColor = textTarget }
-        let caretTarget: UIColor = hide ? .clear : .tintColor
-        if field.tintColor != caretTarget { field.tintColor = caretTarget }
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
