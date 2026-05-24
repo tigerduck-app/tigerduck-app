@@ -42,6 +42,22 @@ final class PushAPIClient: Sendable {
         _ = try await postExpectingNoBody(path: "/devices/unregister", body: body)
     }
 
+    /// PATCH the user-facing server-push opt-out. Called from the Settings
+    /// toggle so the change propagates without waiting for the next
+    /// `/devices/register` call.
+    func updateDevicePreferences(
+        deviceId: String,
+        serverPushEnabled: Bool
+    ) async throws -> PushAPI.DevicePreferencesResponse {
+        let body = PushAPI.DevicePreferencesRequest(serverPushEnabled: serverPushEnabled)
+        let safeDevice = Self.percentEncoded(deviceId)
+        return try await patch(
+            path: "/devices/\(safeDevice)/preferences",
+            body: body,
+            returning: PushAPI.DevicePreferencesResponse.self
+        )
+    }
+
     func syncSchedule(_ request: PushAPI.ScheduleSyncRequest) async throws -> PushAPI.ScheduleSyncResponse {
         try await post(path: "/schedule/sync", body: request, returning: PushAPI.ScheduleSyncResponse.self)
     }
@@ -99,6 +115,23 @@ final class PushAPIClient: Sendable {
     ) async throws -> Data {
         let request = try makePostRequest(path: path, body: body)
         return try await execute(request)
+    }
+
+    private func patch<Request: Encodable, Response: Decodable>(
+        path: String,
+        body: Request,
+        returning: Response.Type
+    ) async throws -> Response {
+        var request = try makePostRequest(path: path, body: body)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let data = try await execute(request)
+        do {
+            return try Self.decoder.decode(Response.self, from: data)
+        } catch {
+            logger.error("Push.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            throw PushAPIError.decodingFailed(error)
+        }
     }
 
     private func makePostRequest<Request: Encodable>(path: String, body: Request) throws -> URLRequest {
