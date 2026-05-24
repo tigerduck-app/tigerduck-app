@@ -73,6 +73,14 @@ struct LibraryQRView: View {
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 4)
                 .accessibilityLabel(String(localized: "library_qr_content_description"))
+                // No-op on watchOS today: Apple has not exposed a
+                // window-level capture-exclusion API (the equivalent of
+                // FLAG_SECURE on Wear OS). Marked for parity with the
+                // phone — if a public API ever lands, the modifier will
+                // start enforcing without per-call-site changes. The
+                // residual exposure is bounded by the user's deliberate
+                // side-button + Digital Crown screenshot gesture.
+                .screenCaptureProtected()
                 .onTapGesture(count: 2) {
                     isFullScreen = true
                 }
@@ -163,6 +171,9 @@ private struct FullScreenQRView: View {
             }
         }
         .ignoresSafeArea()
+        // See note in `qrSection` above: no-op on watchOS today, marked
+        // for parity in case a public capture-exclusion API ships.
+        .screenCaptureProtected()
         // Hide the system close indicator so it stops landing on top of
         // the matrix. Drag-up or drag-down is the documented dismiss
         // gesture for this presentation.

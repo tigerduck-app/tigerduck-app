@@ -35,11 +35,26 @@ struct PasswordField<Field: Hashable>: View {
                 returnKeyType: returnKeyType,
                 onSubmit: onSubmit
             )
+            // While the password is masked, the underlying
+            // `_PasswordTextField` is itself an `isSecureTextEntry = true`
+            // field — iOS already excludes its content from screenshots and
+            // screen recording. The moment the user taps the eye to reveal,
+            // that protection is gone, so re-add it via the secure-canvas
+            // wrapper. Scoped to the field only (not the whole HStack) so
+            // the wrapper's `UIHostingController.sizeThatFits` is measuring
+            // a single `UIViewRepresentable` with an explicit
+            // `sizeThatFits` of `(width, ~30)` — wrapping the HStack
+            // instead caused the row to balloon vertically when revealed.
+            .screenCaptureProtected(isVisible)
 
             Button {
                 isVisible.toggle()
             } label: {
-                Image(systemName: isVisible ? "eye.slash" : "eye")
+                // Open eye = password is currently visible; eye.slash =
+                // currently hidden. (Earlier we used the inverse "tap-to"
+                // convention; the state-mirror reading is what users
+                // expect here.)
+                Image(systemName: isVisible ? "eye" : "eye.slash")
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())

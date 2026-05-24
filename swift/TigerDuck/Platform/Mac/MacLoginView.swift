@@ -73,13 +73,19 @@ struct MacLoginView: View {
                     Button {
                         isPasswordVisible.toggle()
                     } label: {
-                        Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                        // Open eye = currently visible; eye.slash = hidden.
+                        Image(systemName: isPasswordVisible ? "eye" : "eye.slash")
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel(String(localized: isPasswordVisible ? "password_hide" : "password_show"))
                 }
                 .frame(maxWidth: 340)
+                // SecureField masks at the OS layer; plain TextField does
+                // not. While the user has the password revealed, flip the
+                // window's sharingType to .none so a concurrent screen
+                // share / recording does not leak the plaintext.
+                .screenCaptureProtected(isPasswordVisible)
             }
 
             if let error = appState.authService.loginError, !error.isEmpty {
