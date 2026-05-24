@@ -10,6 +10,9 @@ struct LibraryView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = LibraryViewModel()
     @State private var showNotImplementedAlert = false
+    @FocusState private var loginField: LoginField?
+
+    private enum LoginField { case username, password }
     #if os(iOS)
     /// Token returned by `PKPassLibrary.requestAutomaticPassPresentationSuppression`.
     /// Held only while the QR page is on-screen so a side-button double-press
@@ -24,10 +27,12 @@ struct LibraryView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 56
 
     var body: some View {
-        if embedded {
-            content
-        } else {
-            NavigationStack { content }
+        Group {
+            if embedded {
+                content
+            } else {
+                NavigationStack { content }
+            }
         }
     }
 
@@ -264,13 +269,25 @@ struct LibraryView: View {
                     .textContentType(.username)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.characters)
+                    .focused($loginField, equals: .username)
+                    .submitLabel(.next)
+                    .onSubmit { loginField = .password }
                     .padding(TigerDuckTheme.Spacing.md)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
 
-                SecureField(String(localized: "library_login_password"), text: $viewModel.libPassword)
-                    .textContentType(.password)
-                    .padding(TigerDuckTheme.Spacing.md)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
+                // `PasswordField` carries the eye-toggle reveal and the
+                // matching `.screenCaptureProtected` wrapper that hides the
+                // plaintext from screen recording / screenshots while
+                // revealed — the bare `SecureField` had neither.
+                PasswordField(
+                    placeholder: String(localized: "library_login_password"),
+                    text: $viewModel.libPassword,
+                    focusBinding: $loginField,
+                    focusValue: .password,
+                    onSubmit: { viewModel.loginAndStart() }
+                )
+                .padding(TigerDuckTheme.Spacing.md)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
             }
 
             loginButton
