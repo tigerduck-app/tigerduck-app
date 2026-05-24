@@ -88,6 +88,19 @@ final class LibraryQRViewModel {
         Task { @MainActor in
             isLoading = qrImage == nil
             errorMessage = nil
+            // Captive-portal pre-flight: api.lib.ntust.edu.tw is now
+            // SPKI-pinned, so a watch on a hotel/airport Wi-Fi (the
+            // common case once it's out of phone BT range) would
+            // otherwise surface an opaque TLS pin error instead of the
+            // "log into Wi-Fi" hint the iOS side gets. Treat captive
+            // the same way as the generic network error.
+            guard await NetworkMonitor.shared.isReachable() else {
+                errorMessage = String(localized: "error_network_unavailable")
+                isLoading = false
+                consecutiveErrors += 1
+                rescheduleAfterError()
+                return
+            }
             do {
                 let payload = try await WatchLibraryService.generateQRCode()
                 guard let image = Self.makeQRImage(from: payload) else {

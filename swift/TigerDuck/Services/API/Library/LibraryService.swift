@@ -30,7 +30,14 @@ enum LibraryService {
         config.timeoutIntervalForResource = 30
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        return URLSession(configuration: config)
+        // SPKI pin against the api.lib.ntust.edu.tw set. Library
+        // bearer tokens are exchanged here and gate every QR-generate
+        // call, so hostile-network MITM is the relevant risk to close.
+        return URLSession(
+            configuration: config,
+            delegate: TLSPinningDelegate.shared,
+            delegateQueue: nil,
+        )
     }()
 
     /// Validate that the response is HTTP 2xx before decoding. Without this

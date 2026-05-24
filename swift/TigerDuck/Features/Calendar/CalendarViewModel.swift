@@ -96,6 +96,13 @@ final class CalendarViewModel {
     func refresh(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
         let startGeneration = authService.loginGeneration
+        // Pre-flight captive-portal probe so a hotel/campus Wi-Fi login
+        // page doesn't surface as an opaque ATS pin failure from the
+        // actual Moodle / ICS fetch downstream.
+        guard await NetworkMonitor.shared.isReachable() else {
+            await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
+            return
+        }
         await MainActor.run { manager.loadingState = .loading }
 
         async let moodleEvents = fetchMoodleEvents(authService: authService)
