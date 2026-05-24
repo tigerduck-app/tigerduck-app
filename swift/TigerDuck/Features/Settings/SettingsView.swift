@@ -24,6 +24,11 @@ struct SettingsView: View {
     @State private var showOfficialWebsite = false
     @Environment(\.scenePhase) private var scenePhase
 
+    #if DEBUG
+    @AppStorage(ScreenCaptureProtectionDebugFlag.userDefaultsKey)
+    private var disableScreenCaptureProtection = false
+    #endif
+
     private static let websiteURL = AppURLs.website
 
     private var appVersion: String {
@@ -212,6 +217,11 @@ struct SettingsView: View {
                 NavigationLink("API endpoint") {
                     DebugEndpointView()
                 }
+                // Bypass `.screenCaptureProtected(...)` system-wide for
+                // demo recordings / layout debugging. Backed by
+                // `@AppStorage` so toggling immediately re-evaluates
+                // every protected view. Compiled out of release builds.
+                Toggle("Disable screen-capture protection", isOn: $disableScreenCaptureProtection)
             }
             #endif
         }
