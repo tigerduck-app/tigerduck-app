@@ -34,11 +34,6 @@ struct LibraryView: View {
                 NavigationStack { content }
             }
         }
-        // Whole-screen capture protection covers both the inline login
-        // form (PasswordField) and the QR card. The individual
-        // components still wrap themselves as a defense-in-depth; this
-        // is the outer perimeter.
-        .screenCaptureProtected()
     }
 
     private var content: some View {

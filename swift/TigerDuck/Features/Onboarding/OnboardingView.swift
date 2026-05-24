@@ -287,13 +287,6 @@ struct OnboardingView: View {
                 }
             }
         )
-        // Whole-page capture protection: both the student-ID field and
-        // the PasswordField below it (which has its own wrap) sit on this
-        // page; protecting at the page root excludes the entire credential
-        // form from screenshots / screen recording, not only the password
-        // cell. Other onboarding pages (welcome, privacy, etc.) are left
-        // unprotected because they carry no credentials.
-        .screenCaptureProtected()
     }
 
     private func submitLogin() {

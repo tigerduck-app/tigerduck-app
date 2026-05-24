@@ -3,9 +3,21 @@ import UIKit
 
 /// Password input with a trailing eye toggle.
 ///
-/// Backed by a single `UITextField` via `UIViewRepresentable` so toggling
-/// secure entry does not tear down the first responder. The keyboard stays
-/// up across visibility toggles and across taps to/from this field.
+/// Backed by a single `UITextField` via `UIViewRepresentable` that stays
+/// permanently in `isSecureTextEntry = true`. This is load-bearing: iOS
+/// only puts the system keyboard into "passcode mode" (no key-preview
+/// popovers, no QuickType bar, *and excluded from screen recording /
+/// mirroring*) while the active first responder has secure entry on. If
+/// we flipped it off to show cleartext, the keyboard would become a
+/// normal keyboard mid-session and start leaking each keystroke through
+/// the magnifier popovers to anyone recording the screen.
+///
+/// To still let the user reveal what they typed, the cleartext rides on
+/// top as a SwiftUI `Text` overlay (with its own secure-canvas wrap so
+/// it stays out of screenshots). Underneath, the real field's dots are
+/// painted with `textColor = .clear` while the overlay is showing — the
+/// field still owns input, the keyboard never leaves passcode mode, and
+/// the cleartext is what the user sees.
 struct PasswordField<Field: Hashable>: View {
     let placeholder: String
     @Binding var text: String
@@ -18,42 +30,58 @@ struct PasswordField<Field: Hashable>: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            _PasswordTextField(
-                placeholder: placeholder,
-                text: $text,
-                isSecure: !isVisible,
-                isFocused: Binding(
-                    get: { focusBinding.wrappedValue == focusValue },
-                    set: { newValue in
-                        if newValue {
-                            focusBinding.wrappedValue = focusValue
-                        } else if focusBinding.wrappedValue == focusValue {
-                            focusBinding.wrappedValue = nil
+            ZStack(alignment: .leading) {
+                _PasswordTextField(
+                    placeholder: placeholder,
+                    text: $text,
+                    // When the cleartext overlay is shown, hide the
+                    // underlying dots so the overlay is what the user
+                    // reads. `isSecureTextEntry` itself never changes.
+                    hidesDots: isVisible,
+                    isFocused: Binding(
+                        get: { focusBinding.wrappedValue == focusValue },
+                        set: { newValue in
+                            if newValue {
+                                focusBinding.wrappedValue = focusValue
+                            } else if focusBinding.wrappedValue == focusValue {
+                                focusBinding.wrappedValue = nil
+                            }
                         }
+                    ),
+                    returnKeyType: returnKeyType,
+                    onSubmit: onSubmit
+                )
+
+                if isVisible, !text.isEmpty {
+                    HStack(spacing: 1) {
+                        Text(text)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                            .fixedSize(horizontal: true, vertical: false)
+                        if focusBinding.wrappedValue == focusValue {
+                            // Caret painted at the end of the cleartext.
+                            // The native UITextField caret is hidden in
+                            // reveal mode (see `applyDotsVisibility`)
+                            // because bullet glyphs are wider than typical
+                            // password characters, so the native caret
+                            // floats off to the right of the visible text.
+                            CleartextCaret()
+                        }
+                        Spacer(minLength: 0)
                     }
-                ),
-                returnKeyType: returnKeyType,
-                onSubmit: onSubmit
-            )
-            // While the password is masked, the underlying
-            // `_PasswordTextField` is itself an `isSecureTextEntry = true`
-            // field — iOS already excludes its content from screenshots and
-            // screen recording. The moment the user taps the eye to reveal,
-            // that protection is gone, so re-add it via the secure-canvas
-            // wrapper. Scoped to the field only (not the whole HStack) so
-            // the wrapper's `UIHostingController.sizeThatFits` is measuring
-            // a single `UIViewRepresentable` with an explicit
-            // `sizeThatFits` of `(width, ~30)` — wrapping the HStack
-            // instead caused the row to balloon vertically when revealed.
-            .screenCaptureProtected(isVisible)
+                    .allowsHitTesting(false)
+                    .screenCaptureProtected(true)
+                }
+            }
 
             Button {
-                handleEyeTap()
+                isVisible.toggle()
             } label: {
                 // Open eye = password is currently visible; eye.slash =
-                // currently hidden. (Earlier we used the inverse "tap-to"
-                // convention; the state-mirror reading is what users
-                // expect here.)
+                // currently hidden. (Mirror-the-state reading, not
+                // tap-to-action.)
                 Image(systemName: isVisible ? "eye" : "eye.slash")
                     .foregroundStyle(.secondary)
                     .frame(width: 24, height: 24)
@@ -64,58 +92,23 @@ struct PasswordField<Field: Hashable>: View {
                 ? String(localized: "password_hide")
                 : String(localized: "password_show"))
         }
-        // Invariant: whenever the field is focused, it is in secure mode.
-        // iOS only applies the passcode-keyboard treatment (no predictive
-        // bar, no per-key preview bubbles) while `isSecureTextEntry = true`
-        // — plain-text mode leaks each keystroke through the key-preview
-        // popovers that are visible in screen recordings / mirroring.
-        // Holding the invariant keeps the keyboard in passcode mode the
-        // entire time it is on screen.
-        .onChange(of: focusBinding.wrappedValue) { _, newFocus in
-            // Field gains focus while we're revealed -> snap back to
-            // masked so the keyboard adapts to passcode mode immediately.
-            // (Direct path: user taps the field instead of using the eye
-            // button to mask first.)
-            if newFocus == focusValue, isVisible {
-                isVisible = false
-            }
-        }
     }
+}
 
-    /// Handles the eye-toggle tap.
-    ///
-    /// Masking is instant. Revealing has to be sequenced carefully because
-    /// iOS extends its secure-text protection to the keyboard itself while
-    /// `isSecureTextEntry = true` — and that protection drops the moment
-    /// we flip the flag to `false`. If we flip in the same runloop as the
-    /// dismiss, the keyboard animates off-screen with several frames
-    /// rendered in unprotected (normal) mode, which is exactly what shows
-    /// up in a screen recording. So:
-    ///
-    /// 1. Dismiss the keyboard synchronously, while the field is still
-    ///    `isSecureTextEntry = true` (still under system protection).
-    /// 2. Clear the SwiftUI focus state so any sibling logic stays in sync.
-    /// 3. Defer the actual `isVisible = true` flip until the dismissal
-    ///    animation has fully completed (~250 ms; 350 ms for safety).
-    ///    During that window the field is still secure, so the keyboard
-    ///    stays protected for every frame it remains on screen.
-    ///
-    /// When no keyboard was up (e.g. user tapped the eye before ever
-    /// focusing the field), the delay is skipped — reveal is immediate.
-    private func handleEyeTap() {
-        if isVisible {
-            isVisible = false
-            return
-        }
-        let wasFocused = focusBinding.wrappedValue == focusValue
-        UIApplication.dismissKeyboard()
-        focusBinding.wrappedValue = nil
-        if wasFocused {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                isVisible = true
-            }
-        } else {
-            isVisible = true
+/// Thin blinking vertical line that stands in for the native UITextField
+/// caret while the cleartext overlay is showing. Driven by `TimelineView`
+/// rather than a `repeatForever` animation so it doesn't interfere with
+/// SwiftUI's view identity / focus transitions.
+private struct CleartextCaret: View {
+    @ScaledMetric(relativeTo: .body) private var height: CGFloat = 20
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.5)) { context in
+            let on = Int(context.date.timeIntervalSinceReferenceDate * 2) % 2 == 0
+            Rectangle()
+                .fill(Color.accentColor)
+                .frame(width: 2, height: height)
+                .opacity(on ? 1 : 0)
         }
     }
 }
@@ -123,7 +116,7 @@ struct PasswordField<Field: Hashable>: View {
 private struct _PasswordTextField: UIViewRepresentable {
     let placeholder: String
     @Binding var text: String
-    let isSecure: Bool
+    let hidesDots: Bool
     @Binding var isFocused: Bool
     let returnKeyType: UIReturnKeyType
     let onSubmit: () -> Void
@@ -133,7 +126,9 @@ private struct _PasswordTextField: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         field.placeholder = placeholder
-        field.isSecureTextEntry = isSecure
+        // Permanently secure — see the doc comment on PasswordField for
+        // why this never toggles.
+        field.isSecureTextEntry = true
         field.keyboardType = .asciiCapable
         field.textContentType = .password
         field.autocorrectionType = .no
@@ -152,6 +147,7 @@ private struct _PasswordTextField: UIViewRepresentable {
             action: #selector(Coordinator.editingChanged(_:)),
             for: .editingChanged
         )
+        applyDotsVisibility(hidesDots, on: field)
         return field
     }
 
@@ -162,9 +158,7 @@ private struct _PasswordTextField: UIViewRepresentable {
         if field.returnKeyType != returnKeyType { field.returnKeyType = returnKeyType }
         if field.text != text { field.text = text }
 
-        if field.isSecureTextEntry != isSecure {
-            applySecureTextEntry(isSecure, on: field)
-        }
+        applyDotsVisibility(hidesDots, on: field)
 
         // Mirror @FocusState → UITextField for the BECOME direction only.
         //
@@ -193,39 +187,17 @@ private struct _PasswordTextField: UIViewRepresentable {
         return CGSize(width: width, height: height)
     }
 
-    /// Flip `isSecureTextEntry` on the live field without losing typed text
-    /// or moving first responder.
-    ///
-    /// Apple's documented behaviour is that toggling `isSecureTextEntry`
-    /// while text is being entered clears the field. We work around it by
-    /// reassigning `text` (nil → saved value), which leaves the field in
-    /// a stable internal state without dropping first responder, then we
-    /// restore the caret/selection by character offset (the saved
-    /// `UITextRange` becomes invalid the moment `text` is reassigned).
-    private func applySecureTextEntry(_ isSecure: Bool, on field: UITextField) {
-        let savedText = field.text
-        let savedOffsets: (start: Int, end: Int)? = {
-            guard let range = field.selectedTextRange else { return nil }
-            let start = field.offset(from: field.beginningOfDocument, to: range.start)
-            let end = field.offset(from: field.beginningOfDocument, to: range.end)
-            return (start, end)
-        }()
-
-        field.isSecureTextEntry = isSecure
-
-        // Only the editing-in-progress path needs the round-trip; if no one
-        // is editing, the toggle alone is harmless.
-        guard field.isFirstResponder else { return }
-
-        field.text = nil
-        field.text = savedText
-
-        guard let savedOffsets,
-              let start = field.position(from: field.beginningOfDocument, offset: savedOffsets.start),
-              let end = field.position(from: field.beginningOfDocument, offset: savedOffsets.end),
-              let restored = field.textRange(from: start, to: end)
-        else { return }
-        field.selectedTextRange = restored
+    /// Hide or restore the dot glyphs without touching `isSecureTextEntry`.
+    /// Also hides the native caret while the cleartext overlay is showing
+    /// (the native caret sits past the end of the bullets, which are wider
+    /// than typical password characters — making it look detached from the
+    /// visible cleartext). The overlay paints its own caret in the right
+    /// place via `CleartextCaret`.
+    private func applyDotsVisibility(_ hide: Bool, on field: UITextField) {
+        let textTarget: UIColor = hide ? .clear : .label
+        if field.textColor != textTarget { field.textColor = textTarget }
+        let caretTarget: UIColor = hide ? .clear : .tintColor
+        if field.tintColor != caretTarget { field.tintColor = caretTarget }
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {

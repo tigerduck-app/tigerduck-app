@@ -34,8 +34,34 @@ extension View {
     /// Wraps this view so it is excluded from screen capture while `active`
     /// is true. Toggling `active` reattaches/detaches the protection; the
     /// content itself is not torn down across toggles.
+    ///
+    /// **Note:** uses `UIHostingController` internally, which establishes
+    /// a fresh SwiftUI environment scope and drops anything the parent
+    /// injected via `@Environment(...)`. Safe on small leaf views with no
+    /// environment dependency (PasswordField, LibraryQRCodeView); breaks
+    /// when wrapping a full screen that reads `appState`, etc. For
+    /// whole-screen coverage use `.hideOnScreenCapture()` instead.
     func screenCaptureProtected(_ active: Bool = true) -> some View {
         modifier(ScreenCaptureProtectedModifier(active: active))
+    }
+
+    /// Hides this view's content while the screen is being captured — the
+    /// iOS-idiomatic pattern used by banking and password-manager apps.
+    /// Observes `UIScreen.capturedDidChangeNotification` and overlays an
+    /// opaque "hidden for security" panel while `UIScreen.main.isCaptured`
+    /// is true (screen recording, AirPlay mirroring, Sidecar, external
+    /// display, QuickTime device-record).
+    ///
+    /// What this **does not** cover:
+    /// - Physical screenshots (Side+Volume / Power+Home). Apple fires no
+    ///   pre-screenshot notification, so the overlay never has a chance
+    ///   to appear. Per-element `.screenCaptureProtected()` on the actual
+    ///   sensitive views (password field, QR) is the only defense for
+    ///   that vector.
+    /// - macOS / watchOS — modifier is a no-op there. macOS protection
+    ///   is provided by `NSWindow.sharingType` via the per-element wrap.
+    func hideOnScreenCapture() -> some View {
+        modifier(HideOnScreenCaptureModifier())
     }
 }
 
@@ -71,6 +97,62 @@ private struct ScreenCaptureProtectedModifier: ViewModifier {
     }
 }
 
+// MARK: - Screen-capture detection overlay (iOS only)
+
+#if os(iOS)
+
+private struct HideOnScreenCaptureModifier: ViewModifier {
+    @State private var isCaptured: Bool = UIScreen.main.isCaptured
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if isCaptured {
+                    captureOverlay
+                }
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIScreen.capturedDidChangeNotification
+                )
+            ) { _ in
+                isCaptured = UIScreen.main.isCaptured
+            }
+    }
+
+    /// Opaque cover — not a blur, since a translucent material would
+    /// still leak the underlying pixels to the capture stream at low
+    /// material alpha. Black + lock icon is the conventional pattern
+    /// (1Password, banking apps); the message tells the viewer of the
+    /// recording why the app surface they are watching just went dark.
+    private var captureOverlay: some View {
+        Rectangle()
+            .fill(.black)
+            .ignoresSafeArea()
+            .overlay {
+                VStack(spacing: 16) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 56))
+                        .foregroundStyle(.white.opacity(0.7))
+                    Text(String(localized: "screen_capture_protection_message"))
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                }
+            }
+            .transition(.opacity)
+    }
+}
+
+#else
+
+private struct HideOnScreenCaptureModifier: ViewModifier {
+    func body(content: Content) -> some View { content }
+}
+
+#endif
+
 // MARK: - iOS / iPadOS: UITextField secure-canvas host
 
 #if os(iOS)
@@ -95,6 +177,18 @@ private struct SecureCaptureContainer<Content: View>: UIViewRepresentable {
     func updateUIView(_ uiView: SecureCaptureHostView, context: Context) {
         uiView.setRootView(AnyView(content))
     }
+
+    // Note: tried forwarding `context.environment` into the hosted tree
+    // via `.environment(\.self, env)` so screen-level wraps could see
+    // `@Environment(AppState.self)`. Didn't help — the crash on
+    // OnboardingView's login page reproduced unchanged, which means the
+    // root cause isn't environment loss. It's the depth of SwiftUI ↔
+    // UIKit ↔ SwiftUI bridging when a non-trivial SwiftUI tree is
+    // hosted inside a `UIViewRepresentable` inside another SwiftUI
+    // hierarchy (notably TabView's lazy page lifecycle). Apple does not
+    // expose a way around this; the secure-canvas wrap stays limited to
+    // small leaves (PasswordField, LibraryQRCodeView). Screen-level
+    // coverage uses `.hideOnScreenCapture()` instead.
 
     /// SwiftUI sizing for the wrapper. The strategy is dimension-by-dimension:
     ///

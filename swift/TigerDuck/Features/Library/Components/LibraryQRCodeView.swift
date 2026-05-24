@@ -6,12 +6,11 @@ struct LibraryQRCodeView: View {
     let isLoading: Bool
     let username: String?
 
-    /// Caps the rendered QR width so it stays comfortable on iPad and tunable
-    /// for field testing. Adjust here; the view squares itself via the
-    /// 1:1 aspect ratio below. 400pt fills the iPhone width edge-to-edge
-    /// (modulo card padding) up through Pro Max sizes, and keeps the iPad
-    /// centered layout from ballooning the QR past a readable scan distance.
-    private static let qrCodeMaxWidth: CGFloat = 400
+    /// Caps the rendered QR width on the iPad-centered layout — without
+    /// it the QR would balloon past a readable scan distance on the
+    /// larger geometry. On iPhone (≤ Pro Max width ~430pt) this cap is
+    /// not reached, so the QR fills the screen edge-to-edge.
+    private static let qrCodeMaxWidth: CGFloat = 500
 
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 48
 
@@ -33,11 +32,14 @@ struct LibraryQRCodeView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, TigerDuckTheme.Spacing.md)
 
-            // QR Code
+            // QR Code — edge-to-edge on iPhone (capped on iPad via
+            // `qrCodeMaxWidth`). No inner horizontal padding so the
+            // matrix touches the card sides; the card itself has no
+            // outer horizontal padding either (see below), so the QR
+            // spans the full screen width on iPhone.
             qrCodeContent
                 .frame(maxWidth: Self.qrCodeMaxWidth)
                 .aspectRatio(1, contentMode: .fit)
-                .padding(.horizontal, TigerDuckTheme.Spacing.sm)
                 .padding(.bottom, TigerDuckTheme.Spacing.lg)
 
             // Countdown
@@ -60,13 +62,14 @@ struct LibraryQRCodeView: View {
             .padding(.bottom, TigerDuckTheme.Spacing.md)
         }
         .glassCard(cornerRadius: TigerDuckTheme.CornerRadius.xl)
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        // No outer horizontal padding: the card runs edge-to-edge so
+        // the QR inside can be as wide as the iPhone screen.
         // The QR encodes a one-shot library bearer that a screen grab
         // would let a bystander scan from a recording or AirPlay
         // mirror. Mirrors Android `LibraryScreen.SecureScreen(secure =
-        // isLoggedIn)`; the iOS modifier is a no-op when there is no
-        // QR to protect (loading / login prompt paths) since this
-        // component is only rendered in the QR section.
+        // isLoggedIn)`; redundant with the screen-level protection on
+        // `LibraryView` but kept as defense in depth in case this
+        // component is dropped into a context without that wrap.
         .screenCaptureProtected()
     }
 
