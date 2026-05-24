@@ -28,6 +28,12 @@ final class FlipDetector {
     /// before a transition is committed.
     static let debounceInterval: TimeInterval = 0.4
 
+    /// Maximum time between consecutive sensor events before we treat them
+    /// as a discontinuity (device sleep, sensor restart) and reset the
+    /// debounce window. Normal cadence is ~33ms (30Hz); a full second
+    /// without an event means something paused the stream.
+    static let maxEventGap: TimeInterval = 1.0
+
     enum Phase { case unknown, upright, faceDown }
 
     /// Immutable state for the debounce machine.
@@ -38,6 +44,9 @@ final class FlipDetector {
         /// boot) of the first event in the current window. `nil` before the
         /// first event is delivered.
         var windowStart: TimeInterval?
+        /// Timestamp of the most recent event. Used to detect discontinuities
+        /// (sleep / sensor restart) where the gap exceeds `maxEventGap`.
+        var lastTimestamp: TimeInterval?
         /// `true` iff this transition fired the `onFaceDown` callback;
         /// callers consume and reset this on each step.
         var didFire: Bool
@@ -46,6 +55,7 @@ final class FlipDetector {
             phase: .unknown,
             pendingFaceDown: false,
             windowStart: nil,
+            lastTimestamp: nil,
             didFire: false
         )
     }
@@ -58,26 +68,46 @@ final class FlipDetector {
         return q
     }()
     private let onFaceDown: () -> Void
+    /// All access serialized through `stateLock` — `handle()` runs on the
+    /// sensor `queue` while `start()`/`stop()` run on the main thread.
+    private let stateLock = NSLock()
     private var state = State.initial
+    /// Guarded by `stateLock`. Flipped false in `stop()` BEFORE the state
+    /// reset so any in-flight `handle(...)` already past its early-return
+    /// can't fire `onFaceDown` for an event the user has just cancelled.
+    private var isActive = false
 
     init(onFaceDown: @escaping () -> Void) {
         self.onFaceDown = onFaceDown
     }
 
-    /// `true` iff this device exposes a device-motion sensor we can register
-    /// against. Settings reads this to decide whether the toggle is shown.
-    static var isSupported: Bool {
-        CMMotionManager().isDeviceMotionAvailable
+    deinit {
+        // CMMotionManager retains its update closure until
+        // stopDeviceMotionUpdates is called — relying on `onDisappear` alone
+        // leaves a window where ARC tears the detector down without
+        // releasing the hardware. Call directly on the manager (avoids
+        // touching `stateLock` from deinit which would violate Swift's
+        // exclusivity rules in -O builds).
+        if motionManager.isDeviceMotionActive {
+            motionManager.stopDeviceMotionUpdates()
+        }
     }
+
+    /// `true` iff this device exposes a device-motion sensor we can register
+    /// against. `let` (not `var`) because Apple's CoreMotion docs warn against
+    /// instantiating multiple `CMMotionManager`s — caching the result here
+    /// means hot paths like `OtherSettingsView.body` and the modifier's
+    /// `shouldBeActive` don't churn the motion subsystem.
+    static let isSupported: Bool = CMMotionManager().isDeviceMotionAvailable
 
     /// Idempotent. No-op if already active or if the device lacks the sensor.
     func start() {
         guard !motionManager.isDeviceMotionActive else { return }
         guard motionManager.isDeviceMotionAvailable else { return }
-        // Reset the state machine each time we (re-)register so a sensor
-        // event from a previous session can't leak into the new debounce
-        // window.
+        stateLock.lock()
         state = .initial
+        isActive = true
+        stateLock.unlock()
         motionManager.deviceMotionUpdateInterval = 1.0 / 30.0
         motionManager.startDeviceMotionUpdates(to: queue) { [weak self] motion, _ in
             guard let self, let motion else { return }
@@ -88,14 +118,26 @@ final class FlipDetector {
     /// Idempotent.
     func stop() {
         guard motionManager.isDeviceMotionActive else { return }
-        motionManager.stopDeviceMotionUpdates()
+        // Flip the active flag BEFORE stopping the manager so any callback
+        // already executing past its lock acquisition will see isActive
+        // = false and skip the fire.
+        stateLock.lock()
+        isActive = false
         state = .initial
+        stateLock.unlock()
+        motionManager.stopDeviceMotionUpdates()
     }
 
     private func handle(gravityZ: Double, timestamp: TimeInterval) {
         let faceDown = Self.isFaceDown(gravityZ: gravityZ)
-        state = Self.nextState(current: state, isFaceDown: faceDown, timestamp: timestamp)
-        if state.didFire {
+        let didFire: Bool = {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            guard isActive else { return false }
+            state = Self.nextState(current: state, isFaceDown: faceDown, timestamp: timestamp)
+            return state.didFire
+        }()
+        if didFire {
             DispatchQueue.main.async { [weak self] in self?.onFaceDown() }
         }
     }
@@ -112,13 +154,25 @@ final class FlipDetector {
     /// at least `debounceInterval`. `didFire` is `true` only on the specific
     /// transition Upright → FaceDown; all other transitions (including the
     /// cold-start Unknown → FaceDown) leave `didFire = false`.
+    ///
+    /// A gap > `maxEventGap` between consecutive events is treated as a
+    /// discontinuity (device sleep, sensor restart) and resets the window so
+    /// the next debounce restarts from zero — without this, a sleep gap of
+    /// minutes can make a single post-wake event instantly satisfy
+    /// `elapsed >= debounceInterval` and fire on the very first read.
     static func nextState(
         current: State,
         isFaceDown: Bool,
         timestamp: TimeInterval
     ) -> State {
         var next = current
-        if next.windowStart == nil || isFaceDown != next.pendingFaceDown {
+        next.lastTimestamp = timestamp
+        let discontinuity: Bool = {
+            guard let last = current.lastTimestamp else { return false }
+            let gap = timestamp - last
+            return gap > maxEventGap || gap < 0
+        }()
+        if next.windowStart == nil || isFaceDown != next.pendingFaceDown || discontinuity {
             next.pendingFaceDown = isFaceDown
             next.windowStart = timestamp
             next.didFire = false

@@ -18,7 +18,15 @@ private struct FlipToLibraryModifier: ViewModifier {
             .onAppear { reconcile() }
             .onChange(of: appState.flipToLibraryEnabled) { _, _ in reconcile() }
             .onChange(of: appState.libraryFeatureEnabled) { _, _ in reconcile() }
-            .onChange(of: scenePhase) { _, _ in reconcile() }
+            .onChange(of: scenePhase) { _, new in
+                // Only tear down on .background — .inactive happens for
+                // transient interruptions (Control Center pull, banner) and
+                // tearing down on those would wipe in-progress debounce
+                // state and churn CoreMotion several times per minute.
+                if new == .background || new == .active {
+                    reconcile()
+                }
+            }
             .onDisappear {
                 detector?.stop()
                 detector = nil
@@ -30,26 +38,39 @@ private struct FlipToLibraryModifier: ViewModifier {
             && FlipDetector.isSupported
             && appState.flipToLibraryEnabled
             && appState.libraryFeatureEnabled
-            && scenePhase == .active
+            && scenePhase != .background
     }
 
     private func reconcile() {
         if shouldBeActive {
             if detector == nil {
-                detector = FlipDetector { handleFaceDown() }
+                // Capture appState explicitly rather than relying on the
+                // modifier struct's @Environment wrapper inside an escaping
+                // closure (Apple's guidance: snapshot env values into local
+                // bindings before passing into long-lived closures).
+                let appState = self.appState
+                detector = FlipDetector { handleFaceDown(appState: appState) }
             }
             detector?.start()
         } else {
             detector?.stop()
+            detector = nil
         }
     }
 
-    private func handleFaceDown() {
+    private func handleFaceDown(appState: AppState) {
         // Fire-time guards: settings can flip while a sensor event was in
         // flight, and the library session can come and go independently of
         // the registration gate.
         guard appState.libraryFeatureEnabled,
               appState.flipToLibraryEnabled else { return }
+
+        // Don't fight an already-open root-level sheet. The first-trigger
+        // host attaches to MainTabView while the NTUST login host attaches
+        // to ContentView; presenting our sheet over login would land in
+        // SwiftUI's undefined sheet-stacking territory. Navigation is also
+        // unhelpful while a modal is up.
+        guard !appState.isShowingNTUSTLoginSheet else { return }
 
         // First-trigger UX: the toggle defaults to ON so the user discovers
         // the feature on their first accidental flip. The prompt explains

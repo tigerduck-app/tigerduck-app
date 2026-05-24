@@ -36,14 +36,18 @@ struct OtherSettingsView: View {
             // on iPhone (iPad use case is unclear and the issue scope says
             // "phone only"). Mirrors the Android equivalent in
             // `Settings → 圖書館 → 翻轉開啟圖書館 QR`.
-            if appState.libraryFeatureEnabled
-                && UIDevice.current.userInterfaceIdiom == .phone
-                && FlipDetector.isSupported {
+            //
+            // The row is rendered (not hidden) even when library is off so
+            // the user can see the preference exists and inspect its state
+            // before enabling library — hiding it caused users who turned
+            // library off-then-on to be silently re-armed.
+            if UIDevice.current.userInterfaceIdiom == .phone && FlipDetector.isSupported {
                 Section {
                     Toggle(
                         String(localized: "settings_flip_to_library_title"),
                         isOn: $appState.flipToLibraryEnabled
                     )
+                    .disabled(!appState.libraryFeatureEnabled)
                 } footer: {
                     Text(String(localized: "settings_flip_to_library_summary"))
                 }
