@@ -109,13 +109,17 @@ struct MainTabView: View {
             // defaults pin only Home/Class/Calendar, and the Settings enable
             // path only auto-adds Library when there is room). Selecting a
             // value that no `Tab` matches would leave the `TabView` in a
-            // broken state, so route to More — library lives under that
-            // category and the user is one tap away.
+            // broken state, so route to More and ask MoreView to push the
+            // Library destination onto its NavigationStack — that's the
+            // only path that actually surfaces the QR. Just switching to
+            // More would leave the user on the category list and the
+            // flip would silently fail to open Library.
             if appState.libraryFeatureEnabled {
                 if visibleTabs.contains(.library) {
                     selectedTab = .library
                 } else {
                     selectedTab = .more
+                    appState.pendingMoreDeepLink = .library
                 }
             } else {
                 selectedTab = .more

@@ -76,6 +76,17 @@ struct MoreView: View {
                 moreDestination(for: feature)
             }
         }
+        // Consume deep-links from callers that can't reach this view's
+        // local navigationPath directly (e.g. the flip-to-Library
+        // coordinator routing here when Library is enabled but not pinned
+        // as a top-level tab). `initial: true` covers cold-launch /
+        // tab-switch ordering where the flag is already set by the time
+        // the body re-renders.
+        .onChange(of: appState.pendingMoreDeepLink, initial: true) { _, new in
+            guard let new else { return }
+            navigationPath.append(new)
+            appState.pendingMoreDeepLink = nil
+        }
     }
 
     @ViewBuilder

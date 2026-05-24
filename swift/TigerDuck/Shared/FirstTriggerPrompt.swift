@@ -220,7 +220,23 @@ private struct FirstTriggerPromptHost: ViewModifier {
 
     func body(content: Content) -> some View {
         @Bindable var center = center
-        return content.sheet(item: $center.pending) { pending in
+        return content.sheet(
+            item: $center.pending,
+            onDismiss: {
+                // Defensive cleanup: if the sheet went away by any path
+                // other than a Keep/Turn-off tap (`finish(_:)` marks seen
+                // before clearing `pending`), the seen flag is still
+                // false. Clear the stranded `pending` so the next flip
+                // can re-enter `requestIfFirstTime` and surface the
+                // prompt again — otherwise the user is stuck with
+                // `pending != nil`, default-true `flipToLibraryEnabled`,
+                // and no way to make a choice until process restart.
+                if let stranded = center.pending,
+                   !center.hasSeen(stranded.key) {
+                    center.pending = nil
+                }
+            }
+        ) { pending in
             FirstTriggerPromptSheet(promptKey: pending.key, content: pending.content)
                 // `.medium` clips the animation + 2-button stack on standard
                 // phones. Tall fraction gives the prompt room to breathe
