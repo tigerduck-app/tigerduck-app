@@ -132,9 +132,12 @@ final class AppState {
             await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
         }
 
-        // Auto-enable the push stack when the user has already opted in
-        // (e.g. across app launches). The coordinator no-ops when the
-        // toggle is off, so this is safe to call unconditionally.
+        // Auto-enable the push stack on every launch so the device row
+        // exists in the backend regardless of subscription state — that's
+        // what lets operator-issued custom pushes target the device. The
+        // coordinator is idempotent. Notification *permission* is still
+        // requested through onboarding, not here; users can opt out of
+        // server pushes via `serverPushUserOptOut`.
         pushCoordinator.enable()
         #endif
 
@@ -869,6 +872,13 @@ final class AppState {
     func disablePushServer() async {
         Defaults[.pushServerEnabled] = false
         await pushCoordinator.disable()
+    }
+
+    /// Wire the settings toggle to the registration actor. The actor
+    /// persists the local pref AND PATCHes the backend so the change
+    /// propagates without waiting for the next register call.
+    func updateServerPushOptOut(_ optOut: Bool) async {
+        await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
     #endif // os(iOS) — closes the Live Activity / reminder / push block
 

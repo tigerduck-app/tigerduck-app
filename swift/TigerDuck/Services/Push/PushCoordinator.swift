@@ -30,7 +30,11 @@ struct PushDiagnostic: Sendable {
 final class PushCoordinator {
     private let identity: PushIdentity
     private let apiClient: PushAPIClient
-    private let registration: PushRegistrationService
+    /// Exposed `internal` so AppState can call user-preference helpers
+    /// (e.g. `updateServerPushOptOut`) without re-plumbing them through
+    /// every layer. The actor still owns its own state — callers only see
+    /// its async methods.
+    let registration: PushRegistrationService
     private let relay: PushTokenRelay
     let scheduleSync: ScheduleSyncService
 
