@@ -85,10 +85,14 @@ final class LibraryViewModel {
         // Keyboard Return key bypasses the login button's `.disabled(...)` —
         // reject empty credentials here so a stray Submit doesn't hit the
         // NTUST endpoint with blank fields.
-        let trimmedUsername = libUsername.trimmingCharacters(in: .whitespaces)
+        let trimmedUsername = libUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedUsername.isEmpty, !libPassword.isEmpty, !isLoggingIn else { return }
+        // Flip the flag synchronously, before the Task is scheduled, so a
+        // second submit (e.g. Return + button tap landing on the same
+        // runloop turn) sees `isLoggingIn = true` and bails — otherwise
+        // both calls clear the guard before the first Task body runs.
+        isLoggingIn = true
         Task { @MainActor in
-            isLoggingIn = true
             errorMessage = nil
             do {
                 try await LibraryService.login(
