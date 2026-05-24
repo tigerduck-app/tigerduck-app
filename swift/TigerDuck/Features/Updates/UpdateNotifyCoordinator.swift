@@ -455,9 +455,13 @@ final class UpdateNotifyCoordinator {
         }
         let task = Task<LookupResult, Never> { [bundleId, session] in
             do {
+                // Pin the storefront so users abroad / on a VPN don't
+                // get an IP-inferred storefront that returns no record
+                // and silently masks an available update.
                 let outcome = try await AppStoreUpdateService.fetchLatest(
                     bundleId: bundleId,
-                    session: session
+                    session: session,
+                    country: AppConstants.appStoreLookupStorefront
                 )
                 switch outcome {
                 case .found(let lookup): return .found(lookup)

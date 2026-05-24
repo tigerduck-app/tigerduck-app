@@ -176,6 +176,14 @@ nonisolated enum AppConstants {
     /// 7-day `UpdatePromptGate.COOLDOWN_MS`.
     static let updatePromptCooldown: TimeInterval = 7 * 24 * 60 * 60
 
+    /// iTunes Lookup storefront for App Store version checks. Pinned to
+    /// the release storefront (Taiwan) so a user traveling abroad or
+    /// behind a VPN through an unsupported region doesn't get
+    /// `resultCount == 0` (which the coordinator then treats as "no
+    /// public record" and masks a real available update). Update if the
+    /// app launches in additional storefronts.
+    static let appStoreLookupStorefront = "tw"
+
     enum Periods {
         static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9"]
         static let extended = ["5", "10", "A", "B", "C", "D"]

@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG && os(iOS)
 import SwiftUI
 
 /// Developer-only screen for re-triggering one-shot UI surfaces that are

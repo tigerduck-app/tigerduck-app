@@ -13,10 +13,12 @@ import Foundation
 /// bug-fix releases can be skipped — the gate stays quiet when no
 /// entry is registered.
 ///
-/// **Locale resolution**: a Chinese language tag (`zh-*`) maps to the
-/// `zh-TW` block; everything else falls back to `en`. Intentionally
-/// matches Android's selector so the same content renders on both
-/// platforms for a given account.
+/// **Locale resolution**: Traditional Chinese tags (`zh-Hant*`, bare
+/// `zh`, `zh-TW`, `zh-HK`, …) map to the `zh-TW` block; Simplified
+/// tags (`zh-Hans*`, `zh-CN`, `zh-SG`) map to a `zh-Hans` block when
+/// authored, otherwise fall through to `en` — a Simplified reader
+/// gets English rather than Traditional, which would otherwise render
+/// awkwardly. Everything non-Chinese falls back to `en`.
 struct WhatsNewRepository {
     /// Resolved entry for the current locale — what the UI actually
     /// renders. Decoupled from the on-disk ``WhatsNewEntry`` so the
@@ -107,11 +109,23 @@ struct WhatsNewRepository {
     ) -> ResolvedWhatsNew? {
         guard let versionEntry else { return nil }
         let localeKey: String = {
-            // Match by language subtag prefix so "zh-Hant", "zh-Hans",
-            // "zh_TW", "zh" all hit the same Chinese block. Everything
-            // else (including non-existent locales) falls back to en.
-            if languageTag.lowercased().hasPrefix("zh") { return "zh-TW" }
-            return "en"
+            // Distinguish Simplified ("zh-Hans*", "zh-CN", "zh-SG") from
+            // Traditional ("zh-Hant*", "zh-TW", "zh-HK", bare "zh").
+            // Simplified resolves to "zh-Hans", which is intentionally
+            // allowed to fall through to "en" below when whatsnew.json
+            // has no Simplified block — preferable to serving Traditional
+            // text to a Simplified reader.
+            guard languageTag.lowercased().hasPrefix("zh") else { return "en" }
+            let locale = Locale(identifier: languageTag)
+            switch locale.language.script?.identifier {
+            case "Hans": return "zh-Hans"
+            case "Hant": return "zh-TW"
+            default:
+                switch locale.region?.identifier {
+                case "CN", "SG": return "zh-Hans"
+                default: return "zh-TW"
+                }
+            }
         }()
         let entry = versionEntry[localeKey] ?? versionEntry["en"]
         guard let entry,
