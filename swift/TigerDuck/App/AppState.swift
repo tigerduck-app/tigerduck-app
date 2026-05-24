@@ -233,6 +233,13 @@ final class AppState {
     /// "enable first" alert. Not persisted — lives only within the process.
     var pendingLibraryEnablePrompt = false
 
+    /// Transient deep-link into the More tab's NavigationStack. Set when a
+    /// feature needs to be opened but isn't pinned as a top-level tab (e.g.
+    /// flip-to-Library when the user hasn't added the Library tab to their
+    /// tab bar). `MoreView` observes this, appends the feature to its local
+    /// navigationPath, and clears the flag. Not persisted.
+    var pendingMoreDeepLink: AppFeature?
+
     func openFromWidget(_ destination: WidgetDestination) {
         pendingWidgetDestination = destination
     }
@@ -381,6 +388,13 @@ final class AppState {
     /// Whether library-related features are enabled (requires explicit user consent)
     var libraryFeatureEnabled: Bool = Defaults[.libraryFeatureEnabled] {
         didSet { Defaults[.libraryFeatureEnabled] = libraryFeatureEnabled }
+    }
+
+    /// Whether the "flip phone face-down to open Library QR" gesture is armed.
+    /// iPhone-only at the read site; macOS still persists the bool via
+    /// `Defaults` since the property lives on the cross-platform `AppState`.
+    var flipToLibraryEnabled: Bool = Defaults[.flipToLibraryEnabled] {
+        didSet { Defaults[.flipToLibraryEnabled] = flipToLibraryEnabled }
     }
 
     /// User-selected visual preset controlling presentation-layer decisions

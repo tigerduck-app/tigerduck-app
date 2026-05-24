@@ -100,6 +100,7 @@ nonisolated enum AppConstants {
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"
         static let libraryFeatureEnabled = "libraryFeatureEnabled"
+        static let flipToLibraryEnabled = "flipToLibraryEnabled"
         static let homeSectionLayout = "homeSectionLayout"
         static let visualPreset = "visualPreset"
 
