@@ -125,9 +125,20 @@ private struct FlipToLibraryModifier: ViewModifier {
 }
 
 extension View {
-    /// Install the flip-to-library sensor lifecycle on this view. iPhone only.
+    /// Install the flip-to-library sensor lifecycle on this view. iPhone
+    /// only — on iPad the modifier is intentionally never attached, so no
+    /// scene-phase / preference observers fire and no `FlipDetector` is
+    /// ever instantiated. This matches the hidden Settings row in
+    /// `OtherSettingsView`: on iPad the feature does not exist at all.
+    /// The inner `shouldBeActive` guard keeps the iPhone-side belt for
+    /// `FlipDetector.isSupported` and runtime state.
+    @ViewBuilder
     func flipToLibraryAttached() -> some View {
-        modifier(FlipToLibraryModifier())
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            modifier(FlipToLibraryModifier())
+        } else {
+            self
+        }
     }
 }
 #endif
