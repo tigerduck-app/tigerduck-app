@@ -79,16 +79,21 @@ final class FirstTriggerPromptCenter {
         pending = Pending(key: key, content: build())
     }
 
-    /// Called by the sheet's buttons. Clears `pending` (dismissing the
-    /// sheet) BEFORE invoking the user's closure so that any synchronous
-    /// SwiftUI work the closure triggers — e.g. mutating `AppState` which
-    /// fans out to `onChange` observers — runs against an already-cleared
-    /// presentation state. The seen flag is written by the sheet's own
-    /// `.onAppear` (see `markSeen(_:)`), not here, so a system-driven
-    /// dismissal between presentation and the user's tap doesn't leave the
-    /// prompt in a "seen but not chosen" limbo.
+    /// Called by the sheet's buttons. Marks the prompt seen and clears
+    /// `pending` (dismissing the sheet) BEFORE invoking the user's closure
+    /// so that any synchronous SwiftUI work the closure triggers — e.g.
+    /// mutating `AppState` which fans out to `onChange` observers — runs
+    /// against an already-cleared presentation state.
+    ///
+    /// The seen flag is written here, not on `.onAppear`, so that a sheet
+    /// dismissed by anything other than a Keep/Turn-off tap (app backgrounded,
+    /// root view recreated, another presentation steals focus) does NOT count
+    /// as the user having made a choice. Re-showing on a later flip is the
+    /// correct behavior — silently treating "seen" as "agreed to keep it on"
+    /// would arm the gesture without consent.
     func finish(accept: Bool) {
         guard let p = pending else { return }
+        markSeen(p.key)
         pending = nil
         if accept {
             p.content.onAccept()
@@ -97,10 +102,6 @@ final class FirstTriggerPromptCenter {
         }
     }
 
-    /// Mark a prompt seen the moment the user actually sees the sheet (via
-    /// `.onAppear` on the sheet content). If the sheet never presents
-    /// because something dismissed `pending` first, this never runs and
-    /// the prompt remains eligible to fire again next time.
     func markSeen(_ key: FirstTriggerPromptKey) {
         UserDefaults.standard.set(true, forKey: Self.storageKey(key))
     }
@@ -159,16 +160,12 @@ private struct FirstTriggerPromptSheet: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 40)
         .onAppear {
-            // Record "seen" the moment the sheet actually appears so a
-            // system-driven dismissal (parent identity change, focus
-            // steal) can't strand the user in a re-show loop, and so a
-            // sheet that never presents (queued behind another modal)
-            // remains eligible for retry.
-            FirstTriggerPromptCenter.shared.markSeen(promptKey)
-
             // Heavy impact on sheet appearance so the prompt is felt as well
             // as seen — every first-trigger prompt is an unexpected interrupt
             // and the haptic anchors it to the gesture that caused it.
+            //
+            // The "seen" flag is recorded in `finish(accept:)` on a Keep or
+            // Turn-off tap, not here — see that method's comment.
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
         }
     }

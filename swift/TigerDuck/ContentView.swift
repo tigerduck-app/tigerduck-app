@@ -104,8 +104,19 @@ struct MainTabView: View {
             // Library has a feature-disabled flag; if disabled, send the user
             // to the More tab and raise an "enable first" alert there, mirroring
             // the Android library-shortcut behavior.
+            //
+            // Library can also be enabled-but-not-pinned-as-a-tab (fresh
+            // defaults pin only Home/Class/Calendar, and the Settings enable
+            // path only auto-adds Library when there is room). Selecting a
+            // value that no `Tab` matches would leave the `TabView` in a
+            // broken state, so route to More — library lives under that
+            // category and the user is one tap away.
             if appState.libraryFeatureEnabled {
-                selectedTab = .library
+                if visibleTabs.contains(.library) {
+                    selectedTab = .library
+                } else {
+                    selectedTab = .more
+                }
             } else {
                 selectedTab = .more
                 appState.pendingLibraryEnablePrompt = true

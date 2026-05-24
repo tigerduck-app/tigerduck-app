@@ -65,12 +65,20 @@ private struct FlipToLibraryModifier: ViewModifier {
         guard appState.libraryFeatureEnabled,
               appState.flipToLibraryEnabled else { return }
 
-        // Don't fight an already-open root-level sheet. The first-trigger
-        // host attaches to MainTabView while the NTUST login host attaches
-        // to ContentView; presenting our sheet over login would land in
-        // SwiftUI's undefined sheet-stacking territory. Navigation is also
-        // unhelpful while a modal is up.
-        guard !appState.isShowingNTUSTLoginSheet else { return }
+        // Don't fight any already-open modal. The first-trigger prompt is
+        // a root-level sheet, and presenting it over another sheet (NTUST
+        // login, Settings flows, tab editor, in-app browser, feedback,
+        // course pickers, etc.) lands in SwiftUI's undefined
+        // sheet-stacking territory — SwiftUI may reject or defer the
+        // presentation, leaving the prompt invisible while `pending` is
+        // already set. Navigation is also unhelpful while a modal covers
+        // the TabView: a steady-state flip would switch tabs behind the
+        // modal so the user has to dismiss the sheet to find the QR.
+        //
+        // Sheets are not centrally tracked (most use local `@State` in
+        // their owning view), so query UIKit's presentation chain — every
+        // SwiftUI sheet is a UIKit modal underneath.
+        guard !Self.isAnyModalPresented() else { return }
 
         // First-trigger UX: the toggle defaults to ON so the user discovers
         // the feature on their first accidental flip. The prompt explains
@@ -99,6 +107,20 @@ private struct FlipToLibraryModifier: ViewModifier {
         // already handles the unauth case gracefully).
         appState.openFromWidget(.library)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    /// True when the foreground-active window has anything modally
+    /// presented above its root. Walks the presentation chain because the
+    /// topmost modal is the one that would conflict — sheets-over-sheets
+    /// are rare in this app but the walk is cheap.
+    private static func isAnyModalPresented() -> Bool {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        guard let window = scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first,
+              let root = window.rootViewController
+        else { return false }
+        return root.presentedViewController != nil
     }
 }
 
