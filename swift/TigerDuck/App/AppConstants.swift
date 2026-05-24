@@ -136,7 +136,45 @@ nonisolated enum AppConstants {
         static let useEnglishCourseAbbreviation = "useEnglishCourseAbbreviation"
         static let useEnglishClassroomAbbreviation = "useEnglishClassroomAbbreviation"
         static let classroomMandarinDisplay = "classroomMandarinDisplay"
+
+        // MARK: App-update prompt + What's New (iOS only)
+        /// App Store version recorded by the "Skip This Version" action.
+        /// While the iTunes Lookup `version` matches this string the
+        /// prompt is suppressed; a newer version on the store re-arms it.
+        static let skippedUpdateVersion = "skippedUpdateVersion"
+        /// Wall-clock timestamp of the last successful iTunes Lookup. The
+        /// scene-active trigger throttles to once per
+        /// ``AppConstants/updateCheckThrottle`` so rapid foreground
+        /// returns don't hammer Apple's endpoint.
+        static let lastUpdateCheckAt = "lastUpdateCheckAt"
+        /// App Store version most recently surfaced via the prompt sheet.
+        /// Paired with ``lastPromptedUpdateAt`` to implement the
+        /// "don't nag" cooldown ported from Android's
+        /// `UpdatePromptGate.COOLDOWN_MS` — re-prompting for the same
+        /// version inside ``updatePromptCooldown`` is suppressed.
+        static let lastPromptedUpdateVersion = "lastPromptedUpdateVersion"
+        static let lastPromptedUpdateAt = "lastPromptedUpdateAt"
+        /// App version associated with the most recent What's New sheet
+        /// acknowledgement. When the running bundle's
+        /// `CFBundleShortVersionString` is greater AND the running
+        /// version has a registered entry in `whatsnew.json`, the
+        /// sheet auto-presents on launch.
+        static let lastShownWhatsNewVersion = "lastShownWhatsNewVersion"
     }
+
+    /// Minimum interval between automatic update checks. Manual taps on
+    /// "Check for Updates" in Settings bypass this. Kept at 24h so the
+    /// scene-active trigger has no perceptible cost during normal app
+    /// use while still catching a same-day post-launch hotfix on the
+    /// next foreground.
+    static let updateCheckThrottle: TimeInterval = 24 * 60 * 60
+
+    /// "Don't nag" cooldown on a single available version. After the
+    /// prompt is dismissed with "Later" the same version is suppressed
+    /// for this long; a newer version landing on the App Store re-arms
+    /// the prompt immediately regardless. Mirrors the Android port's
+    /// 7-day `UpdatePromptGate.COOLDOWN_MS`.
+    static let updatePromptCooldown: TimeInterval = 7 * 24 * 60 * 60
 
     enum Periods {
         static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9"]

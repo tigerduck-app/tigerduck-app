@@ -158,4 +158,26 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.classroomMandarinDisplay,
         default: "original"
     )
+
+    // MARK: App-update prompt + What's New (iOS only — declared at the
+    // cross-platform `Defaults.Keys` level because the keys themselves
+    // are plain `String?` / `Date?` and the macOS build of `AppState`
+    // does not reference any of these; the iOS-only update coordinator
+    // is the sole reader/writer.
+
+    static let skippedUpdateVersion = Key<String?>(
+        AppConstants.UserDefaultsKeys.skippedUpdateVersion
+    )
+    static let lastUpdateCheckAt = Key<Date?>(
+        AppConstants.UserDefaultsKeys.lastUpdateCheckAt
+    )
+    static let lastPromptedUpdateVersion = Key<String?>(
+        AppConstants.UserDefaultsKeys.lastPromptedUpdateVersion
+    )
+    static let lastPromptedUpdateAt = Key<Date?>(
+        AppConstants.UserDefaultsKeys.lastPromptedUpdateAt
+    )
+    static let lastShownWhatsNewVersion = Key<String?>(
+        AppConstants.UserDefaultsKeys.lastShownWhatsNewVersion
+    )
 }

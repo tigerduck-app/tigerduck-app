@@ -61,6 +61,23 @@ struct MainTabView: View {
             // to come from here. Subsequent foreground returns go
             // through the scene-phase observer below.
             evaluateTimezoneAlert()
+            #if os(iOS)
+            // Only check the What's New gate AFTER onboarding completes
+            // (MainTabView is itself gated on that in ContentView), so
+            // a brand-new user finishing onboarding doesn't get
+            // What's New layered on top of their first home screen —
+            // the seed in AppState.init's fresh-install branch already
+            // stamped lastShownWhatsNewVersion in that case.
+            appState.updateNotifyCoordinator.evaluateWhatsNewOnLaunch()
+            // Background update check is gated on `hasCompletedOnboarding`
+            // inside the coordinator, so a brand-new user landing on
+            // MainTabView for the first time gets the first iTunes
+            // Lookup HERE (the `TigerDuckApp.onAppear` kick-off no-oped
+            // while OnboardingView was on screen, which would otherwise
+            // strand `pendingUpdate` behind an un-mounted sheet host).
+            // Throttle absorbs the dupe on subsequent appearances.
+            appState.updateNotifyCoordinator.checkInBackground()
+            #endif
         }
         .onChange(of: appState.pendingWidgetDestination) { _, _ in
             drainPendingWidgetDestination()
@@ -88,6 +105,7 @@ struct MainTabView: View {
         #if os(iOS)
         .flipToLibraryAttached()
         .firstTriggerPromptHost()
+        .updateNotifySheetHost()
         #endif
     }
 

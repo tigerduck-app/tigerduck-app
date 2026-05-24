@@ -31,6 +31,15 @@ final class AppState {
     let authService = AuthService()
     let sessionManager = NTUSTSessionManager.shared
 
+    #if os(iOS)
+    /// Coordinator owning the iTunes Lookup + What's New plumbing. Lives
+    /// on `AppState` (not as a top-level singleton) so SwiftUI views observe
+    /// changes through the same `@Environment(AppState.self)` they already
+    /// use, and so its sheet-presentation flags reset alongside the rest of
+    /// app state on logout / fresh install paths.
+    let updateNotifyCoordinator = UpdateNotifyCoordinator()
+    #endif
+
     // MARK: - Fresh Install Keychain Cleanup
 
     /// Keychain persists across app uninstall/reinstall on iOS.
@@ -38,6 +47,20 @@ final class AppState {
     /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
         if !Defaults[.appHasBeenInstalled] {
+            #if os(iOS)
+            // Stamp the running version as "already shown" so the
+            // What's New sheet does NOT fire on the very first launch
+            // after install — a freshly downloaded app has no upgrade
+            // history to summarise. Run this BEFORE the Keychain wipe
+            // and independently of its outcome: the seed has nothing
+            // to do with credential cleanup, and gating it on a
+            // successful wipe would let a partial wipe failure
+            // misroute the user into the "no lastShownWhatsNewVersion"
+            // fallback that pops "What's New in vN" on a freshly
+            // downloaded version.
+            updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
+            #endif
+
             // Fresh install — purge any leftover Keychain items.
             let keysToWipe: [String] = [
                 AppConstants.KeychainKeys.studentId,

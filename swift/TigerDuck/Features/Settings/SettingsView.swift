@@ -22,6 +22,22 @@ struct SettingsView: View {
     @State private var hapticPlayer: CHHapticPatternPlayer?
     @State private var notificationsAuthorized: Bool = true
     @State private var showOfficialWebsite = false
+    #if os(iOS)
+    /// Drives the "you're up to date" / "couldn't reach the App Store"
+    /// feedback alert that fires after the manual Check for Updates row.
+    /// Only true when the coordinator emitted a result that isn't already
+    /// surfaced through the auto-presented update sheet — an `.offered`
+    /// result is shown via that sheet path, not this alert.
+    @State private var showManualUpdateCheckResultAlert = false
+    /// Item for the Settings → What's New row, allowing repeat
+    /// presentation of the latest release notes independent of the
+    /// auto-launch gate's seen-state. Driven by `.sheet(item:)` rather
+    /// than `.sheet(isPresented:)` so the entry is captured at present
+    /// time — a stale `latestWhatsNew == nil` between the row tap and
+    /// the sheet body evaluation cannot leak an empty sheet onto
+    /// screen.
+    @State private var manualWhatsNewItem: WhatsNewRepository.ResolvedWhatsNew?
+    #endif
     @Environment(\.scenePhase) private var scenePhase
 
     #if DEBUG
@@ -186,6 +202,10 @@ struct SettingsView: View {
             // MARK: - About
             Section(String(localized: "settings_section_about")) {
                 LabeledContent(String(localized: "settings_version"), value: appVersion)
+                #if os(iOS)
+                checkForUpdatesRow
+                whatsNewRow
+                #endif
                 Button {
                     if appState.browserPreference == .inApp {
                         showOfficialWebsite = true
@@ -216,6 +236,9 @@ struct SettingsView: View {
                 }
                 NavigationLink("API endpoint") {
                     DebugEndpointView()
+                }
+                NavigationLink("Triggers") {
+                    TriggersDebugView()
                 }
                 // Bypass `.screenCaptureProtected(...)` system-wide for
                 // demo recordings / layout debugging. Backed by
@@ -318,7 +341,62 @@ struct SettingsView: View {
             libraryWarningTask?.cancel()
             libraryWarningTask = nil
         }
+        #if os(iOS)
+        // Manual-check-result alert — covers the "you're up to date" and
+        // "couldn't reach the App Store" outcomes. The .offered case is
+        // handled by `.updateNotifySheetHost()` instead, so the row's
+        // Task explicitly suppresses this alert in that branch.
+        .alert(
+            manualCheckResultAlertTitle,
+            isPresented: $showManualUpdateCheckResultAlert,
+            actions: {
+                Button(String(localized: "action_got_it"), role: .cancel) {
+                    appState.updateNotifyCoordinator.lastManualCheckResult = nil
+                }
+            },
+            message: {
+                Text(manualCheckResultAlertMessage)
+            }
+        )
+        .sheet(item: $manualWhatsNewItem) { entry in
+            WhatsNewSheetView(entry: entry) {
+                // Manual open does NOT advance
+                // `lastShownWhatsNewVersion` — the Settings entry is a
+                // re-visit surface, and stamping the seen marker here
+                // would silently suppress the next auto-prompt after
+                // viewing release notes again.
+                manualWhatsNewItem = nil
+            }
+            .presentationDetents([.fraction(0.85), .large])
+        }
+        #endif
     }
+
+    #if os(iOS)
+    /// Title for the manual update-check result alert. Mirrors iOS App
+    /// Store style: "You're Up to Date" vs "Update Check Failed".
+    private var manualCheckResultAlertTitle: String {
+        switch appState.updateNotifyCoordinator.lastManualCheckResult {
+        case .upToDate: return String(localized: "update_up_to_date_title")
+        case .failed: return String(localized: "update_check_failed_title")
+        case .offered, nil: return ""
+        }
+    }
+
+    private var manualCheckResultAlertMessage: String {
+        switch appState.updateNotifyCoordinator.lastManualCheckResult {
+        case .upToDate:
+            return String(format: NSLocalizedString(
+                "update_up_to_date_message",
+                comment: ""
+            ), AppConstants.appName)
+        case .failed:
+            return String(localized: "update_check_failed_message")
+        case .offered, nil:
+            return ""
+        }
+    }
+    #endif
 
     private var libraryToggleBinding: Binding<Bool> {
         Binding(
@@ -365,6 +443,68 @@ struct SettingsView: View {
             // Silently fail on devices without haptic support
         }
     }
+
+    #if os(iOS)
+    /// "Check for Updates" row. Tapping forces an iTunes Lookup ignoring
+    /// the 24h throttle. When the lookup succeeds and an update is
+    /// available the existing `.updateNotifySheetHost()` modifier surfaces
+    /// the regular prompt sheet — this row only handles the "already up
+    /// to date" and "couldn't reach the App Store" feedback paths.
+    @ViewBuilder
+    private var checkForUpdatesRow: some View {
+        Button {
+            Task {
+                await appState.updateNotifyCoordinator.checkManually()
+                // Only raise the local alert when the coordinator decided
+                // not to drive the auto-sheet (.upToDate / .failed). An
+                // `.offered` result hands off to the sheet host so a
+                // duplicate alert here would stack on top of the sheet.
+                let result = appState.updateNotifyCoordinator.lastManualCheckResult
+                if case .offered = result { return }
+                if result != nil { showManualUpdateCheckResultAlert = true }
+            }
+        } label: {
+            HStack {
+                Text(String(localized: "settings_check_for_updates"))
+                    .foregroundStyle(.primary)
+                Spacer()
+                if appState.updateNotifyCoordinator.isCheckingForUpdate {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+        }
+        .disabled(appState.updateNotifyCoordinator.isCheckingForUpdate)
+    }
+
+    /// "What's New" entry — always opens the latest entry registered
+    /// in `whatsnew.json`, independent of the
+    /// `lastShownWhatsNewVersion` gate. Hidden when the asset has no
+    /// entries for the resolved locale (e.g. during early bring-up of
+    /// a release where the JSON hasn't been filled in yet).
+    @ViewBuilder
+    private var whatsNewRow: some View {
+        if appState.updateNotifyCoordinator.hasWhatsNewContent {
+            Button {
+                // Capture the entry at tap time and pass it directly to
+                // `.sheet(item:)` — avoids the empty-sheet edge case
+                // where the row was visible on the latest render but
+                // `latestWhatsNew` evaluates to nil inside the sheet
+                // body (e.g. language change between render and tap).
+                manualWhatsNewItem = appState.updateNotifyCoordinator.latestWhatsNew
+            } label: {
+                HStack {
+                    Text(String(localized: "settings_whats_new"))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+    #endif
 
     private var ntustAccountRow: some View {
         accountRow(

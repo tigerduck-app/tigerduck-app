@@ -62,11 +62,11 @@ struct OtherSettingsView: View {
             // The row is rendered (not hidden) even when library is off so
             // the user can see the preference exists and inspect its state
             // before enabling library — hiding it caused users who turned
-            // library off-then-on to be silently re-armed. The toggle is
-            // also kept enabled in that state so the user can opt out
-            // before flipping the library feature back on; the gesture is
-            // gated at fire time by `libraryFeatureEnabled` in the
-            // coordinator either way.
+            // library off-then-on to be silently re-armed with the default-
+            // true persisted value. The toggle is also kept enabled in that
+            // state so the user can opt out before flipping the library
+            // feature back on; the gesture is gated at fire time by
+            // `libraryFeatureEnabled` in the coordinator either way.
             if UIDevice.current.userInterfaceIdiom == .phone && FlipDetector.isSupported {
                 Section {
                     Toggle(

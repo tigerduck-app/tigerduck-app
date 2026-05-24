@@ -106,6 +106,14 @@ final class FirstTriggerPromptCenter {
         UserDefaults.standard.set(true, forKey: Self.storageKey(key))
     }
 
+    /// Re-arm a previously-seen prompt so the next ``requestIfFirstTime``
+    /// call for the same key surfaces it again. Used by the debug
+    /// "Triggers" page to re-test the first-flip experience; also a clean
+    /// hook for any future user-facing "reset onboarding" surface.
+    func reset(_ key: FirstTriggerPromptKey) {
+        UserDefaults.standard.removeObject(forKey: Self.storageKey(key))
+    }
+
     private static func storageKey(_ key: FirstTriggerPromptKey) -> String {
         "firstTriggerPromptSeen.\(key.rawValue)"
     }
