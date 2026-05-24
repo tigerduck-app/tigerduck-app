@@ -4,15 +4,23 @@ import SwiftUI
 
 /// Multiplier applied to the course-name font size in the class table
 /// (`TimetableGridView`) and the course-name labels inside the iOS /
-/// iPadOS / macOS home-screen widgets (Next Class, Today, Week). 1.0 =
-/// the baseline size every cell would render at without the user
-/// override.
+/// iPadOS home-screen widgets (Next Class, Today, Week). 1.0 = the
+/// baseline size every cell would render at without the user override.
 ///
-/// Scope: the watchOS widgets use a separate App Group
-/// (`group.org.ntust.app.TigerDuck.watch`) and are NOT wired up to this
-/// scale — Watch font sizing is governed by Apple's complication ramps
-/// and a sync channel would need to be added before the user-facing
-/// toggle could honor Watch surfaces.
+/// Scope — Mac is intentionally excluded: `MacClassTableView` keeps its
+/// fixed `.callout.weight(.semibold)` baseline and `MacSettingsScene`
+/// exposes no slider, so this scale is a no-op for the Mac app and any
+/// Mac-native widgets. The Mac surfaces are sized for a desktop window
+/// and a per-app text-size override is redundant there — users who
+/// want larger text use the system-wide "Larger Text" accessibility
+/// setting instead. See `.greptile/rules.md` ("Course-name font scale
+/// is iOS/iPadOS only").
+///
+/// Scope — Watch is also excluded: the watchOS widgets use a separate
+/// App Group (`group.org.ntust.app.TigerDuck.watch`) and are NOT wired
+/// up to this scale. Watch font sizing is governed by Apple's
+/// complication ramps and a sync channel would need to be added before
+/// the user-facing toggle could honor Watch surfaces.
 ///
 /// Persisted via ``CourseCardFontScaleStore`` in the App Group
 /// `UserDefaults` suite so the widget extension can read the same value

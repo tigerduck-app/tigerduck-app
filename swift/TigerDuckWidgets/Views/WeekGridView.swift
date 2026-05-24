@@ -26,6 +26,17 @@ struct WeekGridView: View {
     /// consume this; period/weekday rails stay un-scaled.
     private let userCourseNameScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
 
+    /// Dynamic-Type-anchored baselines for the course-name labels in
+    /// `courseBlock` (solo) and `conflictHalf` (衝堂). Anchoring to
+    /// `.caption2` lets the user's system Display & Text Size preference
+    /// grow/shrink these labels alongside the surrounding rails, the same
+    /// way the Next Class / Today widgets stack Dynamic Type with the
+    /// per-app `userCourseNameScale`. Without these, the Week widget
+    /// would replace Dynamic Type with the per-app scale instead of
+    /// stacking on top of it.
+    @ScaledMetric(relativeTo: .caption2) private var soloCourseNameBase: CGFloat = 9
+    @ScaledMetric(relativeTo: .caption2) private var conflictCourseNameBase: CGFloat = 8
+
     var body: some View {
         Group {
             if !snapshot.isLoggedIn {
@@ -194,7 +205,7 @@ struct WeekGridView: View {
                     .overlay {
                         VStack(spacing: 1) {
                             Text(course.displayName)
-                                .font(.system(size: 9 * fontScale * userCourseNameScale, weight: .medium))
+                                .font(.system(size: soloCourseNameBase * fontScale * userCourseNameScale, weight: .medium))
                                 .foregroundStyle(palette.onSurface)
                                 .lineLimit(spanCount > 1 ? 3 : 2)
                                 .multilineTextAlignment(.center)
@@ -256,7 +267,7 @@ struct WeekGridView: View {
             }
             .overlay {
                 Text(course.displayName)
-                    .font(.system(size: 8 * fontScale * userCourseNameScale, weight: .medium))
+                    .font(.system(size: conflictCourseNameBase * fontScale * userCourseNameScale, weight: .medium))
                     .foregroundStyle(palette.onSurface)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)

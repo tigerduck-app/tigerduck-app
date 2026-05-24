@@ -54,6 +54,29 @@ device locale/timezone and would normally suggest pinning to
 timezone-preference plumbing; pre-pinning now would just have to be
 ripped out and would conflict with that work.
 
+## Course-name font scale is iOS/iPadOS only
+
+**Rule:** Do not flag `MacClassTableView` (`swift/TigerDuck/Platform/Mac/MacClassTableView.swift`)
+or `MacSettingsScene` (`swift/TigerDuck/Platform/Mac/MacSettingsScene.swift`)
+for "ignoring `courseCardFontScale`" or "missing a font-size control".
+The Mac app intentionally omits the per-app course-name font scale —
+both the Mac class table (which keeps `.callout.weight(.semibold)`) and
+any Mac-native widgets render at the fixed baseline.
+
+**Why:** The scale is an iOS/iPadOS accommodation for the compressed
+class-table cells on a phone screen. Mac surfaces are sized for a
+desktop window and a per-app text-size override is redundant — users
+who want larger text use the system-wide "Larger Text" accessibility
+setting instead. Adding the slider on Mac would also force a second
+source of truth for what is currently a one-platform preference.
+
+**How to apply:** If you see `MacClassTableView` rendering course names
+without reading `AppState.courseCardFontScale`, or `MacSettingsScene`
+lacking a slider for it, skip the comment. The same applies to any
+future Mac-native widget extension. The doc comment on
+`CourseCardFontScale` (in `swift/TigerDuck/Shared/CourseCardFontScale.swift`)
+spells out the exclusion.
+
 ## Greptile review
 
 **Rule:** For every review, please update confidence score as well as giving the suggestions (if any).
