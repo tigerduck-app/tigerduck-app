@@ -78,6 +78,13 @@ final class BulletinTaxonomyStore {
     }
 
     func tagLabel(for rawId: String) -> String {
+        // Operator-issued "server" notifications need a per-locale label
+        // (unlike every other tag, which the server ships zh-only).
+        // Intercept that one id and return the localized string instead
+        // of whatever the server sent.
+        if rawId == "server_notification" {
+            return String(localized: "tag_server_notification")
+        }
         guard case .loaded(let tax) = state else { return rawId }
         return tax.tags.first(where: { $0.rawId == rawId })?.label ?? rawId
     }
