@@ -138,6 +138,10 @@ struct MacLoginView: View {
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { focused = .studentId }
+        // Whole-view capture protection. NSWindow.sharingType = .none
+        // is reference-counted so the per-row reveal wrap nested inside
+        // composes safely (release-order independent).
+        .screenCaptureProtected()
     }
 
     private var canSubmit: Bool {

@@ -48,7 +48,7 @@ struct PasswordField<Field: Hashable>: View {
             .screenCaptureProtected(isVisible)
 
             Button {
-                isVisible.toggle()
+                handleEyeTap()
             } label: {
                 // Open eye = password is currently visible; eye.slash =
                 // currently hidden. (Earlier we used the inverse "tap-to"
@@ -63,6 +63,59 @@ struct PasswordField<Field: Hashable>: View {
             .accessibilityLabel(isVisible
                 ? String(localized: "password_hide")
                 : String(localized: "password_show"))
+        }
+        // Invariant: whenever the field is focused, it is in secure mode.
+        // iOS only applies the passcode-keyboard treatment (no predictive
+        // bar, no per-key preview bubbles) while `isSecureTextEntry = true`
+        // — plain-text mode leaks each keystroke through the key-preview
+        // popovers that are visible in screen recordings / mirroring.
+        // Holding the invariant keeps the keyboard in passcode mode the
+        // entire time it is on screen.
+        .onChange(of: focusBinding.wrappedValue) { _, newFocus in
+            // Field gains focus while we're revealed -> snap back to
+            // masked so the keyboard adapts to passcode mode immediately.
+            // (Direct path: user taps the field instead of using the eye
+            // button to mask first.)
+            if newFocus == focusValue, isVisible {
+                isVisible = false
+            }
+        }
+    }
+
+    /// Handles the eye-toggle tap.
+    ///
+    /// Masking is instant. Revealing has to be sequenced carefully because
+    /// iOS extends its secure-text protection to the keyboard itself while
+    /// `isSecureTextEntry = true` — and that protection drops the moment
+    /// we flip the flag to `false`. If we flip in the same runloop as the
+    /// dismiss, the keyboard animates off-screen with several frames
+    /// rendered in unprotected (normal) mode, which is exactly what shows
+    /// up in a screen recording. So:
+    ///
+    /// 1. Dismiss the keyboard synchronously, while the field is still
+    ///    `isSecureTextEntry = true` (still under system protection).
+    /// 2. Clear the SwiftUI focus state so any sibling logic stays in sync.
+    /// 3. Defer the actual `isVisible = true` flip until the dismissal
+    ///    animation has fully completed (~250 ms; 350 ms for safety).
+    ///    During that window the field is still secure, so the keyboard
+    ///    stays protected for every frame it remains on screen.
+    ///
+    /// When no keyboard was up (e.g. user tapped the eye before ever
+    /// focusing the field), the delay is skipped — reveal is immediate.
+    private func handleEyeTap() {
+        if isVisible {
+            isVisible = false
+            return
+        }
+        let wasFocused = focusBinding.wrappedValue == focusValue
+        UIApplication.dismissKeyboard()
+        focusBinding.wrappedValue = nil
+        if wasFocused {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                isVisible = true
+            }
+        } else {
+            isVisible = true
         }
     }
 }

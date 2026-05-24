@@ -102,6 +102,12 @@ struct LoginSheet: View {
             .interactiveDismissDisabled(isLoggingIn)
         }
         .presentationDetents([.medium])
+        // Whole-sheet capture protection. The PasswordField inside has its
+        // own wrap as a defense-in-depth, but applying at the sheet root
+        // means the rest of the form (username, NTUST disclaimer, the
+        // entire surface the user is typing into) is also excluded from
+        // screenshots and screen recording.
+        .screenCaptureProtected()
     }
 
     private func submitIfReady() {

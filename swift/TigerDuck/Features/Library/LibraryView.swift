@@ -27,11 +27,18 @@ struct LibraryView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 56
 
     var body: some View {
-        if embedded {
-            content
-        } else {
-            NavigationStack { content }
+        Group {
+            if embedded {
+                content
+            } else {
+                NavigationStack { content }
+            }
         }
+        // Whole-screen capture protection covers both the inline login
+        // form (PasswordField) and the QR card. The individual
+        // components still wrap themselves as a defense-in-depth; this
+        // is the outer perimeter.
+        .screenCaptureProtected()
     }
 
     private var content: some View {
