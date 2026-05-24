@@ -69,7 +69,31 @@ struct BulletinsView: View {
                 lastBackgroundedAt = Date()
             }
         }
+        #if os(iOS)
+        .onAppear { drainPendingBulletinDeepLink() }
+        .onChange(of: appState.pendingDeepLink) { _, _ in
+            drainPendingBulletinDeepLink()
+        }
+        #endif
     }
+
+    #if os(iOS)
+    /// Resolve a tap-routed deep link into a navigation push. Done in two
+    /// hops because we have to materialise a `BulletinSummary` to feed
+    /// `.navigationDestination(item:)` before we can show the detail
+    /// view — `summary(forId:)` first checks the live list, then disk
+    /// cache, then falls back to the detail endpoint.
+    private func drainPendingBulletinDeepLink() {
+        guard case .bulletin(let id) = appState.pendingDeepLink else { return }
+        // Clear the deep link eagerly so a slow network fetch can't be
+        // re-triggered by a SwiftUI re-render before it resolves.
+        appState.pendingDeepLink = nil
+        Task {
+            guard let summary = await viewModel.summary(forId: id) else { return }
+            detailingBulletin = summary
+        }
+    }
+    #endif
 
     private var hasUnreadBulletins: Bool {
         viewModel.items.contains { !readState.isRead($0.id) }

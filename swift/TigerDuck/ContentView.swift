@@ -12,8 +12,47 @@ struct ContentView: View {
             }
         }
         .ntustLoginSheetHost()
+        #if os(iOS)
+        .serverPushPopupHost()
+        #endif
     }
 }
+
+#if os(iOS)
+/// Hosts the modal alert that surfaces an operator-issued
+/// `custom_push_popup` tap. Pulled into its own modifier so the binding
+/// dance (Optional<ServerPopupPayload> → Bool) stays local and the
+/// root view's `body` doesn't grow another inline `.alert`.
+private struct ServerPushPopupHost: ViewModifier {
+    @Environment(AppState.self) private var appState
+
+    func body(content: Content) -> some View {
+        @Bindable var bindable = appState
+        content
+            .alert(
+                bindable.pendingServerPopup?.title ?? "",
+                isPresented: Binding(
+                    get: { bindable.pendingServerPopup != nil },
+                    set: { newValue in
+                        if !newValue { bindable.pendingServerPopup = nil }
+                    }
+                ),
+                presenting: bindable.pendingServerPopup
+            ) { _ in
+                // System-localized "OK" / "確定" comes from the cancel role.
+                Button(String(localized: "action_got_it"), role: .cancel) {}
+            } message: { popup in
+                Text(popup.body)
+            }
+    }
+}
+
+private extension View {
+    func serverPushPopupHost() -> some View {
+        modifier(ServerPushPopupHost())
+    }
+}
+#endif
 
 struct MainTabView: View {
     @Environment(AppState.self) private var appState

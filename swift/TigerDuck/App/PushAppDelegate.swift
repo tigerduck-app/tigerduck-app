@@ -1,4 +1,5 @@
 import UIKit
+import UserNotifications
 import os
 
 /// UIKit hook that captures the standard APNs device token.
@@ -23,7 +24,28 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate {
     /// Same app-lifetime contract as ``forwardToken``.
     var forwardError: ((Error) -> Void)?
 
+    /// Owns the `UNUserNotificationCenterDelegate` for the lifetime of the
+    /// app. `UNUserNotificationCenter` retains the delegate weakly, so this
+    /// strong reference is what keeps it alive — without it the singleton
+    /// would silently drop taps the moment ARC reclaimed the local variable
+    /// set in `didFinishLaunchingWithOptions`.
+    var notificationDelegate: NotificationDelegate?
+
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Delegate")
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Install the notification delegate BEFORE any push can arrive so
+        // a cold-launch tap (where iOS launches the app from a tapped
+        // notification) is routed through `routeTap` instead of falling
+        // back to the OS default open behaviour.
+        let nd = NotificationDelegate()
+        UNUserNotificationCenter.current().delegate = nd
+        self.notificationDelegate = nd
+        return true
+    }
 
     func application(
         _ application: UIApplication,

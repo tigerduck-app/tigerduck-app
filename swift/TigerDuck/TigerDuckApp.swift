@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UserNotifications
+#endif
 
 #if os(iOS)
 
@@ -81,6 +84,20 @@ struct TigerDuckApp: App {
                 .environment(appState)
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
+                    // Route custom-push taps into AppState. Capture the
+                    // class instance weakly to avoid a retain cycle
+                    // through `pushAppDelegate.notificationDelegate`.
+                    if let nd = pushAppDelegate.notificationDelegate {
+                        let state = appState
+                        nd.routeTap = { [weak state] response in
+                            Task { @MainActor in
+                                Self.routeServerPushTap(
+                                    response: response,
+                                    appState: state
+                                )
+                            }
+                        }
+                    }
                     appState.backgroundSync()
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
@@ -126,6 +143,47 @@ struct TigerDuckApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    /// Translates a tapped notification into the right AppState mutation.
+    /// Kept as a static helper so the SwiftUI body stays uncluttered and
+    /// the routing logic can be unit-tested independently of the App
+    /// scene plumbing.
+    ///
+    /// - Note: `bulletin_id` is read as both `Int` and `String` because
+    ///   APNs / FCM serialisers occasionally ship JSON numbers as
+    ///   quoted strings depending on the publisher path.
+    @MainActor
+    private static func routeServerPushTap(
+        response: UNNotificationResponse,
+        appState: AppState?
+    ) {
+        guard let appState else { return }
+        let info = response.notification.request.content.userInfo
+        let kind = info["kind"] as? String
+        switch kind {
+        case "custom_push_bulletin":
+            if let id = info["bulletin_id"] as? Int {
+                appState.pendingDeepLink = .bulletin(id)
+            } else if let s = info["bulletin_id"] as? String, let id = Int(s) {
+                appState.pendingDeepLink = .bulletin(id)
+            }
+        case "custom_push_popup":
+            guard let nid = info["notification_id"] as? String,
+                  let title = info["title"] as? String,
+                  let body = info["body"] as? String else { return }
+            if appState.markServerPopupShown(nid) {
+                appState.pendingServerPopup = AppState.ServerPopupPayload(
+                    id: nid,
+                    title: title,
+                    body: body
+                )
+            }
+        default:
+            // Unknown / legacy kinds fall through to the OS default open
+            // behaviour — no-op here so we don't accidentally swallow them.
+            break
+        }
     }
 }
 

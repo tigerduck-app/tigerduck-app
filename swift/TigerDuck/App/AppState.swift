@@ -213,6 +213,55 @@ final class AppState {
     // and the entire PushCoordinator stack pulls in ActivityKit symbols).
 
     let pushCoordinator = PushCoordinator()
+
+    // MARK: - Custom-push tap routing
+
+    /// In-process deep-link targets resolved from a custom-push tap. The
+    /// `NotificationDelegate` writes here; the destination view observes
+    /// and clears the value once it has acted on it.
+    enum DeepLink: Equatable {
+        case bulletin(Int)
+    }
+
+    /// Payload for an operator-issued popup push. `id` is the server-side
+    /// notification id and is also used by SwiftUI's `.alert(_:isPresented:
+    /// presenting:)` for view identity, so re-tapping the same notification
+    /// while the previous alert is still on screen does not double-present.
+    struct ServerPopupPayload: Equatable, Identifiable {
+        let id: String   // notification_id
+        let title: String
+        let body: String
+    }
+
+    /// Set by the notification delegate when the user taps a
+    /// `custom_push_bulletin` push. Bulletins UI observes this and clears
+    /// it after navigating into the detail view.
+    var pendingDeepLink: DeepLink?
+
+    /// Set by the notification delegate when the user taps a
+    /// `custom_push_popup` push and the id has not been shown before.
+    /// The root view presents an alert against this binding and clears
+    /// the value when the user dismisses.
+    var pendingServerPopup: ServerPopupPayload?
+
+    /// Records `notification_id` so a replayed tap (Notification Center
+    /// keeps cleared notifications around briefly) does not re-pop the
+    /// same modal. Persisted via `Defaults[.shownServerPopupIds]` as a
+    /// FIFO list capped at 100 entries.
+    ///
+    /// - Returns: `true` when the id is new and the caller should now
+    ///   surface the popup; `false` when it has been seen before.
+    @discardableResult
+    func markServerPopupShown(_ id: String) -> Bool {
+        var seen = Defaults[.shownServerPopupIds]
+        if seen.contains(id) { return false }
+        seen.append(id)
+        if seen.count > 100 {
+            seen.removeFirst(seen.count - 100)
+        }
+        Defaults[.shownServerPopupIds] = seen
+        return true
+    }
     #endif
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }

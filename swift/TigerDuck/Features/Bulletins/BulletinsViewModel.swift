@@ -85,6 +85,47 @@ final class BulletinsViewModel {
         await inflight?.value
     }
 
+    /// Resolve a bulletin id (typically from a push-tap deep link) into a
+    /// `BulletinSummary` the view can hand to its `.navigationDestination`.
+    /// Prefers the in-memory list, then the on-disk summary cache, and as
+    /// a last resort fetches the detail endpoint and synthesises a summary
+    /// shaped row from it — that mirror lets `BulletinDetailView` re-fetch
+    /// the same detail and render normally without an extra contract.
+    func summary(forId id: Int) async -> BulletinAPI.BulletinSummary? {
+        if let existing = items.first(where: { $0.id == id }) {
+            return existing
+        }
+        let cached = DataCache.shared.loadBulletinSummaries()
+        if let hit = cached.first(where: { $0.id == id }) {
+            return hit
+        }
+        do {
+            let detail = try await apiClient.getBulletin(id: id)
+            let synthesised = BulletinAPI.BulletinSummary(
+                id: detail.id,
+                externalId: detail.externalId,
+                title: detail.title,
+                titleClean: detail.titleClean,
+                canonicalOrg: detail.canonicalOrg,
+                contentTags: detail.contentTags,
+                importance: detail.importance,
+                summary: detail.summary,
+                sourceUrl: detail.sourceUrl,
+                postedAt: detail.postedAt,
+                isDeleted: detail.isDeleted
+            )
+            // Merge into the live list so a subsequent return to the list
+            // shows the row without another network round trip.
+            items = Self.merge(existing: items, incoming: [synthesised])
+            refilter()
+            persistSummaries()
+            return synthesised
+        } catch {
+            logger.error("summary(forId:) fetch failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
     /// Request the next page. Safe to call on every scroll — guarded by
     /// `isPaginating` and `hasMore`.
     func loadMoreIfNeeded(triggeredBy item: BulletinAPI.BulletinSummary) async {
