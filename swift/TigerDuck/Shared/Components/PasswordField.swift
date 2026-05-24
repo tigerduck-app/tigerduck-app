@@ -53,22 +53,23 @@ struct PasswordField<Field: Hashable>: View {
                 )
 
                 if isVisible, !text.isEmpty {
-                    HStack(spacing: 1) {
+                    // Caret painted at the end of the cleartext. The
+                    // native UITextField caret is hidden in reveal mode
+                    // (see `applyDotsVisibility`) because bullet glyphs
+                    // are wider than typical password characters, so the
+                    // native caret floats off to the right of the visible
+                    // text. Drawn always-on (no blink) because TimelineView
+                    // can stall inside a UIHostingController hosted under
+                    // a UITextField's secure canvas.
+                    HStack(spacing: 2) {
                         Text(text)
                             .font(.body)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .truncationMode(.head)
-                            .fixedSize(horizontal: true, vertical: false)
-                        if focusBinding.wrappedValue == focusValue {
-                            // Caret painted at the end of the cleartext.
-                            // The native UITextField caret is hidden in
-                            // reveal mode (see `applyDotsVisibility`)
-                            // because bullet glyphs are wider than typical
-                            // password characters, so the native caret
-                            // floats off to the right of the visible text.
-                            CleartextCaret()
-                        }
+                        Rectangle()
+                            .fill(Color.primary)
+                            .frame(width: 2, height: 20)
                         Spacer(minLength: 0)
                     }
                     .allowsHitTesting(false)
@@ -91,24 +92,6 @@ struct PasswordField<Field: Hashable>: View {
             .accessibilityLabel(isVisible
                 ? String(localized: "password_hide")
                 : String(localized: "password_show"))
-        }
-    }
-}
-
-/// Thin blinking vertical line that stands in for the native UITextField
-/// caret while the cleartext overlay is showing. Driven by `TimelineView`
-/// rather than a `repeatForever` animation so it doesn't interfere with
-/// SwiftUI's view identity / focus transitions.
-private struct CleartextCaret: View {
-    @ScaledMetric(relativeTo: .body) private var height: CGFloat = 20
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.5)) { context in
-            let on = Int(context.date.timeIntervalSinceReferenceDate * 2) % 2 == 0
-            Rectangle()
-                .fill(Color.accentColor)
-                .frame(width: 2, height: height)
-                .opacity(on ? 1 : 0)
         }
     }
 }
