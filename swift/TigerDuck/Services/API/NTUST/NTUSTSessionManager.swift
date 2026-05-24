@@ -129,9 +129,10 @@ final class NTUSTSessionManager {
         // SPKI pin against the *.ntust.edu.tw pin set so an MDM-pushed
         // root CA on hostile campus Wi-Fi cannot MITM SSO credentials.
         // The per-task `NoRedirectSessionDelegate` used by
-        // `probeCookiesValid()` only overrides the redirect callback,
-        // so server-trust challenges still fall through to the
-        // session-level pinning delegate here.
+        // `probeCookiesValid()` forwards server-trust challenges to
+        // this same `TLSPinningDelegate.shared` explicitly — see the
+        // delegate definition below for why we don't rely on
+        // URLSession's task→session delegate fallthrough.
         session = URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
@@ -155,6 +156,9 @@ final class NTUSTSessionManager {
 /// Stops URLSession from auto-following 3xx redirects on a single task,
 /// so callers can inspect the raw 302 `Location` header (e.g. the
 /// ``NTUSTSessionManager.probeCookiesValid()`` /Home/Index signal).
+///
+/// Also forwards server-trust challenges to ``TLSPinningDelegate.shared``
+/// — see the auth-challenge method below.
 private final class NoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,
@@ -164,5 +168,30 @@ private final class NoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate,
         completionHandler: @escaping @Sendable (URLRequest?) -> Void
     ) {
         completionHandler(nil)
+    }
+
+    /// Forward server-trust challenges to the session's pinning
+    /// delegate explicitly.
+    ///
+    /// URLSession's documented behaviour is to fall through to the
+    /// session-level delegate for any task-level callback the per-task
+    /// delegate doesn't implement — but that's empirically fragile
+    /// (Apple has tweaked the rules across iOS versions) and any
+    /// future addition of a task-level method here that doesn't also
+    /// handle `didReceive challenge` would silently degrade this
+    /// pinned-host probe to system trust. Forward explicitly so SPKI
+    /// pinning on `ssoam2.ntust.edu.tw` is unconditional regardless of
+    /// what other URLSessionTaskDelegate methods get added later.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        TLSPinningDelegate.shared.urlSession(
+            session,
+            didReceive: challenge,
+            completionHandler: completionHandler,
+        )
     }
 }
