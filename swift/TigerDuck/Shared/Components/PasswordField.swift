@@ -42,7 +42,11 @@ struct PasswordField<Field: Hashable>: View {
     var onSubmit: () -> Void = {}
 
     @State private var isVisible = false
-    @State private var isScreenCaptured = UIScreen.main.isCaptured
+    /// Drives the eye gating. Populated by `CapturedScreenReader` below,
+    /// which reads `isCaptured` from the *hosting window's* `UIScreen` —
+    /// `UIScreen.main` is deprecated on iOS 16+ and returns the wrong
+    /// screen in multi-scene / Stage Manager / Sidecar configurations.
+    @State private var isScreenCaptured = false
     @State private var showsCaptureExplanation = false
     /// Monotonically incremented each time the explanation popover opens;
     /// the deferred auto-dismiss closure ignores its work if a newer open
@@ -113,30 +117,24 @@ struct PasswordField<Field: Hashable>: View {
                     .presentationCompactAdaptation(.popover)
             }
         }
-        .onAppear {
-            // Re-sync in case the capture state changed while this view
-            // wasn't in the hierarchy (notifications aren't queued).
-            isScreenCaptured = UIScreen.main.isCaptured
-            if isScreenCaptured { forceMask() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIScreen.capturedDidChangeNotification)) { _ in
-            // When recording stops, iOS posts the notification a tick
-            // before `UIScreen.main.isCaptured` actually flips to false.
-            // Reading it synchronously here would see the stale `true`
-            // and the eye button would stay disabled until something
-            // else nudged the view. Hop to the next runloop turn so the
-            // read picks up the updated value.
-            DispatchQueue.main.async {
-                isScreenCaptured = UIScreen.main.isCaptured
-                if isScreenCaptured {
+        .background(
+            // Reads the hosting window's `UIScreen.isCaptured` and
+            // observes change notifications scoped to that specific
+            // screen (not all screens) — handles multi-scene / external
+            // display correctly, and notifications fire only for the
+            // screen this field is actually showing on.
+            CapturedScreenReader { captured in
+                let wasCaptured = isScreenCaptured
+                isScreenCaptured = captured
+                if captured {
                     forceMask()
-                } else {
+                } else if wasCaptured {
                     // Capture ended — the "unavailable" explanation is no
                     // longer accurate, so close it if it was open.
                     showsCaptureExplanation = false
                 }
             }
-        }
+        )
         .onChange(of: showsCaptureExplanation) { _, isShown in
             // Auto-dismiss after ~4s; users can also dismiss by tapping
             // outside (default popover behavior). The gen counter
@@ -169,11 +167,105 @@ struct PasswordField<Field: Hashable>: View {
 
     /// Force-mask without changing focus state if there's nothing to
     /// mask. Called from the capture / screenshot observers.
+    ///
+    /// IMPORTANT: only touches focus when *this* field is the focused
+    /// one. The same `@FocusState` is shared across the surrounding
+    /// form's username + password fields (e.g. LibraryView /
+    /// LoginSheet / OnboardingView all pass a single `$focusedField`
+    /// binding); unconditionally clearing it would yank focus off the
+    /// username field a user has just tabbed back to while the
+    /// password reveal was incidentally still on.
     private func forceMask() {
         guard isVisible else { return }
-        UIApplication.dismissKeyboard()
-        focusBinding.wrappedValue = nil
+        let owningFocus = focusBinding.wrappedValue == focusValue
+        if owningFocus {
+            UIApplication.dismissKeyboard()
+            focusBinding.wrappedValue = nil
+        }
         isVisible = false
+    }
+}
+
+/// Reports the captured state of the `UIScreen` hosting this view, and
+/// re-reports whenever that screen posts `capturedDidChangeNotification`.
+///
+/// Scoped by `object: screen` so a capture flip on an *external* screen
+/// (e.g. an attached USB-C display) doesn't fire the handler for a view
+/// living on the iPhone's internal screen. Replaces direct
+/// `UIScreen.main.isCaptured` reads, which are deprecated on iOS 16+ and
+/// undefined on multi-scene iPad / Stage Manager.
+private struct CapturedScreenReader: UIViewRepresentable {
+    let onChange: (Bool) -> Void
+
+    func makeUIView(context: Context) -> CapturedScreenReaderView {
+        let view = CapturedScreenReaderView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateUIView(_ uiView: CapturedScreenReaderView, context: Context) {
+        uiView.onChange = onChange
+    }
+}
+
+private final class CapturedScreenReaderView: UIView {
+    var onChange: ((Bool) -> Void)?
+    private var observer: NSObjectProtocol?
+    private weak var observedScreen: UIScreen?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isHidden = true
+        isUserInteractionEnabled = false
+        // The reader is a SwiftUI `.background`, but it carries zero
+        // visual weight — let it shrink to zero rather than influencing
+        // layout of the wrapped content.
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used; this view is created programmatically")
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // Reattach the observer to whichever `UIScreen` now hosts us
+        // (or detach entirely if the view left the hierarchy).
+        let newScreen = window?.screen
+        if newScreen === observedScreen { return }
+
+        if let observer {
+            NotificationCenter.default.removeObserver(observer)
+            self.observer = nil
+        }
+        observedScreen = newScreen
+        guard let newScreen else { return }
+
+        onChange?(newScreen.isCaptured)
+        observer = NotificationCenter.default.addObserver(
+            forName: UIScreen.capturedDidChangeNotification,
+            object: newScreen,
+            queue: .main
+        ) { [weak self, weak newScreen] _ in
+            guard let newScreen else { return }
+            // iOS posts the notification a tick before `isCaptured`
+            // flips to its new value on `recording stopped`. Hop to
+            // the next runloop turn so the read picks up the updated
+            // value.
+            DispatchQueue.main.async {
+                self?.onChange?(newScreen.isCaptured)
+            }
+        }
+    }
+
+    deinit {
+        if let observer {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }
 
