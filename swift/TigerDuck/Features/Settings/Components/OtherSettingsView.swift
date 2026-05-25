@@ -107,6 +107,16 @@ struct OtherSettingsView: View {
                     Text(String(localized: "settings_privacy_policy"))
                         .foregroundStyle(.primary)
                 }
+                Button {
+                    if appState.browserPreference == .inApp {
+                        showDeleteAccount = true
+                    } else {
+                        openURL(Self.deleteAccountURL)
+                    }
+                } label: {
+                    Text(String(localized: "settings_delete_account"))
+                        .foregroundStyle(.primary)
+                }
                 Button(String(localized: "settings_open_source_licenses")) {
                     if appState.browserPreference == .inApp {
                         showLicense = true
@@ -117,16 +127,6 @@ struct OtherSettingsView: View {
                 .foregroundStyle(.primary)
                 NavigationLink(String(localized: "settings_view_source_code")) {
                     SourceCodePickerView()
-                }
-                Button {
-                    if appState.browserPreference == .inApp {
-                        showDeleteAccount = true
-                    } else {
-                        openURL(Self.deleteAccountURL)
-                    }
-                } label: {
-                    Text(String(localized: "settings_delete_account"))
-                        .foregroundStyle(.primary)
                 }
             }
         }
