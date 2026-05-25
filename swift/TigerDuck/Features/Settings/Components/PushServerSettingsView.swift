@@ -21,10 +21,14 @@ struct PushServerSettingsView: View {
     @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
     @State private var disableTask: Task<Void, Never>?
-    #if os(iOS) && DEBUG
-    @State private var deviceIdCopyState: DeviceIdCopyState = .idle
+    #if os(iOS)
+    // Per-row copy state. `nil` = idle (no recent action). Last tap wins
+    // the shared footer so the user gets immediate feedback without us
+    // having to render two footer messages side by side.
+    @State private var copyStatus: [IdKind: CopyResult] = [:]
 
-    private enum DeviceIdCopyState { case idle, copied, blocked }
+    private enum IdKind: Hashable { case user, device }
+    private enum CopyResult { case copied, blocked }
     #endif
 
     var body: some View {
@@ -77,37 +81,15 @@ struct PushServerSettingsView: View {
                     Button(String(localized: "push_server_sync_now_action")) { appState.requestPushScheduleSync() }
                 }
 
-                #if os(iOS) && DEBUG
+                #if os(iOS)
                 Section {
-                    Button {
-                        let pb = UIPasteboard.general
-                        pb.string = s.deviceId
-                        // MDM-managed devices can block pasteboard writes
-                        // silently (`UIPasteboard.string =` is non-throwing),
-                        // so confirm via read-back rather than assuming
-                        // success. Compare to s.deviceId (not just
-                        // hasStrings) so we don't falsely confirm when an
-                        // unrelated string was already on the pasteboard.
-                        deviceIdCopyState = (pb.string == s.deviceId) ? .copied : .blocked
-                        Task {
-                            try? await Task.sleep(for: .seconds(1.5))
-                            deviceIdCopyState = .idle
-                        }
-                    } label: {
-                        LabeledContent("Device ID") {
-                            Text(s.deviceId)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                    .buttonStyle(.plain)
+                    idRow(kind: .user, label: "User ID", value: s.userId)
+                    idRow(kind: .device, label: "Device ID", value: s.deviceId)
                 } header: {
-                    Text("Developer")
+                    Text("IDs")
                 } footer: {
-                    Text(deviceIdCopyFooter)
-                        .foregroundStyle(deviceIdCopyFooterColor)
+                    Text(copyFooter)
+                        .foregroundStyle(copyFooterColor)
                 }
                 #endif
             }
@@ -127,21 +109,67 @@ struct PushServerSettingsView: View {
         }
     }
 
-    #if os(iOS) && DEBUG
-    private var deviceIdCopyFooter: String {
-        switch deviceIdCopyState {
-        case .idle: return "Tap to copy. Use this in the backend portal's test page to target this device."
-        case .copied: return "Copied."
-        case .blocked: return "Copy blocked — pasteboard access is restricted on this device (likely an MDM profile)."
+    #if os(iOS)
+    @ViewBuilder
+    private func idRow(kind: IdKind, label: String, value: String) -> some View {
+        Button {
+            copyToPasteboard(kind: kind, value: value)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(label)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: copyStatus[kind] == .copied ? "checkmark" : "doc.on.doc")
+                        .foregroundStyle(copyStatus[kind] == .copied ? .green : .secondary)
+                        .font(.caption)
+                }
+                // No lineLimit / truncation — IDs are short today (UUIDs)
+                // but tokens we might surface here later can be 150+ chars,
+                // and the user explicitly asked for the full value to be
+                // visible. `fixedSize(vertical:)` keeps the row from being
+                // clipped to a single line by the surrounding Form metrics.
+                Text(value)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func copyToPasteboard(kind: IdKind, value: String) {
+        let pb = UIPasteboard.general
+        pb.string = value
+        // MDM-managed devices can block pasteboard writes silently
+        // (`UIPasteboard.string =` is non-throwing), so confirm via
+        // read-back rather than assuming success. Compare to the value
+        // we just wrote (not just hasStrings) so we don't falsely
+        // confirm when an unrelated string was already on the board.
+        copyStatus[kind] = (pb.string == value) ? .copied : .blocked
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            copyStatus[kind] = nil
         }
     }
 
-    private var deviceIdCopyFooterColor: Color {
-        switch deviceIdCopyState {
-        case .idle: return .secondary
-        case .copied: return .green
-        case .blocked: return .orange
+    private var copyFooter: String {
+        if copyStatus.values.contains(.blocked) {
+            return "Copy blocked — pasteboard access is restricted on this device (likely an MDM profile)."
         }
+        if copyStatus.values.contains(.copied) {
+            return "Copied."
+        }
+        return "Tap an ID to copy. Share with support or use in the backend portal to identify this device."
+    }
+
+    private var copyFooterColor: Color {
+        if copyStatus.values.contains(.blocked) { return .orange }
+        if copyStatus.values.contains(.copied) { return .green }
+        return .secondary
     }
     #endif
 

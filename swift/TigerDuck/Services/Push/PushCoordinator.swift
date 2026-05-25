@@ -12,6 +12,7 @@ struct PushDiagnostic: Sendable {
     let notificationAuthStatus: UNAuthorizationStatus
     let registration: PushRegistrationSnapshot
     let resolvedServerURL: URL
+    let userId: String
     let deviceId: String
 }
 
@@ -119,6 +120,7 @@ final class PushCoordinator {
             notificationAuthStatus: notificationStatus,
             registration: reg,
             resolvedServerURL: PushServerConfig.resolveServerURL(),
+            userId: identity.userId,
             deviceId: identity.deviceId
         )
     }
