@@ -73,11 +73,30 @@ struct BulletinsView: View {
             if newPhase == .background {
                 lastBackgroundedAt = Date()
             }
+            #if os(iOS)
+            // Foregrounding is the natural retry point for a deep link that
+            // a previous tap couldn't resolve (poor signal at tap time, app
+            // suspended mid-fetch). The `pendingDeepLink` value itself
+            // hasn't changed, so the `onChange` observer below wouldn't
+            // re-fire on its own — kick the drain here.
+            if newPhase == .active {
+                drainPendingBulletinDeepLink()
+            }
+            #endif
         }
         #if os(iOS)
         .onAppear { drainPendingBulletinDeepLink() }
         .onChange(of: appState.pendingDeepLink) { _, _ in
             drainPendingBulletinDeepLink()
+        }
+        // A successful list refresh indicates network is back AND may have
+        // pulled the target bulletin into `items`, so this is a cheap
+        // retry point for a deep link that was preserved through an
+        // earlier transient failure.
+        .onChange(of: viewModel.loadState) { _, newState in
+            if case .loaded = newState {
+                drainPendingBulletinDeepLink()
+            }
         }
         #endif
     }

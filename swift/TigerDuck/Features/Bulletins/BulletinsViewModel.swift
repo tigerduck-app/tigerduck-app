@@ -98,6 +98,14 @@ final class BulletinsViewModel {
     /// when conditions improve, instead of dropping the tap.
     func summary(forId id: Int) async throws -> BulletinAPI.BulletinSummary? {
         if let existing = items.first(where: { $0.id == id }) {
+            // `items` is seeded from the on-disk cache at init, so a row
+            // that has since been tombstoned on the server can already
+            // be in memory when the push tap arrives. Honour the flag
+            // here too, mirroring the cache and detail-fetch guards.
+            guard !existing.isDeleted else {
+                logger.info("summary(forId:) skipped in-memory deleted bulletin id=\(id, privacy: .public)")
+                return nil
+            }
             return existing
         }
         let cached = DataCache.shared.loadBulletinSummaries()

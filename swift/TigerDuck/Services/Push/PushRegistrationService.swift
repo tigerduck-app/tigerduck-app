@@ -143,12 +143,20 @@ actor PushRegistrationService {
     /// so the caller can roll back the Toggle UI and surface the error.
     /// The next `/devices/register` call also re-sends the value, so a
     /// later success backstops eventual consistency.
+    ///
+    /// Honours Task cancellation between the PATCH and the local write:
+    /// the view cancels older taps when the user rapidly toggles, and
+    /// without this check two interleaved invocations could complete
+    /// out of order and let the older choice clobber the latest one in
+    /// `Defaults` (URLSession may surface the response before cancellation
+    /// arrives, so we re-check before mutating shared state).
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         let id = identity.deviceId
         do {
             _ = try await apiClient.updateDevicePreferences(
                 deviceId: id, serverPushEnabled: !optOut
             )
+            try Task.checkCancellation()
             await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
             logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
         } catch {
