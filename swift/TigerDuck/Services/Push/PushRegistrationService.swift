@@ -68,6 +68,12 @@ actor PushRegistrationService {
     private var lastAttempt: Task<Void, Never>?
     private var lastError: String?
     private var lastRegisteredAt: Date?
+    /// Most recently scheduled opt-out PATCH. New `updateServerPushOptOut`
+    /// calls chain onto this task so PATCHes run in tap order, and the
+    /// `apiClient → Defaults` pair always executes atomically — cancelling
+    /// at the boundary would let a server-accepted change desync from the
+    /// stored value.
+    private var optOutPatchChain: Task<Void, Error>?
     private var pendingActivityRegistrations: [String: LiveActivityUpdateTokenRegistration] = [:]
     // Retry scheduling for activity-token registration. A transient network
     // or 5xx failure against `/live-activities/register` would otherwise drop
@@ -144,25 +150,46 @@ actor PushRegistrationService {
     /// The next `/devices/register` call also re-sends the value, so a
     /// later success backstops eventual consistency.
     ///
-    /// Honours Task cancellation between the PATCH and the local write:
-    /// the view cancels older taps when the user rapidly toggles, and
-    /// without this check two interleaved invocations could complete
-    /// out of order and let the older choice clobber the latest one in
-    /// `Defaults` (URLSession may surface the response before cancellation
-    /// arrives, so we re-check before mutating shared state).
+    /// Concurrent calls are serialised through `optOutPatchChain` so two
+    /// rapid taps cannot interleave at the network suspension point. A
+    /// previous version short-circuited with `Task.checkCancellation()`
+    /// here, but cancellation can land *after* the server has already
+    /// accepted the PATCH — skipping the local `Defaults` write in that
+    /// window leaves Settings showing one value while the server holds
+    /// another (operator pushes silently disabled while the toggle still
+    /// reads enabled, and vice versa). Chaining instead lets every
+    /// successfully-applied server change reach `Defaults`, and tap
+    /// order is preserved because each task awaits its predecessor.
     func updateServerPushOptOut(_ optOut: Bool) async throws {
-        let id = identity.deviceId
-        do {
-            _ = try await apiClient.updateDevicePreferences(
-                deviceId: id, serverPushEnabled: !optOut
-            )
-            try Task.checkCancellation()
-            await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
-            logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
-        } catch {
-            logger.error("server push opt-out PATCH failed: \(error.localizedDescription, privacy: .public)")
-            throw error
+        let predecessor = optOutPatchChain
+        let deviceId = identity.deviceId
+        let apiClient = self.apiClient
+        let logger = self.logger
+        let task = Task<Void, Error> {
+            // Tolerate predecessor failure — each tap's success is
+            // independent of whether the previous one succeeded; we just
+            // need its work to be done before ours starts.
+            _ = try? await predecessor?.value
+            do {
+                _ = try await apiClient.updateDevicePreferences(
+                    deviceId: deviceId, serverPushEnabled: !optOut
+                )
+                await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
+                logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
+            } catch {
+                logger.error("server push opt-out PATCH failed: \(error.localizedDescription, privacy: .public)")
+                throw error
+            }
         }
+        optOutPatchChain = task
+        defer {
+            // Don't pin a long-completed task as the chain head — clear
+            // it unless a newer call has already taken our place.
+            if optOutPatchChain == task {
+                optOutPatchChain = nil
+            }
+        }
+        try await task.value
     }
 
     /// Snapshot of internal state for UI display. Safe to call from any isolation.

@@ -19,10 +19,33 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate {
     /// no shorter lifetime to escape from, and a `[weak]` capture here would
     /// silently drop the token if scene-phase plumbing ever ran the closure
     /// before the strong reference had been established.
-    var forwardToken: ((Data) -> Void)?
+    ///
+    /// `AppState.init` triggers `registerForRemoteNotifications()` before
+    /// SwiftUI runs `.onAppear` — the appearance hook is what wires the
+    /// forwarders, so APNs can race ahead and deliver the token while the
+    /// closure is still nil. Any token/error that arrives in that gap is
+    /// stashed in `bufferedToken`/`bufferedError` and replayed by the
+    /// `didSet`s below when the closures are finally installed, so a
+    /// launch token never gets dropped on the floor.
+    var forwardToken: ((Data) -> Void)? {
+        didSet {
+            guard let forward = forwardToken, let token = bufferedToken else { return }
+            bufferedToken = nil
+            forward(token)
+        }
+    }
     /// Called when APNs registration fails (e.g. no entitlement, no network).
     /// Same app-lifetime contract as ``forwardToken``.
-    var forwardError: ((Error) -> Void)?
+    var forwardError: ((Error) -> Void)? {
+        didSet {
+            guard let forward = forwardError, let error = bufferedError else { return }
+            bufferedError = nil
+            forward(error)
+        }
+    }
+
+    private var bufferedToken: Data?
+    private var bufferedError: Error?
 
     /// Owns the `UNUserNotificationCenterDelegate` for the lifetime of the
     /// app. `UNUserNotificationCenter` retains the delegate weakly, so this
@@ -52,7 +75,13 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         logger.info("APNs registered (len=\(deviceToken.count, privacy: .public))")
-        forwardToken?(deviceToken)
+        if let forward = forwardToken {
+            forward(deviceToken)
+        } else {
+            // `.onAppear` hasn't wired the forwarder yet — hold the token
+            // until it does so the launch registration isn't lost.
+            bufferedToken = deviceToken
+        }
     }
 
     func application(
@@ -60,6 +89,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate {
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
-        forwardError?(error)
+        if let forward = forwardError {
+            forward(error)
+        } else {
+            bufferedError = error
+        }
     }
 }

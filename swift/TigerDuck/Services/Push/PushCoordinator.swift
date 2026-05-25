@@ -95,13 +95,24 @@ final class PushCoordinator {
     ///   Auto-enable must NOT prompt — that would land the system alert
     ///   on top of OnboardingView.
     func enable(requestPermission: Bool = false) {
-        guard !isStarted else { return }
         guard Defaults[.pushServerEnabled] else {
             logger.info("enable skipped — pushServerEnabled=false")
             return
         }
-        isStarted = true
-        logger.info("enabling push stack (requestPermission=\(requestPermission, privacy: .public))")
+        // One-time stack bring-up: relay + `isStarted` flip happen on the
+        // first call only. The permission/register block below intentionally
+        // runs every time — auto-enable at launch (`requestPermission:
+        // false`) lands first and sets `isStarted = true`, so a later
+        // onboarding/Settings call with `requestPermission: true` must NOT
+        // return early; otherwise the system alert never appears and APNs
+        // is never asked to deliver a token, and the device never gets a
+        // server registration row even with notifications granted.
+        let firstStart = !isStarted
+        if firstStart {
+            isStarted = true
+            relay.start()
+        }
+        logger.info("enabling push stack (firstStart=\(firstStart, privacy: .public), requestPermission=\(requestPermission, privacy: .public))")
 
         Task { @MainActor in
             if requestPermission {
@@ -117,8 +128,6 @@ final class PushCoordinator {
             // another explicit hook.
             UIApplication.shared.registerForRemoteNotifications()
         }
-
-        relay.start()
     }
 
     /// Returns the latest diagnostic snapshot for the settings view.
