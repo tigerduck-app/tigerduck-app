@@ -121,6 +121,15 @@ struct MainTabView: View {
         .onChange(of: appState.pendingWidgetDestination) { _, _ in
             drainPendingWidgetDestination()
         }
+        #if os(iOS)
+        // Tap on a custom_push_bulletin notification arrives as a
+        // pendingDeepLink before BulletinsView is mounted. Switch to the
+        // announcements tab (or route via More if it isn't pinned) so the
+        // view drains the deep link and pushes the detail screen.
+        .onChange(of: appState.pendingDeepLink, initial: true) { _, new in
+            routeBulletinDeepLinkIfNeeded(new)
+        }
+        #endif
         .onChange(of: scenePhase) { _, newPhase in
             // Multitask-switch path: every time the app re-enters the
             // foreground, re-evaluate. The observer keeps `isNonTaipei`
@@ -153,6 +162,22 @@ struct MainTabView: View {
             showTimezoneAlert = true
         }
     }
+
+    #if os(iOS)
+    /// Switches to the announcements tab when a bulletin deep link is set
+    /// so `BulletinsView` mounts and its own onChange handler can navigate
+    /// to the detail view. The deep link itself is left in place — the
+    /// downstream view clears it after acting.
+    private func routeBulletinDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
+        guard case .bulletin = link else { return }
+        if visibleTabs.contains(.announcements) {
+            selectedTab = .announcements
+        } else {
+            selectedTab = .more
+            appState.pendingMoreDeepLink = .announcements
+        }
+    }
+    #endif
 
     private func drainPendingWidgetDestination() {
         guard let destination = appState.pendingWidgetDestination else { return }
