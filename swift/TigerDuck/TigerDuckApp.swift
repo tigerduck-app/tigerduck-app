@@ -195,11 +195,19 @@ struct TigerDuckApp: App {
             // is still on screen: dismiss the current alert, then present
             // the new payload on the next runloop tick so `isPresented`
             // actually transitions false → true.
+            //
+            // Always cancel any previous swap first — if popup B's swap
+            // is mid-sleep when popup C arrives, the stale B task would
+            // otherwise wake up and overwrite C's payload with B's.
+            appState.pendingServerPopupSwapTask?.cancel()
+            appState.pendingServerPopupSwapTask = nil
             if appState.pendingServerPopup != nil {
                 appState.pendingServerPopup = nil
-                Task { @MainActor in
+                appState.pendingServerPopupSwapTask = Task { @MainActor [weak appState] in
                     try? await Task.sleep(for: .milliseconds(50))
+                    guard !Task.isCancelled, let appState else { return }
                     appState.pendingServerPopup = payload
+                    appState.pendingServerPopupSwapTask = nil
                 }
             } else {
                 appState.pendingServerPopup = payload

@@ -244,6 +244,14 @@ final class AppState {
     /// the value when the user dismisses.
     var pendingServerPopup: ServerPopupPayload?
 
+    /// In-flight task that re-assigns `pendingServerPopup` after the
+    /// nil-bounce used to force SwiftUI's alert to refresh. Stored here
+    /// so back-to-back popup taps can cancel a stale swap before it
+    /// wakes from its short sleep and overwrites a newer payload.
+    /// `@ObservationIgnored` because it isn't UI state.
+    @ObservationIgnored
+    var pendingServerPopupSwapTask: Task<Void, Never>?
+
     /// Has the user already been shown the popup for this notification id?
     /// Persisted via `Defaults[.shownServerPopupIds]` as a FIFO list
     /// capped at 100 entries. Read-only — call `markServerPopupShown`

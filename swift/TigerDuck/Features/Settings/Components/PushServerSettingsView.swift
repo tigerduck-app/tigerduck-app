@@ -25,6 +25,11 @@ struct PushServerSettingsView: View {
     /// rolled back. The Toggle binds against this so a failed PATCH
     /// can revert the visual state in lock-step with the stored Default.
     @State private var serverPushOptOutFailed: Bool = false
+    /// In-flight server-push opt-out PATCH. Held so a rapid second tap
+    /// can cancel the prior request before starting a new one — without
+    /// this, two independent tasks race and the slower one can overwrite
+    /// the latest user choice.
+    @State private var serverPushOptOutTask: Task<Void, Never>?
     #if os(iOS)
     // Per-row copy state. `nil` = idle (no recent action). Last tap wins
     // the shared footer so the user gets immediate feedback without us
@@ -224,11 +229,24 @@ struct PushServerSettingsView: View {
         Binding(
             get: { !serverPushOptOut },
             set: { isOn in
-                Task {
+                // Cancel any prior PATCH so only the latest tap can
+                // finish writing the stored opt-out. Two independent
+                // tasks would otherwise race: if the user flips off
+                // then quickly back on, the slower first request could
+                // finish last and overwrite the second one's value.
+                serverPushOptOutTask?.cancel()
+                serverPushOptOutTask = Task {
                     do {
                         try await appState.updateServerPushOptOut(!isOn)
+                        // Superseded mid-flight — let the newer task own
+                        // the UI state. (URLSession surfaces cancellation
+                        // as `URLError(.cancelled)` rather than
+                        // `CancellationError`, so we gate on
+                        // `Task.isCancelled` rather than the error type.)
+                        guard !Task.isCancelled else { return }
                         serverPushOptOutFailed = false
                     } catch {
+                        guard !Task.isCancelled else { return }
                         // Server didn't accept the change — flag for the
                         // shared footer. The @Default never flipped (the
                         // actor only writes on success) so the Toggle

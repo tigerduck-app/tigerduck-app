@@ -100,18 +100,27 @@ struct BulletinsView: View {
         guard !inflightDeepLinkIds.contains(id) else { return }
         inflightDeepLinkIds.insert(id)
         Task {
-            defer {
-                inflightDeepLinkIds.remove(id)
-                // Clear only the slot we owned — a fresh tap that landed
-                // after we started (different id, or replay after our
-                // remove) is preserved for the next drain.
-                if case .bulletin(let pendingId) = appState.pendingDeepLink,
-                   pendingId == id {
-                    appState.pendingDeepLink = nil
-                }
+            defer { inflightDeepLinkIds.remove(id) }
+            let summary: BulletinAPI.BulletinSummary?
+            do {
+                summary = try await viewModel.summary(forId: id)
+            } catch {
+                // Transient failure (network drop, timeout, etc.) — leave
+                // `pendingDeepLink` set so a later drain (foreground return,
+                // list refresh) can re-attempt navigation. Without this the
+                // tap is lost on the first poor-connectivity attempt.
+                return
             }
-            guard let summary = await viewModel.summary(forId: id) else { return }
-            detailingBulletin = summary
+            // Terminal outcome — either we have a summary or the bulletin
+            // is tombstoned and will never become navigable. Either way,
+            // clear the deep link so we don't keep redriving the drain.
+            if case .bulletin(let pendingId) = appState.pendingDeepLink,
+               pendingId == id {
+                appState.pendingDeepLink = nil
+            }
+            if let summary {
+                detailingBulletin = summary
+            }
         }
     }
     #endif
