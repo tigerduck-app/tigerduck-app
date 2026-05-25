@@ -123,28 +123,24 @@ struct SettingsView: View {
                         isOn: $appState.useEnglishClassroomAbbreviation
                     )
                     if appState.useEnglishClassroomAbbreviation {
-                        // Default Picker layout puts the label and the
-                        // selected value on the same line — with a long
-                        // localized label (e.g. "When classroom name is
-                        // in Mandarin") the value gets squeezed and
-                        // truncated. Render the label above the menu so
-                        // both halves can use the full row width.
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(String(localized: "settings_classroom_mandarin_display"))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Picker(
-                                String(localized: "settings_classroom_mandarin_display"),
-                                selection: $appState.classroomMandarinDisplay
-                            ) {
-                                Text(String(localized: "settings_classroom_mandarin_display_original"))
-                                    .tag("original")
-                                Text(String(localized: "settings_classroom_mandarin_display_pinyin"))
-                                    .tag("pinyin")
-                                Text(String(localized: "settings_classroom_mandarin_display_translated"))
-                                    .tag("translated")
-                            }
-                            .labelsHidden()
+                        // `.menu` style (the Form default) packs label and
+                        // value into one row whose height is computed from
+                        // a single line — long localized labels then wrap
+                        // to two lines and get clipped at the bottom.
+                        // `.navigationLink` renders the picker as a real
+                        // NavigationLink whose row sizes to fit the label.
+                        Picker(
+                            String(localized: "settings_classroom_mandarin_display"),
+                            selection: $appState.classroomMandarinDisplay
+                        ) {
+                            Text(String(localized: "settings_classroom_mandarin_display_original"))
+                                .tag("original")
+                            Text(String(localized: "settings_classroom_mandarin_display_pinyin"))
+                                .tag("pinyin")
+                            Text(String(localized: "settings_classroom_mandarin_display_translated"))
+                                .tag("translated")
                         }
+                        .pickerStyle(.navigationLink)
                     }
                 }
             }
@@ -176,6 +172,17 @@ struct SettingsView: View {
                 }
             }
 
+            // MARK: - Other settings
+            // Library toggle keeps its position at the top of the
+            // "Other settings" group; the rest of the miscellany now lives
+            // behind a NavigationLink to `OtherSettingsView`.
+            Section(String(localized: "settings_section_other_settings")) {
+                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
+                NavigationLink(String(localized: "settings_section_other_settings")) {
+                    OtherSettingsView()
+                }
+            }
+
             // MARK: - Language
             // The user picks the app language in iOS Settings (per-app
             // language picker). iOS restarts the process on selection,
@@ -196,17 +203,6 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                }
-            }
-
-            // MARK: - Other settings
-            // Library toggle keeps its position at the top of the
-            // "Other settings" group; the rest of the miscellany now lives
-            // behind a NavigationLink to `OtherSettingsView`.
-            Section(String(localized: "settings_section_other_settings")) {
-                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
-                NavigationLink(String(localized: "settings_section_other_settings")) {
-                    OtherSettingsView()
                 }
             }
 
