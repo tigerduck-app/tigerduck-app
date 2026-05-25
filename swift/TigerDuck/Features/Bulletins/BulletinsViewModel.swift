@@ -101,6 +101,15 @@ final class BulletinsViewModel {
         }
         do {
             let detail = try await apiClient.getBulletin(id: id)
+            // Don't surface or merge a tombstoned bulletin — the /list
+            // endpoint filters these out, and merging here would inject
+            // a ghost row at the top of the feed AND persist it to disk
+            // cache where it would survive until the next page load
+            // overwrote it.
+            guard !detail.isDeleted else {
+                logger.info("summary(forId:) skipped deleted bulletin id=\(id, privacy: .public)")
+                return nil
+            }
             let synthesised = BulletinAPI.BulletinSummary(
                 id: detail.id,
                 externalId: detail.externalId,

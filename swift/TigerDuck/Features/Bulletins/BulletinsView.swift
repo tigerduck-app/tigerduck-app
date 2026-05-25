@@ -28,6 +28,11 @@ struct BulletinsView: View {
     /// can evaporate, the fallback `.onAppear { id = nil }` fires, and
     /// the navigation stack oscillates.
     @State private var detailingBulletin: BulletinAPI.BulletinSummary?
+    /// Deep-link ids currently being resolved. Prevents SwiftUI re-renders
+    /// from re-triggering the same fetch while it's in flight and lets us
+    /// leave `pendingDeepLink` set until the fetch resolves (so a slow
+    /// network doesn't lose the tap by clearing it eagerly).
+    @State private var inflightDeepLinkIds: Set<Int> = []
     @State private var unreadOnly: Bool = false
     /// Drives `.searchable`'s expansion — bound so we can force-collapse
     /// it when the app returns to foreground (users expect the search
@@ -85,10 +90,26 @@ struct BulletinsView: View {
     /// cache, then falls back to the detail endpoint.
     private func drainPendingBulletinDeepLink() {
         guard case .bulletin(let id) = appState.pendingDeepLink else { return }
-        // Clear the deep link eagerly so a slow network fetch can't be
-        // re-triggered by a SwiftUI re-render before it resolves.
-        appState.pendingDeepLink = nil
+        // Use an inflight guard instead of clearing the deep link eagerly:
+        //   * Prevents a SwiftUI re-render (e.g. a sibling onChange firing
+        //     for an unrelated state change) from re-entering this drain
+        //     for the same id while the fetch is still resolving.
+        //   * Leaves `pendingDeepLink` set during the network hop so a
+        //     transient failure / cold start doesn't permanently lose the
+        //     tap before any user-visible navigation happens.
+        guard !inflightDeepLinkIds.contains(id) else { return }
+        inflightDeepLinkIds.insert(id)
         Task {
+            defer {
+                inflightDeepLinkIds.remove(id)
+                // Clear only the slot we owned — a fresh tap that landed
+                // after we started (different id, or replay after our
+                // remove) is preserved for the next drain.
+                if case .bulletin(let pendingId) = appState.pendingDeepLink,
+                   pendingId == id {
+                    appState.pendingDeepLink = nil
+                }
+            }
             guard let summary = await viewModel.summary(forId: id) else { return }
             detailingBulletin = summary
         }

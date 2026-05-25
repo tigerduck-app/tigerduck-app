@@ -21,11 +21,18 @@ struct PushServerSettingsView: View {
     @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
     @State private var disableTask: Task<Void, Never>?
+    /// Tracks whether the server-push opt-out PATCH is in flight or
+    /// rolled back. The Toggle binds against this so a failed PATCH
+    /// can revert the visual state in lock-step with the stored Default.
+    @State private var serverPushOptOutFailed: Bool = false
     #if os(iOS)
     // Per-row copy state. `nil` = idle (no recent action). Last tap wins
     // the shared footer so the user gets immediate feedback without us
     // having to render two footer messages side by side.
     @State private var copyStatus: [IdKind: CopyResult] = [:]
+    /// Reset Tasks keyed per row so rapid double-taps cancel the prior
+    /// timer instead of letting it wake mid-feedback for the second tap.
+    @State private var copyResetTasks: [IdKind: Task<Void, Never>] = [:]
 
     private enum IdKind: Hashable { case user, device }
     private enum CopyResult { case copied, blocked }
@@ -42,7 +49,18 @@ struct PushServerSettingsView: View {
             Section {
                 Toggle(String(localized: "settings_server_push_label"), isOn: serverPushBinding)
             } footer: {
-                Text(String(localized: "settings_server_push_footer"))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "settings_server_push_footer"))
+                    if serverPushOptOutFailed {
+                        // Surfaces the rollback so the user knows the
+                        // tap didn't take. The Toggle has already
+                        // snapped back to the server-agreeing value
+                        // because the actor only writes Defaults on
+                        // success.
+                        Text("Server didn't accept the change — try again later.")
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
 
             if pushServerEnabled, let s = snapshot {
@@ -154,9 +172,14 @@ struct PushServerSettingsView: View {
         // we just wrote (not just hasStrings) so we don't falsely
         // confirm when an unrelated string was already on the board.
         copyStatus[kind] = (pb.string == value) ? .copied : .blocked
-        Task {
+        // Cancel any earlier reset so its 1.5s timer can't fire during
+        // a freshly-confirmed copy on the same row.
+        copyResetTasks[kind]?.cancel()
+        copyResetTasks[kind] = Task {
             try? await Task.sleep(for: .seconds(1.5))
+            if Task.isCancelled { return }
             copyStatus[kind] = nil
+            copyResetTasks[kind] = nil
         }
     }
 
@@ -164,7 +187,7 @@ struct PushServerSettingsView: View {
         if copyStatus.values.contains(.blocked) {
             return (
                 "Copy blocked — pasteboard access is restricted on this device (likely an MDM profile).",
-                .orange,
+                .orange
             )
         }
         if copyStatus.values.contains(.copied) {
@@ -192,11 +215,27 @@ struct PushServerSettingsView: View {
     /// User-facing opt-out for operator-issued "server" pushes. Bound as
     /// `isOn` (i.e. ON = user wants to receive them); we invert into
     /// `serverPushUserOptOut` for storage.
+    ///
+    /// The setter awaits the actor, which PATCHes first and only writes
+    /// the local Default on success. A throw rolls back any optimistic
+    /// `@Default` write the system might surface and trips
+    /// `serverPushOptOutFailed` so the footer surfaces the failure.
     private var serverPushBinding: Binding<Bool> {
         Binding(
             get: { !serverPushOptOut },
             set: { isOn in
-                Task { await appState.updateServerPushOptOut(!isOn) }
+                Task {
+                    do {
+                        try await appState.updateServerPushOptOut(!isOn)
+                        serverPushOptOutFailed = false
+                    } catch {
+                        // Server didn't accept the change — flag for the
+                        // shared footer. The @Default never flipped (the
+                        // actor only writes on success) so the Toggle
+                        // reflects the prior, server-agreeing value.
+                        serverPushOptOutFailed = true
+                    }
+                }
             }
         )
     }

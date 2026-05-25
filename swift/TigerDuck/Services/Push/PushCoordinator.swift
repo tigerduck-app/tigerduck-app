@@ -84,24 +84,37 @@ final class PushCoordinator {
     }
 
     /// Enable the full push stack. Safe to call repeatedly.
-    func enable() {
+    ///
+    /// - Parameter requestPermission: When `true`, the call also fires
+    ///   the iOS system permission prompt — appropriate for the explicit
+    ///   "turn on" Settings toggle, which needs visible feedback that the
+    ///   toggle "did something". Pass `false` for the silent auto-enable
+    ///   path that runs at every launch: it only calls
+    ///   `registerForRemoteNotifications`, which is a no-op until the
+    ///   user has granted permission elsewhere (typically onboarding).
+    ///   Auto-enable must NOT prompt — that would land the system alert
+    ///   on top of OnboardingView.
+    func enable(requestPermission: Bool = false) {
         guard !isStarted else { return }
         guard Defaults[.pushServerEnabled] else {
             logger.info("enable skipped — pushServerEnabled=false")
             return
         }
         isStarted = true
-        logger.info("enabling push stack")
+        logger.info("enabling push stack (requestPermission=\(requestPermission, privacy: .public))")
 
-        // Request user-visible notification permission first so the user gets
-        // an iOS system prompt as visible feedback that the toggle "did
-        // something". PTS (Push-to-Start) tokens don't strictly require this
-        // permission, but it unblocks standard-alert push later AND avoids
-        // the silent-toggle-does-nothing UX.
         Task { @MainActor in
-            let granted = (try? await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-            logger.info("notification authorization granted=\(granted, privacy: .public)")
+            if requestPermission {
+                let granted = (try? await UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+                logger.info("notification authorization granted=\(granted, privacy: .public)")
+            }
+            // registerForRemoteNotifications is safe to call regardless of
+            // permission state — it returns an APNs token if authorized
+            // and stays quiet otherwise. Calling it on every enable lets
+            // a later permission grant (via onboarding or iOS Settings)
+            // flow into the existing token-forwarding pipeline without
+            // another explicit hook.
             UIApplication.shared.registerForRemoteNotifications()
         }
 

@@ -38,9 +38,15 @@ private struct ServerPushPopupHost: ViewModifier {
                     }
                 ),
                 presenting: bindable.pendingServerPopup
-            ) { _ in
+            ) { popup in
                 // System-localized "OK" / "確定" comes from the cancel role.
-                Button(String(localized: "action_got_it"), role: .cancel) {}
+                // Marking happens here (not at routing time) so a popup
+                // that was actually presented gets added to the FIFO
+                // dedupe — but one that was suppressed by a competing
+                // modal stays "unseen" and can re-present on next tap.
+                Button(String(localized: "action_got_it"), role: .cancel) {
+                    appState.markServerPopupShown(popup.id)
+                }
             } message: { popup in
                 Text(popup.body)
             }

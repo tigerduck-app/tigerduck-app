@@ -156,9 +156,12 @@ struct TigerDuckApp: App {
     /// the routing logic can be unit-tested independently of the App
     /// scene plumbing.
     ///
-    /// - Note: `bulletin_id` is read as both `Int` and `String` because
-    ///   APNs / FCM serialisers occasionally ship JSON numbers as
-    ///   quoted strings depending on the publisher path.
+    /// - Note: `bulletin_id` is decoded through three paths (`Int`,
+    ///   `NSNumber.intValue`, and `String → Int`) because APNs / FCM /
+    ///   intermediate relays bridge JSON numbers inconsistently — some
+    ///   land as a tagged-int NSNumber that succeeds `as? Int`, others
+    ///   as a Double-tagged NSNumber where `as? Int` fails, and a few
+    ///   re-encode the value as a quoted string.
     @MainActor
     private static func routeServerPushTap(
         response: UNNotificationResponse,
@@ -169,27 +172,53 @@ struct TigerDuckApp: App {
         let kind = info["kind"] as? String
         switch kind {
         case "custom_push_bulletin":
-            if let id = info["bulletin_id"] as? Int {
-                appState.pendingDeepLink = .bulletin(id)
-            } else if let s = info["bulletin_id"] as? String, let id = Int(s) {
+            if let id = bulletinId(from: info["bulletin_id"]) {
                 appState.pendingDeepLink = .bulletin(id)
             }
         case "custom_push_popup":
             guard let nid = info["notification_id"] as? String,
                   let title = info["title"] as? String,
                   let body = info["body"] as? String else { return }
-            if appState.markServerPopupShown(nid) {
-                appState.pendingServerPopup = AppState.ServerPopupPayload(
-                    id: nid,
-                    title: title,
-                    body: body
-                )
+            // Only the *check* runs at routing time — the actual mark
+            // happens when the user dismisses the alert (see
+            // `ServerPushPopupHost`). That way a popup that's suppressed
+            // by a competing modal (mid-onboarding etc.) isn't permanently
+            // deduped before the user ever sees it.
+            guard !appState.isServerPopupShown(nid) else { return }
+            let payload = AppState.ServerPopupPayload(
+                id: nid,
+                title: title,
+                body: body
+            )
+            // Force SwiftUI's `.alert(_:isPresented:presenting:)` to
+            // refresh when a second popup arrives while the first alert
+            // is still on screen: dismiss the current alert, then present
+            // the new payload on the next runloop tick so `isPresented`
+            // actually transitions false → true.
+            if appState.pendingServerPopup != nil {
+                appState.pendingServerPopup = nil
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    appState.pendingServerPopup = payload
+                }
+            } else {
+                appState.pendingServerPopup = payload
             }
         default:
             // Unknown / legacy kinds fall through to the OS default open
             // behaviour — no-op here so we don't accidentally swallow them.
             break
         }
+    }
+
+    /// Decode `bulletin_id` from a JSON-bridged userInfo value. See the
+    /// `routeServerPushTap` doc comment for why all three paths exist.
+    @MainActor
+    private static func bulletinId(from raw: Any?) -> Int? {
+        if let n = raw as? Int { return n }
+        if let n = raw as? NSNumber { return n.intValue }
+        if let s = raw as? String { return Int(s) }
+        return nil
     }
 }
 

@@ -244,23 +244,30 @@ final class AppState {
     /// the value when the user dismisses.
     var pendingServerPopup: ServerPopupPayload?
 
-    /// Records `notification_id` so a replayed tap (Notification Center
-    /// keeps cleared notifications around briefly) does not re-pop the
-    /// same modal. Persisted via `Defaults[.shownServerPopupIds]` as a
-    /// FIFO list capped at 100 entries.
-    ///
-    /// - Returns: `true` when the id is new and the caller should now
-    ///   surface the popup; `false` when it has been seen before.
-    @discardableResult
-    func markServerPopupShown(_ id: String) -> Bool {
+    /// Has the user already been shown the popup for this notification id?
+    /// Persisted via `Defaults[.shownServerPopupIds]` as a FIFO list
+    /// capped at 100 entries. Read-only — call `markServerPopupShown`
+    /// from the alert's dismiss action so an alert that was suppressed
+    /// (e.g. by a competing onboarding sheet) isn't permanently deduped.
+    @MainActor
+    func isServerPopupShown(_ id: String) -> Bool {
+        Defaults[.shownServerPopupIds].contains(id)
+    }
+
+    /// Record that the user has actually seen the popup for `id`. Only
+    /// call this from the alert dismiss path — calling it at routing
+    /// time risks marking a popup as seen when its alert never rendered
+    /// (mid-onboarding, modal collision, etc.), permanently suppressing
+    /// it on future taps.
+    @MainActor
+    func markServerPopupShown(_ id: String) {
         var seen = Defaults[.shownServerPopupIds]
-        if seen.contains(id) { return false }
+        if seen.contains(id) { return }
         seen.append(id)
         if seen.count > 100 {
             seen.removeFirst(seen.count - 100)
         }
         Defaults[.shownServerPopupIds] = seen
-        return true
     }
     #endif
 
@@ -910,10 +917,11 @@ final class AppState {
 
     /// Enable server push (registers for remote notifications, starts PTS
     /// relay, queues an immediate sync). Call only from explicit user intent
-    /// — turning on the Settings toggle.
+    /// — turning on the Settings toggle. Passes `requestPermission: true`
+    /// so the user sees an iOS prompt as feedback for their tap.
     func enablePushServer() {
         Defaults[.pushServerEnabled] = true
-        pushCoordinator.enable()
+        pushCoordinator.enable(requestPermission: true)
         requestPushScheduleSync()
     }
 
@@ -924,10 +932,11 @@ final class AppState {
     }
 
     /// Wire the settings toggle to the registration actor. The actor
-    /// persists the local pref AND PATCHes the backend so the change
-    /// propagates without waiting for the next register call.
-    func updateServerPushOptOut(_ optOut: Bool) async {
-        await pushCoordinator.registration.updateServerPushOptOut(optOut)
+    /// PATCHes the backend and only then persists the local pref so a
+    /// transient failure doesn't leave the UI claiming agreement with
+    /// the server. Throws on failure so the caller can roll back.
+    func updateServerPushOptOut(_ optOut: Bool) async throws {
+        try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
     #endif // os(iOS) — closes the Live Activity / reminder / push block
 

@@ -40,8 +40,13 @@ nonisolated enum PushDeviceClass {
         #if os(macOS)
         return "mac"
         #else
+        // `.mac` covers the "Designed for iPad" runtime on Apple Silicon,
+        // where the iOS binary runs as a Mac app and the idiom reports
+        // `.mac`. Falling through to "iphone" there would mis-target
+        // operator pushes that filter on `device_class`.
         switch UIDevice.current.userInterfaceIdiom {
         case .pad:   return "ipad"
+        case .mac:   return "mac"
         case .phone: return "iphone"
         default:     return "iphone"
         }
@@ -132,20 +137,23 @@ actor PushRegistrationService {
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
     }
 
-    /// Called from the settings toggle. Writes the local pref and PATCHes
-    /// the backend immediately. On transient failure we don't retry here —
-    /// the next `/devices/register` call will re-send the value, so
-    /// eventual consistency is preserved.
-    func updateServerPushOptOut(_ optOut: Bool) async {
-        await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
+    /// Called from the settings toggle. PATCHes the backend first; only
+    /// flips the local pref after a 2xx so a transient failure doesn't
+    /// leave local state pretending the server agrees. Throws on failure
+    /// so the caller can roll back the Toggle UI and surface the error.
+    /// The next `/devices/register` call also re-sends the value, so a
+    /// later success backstops eventual consistency.
+    func updateServerPushOptOut(_ optOut: Bool) async throws {
         let id = identity.deviceId
         do {
             _ = try await apiClient.updateDevicePreferences(
                 deviceId: id, serverPushEnabled: !optOut
             )
+            await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
             logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
         } catch {
             logger.error("server push opt-out PATCH failed: \(error.localizedDescription, privacy: .public)")
+            throw error
         }
     }
 

@@ -79,12 +79,21 @@ struct MoreView: View {
         // Consume deep-links from callers that can't reach this view's
         // local navigationPath directly (e.g. the flip-to-Library
         // coordinator routing here when Library is enabled but not pinned
-        // as a top-level tab). `initial: true` covers cold-launch /
-        // tab-switch ordering where the flag is already set by the time
-        // the body re-renders.
+        // as a top-level tab, or a custom-push tap routing into
+        // Announcements). `initial: true` covers cold-launch / tab-switch
+        // ordering where the flag is already set by the time the body
+        // re-renders.
+        //
+        // We REPLACE the navigation path instead of appending: cross-
+        // context deep links mean "go to X", not "push X on top of
+        // whatever the user was already viewing in More". Appending was
+        // surfacing the target view stacked underneath an unrelated
+        // earlier destination, leaving the user with an extra back-tap.
         .onChange(of: appState.pendingMoreDeepLink, initial: true) { _, new in
             guard let new else { return }
-            navigationPath.append(new)
+            var path = NavigationPath()
+            path.append(new)
+            navigationPath = path
             appState.pendingMoreDeepLink = nil
         }
     }
