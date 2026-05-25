@@ -123,29 +123,29 @@ struct SettingsView: View {
                         isOn: $appState.useEnglishClassroomAbbreviation
                     )
                     if appState.useEnglishClassroomAbbreviation {
-                        Picker(
-                            String(localized: "settings_classroom_mandarin_display"),
-                            selection: $appState.classroomMandarinDisplay
-                        ) {
-                            Text(String(localized: "settings_classroom_mandarin_display_original"))
-                                .tag("original")
-                            Text(String(localized: "settings_classroom_mandarin_display_pinyin"))
-                                .tag("pinyin")
-                            Text(String(localized: "settings_classroom_mandarin_display_translated"))
-                                .tag("translated")
+                        // Default Picker layout puts the label and the
+                        // selected value on the same line — with a long
+                        // localized label (e.g. "When classroom name is
+                        // in Mandarin") the value gets squeezed and
+                        // truncated. Render the label above the menu so
+                        // both halves can use the full row width.
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(String(localized: "settings_classroom_mandarin_display"))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Picker(
+                                String(localized: "settings_classroom_mandarin_display"),
+                                selection: $appState.classroomMandarinDisplay
+                            ) {
+                                Text(String(localized: "settings_classroom_mandarin_display_original"))
+                                    .tag("original")
+                                Text(String(localized: "settings_classroom_mandarin_display_pinyin"))
+                                    .tag("pinyin")
+                                Text(String(localized: "settings_classroom_mandarin_display_translated"))
+                                    .tag("translated")
+                            }
+                            .labelsHidden()
                         }
                     }
-                }
-            }
-
-            // MARK: - Other settings
-            // Library toggle keeps its position at the top of the
-            // "Other settings" group; the rest of the miscellany now lives
-            // behind a NavigationLink to `OtherSettingsView`.
-            Section(String(localized: "settings_section_other_settings")) {
-                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
-                NavigationLink(String(localized: "settings_section_other_settings")) {
-                    OtherSettingsView()
                 }
             }
 
@@ -196,6 +196,17 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+
+            // MARK: - Other settings
+            // Library toggle keeps its position at the top of the
+            // "Other settings" group; the rest of the miscellany now lives
+            // behind a NavigationLink to `OtherSettingsView`.
+            Section(String(localized: "settings_section_other_settings")) {
+                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
+                NavigationLink(String(localized: "settings_section_other_settings")) {
+                    OtherSettingsView()
                 }
             }
 
