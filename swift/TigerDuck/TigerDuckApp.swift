@@ -109,6 +109,7 @@ struct TigerDuckApp: App {
                     // here; subsequent foreground returns go through the
                     // scene-phase observer.
                     appState.updateNotifyCoordinator.checkInBackground()
+                    UNUserNotificationCenter.current().setBadgeCount(0)
                 }
                 .onOpenURL { url in
                     guard let destination = WidgetURLRouter.route(url) else { return }
@@ -121,6 +122,11 @@ struct TigerDuckApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
+                        // Reset the app-icon badge but leave delivered
+                        // notifications in Notification Center — user can
+                        // still scroll back to them, the red badge just
+                        // stops nagging once they've opened the app.
+                        UNUserNotificationCenter.current().setBadgeCount(0)
                         // Cancel any still-running refresh from a previous
                         // .active transition so rapid scene toggles do not
                         // interleave through cancelAllOwnedRequests()'s
