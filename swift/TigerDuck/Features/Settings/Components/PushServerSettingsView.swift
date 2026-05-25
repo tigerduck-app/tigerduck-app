@@ -88,8 +88,12 @@ struct PushServerSettingsView: View {
                 } header: {
                     Text("IDs")
                 } footer: {
-                    Text(copyFooter)
-                        .foregroundStyle(copyFooterColor)
+                    // Only render the footer when there's actual feedback
+                    // to show — the idle hint was noise once the icon in
+                    // the row already telegraphs tap-to-copy.
+                    if let footer = copyFooter {
+                        Text(footer.text).foregroundStyle(footer.color)
+                    }
                 }
                 #endif
             }
@@ -156,20 +160,17 @@ struct PushServerSettingsView: View {
         }
     }
 
-    private var copyFooter: String {
+    private var copyFooter: (text: String, color: Color)? {
         if copyStatus.values.contains(.blocked) {
-            return "Copy blocked — pasteboard access is restricted on this device (likely an MDM profile)."
+            return (
+                "Copy blocked — pasteboard access is restricted on this device (likely an MDM profile).",
+                .orange,
+            )
         }
         if copyStatus.values.contains(.copied) {
-            return "Copied."
+            return ("Copied.", .green)
         }
-        return "Tap an ID to copy. Share with support or use in the backend portal to identify this device."
-    }
-
-    private var copyFooterColor: Color {
-        if copyStatus.values.contains(.blocked) { return .orange }
-        if copyStatus.values.contains(.copied) { return .green }
-        return .secondary
+        return nil
     }
     #endif
 
