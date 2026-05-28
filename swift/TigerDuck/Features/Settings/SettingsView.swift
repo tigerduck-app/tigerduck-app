@@ -123,6 +123,12 @@ struct SettingsView: View {
                         isOn: $appState.useEnglishClassroomAbbreviation
                     )
                     if appState.useEnglishClassroomAbbreviation {
+                        // `.menu` style (the Form default) packs label and
+                        // value into one row whose height is computed from
+                        // a single line — long localized labels then wrap
+                        // to two lines and get clipped at the bottom.
+                        // `.navigationLink` renders the picker as a real
+                        // NavigationLink whose row sizes to fit the label.
                         Picker(
                             String(localized: "settings_classroom_mandarin_display"),
                             selection: $appState.classroomMandarinDisplay
@@ -134,18 +140,8 @@ struct SettingsView: View {
                             Text(String(localized: "settings_classroom_mandarin_display_translated"))
                                 .tag("translated")
                         }
+                        .pickerStyle(.navigationLink)
                     }
-                }
-            }
-
-            // MARK: - Other settings
-            // Library toggle keeps its position at the top of the
-            // "Other settings" group; the rest of the miscellany now lives
-            // behind a NavigationLink to `OtherSettingsView`.
-            Section(String(localized: "settings_section_other_settings")) {
-                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
-                NavigationLink(String(localized: "settings_section_other_settings")) {
-                    OtherSettingsView()
                 }
             }
 
@@ -173,6 +169,17 @@ struct SettingsView: View {
                 }
                 NavigationLink(String(localized: "settings_push_server_nav_label")) {
                     PushServerSettingsView()
+                }
+            }
+
+            // MARK: - Other settings
+            // Library toggle keeps its position at the top of the
+            // "Other settings" group; the rest of the miscellany now lives
+            // behind a NavigationLink to `OtherSettingsView`.
+            Section(String(localized: "settings_section_other_settings")) {
+                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
+                NavigationLink(String(localized: "settings_section_other_settings")) {
+                    OtherSettingsView()
                 }
             }
 

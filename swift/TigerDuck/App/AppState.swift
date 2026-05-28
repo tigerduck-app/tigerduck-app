@@ -132,9 +132,12 @@ final class AppState {
             await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
         }
 
-        // Auto-enable the push stack when the user has already opted in
-        // (e.g. across app launches). The coordinator no-ops when the
-        // toggle is off, so this is safe to call unconditionally.
+        // Auto-enable the push stack on every launch so the device row
+        // exists in the backend regardless of subscription state — that's
+        // what lets operator-issued custom pushes target the device. The
+        // coordinator is idempotent. Notification *permission* is still
+        // requested through onboarding, not here; users can opt out of
+        // server pushes via `serverPushUserOptOut`.
         pushCoordinator.enable()
         #endif
 
@@ -210,6 +213,70 @@ final class AppState {
     // and the entire PushCoordinator stack pulls in ActivityKit symbols).
 
     let pushCoordinator = PushCoordinator()
+
+    // MARK: - Custom-push tap routing
+
+    /// In-process deep-link targets resolved from a custom-push tap. The
+    /// `NotificationDelegate` writes here; the destination view observes
+    /// and clears the value once it has acted on it.
+    enum DeepLink: Equatable {
+        case bulletin(Int)
+    }
+
+    /// Payload for an operator-issued popup push. `id` is the server-side
+    /// notification id and is also used by SwiftUI's `.alert(_:isPresented:
+    /// presenting:)` for view identity, so re-tapping the same notification
+    /// while the previous alert is still on screen does not double-present.
+    struct ServerPopupPayload: Equatable, Identifiable {
+        let id: String   // notification_id
+        let title: String
+        let body: String
+    }
+
+    /// Set by the notification delegate when the user taps a
+    /// `custom_push_bulletin` push. Bulletins UI observes this and clears
+    /// it after navigating into the detail view.
+    var pendingDeepLink: DeepLink?
+
+    /// Set by the notification delegate when the user taps a
+    /// `custom_push_popup` push and the id has not been shown before.
+    /// The root view presents an alert against this binding and clears
+    /// the value when the user dismisses.
+    var pendingServerPopup: ServerPopupPayload?
+
+    /// In-flight task that re-assigns `pendingServerPopup` after the
+    /// nil-bounce used to force SwiftUI's alert to refresh. Stored here
+    /// so back-to-back popup taps can cancel a stale swap before it
+    /// wakes from its short sleep and overwrites a newer payload.
+    /// `@ObservationIgnored` because it isn't UI state.
+    @ObservationIgnored
+    var pendingServerPopupSwapTask: Task<Void, Never>?
+
+    /// Has the user already been shown the popup for this notification id?
+    /// Persisted via `Defaults[.shownServerPopupIds]` as a FIFO list
+    /// capped at 100 entries. Read-only — call `markServerPopupShown`
+    /// from the alert's dismiss action so an alert that was suppressed
+    /// (e.g. by a competing onboarding sheet) isn't permanently deduped.
+    @MainActor
+    func isServerPopupShown(_ id: String) -> Bool {
+        Defaults[.shownServerPopupIds].contains(id)
+    }
+
+    /// Record that the user has actually seen the popup for `id`. Only
+    /// call this from the alert dismiss path — calling it at routing
+    /// time risks marking a popup as seen when its alert never rendered
+    /// (mid-onboarding, modal collision, etc.), permanently suppressing
+    /// it on future taps.
+    @MainActor
+    func markServerPopupShown(_ id: String) {
+        var seen = Defaults[.shownServerPopupIds]
+        if seen.contains(id) { return }
+        seen.append(id)
+        if seen.count > 100 {
+            seen.removeFirst(seen.count - 100)
+        }
+        Defaults[.shownServerPopupIds] = seen
+    }
     #endif
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
@@ -858,10 +925,11 @@ final class AppState {
 
     /// Enable server push (registers for remote notifications, starts PTS
     /// relay, queues an immediate sync). Call only from explicit user intent
-    /// — turning on the Settings toggle.
+    /// — turning on the Settings toggle. Passes `requestPermission: true`
+    /// so the user sees an iOS prompt as feedback for their tap.
     func enablePushServer() {
         Defaults[.pushServerEnabled] = true
-        pushCoordinator.enable()
+        pushCoordinator.enable(requestPermission: true)
         requestPushScheduleSync()
     }
 
@@ -869,6 +937,14 @@ final class AppState {
     func disablePushServer() async {
         Defaults[.pushServerEnabled] = false
         await pushCoordinator.disable()
+    }
+
+    /// Wire the settings toggle to the registration actor. The actor
+    /// PATCHes the backend and only then persists the local pref so a
+    /// transient failure doesn't leave the UI claiming agreement with
+    /// the server. Throws on failure so the caller can roll back.
+    func updateServerPushOptOut(_ optOut: Bool) async throws {
+        try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
     #endif // os(iOS) — closes the Live Activity / reminder / push block
 

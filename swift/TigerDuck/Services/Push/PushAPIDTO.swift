@@ -14,6 +14,13 @@ enum PushAPI {
         let bundleId: String
         let attrsType: String
         let apnsEnv: String
+        /// "iphone" | "ipad" | "mac"; empty for legacy installs that pre-date
+        /// the field. Backend's validator allows empty + maps it to the
+        /// platform family at query time.
+        let deviceClass: String
+        /// User-facing opt-out for operator-issued "server" pushes. Sent on
+        /// every register so the most recent local value wins.
+        let serverPushEnabled: Bool
 
         enum CodingKeys: String, CodingKey {
             case userId = "user_id"
@@ -24,6 +31,8 @@ enum PushAPI {
             case bundleId = "bundle_id"
             case attrsType = "attrs_type"
             case apnsEnv = "apns_env"
+            case deviceClass = "device_class"
+            case serverPushEnabled = "server_push_enabled"
         }
     }
 
@@ -44,6 +53,24 @@ enum PushAPI {
 
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"
+        }
+    }
+
+    struct DevicePreferencesRequest: Codable, Sendable {
+        let serverPushEnabled: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case serverPushEnabled = "server_push_enabled"
+        }
+    }
+
+    struct DevicePreferencesResponse: Codable, Sendable {
+        let deviceId: String
+        let serverPushEnabled: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case deviceId = "device_id"
+            case serverPushEnabled = "server_push_enabled"
         }
     }
 

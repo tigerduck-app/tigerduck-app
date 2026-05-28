@@ -11,7 +11,7 @@
 
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
 
-**繁體中文** | [English](README_en.md)
+**繁體中文** | [English](README.en.md)
 </div>
 
 ## 總覽
@@ -41,6 +41,10 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 ### 🏛️ **圖書館**（實驗性）
 - 秒開入館 QR-Code，無任何延遲
+
+### ⌚ **Apple Watch**
+- 抬腕即見**入館 QR-Code**，全螢幕顯示、閒置自動淡出頁碼
+- 透過 WatchConnectivity 自動同步登入憑證，無需在 Watch 上重新登入
 
 ### 🌏 **外觀**
 - 內建 **67+ 種語系**，自行設定或跟著系統語言切換
@@ -143,6 +147,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 | 項目 | 需求 |
 |------|------|
 | 作業系統 | iOS 18 以上 |
+| Apple Watch（選用） | watchOS 11 以上，需配對 iPhone |
 | SSO 帳號 | 學生帳號（部分功能需要）|
 | 圖書館 | 圖書館帳號（部分功能需要）|
 
@@ -207,34 +212,39 @@ cp api/.env.template api/.env
 
 ```
 tigerduck-app/
-├── swift/                              # iOS App（Xcode 26+ / iOS 18+）
-│   └── TigerDuck/
-│       ├── App/                        # 全域狀態（AppState）、語言管理、推播代理
-│       ├── Bridge/                     # 服務協調層（KMP / 原生抓取 bridge）
-│       ├── Features/                   # 各分頁功能模組
-│       │   ├── Home/                   # 首頁（時光機、作業、小工具）
-│       │   ├── ClassTable/             # 課表
-│       │   ├── Calendar/               # 行事曆
-│       │   ├── Bulletins/              # 公告（後端 LLM 分類、訂閱、推播）
-│       │   ├── Score/                  # 歷年成績與排名
-│       │   ├── Library/                # 圖書館
-│       │   ├── More/                   # 「更多」聚合頁與功能釘選
-│       │   ├── Settings/               # 設定（語言、簡稱、主題、來源碼）
-│       │   └── Onboarding/             # 初次使用引導
-│       ├── LiveActivity/               # 即時動態 / 動態島
-│       │   ├── Models/  Preferences/  Providers/
-│       │   ├── Resolvers/  Runtime/  Scheduling/
-│       ├── Models/
-│       │   ├── Domain/                 # 業務邏輯模型
-│       │   └── SwiftData/              # 本地持久化模型
-│       ├── Services/
-│       │   ├── Auth/                   # NTUST SSO 認證
-│       │   ├── Network/                # 網路請求
-│       │   ├── Push/                   # APNs / Push 註冊
-│       │   ├── Logging/                # 結構化日誌
-│       │   └── Migrations/             # 一次性遷移
-│       ├── SharedUI/                   # 共用 UI 元件
-│       └── Theme/                      # 主題、配色、視覺預設
+├── swift/                              # iOS App + 周邊 target（Xcode 26+ / iOS 18+ / watchOS 11+）
+│   ├── TigerDuck/                      # 主 iOS App 來源
+│   │   ├── App/                        # 全域狀態（AppState）、語言管理、推播代理
+│   │   ├── Bridge/                     # 服務協調層（KMP / 原生抓取 bridge）
+│   │   ├── Features/                   # 各分頁功能模組
+│   │   │   ├── Home/                   # 首頁（時光機、作業、小工具）
+│   │   │   ├── ClassTable/             # 課表
+│   │   │   ├── Calendar/               # 行事曆
+│   │   │   ├── Bulletins/              # 公告（後端 LLM 分類、訂閱、推播）
+│   │   │   ├── Score/                  # 歷年成績與排名
+│   │   │   ├── Library/                # 圖書館
+│   │   │   ├── More/                   # 「更多」聚合頁與功能釘選
+│   │   │   ├── Settings/               # 設定（語言、簡稱、主題、來源碼）
+│   │   │   └── Onboarding/             # 初次使用引導
+│   │   ├── LiveActivity/               # 即時動態 / 動態島（App 內邏輯）
+│   │   │   ├── Models/  Preferences/  Providers/
+│   │   │   ├── Resolvers/  Runtime/  Scheduling/
+│   │   ├── Models/
+│   │   │   ├── Domain/                 # 業務邏輯模型
+│   │   │   └── SwiftData/              # 本地持久化模型
+│   │   ├── Services/
+│   │   │   ├── Auth/                   # NTUST SSO 認證
+│   │   │   ├── Network/                # 網路請求
+│   │   │   ├── Push/                   # APNs / Push 註冊
+│   │   │   ├── Logging/                # 結構化日誌
+│   │   │   └── Migrations/             # 一次性遷移
+│   │   ├── SharedUI/                   # 共用 UI 元件
+│   │   └── Theme/                      # 主題、配色、視覺預設
+│   ├── TigerDuckLiveActivity/          # Live Activity / 動態島 Widget Extension
+│   ├── TigerDuckWidgets/               # iOS 主畫面 / 鎖定畫面 Widget
+│   ├── TigerDuckWatch Watch App/       # Apple Watch App（Library QR）
+│   ├── TigerDuckWatchWidget/           # Apple Watch 複雜功能 (Complication)
+│   └── Shared/                         # 跨 target 共用程式碼（感測器、Watch 通訊、Theme）
 ├── api-poc/                            # 第三方 API 驗證腳本（NTUST / Moodle / Calendar）
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
 ├── docs/                               # 規劃文件、移轉計畫（iOS 端）
