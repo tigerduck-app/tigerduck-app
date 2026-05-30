@@ -26,6 +26,15 @@ final class LiveActivityPreferencesStore {
     var assignmentReminderOffsets: Set<AssignmentReminderOffset> {
         didSet { persistOffsets(); notifyChange() }
     }
+    /// Master switch for assignment due reminders. When off, the scheduler is
+    /// fed an empty offset set, which cancels all pending reminders. Mirrors
+    /// Android's `notifyAssignments`.
+    var isAssignmentReminderEnabled: Bool {
+        didSet {
+            Defaults[.isAssignmentReminderEnabled] = isAssignmentReminderEnabled
+            notifyChange()
+        }
+    }
     var isLiveActivityEnabled: Bool {
         didSet {
             Defaults[.isLiveActivityEnabled] = isLiveActivityEnabled
@@ -71,6 +80,7 @@ final class LiveActivityPreferencesStore {
             assignmentReminderOffsets = Self.defaultOffsets
         }
 
+        isAssignmentReminderEnabled = Defaults[.isAssignmentReminderEnabled]
         isLiveActivityEnabled = Defaults[.isLiveActivityEnabled]
 
         // Clamp on load: a value persisted by an older build that used a
@@ -92,6 +102,7 @@ final class LiveActivityPreferencesStore {
     /// Reset everything to defaults. Exposed for settings UI.
     func resetToDefaults() {
         assignmentReminderOffsets = Self.defaultOffsets
+        isAssignmentReminderEnabled = true
         isLiveActivityEnabled = true
         assignmentLiveActivityLeadTime = Self.defaultAssignmentLeadTime
         classPreparingLeadTime = Self.defaultClassPreparingLeadTime

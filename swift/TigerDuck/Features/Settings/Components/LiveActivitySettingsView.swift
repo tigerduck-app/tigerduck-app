@@ -5,7 +5,6 @@ import SwiftUI
 /// stays short.
 struct LiveActivitySettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
-    @Environment(AppState.self) private var appState
     @State private var showResetConfirmation = false
     @State private var resetFeedbackTrigger = 0
 
@@ -58,16 +57,6 @@ struct LiveActivitySettingsView: View {
             .disabled(!store.isLiveActivityEnabled)
 
             Section {
-                ForEach(AssignmentReminderOffset.allCases) { offset in
-                    Toggle(offset.label, isOn: bindingForOffset(offset))
-                }
-            } header: {
-                Text(String(localized: "live_activity_settings_assignment_notification_header"))
-            } footer: {
-                Text(String(localized: "live_activity_settings_assignment_notification_footer"))
-            }
-
-            Section {
                 Button(String(localized: "live_activity_settings_reset_defaults"), role: .destructive) {
                     showResetConfirmation = true
                 }
@@ -88,25 +77,6 @@ struct LiveActivitySettingsView: View {
             }
         }
         .navigationTitle(String(localized: "live_activity_settings_nav_title"))
-        .task {
-            // Request notification permission only at this explicit entry
-            // point. Refresh paths (theme tweaks, foreground transitions,
-            // background syncs) intentionally never prompt.
-            await appState.requestNotificationAuthorization()
-        }
-    }
-
-    private func bindingForOffset(_ offset: AssignmentReminderOffset) -> Binding<Bool> {
-        Binding(
-            get: { store.assignmentReminderOffsets.contains(offset) },
-            set: { newValue in
-                if newValue {
-                    store.assignmentReminderOffsets.insert(offset)
-                } else {
-                    store.assignmentReminderOffsets.remove(offset)
-                }
-            }
-        )
     }
 
     private func formatHours(_ interval: TimeInterval) -> String {

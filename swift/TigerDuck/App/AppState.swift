@@ -849,7 +849,11 @@ final class AppState {
         let assignments = DataCache.shared.loadAssignments()
         await reminderScheduler.reschedule(
             assignments: assignments,
-            offsets: liveActivityPreferences.assignmentReminderOffsets
+            // Master switch off -> empty set, which makes the scheduler cancel
+            // all pending reminders and bail.
+            offsets: liveActivityPreferences.isAssignmentReminderEnabled
+                ? liveActivityPreferences.assignmentReminderOffsets
+                : []
         )
     }
 
