@@ -109,7 +109,7 @@ struct PushServerSettingsView: View {
                     idRow(kind: .user, label: "User ID", value: s.userId)
                     idRow(kind: .device, label: "Device ID", value: s.deviceId)
                 } header: {
-                    Text("IDs")
+                    Text(String(localized: "push_server_ids_section"))
                 } footer: {
                     // Only render the footer when there's actual feedback
                     // to show — the idle hint was noise once the icon in
