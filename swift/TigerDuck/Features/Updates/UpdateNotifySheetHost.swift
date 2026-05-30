@@ -50,7 +50,7 @@ private struct UpdateNotifySheetHost: ViewModifier {
                 UpdatePromptView(pending: pending) { action in
                     coordinator.handleUpdatePromptAction(action)
                 }
-                .presentationDetents([.fraction(0.6), .large])
+                .presentationDetents([.fraction(0.7), .large])
             }
         }
     }
