@@ -923,7 +923,6 @@ final class AppState {
                 showClassPreparing: liveActivityPreferences.showClassPreparingScenario,
                 showInClass: liveActivityPreferences.showInClassScenario,
                 showAssignmentScenario: liveActivityPreferences.showAssignmentScenario
-                    && liveActivityPreferences.isAssignmentReminderEnabled
             )
         }
     }
