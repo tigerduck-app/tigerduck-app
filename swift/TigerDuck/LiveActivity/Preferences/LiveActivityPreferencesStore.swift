@@ -99,10 +99,13 @@ final class LiveActivityPreferencesStore {
         showInClassScenario = Defaults[.showInClassScenario]
     }
 
-    /// Reset everything to defaults. Exposed for settings UI.
+    /// Reset Live Activity display defaults. Exposed for settings UI.
+    ///
+    /// Deliberately does NOT touch assignment-reminder state
+    /// (`isAssignmentReminderEnabled` / `assignmentReminderOffsets`): those
+    /// live on the separate Assignment Reminder settings screen, and resetting
+    /// them here would silently re-enable reminders the user had turned off.
     func resetToDefaults() {
-        assignmentReminderOffsets = Self.defaultOffsets
-        isAssignmentReminderEnabled = true
         isLiveActivityEnabled = true
         assignmentLiveActivityLeadTime = Self.defaultAssignmentLeadTime
         classPreparingLeadTime = Self.defaultClassPreparingLeadTime
