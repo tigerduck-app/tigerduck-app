@@ -44,7 +44,7 @@ struct MacLoginView: View {
                     .foregroundStyle(.tint)
                 Text(String(localized: "app_name"))
                     .font(.largeTitle.bold())
-                Text(String(localized: "desktop_sign_in_subtitle"))
+                Text(String(localized: "mac_sign_in_subtitle"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -129,7 +129,7 @@ struct MacLoginView: View {
 
             Spacer(minLength: 0)
 
-            Text(String(localized: "desktop_sign_in_disclaimer"))
+            Text(String(localized: "mac_sign_in_disclaimer"))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

@@ -333,7 +333,7 @@ struct MacClassTableView: View {
                 Text(String(localized: "feature_class_table"))
                     .font(.largeTitle.bold())
                 Text(String(
-                    format: String(localized: "desktop_class_table_subtitle_value"),
+                    format: String(localized: "mac_class_table_subtitle_value"),
                     displayLabel(for: selectedSemester),
                     courses.count,
                     totalCredits
@@ -350,9 +350,9 @@ struct MacClassTableView: View {
             Image(systemName: "calendar.day.timeline.left")
                 .font(.title)
                 .foregroundStyle(.secondary)
-            Text(String(localized: "desktop_class_table_empty_title"))
+            Text(String(localized: "mac_class_table_empty_title"))
                 .font(.headline)
-            Text(String(localized: "desktop_class_table_empty_hint"))
+            Text(String(localized: "mac_class_table_empty_hint"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -366,7 +366,7 @@ struct MacClassTableView: View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.regular)
-            Text(String(format: String(localized: "desktop_class_table_loading_value"), displayLabel(for: selectedSemester)))
+            Text(String(format: String(localized: "mac_class_table_loading_value"), displayLabel(for: selectedSemester)))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

@@ -176,7 +176,7 @@ struct MacBulletinsView: View {
                 Image(systemName: "tray")
                     .font(.title)
                     .foregroundStyle(.secondary)
-                Text(String(localized: searchText.isEmpty ? "desktop_bulletins_empty" : "desktop_bulletins_no_matches"))
+                Text(String(localized: searchText.isEmpty ? "mac_bulletins_empty" : "mac_bulletins_no_matches"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -194,7 +194,7 @@ struct MacBulletinsView: View {
                 Image(systemName: "doc.text")
                     .font(.system(size: 48))
                     .foregroundStyle(.secondary)
-                Text(String(localized: "desktop_bulletins_select_one"))
+                Text(String(localized: "mac_bulletins_select_one"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -265,7 +265,7 @@ struct MacBulletinsView: View {
                     fallbackSummary: fallback
                 )
                 if body.isEmpty {
-                    Text(String(localized: "desktop_bulletins_no_body"))
+                    Text(String(localized: "mac_bulletins_no_body"))
                         .foregroundStyle(.secondary)
                         .italic()
                 } else {

@@ -72,7 +72,7 @@ private struct TodayScheduleWidgetCard: View {
                         scheduleRow(slot)
                     }
                     if slots.count > 6 {
-                        Text(String(format: String(localized: "desktop_widget_more_count"), slots.count - 6))
+                        Text(String(format: String(localized: "mac_widget_more_count"), slots.count - 6))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -105,7 +105,7 @@ private struct TodayScheduleWidgetCard: View {
                 .lineLimit(1)
             Spacer()
             if isLive {
-                Text(String(localized: "desktop_widget_now"))
+                Text(String(localized: "mac_widget_now"))
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(color)
                     .padding(.horizontal, 6)
@@ -234,10 +234,10 @@ private struct NextClassTarget {
         let end = slots.map(\.end).max() ?? slots[0].end
         if start <= now && now < end {
             let remaining = max(0, Int(end.timeIntervalSince(now)))
-            return String(format: String(localized: "desktop_widget_ends_in"), format(remaining))
+            return String(format: String(localized: "mac_widget_ends_in"), format(remaining))
         }
         let until = max(0, Int(start.timeIntervalSince(now)))
-        return String(format: String(localized: "desktop_widget_starts_in"), format(until))
+        return String(format: String(localized: "mac_widget_starts_in"), format(until))
     }
 
     private func format(_ seconds: Int) -> String {

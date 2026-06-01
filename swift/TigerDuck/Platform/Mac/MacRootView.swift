@@ -236,17 +236,17 @@ struct MacGlobalRefreshButton: View {
             Button {
                 appState.backgroundSync()
             } label: {
-                Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
+                Label(String(localized: "mac_action_refresh"), systemImage: "arrow.clockwise")
             }
             .keyboardShortcut("r", modifiers: .command)
-            .help(String(localized: "desktop_action_refresh_help"))
+            .help(String(localized: "mac_action_refresh_help"))
             .opacity(isSyncing ? 0 : 1)
             .disabled(isSyncing)
 
             if isSyncing {
                 ProgressView()
                     .controlSize(.small)
-                    .help(String(localized: "desktop_action_refreshing"))
+                    .help(String(localized: "mac_action_refreshing"))
             }
         }
     }
