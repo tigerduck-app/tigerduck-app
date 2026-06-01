@@ -71,6 +71,10 @@ nonisolated extension Defaults.Keys {
     static let assignmentReminderOffsetsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.assignmentReminderOffsets
     )
+    static let isAssignmentReminderEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.isAssignmentReminderEnabled,
+        default: true
+    )
     static let isLiveActivityEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.isLiveActivityEnabled,
         default: true

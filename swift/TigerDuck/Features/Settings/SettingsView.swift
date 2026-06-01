@@ -164,6 +164,9 @@ struct SettingsView: View {
                     }
                 }
                 #endif
+                NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
+                    AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
+                }
                 NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }

@@ -112,6 +112,7 @@ nonisolated enum AppConstants {
 
         // MARK: Live Activity / reminders
         static let assignmentReminderOffsets = "assignmentReminderOffsets"
+        static let isAssignmentReminderEnabled = "isAssignmentReminderEnabled"
         static let isLiveActivityEnabled = "isLiveActivityEnabled"
         static let assignmentLiveActivityLeadTime = "assignmentLiveActivityLeadTime"
         static let classPreparingLeadTime = "classPreparingLeadTime"

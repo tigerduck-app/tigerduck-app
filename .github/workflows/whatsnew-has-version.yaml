@@ -1,0 +1,47 @@
+name: What's New has version
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+concurrency:
+  group: whatsnew-has-version-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    if: github.event.pull_request.head.ref == 'dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check whatsnew.json has an entry for MARKETING_VERSION
+        run: |
+          set -e
+
+          pbxproj="swift/TigerDuck.xcodeproj/project.pbxproj"
+          whatsnew="swift/TigerDuck/whatsnew.json"
+
+          # Same convention as version-bumped.yaml: the first MARKETING_VERSION
+          # occurrence is the main TigerDuck target (Xcode writes target
+          # sections in dependency order), which is the version we release.
+          version=$(grep -E '^[[:space:]]*MARKETING_VERSION[[:space:]]*=' "$pbxproj" \
+            | head -n1 \
+            | sed -E 's/.*=[[:space:]]*([^;[:space:]]+).*/\1/')
+
+          echo "MARKETING_VERSION: $version"
+
+          if ! jq empty "$whatsnew" 2>/dev/null; then
+            echo "::error file=$whatsnew::whatsnew.json is not valid JSON."
+            exit 1
+          fi
+
+          if ! jq -e --arg v "$version" 'has($v)' "$whatsnew" > /dev/null; then
+            echo "::error file=$whatsnew::whatsnew.json must have a top-level \"$version\" key matching MARKETING_VERSION. Existing keys: $(jq -c 'keys' "$whatsnew")."
+            exit 1
+          fi
+
+          echo "OK: whatsnew.json contains an entry for $version."
