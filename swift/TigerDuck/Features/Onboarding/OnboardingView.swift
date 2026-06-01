@@ -203,8 +203,8 @@ struct OnboardingView: View {
 
         return OnboardingPageView(
             icon: "person.badge.key.fill",
-            title: String(localized: "onboarding_login_title"),
-            subtitle: String(localized: "onboarding_login_subtitle"),
+            title: String(localized: "onboarding_sign_in_title"),
+            subtitle: String(localized: "onboarding_sign_in_subtitle"),
             accentColor: .green,
             content: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
@@ -213,7 +213,7 @@ struct OnboardingView: View {
                             Image(systemName: "person.fill")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
-                            TextField(String(localized: "login_student_id"), text: $studentId)
+                            TextField(String(localized: "sign_in_student_id"), text: $studentId)
                                 .keyboardType(.asciiCapable)
                                 .focused($focusedField, equals: .studentId)
                                 .textContentType(.username)
@@ -234,7 +234,7 @@ struct OnboardingView: View {
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
                             PasswordField(
-                                placeholder: String(localized: "login_password"),
+                                placeholder: String(localized: "sign_in_password"),
                                 text: $password,
                                 focusBinding: $focusedField,
                                 focusValue: .password,
@@ -277,7 +277,7 @@ struct OnboardingView: View {
                             isLoading: appState.authService.isLoggingIn,
                             tint: .white
                         ) {
-                            Text(String(localized: "onboarding_login_button"))
+                            Text(String(localized: "onboarding_sign_in_button"))
                                 .font(.callout.weight(.semibold))
                         }
                     }

@@ -316,8 +316,8 @@ private struct HomeSectionView: View {
             case .loginRequired:
                 LoginRequiredView(
                     layout: .section,
-                    title: String(localized: "common_not_logged_in"),
-                    message: String(localized: "home_assignments_login_required_message"),
+                    title: String(localized: "common_not_signed_in"),
+                    message: String(localized: "home_assignments_sign_in_required_message"),
                     onPrimary: { appState.presentNTUSTLogin() }
                 )
             case .empty:

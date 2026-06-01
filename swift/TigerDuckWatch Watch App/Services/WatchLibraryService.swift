@@ -10,9 +10,9 @@ enum WatchLibraryServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .credentialsNotFound:
-            return String(localized: "library_login_qr_prompt")
+            return String(localized: "library_sign_in_qr_prompt")
         case .loginFailed(let m):
-            return String(format: String(localized: "error_library_login_failed_format"), m)
+            return String(format: String(localized: "error_library_sign_in_failed_format"), m)
         case .qrGenerationFailed:
             // Server-side detail is logged in generateQRCode(); the
             // user-facing message stays short to fit the watch screen.

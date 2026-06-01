@@ -44,13 +44,13 @@ struct MacLoginView: View {
                     .foregroundStyle(.tint)
                 Text(String(localized: "app_name"))
                     .font(.largeTitle.bold())
-                Text(String(localized: "desktop_login_subtitle"))
+                Text(String(localized: "desktop_sign_in_subtitle"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             VStack(spacing: 14) {
-                TextField(String(localized: "login_student_id"), text: $studentId)
+                TextField(String(localized: "sign_in_student_id"), text: $studentId)
                     .textFieldStyle(.roundedBorder)
                     .focused($focused, equals: .studentId)
                     .onSubmit { focused = .password }
@@ -60,9 +60,9 @@ struct MacLoginView: View {
                 HStack(spacing: 6) {
                     Group {
                         if isPasswordVisible {
-                            TextField(String(localized: "login_password"), text: $password)
+                            TextField(String(localized: "sign_in_password"), text: $password)
                         } else {
-                            SecureField(String(localized: "login_password"), text: $password)
+                            SecureField(String(localized: "sign_in_password"), text: $password)
                         }
                     }
                     .textFieldStyle(.roundedBorder)
@@ -103,7 +103,7 @@ struct MacLoginView: View {
                     isLoading: appState.authService.isLoggingIn,
                     tint: .white
                 ) {
-                    Text(String(localized: "action_login"))
+                    Text(String(localized: "action_sign_in"))
                         .frame(maxWidth: 200)
                 }
             }
@@ -129,7 +129,7 @@ struct MacLoginView: View {
 
             Spacer(minLength: 0)
 
-            Text(String(localized: "desktop_login_disclaimer"))
+            Text(String(localized: "desktop_sign_in_disclaimer"))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

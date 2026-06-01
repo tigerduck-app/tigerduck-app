@@ -206,8 +206,8 @@ struct LibraryView: View {
                     .fill(viewModel.isLoggedIn ? Color.green : Color.textSecondary.opacity(0.5))
                     .frame(width: 8, height: 8)
                 Text(viewModel.isLoggedIn
-                    ? String(localized: "library_status_logged_in")
-                    : String(localized: "common_not_logged_in"))
+                    ? String(localized: "library_status_signed_in")
+                    : String(localized: "common_not_signed_in"))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
             }
@@ -255,7 +255,7 @@ struct LibraryView: View {
                 .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.accentPrimary)
 
-            Text(String(localized: "library_login_qr_prompt"))
+            Text(String(localized: "library_sign_in_qr_prompt"))
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
 
@@ -265,7 +265,7 @@ struct LibraryView: View {
                 .multilineTextAlignment(.center)
 
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                TextField(String(localized: "login_student_id"), text: $viewModel.libUsername)
+                TextField(String(localized: "sign_in_student_id"), text: $viewModel.libUsername)
                     .textContentType(.username)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.characters)
@@ -280,7 +280,7 @@ struct LibraryView: View {
                 // plaintext from screen recording / screenshots while
                 // revealed — the bare `SecureField` had neither.
                 PasswordField(
-                    placeholder: String(localized: "library_login_password"),
+                    placeholder: String(localized: "library_sign_in_password"),
                     text: $viewModel.libPassword,
                     focusBinding: $loginField,
                     focusValue: .password,
@@ -334,8 +334,8 @@ struct LibraryView: View {
                     .tint(.white)
             }
             Text(viewModel.isLoggingIn
-                ? String(localized: "library_logging_in_label")
-                : String(localized: "library_login_action"))
+                ? String(localized: "library_signing_in_label")
+                : String(localized: "library_sign_in_action"))
                 .font(TigerDuckTheme.Typography.headline)
         }
     }

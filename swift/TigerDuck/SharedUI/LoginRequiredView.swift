@@ -16,7 +16,7 @@ struct LoginRequiredView: View {
     let layout: Layout
     let title: String
     let message: String
-    var primaryTitle: String = String(localized: "onboarding_login_button")
+    var primaryTitle: String = String(localized: "onboarding_sign_in_button")
     var secondaryTitle: String? = nil
     let onPrimary: () -> Void
     var onSecondary: (() -> Void)? = nil

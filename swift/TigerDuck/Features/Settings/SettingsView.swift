@@ -281,8 +281,8 @@ struct SettingsView: View {
             LoginSheet(
                 title: String(localized: "settings_account_library_system"),
                 subtitle: String(localized: "settings_library_account_subtitle"),
-                usernamePlaceholder: String(localized: "login_student_id"),
-                passwordPlaceholder: String(localized: "login_password"),
+                usernamePlaceholder: String(localized: "sign_in_student_id"),
+                passwordPlaceholder: String(localized: "sign_in_password"),
                 initialUsername: appState.authService.storedStudentId ?? "",
                 isLoggingIn: libIsLoggingIn,
                 loginError: libLoginError,
@@ -572,14 +572,14 @@ struct SettingsView: View {
     ) -> some View {
         if isLoggedIn {
             Button(role: .destructive, action: onLogout) {
-                Text(String(localized: "action_logout"))
+                Text(String(localized: "action_sign_out"))
                     .font(.callout.weight(.semibold))
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
         } else {
             Button(action: onLogin) {
-                Text(String(localized: "action_login"))
+                Text(String(localized: "action_sign_in"))
                     .font(.callout.weight(.semibold))
             }
             .buttonStyle(.borderedProminent)

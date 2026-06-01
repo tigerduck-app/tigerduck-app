@@ -55,7 +55,7 @@ struct LibraryQRView: View {
 
     private var emptyState: some View {
         ContentUnavailableView(
-            String(localized: "library_login_qr_prompt"),
+            String(localized: "library_sign_in_qr_prompt"),
             systemImage: "iphone.gen3",
             description: Text(String(localized: "watch_open_phone_to_sync"))
         )
