@@ -27,7 +27,7 @@ struct AddSectionSheet: View {
                     }
                 }
 
-                Section(String(localized: "home_section_custom")) {
+                Section(String(localized: "home_custom_section")) {
                     HStack {
                         TextField(String(localized: "home_section_name"), text: $customTitle)
                         Button {

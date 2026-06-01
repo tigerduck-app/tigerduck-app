@@ -159,11 +159,11 @@ struct MacClassTableView: View {
                     // semester picker grows wide.
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
-                        Text(String(localized: "class_table_add_course"))
+                        Text(String(localized: "add_course_title"))
                     }
                     .fixedSize()
                 }
-                .help(String(localized: "class_table_add_course"))
+                .help(String(localized: "add_course_title"))
             }
         }
         .sheet(isPresented: $showAddCourse) {
