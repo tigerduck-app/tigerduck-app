@@ -345,10 +345,10 @@ private struct MacAccountSettingsView: View {
                     Button(role: .destructive) {
                         appState.logoutNTUST()
                     } label: {
-                        Label(String(localized: "action_logout"), systemImage: "rectangle.portrait.and.arrow.right")
+                        Label(String(localized: "action_sign_out"), systemImage: "rectangle.portrait.and.arrow.right")
                     }
                 } else {
-                    Text(String(localized: "common_not_logged_in"))
+                    Text(String(localized: "common_not_signed_in"))
                         .foregroundStyle(.secondary)
                     // Closes the loop for users who took the "Skip for
                     // now" path on `MacLoginView`: without this they'd
@@ -357,7 +357,7 @@ private struct MacAccountSettingsView: View {
                     Button {
                         showSignIn = true
                     } label: {
-                        Label(String(localized: "action_login"), systemImage: "person.badge.key.fill")
+                        Label(String(localized: "action_sign_in"), systemImage: "person.badge.key.fill")
                     }
                 }
             }

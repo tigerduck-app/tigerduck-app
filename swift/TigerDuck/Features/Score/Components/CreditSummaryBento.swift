@@ -12,12 +12,12 @@ struct CreditSummaryBento: View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             HStack(spacing: TigerDuckTheme.Spacing.sm) {
                 tile(
-                    label: String(localized: "score_credit_earned_label"),
+                    label: String(localized: "score_credit_earned"),
                     breakdown: summary.earned,
                     accent: Color(hex: 0x2ECC71)
                 )
                 tile(
-                    label: String(localized: "score_credit_enrolled_label"),
+                    label: String(localized: "score_credit_enrolled"),
                     breakdown: summary.enrolled,
                     accent: Color(hex: 0x45B7D1)
                 )

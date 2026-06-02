@@ -14,9 +14,9 @@ struct NTUSTLoginSheetHost: ViewModifier {
         content.sheet(isPresented: $appState.isShowingNTUSTLoginSheet) {
             LoginSheet(
                 title: String(localized: "settings_account_ntust_system"),
-                subtitle: String(localized: "onboarding_login_subtitle"),
-                usernamePlaceholder: String(localized: "login_student_id"),
-                passwordPlaceholder: String(localized: "login_password"),
+                subtitle: String(localized: "onboarding_sign_in_subtitle"),
+                usernamePlaceholder: String(localized: "sign_in_student_id"),
+                passwordPlaceholder: String(localized: "sign_in_password"),
                 isLoggingIn: appState.authService.isLoggingIn,
                 loginError: appState.authService.loginError,
                 onLogin: { studentId, password in

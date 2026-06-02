@@ -8,8 +8,8 @@ enum SSOLoginError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .loginFormNotFound: return String(localized: "error_sso_login_form_not_found")
-        case .loginFailed: return String(localized: "error_sso_login_failed")
+        case .loginFormNotFound: return String(localized: "error_sso_sign_in_form_not_found")
+        case .loginFailed: return String(localized: "error_sso_sign_in_failed")
         case .networkError(let e): return String(format: String(localized: "error_network_format"), e.localizedDescription)
         case .invalidResponse: return String(localized: "error_invalid_server_response")
         }

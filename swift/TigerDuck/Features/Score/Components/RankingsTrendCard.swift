@@ -147,7 +147,7 @@ struct RankingsTrendCard: View {
                 value: formatGPA(source.flatMap(gpa))
             )
             summaryCell(
-                title: String(localized: "score_ranking_class_label"),
+                title: String(localized: "score_rank_class"),
                 value: formatRank(source.map(rank)?.classRank)
             )
             summaryCell(

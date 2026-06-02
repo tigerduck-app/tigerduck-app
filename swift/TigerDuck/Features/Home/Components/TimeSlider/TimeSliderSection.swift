@@ -33,8 +33,8 @@ struct TimeSliderSection: View {
         case .loginRequired:
             LoginRequiredView(
                 layout: .section,
-                title: String(localized: "common_not_logged_in"),
-                message: String(localized: "home_time_slider_login_required_message"),
+                title: String(localized: "common_not_signed_in"),
+                message: String(localized: "home_time_slider_sign_in_required_message"),
                 onPrimary: { appState.presentNTUSTLogin() }
             )
         case .content:

@@ -8,7 +8,7 @@ enum NTUSTScoreServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notAuthenticated: return String(localized: "common_not_logged_in")
+        case .notAuthenticated: return String(localized: "common_not_signed_in")
         case .redirectedToSSO:  return String(localized: "error_session_expired")
         case .invalidResponse:  return String(localized: "error_invalid_server_response")
         case .parseFailed:      return String(localized: "score_error_parse_failed")

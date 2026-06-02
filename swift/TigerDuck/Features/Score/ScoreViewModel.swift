@@ -100,7 +100,7 @@ final class ScoreViewModel {
         guard !isRefreshing else { return }
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
-            errorMessage = String(localized: "common_not_logged_in")
+            errorMessage = String(localized: "common_not_signed_in")
             return
         }
 

@@ -51,7 +51,7 @@ struct SubscriptionRuleEditorView: View {
                 } label: {
                     HStack {
                         Text(orgs.isEmpty
-                            ? String(localized: "bulletin_rule_all_orgs")
+                            ? String(localized: "bulletin_rule_all_depts")
                             : String(format: String(localized: "bulletin_rule_editor_selected_count"), orgs.count))
                             .foregroundStyle(.primary)
                         Spacer()

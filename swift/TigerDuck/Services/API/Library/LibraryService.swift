@@ -9,7 +9,7 @@ enum LibraryServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .credentialsNotFound: String(localized: "error_library_credentials_not_found")
-        case .loginFailed(let msg): String(format: String(localized: "error_library_login_failed_format"), msg)
+        case .loginFailed(let msg): String(format: String(localized: "error_library_sign_in_failed_format"), msg)
         case .qrGenerationFailed(let msg): String(format: String(localized: "error_qr_generation_failed_format"), msg)
         case .networkError(let e): String(format: String(localized: "error_network_format"), e.localizedDescription)
         }
