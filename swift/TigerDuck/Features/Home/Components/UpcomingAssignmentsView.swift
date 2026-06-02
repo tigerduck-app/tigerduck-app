@@ -286,6 +286,10 @@ private struct SwipeableRow<Content: View>: View {
     let content: Content
 
     @State private var offset: CGFloat = 0
+    /// Set the instant the drag moves the row, cleared one run-loop turn
+    /// after the drag ends. Owned by `dragGesture`; the tap handler only
+    /// reads it. See `tappableContent` for why this exists.
+    @State private var didSwipe = false
 
     private let triggerThreshold: CGFloat = 96
     private let snapAnimation = Animation.spring(response: 0.32, dampingFraction: 0.78)
@@ -322,11 +326,16 @@ private struct SwipeableRow<Content: View>: View {
             content
                 .offset(x: offset)
                 .scrollSafeTapAction {
-                    if offset != 0 {
-                        snapBack()
-                    } else {
-                        onTap()
-                    }
+                    // The swipe drag rides alongside via `.simultaneousGesture`,
+                    // so a swipe-release also delivers a Button tap. `didSwipe`
+                    // lets this tap defer to `dragGesture.onEnded`, which is the
+                    // sole owner of the swipe action + snap-back. Reading shared
+                    // `offset` here instead raced: `onEnded` always resets it to
+                    // 0, so the tap and the drag-end could each see the other's
+                    // reset and the row would either skip its swipe action or
+                    // navigate right after performing it.
+                    guard !didSwipe else { return }
+                    onTap()
                 }
                 .simultaneousGesture(dragGesture)
                 .accessibilityHint(Text(tapHint))
@@ -379,6 +388,9 @@ private struct SwipeableRow<Content: View>: View {
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
+                // Mark the gesture a swipe the moment it moves the row, so the
+                // simultaneous Button tap on release bows out of `onTap()`.
+                didSwipe = true
             }
             .onEnded { _ in
                 // `offset` is only ever mutated by horizontal-intent updates
@@ -392,6 +404,13 @@ private struct SwipeableRow<Content: View>: View {
                     action.action()
                 }
                 snapBack()
+                // Clear one run-loop turn later: the spurious Button tap a
+                // swipe-release also delivers fires within this same event turn
+                // and must still see `didSwipe == true`, while the next genuine
+                // tap (a later turn) sees it cleared.
+                if didSwipe {
+                    Task { @MainActor in didSwipe = false }
+                }
             }
     }
 
