@@ -100,9 +100,11 @@ struct OnboardingView: View {
                     VStack(spacing: TigerDuckTheme.Spacing.lg) {
                         Link(destination: AppURLs.website) {
                             Label(String(localized: "onboarding_welcome_website_label"), systemImage: "globe")
+                                .frame(maxWidth: .infinity)
                         }
                         Link(destination: AppURLs.github) {
                             Label(String(localized: "onboarding_welcome_github_label"), systemImage: "chevron.left.forwardslash.chevron.right")
+                                .frame(maxWidth: .infinity)
                         }
                     }
                     .buttonStyle(.bordered)
