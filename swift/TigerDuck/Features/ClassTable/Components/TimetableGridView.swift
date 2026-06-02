@@ -288,46 +288,52 @@ private struct ConflictClusterView: View {
                 sharpBottomOuter: sharpBottom
             )
 
-            ZStack(alignment: .topLeading) {
-                courseRegion(
-                    course: courseA,
-                    shape: shapeA,
-                    labelAlignment: .topTrailing,
-                    barFraction: aBarFraction
-                )
-                .frame(width: proxy.size.width, height: aHeight)
-                .offset(y: aTop)
-
-                courseRegion(
-                    course: courseB,
-                    shape: shapeB,
-                    labelAlignment: .bottomLeading,
-                    barFraction: bBarFraction
-                )
-                .frame(width: proxy.size.width, height: bHeight)
-                .offset(y: bTop)
-            }
-            .overlay(alignment: .topTrailing) {
-                if diffWithoutColor {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                        .padding(2)
-                        .accessibilityHidden(true)
-                }
-            }
-            // One tap anywhere in the cluster opens the picker; the picker
-            // resolves which course to inspect. Per-shape hit-testing would
-            // bypass the picker entirely, but the Android version still goes
-            // through the sheet so the user can see both options.
-            .contentShape(Rectangle())
-            .onTapGesture {
+            // A real `Button` (replacing `.onTapGesture`) wins iOS 18 gesture
+            // arbitration against the surrounding scroll view, matching the
+            // single-course cell above so the conflict picker opens on the
+            // first tap. `.contentShape` (moved inside the label) keeps the
+            // whole cluster hittable; `Button` supplies the `.isButton` trait.
+            Button {
                 viewModel.presentConflictPicker(
                     courseA: courseA, courseB: courseB,
                     weekday: weekday, periodId: periodId
                 )
+            } label: {
+                ZStack(alignment: .topLeading) {
+                    courseRegion(
+                        course: courseA,
+                        shape: shapeA,
+                        labelAlignment: .topTrailing,
+                        barFraction: aBarFraction
+                    )
+                    .frame(width: proxy.size.width, height: aHeight)
+                    .offset(y: aTop)
+
+                    courseRegion(
+                        course: courseB,
+                        shape: shapeB,
+                        labelAlignment: .bottomLeading,
+                        barFraction: bBarFraction
+                    )
+                    .frame(width: proxy.size.width, height: bHeight)
+                    .offset(y: bTop)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if diffWithoutColor {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .padding(2)
+                            .accessibilityHidden(true)
+                    }
+                }
+                // One tap anywhere in the cluster opens the picker; the picker
+                // resolves which course to inspect. Per-shape hit-testing would
+                // bypass the picker entirely, but the Android version still goes
+                // through the sheet so the user can see both options.
+                .contentShape(Rectangle())
             }
-            .accessibilityAddTraits(.isButton)
+            .buttonStyle(.plain)
             .accessibilityLabel(
                 Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
                      String(format: String(localized: "a11y_timetable_cell"),

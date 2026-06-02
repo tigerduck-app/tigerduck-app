@@ -65,7 +65,12 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         #if canImport(UIKit)
-        .onTapGesture { UIApplication.dismissKeyboard() }
+        // `.simultaneousGesture` (not `.onTapGesture`): a plain tap recognizer on
+        // the page root competes with — and on iOS 18 swallows — taps on the
+        // interactive `Link`s / `Button`s inside `content`, which is what left the
+        // lower welcome-page links (e.g. GitHub) dead. A simultaneous tap still
+        // dismisses the keyboard without blocking those child taps.
+        .simultaneousGesture(TapGesture().onEnded { UIApplication.dismissKeyboard() })
         #endif
     }
 

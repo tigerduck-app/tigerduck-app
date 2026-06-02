@@ -4,6 +4,7 @@ import UserNotifications
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openURL) private var openURL
     @State private var currentPage = 0
     @State private var studentId = ""
     @State private var password = ""
@@ -57,7 +58,10 @@ struct OnboardingView: View {
         // give the user a way to clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
-        .onTapGesture { focusedField = nil }
+        // Simultaneous (not `.onTapGesture`) so this keyboard-dismiss tap on the
+        // TabView root doesn't swallow taps on interactive children — see
+        // OnboardingPageView for the iOS 18 gesture-arbitration details.
+        .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
         .onChange(of: currentPage) { _, _ in focusedField = nil }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, newPhase in
@@ -87,10 +91,24 @@ struct OnboardingView: View {
                         .lineLimit(12)
                         .minimumScaleFactor(0.6)
 
-                    VStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
-                        Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
+                    // Real `Button`s (not `Link`s): a bordered button gives a
+                    // large, reliable hit target and wins iOS 18 gesture
+                    // arbitration against the page's scroll/tap recognizers,
+                    // which made the text `Link`s hard to tap.
+                    VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                        Button {
+                            openURL(AppURLs.website)
+                        } label: {
+                            Label(String(localized: "onboarding_welcome_website_label"), systemImage: "globe")
+                        }
+                        Button {
+                            openURL(AppURLs.github)
+                        } label: {
+                            Label(String(localized: "onboarding_welcome_github_label"), systemImage: "chevron.left.forwardslash.chevron.right")
+                        }
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                     .font(.callout.weight(.semibold))
                     .padding(.top, TigerDuckTheme.Spacing.sm)
                 }

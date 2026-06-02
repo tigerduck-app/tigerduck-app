@@ -73,13 +73,21 @@ struct HomeView: View {
                 )
             )
             .contentShape(Rectangle())
-            .onLongPressGesture {
-                if !viewModel.isEditingHome {
-                    withAnimation(reduceMotion ? nil : .smoothSpring) {
-                        viewModel.isEditingHome = true
+            // A plain `.onLongPressGesture` here installs a recognizer over the
+            // whole scroll content that, on iOS 18, competes with every child
+            // tap (widgets, course cards, sections) and eats the *first* tap —
+            // making buttons feel like they need a second press. `.simultaneousGesture`
+            // lets the long-press coexist without blocking those child taps.
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .onEnded { _ in
+                        if !viewModel.isEditingHome {
+                            withAnimation(reduceMotion ? nil : .smoothSpring) {
+                                viewModel.isEditingHome = true
+                            }
+                        }
                     }
-                }
-            }
+            )
         }
         .refreshable {
             // Fire-and-forget: the pull gesture should dismiss the

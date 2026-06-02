@@ -37,6 +37,22 @@ struct CourseTimeCard: View {
 
     @ViewBuilder
     private func cardContent(slot: CourseTimeSlot, opacity: Double) -> some View {
+        // The card is a real `Button`, not a `.onTapGesture` surface: inside
+        // Home's ScrollView the button gesture wins iOS 18 arbitration, so the
+        // first tap opens the detail sheet instead of being swallowed. `Button`
+        // supplies the `.isButton` trait automatically, so it's no longer added
+        // by hand on the surface below.
+        Button {
+            onSelect?(slot)
+        } label: {
+            cardSurface(slot: slot, opacity: opacity)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
+    }
+
+    @ViewBuilder
+    private func cardSurface(slot: CourseTimeSlot, opacity: Double) -> some View {
         let course = slot.course
         let weekday = slot.date.scheduleWeekday
         let isToday = AppConstants.taipeiCalendar.isDateInToday(slot.date)
@@ -87,9 +103,6 @@ struct CourseTimeCard: View {
         .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
         .opacity(opacity)
         .contentShape(Rectangle())
-        .onTapGesture { onSelect?(slot) }
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
     }
 
     private func subtitle(for course: SDCourse, weekday: Int) -> String {

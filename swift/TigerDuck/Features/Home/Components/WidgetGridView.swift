@@ -74,11 +74,23 @@ struct WidgetGridView: View {
                     )
                 )
         } else {
-            card
-                .onTapGesture { onTap?(widget.feature) }
-                .onLongPressGesture {
-                    withAnimation(reduceMotion ? nil : .smoothSpring) { isEditing = true }
-                }
+            // A real `Button` (not `.onTapGesture`) is what wins iOS 18 gesture
+            // arbitration against the enclosing ScrollView/LazyVGrid, so the tap
+            // registers on the first press instead of needing a second one. The
+            // edit-mode long-press rides alongside via `.simultaneousGesture` so
+            // it never blocks that tap; `.contentShape` makes the whole card
+            // hittable, including the padding between the icon and the edges.
+            Button { onTap?(widget.feature) } label: {
+                card
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .onEnded { _ in
+                        withAnimation(reduceMotion ? nil : .smoothSpring) { isEditing = true }
+                    }
+            )
         }
     }
 
