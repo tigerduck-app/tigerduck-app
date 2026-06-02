@@ -57,7 +57,7 @@ struct MacMoreView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(String(localized: "feature_more"))
                 .font(.largeTitle.bold())
-            Text(String(localized: "mac_more_subtitle"))
+            Text(String(localized: "desktop_more_subtitle"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -101,7 +101,7 @@ struct MacMoreView: View {
                     .font(.body)
                     .foregroundStyle(.primary)
                 if !feature.isImplemented {
-                    Text(String(localized: "mac_more_not_implemented"))
+                    Text(String(localized: "desktop_more_not_implemented"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

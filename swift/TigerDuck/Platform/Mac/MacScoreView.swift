@@ -33,13 +33,13 @@ struct MacScoreView: View {
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                Picker(String(localized: "mac_score_ranking_scope_label"), selection: $viewModel.rankingScope) {
+                Picker(String(localized: "desktop_score_ranking_scope_label"), selection: $viewModel.rankingScope) {
                     ForEach(ScoreViewModel.RankingScope.allCases) { scope in
                         Text(scope.displayName).tag(scope)
                     }
                 }
                 .pickerStyle(.segmented)
-                .help(String(localized: "mac_score_ranking_scope_help"))
+                .help(String(localized: "desktop_score_ranking_scope_help"))
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -48,12 +48,12 @@ struct MacScoreView: View {
                     if viewModel.isRefreshing {
                         ProgressView().controlSize(.small)
                     } else {
-                        Label(String(localized: "mac_action_refresh"), systemImage: "arrow.clockwise")
+                        Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
                     }
                 }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(viewModel.isRefreshing)
-                .help(String(localized: "mac_score_refresh_help"))
+                .help(String(localized: "desktop_score_refresh_help"))
             }
         }
         .task {
@@ -66,10 +66,10 @@ struct MacScoreView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 24) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "mac_score_title"))
+                Text(String(localized: "desktop_score_title"))
                     .font(.title2.bold())
                 if let cached = viewModel.cachedAt {
-                    Text(String(format: String(localized: "mac_score_cached_value"), cached.formatted(.relative(presentation: .named))))
+                    Text(String(format: String(localized: "desktop_score_cached_value"), cached.formatted(.relative(presentation: .named))))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -84,7 +84,7 @@ struct MacScoreView: View {
     private func rankSummary(_ ranking: SemesterRanking) -> some View {
         let stats = viewModel.rankingScope == .semester ? ranking.semester : ranking.cumulative
         return HStack(spacing: 22) {
-            statColumn(label: String(localized: "mac_score_gpa_label"), value: stats.gpa.map { String(format: "%.2f", $0) } ?? "—")
+            statColumn(label: String(localized: "desktop_score_gpa_label"), value: stats.gpa.map { String(format: "%.2f", $0) } ?? "—")
             if let cls = stats.classRank {
                 statColumn(label: String(localized: "score_rank_class"), value: "#\(cls)")
             }
@@ -115,9 +115,9 @@ struct MacScoreView: View {
             Image(systemName: "chart.bar")
                 .font(.title)
                 .foregroundStyle(.secondary)
-            Text(String(localized: "mac_score_empty_title"))
+            Text(String(localized: "desktop_score_empty_title"))
                 .font(.headline)
-            Text(String(localized: "mac_score_empty_hint"))
+            Text(String(localized: "desktop_score_empty_hint"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -192,11 +192,11 @@ struct MacScoreView: View {
 
     private var tableHeader: some View {
         HStack(spacing: 12) {
-            Text(String(localized: "mac_score_course_column"))
+            Text(String(localized: "desktop_score_course_column"))
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(String(localized: "course_detail_credits_label"))
                 .frame(width: 64, alignment: .trailing)
-            Text(String(localized: "mac_score_grade_column"))
+            Text(String(localized: "desktop_score_grade_column"))
                 .frame(width: 80, alignment: .trailing)
         }
         .font(.caption.weight(.semibold))
@@ -242,7 +242,7 @@ struct MacScoreView: View {
         guard raw.count == 4 else { return raw }
         let year = String(raw.prefix(3))
         let sem = String(raw.suffix(1))
-        return String(format: String(localized: "mac_score_term_value"), year, sem)
+        return String(format: String(localized: "desktop_score_term_value"), year, sem)
     }
 }
 #endif

@@ -77,7 +77,7 @@ struct MacCalendarView: View {
                 } label: {
                     Text(String(localized: "calendar_today"))
                 }
-                .help(String(localized: "mac_action_jump_to_today"))
+                .help(String(localized: "desktop_action_jump_to_today"))
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in

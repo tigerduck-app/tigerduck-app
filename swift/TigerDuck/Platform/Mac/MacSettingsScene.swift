@@ -18,11 +18,11 @@ struct MacSettingsScene: View {
     var body: some View {
         TabView {
             MacGeneralSettingsView()
-                .tabItem { Label(String(localized: "mac_settings_tab_general"), systemImage: "gearshape") }
+                .tabItem { Label(String(localized: "desktop_settings_tab_general"), systemImage: "gearshape") }
             MacAppearanceSettingsView()
-                .tabItem { Label(String(localized: "mac_settings_tab_appearance"), systemImage: "paintpalette") }
+                .tabItem { Label(String(localized: "desktop_settings_tab_appearance"), systemImage: "paintpalette") }
             MacSidebarSettingsView()
-                .tabItem { Label(String(localized: "mac_settings_tab_sidebar"), systemImage: "sidebar.left") }
+                .tabItem { Label(String(localized: "desktop_settings_tab_sidebar"), systemImage: "sidebar.left") }
             MacAccountSettingsView()
                 .tabItem { Label(String(localized: "settings_section_account"), systemImage: "person.circle") }
             #if DEBUG
@@ -44,7 +44,7 @@ private struct MacGeneralSettingsView: View {
     var body: some View {
         @Bindable var state = appState
         Form {
-            Section(String(localized: "mac_settings_section_interface")) {
+            Section(String(localized: "desktop_settings_section_interface")) {
                 Picker(String(localized: "settings_language"), selection: $state.appLanguage) {
                     Text(String(localized: "settings_language_follow_system")).tag("system")
                     Text(String(localized: "settings_language_traditional_chinese")).tag("zh-Hant")
@@ -53,7 +53,7 @@ private struct MacGeneralSettingsView: View {
                 .pickerStyle(.menu)
             }
 
-            Section(String(localized: "mac_settings_section_course_display")) {
+            Section(String(localized: "desktop_settings_section_course_display")) {
                 Toggle(String(localized: "settings_use_english_course_abbreviation"), isOn: $state.useEnglishCourseAbbreviation)
                 Toggle(String(localized: "settings_use_english_classroom_abbreviation"), isOn: $state.useEnglishClassroomAbbreviation)
                 Picker(String(localized: "settings_classroom_mandarin_display"), selection: $state.classroomMandarinDisplay) {
@@ -64,16 +64,16 @@ private struct MacGeneralSettingsView: View {
                 .pickerStyle(.menu)
             }
 
-            Section(String(localized: "mac_settings_section_links")) {
+            Section(String(localized: "desktop_settings_section_links")) {
                 // No first-party Moodle Mac app exists, but the iPad
                 // Moodle app installed via Mac App Store registers
                 // `moodlemobile://`, so users who chose to install it can
                 // opt into the deep link. Default stays `.browser` —
                 // sending the user to `moodlemobile://` with no app
                 // installed yields "no app handles this URL".
-                Picker(String(localized: "mac_settings_moodle_open_in"), selection: $state.macMoodleOpenTarget) {
-                    Text(String(localized: "mac_settings_moodle_open_in_browser")).tag(MoodleOpenTarget.browser)
-                    Text(String(localized: "mac_settings_moodle_open_in_app")).tag(MoodleOpenTarget.app)
+                Picker(String(localized: "desktop_settings_moodle_open_in"), selection: $state.macMoodleOpenTarget) {
+                    Text(String(localized: "desktop_settings_moodle_open_in_browser")).tag(MoodleOpenTarget.browser)
+                    Text(String(localized: "desktop_settings_moodle_open_in_app")).tag(MoodleOpenTarget.app)
                 }
                 .pickerStyle(.menu)
             }
@@ -124,7 +124,7 @@ private struct MacAppearanceSettingsView: View {
                 .padding(.vertical, 4)
             }
 
-            Section(String(localized: "mac_settings_section_schedule")) {
+            Section(String(localized: "desktop_settings_section_schedule")) {
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
             }
         }
@@ -183,26 +183,26 @@ private struct MacSidebarSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(String(localized: "mac_settings_sidebar_description"))
+            Text(String(localized: "desktop_settings_sidebar_description"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HSplitView {
                 section(
-                    title: String(localized: "mac_settings_sidebar_pinned"),
+                    title: String(localized: "desktop_settings_sidebar_pinned"),
                     systemImage: "pin.fill",
                     items: pinned,
-                    emptyMessage: String(localized: "mac_settings_sidebar_empty_pinned")
+                    emptyMessage: String(localized: "desktop_settings_sidebar_empty_pinned")
                 ) { feature, index in
                     pinnedRow(feature, index: index, total: pinned.count)
                 }
 
                 section(
-                    title: String(localized: "mac_settings_sidebar_available"),
+                    title: String(localized: "desktop_settings_sidebar_available"),
                     systemImage: "square.grid.2x2",
                     items: available,
-                    emptyMessage: String(localized: "mac_settings_sidebar_empty_available")
+                    emptyMessage: String(localized: "desktop_settings_sidebar_empty_available")
                 ) { feature, _ in
                     availableRow(feature)
                 }
@@ -257,7 +257,7 @@ private struct MacSidebarSettingsView: View {
             }
             .buttonStyle(.borderless)
             .disabled(index == 0)
-            .help(String(localized: "mac_settings_sidebar_move_up"))
+            .help(String(localized: "desktop_settings_sidebar_move_up"))
 
             Button {
                 moveDown(at: index)
@@ -266,7 +266,7 @@ private struct MacSidebarSettingsView: View {
             }
             .buttonStyle(.borderless)
             .disabled(index == total - 1)
-            .help(String(localized: "mac_settings_sidebar_move_down"))
+            .help(String(localized: "desktop_settings_sidebar_move_down"))
 
             Button {
                 unpin(feature)
@@ -275,7 +275,7 @@ private struct MacSidebarSettingsView: View {
                     .foregroundStyle(.red)
             }
             .buttonStyle(.borderless)
-            .help(String(localized: "mac_settings_sidebar_remove"))
+            .help(String(localized: "desktop_settings_sidebar_remove"))
         }
     }
 
@@ -290,7 +290,7 @@ private struct MacSidebarSettingsView: View {
                     .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.borderless)
-            .help(String(localized: "mac_settings_sidebar_pin"))
+            .help(String(localized: "desktop_settings_sidebar_pin"))
         }
     }
 
@@ -335,12 +335,12 @@ private struct MacAccountSettingsView: View {
 
     var body: some View {
         Form {
-            Section(String(localized: "mac_settings_section_ntust")) {
+            Section(String(localized: "desktop_settings_section_ntust")) {
                 if appState.authService.hasStoredCredentials {
                     HStack {
                         Image(systemName: "checkmark.seal.fill")
                             .foregroundStyle(.green)
-                        Text(String(localized: "mac_settings_signed_in_ntust"))
+                        Text(String(localized: "desktop_settings_signed_in_ntust"))
                     }
                     Button(role: .destructive) {
                         appState.logoutNTUST()
@@ -575,17 +575,17 @@ private struct MacAboutSettingsView: View {
                 .foregroundStyle(.tint)
             Text(String(localized: "app_name"))
                 .font(.title.bold())
-            Text(String(format: String(localized: "mac_about_version_value"), appVersion))
+            Text(String(format: String(localized: "desktop_about_version_value"), appVersion))
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Text(String(localized: "mac_about_subtitle"))
+            Text(String(localized: "desktop_about_subtitle"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 400)
                 .padding(.top, 8)
             Spacer()
-            Text(String(localized: "mac_about_copyright"))
+            Text(String(localized: "desktop_about_copyright"))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
