@@ -224,7 +224,7 @@ final class UpdateNotifyCoordinator {
         // throttle / iTunes Lookup so it works even when a recent real
         // check has been throttled.
         if Self.consumeDebugSimulateUpdateFlag() {
-            surfaceSyntheticUpdatePrompt()
+            Task { await surfaceSyntheticUpdatePrompt() }
             return
         }
         #endif
@@ -274,11 +274,23 @@ final class UpdateNotifyCoordinator {
     }
 
     /// Plant a synthetic ``PendingUpdate`` so the regular sheet host
-    /// surfaces the prompt. The URL points at the App Store homepage so
-    /// "Update Now" doesn't 404 on a real device — we don't have a real
-    /// `trackId` to deep-link to during pre-launch debug.
-    private func surfaceSyntheticUpdatePrompt() {
-        guard let url = URL(string: "https://apps.apple.com/") else { return }
+    /// surfaces the prompt. Now that the app is published, resolve the
+    /// real App Store deep link through the same iTunes Lookup the
+    /// production path uses, so the debug prompt's "Update Now" opens the
+    /// actual product page instead of the App Store homepage. Falls back
+    /// to the homepage only if the lookup can't be reached (offline, or
+    /// no public record yet).
+    private func surfaceSyntheticUpdatePrompt() async {
+        let appStoreURL: URL
+        if case .found(let lookup)? = try? await AppStoreUpdateService.fetchLatest(
+            bundleId: bundleId,
+            session: session,
+            country: AppConstants.appStoreLookupStorefront
+        ) {
+            appStoreURL = URL.knownGoodAppStoreLink(trackId: lookup.trackId)
+        } else {
+            appStoreURL = URL(string: "https://apps.apple.com/")!
+        }
         // "99.0.0" is the sentinel version surfaced in the debug update
         // prompt. Picked to be unambiguously larger than any shipping
         // TigerDuck version for the foreseeable future, so:
@@ -289,7 +301,7 @@ final class UpdateNotifyCoordinator {
         //   2. The version string reads as "obviously not a real
         //      release" on screen, so the debug-triggered prompt is
         //      visually distinguishable from a real available update.
-        pendingUpdate = PendingUpdate(latestVersion: "99.0.0", appStoreURL: url)
+        pendingUpdate = PendingUpdate(latestVersion: "99.0.0", appStoreURL: appStoreURL)
     }
     #endif
 
