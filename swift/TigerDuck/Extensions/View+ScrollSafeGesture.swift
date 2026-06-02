@@ -16,11 +16,20 @@ extension View {
     /// arbitration against an enclosing scroll view. `.contentShape` keeps the
     /// whole frame (including transparent padding) hittable; `Button` supplies
     /// the `.isButton` accessibility trait automatically.
-    func scrollSafeTapAction(_ action: @escaping () -> Void) -> some View {
+    ///
+    /// `onPressChanged`, when supplied, reports the Button's press state —
+    /// `true` at touch-down (before the tap action is delivered on release),
+    /// `false` when the press lifts or cancels. Callers that run a
+    /// `.simultaneousGesture` drag alongside the tap use the touch-down edge as
+    /// a per-interaction reset hook that doesn't depend on callback ordering.
+    func scrollSafeTapAction(
+        onPressChanged: ((Bool) -> Void)? = nil,
+        _ action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             self.contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ScrollSafeButtonStyle(onPressChanged: onPressChanged))
     }
 
     /// A 0.5 s long-press that enters an edit / reorder mode, attached as a
@@ -43,5 +52,21 @@ extension View {
     /// that left onboarding links dead.
     func dismissTapGesture(_ action: @escaping () -> Void) -> some View {
         simultaneousGesture(TapGesture().onEnded(action))
+    }
+}
+
+/// Visually inert button style (no border, background, or press dimming —
+/// identical to `.plain` for the content cards `scrollSafeTapAction` wraps)
+/// that additionally forwards `configuration.isPressed` so callers can observe
+/// the press lifecycle. Reading `isPressed` requires a `ButtonStyle`; there is
+/// no plain-modifier equivalent.
+private struct ScrollSafeButtonStyle: ButtonStyle {
+    let onPressChanged: ((Bool) -> Void)?
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                onPressChanged?(isPressed)
+            }
     }
 }

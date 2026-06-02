@@ -286,8 +286,9 @@ private struct SwipeableRow<Content: View>: View {
     let content: Content
 
     @State private var offset: CGFloat = 0
-    /// Set the instant the drag moves the row, cleared one run-loop turn
-    /// after the drag ends. Owned by `dragGesture`; the tap handler only
+    /// Set the instant the drag moves the row; cleared on the next Button
+    /// press-down (touch-down of the following interaction). Owned by
+    /// `dragGesture` + the tap's `onPressChanged` hook; the tap action only
     /// reads it. See `tappableContent` for why this exists.
     @State private var didSwipe = false
 
@@ -325,15 +326,27 @@ private struct SwipeableRow<Content: View>: View {
             // `.isButton` trait automatically.
             content
                 .offset(x: offset)
-                .scrollSafeTapAction {
-                    // The swipe drag rides alongside via `.simultaneousGesture`,
-                    // so a swipe-release also delivers a Button tap. `didSwipe`
-                    // lets this tap defer to `dragGesture.onEnded`, which is the
-                    // sole owner of the swipe action + snap-back. Reading shared
-                    // `offset` here instead raced: `onEnded` always resets it to
-                    // 0, so the tap and the drag-end could each see the other's
-                    // reset and the row would either skip its swipe action or
-                    // navigate right after performing it.
+                .scrollSafeTapAction(
+                    onPressChanged: { isPressed in
+                        // Touch-down of a fresh interaction clears the swipe
+                        // latch. The Button reports `isPressed == true` before
+                        // it ever delivers its tap action on release, and
+                        // `dragGesture` only sets `didSwipe` once the row moves,
+                        // so the latch always reflects the current interaction
+                        // — no ordering or timer assumptions about when the
+                        // simultaneous tap/drag callbacks fire.
+                        if isPressed { didSwipe = false }
+                    }
+                ) {
+                    // A swipe-release also delivers a Button tap because the
+                    // drag rides alongside via `.simultaneousGesture`. `didSwipe`
+                    // is set the moment the drag moves the row and stays set
+                    // until the next press-down, so this tap reliably bows out
+                    // and lets `dragGesture.onEnded` solely own the swipe action
+                    // + snap-back. Reading shared `offset` here instead raced:
+                    // `onEnded` always resets it to 0, so the tap and the
+                    // drag-end could each see the other's reset and the row would
+                    // either skip its swipe action or navigate right after it.
                     guard !didSwipe else { return }
                     onTap()
                 }
@@ -404,13 +417,10 @@ private struct SwipeableRow<Content: View>: View {
                     action.action()
                 }
                 snapBack()
-                // Clear one run-loop turn later: the spurious Button tap a
-                // swipe-release also delivers fires within this same event turn
-                // and must still see `didSwipe == true`, while the next genuine
-                // tap (a later turn) sees it cleared.
-                if didSwipe {
-                    Task { @MainActor in didSwipe = false }
-                }
+                // `didSwipe` is intentionally NOT cleared here: it must outlive
+                // the simultaneous Button tap this release also delivers, whose
+                // ordering relative to `onEnded` is undefined. The next
+                // interaction's press-down clears it (see `tappableContent`).
             }
     }
 
