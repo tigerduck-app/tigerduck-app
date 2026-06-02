@@ -59,7 +59,11 @@ final class PushCoordinator {
         self.apiClient = resolvedClient
         self.registration = PushRegistrationService(
             identity: identity,
-            apiClient: resolvedClient
+            apiClient: resolvedClient,
+            // Evaluated here in `PushCoordinator`'s `@MainActor` init so the
+            // `@MainActor` `resolvedForBuild` (reads `UIDevice.current`) is
+            // reached from the main actor.
+            deviceClass: PushDeviceClass.resolvedForBuild
         )
         self.relay = PushTokenRelay(registration: registration)
         self.scheduleSync = ScheduleSyncService(

@@ -286,6 +286,11 @@ private struct SwipeableRow<Content: View>: View {
     let content: Content
 
     @State private var offset: CGFloat = 0
+    /// Set the instant the drag moves the row; cleared on the next Button
+    /// press-down (touch-down of the following interaction). Owned by
+    /// `dragGesture` + the tap's `onPressChanged` hook; the tap action only
+    /// reads it. See `tappableContent` for why this exists.
+    @State private var didSwipe = false
 
     private let triggerThreshold: CGFloat = 96
     private let snapAnimation = Animation.spring(response: 0.32, dampingFraction: 0.78)
@@ -313,23 +318,47 @@ private struct SwipeableRow<Content: View>: View {
 
     @ViewBuilder
     private var tappableContent: some View {
-        let row = content
-            .contentShape(Rectangle())
-            .offset(x: offset)
-            .gesture(dragGesture)
-            .onTapGesture {
-                if offset != 0 {
-                    snapBack()
-                } else {
+        if let tapHint {
+            // A real `Button` (not `.onTapGesture`) so the first tap wins iOS 18
+            // gesture arbitration against Home's ScrollView instead of needing a
+            // second press; the swipe-to-reveal drag rides alongside via
+            // `.simultaneousGesture` so it isn't blocked. `Button` supplies the
+            // `.isButton` trait automatically.
+            content
+                .offset(x: offset)
+                .scrollSafeTapAction(
+                    onPressChanged: { isPressed in
+                        // Touch-down of a fresh interaction clears the swipe
+                        // latch. The Button reports `isPressed == true` before
+                        // it ever delivers its tap action on release, and
+                        // `dragGesture` only sets `didSwipe` once the row moves,
+                        // so the latch always reflects the current interaction
+                        // — no ordering or timer assumptions about when the
+                        // simultaneous tap/drag callbacks fire.
+                        if isPressed { didSwipe = false }
+                    }
+                ) {
+                    // A swipe-release also delivers a Button tap because the
+                    // drag rides alongside via `.simultaneousGesture`. `didSwipe`
+                    // is set the moment the drag moves the row and stays set
+                    // until the next press-down, so this tap reliably bows out
+                    // and lets `dragGesture.onEnded` solely own the swipe action
+                    // + snap-back. Reading shared `offset` here instead raced:
+                    // `onEnded` always resets it to 0, so the tap and the
+                    // drag-end could each see the other's reset and the row would
+                    // either skip its swipe action or navigate right after it.
+                    guard !didSwipe else { return }
                     onTap()
                 }
-            }
-        if let tapHint {
-            row
-                .accessibilityAddTraits(.isButton)
+                .simultaneousGesture(dragGesture)
                 .accessibilityHint(Text(tapHint))
         } else {
-            row
+            // No tap destination: keep the row non-interactive (no button trait)
+            // while still swipeable.
+            content
+                .contentShape(Rectangle())
+                .offset(x: offset)
+                .gesture(dragGesture)
         }
     }
 
@@ -372,6 +401,9 @@ private struct SwipeableRow<Content: View>: View {
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
+                // Mark the gesture a swipe the moment it moves the row, so the
+                // simultaneous Button tap on release bows out of `onTap()`.
+                didSwipe = true
             }
             .onEnded { _ in
                 // `offset` is only ever mutated by horizontal-intent updates
@@ -385,6 +417,10 @@ private struct SwipeableRow<Content: View>: View {
                     action.action()
                 }
                 snapBack()
+                // `didSwipe` is intentionally NOT cleared here: it must outlive
+                // the simultaneous Button tap this release also delivers, whose
+                // ordering relative to `onEnded` is undefined. The next
+                // interaction's press-down clears it (see `tappableContent`).
             }
     }
 

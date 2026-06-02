@@ -33,7 +33,12 @@ import SwiftUI
 /// become unreadable inside the timetable cells, above 1.6× they overflow
 /// the cell before `minimumScaleFactor` rescues them — at which point the
 /// user is fighting the layout, not customizing it.
-enum CourseCardFontScale {
+// `nonisolated` because every member is a pure constant or pure function
+// (no actor state). Without it, the project's `SWIFT_DEFAULT_ACTOR_ISOLATION
+// = MainActor` makes the enum MainActor-isolated, which then can't be read
+// from the `nonisolated` `CourseCardFontScaleStore` below (or the widget
+// extension, which compiles without the MainActor default).
+nonisolated enum CourseCardFontScale {
     /// Inclusive bounds the slider operates over. Out-of-range stored
     /// values are clamped on read so a manually-edited UserDefaults value
     /// can never escape this range.

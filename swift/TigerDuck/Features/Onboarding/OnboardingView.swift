@@ -57,7 +57,10 @@ struct OnboardingView: View {
         // give the user a way to clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
-        .onTapGesture { focusedField = nil }
+        // Simultaneous (not `.onTapGesture`) so this keyboard-dismiss tap on the
+        // TabView root doesn't swallow taps on interactive children — see
+        // View+ScrollSafeGesture for the iOS 18 gesture-arbitration details.
+        .dismissTapGesture { focusedField = nil }
         .onChange(of: currentPage) { _, _ in focusedField = nil }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, newPhase in
@@ -87,10 +90,25 @@ struct OnboardingView: View {
                         .lineLimit(12)
                         .minimumScaleFactor(0.6)
 
-                    VStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
-                        Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
+                    // `Link` (not a bare `Button`) keeps the semantic
+                    // `.isLink` VoiceOver trait and the system URL affordances
+                    // (long-press peek / Copy Link / Share). The bordered,
+                    // large control size gives the reliable hit target the
+                    // plain text links lacked, and now that the page's
+                    // keyboard-dismiss tap is a `.simultaneousGesture` it no
+                    // longer swallows these links' first tap on iOS 18.
+                    VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                        Link(destination: AppURLs.website) {
+                            Label(String(localized: "onboarding_welcome_website_label"), systemImage: "globe")
+                                .frame(maxWidth: .infinity)
+                        }
+                        Link(destination: AppURLs.github) {
+                            Label(String(localized: "onboarding_welcome_github_label"), systemImage: "chevron.left.forwardslash.chevron.right")
+                                .frame(maxWidth: .infinity)
+                        }
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                     .font(.callout.weight(.semibold))
                     .padding(.top, TigerDuckTheme.Spacing.sm)
                 }

@@ -73,12 +73,13 @@ struct HomeView: View {
                 )
             )
             .contentShape(Rectangle())
-            .onLongPressGesture {
-                if !viewModel.isEditingHome {
-                    withAnimation(reduceMotion ? nil : .smoothSpring) {
-                        viewModel.isEditingHome = true
-                    }
-                }
+            // Long-press anywhere in the scroll content (empty space, section
+            // headers, the course slider) enters edit mode. `longPressToEdit`
+            // attaches it via `.simultaneousGesture` so on iOS 18 it coexists
+            // with — rather than swallows — the first tap on every child
+            // (widgets, course cards). See View+ScrollSafeGesture.
+            .longPressToEdit(reduceMotion: reduceMotion) {
+                if !viewModel.isEditingHome { viewModel.isEditingHome = true }
             }
         }
         .refreshable {

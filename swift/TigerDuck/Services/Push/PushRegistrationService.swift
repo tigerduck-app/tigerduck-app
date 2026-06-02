@@ -36,6 +36,11 @@ nonisolated enum PushAPNsEnv {
 /// targeting (iPhone vs iPad vs Mac) without needing the backend to
 /// re-parse build metadata.
 nonisolated enum PushDeviceClass {
+    // `@MainActor`: reading `UIDevice.current.userInterfaceIdiom` requires the
+    // main actor. The only caller is `PushRegistrationService.init`'s default
+    // argument, which is evaluated at the `@MainActor` `PushCoordinator.init`
+    // call site, so the isolation requirement is always satisfied.
+    @MainActor
     static var resolvedForBuild: String {
         #if os(macOS)
         return "mac"
@@ -100,7 +105,11 @@ actor PushRegistrationService {
         bundleId: String = "org.ntust.app.TigerDuck",
         attrsType: String = "TigerDuckActivityAttributes",
         apnsEnv: String = PushAPNsEnv.resolvedForBuild,
-        deviceClass: String = PushDeviceClass.resolvedForBuild
+        // No default: `PushDeviceClass.resolvedForBuild` is `@MainActor` (it
+        // reads `UIDevice.current`), and an actor init's default-argument
+        // expressions are evaluated in a nonisolated context. Callers pass it
+        // from their own (MainActor) context instead.
+        deviceClass: String
     ) {
         self.identity = identity
         self.apiClient = apiClient
