@@ -109,49 +109,50 @@ struct TimetableGridView: View {
 
             Color.clear
                 .overlay(alignment: .top) {
-                    Button {
-                        viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
-                    } label: {
-                        RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                            .fill(course.color.opacity(0.4))
-                            .overlay {
-                                Text(course.displayName)
-                                    .font(.system(size: courseNameSize, weight: .medium))
-                                    .foregroundStyle(Color.textPrimary)
-                                    .lineLimit(spanCount > 1 ? 3 : 2)
-                                    .minimumScaleFactor(0.7)
-                                    .multilineTextAlignment(.center)
-                                    .padding(2)
+                    // `scrollSafeTapAction` wraps the cell in a real `Button` so
+                    // the first tap wins iOS 18 arbitration against the grid's
+                    // scroll view. See View+ScrollSafeGesture.
+                    RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                        .fill(course.color.opacity(0.4))
+                        .overlay {
+                            Text(course.displayName)
+                                .font(.system(size: courseNameSize, weight: .medium))
+                                .foregroundStyle(Color.textPrimary)
+                                .lineLimit(spanCount > 1 ? 3 : 2)
+                                .minimumScaleFactor(0.7)
+                                .multilineTextAlignment(.center)
+                                .padding(2)
+                        }
+                        .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
+                        .frame(height: totalHeight)
+                        .scrollSafeTapAction {
+                            viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
+                        }
+                        .accessibilityLabel(
+                            Text(String(
+                                format: String(localized: "a11y_timetable_cell"),
+                                weekdayDisplayName(weekday),
+                                viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                                course.displayName
+                            ))
+                        )
+                        .contextMenu {
+                            Button {
+                                viewModel.startRename(course)
+                            } label: {
+                                Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
                             }
-                            .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
-                            .frame(height: totalHeight)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        Text(String(
-                            format: String(localized: "a11y_timetable_cell"),
-                            weekdayDisplayName(weekday),
-                            viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
-                            course.displayName
-                        ))
-                    )
-                    .contextMenu {
-                        Button {
-                            viewModel.startRename(course)
-                        } label: {
-                            Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
+                            Button {
+                                viewModel.startRecolor(course)
+                            } label: {
+                                Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
+                            }
+                            Button(role: .destructive) {
+                                viewModel.deleteCourse(course)
+                            } label: {
+                                Label(String(localized: "class_table_delete"), systemImage: "trash")
+                            }
                         }
-                        Button {
-                            viewModel.startRecolor(course)
-                        } label: {
-                            Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
-                        }
-                        Button(role: .destructive) {
-                            viewModel.deleteCourse(course)
-                        } label: {
-                            Label(String(localized: "class_table_delete"), systemImage: "trash")
-                        }
-                    }
                 }
                 .zIndex(1)
 
@@ -288,52 +289,48 @@ private struct ConflictClusterView: View {
                 sharpBottomOuter: sharpBottom
             )
 
-            // A real `Button` (replacing `.onTapGesture`) wins iOS 18 gesture
-            // arbitration against the surrounding scroll view, matching the
-            // single-course cell above so the conflict picker opens on the
-            // first tap. `.contentShape` (moved inside the label) keeps the
-            // whole cluster hittable; `Button` supplies the `.isButton` trait.
-            Button {
+            // `scrollSafeTapAction` wraps the cluster in a real `Button` so the
+            // first tap wins iOS 18 arbitration against the surrounding scroll
+            // view, matching the single-course cell above. One tap anywhere in
+            // the cluster opens the picker, which resolves which course to
+            // inspect — per-shape hit-testing would bypass the picker, but the
+            // Android version also routes through the sheet so the user sees
+            // both options. `Button` supplies the `.isButton` trait and hit
+            // shape. See View+ScrollSafeGesture.
+            ZStack(alignment: .topLeading) {
+                courseRegion(
+                    course: courseA,
+                    shape: shapeA,
+                    labelAlignment: .topTrailing,
+                    barFraction: aBarFraction
+                )
+                .frame(width: proxy.size.width, height: aHeight)
+                .offset(y: aTop)
+
+                courseRegion(
+                    course: courseB,
+                    shape: shapeB,
+                    labelAlignment: .bottomLeading,
+                    barFraction: bBarFraction
+                )
+                .frame(width: proxy.size.width, height: bHeight)
+                .offset(y: bTop)
+            }
+            .overlay(alignment: .topTrailing) {
+                if diffWithoutColor {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .padding(2)
+                        .accessibilityHidden(true)
+                }
+            }
+            .scrollSafeTapAction {
                 viewModel.presentConflictPicker(
                     courseA: courseA, courseB: courseB,
                     weekday: weekday, periodId: periodId
                 )
-            } label: {
-                ZStack(alignment: .topLeading) {
-                    courseRegion(
-                        course: courseA,
-                        shape: shapeA,
-                        labelAlignment: .topTrailing,
-                        barFraction: aBarFraction
-                    )
-                    .frame(width: proxy.size.width, height: aHeight)
-                    .offset(y: aTop)
-
-                    courseRegion(
-                        course: courseB,
-                        shape: shapeB,
-                        labelAlignment: .bottomLeading,
-                        barFraction: bBarFraction
-                    )
-                    .frame(width: proxy.size.width, height: bHeight)
-                    .offset(y: bTop)
-                }
-                .overlay(alignment: .topTrailing) {
-                    if diffWithoutColor {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                            .padding(2)
-                            .accessibilityHidden(true)
-                    }
-                }
-                // One tap anywhere in the cluster opens the picker; the picker
-                // resolves which course to inspect. Per-shape hit-testing would
-                // bypass the picker entirely, but the Android version still goes
-                // through the sheet so the user can see both options.
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .accessibilityLabel(
                 Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
                      String(format: String(localized: "a11y_timetable_cell"),

@@ -4,7 +4,6 @@ import UserNotifications
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.openURL) private var openURL
     @State private var currentPage = 0
     @State private var studentId = ""
     @State private var password = ""
@@ -60,8 +59,8 @@ struct OnboardingView: View {
         .contentShape(Rectangle())
         // Simultaneous (not `.onTapGesture`) so this keyboard-dismiss tap on the
         // TabView root doesn't swallow taps on interactive children — see
-        // OnboardingPageView for the iOS 18 gesture-arbitration details.
-        .simultaneousGesture(TapGesture().onEnded { focusedField = nil })
+        // View+ScrollSafeGesture for the iOS 18 gesture-arbitration details.
+        .dismissTapGesture { focusedField = nil }
         .onChange(of: currentPage) { _, _ in focusedField = nil }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, newPhase in
@@ -91,19 +90,18 @@ struct OnboardingView: View {
                         .lineLimit(12)
                         .minimumScaleFactor(0.6)
 
-                    // Real `Button`s (not `Link`s): a bordered button gives a
-                    // large, reliable hit target and wins iOS 18 gesture
-                    // arbitration against the page's scroll/tap recognizers,
-                    // which made the text `Link`s hard to tap.
+                    // `Link` (not a bare `Button`) keeps the semantic
+                    // `.isLink` VoiceOver trait and the system URL affordances
+                    // (long-press peek / Copy Link / Share). The bordered,
+                    // large control size gives the reliable hit target the
+                    // plain text links lacked, and now that the page's
+                    // keyboard-dismiss tap is a `.simultaneousGesture` it no
+                    // longer swallows these links' first tap on iOS 18.
                     VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                        Button {
-                            openURL(AppURLs.website)
-                        } label: {
+                        Link(destination: AppURLs.website) {
                             Label(String(localized: "onboarding_welcome_website_label"), systemImage: "globe")
                         }
-                        Button {
-                            openURL(AppURLs.github)
-                        } label: {
+                        Link(destination: AppURLs.github) {
                             Label(String(localized: "onboarding_welcome_github_label"), systemImage: "chevron.left.forwardslash.chevron.right")
                         }
                     }

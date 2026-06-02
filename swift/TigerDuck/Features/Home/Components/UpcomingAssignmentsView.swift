@@ -313,23 +313,30 @@ private struct SwipeableRow<Content: View>: View {
 
     @ViewBuilder
     private var tappableContent: some View {
-        let row = content
-            .contentShape(Rectangle())
-            .offset(x: offset)
-            .gesture(dragGesture)
-            .onTapGesture {
-                if offset != 0 {
-                    snapBack()
-                } else {
-                    onTap()
-                }
-            }
         if let tapHint {
-            row
-                .accessibilityAddTraits(.isButton)
+            // A real `Button` (not `.onTapGesture`) so the first tap wins iOS 18
+            // gesture arbitration against Home's ScrollView instead of needing a
+            // second press; the swipe-to-reveal drag rides alongside via
+            // `.simultaneousGesture` so it isn't blocked. `Button` supplies the
+            // `.isButton` trait automatically.
+            content
+                .offset(x: offset)
+                .scrollSafeTapAction {
+                    if offset != 0 {
+                        snapBack()
+                    } else {
+                        onTap()
+                    }
+                }
+                .simultaneousGesture(dragGesture)
                 .accessibilityHint(Text(tapHint))
         } else {
-            row
+            // No tap destination: keep the row non-interactive (no button trait)
+            // while still swipeable.
+            content
+                .contentShape(Rectangle())
+                .offset(x: offset)
+                .gesture(dragGesture)
         }
     }
 
