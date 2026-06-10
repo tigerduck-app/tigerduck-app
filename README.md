@@ -262,7 +262,10 @@ tigerduck-app/
 
 送出前請確認
 1. 遵循現有的 SwiftUI 程式碼風格與架構慣例
-2. 測試於 iOS 18 & iOS 26 模擬器或實機上可正常運行
+2. 於以下版本的模擬器或實機上測試可正常運行
+- iOS 18 / 26 (/ 27 如果可以的話)
+- watchOS 11 / 26 (/ 27 如果可以的話)
+- macOS 15 / 26 (/ 27 如果可以的話)
 3. 以 `feature/your-feature` 或 `fix/your-fix` 命名分支
 4. 發布 PR 時，目標分支為 `dev`，且必須勾選 Copilot 做 Revise
 5. 翻譯字串請改 `localization/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink

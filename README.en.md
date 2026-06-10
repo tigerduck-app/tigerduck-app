@@ -261,7 +261,10 @@ Pull requests and issues are welcome!
 
 Before submitting, please make sure to:
 1. Follow the existing SwiftUI code style and architectural conventions
-2. Verify the build runs correctly on an iOS 18 & iOS 26 simulator or device
+2. Verify the build runs correctly on the following versions of simulator or device
+- iOS 18 / 26 (/ 27 if possible)
+- watchOS 11 / 26 (/ 27 if possible)
+- macOS 15 / 26 (/ 27 if possible)
 3. Name your branch using `feature/your-feature` or `fix/your-fix`
 4. Target the `dev` branch when opening a PR, and enable Copilot review
 5. For translation strings, open a separate PR against the `localization/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
