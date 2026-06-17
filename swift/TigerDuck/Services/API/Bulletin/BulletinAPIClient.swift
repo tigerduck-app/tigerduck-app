@@ -9,23 +9,18 @@ final class BulletinAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
     /// Returns a `Bearer <token>` string for v3 JWT auth, or `nil` when the
-    /// user is not logged in. Falls back to `X-Push-Token` (shared secret)
-    /// when nil, preserving backward compatibility for callers that have
-    /// not yet wired up an `AuthTokenManager`.
+    /// user is not logged in.
     private let authHeaderProvider: @Sendable () async -> String?
-    private let sharedSecretProvider: @Sendable (URL) -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
 
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        authHeaderProvider: @escaping @Sendable () async -> String? = { nil },
-        sharedSecretProvider: @escaping @Sendable (URL) -> String? = { PushServerConfig.resolveSharedSecret(for: $0) }
+        authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
     ) {
         self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
         self.authHeaderProvider = authHeaderProvider
-        self.sharedSecretProvider = sharedSecretProvider
     }
 
     // MARK: - Public surface
@@ -119,15 +114,12 @@ final class BulletinAPIClient: Sendable {
         query: [URLQueryItem] = [],
         returning _: Response.Type
     ) async throws -> Response {
-        // Resolve baseURL once so the secret provider sees the same host
-        // the request is actually going to — avoids any window where the
-        // override could flip between URL and secret lookups.
         let baseURL = baseURLProvider()
         let url = try Self.resolveURL(baseURL: baseURL, path: path, query: query)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        await applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         let data = try await execute(request)
         return try decode(data, path: path)
     }
@@ -143,7 +135,7 @@ final class BulletinAPIClient: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        await applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -164,7 +156,7 @@ final class BulletinAPIClient: Sendable {
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        await applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -185,7 +177,7 @@ final class BulletinAPIClient: Sendable {
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        await applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -200,19 +192,17 @@ final class BulletinAPIClient: Sendable {
         let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        await applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         _ = try await execute(request)
     }
 
-    /// Apply auth header. Prefers Bearer token (v3 JWT) when available;
-    /// falls back to `X-Push-Token` (shared secret) for legacy compatibility.
-    private func applyAuth(to request: inout URLRequest, baseURL: URL) async {
+    /// Apply `Authorization: Bearer <token>` header when the user is logged in.
+    /// No-op when `authHeaderProvider` returns nil (unauthenticated requests
+    /// are still attempted so the server can respond with 401 rather than
+    /// silently dropping calls).
+    private func applyAuth(to request: inout URLRequest) async {
         if let bearer = await authHeaderProvider(), !bearer.isEmpty {
             request.setValue(bearer, forHTTPHeaderField: "Authorization")
-            return
-        }
-        if let secret = sharedSecretProvider(baseURL), !secret.isEmpty {
-            request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
         }
     }
 
@@ -237,9 +227,9 @@ final class BulletinAPIClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            // Body snippet stays .private — error responses occasionally
-            // echo headers (incl. X-Push-Token) or correlation tokens that
-            // must not be retained in the system log indefinitely.
+            // Body snippet stays .private — error responses may echo auth
+            // headers or correlation tokens that must not be retained in
+            // the system log indefinitely.
             logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(path, privacy: .public): \(snippet, privacy: .private)")
             throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
         }

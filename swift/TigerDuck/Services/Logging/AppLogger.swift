@@ -90,6 +90,5 @@ nonisolated enum AppLogger {
         ScrubPattern(pattern: #"/wstoken/[A-Za-z0-9+/=_-]+"#, replacement: "/wstoken/***"),
         ScrubPattern(pattern: #"(password|passwd|pwd)=[^&\s"']+"#, replacement: "$1=***"),
         ScrubPattern(pattern: #"Bearer\s+[A-Za-z0-9._\-+/=]+"#, replacement: "Bearer ***"),
-        ScrubPattern(pattern: #"X-Push-Token:\s*\S+"#, replacement: "X-Push-Token: ***"),
     ]
 }

@@ -1,8 +1,10 @@
 import Defaults
 import Foundation
 
-/// Cross-platform resolver for the push backend URL + shared secret +
-/// `Secrets.plist` helper.
+/// Cross-platform resolver for the push backend URL.
+///
+/// Also provides the `Secrets.plist` helper used to read the optional
+/// `DebugServerURL` LAN-backend override.
 ///
 /// Extracted from `PushCoordinator` so non-push HTTP clients
 /// (e.g. `BulletinAPIClient`, which talks to the same backend for the
@@ -172,49 +174,6 @@ nonisolated enum PushServerConfig {
         return url
     }
     #endif
-
-    /// Read the shared secret from `Secrets.plist` (gitignored) bundled
-    /// with the app. Must match the corresponding backend's
-    /// `TIGERDUCK_API_SHARED_SECRET` or every write request 401s.
-    ///
-    /// The secret is selected by the *resolved* destination URL so a
-    /// Debug build whose Keychain/UserDefaults override points at the
-    /// public staging/prod apex does not send the local `DebugAPIToken`
-    /// to a backend that expects `APIToken`. Resolution order, applied
-    /// against `url.host`:
-    ///   1. Debug builds + non-public host (loopback / RFC1918):
-    ///      `DebugAPIToken` — paired with a local `DebugServerURL`, so
-    ///      each contributor's local backend can have its own secret.
-    ///   2. `APIToken` — production secret; used for the public allowlist
-    ///      apex/subdomains in every build, and the Debug fallback for
-    ///      local hosts when `DebugAPIToken` is blank.
-    ///   3. Legacy Info.plist `TigerDuckAPIToken` — kept so any CI
-    ///      pipeline that still injects there continues to work.
-    ///   4. nil — preserves the dev-friendly no-auth path.
-    static func resolveSharedSecret(for url: URL) -> String? {
-        let targetsPublicHost = url.host.map { isAllowedPublicHost($0.lowercased()) } ?? false
-        if let dict = secretsPlistDict() {
-            #if DEBUG
-            // `DebugAPIToken` only pairs with `DebugServerURL` (local
-            // dev backend). When a runtime override has sent us at the
-            // public host, fall through to `APIToken` so we don't 401
-            // against a backend that doesn't know the local secret.
-            if !targetsPublicHost,
-               let value = dict["DebugAPIToken"] as? String,
-               !value.isEmpty {
-                return value
-            }
-            #endif
-            if let value = dict["APIToken"] as? String, !value.isEmpty {
-                return value
-            }
-        }
-        if let value = Bundle.main.object(forInfoDictionaryKey: "TigerDuckAPIToken") as? String,
-           !value.isEmpty {
-            return value
-        }
-        return nil
-    }
 
     static func secretsPlistDict() -> NSDictionary? {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist") else {
