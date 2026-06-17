@@ -46,6 +46,21 @@ final class AppState {
     /// Detect fresh install (no UserDefaults marker) and clear stale Keychain data
     /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
+        #if os(iOS)
+        // Build the shared PushIdentity first so both the AuthTokenManager
+        // and PushCoordinator use the same stable device UUID.
+        let identity = PushIdentity.loadOrCreate()
+        let atm = AuthTokenManager(
+            baseURL: PushServerConfig.resolveServerURL().absoluteString,
+            deviceUUID: identity.uuid
+        )
+        self.authTokenManager = atm
+        self.pushCoordinator = PushCoordinator(
+            identity: identity,
+            authTokenManager: atm
+        )
+        #endif
+
         if !Defaults[.appHasBeenInstalled] {
             #if os(iOS)
             // Stamp the running version as "already shown" so the
@@ -212,7 +227,11 @@ final class AppState {
     // MARK: - Push server (iOS only — APNs on Mac is a separate decision
     // and the entire PushCoordinator stack pulls in ActivityKit symbols).
 
-    let pushCoordinator = PushCoordinator()
+    let pushCoordinator: PushCoordinator
+    /// Manages v3 JWT tokens for the push backend. Initialised from the
+    /// same `PushIdentity` UUID that `PushCoordinator` uses so the two
+    /// always agree on the client device ID sent to `/v3/auth/login`.
+    let authTokenManager: AuthTokenManager
 
     // MARK: - Custom-push tap routing
 
@@ -386,6 +405,10 @@ final class AppState {
         #endif
 
         authService.logout()
+        #if os(iOS)
+        // Clear v3 JWT tokens so the next login session starts fresh.
+        Task { await authTokenManager.logout() }
+        #endif
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.

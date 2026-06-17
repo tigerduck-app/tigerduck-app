@@ -10,25 +10,30 @@ import os
 final class PushAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    private let sharedSecretProvider: @Sendable (URL) -> String?
+    /// Returns a `Bearer <token>` string for the v3 JWT auth flow, or `nil`
+    /// when the user is not logged in (unauthenticated requests are still
+    /// attempted so the server can respond with 401 rather than silently
+    /// dropping calls before auth is wired up end-to-end).
+    private let authHeaderProvider: @Sendable () async -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
-    /// `baseURLProvider` is re-evaluated on every request, and the
-    /// resolved URL is then fed to `sharedSecretProvider` so the secret
-    /// is selected as a pair with the host actually being hit. A Debug
-    /// build that switches the API endpoint at runtime (via
-    /// `DebugEndpointView`) takes effect on the next push call without
-    /// an app relaunch — and if the override points at the public host,
-    /// the request carries the production `APIToken` instead of the
-    /// local `DebugAPIToken` that pairs with `DebugServerURL`.
+    /// `baseURLProvider` is re-evaluated on every request so a Debug build
+    /// that switches the API endpoint at runtime (via `DebugEndpointView`)
+    /// takes effect on the next push call without an app relaunch.
+    ///
+    /// `authHeaderProvider` is an async closure so callers can supply the
+    /// `AuthTokenManager.authorizationHeader()` actor method directly. The
+    /// default closure returns `nil` (no auth header), matching the
+    /// pre-v3 behaviour for existing tests and Debug builds that have not
+    /// yet wired up an `AuthTokenManager`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        sharedSecretProvider: @escaping @Sendable (URL) -> String? = { PushServerConfig.resolveSharedSecret(for: $0) }
+        authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
     ) {
         self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
-        self.sharedSecretProvider = sharedSecretProvider
+        self.authHeaderProvider = authHeaderProvider
     }
 
     // MARK: - Public surface
@@ -79,7 +84,7 @@ final class PushAPIClient: Sendable {
         let url = baseURL.appendingPathComponent("schedule/\(safeDevice)/\(safeSource)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         _ = try await execute(request)
     }
 
@@ -98,7 +103,7 @@ final class PushAPIClient: Sendable {
         body: Request,
         returning: Response.Type
     ) async throws -> Response {
-        var request = try makePostRequest(path: path, body: body)
+        var request = try await makePostRequest(path: path, body: body)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data = try await execute(request)
         do {
@@ -113,7 +118,7 @@ final class PushAPIClient: Sendable {
         path: String,
         body: Request
     ) async throws -> Data {
-        let request = try makePostRequest(path: path, body: body)
+        let request = try await makePostRequest(path: path, body: body)
         return try await execute(request)
     }
 
@@ -122,7 +127,7 @@ final class PushAPIClient: Sendable {
         body: Request,
         returning: Response.Type
     ) async throws -> Response {
-        var request = try makePostRequest(path: path, body: body)
+        var request = try await makePostRequest(path: path, body: body)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data = try await execute(request)
@@ -134,16 +139,13 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    private func makePostRequest<Request: Encodable>(path: String, body: Request) throws -> URLRequest {
-        // Resolve baseURL once so the secret provider sees the same host
-        // the request is going to — no window for an override flip
-        // between URL and secret lookups.
+    private func makePostRequest<Request: Encodable>(path: String, body: Request) async throws -> URLRequest {
         let baseURL = baseURLProvider()
         let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -152,15 +154,12 @@ final class PushAPIClient: Sendable {
         return request
     }
 
-    /// Attach the `X-Push-Token` shared-secret header when one is
-    /// configured. No-op for dev builds that leave the secret unset;
-    /// mirrors the server's behaviour when `TIGERDUCK_API_SHARED_SECRET`
-    /// is empty. The secret is chosen from `baseURL`'s host so a Debug
-    /// override pointed at the public apex carries `APIToken` instead of
-    /// the local-backend `DebugAPIToken`.
-    private func applyAuth(to request: inout URLRequest, baseURL: URL) {
-        guard let secret = sharedSecretProvider(baseURL), !secret.isEmpty else { return }
-        request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
+    /// Attach the `Authorization: Bearer <token>` header when the
+    /// `authHeaderProvider` returns a non-nil value. No-op when the user
+    /// is not logged in or the provider is not wired (e.g. unit tests).
+    private func applyAuth(to request: inout URLRequest) async {
+        guard let header = await authHeaderProvider(), !header.isEmpty else { return }
+        request.setValue(header, forHTTPHeaderField: "Authorization")
     }
 
     private func execute(_ request: URLRequest) async throws -> Data {

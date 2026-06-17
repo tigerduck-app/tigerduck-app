@@ -45,16 +45,28 @@ final class PushCoordinator {
 
     init(
         identity: PushIdentity = .loadOrCreate(),
-        apiClient: PushAPIClient? = nil
+        apiClient: PushAPIClient? = nil,
+        authTokenManager: AuthTokenManager? = nil
     ) {
         self.identity = identity
-        // No `baseURL:` argument — `PushAPIClient` defaults to providers
-        // that re-resolve the URL *and* shared secret through
-        // `PushServerConfig` on every request, so a Debug build's runtime
-        // endpoint override (Settings → Developer → API endpoint) takes
-        // effect without an app relaunch and the auth header tracks
-        // whichever backend the override points at.
-        let resolvedClient = apiClient ?? PushAPIClient()
+        // Build an `authHeaderProvider` closure from the supplied
+        // `AuthTokenManager`. When `authTokenManager` is nil (e.g. unit
+        // tests) the closure returns nil and no `Authorization` header is
+        // added — matching the pre-v3 no-auth path.
+        let resolvedClient: PushAPIClient
+        if let apiClient {
+            resolvedClient = apiClient
+        } else if let atm = authTokenManager {
+            resolvedClient = PushAPIClient(
+                authHeaderProvider: { await atm.authorizationHeader() }
+            )
+        } else {
+            // No `baseURL:` argument — `PushAPIClient` defaults to providers
+            // that re-resolve the URL through `PushServerConfig` on every
+            // request, so a Debug build's runtime endpoint override (Settings
+            // → Developer → API endpoint) takes effect without an app relaunch.
+            resolvedClient = PushAPIClient()
+        }
         self.apiClient = resolvedClient
         self.registration = PushRegistrationService(
             identity: identity,
