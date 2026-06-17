@@ -39,7 +39,7 @@ struct PushServerSettingsView: View {
     /// timer instead of letting it wake mid-feedback for the second tap.
     @State private var copyResetTasks: [IdKind: Task<Void, Never>] = [:]
 
-    private enum IdKind: Hashable { case user, device }
+    private enum IdKind: Hashable { case device }
     private enum CopyResult { case copied, blocked }
     #endif
 
@@ -106,8 +106,7 @@ struct PushServerSettingsView: View {
 
                 #if os(iOS)
                 Section {
-                    idRow(kind: .user, label: "User ID", value: s.userId)
-                    idRow(kind: .device, label: "Device ID", value: s.deviceId)
+                    idRow(kind: .device, label: "Device UUID", value: s.uuid)
                 } header: {
                     Text(String(localized: "push_server_ids_section"))
                 } footer: {

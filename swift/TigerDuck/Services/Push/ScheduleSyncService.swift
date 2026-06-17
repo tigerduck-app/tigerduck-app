@@ -59,7 +59,7 @@ final class ScheduleSyncService {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
         let request = PushAPI.ScheduleSyncRequest(
-            deviceId: identity.deviceId,
+            deviceId: identity.uuid,
             events: events
         )
         logger.info("sync start events=\(events.count, privacy: .public)")

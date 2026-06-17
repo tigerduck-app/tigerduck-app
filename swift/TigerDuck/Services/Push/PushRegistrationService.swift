@@ -171,7 +171,7 @@ actor PushRegistrationService {
     /// order is preserved because each task awaits its predecessor.
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         let predecessor = optOutPatchChain
-        let deviceId = identity.deviceId
+        let uuid = identity.uuid
         let apiClient = self.apiClient
         let logger = self.logger
         let task = Task<Void, Error> {
@@ -181,7 +181,7 @@ actor PushRegistrationService {
             _ = try? await predecessor?.value
             do {
                 _ = try await apiClient.updateDevicePreferences(
-                    deviceId: deviceId, serverPushEnabled: !optOut
+                    deviceId: uuid, serverPushEnabled: !optOut
                 )
                 await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
                 logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
@@ -216,7 +216,7 @@ actor PushRegistrationService {
     /// Called when the user turns off server push or logs out.
     func unregister() async {
         do {
-            try await apiClient.unregisterDevice(deviceId: identity.deviceId)
+            try await apiClient.unregisterDevice(deviceId: identity.uuid)
             logger.info("unregistered device on server")
         } catch {
             logger.error("unregister failed: \(error.localizedDescription, privacy: .public)")
@@ -269,8 +269,8 @@ actor PushRegistrationService {
         guard let pts = ptsTokenHex else { return }
         let optOut = await MainActor.run { Defaults[.serverPushUserOptOut] }
         let request = PushAPI.DeviceRegisterRequest(
-            userId: identity.userId,
-            deviceId: identity.deviceId,
+            userId: identity.uuid,
+            deviceId: identity.uuid,
             platform: "apple",
             ptsTokenHex: pts,
             deviceTokenHex: deviceTokenHex,
@@ -342,7 +342,7 @@ actor PushRegistrationService {
     ) async {
         let snapshot = registration.snapshot
         let request = PushAPI.LiveActivityTokenRegisterRequest(
-            deviceId: identity.deviceId,
+            deviceId: identity.uuid,
             activityId: registration.activityId,
             sourceId: snapshot.sourceId,
             scenario: snapshot.scenario,

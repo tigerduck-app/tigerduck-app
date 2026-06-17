@@ -44,7 +44,7 @@ final class BulletinSubscriptionsStore {
         identity: PushIdentity = .loadOrCreate()
     ) {
         self.apiClient = apiClient ?? BulletinAPIClient()
-        self.deviceId = identity.deviceId
+        self.deviceId = identity.uuid
     }
 
     // MARK: - Lifecycle

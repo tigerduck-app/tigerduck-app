@@ -61,7 +61,6 @@ nonisolated enum AppConstants {
         static let libraryTokenExpiry = "library_token_expiry"
         static let moodleToken = "moodle_token"
         static let moodlePrivateToken = "moodle_private_token"
-        static let pushUserId = "push_user_id"
         static let pushDeviceId = "push_device_id"
     }
 
