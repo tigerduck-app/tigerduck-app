@@ -57,6 +57,18 @@ nonisolated enum PushDeviceClass {
         }
         #endif
     }
+
+    /// v3 `platform` value (server `UserDevicePlatform` enum) for a device
+    /// class. The backend distinguishes iPhone from iPad via `ios`/`ipados`
+    /// — operator targeting (and the portal's device tabs) rely on it, so we
+    /// send the precise value rather than a flat "apple".
+    static func platform(for deviceClass: String) -> String {
+        switch deviceClass {
+        case "ipad": return "ipados"
+        case "mac":  return "macos"
+        default:     return "ios"
+        }
+    }
 }
 
 actor PushRegistrationService {
@@ -272,7 +284,7 @@ actor PushRegistrationService {
         // present) associates it with the same device row.
         let ptsRequest = PushAPI.DeviceRegisterRequest(
             client_device_id: identity.uuid,
-            platform: "apple",
+            platform: PushDeviceClass.platform(for: deviceClass),
             device_name: nil,
             app_version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
             os_version: nil,
@@ -293,7 +305,7 @@ actor PushRegistrationService {
             if let deviceToken = deviceTokenHex {
                 let deviceTokenRequest = PushAPI.DeviceRegisterRequest(
                     client_device_id: identity.uuid,
-                    platform: "apple",
+                    platform: PushDeviceClass.platform(for: deviceClass),
                     device_name: nil,
                     app_version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
                     os_version: nil,
