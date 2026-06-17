@@ -43,8 +43,8 @@ final class PushAPIClient: Sendable {
     }
 
     func unregisterDevice(deviceId: String) async throws {
-        let body = PushAPI.DeviceUnregisterRequest(deviceId: deviceId)
-        _ = try await postExpectingNoBody(path: "/devices/unregister", body: body)
+        let safeDevice = Self.percentEncoded(deviceId)
+        try await delete(path: "/devices/\(safeDevice)")
     }
 
     /// PATCH the user-facing server-push opt-out. Called from the Settings
@@ -68,7 +68,7 @@ final class PushAPIClient: Sendable {
     }
 
     func registerLiveActivityToken(
-        _ request: PushAPI.LiveActivityTokenRegisterRequest
+        _ request: PushAPI.LiveActivityRegisterV3Request
     ) async throws -> PushAPI.LiveActivityTokenRegisterResponse {
         try await post(
             path: "/live-activities/register",
@@ -77,15 +77,10 @@ final class PushAPIClient: Sendable {
         )
     }
 
-    func cancelSchedule(deviceId: String, sourceId: String) async throws {
-        let safeDevice = Self.percentEncoded(deviceId)
+    /// v3: device identity comes from the JWT; only `sourceId` is needed in the path.
+    func cancelSchedule(sourceId: String) async throws {
         let safeSource = Self.percentEncoded(sourceId)
-        let baseURL = baseURLProvider()
-        let url = baseURL.appendingPathComponent("schedule/\(safeDevice)/\(safeSource)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        await applyAuth(to: &request)
-        _ = try await execute(request)
+        try await delete(path: "/schedule/\(safeSource)")
     }
 
     /// Health check. Intentionally unauthenticated — the push server's
@@ -137,6 +132,15 @@ final class PushAPIClient: Sendable {
             logger.error("Push.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .public)")
             throw PushAPIError.decodingFailed(error)
         }
+    }
+
+    private func delete(path: String) async throws {
+        let baseURL = baseURLProvider()
+        let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        await applyAuth(to: &request)
+        _ = try await execute(request)
     }
 
     private func makePostRequest<Request: Encodable>(path: String, body: Request) async throws -> URLRequest {

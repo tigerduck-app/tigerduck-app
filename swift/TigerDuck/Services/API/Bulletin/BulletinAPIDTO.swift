@@ -195,7 +195,8 @@ enum BulletinAPI {
     }
 
     struct SubscriptionsResponse: Codable, Sendable {
-        let deviceId: String
+        /// `nil` on v3 responses where the server no longer echoes device_id.
+        let deviceId: String?
         let rules: [SubscriptionRule]
 
         enum CodingKeys: String, CodingKey {

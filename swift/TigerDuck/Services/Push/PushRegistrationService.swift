@@ -267,22 +267,49 @@ actor PushRegistrationService {
     /// stale `let`s from the enqueue site.
     private func performRegister(logger: Logger) async {
         guard let pts = ptsTokenHex else { return }
-        let optOut = await MainActor.run { Defaults[.serverPushUserOptOut] }
-        let request = PushAPI.DeviceRegisterRequest(
-            userId: identity.uuid,
-            deviceId: identity.uuid,
+        // v3: register the PTS token. The server infers the device record from
+        // `client_device_id`; a second call with the standard APNs token (if
+        // present) associates it with the same device row.
+        let ptsRequest = PushAPI.DeviceRegisterRequest(
+            client_device_id: identity.uuid,
             platform: "apple",
-            ptsTokenHex: pts,
-            deviceTokenHex: deviceTokenHex,
-            bundleId: bundleId,
-            attrsType: attrsType,
-            apnsEnv: apnsEnv,
-            deviceClass: deviceClass,
-            serverPushEnabled: !optOut
+            device_name: nil,
+            app_version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+            os_version: nil,
+            push_token: PushAPI.PushTokenIn(
+                provider: "apns",
+                token_kind: "push_to_start",
+                token_value: pts,
+                bundle_id: bundleId,
+                environment: apnsEnv,
+                scope_key: attrsType
+            )
         )
         do {
-            let response = try await apiClient.registerDevice(request)
-            logger.info("registered device=\(response.deviceId, privacy: .public) user=\(response.userId, privacy: .public)")
+            let ptsResponse = try await apiClient.registerDevice(ptsRequest)
+            logger.info("registered device (PTS) device_id=\(ptsResponse.device_id, privacy: .public)")
+
+            // If we also have the standard APNs device token, register it separately.
+            if let deviceToken = deviceTokenHex {
+                let deviceTokenRequest = PushAPI.DeviceRegisterRequest(
+                    client_device_id: identity.uuid,
+                    platform: "apple",
+                    device_name: nil,
+                    app_version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                    os_version: nil,
+                    push_token: PushAPI.PushTokenIn(
+                        provider: "apns",
+                        token_kind: "standard",
+                        token_value: deviceToken,
+                        bundle_id: bundleId,
+                        environment: apnsEnv,
+                        scope_key: ""
+                    )
+                )
+                let tokenResponse = try await apiClient.registerDevice(deviceTokenRequest)
+                logger.info("registered device (standard APNs) device_id=\(tokenResponse.device_id, privacy: .public)")
+            }
+
             deviceRegisterRetryTask?.cancel()
             deviceRegisterRetryTask = nil
             deviceRegisterAttempts = 0
@@ -341,14 +368,24 @@ actor PushRegistrationService {
         logger: Logger
     ) async {
         let snapshot = registration.snapshot
-        let request = PushAPI.LiveActivityTokenRegisterRequest(
-            deviceId: identity.uuid,
-            activityId: registration.activityId,
-            sourceId: snapshot.sourceId,
-            scenario: snapshot.scenario,
-            updateTokenHex: registration.updateTokenHex,
-            countdownTarget: snapshot.countdownTarget,
-            snapshot: snapshot
+        // v3: encode `countdown_target` as ISO 8601 string (the server expects a
+        // string field, not a nested object). Device identity comes from the JWT.
+        let countdownISO: String?
+        if let target = snapshot.countdownTarget {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            countdownISO = formatter.string(from: target)
+        } else {
+            countdownISO = nil
+        }
+        let request = PushAPI.LiveActivityRegisterV3Request(
+            activity_id: registration.activityId,
+            source_id: snapshot.sourceId,
+            update_token_hex: registration.updateTokenHex,
+            countdown_target: countdownISO,
+            snapshot: snapshot,
+            bundle_id: bundleId,
+            environment: apnsEnv
         )
         do {
             let response = try await apiClient.registerLiveActivityToken(request)

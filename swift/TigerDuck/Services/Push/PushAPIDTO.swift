@@ -1,60 +1,43 @@
 import Foundation
 
-/// Request/response DTOs for the TigerDuck push server.
+/// Request/response DTOs for the TigerDuck push server (v3).
 ///
 /// These mirror `backend/server/schemas.py`. Keep both sides in sync when
 /// evolving the API contract.
 enum PushAPI {
-    struct DeviceRegisterRequest: Codable, Sendable {
-        let userId: String
-        let deviceId: String
+    // MARK: - Device registration (v3)
+
+    struct DeviceRegisterRequest: Encodable, Sendable {
+        let client_device_id: String
         let platform: String
-        let ptsTokenHex: String
-        let deviceTokenHex: String?
-        let bundleId: String
-        let attrsType: String
-        let apnsEnv: String
-        /// "iphone" | "ipad" | "mac"; empty for legacy installs that pre-date
-        /// the field. Backend's validator allows empty + maps it to the
-        /// platform family at query time.
-        let deviceClass: String
-        /// User-facing opt-out for operator-issued "server" pushes. Sent on
-        /// every register so the most recent local value wins.
-        let serverPushEnabled: Bool
-
-        enum CodingKeys: String, CodingKey {
-            case userId = "user_id"
-            case deviceId = "device_id"
-            case platform
-            case ptsTokenHex = "pts_token_hex"
-            case deviceTokenHex = "device_token_hex"
-            case bundleId = "bundle_id"
-            case attrsType = "attrs_type"
-            case apnsEnv = "apns_env"
-            case deviceClass = "device_class"
-            case serverPushEnabled = "server_push_enabled"
-        }
+        let device_name: String?
+        let app_version: String?
+        let os_version: String?
+        let push_token: PushTokenIn?
     }
 
-    struct DeviceRegisterResponse: Codable, Sendable {
-        let deviceId: String
-        let userId: String
-        let registeredAt: Date
-
-        enum CodingKeys: String, CodingKey {
-            case deviceId = "device_id"
-            case userId = "user_id"
-            case registeredAt = "registered_at"
-        }
+    struct PushTokenIn: Encodable, Sendable {
+        /// Always "apns".
+        let provider: String
+        /// "standard" for the APNs device token, "push_to_start" for the PTS token.
+        let token_kind: String
+        let token_value: String
+        let bundle_id: String
+        /// "development" or "production" — must match the build configuration.
+        let environment: String
+        /// Identifies the activity-attributes type for PTS; empty string for
+        /// standard tokens.
+        let scope_key: String
     }
 
-    struct DeviceUnregisterRequest: Codable, Sendable {
-        let deviceId: String
-
-        enum CodingKeys: String, CodingKey {
-            case deviceId = "device_id"
-        }
+    struct DeviceRegisterResponse: Decodable, Sendable {
+        let device_id: String
+        let push_token_id: Int?
     }
+
+    // MARK: - Device unregister (v3 uses DELETE /devices/{id}, no request body needed)
+
+    // MARK: - Device preferences (unchanged shape)
 
     struct DevicePreferencesRequest: Codable, Sendable {
         let serverPushEnabled: Bool
@@ -73,6 +56,8 @@ enum PushAPI {
             case serverPushEnabled = "server_push_enabled"
         }
     }
+
+    // MARK: - Schedule sync (v3: no device_id in body; inferred from JWT)
 
     enum ScenarioKind: String, Codable, Sendable {
         case classPreparing
@@ -94,57 +79,40 @@ enum PushAPI {
         }
     }
 
-    struct ScheduleSyncRequest: Codable, Sendable {
-        let deviceId: String
+    struct ScheduleSyncRequest: Encodable, Sendable {
         let events: [ScheduleEvent]
-
-        enum CodingKeys: String, CodingKey {
-            case deviceId = "device_id"
-            case events
-        }
     }
 
     struct ScheduleSyncResponse: Codable, Sendable {
-        let deviceId: String
         let scheduled: Int
         let cancelled: Int
         let totalPending: Int
 
         enum CodingKeys: String, CodingKey {
-            case deviceId = "device_id"
             case scheduled
             case cancelled
             case totalPending = "total_pending"
         }
     }
 
-    struct LiveActivityTokenRegisterRequest: Codable, Sendable {
-        let deviceId: String
-        let activityId: String
-        let sourceId: String
-        let scenario: LiveActivityScenarioKind
-        let updateTokenHex: String
-        let countdownTarget: Date?
-        let snapshot: LiveActivitySnapshot
+    // MARK: - Live Activity token registration (v3)
 
-        enum CodingKeys: String, CodingKey {
-            case deviceId = "device_id"
-            case activityId = "activity_id"
-            case sourceId = "source_id"
-            case scenario
-            case updateTokenHex = "update_token_hex"
-            case countdownTarget = "countdown_target"
-            case snapshot
-        }
+    struct LiveActivityRegisterV3Request: Encodable, Sendable {
+        let activity_id: String
+        let source_id: String
+        let update_token_hex: String
+        /// ISO 8601 string.
+        let countdown_target: String?
+        let snapshot: LiveActivitySnapshot
+        let bundle_id: String
+        let environment: String?
     }
 
     struct LiveActivityTokenRegisterResponse: Codable, Sendable {
-        let deviceId: String
         let activityId: String
         let registeredAt: Date
 
         enum CodingKeys: String, CodingKey {
-            case deviceId = "device_id"
             case activityId = "activity_id"
             case registeredAt = "registered_at"
         }
