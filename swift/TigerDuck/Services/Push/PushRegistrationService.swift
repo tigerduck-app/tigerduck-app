@@ -390,7 +390,7 @@ actor PushRegistrationService {
         do {
             let response = try await apiClient.registerLiveActivityToken(request)
             logger.info(
-                "registered live activity token id=\(response.activityId, privacy: .public)"
+                "registered live activity token id=\(response.tokenId, privacy: .public)"
             )
             if pendingActivityRegistrations[registration.activityId]?.updateTokenHex == registration.updateTokenHex {
                 pendingActivityRegistrations[registration.activityId] = nil

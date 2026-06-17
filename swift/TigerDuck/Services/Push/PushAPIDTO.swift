@@ -84,15 +84,8 @@ enum PushAPI {
     }
 
     struct ScheduleSyncResponse: Codable, Sendable {
-        let scheduled: Int
-        let cancelled: Int
-        let totalPending: Int
-
-        enum CodingKeys: String, CodingKey {
-            case scheduled
-            case cancelled
-            case totalPending = "total_pending"
-        }
+        let pending: Int
+        let replaced: Int
     }
 
     // MARK: - Live Activity token registration (v3)
@@ -109,12 +102,12 @@ enum PushAPI {
     }
 
     struct LiveActivityTokenRegisterResponse: Codable, Sendable {
-        let activityId: String
-        let registeredAt: Date
+        let tokenId: Int
+        let endJobId: Int?
 
         enum CodingKeys: String, CodingKey {
-            case activityId = "activity_id"
-            case registeredAt = "registered_at"
+            case tokenId = "token_id"
+            case endJobId = "end_job_id"
         }
     }
 }

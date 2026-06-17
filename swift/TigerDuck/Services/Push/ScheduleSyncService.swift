@@ -67,9 +67,8 @@ final class ScheduleSyncService {
             do {
                 let response = try await apiClient.syncSchedule(request)
                 logger.info(
-                    "sync ok scheduled=\(response.scheduled, privacy: .public) cancelled=\(response.cancelled, privacy: .public) pending=\(response.totalPending, privacy: .public)"
+                    "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
                 )
-                // Note: v3 ScheduleSyncResponse no longer includes device_id.
                 if Task.isCancelled { return }
                 self?.markSuccess()
             } catch {

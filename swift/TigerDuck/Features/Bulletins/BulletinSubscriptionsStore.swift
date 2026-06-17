@@ -67,10 +67,10 @@ final class BulletinSubscriptionsStore {
         loadState = .loading
         do {
             let response = try await apiClient.getSubscriptions()
-            pending = response.rules
+            pending = response.items
             isDirty = false
             loadState = .loaded
-            logger.info("subscriptions loaded count=\(response.rules.count, privacy: .public)")
+            logger.info("subscriptions loaded count=\(response.items.count, privacy: .public)")
         } catch {
             logger.error("subscription load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
@@ -100,14 +100,14 @@ final class BulletinSubscriptionsStore {
         for attempt in 1...maxAttempts {
             do {
                 let response = try await apiClient.putSubscriptions(rules: pending)
-                var preserved = response.rules
+                var preserved = response.items
                 for (i, oldId) in snapshotClientIds.enumerated() where i < preserved.count {
                     preserved[i].clientId = oldId
                 }
                 pending = preserved
                 isDirty = false
                 saveState = .saved
-                logger.info("subscription save success serverCount=\(response.rules.count, privacy: .public)")
+                logger.info("subscription save success serverCount=\(response.items.count, privacy: .public)")
                 return
             } catch BulletinAPIError.httpStatus(let code, _) where code == 404 {
                 if attempt == maxAttempts {

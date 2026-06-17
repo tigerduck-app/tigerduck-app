@@ -86,6 +86,9 @@ final class AppState {
                 AppConstants.KeychainKeys.libraryTokenExpiry,
                 AppConstants.KeychainKeys.moodleToken,
                 AppConstants.KeychainKeys.moodlePrivateToken,
+                AuthTokenManager.accessTokenKey,
+                AuthTokenManager.refreshTokenKey,
+                AuthTokenManager.expiresAtKey,
             ]
             let allOk = keysToWipe
                 .map { KeychainManager.deleteReportingSuccess(key: $0) }
