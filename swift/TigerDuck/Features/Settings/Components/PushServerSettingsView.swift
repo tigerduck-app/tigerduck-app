@@ -106,7 +106,7 @@ struct PushServerSettingsView: View {
 
                 #if os(iOS)
                 Section {
-                    idRow(kind: .device, label: "Device UUID", value: s.uuid)
+                    idRow(kind: .device, label: "Device ID", value: s.uuid)
                 } header: {
                     Text(String(localized: "push_server_ids_section"))
                 } footer: {
