@@ -199,6 +199,11 @@ final class AuthService {
         if await NTUSTSessionManager.shared.probeCookiesValid() {
             NTUSTSessionManager.shared.markLoginSuccess()
             reauthErrorMessage = nil
+            #if os(iOS)
+            if let atm = authTokenManager, !(await atm.isLoggedIn) {
+                await performV3Login(studentId: studentId, password: password)
+            }
+            #endif
             return true
         }
 
