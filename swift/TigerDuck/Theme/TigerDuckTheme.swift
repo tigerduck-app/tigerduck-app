@@ -138,7 +138,13 @@ private final class ColorState: @unchecked Sendable {
     private nonisolated(unsafe) var map: [String: UInt32]
     private let lock = OSAllocatedUnfairLock()
 
+    private static let hashMigrationKey = "color_hash_v2_migrated"
+
     init() {
+        if !UserDefaults.standard.bool(forKey: Self.hashMigrationKey) {
+            DataCache.shared.saveCourseColorMap([:])
+            UserDefaults.standard.set(true, forKey: Self.hashMigrationKey)
+        }
         self.map = DataCache.shared.loadCourseColorMap()
     }
 
