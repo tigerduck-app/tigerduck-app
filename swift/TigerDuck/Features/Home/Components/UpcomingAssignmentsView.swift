@@ -130,7 +130,7 @@ struct UpcomingAssignmentsView: View {
 
         let trailing: SwipeActionDescriptor?
         switch status {
-        case .pending, .overdueAcceptable, .overdueRejected:
+        case .pending, .overdueAcceptable, .overdueRejected, .locallyCompleted:
             trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore"), systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
         case .archived:
             trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
@@ -140,7 +140,7 @@ struct UpcomingAssignmentsView: View {
 
         let leading: SwipeActionDescriptor?
         switch status {
-        case .pending, .overdueAcceptable, .overdueRejected:
+        case .pending, .overdueAcceptable, .overdueRejected, .archived:
             leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete"), systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
         case .locallyCompleted:
             leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
