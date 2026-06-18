@@ -1000,6 +1000,34 @@ final class AppState {
         }
     }
 
+    /// Fire-and-forget override sync to the backend. Local state is already
+    /// updated by the ViewModel; this propagates to other devices.
+    func syncAssignmentOverride(moodleId: String, status: String) {
+        Task {
+            _ = try? await pushCoordinator.patchAssignmentOverride(
+                moodleAssignmentId: moodleId, localStatus: status
+            )
+        }
+    }
+
+    func syncCourseOverride(
+        moodleCourseId: String,
+        isHidden: Bool? = nil,
+        colorHex: String? = nil,
+        customName: String? = nil,
+        locale: String? = nil
+    ) {
+        Task {
+            _ = try? await pushCoordinator.patchCourseOverride(
+                moodleCourseId: moodleCourseId,
+                isHidden: isHidden,
+                colorHex: colorHex,
+                customName: customName,
+                locale: locale
+            )
+        }
+    }
+
     /// Disable server push (tells server to drop the device, stops relay).
     func disablePushServer() async {
         Defaults[.pushServerEnabled] = false

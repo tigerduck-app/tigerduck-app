@@ -333,10 +333,22 @@ private struct HomeSectionView: View {
                     courses: viewModel.allCourses,
                     filter: viewModel.assignmentFilter,
                     showAbsoluteTime: appState.showAbsoluteAssignmentTime,
-                    onArchive: { viewModel.archiveAssignment($0) },
-                    onMarkComplete: { viewModel.markAssignmentAsLocallyCompleted($0) },
-                    onUnarchive: { viewModel.unarchiveAssignment($0) },
-                    onUndoComplete: { viewModel.undoLocallyCompleted($0) }
+                    onArchive: {
+                        viewModel.archiveAssignment($0)
+                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
+                    },
+                    onMarkComplete: {
+                        viewModel.markAssignmentAsLocallyCompleted($0)
+                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed")
+                    },
+                    onUnarchive: {
+                        viewModel.unarchiveAssignment($0)
+                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+                    },
+                    onUndoComplete: {
+                        viewModel.undoLocallyCompleted($0)
+                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+                    }
                 )
                 .allowsHitTesting(!viewModel.isEditingHome)
             }

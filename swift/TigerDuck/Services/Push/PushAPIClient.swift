@@ -103,19 +103,19 @@ final class PushAPIClient: Sendable {
     // MARK: - Override sync
 
     func patchAssignmentOverride(
-        assignmentId: Int,
+        moodleAssignmentId: String,
         localStatus: String
     ) async throws -> PushAPI.AssignmentOverrideResponse {
         let body = PushAPI.AssignmentOverrideRequest(localStatus: localStatus)
         return try await patch(
-            path: "/sync/assignments/\(assignmentId)/override",
+            path: "/sync/assignments/\(moodleAssignmentId)/override",
             body: body,
             returning: PushAPI.AssignmentOverrideResponse.self
         )
     }
 
     func patchCourseOverride(
-        courseId: Int,
+        moodleCourseId: String,
         isHidden: Bool? = nil,
         colorHex: String? = nil,
         customName: String? = nil,
@@ -128,7 +128,7 @@ final class PushAPIClient: Sendable {
             locale: locale
         )
         return try await patch(
-            path: "/sync/courses/\(courseId)/override",
+            path: "/sync/courses/\(moodleCourseId)/override",
             body: body,
             returning: PushAPI.CourseOverrideResponse.self
         )

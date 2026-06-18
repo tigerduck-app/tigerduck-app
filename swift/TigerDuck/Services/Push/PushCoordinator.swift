@@ -157,6 +157,32 @@ final class PushCoordinator {
         )
     }
 
+    func patchAssignmentOverride(
+        moodleAssignmentId: String,
+        localStatus: String
+    ) async throws -> PushAPI.AssignmentOverrideResponse {
+        try await apiClient.patchAssignmentOverride(
+            moodleAssignmentId: moodleAssignmentId,
+            localStatus: localStatus
+        )
+    }
+
+    func patchCourseOverride(
+        moodleCourseId: String,
+        isHidden: Bool? = nil,
+        colorHex: String? = nil,
+        customName: String? = nil,
+        locale: String? = nil
+    ) async throws -> PushAPI.CourseOverrideResponse {
+        try await apiClient.patchCourseOverride(
+            moodleCourseId: moodleCourseId,
+            isHidden: isHidden,
+            colorHex: colorHex,
+            customName: customName,
+            locale: locale
+        )
+    }
+
     /// Re-attempt device registration after a sign-in. The launch-time
     /// registration runs before the v3 JWT exists and 401s; calling this once
     /// a Bearer is available gives it a fresh attempt — and resets the give-up
