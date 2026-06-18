@@ -416,18 +416,16 @@ private struct SwipeableRow<Content: View>: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
+        DragGesture(minimumDistance: 12)
             .onChanged { value in
                 let dx = value.translation.width
                 let dy = value.translation.height
-                // Any finger movement suppresses the tap — prevents accidental
-                // Moodle opens during scroll or swipe attempts.
-                didSwipe = true
-                // Only move the row for primarily-horizontal drags.
-                guard abs(dx) > abs(dy) * 0.8 else { return }
+                // Defer to ScrollView for primarily-vertical drags.
+                guard abs(dx) > abs(dy) * 1.2 else { return }
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
+                didSwipe = true
             }
             .onEnded { _ in
                 let triggered = abs(offset) > triggerThreshold
