@@ -341,50 +341,24 @@ private struct SwipeableRow<Content: View>: View {
         }
     }
 
+    private let haptic = UIImpactFeedbackGenerator(style: .medium)
+
     @ViewBuilder
     private var tappableContent: some View {
-        if let tapHint {
-            // A real `Button` (not `.onTapGesture`) so the first tap wins iOS 18
-            // gesture arbitration against Home's ScrollView instead of needing a
-            // second press; the swipe-to-reveal drag rides alongside via
-            // `.simultaneousGesture` so it isn't blocked. `Button` supplies the
-            // `.isButton` trait automatically.
-            content
-                .offset(x: offset)
-                .scrollSafeTapAction(
-                    onPressChanged: { isPressed in
-                        // Touch-down of a fresh interaction clears the swipe
-                        // latch. The Button reports `isPressed == true` before
-                        // it ever delivers its tap action on release, and
-                        // `dragGesture` only sets `didSwipe` once the row moves,
-                        // so the latch always reflects the current interaction
-                        // — no ordering or timer assumptions about when the
-                        // simultaneous tap/drag callbacks fire.
-                        if isPressed { didSwipe = false }
+        content
+            .contentShape(Rectangle())
+            .offset(x: offset)
+            .simultaneousGesture(dragGesture)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.4)
+                    .onEnded { _ in
+                        guard !didSwipe, tapHint != nil else { return }
+                        haptic.impactOccurred()
+                        onTap()
                     }
-                ) {
-                    // A swipe-release also delivers a Button tap because the
-                    // drag rides alongside via `.simultaneousGesture`. `didSwipe`
-                    // is set the moment the drag moves the row and stays set
-                    // until the next press-down, so this tap reliably bows out
-                    // and lets `dragGesture.onEnded` solely own the swipe action
-                    // + snap-back. Reading shared `offset` here instead raced:
-                    // `onEnded` always resets it to 0, so the tap and the
-                    // drag-end could each see the other's reset and the row would
-                    // either skip its swipe action or navigate right after it.
-                    guard !didSwipe else { return }
-                    onTap()
-                }
-                .simultaneousGesture(dragGesture)
-                .accessibilityHint(Text(tapHint))
-        } else {
-            // No tap destination: keep the row non-interactive (no button trait)
-            // while still swipeable.
-            content
-                .contentShape(Rectangle())
-                .offset(x: offset)
-                .gesture(dragGesture)
-        }
+            )
+            .accessibilityAddTraits(tapHint != nil ? .isButton : [])
+            .accessibilityHint(tapHint.map { Text($0) } ?? Text(""))
     }
 
     @ViewBuilder
