@@ -22,7 +22,7 @@ struct CanonicalCourseProvider {
             primary: cache.loadCourses(semester: CourseSelectionService.currentSemesterCode()),
             userAdded: cache.loadUserAddedCourses(),
             deletedCourseNos: Set(cache.loadDeletedCourseNos()),
-            customNames: cache.loadCourseCustomNames()
+            customNames: cache.loadCourseCustomNamesFlat()
         )
     }
 

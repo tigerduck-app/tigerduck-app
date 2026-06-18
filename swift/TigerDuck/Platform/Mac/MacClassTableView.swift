@@ -108,7 +108,7 @@ struct MacClassTableView: View {
             primary: cached,
             userAdded: userAdded,
             deletedCourseNos: Set(DataCache.shared.loadDeletedCourseNos()),
-            customNames: DataCache.shared.loadCourseCustomNames()
+            customNames: DataCache.shared.loadCourseCustomNamesFlat()
         )
     }
 
@@ -745,8 +745,9 @@ struct MacClassTableView: View {
             revertRename(course)
             return
         }
+        let locale = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
         var names = DataCache.shared.loadCourseCustomNames()
-        names[course.courseNo] = trimmed
+        names[course.courseNo, default: [:]][locale] = trimmed
         DataCache.shared.saveCourseCustomNames(names)
         courseToRename = nil
         cacheRevision &+= 1
@@ -757,10 +758,11 @@ struct MacClassTableView: View {
     /// course name. Also surfaced as the destructive button in the rename
     /// alert when an override is already set.
     private func revertRename(_ course: SDCourse) {
+        let locale = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
         var names = DataCache.shared.loadCourseCustomNames()
-        guard names.removeValue(forKey: course.courseNo) != nil else {
-            courseToRename = nil
-            return
+        names[course.courseNo]?[locale] = nil
+        if names[course.courseNo]?.isEmpty == true {
+            names.removeValue(forKey: course.courseNo)
         }
         DataCache.shared.saveCourseCustomNames(names)
         courseToRename = nil

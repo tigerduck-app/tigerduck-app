@@ -68,7 +68,7 @@ struct WatchSyncBridge: View {
     private func pushNow() {
         let accentHex = String(format: "#%06X", UInt(bitPattern: Int(appState.accentColorHex)) & 0xFFFFFF)
         let lang = appState.appLanguage == LanguageManager.system ? nil : appState.appLanguage
-        let customNames = DataCache.shared.loadCourseCustomNames()
+        let customNames = DataCache.shared.loadCourseCustomNamesFlat()
         coordinator.scheduleDebouncedPush(
             courses: courseProvider.currentCourses(),
             customNames: customNames,
