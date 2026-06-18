@@ -178,4 +178,32 @@ enum PushAPI {
             case updatedAt = "updated_at"
         }
     }
+
+    // MARK: - Course upload
+
+    struct CourseUploadEntry: Encodable, Sendable {
+        let semester: String
+        let courseNo: String
+        let courseName: String
+        let courseNameEn: String?
+        let moodleId: String?
+        let credits: Double?
+        let classroom: String?
+        let instructors: [String]?
+
+        enum CodingKeys: String, CodingKey {
+            case semester
+            case courseNo = "course_no"
+            case courseName = "course_name"
+            case courseNameEn = "course_name_en"
+            case moodleId = "moodle_id"
+            case credits
+            case classroom
+            case instructors
+        }
+    }
+
+    struct CourseUploadRequest: Encodable, Sendable {
+        let courses: [CourseUploadEntry]
+    }
 }

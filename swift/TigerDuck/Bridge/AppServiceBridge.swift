@@ -302,6 +302,31 @@ enum AppServiceBridge {
                !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveCourses(courses, semester: semester)
+
+                // Fire-and-forget: upload the course list to the backend so
+                // it can populate its courses table for cross-device sync.
+                if let atm = authService.authTokenManager {
+                    let entries = courses.map { c in
+                        PushAPI.CourseUploadEntry(
+                            semester: semester,
+                            courseNo: c.courseNo,
+                            courseName: c.courseName,
+                            courseNameEn: nil,
+                            moodleId: c.moodleIdNumber,
+                            credits: c.credits > 0 ? Double(c.credits) : nil,
+                            classroom: c.classroom.isEmpty ? nil : c.classroom,
+                            instructors: c.instructor.isEmpty ? nil : [c.instructor]
+                        )
+                    }
+                    Task.detached {
+                        let client = PushAPIClient(
+                            authHeaderProvider: { await atm.authorizationHeader() }
+                        )
+                        try? await client.uploadCourses(
+                            PushAPI.CourseUploadRequest(courses: entries)
+                        )
+                    }
+                }
             }
             return courses
         } catch {

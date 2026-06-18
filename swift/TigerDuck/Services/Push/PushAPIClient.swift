@@ -134,6 +134,15 @@ final class PushAPIClient: Sendable {
         )
     }
 
+    // MARK: - Course upload
+
+    /// Fire-and-forget upload of the user's enrolled course list so the
+    /// backend can populate its `courses` table for cross-device sync,
+    /// analytics, and course-search indexing.
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
+        _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
+    }
+
     // MARK: - Sync
 
     func fetchFullSync() async throws -> [String: Any] {
