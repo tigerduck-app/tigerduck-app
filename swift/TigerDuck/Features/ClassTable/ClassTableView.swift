@@ -156,6 +156,17 @@ struct ClassTableView: View {
                     Text(String(format: String(localized: "class_table_rename_default_label"), course.courseName))
                 }
             }
+            .alert(
+                String(localized: "class_table_reset_title"),
+                isPresented: $viewModel.showResetConfirm
+            ) {
+                Button(String(localized: "action_confirm"), role: .destructive) {
+                    viewModel.resetCourses(authService: appState.authService)
+                }
+                Button(String(localized: "action_cancel"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "class_table_reset_message"))
+            }
             .sheet(item: $viewModel.courseToRecolor) { course in
                 CourseColorPickerSheet(
                     course: course,
@@ -189,6 +200,13 @@ struct ClassTableView: View {
             Spacer()
             NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
             if pageAccessState != .loginRequired {
+                Button {
+                    viewModel.showResetConfirm = true
+                } label: {
+                    Image(systemName: "arrow.trianglepath")
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .accessibilityLabel(Text("reset_course_table"))
                 Button {
                     viewModel.showAddCourse = true
                 } label: {

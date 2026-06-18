@@ -99,6 +99,7 @@ final class ClassTableViewModel {
     }
 
     var showAddCourse = false
+    var showResetConfirm = false
     var courseToRename: SDCourse? = nil
     var renameText: String = ""
     var showRenameAlert = false
@@ -682,6 +683,16 @@ final class ClassTableViewModel {
         persistUserAddedCourses()
         broadcastLocalChange()
         syncVisibilityOverride(course: course, isHidden: true)
+    }
+
+    func resetCourses(authService: AuthService) {
+        deletedCourseNos.removeAll()
+        DataCache.shared.saveDeletedCourseNos([])
+        DataCache.shared.saveUserAddedCourses([])
+        courseCustomNames.removeAll()
+        DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        reloadFromCache()
+        triggerRefresh(authService: authService)
     }
 
     private func syncVisibilityOverride(course: SDCourse, isHidden: Bool) {
