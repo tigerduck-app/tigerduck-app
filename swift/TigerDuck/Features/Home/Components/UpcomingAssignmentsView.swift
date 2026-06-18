@@ -288,6 +288,8 @@ private struct SwipeActionDescriptor {
     let action: () -> Void
 }
 
+private let _swipeRowHaptic = UIImpactFeedbackGenerator(style: .heavy)
+
 /// Custom horizontal-drag swipe row.
 ///
 /// Reproduces the swipe-to-act behaviour we previously got from
@@ -347,16 +349,13 @@ private struct SwipeableRow<Content: View>: View {
             .contentShape(Rectangle())
             .offset(x: offset)
             .simultaneousGesture(dragGesture)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.4)
-                    .onEnded { _ in
-                        guard !didSwipe, tapHint != nil else { return }
-                        let haptic = UIImpactFeedbackGenerator(style: .heavy)
-                        haptic.prepare()
-                        haptic.impactOccurred()
-                        onTap()
-                    }
-            )
+            .onLongPressGesture(minimumDuration: 0.4, pressing: { pressing in
+                if pressing { _swipeRowHaptic.prepare() }
+            }, perform: {
+                guard !didSwipe, tapHint != nil else { return }
+                _swipeRowHaptic.impactOccurred()
+                onTap()
+            })
             .accessibilityAddTraits(tapHint != nil ? .isButton : [])
             .accessibilityHint(tapHint.map { Text($0) } ?? Text(""))
     }
