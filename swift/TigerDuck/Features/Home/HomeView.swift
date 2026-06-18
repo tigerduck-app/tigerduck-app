@@ -141,18 +141,6 @@ struct HomeView: View {
             .presentationDetents([.medium, .large])
             .onDisappear { viewModel.selectedCourseSlot = nil }
         }
-        .alert(
-            "Sync conflict",
-            isPresented: Binding(
-                get: { appState.syncConflict != nil },
-                set: { if !$0 { appState.resolveSyncConflict(useLocal: false) } }
-            )
-        ) {
-            Button("Use this device") { appState.resolveSyncConflict(useLocal: true) }
-            Button("Use server") { appState.resolveSyncConflict(useLocal: false) }
-        } message: {
-            Text("Your homework status differs from the server. Which version do you want to keep?")
-        }
         .onChange(of: viewModel.isEditingHome) { _, isEditing in
             if !isEditing {
                 finishSectionDrag()

@@ -223,18 +223,6 @@ final class AppState {
     enum SyncSource { case none, backend, local }
     private(set) var lastSyncSource: SyncSource = .none
 
-    /// Set when the backend's overrides conflict with this device's local
-    /// state (e.g. upgrading user with pre-existing done/ignored marks).
-    /// The UI presents a dialog; the user picks "use this device" or
-    /// "use server". Cleared after resolution.
-    var syncConflict: SyncConflict?
-
-    struct SyncConflict {
-        let localArchived: Set<String>
-        let localCompleted: Set<String>
-        let serverArchived: Set<String>
-        let serverCompleted: Set<String>
-    }
 
     private var _libraryRevision = 0
     private var syncTask: Task<Void, Never>?
@@ -1033,12 +1021,13 @@ final class AppState {
                 }
             )
 
+            let dateFmt = ISO8601DateFormatter()
             var assignments: [SDAssignment] = []
             for a in assignmentsArray {
-                guard a["deleted_at"] is NSNull || a["deleted_at"] == nil else { continue }
-                guard let dueStr = a["due_at"] as? String,
-                      let dueDate = ISO8601DateFormatter().date(from: dueStr) else { continue }
+                if let deleted = a["deleted_at"], !(deleted is NSNull) { continue }
                 let moodleId = a["moodle_assignment_id"] as? Int ?? 0
+                let dueDate = (a["due_at"] as? String).flatMap { dateFmt.date(from: $0) }
+                    ?? Date.distantFuture
                 let id = a["id"] as? Int ?? 0
                 let localStatus = overridesByAssignment[id]
                 assignments.append(SDAssignment(
@@ -1051,13 +1040,10 @@ final class AppState {
                     isArchived: localStatus == "archived" || localStatus == "ignored",
                     isLocallyCompleted: localStatus == "locally_completed",
                     moodleUrl: a["moodle_url"] as? String,
-                    cutoffDate: (a["cutoff_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) },
-                    submittedAt: (a["provider_submitted_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+                    cutoffDate: (a["cutoff_at"] as? String).flatMap { dateFmt.date(from: $0) },
+                    submittedAt: (a["provider_submitted_at"] as? String).flatMap { dateFmt.date(from: $0) }
                 ))
             }
-            // Detect conflicts between local overrides and server overrides.
-            let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
-            let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
 
             var serverArchivedIds = Set<String>()
             var serverCompletedIds = Set<String>()
@@ -1066,52 +1052,24 @@ final class AppState {
                 if a.isLocallyCompleted { serverCompletedIds.insert(a.assignmentId) }
             }
 
-            let hasConflict = localArchivedIds != serverArchivedIds
-                || localCompletedIds != serverCompletedIds
-
-            DataCache.shared.saveAssignments(assignments)
-
-            if hasConflict && (!localArchivedIds.isEmpty || !localCompletedIds.isEmpty) {
-                await MainActor.run {
-                    syncConflict = SyncConflict(
-                        localArchived: localArchivedIds,
-                        localCompleted: localCompletedIds,
-                        serverArchived: serverArchivedIds,
-                        serverCompleted: serverCompletedIds
-                    )
-                }
-            } else {
-                DataCache.shared.replaceArchivedAssignmentIds(serverArchivedIds)
-                DataCache.shared.replaceLocallyCompletedAssignmentIds(serverCompletedIds)
+            // First-time migration: if server has NO overrides but this device
+            // has local ones, upload them once. After that, server is authoritative.
+            let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
+            let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
+            if serverArchivedIds.isEmpty && serverCompletedIds.isEmpty
+                && (!localArchivedIds.isEmpty || !localCompletedIds.isEmpty) {
+                for id in localArchivedIds { syncAssignmentOverride(moodleId: id, status: "archived") }
+                for id in localCompletedIds { syncAssignmentOverride(moodleId: id, status: "locally_completed") }
             }
+
+            // Server state is authoritative — apply it.
+            DataCache.shared.saveAssignments(assignments)
+            DataCache.shared.replaceArchivedAssignmentIds(serverArchivedIds)
+            DataCache.shared.replaceLocallyCompletedAssignmentIds(serverCompletedIds)
             return true
         } catch {
             return false
         }
-    }
-
-    func resolveSyncConflict(useLocal: Bool) {
-        guard let conflict = syncConflict else { return }
-        syncConflict = nil
-        if useLocal {
-            DataCache.shared.replaceArchivedAssignmentIds(conflict.localArchived)
-            DataCache.shared.replaceLocallyCompletedAssignmentIds(conflict.localCompleted)
-            for id in conflict.localArchived {
-                syncAssignmentOverride(moodleId: id, status: "archived")
-            }
-            for id in conflict.localCompleted {
-                syncAssignmentOverride(moodleId: id, status: "locally_completed")
-            }
-            let serverOnly = conflict.serverArchived.subtracting(conflict.localArchived)
-                .union(conflict.serverCompleted.subtracting(conflict.localCompleted))
-            for id in serverOnly {
-                syncAssignmentOverride(moodleId: id, status: "none")
-            }
-        } else {
-            DataCache.shared.replaceArchivedAssignmentIds(conflict.serverArchived)
-            DataCache.shared.replaceLocallyCompletedAssignmentIds(conflict.serverCompleted)
-        }
-        backgroundSync()
     }
 
     /// Fire-and-forget override sync to the backend. Local state is already
