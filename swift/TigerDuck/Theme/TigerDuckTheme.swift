@@ -266,7 +266,10 @@ private final class ColorState: @unchecked Sendable {
     }
 
     private nonisolated static func hashIndex(for courseNo: String, paletteCount: Int) -> Int {
-        let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
-        return abs(hash) % paletteCount
+        var h = 0
+        for c in courseNo.unicodeScalars {
+            h = (h &* 31 &+ Int(c.value)) & 0x7FFFFFFF
+        }
+        return h % paletteCount
     }
 }
