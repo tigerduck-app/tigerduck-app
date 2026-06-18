@@ -203,7 +203,7 @@ struct ClassTableView: View {
                 Button {
                     viewModel.showResetConfirm = true
                 } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Image(systemName: "arrow.trianglepath")
                         .foregroundStyle(Color.textSecondary)
                 }
                 .accessibilityLabel(Text("reset_course_table"))
