@@ -1137,6 +1137,7 @@ final class AppState {
             if !courseOverrides.isEmpty {
                 applyCourseOverrides(courseOverrides, coursesArray: json["courses"] as? [[String: Any]] ?? [])
             }
+            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             print("[Sync] applied: \(safeArchived.count) archived, \(safeCompleted.count) completed, \(conflicts.count) conflicts pending")
 
             if !conflicts.isEmpty {
@@ -1165,9 +1166,11 @@ final class AppState {
         }
 
         var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
+        var customNames = DataCache.shared.loadCourseCustomNames()
         var hiddenCount = 0
         var unhiddenCount = 0
         var colorCount = 0
+        var nameCount = 0
         for o in overrides {
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
             guard let courseNo = moodleIdToNo[mId] else { continue }
@@ -1187,13 +1190,25 @@ final class AppState {
                     print("[Sync] course \(courseNo): color → \(colorHex)")
                 }
             }
+            if let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
+                var existing = customNames[courseNo] ?? [:]
+                for (locale, name) in serverNames {
+                    if name.isEmpty {
+                        existing.removeValue(forKey: locale)
+                    } else {
+                        existing[locale] = name
+                    }
+                }
+                customNames[courseNo] = existing.isEmpty ? nil : existing
+                nameCount += 1
+                print("[Sync] course \(courseNo): custom names updated")
+            }
         }
         if hiddenCount > 0 || unhiddenCount > 0 {
             DataCache.shared.saveDeletedCourseNos(Array(deletedNos))
         }
-        if hiddenCount > 0 || unhiddenCount > 0 || colorCount > 0 {
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            print("[Sync] course overrides: \(hiddenCount) hidden, \(unhiddenCount) unhidden, \(colorCount) colors")
+        if nameCount > 0 {
+            DataCache.shared.saveCourseCustomNames(customNames)
         }
     }
 
