@@ -133,7 +133,11 @@ struct UpcomingAssignmentsView: View {
         case .archived:
             trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
         default:
-            trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore"), systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
+            if assignment.isArchived {
+                trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
+            } else {
+                trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore"), systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
+            }
         }
 
         let leading: SwipeActionDescriptor?
@@ -222,9 +226,11 @@ struct UpcomingAssignmentsView: View {
         status: AssignmentStatus,
         now: Date
     ) -> (label: String, tint: Color)? {
-        // Submitted + locally completed: show "標示已完成" alongside "已繳交"
         if (status == .submitted || status == .submittedLate) && assignment.isLocallyCompleted {
             return (AssignmentStatus.locallyCompleted.badgeLabel!, AssignmentStatus.locallyCompleted.tint)
+        }
+        if (status == .submitted || status == .submittedLate) && assignment.isArchived {
+            return (AssignmentStatus.archived.badgeLabel!, AssignmentStatus.archived.tint)
         }
         // Overdue + locally completed/archived: show overdue badge
         if status == .locallyCompleted || status == .archived {
