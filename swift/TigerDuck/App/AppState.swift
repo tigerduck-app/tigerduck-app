@@ -1065,6 +1065,7 @@ final class AppState {
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices.
     func syncAssignmentOverride(moodleId: String, status: String) {
+        print("[Sync] override SENDING: \(moodleId) → \(status)")
         pendingOverrides.insert(moodleId)
         Task {
             do {
