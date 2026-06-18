@@ -408,13 +408,13 @@ private struct SwipeableRow<Content: View>: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 16)
+        DragGesture(minimumDistance: 8)
             .onChanged { value in
                 let dx = value.translation.width
                 let dy = value.translation.height
                 // Defer to the parent ScrollView for primarily-vertical drags
                 // so the home page can still scroll while a finger is over a row.
-                guard abs(dx) > abs(dy) * 1.3 else { return }
+                guard abs(dx) > abs(dy) * 0.8 else { return }
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
