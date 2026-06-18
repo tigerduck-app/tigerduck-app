@@ -341,8 +341,6 @@ private struct SwipeableRow<Content: View>: View {
         }
     }
 
-    private let haptic = UIImpactFeedbackGenerator(style: .medium)
-
     @ViewBuilder
     private var tappableContent: some View {
         content
@@ -353,6 +351,8 @@ private struct SwipeableRow<Content: View>: View {
                 LongPressGesture(minimumDuration: 0.4)
                     .onEnded { _ in
                         guard !didSwipe, tapHint != nil else { return }
+                        let haptic = UIImpactFeedbackGenerator(style: .heavy)
+                        haptic.prepare()
                         haptic.impactOccurred()
                         onTap()
                     }
