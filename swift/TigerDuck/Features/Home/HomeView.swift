@@ -128,6 +128,15 @@ struct HomeView: View {
                 .presentationDetents([.medium])
         }
         .notImplementedAlert(isPresented: $showNotImplementedAlert)
+        .alert("同步衝突", isPresented: Binding(
+            get: { !appState.syncConflicts.isEmpty },
+            set: { if !$0 { appState.resolveSyncConflicts(keepLocal: true) } }
+        )) {
+            Button("使用伺服器") { appState.resolveSyncConflicts(keepLocal: false) }
+            Button("保留本機", role: .cancel) { appState.resolveSyncConflicts(keepLocal: true) }
+        } message: {
+            Text("以下是有衝突的項目：\n" + appState.syncConflicts.map { "• \($0.kind): \($0.label)\n  本機: \($0.localLabel) → 伺服器: \($0.serverLabel)" }.joined(separator: "\n"))
+        }
         .navigationDestination(item: $selectedFeature) { feature in
             homeDestination(for: feature)
         }

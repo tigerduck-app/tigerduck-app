@@ -220,6 +220,53 @@ final class AppState {
         #endif
     }
 
+    struct SyncConflictItem: Identifiable {
+        let id: String
+        let kind: String
+        let label: String
+        let localStatus: String
+        let serverStatus: String
+
+        var localLabel: String {
+            switch localStatus {
+            case "ignored", "archived": return "已忽略"
+            case "locally_completed": return "標示為完成"
+            default: return "原始狀態"
+            }
+        }
+        var serverLabel: String {
+            switch serverStatus {
+            case "ignored", "archived": return "已忽略"
+            case "locally_completed": return "標示為完成"
+            default: return "原始狀態"
+            }
+        }
+    }
+
+    var syncConflicts: [SyncConflictItem] = []
+    private var pendingSyncServerArchived: Set<String> = []
+    private var pendingSyncServerCompleted: Set<String> = []
+
+    func resolveSyncConflicts(keepLocal: Bool) {
+        if keepLocal {
+            for c in syncConflicts {
+                syncAssignmentOverride(moodleId: c.id, status: c.localStatus)
+            }
+        } else {
+            let safeArchived = pendingSyncServerArchived.union(
+                DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) }
+            )
+            let safeCompleted = pendingSyncServerCompleted.union(
+                DataCache.shared.loadLocallyCompletedAssignmentIds().filter { pendingOverrides.contains($0) }
+            )
+            DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
+            DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+        }
+        syncConflicts = []
+        pendingSyncServerArchived = []
+        pendingSyncServerCompleted = []
+    }
+
     enum SyncSource { case none, backend, local }
     private(set) var lastSyncSource: SyncSource = .none
     private var pendingOverrides: Set<String> = []
@@ -1049,8 +1096,35 @@ final class AppState {
                 return
             }
 
-            // Server overrides are authoritative — but don't overwrite
-            // local changes that haven't reached the server yet.
+            var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
+            let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
+            let assignmentCache = DataCache.shared.loadAssignments()
+            let assignmentsByMoodleId = Dictionary(assignmentCache.map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first })
+            for id in allIds where !pendingOverrides.contains(id) {
+                let serverStatus: String
+                if serverArchivedIds.contains(id) { serverStatus = "ignored" }
+                else if serverCompletedIds.contains(id) { serverStatus = "locally_completed" }
+                else { serverStatus = "none" }
+                let localStatus: String
+                if localArchivedIds.contains(id) { localStatus = "ignored" }
+                else if localCompletedIds.contains(id) { localStatus = "locally_completed" }
+                else { localStatus = "none" }
+                if serverStatus != localStatus {
+                    let title = assignmentsByMoodleId[id]?.displayTitle ?? "ID \(id)"
+                    conflicts.append((id: id, kind: "作業", label: title, local: localStatus, server: serverStatus))
+                }
+            }
+
+            if !conflicts.isEmpty {
+                print("[Sync] \(conflicts.count) conflicts found")
+                await MainActor.run {
+                    syncConflicts = conflicts.map { SyncConflictItem(id: $0.id, kind: $0.kind, label: $0.label, localStatus: $0.local, serverStatus: $0.server) }
+                    pendingSyncServerArchived = serverArchivedIds
+                    pendingSyncServerCompleted = serverCompletedIds
+                }
+                return
+            }
+
             let safeArchived = serverArchivedIds.union(
                 DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) }
             )
