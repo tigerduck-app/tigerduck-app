@@ -193,7 +193,7 @@ struct ClassTableView: View {
     }
 
     private var titleBar: some View {
-        HStack(alignment: .top) {
+        HStack {
             Text(String(localized: "feature_class_table"))
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
