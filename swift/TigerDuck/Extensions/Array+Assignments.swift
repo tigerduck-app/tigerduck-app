@@ -16,16 +16,13 @@ extension Array where Element == SDAssignment {
             .sorted { $0.dueDate < $1.dueDate }
     }
 
-    /// Returns ignored-but-still-unsubmitted assignments sorted by due date
-    /// ascending. If Moodle later marks an assignment completed, it no longer
-    /// belongs in the ignored bucket even if a stale local flag still exists.
     func ignoredSorted() -> [SDAssignment] {
-        filter { !$0.isCompleted && $0.isArchived }
+        filter { $0.isArchived }
             .sorted { $0.dueDate < $1.dueDate }
     }
 
     func hasIgnored() -> Bool {
-        contains { !$0.isCompleted && $0.isArchived }
+        contains { $0.isArchived }
     }
 
     /// Time-agnostic candidate set for the 全部 tab. Excludes
