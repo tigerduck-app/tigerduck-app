@@ -1115,30 +1115,35 @@ final class AppState {
                 }
             }
 
+            // Always apply non-conflicting items + course overrides
+            let conflictIds = Set(conflicts.map(\.id))
+            var safeArchived = serverArchivedIds.filter { !conflictIds.contains($0) }
+                .union(DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) })
+            var safeCompleted = serverCompletedIds.filter { !conflictIds.contains($0) }
+                .union(DataCache.shared.loadLocallyCompletedAssignmentIds().filter { pendingOverrides.contains($0) })
+            // Preserve local state for conflicting items until user resolves
+            for c in conflicts {
+                switch c.local {
+                case "ignored", "archived": safeArchived.insert(c.id)
+                case "locally_completed": safeCompleted.insert(c.id)
+                default: break
+                }
+            }
+            DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
+            DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+
+            let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
+            if !courseOverrides.isEmpty {
+                applyCourseOverrides(courseOverrides, coursesArray: json["courses"] as? [[String: Any]] ?? [])
+            }
+            print("[Sync] applied: \(safeArchived.count) archived, \(safeCompleted.count) completed, \(conflicts.count) conflicts pending")
+
             if !conflicts.isEmpty {
-                print("[Sync] \(conflicts.count) conflicts found")
                 await MainActor.run {
                     syncConflicts = conflicts.map { SyncConflictItem(id: $0.id, kind: $0.kind, label: $0.label, localStatus: $0.local, serverStatus: $0.server) }
                     pendingSyncServerArchived = serverArchivedIds
                     pendingSyncServerCompleted = serverCompletedIds
                 }
-                return
-            }
-
-            let safeArchived = serverArchivedIds.union(
-                DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) }
-            )
-            let safeCompleted = serverCompletedIds.union(
-                DataCache.shared.loadLocallyCompletedAssignmentIds().filter { pendingOverrides.contains($0) }
-            )
-            DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
-            DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
-            print("[Sync] overrides applied: \(safeArchived.count) archived, \(safeCompleted.count) completed (server: \(serverArchivedIds.count)/\(serverCompletedIds.count), pending: \(pendingOverrides.count))")
-
-            // Course overrides: color + visibility
-            let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
-            if !courseOverrides.isEmpty {
-                applyCourseOverrides(courseOverrides, coursesArray: json["courses"] as? [[String: Any]] ?? [])
             }
         } catch {
             print("[Sync] syncOverrides failed: \(error)")
