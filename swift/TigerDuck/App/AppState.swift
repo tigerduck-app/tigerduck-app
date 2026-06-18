@@ -989,7 +989,7 @@ final class AppState {
     /// Fire-and-forget — failure is silent (the sync job just uses the
     /// last-known token until the next successful refresh).
     func refreshMoodleCredentials() async {
-        guard authTokenManager.isLoggedIn else { return }
+        guard await authTokenManager.isLoggedIn else { return }
         guard let token = await MoodleTokenService.shared.currentToken(),
               !token.isEmpty else { return }
         let privateToken = KeychainManager.loadString(
@@ -1009,7 +1009,7 @@ final class AppState {
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
     private func syncOverridesFromBackend() async {
-        guard authTokenManager.isLoggedIn else { return }
+        guard await authTokenManager.isLoggedIn else { return }
         do {
             let json = try await pushCoordinator.fetchFullSync()
             let assignmentsArray = json["assignments"] as? [[String: Any]] ?? []
@@ -1070,7 +1070,7 @@ final class AppState {
                 _ = try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: moodleId, localStatus: status
                 )
-                await MainActor.run { pendingOverrides.remove(moodleId) }
+                pendingOverrides.remove(moodleId)
             } catch {
                 // Leave in pendingOverrides — next sync won't overwrite it.
             }
