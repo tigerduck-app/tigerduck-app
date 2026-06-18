@@ -979,6 +979,27 @@ final class AppState {
         requestPushScheduleSync()
     }
 
+    /// Send the current Moodle token to the backend so the server-side
+    /// sync job has a fresh credential. Called on every app foreground.
+    /// Fire-and-forget — failure is silent (the sync job just uses the
+    /// last-known token until the next successful refresh).
+    func refreshMoodleCredentials() async {
+        guard authTokenManager.isLoggedIn else { return }
+        guard let token = await MoodleTokenService.shared.currentToken(),
+              !token.isEmpty else { return }
+        let privateToken = KeychainManager.loadString(
+            key: AppConstants.KeychainKeys.moodlePrivateToken
+        )
+        do {
+            _ = try await pushCoordinator.updateCredentials(
+                moodleToken: token,
+                moodlePrivateToken: privateToken
+            )
+        } catch {
+            // Best-effort — next foreground retries.
+        }
+    }
+
     /// Disable server push (tells server to drop the device, stops relay).
     func disablePushServer() async {
         Defaults[.pushServerEnabled] = false

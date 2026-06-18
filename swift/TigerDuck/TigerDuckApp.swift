@@ -137,6 +137,7 @@ struct TigerDuckApp: App {
                             guard !Task.isCancelled else { return }
                             await appState.rescheduleReminders()
                             appState.requestPushScheduleSync()
+                            await appState.refreshMoodleCredentials()
                         }
                         widgetSnapshotWriter?.regenerate()
                         // Background "is there a newer build on the App

@@ -110,4 +110,72 @@ enum PushAPI {
             case endJobId = "end_job_id"
         }
     }
+
+    // MARK: - Credential refresh
+
+    struct UpdateCredentialsRequest: Encodable, Sendable {
+        let moodleToken: String
+        let moodlePrivateToken: String?
+
+        enum CodingKeys: String, CodingKey {
+            case moodleToken = "moodle_token"
+            case moodlePrivateToken = "moodle_private_token"
+        }
+    }
+
+    struct UpdateCredentialsResponse: Decodable, Sendable {
+        let updated: Bool
+    }
+
+    // MARK: - Override sync
+
+    struct AssignmentOverrideRequest: Encodable, Sendable {
+        let localStatus: String
+
+        enum CodingKeys: String, CodingKey {
+            case localStatus = "local_status"
+        }
+    }
+
+    struct AssignmentOverrideResponse: Decodable, Sendable {
+        let id: Int
+        let localStatus: String
+        let updatedAt: String
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case localStatus = "local_status"
+            case updatedAt = "updated_at"
+        }
+    }
+
+    struct CourseOverrideRequest: Encodable, Sendable {
+        let isHidden: Bool?
+        let colorHex: String?
+        let customName: String?
+        let locale: String?
+
+        enum CodingKeys: String, CodingKey {
+            case isHidden = "is_hidden"
+            case colorHex = "color_hex"
+            case customName = "custom_name"
+            case locale
+        }
+    }
+
+    struct CourseOverrideResponse: Decodable, Sendable {
+        let id: Int
+        let isHidden: Bool
+        let colorHex: String?
+        let customNames: [String: String]
+        let updatedAt: String
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case isHidden = "is_hidden"
+            case colorHex = "color_hex"
+            case customNames = "custom_names"
+            case updatedAt = "updated_at"
+        }
+    }
 }

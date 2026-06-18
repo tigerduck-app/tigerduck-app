@@ -83,6 +83,57 @@ final class PushAPIClient: Sendable {
         try await delete(path: "/schedule/\(safeSource)")
     }
 
+    // MARK: - Credential refresh
+
+    func updateCredentials(
+        moodleToken: String,
+        moodlePrivateToken: String?
+    ) async throws -> PushAPI.UpdateCredentialsResponse {
+        let body = PushAPI.UpdateCredentialsRequest(
+            moodleToken: moodleToken,
+            moodlePrivateToken: moodlePrivateToken
+        )
+        return try await patch(
+            path: "/auth/credentials",
+            body: body,
+            returning: PushAPI.UpdateCredentialsResponse.self
+        )
+    }
+
+    // MARK: - Override sync
+
+    func patchAssignmentOverride(
+        assignmentId: Int,
+        localStatus: String
+    ) async throws -> PushAPI.AssignmentOverrideResponse {
+        let body = PushAPI.AssignmentOverrideRequest(localStatus: localStatus)
+        return try await patch(
+            path: "/sync/assignments/\(assignmentId)/override",
+            body: body,
+            returning: PushAPI.AssignmentOverrideResponse.self
+        )
+    }
+
+    func patchCourseOverride(
+        courseId: Int,
+        isHidden: Bool? = nil,
+        colorHex: String? = nil,
+        customName: String? = nil,
+        locale: String? = nil
+    ) async throws -> PushAPI.CourseOverrideResponse {
+        let body = PushAPI.CourseOverrideRequest(
+            isHidden: isHidden,
+            colorHex: colorHex,
+            customName: customName,
+            locale: locale
+        )
+        return try await patch(
+            path: "/sync/courses/\(courseId)/override",
+            body: body,
+            returning: PushAPI.CourseOverrideResponse.self
+        )
+    }
+
     /// Health check. Intentionally unauthenticated — the push server's
     /// `/ping` is public so connectivity / TLS / DNS can be diagnosed
     /// without needing the shared secret.
