@@ -1056,8 +1056,9 @@ final class AppState {
             )
             DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
             DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+            print("[Sync] overrides applied: \(safeArchived.count) archived, \(safeCompleted.count) completed (server: \(serverArchivedIds.count)/\(serverCompletedIds.count), pending: \(pendingOverrides.count))")
         } catch {
-            // Best-effort — local overrides stay as-is.
+            print("[Sync] syncOverrides failed: \(error)")
         }
     }
 
@@ -1067,12 +1068,13 @@ final class AppState {
         pendingOverrides.insert(moodleId)
         Task {
             do {
-                _ = try await pushCoordinator.patchAssignmentOverride(
+                let result = try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: moodleId, localStatus: status
                 )
                 pendingOverrides.remove(moodleId)
+                print("[Sync] override PATCH OK: \(moodleId) → \(status), server id=\(result.id)")
             } catch {
-                // Leave in pendingOverrides — next sync won't overwrite it.
+                print("[Sync] override PATCH FAILED: \(moodleId) → \(status), error=\(error)")
             }
         }
     }
