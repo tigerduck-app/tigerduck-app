@@ -681,6 +681,13 @@ final class ClassTableViewModel {
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         persistUserAddedCourses()
         broadcastLocalChange()
+        syncVisibilityOverride(course: course, isHidden: true)
+    }
+
+    private func syncVisibilityOverride(course: SDCourse, isHidden: Bool) {
+        guard let idnumber = course.moodleIdNumber,
+              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else { return }
+        onSyncCourseOverride?(String(numericId), isHidden, nil, nil, nil)
     }
 
     /// Undo a not-yet-committed user-added course without tombstoning the
@@ -760,7 +767,17 @@ final class ClassTableViewModel {
     func setColor(hex: UInt32, for course: SDCourse) {
         TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
         broadcastLocalChange()
+        syncColorOverride(course: course, hex: hex)
     }
+
+    private func syncColorOverride(course: SDCourse, hex: UInt32) {
+        guard let idnumber = course.moodleIdNumber,
+              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else { return }
+        let hexStr = String(format: "#%06X", hex)
+        onSyncCourseOverride?(String(numericId), nil, hexStr, nil, nil)
+    }
+
+    var onSyncCourseOverride: ((_ moodleCourseId: String, _ isHidden: Bool?, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
 
     /// Wakes Home, the Live Activity coordinator, and any other observer
     /// that subscribes to `dataDidUpdate`. Local Class Table edits used to
