@@ -1181,7 +1181,9 @@ final class AppState {
                     pendingSyncServerCompleted = serverCompletedIds
                 }
             }
+            lastSyncSource = .backend
         } catch {
+            lastSyncSource = .local
             print("[Sync] syncOverrides failed: \(error)")
         }
     }
@@ -1336,7 +1338,6 @@ final class AppState {
             // semester filtering). Backend handles override sync only.
             let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
             await syncOverridesFromBackend()
-            lastSyncSource = .backend
 
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
             async let coursesTask: Bool = syncCoursesIfAuthenticated()
