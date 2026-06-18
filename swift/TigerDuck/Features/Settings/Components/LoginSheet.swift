@@ -101,7 +101,7 @@ struct LoginSheet: View {
             }
             .interactiveDismissDisabled(isLoggingIn)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 
     private func submitIfReady() {
