@@ -134,6 +134,22 @@ final class PushAPIClient: Sendable {
         )
     }
 
+    // MARK: - Sync
+
+    func fetchFullSync() async throws -> [String: Any] {
+        let baseURL = baseURLProvider()
+        let url = baseURL.appendingPathComponent("sync/full")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        await applyAuth(to: &request)
+        let data = try await execute(request)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw PushAPIError.decodingFailed(NSError(domain: "PushAPI", code: -1))
+        }
+        return json
+    }
+
     /// Health check. Intentionally unauthenticated — the push server's
     /// `/ping` is public so connectivity / TLS / DNS can be diagnosed
     /// without needing the shared secret.

@@ -220,6 +220,9 @@ final class AppState {
         #endif
     }
 
+    enum SyncSource { case none, backend, local }
+    private(set) var lastSyncSource: SyncSource = .none
+
     private var _libraryRevision = 0
     private var syncTask: Task<Void, Never>?
     private var relabelTask: Task<Void, Never>?
@@ -1000,6 +1003,52 @@ final class AppState {
         }
     }
 
+    /// Try fetching assignments from the backend's synced copy. Returns true
+    /// on success (assignments saved to DataCache), false on any failure.
+    private func tryBackendAssignmentSync() async -> Bool {
+        guard authTokenManager.isLoggedIn else { return false }
+        do {
+            let json = try await pushCoordinator.fetchFullSync()
+            guard let assignmentsArray = json["assignments"] as? [[String: Any]] else { return false }
+            let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
+
+            let overridesByAssignment = Dictionary(
+                uniqueKeysWithValues: overridesArray.compactMap { o -> (Int, String)? in
+                    guard let id = o["user_assignment_id"] as? Int,
+                          let status = o["local_status"] as? String, status != "none" else { return nil }
+                    return (id, status)
+                }
+            )
+
+            var assignments: [SDAssignment] = []
+            for a in assignmentsArray {
+                guard a["deleted_at"] is NSNull || a["deleted_at"] == nil else { continue }
+                guard let dueStr = a["due_at"] as? String,
+                      let dueDate = ISO8601DateFormatter().date(from: dueStr) else { continue }
+                let moodleId = a["moodle_assignment_id"] as? Int ?? 0
+                let id = a["id"] as? Int ?? 0
+                let localStatus = overridesByAssignment[id]
+                assignments.append(SDAssignment(
+                    assignmentId: String(moodleId),
+                    courseNo: a["course_no"] as? String ?? "",
+                    courseName: a["course_name"] as? String ?? "",
+                    title: a["title"] as? String ?? "",
+                    dueDate: dueDate,
+                    isCompleted: a["provider_is_submitted"] as? Bool ?? false,
+                    isArchived: localStatus == "archived" || localStatus == "ignored",
+                    isLocallyCompleted: localStatus == "locally_completed",
+                    moodleUrl: a["moodle_url"] as? String,
+                    cutoffDate: (a["cutoff_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) },
+                    submittedAt: (a["provider_submitted_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+                ))
+            }
+            DataCache.shared.saveAssignments(assignments)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices.
     func syncAssignmentOverride(moodleId: String, status: String) {
@@ -1067,11 +1116,21 @@ final class AppState {
 
             sessionManager.loadingState = .loading
 
-            async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService)
+            // Backend-primary: try the server's synced copy first. Fall back
+            // to direct Moodle queries if the backend is unreachable.
+            var fetchedAssignments: [SDAssignment]
+            let backendOk = await tryBackendAssignmentSync()
+            if backendOk {
+                fetchedAssignments = DataCache.shared.loadAssignments()
+                lastSyncSource = .backend
+            } else {
+                fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
+                lastSyncSource = .local
+            }
+
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
             async let coursesTask: Bool = syncCoursesIfAuthenticated()
 
-            let fetchedAssignments = await assignmentsTask
             let fetchedSchoolEvents = await schoolEventsTask
             _ = await coursesTask
 

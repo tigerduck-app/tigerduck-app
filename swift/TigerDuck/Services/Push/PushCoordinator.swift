@@ -157,6 +157,10 @@ final class PushCoordinator {
         )
     }
 
+    func fetchFullSync() async throws -> [String: Any] {
+        try await apiClient.fetchFullSync()
+    }
+
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String
