@@ -343,12 +343,48 @@ private struct SwipeableRow<Content: View>: View {
 
     @ViewBuilder
     private var tappableContent: some View {
-        content
-            .contentShape(Rectangle())
-            .offset(x: offset)
-            .gesture(unifiedGesture)
-            .accessibilityAddTraits(tapHint != nil ? .isButton : [])
-            .accessibilityHint(tapHint.map { Text($0) } ?? Text(""))
+        if let tapHint {
+            // A real `Button` (not `.onTapGesture`) so the first tap wins iOS 18
+            // gesture arbitration against Home's ScrollView instead of needing a
+            // second press; the swipe-to-reveal drag rides alongside via
+            // `.simultaneousGesture` so it isn't blocked. `Button` supplies the
+            // `.isButton` trait automatically.
+            content
+                .offset(x: offset)
+                .scrollSafeTapAction(
+                    onPressChanged: { isPressed in
+                        // Touch-down of a fresh interaction clears the swipe
+                        // latch. The Button reports `isPressed == true` before
+                        // it ever delivers its tap action on release, and
+                        // `dragGesture` only sets `didSwipe` once the row moves,
+                        // so the latch always reflects the current interaction
+                        // — no ordering or timer assumptions about when the
+                        // simultaneous tap/drag callbacks fire.
+                        if isPressed { didSwipe = false }
+                    }
+                ) {
+                    // A swipe-release also delivers a Button tap because the
+                    // drag rides alongside via `.simultaneousGesture`. `didSwipe`
+                    // is set the moment the drag moves the row and stays set
+                    // until the next press-down, so this tap reliably bows out
+                    // and lets `dragGesture.onEnded` solely own the swipe action
+                    // + snap-back. Reading shared `offset` here instead raced:
+                    // `onEnded` always resets it to 0, so the tap and the
+                    // drag-end could each see the other's reset and the row would
+                    // either skip its swipe action or navigate right after it.
+                    guard !didSwipe else { return }
+                    onTap()
+                }
+                .simultaneousGesture(dragGesture)
+                .accessibilityHint(Text(tapHint))
+        } else {
+            // No tap destination: keep the row non-interactive (no button trait)
+            // while still swipeable.
+            content
+                .contentShape(Rectangle())
+                .offset(x: offset)
+                .gesture(dragGesture)
+        }
     }
 
     @ViewBuilder
@@ -379,33 +415,28 @@ private struct SwipeableRow<Content: View>: View {
         .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
     }
 
-    /// Single gesture for both tap and swipe. Eliminates the Button vs
-    /// DragGesture race that caused small swipes to register as taps.
-    private var unifiedGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 16)
             .onChanged { value in
                 let dx = value.translation.width
                 let dy = value.translation.height
-                let moved = abs(dx) > 10 || abs(dy) > 10
-                if moved { didSwipe = true }
-                guard abs(dx) > abs(dy) * 1.3, abs(dx) > 10 else { return }
+                guard abs(dx) > abs(dy) * 1.3 else { return }
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
+                didSwipe = true
             }
-            .onEnded { value in
-                let dx = value.translation.width
-                let dy = value.translation.height
-                let totalMovement = abs(dx) + abs(dy)
-                if totalMovement < 10 && !didSwipe {
-                    onTap()
-                } else if abs(offset) > triggerThreshold {
-                    if let action = (offset > 0 ? leadingAction : trailingAction) {
-                        action.action()
-                    }
+            .onEnded { _ in
+                let triggered = abs(offset) > triggerThreshold
+                print("[Swipe] onEnded offset=\(offset) threshold=\(triggerThreshold) triggered=\(triggered) leading=\(leadingAction != nil) trailing=\(trailingAction != nil)")
+                if triggered, let action = (offset > 0 ? leadingAction : trailingAction) {
+                    action.action()
                 }
                 snapBack()
-                didSwipe = false
+                // `didSwipe` is intentionally NOT cleared here: it must outlive
+                // the simultaneous Button tap this release also delivers, whose
+                // ordering relative to `onEnded` is undefined. The next
+                // interaction's press-down clears it (see `tappableContent`).
             }
     }
 
