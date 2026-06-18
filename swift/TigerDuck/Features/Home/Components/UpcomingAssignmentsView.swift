@@ -288,8 +288,6 @@ private struct SwipeActionDescriptor {
     let action: () -> Void
 }
 
-private let _swipeRowHaptic = UIImpactFeedbackGenerator(style: .heavy)
-
 /// Custom horizontal-drag swipe row.
 ///
 /// Reproduces the swipe-to-act behaviour we previously got from
@@ -314,9 +312,9 @@ private struct SwipeableRow<Content: View>: View {
     let content: Content
 
     @State private var offset: CGFloat = 0
-    /// Set the instant the drag moves the row OR the scroll moves vertically;
-    /// cleared on the next Button press-down. Any finger movement suppresses
-    /// the tap to prevent accidental Moodle opens during scroll/swipe.
+    /// Set on ANY drag movement (>16pt, any direction); cleared on the
+    /// next press-down via `SwipeableButtonStyle`. Prevents swipe and
+    /// scroll from accidentally opening Moodle.
     @State private var didSwipe = false
 
     private let triggerThreshold: CGFloat = 96
@@ -345,19 +343,18 @@ private struct SwipeableRow<Content: View>: View {
 
     @ViewBuilder
     private var tappableContent: some View {
-        content
-            .contentShape(Rectangle())
-            .offset(x: offset)
-            .simultaneousGesture(dragGesture)
-            .onLongPressGesture(minimumDuration: 0.4, pressing: { pressing in
-                if pressing { _swipeRowHaptic.prepare() }
-            }, perform: {
-                guard !didSwipe, tapHint != nil else { return }
-                _swipeRowHaptic.impactOccurred()
-                onTap()
-            })
-            .accessibilityAddTraits(tapHint != nil ? .isButton : [])
-            .accessibilityHint(tapHint.map { Text($0) } ?? Text(""))
+        Button {
+            guard !didSwipe, tapHint != nil else { return }
+            onTap()
+        } label: {
+            content
+        }
+        .buttonStyle(SwipeableButtonStyle(didSwipe: $didSwipe))
+        .contentShape(Rectangle())
+        .offset(x: offset)
+        .simultaneousGesture(dragGesture)
+        .accessibilityAddTraits(tapHint != nil ? .isButton : [])
+        .accessibilityHint(tapHint.map { Text($0) } ?? Text(""))
     }
 
     @ViewBuilder
@@ -391,13 +388,13 @@ private struct SwipeableRow<Content: View>: View {
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 16)
             .onChanged { value in
+                didSwipe = true
                 let dx = value.translation.width
                 let dy = value.translation.height
                 guard abs(dx) > abs(dy) * 1.3 else { return }
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
-                didSwipe = true
             }
             .onEnded { _ in
                 let triggered = abs(offset) > triggerThreshold
@@ -406,10 +403,6 @@ private struct SwipeableRow<Content: View>: View {
                     action.action()
                 }
                 snapBack()
-                // `didSwipe` is intentionally NOT cleared here: it must outlive
-                // the simultaneous Button tap this release also delivers, whose
-                // ordering relative to `onEnded` is undefined. The next
-                // interaction's press-down clears it (see `tappableContent`).
             }
     }
 
@@ -417,5 +410,16 @@ private struct SwipeableRow<Content: View>: View {
         withAnimation(snapAnimation) {
             offset = 0
         }
+    }
+}
+
+private struct SwipeableButtonStyle: ButtonStyle {
+    @Binding var didSwipe: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed { didSwipe = false }
+            }
     }
 }
