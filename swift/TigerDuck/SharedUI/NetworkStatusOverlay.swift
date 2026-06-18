@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NetworkStatusOverlay: View {
     var loadingState: LoadingState
+    var isLocalOnly: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var visible = false
@@ -18,7 +19,7 @@ struct NetworkStatusOverlay: View {
             case .loaded:
                 Image(systemName: "checkmark.circle.fill")
                     .font(.caption)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(isLocalOnly ? .yellow : .green)
                     .opacity(visible ? 1 : 0)
 
             case .error:
