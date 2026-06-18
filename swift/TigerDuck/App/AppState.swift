@@ -1133,10 +1133,44 @@ final class AppState {
             DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
             DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
 
+            let coursesArray = json["courses"] as? [[String: Any]] ?? []
             let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
             if !courseOverrides.isEmpty {
-                applyCourseOverrides(courseOverrides, coursesArray: json["courses"] as? [[String: Any]] ?? [])
+                applyCourseOverrides(courseOverrides, coursesArray: coursesArray)
             }
+
+            // Hard-delete detection: compare server courses against local deletedCourseNos
+            if !coursesArray.isEmpty {
+                let serverCourseNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
+                var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
+                let semester = CourseSelectionService.currentSemesterCode()
+                let localCourses = DataCache.shared.loadCourses(semester: semester)
+                let localCourseNos = Set(localCourses.map(\.courseNo))
+                var changed = false
+
+                // A local course NOT in server courses → deleted on another device
+                for courseNo in localCourseNos where !serverCourseNos.contains(courseNo) && !deletedNos.contains(courseNo) {
+                    deletedNos.insert(courseNo)
+                    changed = true
+                    print("[Sync] course \(courseNo): deleted on another device (not in server courses)")
+                }
+
+                // A courseNo in deletedNos that IS in server courses → un-deleted
+                for courseNo in deletedNos where serverCourseNos.contains(courseNo) {
+                    deletedNos.remove(courseNo)
+                    changed = true
+                    print("[Sync] course \(courseNo): un-deleted (present in server courses)")
+                }
+
+                if changed {
+                    DataCache.shared.saveDeletedCourseNos(Array(deletedNos))
+                    let filtered = localCourses.filter { !deletedNos.contains($0.courseNo) }
+                    if filtered.count != localCourses.count {
+                        DataCache.shared.saveCourses(filtered, semester: semester)
+                    }
+                }
+            }
+
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             print("[Sync] applied: \(safeArchived.count) archived, \(safeCompleted.count) completed, \(conflicts.count) conflicts pending")
 
@@ -1167,24 +1201,12 @@ final class AppState {
         }
         print("[Sync] moodleIdToNo: \(moodleIdToNo.count) entries, overrides: \(overrides.count)")
 
-        var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
         var customNames = DataCache.shared.loadCourseCustomNames()
-        var hiddenCount = 0
-        var unhiddenCount = 0
         var colorCount = 0
         var nameCount = 0
         for o in overrides {
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
             guard let courseNo = moodleIdToNo[mId] else { continue }
-            let isHidden = o["is_hidden"] as? Bool ?? false
-            if isHidden {
-                deletedNos.insert(courseNo)
-                hiddenCount += 1
-                print("[Sync] course \(courseNo): hidden by server")
-            } else if deletedNos.remove(courseNo) != nil {
-                unhiddenCount += 1
-                print("[Sync] course \(courseNo): unhidden by server")
-            }
             if let colorHex = o["color_hex"] as? String, !colorHex.isEmpty {
                 if let hex = UInt32(colorHex.dropFirst(), radix: 16) {
                     TigerDuckTheme.setColor(hex: hex, for: courseNo)
@@ -1204,15 +1226,6 @@ final class AppState {
                 customNames[courseNo] = existing.isEmpty ? nil : existing
                 nameCount += 1
                 print("[Sync] course \(courseNo): custom names updated")
-            }
-        }
-        if hiddenCount > 0 || unhiddenCount > 0 {
-            DataCache.shared.saveDeletedCourseNos(Array(deletedNos))
-            let semester = CourseSelectionService.currentSemesterCode()
-            let cached = DataCache.shared.loadCourses(semester: semester)
-            let filtered = cached.filter { !deletedNos.contains($0.courseNo) }
-            if filtered.count != cached.count {
-                DataCache.shared.saveCourses(filtered, semester: semester)
             }
         }
         if nameCount > 0 {
