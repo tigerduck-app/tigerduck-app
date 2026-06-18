@@ -138,12 +138,14 @@ struct UpcomingAssignmentsView: View {
 
         let leading: SwipeActionDescriptor?
         switch status {
-        case .submitted, .submittedLate:
-            leading = nil
         case .locallyCompleted:
             leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
         default:
-            leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete"), systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
+            if assignment.isLocallyCompleted {
+                leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
+            } else {
+                leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete"), systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
+            }
         }
 
         return (trailing, leading)
@@ -196,10 +198,10 @@ struct UpcomingAssignmentsView: View {
         policy: VisualStylePolicy
     ) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
-            if let underlyingBadge = underlyingOverdueBadge(for: assignment, status: status, now: now) {
-                Text(underlyingBadge.label)
-                    .font(statusFont(status: underlyingBadge.status))
-                    .foregroundStyle(underlyingBadge.status.tint)
+            if let extra = secondaryBadge(for: assignment, status: status, now: now) {
+                Text(extra.label)
+                    .font(statusFont(status: status))
+                    .foregroundStyle(extra.tint)
                     .lineLimit(1)
             }
             if let label = status.badgeLabel {
@@ -215,17 +217,24 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    private func underlyingOverdueBadge(
+    private func secondaryBadge(
         for assignment: SDAssignment,
         status: AssignmentStatus,
         now: Date
-    ) -> (label: String, status: AssignmentStatus)? {
-        guard status == .locallyCompleted || status == .archived else { return nil }
-        guard assignment.dueDate < now else { return nil }
-        if let cutoff = assignment.cutoffDate, now > cutoff {
-            return (AssignmentStatus.overdueRejected.badgeLabel!, .overdueRejected)
+    ) -> (label: String, tint: Color)? {
+        // Submitted + locally completed: show "標示已完成" alongside "已繳交"
+        if (status == .submitted || status == .submittedLate) && assignment.isLocallyCompleted {
+            return (AssignmentStatus.locallyCompleted.badgeLabel!, AssignmentStatus.locallyCompleted.tint)
         }
-        return (AssignmentStatus.overdueAcceptable.badgeLabel!, .overdueAcceptable)
+        // Overdue + locally completed/archived: show overdue badge
+        if status == .locallyCompleted || status == .archived {
+            guard assignment.dueDate < now else { return nil }
+            if let cutoff = assignment.cutoffDate, now > cutoff {
+                return (AssignmentStatus.overdueRejected.badgeLabel!, AssignmentStatus.overdueRejected.tint)
+            }
+            return (AssignmentStatus.overdueAcceptable.badgeLabel!, AssignmentStatus.overdueAcceptable.tint)
+        }
+        return nil
     }
 
     private func statusFont(status: AssignmentStatus) -> Font {
