@@ -1004,71 +1004,52 @@ final class AppState {
         }
     }
 
-    /// Try fetching assignments from the backend's synced copy. Returns true
-    /// on success (assignments saved to DataCache), false on any failure.
-    private func tryBackendAssignmentSync() async -> Bool {
-        guard authTokenManager.isLoggedIn else { return false }
+    /// Fetch override state (done/ignored) from the backend and apply it
+    /// locally. The assignment LIST comes from Moodle-direct (proven
+    /// semester filtering); this only syncs the user's swipe marks.
+    private func syncOverridesFromBackend() async {
+        guard authTokenManager.isLoggedIn else { return }
         do {
             let json = try await pushCoordinator.fetchFullSync()
-            guard let assignmentsArray = json["assignments"] as? [[String: Any]] else { return false }
+            let assignmentsArray = json["assignments"] as? [[String: Any]] ?? []
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
 
-            let overridesByAssignment = Dictionary(
-                uniqueKeysWithValues: overridesArray.compactMap { o -> (Int, String)? in
-                    guard let id = o["user_assignment_id"] as? Int,
-                          let status = o["local_status"] as? String, status != "none" else { return nil }
-                    return (id, status)
-                }
-            )
-
-            let dateFmt = ISO8601DateFormatter()
-            var assignments: [SDAssignment] = []
+            // Build PK → moodleAssignmentId map
+            var pkToMoodleId: [Int: String] = [:]
             for a in assignmentsArray {
-                if let deleted = a["deleted_at"], !(deleted is NSNull) { continue }
-                let moodleId = a["moodle_assignment_id"] as? Int ?? 0
-                let dueDate = (a["due_at"] as? String).flatMap { dateFmt.date(from: $0) }
-                    ?? Date.distantFuture
-                let id = a["id"] as? Int ?? 0
-                let localStatus = overridesByAssignment[id]
-                assignments.append(SDAssignment(
-                    assignmentId: String(moodleId),
-                    courseNo: a["course_no"] as? String ?? "",
-                    courseName: a["course_name"] as? String ?? "",
-                    title: a["title"] as? String ?? "",
-                    dueDate: dueDate,
-                    isCompleted: a["provider_is_submitted"] as? Bool ?? false,
-                    isArchived: localStatus == "archived" || localStatus == "ignored",
-                    isLocallyCompleted: localStatus == "locally_completed",
-                    moodleUrl: a["moodle_url"] as? String,
-                    cutoffDate: (a["cutoff_at"] as? String).flatMap { dateFmt.date(from: $0) },
-                    submittedAt: (a["provider_submitted_at"] as? String).flatMap { dateFmt.date(from: $0) }
-                ))
+                if let pk = a["id"] as? Int, let mid = a["moodle_assignment_id"] as? Int {
+                    pkToMoodleId[pk] = String(mid)
+                }
             }
 
             var serverArchivedIds = Set<String>()
             var serverCompletedIds = Set<String>()
-            for a in assignments {
-                if a.isArchived { serverArchivedIds.insert(a.assignmentId) }
-                if a.isLocallyCompleted { serverCompletedIds.insert(a.assignmentId) }
+            for o in overridesArray {
+                guard let assignPk = o["user_assignment_id"] as? Int,
+                      let status = o["local_status"] as? String,
+                      let moodleId = pkToMoodleId[assignPk] else { continue }
+                switch status {
+                case "archived", "ignored": serverArchivedIds.insert(moodleId)
+                case "locally_completed": serverCompletedIds.insert(moodleId)
+                default: break
+                }
             }
 
-            // First-time migration: if server has NO overrides but this device
-            // has local ones, upload them once. After that, server is authoritative.
+            // First-time migration: upload local overrides if server has none.
             let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
             let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
             if serverArchivedIds.isEmpty && serverCompletedIds.isEmpty
                 && (!localArchivedIds.isEmpty || !localCompletedIds.isEmpty) {
                 for id in localArchivedIds { syncAssignmentOverride(moodleId: id, status: "archived") }
                 for id in localCompletedIds { syncAssignmentOverride(moodleId: id, status: "locally_completed") }
+                return
             }
 
-            // Server state is authoritative — apply it.
-            DataCache.shared.saveAssignments(assignments)
+            // Server overrides are authoritative.
             DataCache.shared.replaceArchivedAssignmentIds(serverArchivedIds)
             DataCache.shared.replaceLocallyCompletedAssignmentIds(serverCompletedIds)
-            return true
         } catch {
-            return false
+            // Best-effort — local overrides stay as-is.
         }
     }
 
@@ -1139,17 +1120,11 @@ final class AppState {
 
             sessionManager.loadingState = .loading
 
-            // Backend-primary: try the server's synced copy first. Fall back
-            // to direct Moodle queries if the backend is unreachable.
-            var fetchedAssignments: [SDAssignment]
-            let backendOk = await tryBackendAssignmentSync()
-            if backendOk {
-                fetchedAssignments = DataCache.shared.loadAssignments()
-                lastSyncSource = .backend
-            } else {
-                fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
-                lastSyncSource = .local
-            }
+            // Moodle-direct for the assignment list (proven, correct
+            // semester filtering). Backend handles override sync only.
+            let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
+            await syncOverridesFromBackend()
+            lastSyncSource = .backend
 
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
             async let coursesTask: Bool = syncCoursesIfAuthenticated()
