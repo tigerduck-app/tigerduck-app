@@ -19,7 +19,7 @@ struct CalendarTabView: View {
     private var content: some View {
         ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    HStack {
+                    HStack(alignment: .top) {
                         Text(String(localized: "feature_calendar"))
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
@@ -29,9 +29,9 @@ struct CalendarTabView: View {
                             viewModel.goToToday()
                         } label: {
                             Text(String(localized: "calendar_today"))
-                                .font(TigerDuckTheme.Typography.caption)
-                                .foregroundStyle(Color.textSecondary)
+                                .font(.caption.weight(.semibold))
                         }
+                        .modifier(GlassTextButtonModifier())
                     }
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)

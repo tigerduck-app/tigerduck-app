@@ -64,7 +64,7 @@ struct TimeSliderSection: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .modifier(GlassButtonStyleModifier())
+                .modifier(GlassTextButtonModifier())
                 .transition(.opacity.combined(with: .scale(0.85, anchor: .trailing)))
             }
         }
@@ -161,12 +161,3 @@ struct TimeSliderSection: View {
 
 // MARK: - Availability Helpers
 
-private struct GlassButtonStyleModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content.buttonStyle(.glass)
-        } else {
-            content.buttonStyle(.bordered)
-        }
-    }
-}

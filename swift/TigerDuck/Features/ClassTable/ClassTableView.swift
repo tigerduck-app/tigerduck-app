@@ -193,27 +193,50 @@ struct ClassTableView: View {
     }
 
     private var titleBar: some View {
-        HStack {
+        HStack(alignment: .top) {
             Text(String(localized: "feature_class_table"))
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
             NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
             if pageAccessState != .loginRequired {
-                Button {
-                    viewModel.showResetConfirm = true
-                } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .foregroundStyle(Color.textSecondary)
+                if #available(iOS 26, *) {
+                    Button {
+                        viewModel.showResetConfirm = true
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 28, height: 28)
+                            .glassEffect(.regular.interactive(), in: .circle)
+                    }
+                    .accessibilityLabel(Text("class_table_reset_title"))
+                    Button {
+                        viewModel.showAddCourse = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 28, height: 28)
+                            .glassEffect(.regular.interactive(), in: .circle)
+                    }
+                    .accessibilityLabel(Text("add_course_title"))
+                } else {
+                    Button {
+                        viewModel.showResetConfirm = true
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                    .accessibilityLabel(Text("class_table_reset_title"))
+                    Button {
+                        viewModel.showAddCourse = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                    .accessibilityLabel(Text("add_course_title"))
                 }
-                .accessibilityLabel(Text("reset_course_table"))
-                Button {
-                    viewModel.showAddCourse = true
-                } label: {
-                    Image(systemName: "plus")
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .accessibilityLabel(Text("add_course_title"))
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
