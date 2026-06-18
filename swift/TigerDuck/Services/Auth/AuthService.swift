@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 @Observable
 final class AuthService {
@@ -45,6 +48,20 @@ final class AuthService {
 
     var isLoggingIn = false
     var loginError: String?
+
+    #if os(iOS)
+    /// v3 JWT token store. Injected by ``AppState`` after init so a
+    /// successful NTUST sign-in also mints the access/refresh tokens that
+    /// authorize every `/v3` push + bulletin call. The login half of this
+    /// store was previously never wired — the app held NTUST cookies but no
+    /// Bearer, so every authed `/v3` request 401'd.
+    var authTokenManager: AuthTokenManager?
+    /// Fired (on the main actor) after a successful v3 login so the push
+    /// stack can (re)register the device now that a Bearer exists. The
+    /// launch-time registration runs before any JWT and 401s; this lets it
+    /// recover the instant the user signs in.
+    var onV3SignedIn: (() -> Void)?
+    #endif
 
     var storedStudentId: String? {
         _ = _revision
@@ -98,6 +115,14 @@ final class AuthService {
                 } catch {
                     AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
                 }
+
+                #if os(iOS)
+                // Mint the v3 JWT now that we hold NTUST creds + a Moodle
+                // token. Must run AFTER the obtain above — the backend
+                // verifies the Moodle wstoken and rejects login without it.
+                // Best-effort: a v3 failure never blocks the NTUST session.
+                await performV3Login(studentId: normalizedId, password: password)
+                #endif
             }
 
             isLoggingIn = false
@@ -114,6 +139,47 @@ final class AuthService {
             return false
         }
     }
+
+    #if os(iOS)
+    /// Posts to `/v3/auth/login` to obtain JWT access/refresh tokens, then
+    /// kicks the push stack to (re)register. The Moodle token (verified
+    /// server-side) is read from the store the obtain step in
+    /// ``login(studentId:password:)`` just populated; a previously cached
+    /// token is reused if this login's obtain failed transiently, so a flaky
+    /// Moodle hop doesn't strand push behind a missing Bearer.
+    private func performV3Login(studentId: String, password: String) async {
+        guard let authTokenManager else { return }
+        guard let moodleToken = await MoodleTokenService.shared.currentToken(),
+              !moodleToken.isEmpty else {
+            // No verified Moodle token → the backend returns
+            // moodle_verification_failed. Skip rather than 401-spin; the
+            // next successful login retries.
+            return
+        }
+        let moodlePrivateToken = KeychainManager.loadString(
+            key: AppConstants.KeychainKeys.moodlePrivateToken
+        )
+        let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
+        let deviceName = UIDevice.current.name
+        do {
+            _ = try await authTokenManager.login(
+                studentId: studentId,
+                password: password,
+                moodleToken: moodleToken,
+                moodlePrivateToken: moodlePrivateToken,
+                platform: platform,
+                deviceName: deviceName
+            )
+            // Bearer is now available — let the push stack recover the
+            // launch-time registration that 401'd before we had a token.
+            onV3SignedIn?()
+        } catch {
+            // Best-effort — the NTUST session already succeeded. Push and
+            // authed bulletin calls retry on the next login / token refresh.
+            AppLogger.captureError(error, context: ["flow": "v3Login"])
+        }
+    }
+    #endif
 
     /// Silent re-authenticate using stored credentials. Distinct from
     /// ``login(studentId:password:)`` in that it manages

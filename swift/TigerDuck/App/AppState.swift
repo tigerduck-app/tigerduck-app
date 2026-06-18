@@ -157,6 +157,22 @@ final class AppState {
         // requested through onboarding, not here; users can opt out of
         // server pushes via `serverPushUserOptOut`.
         pushCoordinator.enable()
+
+        // Wire v3 JWT sign-in into the NTUST login flow. AuthService owns the
+        // credential path but not the token store; hand it the same
+        // AuthTokenManager built above (keyed to the shared device UUID) so a
+        // successful SSO login also mints the Bearer that authorizes every
+        // /v3 push + bulletin call. Without this the auto-registration above
+        // goes out with no Authorization header and 401s on every launch.
+        authService.authTokenManager = atm
+        authService.onV3SignedIn = { [weak self] in
+            guard let self else { return }
+            // The launch-time registration ran before any JWT existed and
+            // 401'd; now that a Bearer is available, re-register the device
+            // and sync the schedule.
+            self.pushCoordinator.refreshRegistrationAfterAuth()
+            self.requestPushScheduleSync()
+        }
         #endif
 
         // Apply a stored in-app language override on launch so string lookups

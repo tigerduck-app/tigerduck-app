@@ -248,6 +248,18 @@ actor PushRegistrationService {
 
     // MARK: - Internals
 
+    /// Re-attempt registration after the auth state changes — the user just
+    /// signed in and a v3 JWT is now available. Resets the give-up counter so
+    /// a registration that exhausted its retries while unauthenticated gets a
+    /// fresh chance, then fires immediately (subject to the PTS-token gate in
+    /// `registerIfReady`).
+    func retryAfterAuthChange() async {
+        deviceRegisterAttempts = 0
+        deviceRegisterRetryTask?.cancel()
+        deviceRegisterRetryTask = nil
+        await registerIfReady()
+    }
+
     /// We upload as soon as the PTS token exists. Device token alone is not
     /// enough to start a Live Activity, and PTS is the Checkpoint-2/3 focus.
     /// The device token rides along for later standard-alert pushes.

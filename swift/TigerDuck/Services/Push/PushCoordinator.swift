@@ -145,6 +145,15 @@ final class PushCoordinator {
         }
     }
 
+    /// Re-attempt device registration after a sign-in. The launch-time
+    /// registration runs before the v3 JWT exists and 401s; calling this once
+    /// a Bearer is available gives it a fresh attempt — and resets the give-up
+    /// counter — instead of waiting on exponential backoff (or never retrying
+    /// if it already exhausted its attempts while unauthenticated).
+    func refreshRegistrationAfterAuth() {
+        Task { await registration.retryAfterAuthChange() }
+    }
+
     /// Returns the latest diagnostic snapshot for the settings view.
     func currentSnapshot() async -> PushDiagnostic {
         let reg = await registration.snapshot()
