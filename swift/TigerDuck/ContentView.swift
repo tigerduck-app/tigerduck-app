@@ -15,6 +15,14 @@ struct ContentView: View {
         #if os(iOS)
         .serverPushPopupHost()
         #endif
+        .alert(
+            String(localized: "sync_backend_session_expired_title"),
+            isPresented: Bindable(appState).showBackendSessionExpired
+        ) {
+            Button(String(localized: "action_confirm"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "sync_backend_session_expired_message"))
+        }
     }
 }
 
