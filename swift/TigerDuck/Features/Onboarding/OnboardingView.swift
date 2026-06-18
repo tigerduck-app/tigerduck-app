@@ -57,10 +57,6 @@ struct OnboardingView: View {
         // give the user a way to clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
-        // Simultaneous (not `.onTapGesture`) so this keyboard-dismiss tap on the
-        // TabView root doesn't swallow taps on interactive children — see
-        // View+ScrollSafeGesture for the iOS 18 gesture-arbitration details.
-        .dismissTapGesture { focusedField = nil }
         .onChange(of: currentPage) { _, _ in focusedField = nil }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, newPhase in
