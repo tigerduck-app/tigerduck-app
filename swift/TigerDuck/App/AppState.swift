@@ -223,6 +223,19 @@ final class AppState {
     enum SyncSource { case none, backend, local }
     private(set) var lastSyncSource: SyncSource = .none
 
+    /// Set when the backend's overrides conflict with this device's local
+    /// state (e.g. upgrading user with pre-existing done/ignored marks).
+    /// The UI presents a dialog; the user picks "use this device" or
+    /// "use server". Cleared after resolution.
+    var syncConflict: SyncConflict?
+
+    struct SyncConflict {
+        let localArchived: Set<String>
+        let localCompleted: Set<String>
+        let serverArchived: Set<String>
+        let serverCompleted: Set<String>
+    }
+
     private var _libraryRevision = 0
     private var syncTask: Task<Void, Never>?
     private var relabelTask: Task<Void, Never>?
@@ -1042,10 +1055,59 @@ final class AppState {
                     submittedAt: (a["provider_submitted_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
                 ))
             }
+            // Detect conflicts between local overrides and server overrides.
+            let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
+            let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
+
+            var serverArchivedIds = Set<String>()
+            var serverCompletedIds = Set<String>()
+            for a in assignments {
+                if a.isArchived { serverArchivedIds.insert(a.assignmentId) }
+                if a.isLocallyCompleted { serverCompletedIds.insert(a.assignmentId) }
+            }
+
+            let hasConflict = localArchivedIds != serverArchivedIds
+                || localCompletedIds != serverCompletedIds
+
+            if hasConflict && (!localArchivedIds.isEmpty || !localCompletedIds.isEmpty) {
+                await MainActor.run {
+                    syncConflict = SyncConflict(
+                        localArchived: localArchivedIds,
+                        localCompleted: localCompletedIds,
+                        serverArchived: serverArchivedIds,
+                        serverCompleted: serverCompletedIds
+                    )
+                }
+                return true
+            }
+
             DataCache.shared.saveAssignments(assignments)
+            DataCache.shared.replaceArchivedAssignmentIds(serverArchivedIds)
+            DataCache.shared.replaceLocallyCompletedAssignmentIds(serverCompletedIds)
             return true
         } catch {
             return false
+        }
+    }
+
+    func resolveSyncConflict(useLocal: Bool) {
+        guard let conflict = syncConflict else { return }
+        syncConflict = nil
+        if useLocal {
+            for id in conflict.localArchived {
+                syncAssignmentOverride(moodleId: id, status: "archived")
+            }
+            for id in conflict.localCompleted {
+                syncAssignmentOverride(moodleId: id, status: "locally_completed")
+            }
+            let serverOnly = conflict.serverArchived.subtracting(conflict.localArchived)
+                .union(conflict.serverCompleted.subtracting(conflict.localCompleted))
+            for id in serverOnly {
+                syncAssignmentOverride(moodleId: id, status: "none")
+            }
+        } else {
+            DataCache.shared.replaceArchivedAssignmentIds(conflict.serverArchived)
+            DataCache.shared.replaceLocallyCompletedAssignmentIds(conflict.serverCompleted)
         }
     }
 

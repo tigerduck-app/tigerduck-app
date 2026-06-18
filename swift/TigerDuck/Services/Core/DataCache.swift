@@ -164,6 +164,10 @@ final class DataCache {
         return Set(ids)
     }
 
+    func replaceArchivedAssignmentIds(_ ids: Set<String>) {
+        save(Array(ids), to: "archived_assignments.json", in: persistentDir)
+    }
+
     // MARK: - Locally Completed Assignment IDs (local, persistent, survives Moodle refresh)
 
     func addLocallyCompletedAssignmentId(_ id: String) {
@@ -181,6 +185,10 @@ final class DataCache {
     func loadLocallyCompletedAssignmentIds() -> Set<String> {
         let ids: [String] = load(from: "locally_completed_assignments.json", in: persistentDir) ?? []
         return Set(ids)
+    }
+
+    func replaceLocallyCompletedAssignmentIds(_ ids: Set<String>) {
+        save(Array(ids), to: "locally_completed_assignments.json", in: persistentDir)
     }
 
     // MARK: - Bulletins
