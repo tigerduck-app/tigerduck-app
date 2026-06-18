@@ -92,6 +92,7 @@ struct HomeView: View {
             // single in-flight fetch; status lives in the top-right
             // NetworkStatusOverlay.
             viewModel.triggerRefresh(authService: appState.authService)
+            Task { await appState.syncOverridesFromBackend() }
         }
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)

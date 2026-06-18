@@ -1008,27 +1008,27 @@ final class AppState {
     /// Fetch override state (done/ignored) from the backend and apply it
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
-    private func syncOverridesFromBackend() async {
+    func syncOverridesFromBackend() async {
         guard await authTokenManager.isLoggedIn else { return }
         do {
             let json = try await pushCoordinator.fetchFullSync()
-            let assignmentsArray = json["assignments"] as? [[String: Any]] ?? []
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
-
-            // Build PK → moodleAssignmentId map
-            var pkToMoodleId: [Int: String] = [:]
-            for a in assignmentsArray {
-                if let pk = a["id"] as? Int, let mid = a["moodle_assignment_id"] as? Int {
-                    pkToMoodleId[pk] = String(mid)
-                }
-            }
 
             var serverArchivedIds = Set<String>()
             var serverCompletedIds = Set<String>()
             for o in overridesArray {
-                guard let assignPk = o["user_assignment_id"] as? Int,
-                      let status = o["local_status"] as? String,
-                      let moodleId = pkToMoodleId[assignPk] else { continue }
+                guard let status = o["local_status"] as? String else { continue }
+                let moodleId: String?
+                if let mid = o["moodle_assignment_id"] as? Int {
+                    moodleId = String(mid)
+                } else if let assignPk = o["user_assignment_id"] as? Int,
+                          let assignments = json["assignments"] as? [[String: Any]] {
+                    moodleId = assignments.first(where: { ($0["id"] as? Int) == assignPk })
+                        .flatMap { $0["moodle_assignment_id"] as? Int }.map(String.init)
+                } else {
+                    moodleId = nil
+                }
+                guard let moodleId else { continue }
                 switch status {
                 case "archived", "ignored": serverArchivedIds.insert(moodleId)
                 case "locally_completed": serverCompletedIds.insert(moodleId)
