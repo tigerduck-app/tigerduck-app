@@ -261,6 +261,7 @@ final class AppState {
             )
             DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
             DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
         syncConflicts = []
         pendingSyncServerArchived = []
