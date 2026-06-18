@@ -1208,6 +1208,12 @@ final class AppState {
         }
         if hiddenCount > 0 || unhiddenCount > 0 {
             DataCache.shared.saveDeletedCourseNos(Array(deletedNos))
+            let semester = CourseSelectionService.currentSemesterCode()
+            let cached = DataCache.shared.loadCourses(semester: semester)
+            let filtered = cached.filter { !deletedNos.contains($0.courseNo) }
+            if filtered.count != cached.count {
+                DataCache.shared.saveCourses(filtered, semester: semester)
+            }
         }
         if nameCount > 0 {
             DataCache.shared.saveCourseCustomNames(customNames)
