@@ -138,6 +138,8 @@ struct UpcomingAssignmentsView: View {
 
         let leading: SwipeActionDescriptor?
         switch status {
+        case .submitted, .submittedLate:
+            leading = nil
         case .locallyCompleted:
             leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
         default:
@@ -421,13 +423,8 @@ private struct SwipeableRow<Content: View>: View {
                 didSwipe = true
             }
             .onEnded { _ in
-                // `offset` is only ever mutated by horizontal-intent updates
-                // in `onChanged`, so reading it here (instead of the raw
-                // translation) is what gates the trigger on the same
-                // dx-vs-dy rule. A mostly-vertical scroll that happens to
-                // accumulate >threshold horizontal drift never moves the
-                // row, so `offset` stays 0 and no action fires.
                 let triggered = abs(offset) > triggerThreshold
+                print("[Swipe] onEnded offset=\(offset) threshold=\(triggerThreshold) triggered=\(triggered) leading=\(leadingAction != nil) trailing=\(trailingAction != nil)")
                 if triggered, let action = (offset > 0 ? leadingAction : trailingAction) {
                     action.action()
                 }
