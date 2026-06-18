@@ -1165,6 +1165,7 @@ final class AppState {
 
         var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
         var hiddenCount = 0
+        var unhiddenCount = 0
         var colorCount = 0
         for o in overrides {
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
@@ -1174,6 +1175,9 @@ final class AppState {
                 deletedNos.insert(courseNo)
                 hiddenCount += 1
                 print("[Sync] course \(courseNo): hidden by server")
+            } else if deletedNos.remove(courseNo) != nil {
+                unhiddenCount += 1
+                print("[Sync] course \(courseNo): unhidden by server")
             }
             if let colorHex = o["color_hex"] as? String, !colorHex.isEmpty {
                 if let hex = UInt32(colorHex.dropFirst(), radix: 16) {
@@ -1183,12 +1187,12 @@ final class AppState {
                 }
             }
         }
-        if hiddenCount > 0 {
+        if hiddenCount > 0 || unhiddenCount > 0 {
             DataCache.shared.saveDeletedCourseNos(Array(deletedNos))
         }
-        if hiddenCount > 0 || colorCount > 0 {
+        if hiddenCount > 0 || unhiddenCount > 0 || colorCount > 0 {
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            print("[Sync] course overrides: \(hiddenCount) hidden, \(colorCount) colors")
+            print("[Sync] course overrides: \(hiddenCount) hidden, \(unhiddenCount) unhidden, \(colorCount) colors")
         }
     }
 
