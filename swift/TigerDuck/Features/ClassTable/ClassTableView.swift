@@ -205,36 +205,46 @@ struct ClassTableView: View {
                         viewModel.showResetConfirm = true
                     } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(.primary)
-                            .frame(width: 28, height: 28)
+                            .font(.title2)
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
                             .glassEffect(.regular.interactive(), in: .circle)
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(Text("class_table_reset_title"))
                     Button {
                         viewModel.showAddCourse = true
                     } label: {
                         Image(systemName: "plus")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(.primary)
-                            .frame(width: 28, height: 28)
+                            .font(.title2)
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
                             .glassEffect(.regular.interactive(), in: .circle)
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(Text("add_course_title"))
                 } else {
                     Button {
                         viewModel.showResetConfirm = true
                     } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .foregroundStyle(Color.textSecondary)
+                            .font(.title2)
+                            .foregroundStyle(Color.textPrimary)
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(Text("class_table_reset_title"))
                     Button {
                         viewModel.showAddCourse = true
                     } label: {
                         Image(systemName: "plus")
-                            .foregroundStyle(Color.textSecondary)
+                            .font(.title2)
+                            .foregroundStyle(Color.textPrimary)
+                            .frame(width: 44, height: 44)
+                            .background(.ultraThinMaterial, in: Circle())
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(Text("add_course_title"))
                 }
             }
