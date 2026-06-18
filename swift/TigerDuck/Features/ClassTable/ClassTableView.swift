@@ -198,6 +198,7 @@ struct ClassTableView: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
+            NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
             if pageAccessState != .loginRequired {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
                     Button {
