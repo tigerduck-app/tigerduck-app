@@ -1134,8 +1134,56 @@ final class AppState {
             DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
             DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
             print("[Sync] overrides applied: \(safeArchived.count) archived, \(safeCompleted.count) completed (server: \(serverArchivedIds.count)/\(serverCompletedIds.count), pending: \(pendingOverrides.count))")
+
+            // Course overrides: color + visibility
+            let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
+            if !courseOverrides.isEmpty {
+                applyCourseOverrides(courseOverrides, coursesArray: json["courses"] as? [[String: Any]] ?? [])
+            }
         } catch {
             print("[Sync] syncOverrides failed: \(error)")
+        }
+    }
+
+    private func applyCourseOverrides(_ overrides: [[String: Any]], coursesArray: [[String: Any]]) {
+        // Build moodleId → courseNo from courses array
+        var moodleIdToNo: [String: String] = [:]
+        for c in coursesArray {
+            guard let mId = c["moodle_id"] as? String ?? (c["moodle_id"] as? Int).map(String.init),
+                  let name = c["course_name"] as? String else { continue }
+            if let bracketEnd = name.firstIndex(of: "】") {
+                let rest = name[name.index(after: bracketEnd)...].trimmingCharacters(in: .whitespaces)
+                let code = rest.split(separator: " ", maxSplits: 1).first.map(String.init) ?? ""
+                if !code.isEmpty { moodleIdToNo[mId] = code }
+            }
+        }
+
+        var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
+        var hiddenCount = 0
+        var colorCount = 0
+        for o in overrides {
+            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
+            guard let courseNo = moodleIdToNo[mId] else { continue }
+            let isHidden = o["is_hidden"] as? Bool ?? false
+            if isHidden {
+                deletedNos.insert(courseNo)
+                hiddenCount += 1
+                print("[Sync] course \(courseNo): hidden by server")
+            }
+            if let colorHex = o["color_hex"] as? String, !colorHex.isEmpty {
+                if let hex = UInt32(colorHex.dropFirst(), radix: 16) {
+                    TigerDuckTheme.setColor(hex: hex, for: courseNo)
+                    colorCount += 1
+                    print("[Sync] course \(courseNo): color → \(colorHex)")
+                }
+            }
+        }
+        if hiddenCount > 0 {
+            DataCache.shared.saveDeletedCourseNos(Array(deletedNos))
+        }
+        if hiddenCount > 0 || colorCount > 0 {
+            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            print("[Sync] course overrides: \(hiddenCount) hidden, \(colorCount) colors")
         }
     }
 
