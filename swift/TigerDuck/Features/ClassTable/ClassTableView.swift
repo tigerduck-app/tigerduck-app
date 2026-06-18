@@ -12,6 +12,7 @@ struct ClassTableView: View {
                 .onAppear {
                     viewModel.load(authService: appState.authService)
                     viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, isHidden: $1, colorHex: $2, customName: $3, locale: $4) }
+                    viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
@@ -22,6 +23,7 @@ struct ClassTableView: View {
                 .onAppear {
                     viewModel.load(authService: appState.authService)
                     viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, isHidden: $1, colorHex: $2, customName: $3, locale: $4) }
+                    viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in

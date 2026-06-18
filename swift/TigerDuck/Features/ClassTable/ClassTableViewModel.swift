@@ -635,6 +635,10 @@ final class ClassTableViewModel {
 
         if deletedCourseNos.remove(course.courseNo) != nil {
             DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+            if let idnumber = course.moodleIdNumber,
+               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
+                onSyncCourseOverride?(String(numericId), false, nil, nil, nil)
+            }
         }
 
         // Cache the freshly-fetched API values BEFORE any local mutation so
@@ -668,6 +672,7 @@ final class ClassTableViewModel {
         courses.append(course)
         persistUserAddedCourses()
         broadcastLocalChange()
+        onCoursesChanged?(courses, currentSemester)
         return true
     }
 
@@ -691,6 +696,7 @@ final class ClassTableViewModel {
         persistUserAddedCourses()
         broadcastLocalChange()
         syncVisibilityOverride(course: course, isHidden: true)
+        onCoursesChanged?(courses, currentSemester)
     }
 
     func resetCourses(authService: AuthService) {
@@ -818,6 +824,7 @@ final class ClassTableViewModel {
     }
 
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ isHidden: Bool?, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
+    var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
 
     /// Wakes Home, the Live Activity coordinator, and any other observer
     /// that subscribes to `dataDidUpdate`. Local Class Table edits used to

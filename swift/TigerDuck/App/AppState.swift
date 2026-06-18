@@ -1250,6 +1250,30 @@ final class AppState {
         }
     }
 
+    func uploadCourses(_ courses: [SDCourse], semester: String) {
+        guard let atm = authService.authTokenManager else { return }
+        let entries = courses.map { c in
+            PushAPI.CourseUploadEntry(
+                semester: semester,
+                courseNo: c.courseNo,
+                courseName: c.courseName,
+                courseNameEn: nil,
+                moodleId: c.moodleIdNumber,
+                credits: c.credits > 0 ? Double(c.credits) : nil,
+                classroom: c.classroom.isEmpty ? nil : c.classroom,
+                instructors: c.instructor.isEmpty ? [] : [c.instructor]
+            )
+        }
+        Task.detached {
+            let client = PushAPIClient(
+                authHeaderProvider: { await atm.authorizationHeader() }
+            )
+            try? await client.uploadCourses(
+                PushAPI.CourseUploadRequest(courses: entries)
+            )
+        }
+    }
+
     /// Disable server push (tells server to drop the device, stops relay).
     func disablePushServer() async {
         Defaults[.pushServerEnabled] = false
