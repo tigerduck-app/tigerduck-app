@@ -456,9 +456,12 @@ enum AppServiceBridge {
             // stay blank until a second launch. Prefer filtering to the
             // current course roster when it exists (handles drops), else
             // use the semester prefix on Moodle's idnumber.
-            let currentCourseNos = Set(currentCourses.map(\.courseNo))
+            var currentCourseNos = Set(currentCourses.map(\.courseNo))
+            for mc in moodleEnrolled where mc.semester == currentSemester && !mc.courseNo.isEmpty {
+                currentCourseNos.insert(mc.courseNo)
+            }
             let relevantCourses: [MoodleEnrolledCourse]
-            if currentCourses.isEmpty {
+            if currentCourseNos.isEmpty {
                 relevantCourses = moodleEnrolled.filter { $0.semester == currentSemester }
             } else {
                 relevantCourses = moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) }
