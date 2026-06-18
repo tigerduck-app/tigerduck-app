@@ -1069,6 +1069,8 @@ final class AppState {
             let hasConflict = localArchivedIds != serverArchivedIds
                 || localCompletedIds != serverCompletedIds
 
+            DataCache.shared.saveAssignments(assignments)
+
             if hasConflict && (!localArchivedIds.isEmpty || !localCompletedIds.isEmpty) {
                 await MainActor.run {
                     syncConflict = SyncConflict(
@@ -1078,12 +1080,10 @@ final class AppState {
                         serverCompleted: serverCompletedIds
                     )
                 }
-                return true
+            } else {
+                DataCache.shared.replaceArchivedAssignmentIds(serverArchivedIds)
+                DataCache.shared.replaceLocallyCompletedAssignmentIds(serverCompletedIds)
             }
-
-            DataCache.shared.saveAssignments(assignments)
-            DataCache.shared.replaceArchivedAssignmentIds(serverArchivedIds)
-            DataCache.shared.replaceLocallyCompletedAssignmentIds(serverCompletedIds)
             return true
         } catch {
             return false
@@ -1094,6 +1094,8 @@ final class AppState {
         guard let conflict = syncConflict else { return }
         syncConflict = nil
         if useLocal {
+            DataCache.shared.replaceArchivedAssignmentIds(conflict.localArchived)
+            DataCache.shared.replaceLocallyCompletedAssignmentIds(conflict.localCompleted)
             for id in conflict.localArchived {
                 syncAssignmentOverride(moodleId: id, status: "archived")
             }
@@ -1109,6 +1111,7 @@ final class AppState {
             DataCache.shared.replaceArchivedAssignmentIds(conflict.serverArchived)
             DataCache.shared.replaceLocallyCompletedAssignmentIds(conflict.serverCompleted)
         }
+        backgroundSync()
     }
 
     /// Fire-and-forget override sync to the backend. Local state is already
