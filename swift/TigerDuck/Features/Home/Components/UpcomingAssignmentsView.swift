@@ -312,10 +312,9 @@ private struct SwipeableRow<Content: View>: View {
     let content: Content
 
     @State private var offset: CGFloat = 0
-    /// Set the instant the drag moves the row; cleared on the next Button
-    /// press-down (touch-down of the following interaction). Owned by
-    /// `dragGesture` + the tap's `onPressChanged` hook; the tap action only
-    /// reads it. See `tappableContent` for why this exists.
+    /// Set the instant the drag moves the row OR the scroll moves vertically;
+    /// cleared on the next Button press-down. Any finger movement suppresses
+    /// the tap to prevent accidental Moodle opens during scroll/swipe.
     @State private var didSwipe = false
 
     private let triggerThreshold: CGFloat = 96
@@ -421,15 +420,14 @@ private struct SwipeableRow<Content: View>: View {
             .onChanged { value in
                 let dx = value.translation.width
                 let dy = value.translation.height
-                // Defer to the parent ScrollView for primarily-vertical drags
-                // so the home page can still scroll while a finger is over a row.
+                // Any finger movement suppresses the tap — prevents accidental
+                // Moodle opens during scroll or swipe attempts.
+                didSwipe = true
+                // Only move the row for primarily-horizontal drags.
                 guard abs(dx) > abs(dy) * 0.8 else { return }
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
-                // Mark the gesture a swipe the moment it moves the row, so the
-                // simultaneous Button tap on release bows out of `onTap()`.
-                didSwipe = true
             }
             .onEnded { _ in
                 let triggered = abs(offset) > triggerThreshold
