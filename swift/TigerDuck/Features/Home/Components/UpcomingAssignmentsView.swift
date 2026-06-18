@@ -198,6 +198,12 @@ struct UpcomingAssignmentsView: View {
         policy: VisualStylePolicy
     ) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
+            if let underlyingBadge = underlyingOverdueBadge(for: assignment, status: status, now: now) {
+                Text(underlyingBadge.label)
+                    .font(statusFont(status: underlyingBadge.status))
+                    .foregroundStyle(underlyingBadge.status.tint)
+                    .lineLimit(1)
+            }
             if let label = status.badgeLabel {
                 Text(label)
                     .font(statusFont(status: status))
@@ -209,6 +215,19 @@ struct UpcomingAssignmentsView: View {
                 .foregroundStyle(timeColor(status: status, policy: policy))
                 .lineLimit(1)
         }
+    }
+
+    private func underlyingOverdueBadge(
+        for assignment: SDAssignment,
+        status: AssignmentStatus,
+        now: Date
+    ) -> (label: String, status: AssignmentStatus)? {
+        guard status == .locallyCompleted || status == .archived else { return nil }
+        guard assignment.dueDate < now else { return nil }
+        if let cutoff = assignment.cutoffDate, now > cutoff {
+            return (AssignmentStatus.overdueRejected.badgeLabel!, .overdueRejected)
+        }
+        return (AssignmentStatus.overdueAcceptable.badgeLabel!, .overdueAcceptable)
     }
 
     private func statusFont(status: AssignmentStatus) -> Font {

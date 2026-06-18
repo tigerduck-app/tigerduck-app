@@ -39,7 +39,7 @@ extension Array where Element == SDAssignment {
     /// live clock and must be applied at render time via
     /// `partitionedByDueDate(now:)`, not cached against a frozen `Date()`.
     func allCandidates() -> [SDAssignment] {
-        filter { !$0.isArchived || $0.isCompleted }
+        self
     }
 
     /// Splits assignments into future-first and past-second buckets
