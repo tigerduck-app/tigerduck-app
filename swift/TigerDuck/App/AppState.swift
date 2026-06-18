@@ -942,6 +942,9 @@ final class AppState {
     /// into `PushRegistrationService`.
     func bindPushDelegate(_ delegate: PushAppDelegate) {
         pushCoordinator.bindTokenForwarding(delegate)
+        delegate.onSyncTrigger = { [weak self] in
+            await self?.syncOverridesFromBackend()
+        }
     }
 
     /// Sync the next-48h event list to the push server. No-ops when the user

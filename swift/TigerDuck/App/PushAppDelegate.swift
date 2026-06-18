@@ -95,4 +95,22 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate {
             bufferedError = error
         }
     }
+
+    var onSyncTrigger: (() async -> Void)?
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        if userInfo["kind"] as? String == "sync_trigger" {
+            logger.info("Silent sync trigger received")
+            Task {
+                await onSyncTrigger?()
+                completionHandler(.newData)
+            }
+        } else {
+            completionHandler(.noData)
+        }
+    }
 }
