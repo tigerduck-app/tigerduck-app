@@ -1156,14 +1156,16 @@ final class AppState {
         // Build moodleId → courseNo from courses array
         var moodleIdToNo: [String: String] = [:]
         for c in coursesArray {
-            guard let mId = c["moodle_id"] as? String ?? (c["moodle_id"] as? Int).map(String.init),
-                  let name = c["course_name"] as? String else { continue }
-            if let bracketEnd = name.firstIndex(of: "】") {
+            guard let mId = c["moodle_id"] as? String ?? (c["moodle_id"] as? Int).map(String.init) else { continue }
+            if let courseNo = c["course_no"] as? String, !courseNo.isEmpty {
+                moodleIdToNo[mId] = courseNo
+            } else if let name = c["course_name"] as? String, let bracketEnd = name.firstIndex(of: "】") {
                 let rest = name[name.index(after: bracketEnd)...].trimmingCharacters(in: .whitespaces)
                 let code = rest.split(separator: " ", maxSplits: 1).first.map(String.init) ?? ""
                 if !code.isEmpty { moodleIdToNo[mId] = code }
             }
         }
+        print("[Sync] moodleIdToNo: \(moodleIdToNo.count) entries, overrides: \(overrides.count)")
 
         var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
         var customNames = DataCache.shared.loadCourseCustomNames()
