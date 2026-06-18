@@ -416,12 +416,11 @@ private struct SwipeableRow<Content: View>: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 12)
+        DragGesture(minimumDistance: 16)
             .onChanged { value in
                 let dx = value.translation.width
                 let dy = value.translation.height
-                // Defer to ScrollView for primarily-vertical drags.
-                guard abs(dx) > abs(dy) * 1.2 else { return }
+                guard abs(dx) > abs(dy) * 1.3 else { return }
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
