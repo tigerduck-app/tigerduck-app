@@ -68,6 +68,19 @@ struct PushServerSettingsView: View {
                 }
             }
 
+            // Always surface the latest registration/sync error (matches
+            // Android, which shows it unconditionally) — and make it
+            // selectable so it can be copied for support. Shown even when the
+            // status section below is hidden by the enable toggle.
+            if let err = snapshot?.registration.lastError {
+                Section(String(localized: "push_server_latest_error")) {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
+            }
+
             if pushServerEnabled, let s = snapshot {
                 Section(String(localized: "push_server_status_section")) {
                     statusRow(label: String(localized: "push_server_status_live_activities"),
@@ -94,11 +107,6 @@ struct PushServerSettingsView: View {
                             Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
                         } else {
                             Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
-                        }
-                    }
-                    if let err = s.registration.lastError {
-                        LabeledContent(String(localized: "push_server_latest_error")) {
-                            Text(err).font(.caption).foregroundStyle(.red)
                         }
                     }
                     Button(String(localized: "push_server_sync_now_action")) { appState.requestPushScheduleSync() }
