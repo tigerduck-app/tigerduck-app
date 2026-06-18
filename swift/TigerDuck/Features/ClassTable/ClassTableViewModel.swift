@@ -686,6 +686,13 @@ final class ClassTableViewModel {
     }
 
     func resetCourses(authService: AuthService) {
+        let semester = CourseSelectionService.currentSemesterCode()
+        for courseNo in deletedCourseNos {
+            let idnumber = "\(semester)\(courseNo)"
+            if let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
+                onSyncCourseOverride?(String(numericId), false, nil, nil, nil)
+            }
+        }
         deletedCourseNos.removeAll()
         DataCache.shared.saveDeletedCourseNos([])
         DataCache.shared.saveUserAddedCourses([])
