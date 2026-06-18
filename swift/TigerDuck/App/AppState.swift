@@ -222,6 +222,7 @@ final class AppState {
 
     enum SyncSource { case none, backend, local }
     private(set) var lastSyncSource: SyncSource = .none
+    private var pendingOverrides: Set<String> = []
 
 
     private var _libraryRevision = 0
@@ -1045,9 +1046,16 @@ final class AppState {
                 return
             }
 
-            // Server overrides are authoritative.
-            DataCache.shared.replaceArchivedAssignmentIds(serverArchivedIds)
-            DataCache.shared.replaceLocallyCompletedAssignmentIds(serverCompletedIds)
+            // Server overrides are authoritative — but don't overwrite
+            // local changes that haven't reached the server yet.
+            let safeArchived = serverArchivedIds.union(
+                DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) }
+            )
+            let safeCompleted = serverCompletedIds.union(
+                DataCache.shared.loadLocallyCompletedAssignmentIds().filter { pendingOverrides.contains($0) }
+            )
+            DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
+            DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
         } catch {
             // Best-effort — local overrides stay as-is.
         }
@@ -1056,10 +1064,16 @@ final class AppState {
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices.
     func syncAssignmentOverride(moodleId: String, status: String) {
+        pendingOverrides.insert(moodleId)
         Task {
-            _ = try? await pushCoordinator.patchAssignmentOverride(
-                moodleAssignmentId: moodleId, localStatus: status
-            )
+            do {
+                _ = try await pushCoordinator.patchAssignmentOverride(
+                    moodleAssignmentId: moodleId, localStatus: status
+                )
+                await MainActor.run { pendingOverrides.remove(moodleId) }
+            } catch {
+                // Leave in pendingOverrides — next sync won't overwrite it.
+            }
         }
     }
 
