@@ -368,22 +368,19 @@ private struct MacAccountSettingsView: View {
             Section(String(localized: "settings_cloud_sync_title")) {
                 Toggle(String(localized: "settings_sync_toggle_label"), isOn: $state.cloudSyncEnabled)
 
-                Text(String(localized: "settings_sync_brief_description"))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                Button {
-                    openURL(AppURLs.learnMoreBackend)
-                } label: {
-                    HStack {
-                        Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "settings_sync_brief_description"))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Link(destination: AppURLs.learnMoreBackend) {
+                        HStack(spacing: 4) {
+                            Text(String(localized: "settings_learn_more_backend"))
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.caption2)
+                        }
+                        .font(.callout)
                     }
                 }
-                .buttonStyle(.plain)
 
                 Button {
                     appState.backgroundSync()
