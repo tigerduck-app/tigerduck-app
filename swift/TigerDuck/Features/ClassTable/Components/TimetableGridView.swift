@@ -4,10 +4,17 @@ import SwiftUI
 /// localized short weekday name. DateFormatter's symbol arrays use a
 /// 1=Sunday convention, so we remap before indexing. The fallback to the
 /// raw int keeps VoiceOver labels usable even if symbol lookup fails.
+///
+/// The formatter is cached as a `private static let` so we don't allocate
+/// one on every call (the grid calls this once per cell per layout pass).
+private let _weekdayFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.locale = Locale.current
+    return f
+}()
+
 private func weekdayDisplayName(_ weekday: Int) -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale.current
-    let symbols = formatter.shortStandaloneWeekdaySymbols ?? formatter.shortWeekdaySymbols ?? []
+    let symbols = _weekdayFormatter.shortStandaloneWeekdaySymbols ?? _weekdayFormatter.shortWeekdaySymbols ?? []
     // Codebase: 1=Mon...6=Sat,7=Sun → DateFormatter index: 2=Mon...7=Sat,1=Sun
     let dfIndex: Int
     switch weekday {

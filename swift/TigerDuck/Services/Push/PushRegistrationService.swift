@@ -93,6 +93,8 @@ actor PushRegistrationService {
     private var optOutPatchChain: Task<Void, Error>?
     #if os(iOS)
     private var pendingActivityRegistrations: [String: LiveActivityUpdateTokenRegistration] = [:]
+    private var activity404Attempts: [String: Int] = [:]
+    private let maxActivity404Attempts = 2
     private var activityRegistrationRetryTasks: [String: Task<Void, Never>] = [:]
     private var activityRegistrationAttempts: [String: Int] = [:]
     private let maxActivityRegistrationAttempts = 4
@@ -261,6 +263,7 @@ actor PushRegistrationService {
         }
         activityRegistrationRetryTasks.removeAll()
         activityRegistrationAttempts.removeAll()
+        activity404Attempts.removeAll()
         #endif
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = nil
@@ -449,14 +452,23 @@ actor PushRegistrationService {
             activityRegistrationRetryTasks[registration.activityId]?.cancel()
             activityRegistrationRetryTasks[registration.activityId] = nil
             activityRegistrationAttempts[registration.activityId] = nil
+            activity404Attempts[registration.activityId] = nil
         } catch let error as PushAPIError {
             if case .httpStatus(404, _) = error {
-                // Device row is missing server-side — re-register it; the
-                // success path will flush `pendingActivityRegistrations`
-                // immediately, no standalone retry needed.
-                await registerIfReady()
-                logger.error("live activity token register failed (device missing): \(error.localizedDescription, privacy: .public)")
-                return
+                let activityId = registration.activityId
+                let attempts = (activity404Attempts[activityId] ?? 0) + 1
+                activity404Attempts[activityId] = attempts
+                if attempts <= maxActivity404Attempts {
+                    // Device row is missing server-side — re-register it; the
+                    // success path will flush `pendingActivityRegistrations`
+                    // immediately, no standalone retry needed.
+                    await registerIfReady()
+                    logger.error("live activity token register 404 attempt=\(attempts, privacy: .public) id=\(activityId, privacy: .public) — re-registering device")
+                    return
+                }
+                // Exhausted 404 retries — fall through to exponential-backoff
+                // so we don't spin unbounded.
+                logger.error("live activity token register 404 exhausted attempts=\(attempts, privacy: .public) id=\(activityId, privacy: .public) — falling back to backoff retry")
             }
             logger.error("live activity token register failed: \(error.localizedDescription, privacy: .public)")
             scheduleActivityRegistrationRetry(registration, logger: logger)

@@ -260,7 +260,7 @@ final class PushAPIClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .public)")
+            logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
             throw PushAPIError.httpStatus(http.statusCode, body: snippet)
         }
         return data

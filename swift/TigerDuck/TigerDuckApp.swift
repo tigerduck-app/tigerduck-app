@@ -15,7 +15,8 @@ struct TigerDuckApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    private let watchSyncCoordinator = WatchSyncCoordinator()
+    @State private var watchSyncCoordinator = WatchSyncCoordinator()
+    @State private var watchSyncActivated = false
 
     init() {
         AppLogger.start()
@@ -26,7 +27,6 @@ struct TigerDuckApp: App {
         DebugClockController.shared.bootstrap()
         #endif
         PushCoordinator.assertEnvConsistency()
-        watchSyncCoordinator.activate()
     }
 
     var sharedModelContainer: ModelContainer = {
@@ -83,6 +83,10 @@ struct TigerDuckApp: App {
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .environment(appState)
                 .onAppear {
+                    if !watchSyncActivated {
+                        watchSyncActivated = true
+                        watchSyncCoordinator.activate()
+                    }
                     appState.bindPushDelegate(pushAppDelegate)
                     // Route custom-push taps into AppState. Capture the
                     // class instance weakly to avoid a retain cycle
