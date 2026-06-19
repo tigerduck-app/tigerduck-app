@@ -316,10 +316,10 @@ enum AppServiceBridge {
                             instructors: c.instructor.isEmpty ? nil : [c.instructor]
                         )
                     }
+                    let client = PushAPIClient(
+                        authHeaderProvider: { await atm.authorizationHeader() }
+                    )
                     Task.detached {
-                        let client = PushAPIClient(
-                            authHeaderProvider: { await atm.authorizationHeader() }
-                        )
                         try? await client.uploadCourses(
                             PushAPI.CourseUploadRequest(courses: entries)
                         )
@@ -584,10 +584,10 @@ enum AppServiceBridge {
                             grade: nil
                         )
                     }
+                    let client = PushAPIClient(
+                        authHeaderProvider: { await atm.authorizationHeader() }
+                    )
                     Task.detached {
-                        let client = PushAPIClient(
-                            authHeaderProvider: { await atm.authorizationHeader() }
-                        )
                         try? await client.uploadAssignments(
                             PushAPI.AssignmentUploadRequest(assignments: entries)
                         )
