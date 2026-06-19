@@ -109,7 +109,11 @@ struct PushServerSettingsView: View {
                             Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
                         }
                     }
-                    Button(String(localized: "push_server_sync_now_action")) { appState.requestPushScheduleSync() }
+                    Button {
+                        appState.requestPushScheduleSync()
+                    } label: {
+                        Label(String(localized: "cloud_sync_sync_now"), systemImage: "arrow.triangle.2.circlepath")
+                    }
                 }
 
                 #if os(iOS)
