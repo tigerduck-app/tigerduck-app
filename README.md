@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.7.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.0)
+[![Version](https://img.shields.io/badge/Version-v2.0.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
@@ -93,6 +93,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v2.0.0`** | 2026-06-20 | 🚀 **雲端同步正式上線** — 課程/作業即時上傳、macOS 推播與帳號同步、401 自動恢復、伺服器推播頻道設定 |
 | **`v1.7.0`** | 2026-05-18 | 🔔 **Apple Watch App 上線** — Library QR 作為左側分頁、WatchConnectivity 即時推送憑證、全螢幕 QR 與閒置淡出頁碼、QR 頁面字串在地化；macOS 儀表板與課表統一走 `CanonicalCourseProvider`、下一堂課時間區間加長；Home / 課表卡片等高鎖定、衝堂並排顯示各自時段；圖書館 QR 顯示時自動最大亮度；Onboarding 登入鍵盤錨點與授權後推播啟用修正；後端拆出獨立 `tigerduck-backend` repo；升級至 Xcode 26.4、Swift 6 strict concurrency 全綠 |
 | **`v1.6.1`** | 2026-05-01 | 🤖 **Android FCM 推播通道**（為 Android 版鋪路、批次 fan-out、bad-token 分類）、API base path 從 `/v1` 升 `/v2`（`/v1` 保留為 deprecated alias）、iOS 註冊裝置帶 `platform=apple` |
 | **`v1.6.0`** | 2026-05-01 | 🌏 **多語言（67+ 語系）**、in-app 語言切換、RTL 版面修正、課程/教室**簡稱**子模組、locale 隔離的課表快取 |

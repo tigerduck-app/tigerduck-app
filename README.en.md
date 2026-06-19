@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.7.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.0)
+[![Version](https://img.shields.io/badge/Version-v2.0.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
@@ -92,6 +92,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v2.0.0`** | 2026-06-20 | 🚀 **Cloud sync GA** — real-time course & assignment upload, macOS push & account sync, 401 auto-recovery, server push channel settings |
 | **`v1.7.0`** | 2026-05-18 | 🔔 **Apple Watch app launch** — Library QR as the leftmost tab, WatchConnectivity credential push, fullscreen QR + idle-fade page dots, localized QR-page strings; macOS dashboard and class-table unified through `CanonicalCourseProvider`, longer next-class time range; Home / class-table card rows lock to the tallest seen, conflicting (衝堂) classes laid out side-by-side at their own offsets; max screen brightness while Library QR is shown; onboarding keyboard anchoring + post-grant push enablement fixes; backend split into a dedicated `tigerduck-backend` repo; bumped to Xcode 26.4 with Swift 6 strict concurrency clean |
 | **`v1.6.1`** | 2026-05-01 | 🤖 **Android FCM push delivery** (groundwork for the Android client; batched fan-out, bad-token classification), API base path bumped from `/v1` to `/v2` (`/v1` kept as deprecated alias), iOS device registration now reports `platform=apple` |
 | **`v1.6.0`** | 2026-05-01 | 🌏 **i18n (67+ locales)**, in-app language switcher, RTL layout fixes, course/classroom **abbreviation** submodule, locale-scoped course cache |
