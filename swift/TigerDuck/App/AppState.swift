@@ -156,6 +156,11 @@ final class AppState {
             self.pushCoordinator.refreshRegistrationAfterAuth()
             self.requestPushScheduleSync()
         }
+        Task {
+            await atm.setRefreshFailedHandler { [weak self] in
+                await self?.attemptBackendRelogin() ?? false
+            }
+        }
 
         // Apply a stored in-app language override on launch so string lookups
         // use the user's chosen locale. Skip when "system" — calling apply()
@@ -1284,6 +1289,7 @@ final class AppState {
                 platform: platform
             )
             AppLogger.sync.info("auto-relogin: v3 JWT refreshed")
+            pushCoordinator.refreshRegistrationAfterAuth()
             return true
         } catch {
             AppLogger.sync.error("auto-relogin failed: \(error, privacy: .public)")

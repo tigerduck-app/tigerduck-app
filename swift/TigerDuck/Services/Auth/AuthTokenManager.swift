@@ -12,6 +12,11 @@ actor AuthTokenManager {
 
     private let baseURL: String
     private let deviceUUID: String
+    private var onRefreshFailed: (() async -> Bool)?
+
+    func setRefreshFailedHandler(_ handler: @escaping () async -> Bool) {
+        onRefreshFailed = handler
+    }
 
     static let accessTokenKey = "v3_access_token"
     static let refreshTokenKey = "v3_refresh_token"
@@ -144,6 +149,9 @@ actor AuthTokenManager {
               let http = response as? HTTPURLResponse, http.statusCode == 200,
               let result = try? JSONDecoder().decode(RefreshResponse.self, from: data)
         else {
+            if let relogin = onRefreshFailed, await relogin() {
+                return accessToken
+            }
             logout()
             return nil
         }
