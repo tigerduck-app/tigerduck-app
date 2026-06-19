@@ -69,7 +69,7 @@ nonisolated enum PushServerConfig {
     ///   3. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
     ///      file is gitignored so each contributor sets their own Mac's IP)
     ///   4. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
-    ///      `http://localhost:40000/v2`)
+    ///      `http://localhost:40000/v3`)
     static func resolveServerURL() -> URL {
         #if DEBUG
         if let raw = DebugEndpointStore.currentOverride(),
@@ -110,7 +110,7 @@ nonisolated enum PushServerConfig {
     }
 
     /// Normalizes a candidate override URL so the most common typo —
-    /// pasting `https://192.168.X.X:40000/v2` for a LAN dev backend that
+    /// pasting `https://192.168.X.X:40000/v3` for a LAN dev backend that
     /// doesn't terminate TLS — resolves to a working `http://` URL instead
     /// of failing at handshake time with `WRONG_VERSION_NUMBER`.
     ///
@@ -159,7 +159,7 @@ nonisolated enum PushServerConfig {
     #if DEBUG
     /// Reads `Secrets.plist["DebugServerURL"]` and runs it through the same
     /// gate as the UserDefaults override path. Mis-filled or template values
-    /// (e.g. the literal `http://192.168.X.X:40000/v2` from
+    /// (e.g. the literal `http://192.168.X.X:40000/v3` from
     /// `Secrets.example.plist`) return nil so the resolver falls back to
     /// `localhost:40000` instead of returning an unreachable URL that would
     /// either trip `PushCoordinator.assertEnvConsistency()` at launch or, with

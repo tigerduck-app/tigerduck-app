@@ -207,6 +207,9 @@ struct MacClassTableView: View {
                     TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
                     cacheRevision &+= 1
                     NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+                    if let moodleId = course.moodleIdNumber {
+                        appState.syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
+                    }
                 }
             )
             .frame(minWidth: 360, minHeight: 480)
@@ -681,6 +684,7 @@ struct MacClassTableView: View {
         DataCache.shared.saveUserAddedCourses(existing + [course])
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        appState.uploadCourses(courses + [course], semester: selectedSemester)
         return true
     }
 
@@ -722,6 +726,7 @@ struct MacClassTableView: View {
         DataCache.shared.saveUserAddedCourses(updated)
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        appState.uploadCourses(courses.filter { $0.courseNo != courseNo }, semester: selectedSemester)
     }
 
     // MARK: - Rename
@@ -752,6 +757,9 @@ struct MacClassTableView: View {
         courseToRename = nil
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        if let moodleId = course.moodleIdNumber {
+            appState.syncCourseOverride(moodleCourseId: moodleId, customName: trimmed, locale: locale)
+        }
     }
 
     /// Clear the alias so `displayName` falls back to the canonical NTUST
@@ -768,6 +776,9 @@ struct MacClassTableView: View {
         courseToRename = nil
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        if let moodleId = course.moodleIdNumber {
+            appState.syncCourseOverride(moodleCourseId: moodleId, customName: "", locale: locale)
+        }
     }
 
     /// Right-click "Delete" — mirrors `ClassTableViewModel.deleteCourse` on
@@ -790,6 +801,7 @@ struct MacClassTableView: View {
 
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        appState.uploadCourses(courses.filter { $0.courseNo != course.courseNo }, semester: selectedSemester)
     }
 }
 #endif
