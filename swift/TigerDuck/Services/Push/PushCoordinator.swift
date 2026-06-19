@@ -162,7 +162,10 @@ final class PushCoordinator {
             #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
             #elseif os(macOS)
-            NSApplication.shared.registerForRemoteNotifications()
+            // macOS is passive — no APNs push. Register the device UUID
+            // with the backend (no push token) so it appears in the sync
+            // log. The Mac client syncs on foreground only.
+            await registration.registerPassiveDevice()
             #endif
         }
     }

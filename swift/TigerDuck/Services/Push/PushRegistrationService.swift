@@ -156,6 +156,28 @@ actor PushRegistrationService {
     }
     #endif
 
+    #if os(macOS)
+    func registerPassiveDevice() async {
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let request = PushAPI.DeviceRegisterRequest(
+            client_device_id: identity.uuid,
+            platform: PushDeviceClass.platform(for: deviceClass),
+            device_name: Host.current().localizedName,
+            app_version: appVersion,
+            os_version: ProcessInfo.processInfo.operatingSystemVersionString,
+            push_token: nil
+        )
+        do {
+            let response = try await apiClient.registerDevice(request)
+            logger.info("registered passive macOS device device_id=\(response.device_id, privacy: .public)")
+            noteSuccessfulRegistration()
+        } catch {
+            logger.error("passive device register failed: \(error.localizedDescription, privacy: .public)")
+            noteRegistrationError(error)
+        }
+    }
+    #endif
+
     func registrationFailed(_ error: Error) {
         lastError = "APNs register failed: \(error.localizedDescription)"
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
@@ -256,7 +278,11 @@ actor PushRegistrationService {
         deviceRegisterAttempts = 0
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = nil
+        #if os(iOS)
         await registerIfReady()
+        #elseif os(macOS)
+        await registerPassiveDevice()
+        #endif
     }
 
     /// We upload as soon as the PTS token exists. Device token alone is not
@@ -274,8 +300,6 @@ actor PushRegistrationService {
     private func registerIfReady() async {
         #if os(iOS)
         guard ptsTokenHex != nil else { return }
-        #else
-        guard deviceTokenHex != nil else { return }
         #endif
 
         lastAttempt?.cancel()
@@ -293,14 +317,9 @@ actor PushRegistrationService {
     /// actor-isolated method for fresh state instead of capturing
     /// stale `let`s from the enqueue site.
     private func performRegister(logger: Logger) async {
-        #if os(iOS)
         guard let pts = ptsTokenHex else { return }
-        #else
-        guard let deviceToken = deviceTokenHex else { return }
-        #endif
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         do {
-            #if os(iOS)
             let ptsRequest = PushAPI.DeviceRegisterRequest(
                 client_device_id: identity.uuid,
                 platform: PushDeviceClass.platform(for: deviceClass),
@@ -318,7 +337,6 @@ actor PushRegistrationService {
             )
             let ptsResponse = try await apiClient.registerDevice(ptsRequest)
             logger.info("registered device (PTS) device_id=\(ptsResponse.device_id, privacy: .public)")
-            #endif
 
             if let deviceToken = deviceTokenHex {
                 let deviceTokenRequest = PushAPI.DeviceRegisterRequest(

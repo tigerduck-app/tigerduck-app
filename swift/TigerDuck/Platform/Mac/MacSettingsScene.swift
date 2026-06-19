@@ -394,9 +394,9 @@ private struct MacAccountSettingsView: View {
                 Section(String(localized: "push_server_status_section")) {
                     syncStatusRow(
                         label: String(localized: "push_server_status_device_registration"),
-                        ok: s.registration.deviceTokenLength > 0,
+                        ok: s.registration.lastRegisteredAt != nil,
                         okText: String(localized: "push_server_status_done"),
-                        badText: String(localized: "push_server_status_waiting_token")
+                        badText: String(localized: "push_server_pending_incomplete")
                     )
                     LabeledContent(String(localized: "push_server_last_registration")) {
                         if let at = lastRegistrationAt {
@@ -411,6 +411,12 @@ private struct MacAccountSettingsView: View {
                         } else {
                             Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
                         }
+                    }
+                    LabeledContent("Device ID") {
+                        Text(s.uuid)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
                     }
                     if let error = s.registration.lastError {
                         LabeledContent(String(localized: "push_server_latest_error")) {
