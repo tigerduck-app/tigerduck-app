@@ -14,6 +14,7 @@ nonisolated enum AppLogger {
     static let network = Logger(subsystem: subsystem, category: "Network")
     static let moodle = Logger(subsystem: subsystem, category: "Moodle")
     static let persistence = Logger(subsystem: subsystem, category: "Persistence")
+    static let sync = Logger(subsystem: subsystem, category: "Sync")
 
     static func start() {
         let dsn = (Bundle.main.object(forInfoDictionaryKey: "SENTRY_DSN") as? String)?

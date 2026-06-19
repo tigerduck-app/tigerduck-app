@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Defaults
+import os
 
 @Observable
 final class AppState {
@@ -1088,51 +1089,69 @@ final class AppState {
             }
 
             // First-time migration: upload local overrides if server has none.
+            // Only skip the conflict-detection block — course overrides,
+            // hard-delete detection, and the dataDidUpdate notification must
+            // still run so the first sync after migration picks up colour /
+            // custom-name changes and cross-device deletions.
             let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
             let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
-            if serverArchivedIds.isEmpty && serverCompletedIds.isEmpty
-                && (!localArchivedIds.isEmpty || !localCompletedIds.isEmpty) {
+            let isMigrating = serverArchivedIds.isEmpty && serverCompletedIds.isEmpty
+                && (!localArchivedIds.isEmpty || !localCompletedIds.isEmpty)
+            if isMigrating {
                 for id in localArchivedIds { syncAssignmentOverride(moodleId: id, status: "archived") }
                 for id in localCompletedIds { syncAssignmentOverride(moodleId: id, status: "locally_completed") }
-                return
             }
 
-            var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
-            let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
-            let assignmentCache = DataCache.shared.loadAssignments()
-            let assignmentsByMoodleId = Dictionary(assignmentCache.map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first })
-            for id in allIds where !pendingOverrides.contains(id) {
-                let serverStatus: String
-                if serverArchivedIds.contains(id) { serverStatus = "ignored" }
-                else if serverCompletedIds.contains(id) { serverStatus = "locally_completed" }
-                else { serverStatus = "none" }
-                let localStatus: String
-                if localArchivedIds.contains(id) { localStatus = "ignored" }
-                else if localCompletedIds.contains(id) { localStatus = "locally_completed" }
-                else { localStatus = "none" }
-                if serverStatus != localStatus {
-                    let title = assignmentsByMoodleId[id]?.displayTitle ?? "ID \(id)"
-                    conflicts.append((id: id, kind: "作業", label: title, local: localStatus, server: serverStatus))
+            if !isMigrating {
+                var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
+                let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
+                let assignmentCache = DataCache.shared.loadAssignments()
+                let assignmentsByMoodleId = Dictionary(assignmentCache.map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first })
+                for id in allIds where !pendingOverrides.contains(id) {
+                    let serverStatus: String
+                    if serverArchivedIds.contains(id) { serverStatus = "ignored" }
+                    else if serverCompletedIds.contains(id) { serverStatus = "locally_completed" }
+                    else { serverStatus = "none" }
+                    let localStatus: String
+                    if localArchivedIds.contains(id) { localStatus = "ignored" }
+                    else if localCompletedIds.contains(id) { localStatus = "locally_completed" }
+                    else { localStatus = "none" }
+                    if serverStatus != localStatus {
+                        let title = assignmentsByMoodleId[id]?.displayTitle ?? "ID \(id)"
+                        conflicts.append((id: id, kind: "作業", label: title, local: localStatus, server: serverStatus))
+                    }
+                }
+
+                // Always apply non-conflicting items
+                let conflictIds = Set(conflicts.map(\.id))
+                var safeArchived = serverArchivedIds.filter { !conflictIds.contains($0) }
+                    .union(DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) })
+                var safeCompleted = serverCompletedIds.filter { !conflictIds.contains($0) }
+                    .union(DataCache.shared.loadLocallyCompletedAssignmentIds().filter { pendingOverrides.contains($0) })
+                // Preserve local state for conflicting items until user resolves
+                for c in conflicts {
+                    switch c.local {
+                    case "ignored", "archived": safeArchived.insert(c.id)
+                    case "locally_completed": safeCompleted.insert(c.id)
+                    default: break
+                    }
+                }
+                DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
+                DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+
+                AppLogger.sync.info("applied: \(safeArchived.count, privacy: .public) archived, \(safeCompleted.count, privacy: .public) completed, \(conflicts.count, privacy: .public) conflicts pending")
+
+                if !conflicts.isEmpty {
+                    await MainActor.run {
+                        syncConflicts = conflicts.map { SyncConflictItem(id: $0.id, kind: $0.kind, label: $0.label, localStatus: $0.local, serverStatus: $0.server) }
+                        pendingSyncServerArchived = serverArchivedIds
+                        pendingSyncServerCompleted = serverCompletedIds
+                    }
                 }
             }
 
-            // Always apply non-conflicting items + course overrides
-            let conflictIds = Set(conflicts.map(\.id))
-            var safeArchived = serverArchivedIds.filter { !conflictIds.contains($0) }
-                .union(DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) })
-            var safeCompleted = serverCompletedIds.filter { !conflictIds.contains($0) }
-                .union(DataCache.shared.loadLocallyCompletedAssignmentIds().filter { pendingOverrides.contains($0) })
-            // Preserve local state for conflicting items until user resolves
-            for c in conflicts {
-                switch c.local {
-                case "ignored", "archived": safeArchived.insert(c.id)
-                case "locally_completed": safeCompleted.insert(c.id)
-                default: break
-                }
-            }
-            DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
-            DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
-
+            // Course overrides + hard-delete detection always run, even
+            // during first-time migration.
             let coursesArray = json["courses"] as? [[String: Any]] ?? []
             let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
             if !courseOverrides.isEmpty {
@@ -1152,14 +1171,14 @@ final class AppState {
                 for courseNo in localCourseNos where !serverCourseNos.contains(courseNo) && !deletedNos.contains(courseNo) {
                     deletedNos.insert(courseNo)
                     changed = true
-                    print("[Sync] course \(courseNo): deleted on another device (not in server courses)")
+                    AppLogger.sync.info("course deleted on another device (not in server courses)")
                 }
 
                 // A courseNo in deletedNos that IS in server courses → un-deleted
                 for courseNo in deletedNos where serverCourseNos.contains(courseNo) {
                     deletedNos.remove(courseNo)
                     changed = true
-                    print("[Sync] course \(courseNo): un-deleted (present in server courses)")
+                    AppLogger.sync.info("course un-deleted (present in server courses)")
                 }
 
                 if changed {
@@ -1172,27 +1191,18 @@ final class AppState {
             }
 
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            print("[Sync] applied: \(safeArchived.count) archived, \(safeCompleted.count) completed, \(conflicts.count) conflicts pending")
-
-            if !conflicts.isEmpty {
-                await MainActor.run {
-                    syncConflicts = conflicts.map { SyncConflictItem(id: $0.id, kind: $0.kind, label: $0.label, localStatus: $0.local, serverStatus: $0.server) }
-                    pendingSyncServerArchived = serverArchivedIds
-                    pendingSyncServerCompleted = serverCompletedIds
-                }
-            }
             lastSyncSource = .backend
         } catch {
             lastSyncSource = .local
             if case PushAPIError.httpStatus(401, _) = error, !retried {
                 let reloginOk = await attemptBackendRelogin()
                 if reloginOk {
-                    print("[Sync] auto-relogin succeeded, retrying sync")
+                    AppLogger.sync.info("auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
                     await syncOverridesFromBackend(retried: true)
                 }
             }
-            print("[Sync] syncOverrides failed: \(error)")
+            AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
         }
     }
 
@@ -1209,7 +1219,7 @@ final class AppState {
                 if !code.isEmpty { moodleIdToNo[mId] = code }
             }
         }
-        print("[Sync] moodleIdToNo: \(moodleIdToNo.count) entries, overrides: \(overrides.count)")
+        AppLogger.sync.info("moodleIdToNo: \(moodleIdToNo.count, privacy: .public) entries, overrides: \(overrides.count, privacy: .public)")
 
         var customNames = DataCache.shared.loadCourseCustomNames()
         var colorCount = 0
@@ -1221,7 +1231,7 @@ final class AppState {
                 if let hex = UInt32(colorHex.dropFirst(), radix: 16) {
                     TigerDuckTheme.setColor(hex: hex, for: courseNo)
                     colorCount += 1
-                    print("[Sync] course \(courseNo): color → \(colorHex)")
+                    AppLogger.sync.debug("course color applied")
                 }
             }
             if let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
@@ -1235,7 +1245,7 @@ final class AppState {
                 }
                 customNames[courseNo] = existing.isEmpty ? nil : existing
                 nameCount += 1
-                print("[Sync] course \(courseNo): custom names updated")
+                AppLogger.sync.debug("course custom names updated")
             }
         }
         if nameCount > 0 {
@@ -1252,7 +1262,7 @@ final class AppState {
             key: AppConstants.KeychainKeys.moodlePrivateToken
         )
         guard let moodleToken, !moodleToken.isEmpty else {
-            print("[Sync] auto-relogin skipped: no Moodle token")
+            AppLogger.sync.info("auto-relogin skipped: no Moodle token")
             return false
         }
         let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
@@ -1266,10 +1276,10 @@ final class AppState {
                 platform: platform,
                 deviceName: deviceName
             )
-            print("[Sync] auto-relogin: v3 JWT refreshed")
+            AppLogger.sync.info("auto-relogin: v3 JWT refreshed")
             return true
         } catch {
-            print("[Sync] auto-relogin failed: \(error)")
+            AppLogger.sync.error("auto-relogin failed: \(error, privacy: .public)")
             return false
         }
         #else
@@ -1280,17 +1290,17 @@ final class AppState {
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices.
     func syncAssignmentOverride(moodleId: String, status: String) {
-        print("[Sync] override SENDING: \(moodleId) → \(status)")
+        AppLogger.sync.debug("override sending: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         pendingOverrides.insert(moodleId)
         Task {
             do {
-                let result = try await pushCoordinator.patchAssignmentOverride(
+                _ = try await pushCoordinator.patchAssignmentOverride(
                     moodleAssignmentId: moodleId, localStatus: status
                 )
                 pendingOverrides.remove(moodleId)
-                print("[Sync] override PATCH OK: \(moodleId) → \(status), server id=\(result.id)")
+                AppLogger.sync.debug("override patch ok: \(moodleId, privacy: .private) → \(status, privacy: .public)")
             } catch {
-                print("[Sync] override PATCH FAILED: \(moodleId) → \(status), error=\(error)")
+                AppLogger.sync.error("override patch failed: \(moodleId, privacy: .private) → \(status, privacy: .public), error=\(error, privacy: .public)")
             }
         }
     }
@@ -1314,7 +1324,6 @@ final class AppState {
     }
 
     func uploadCourses(_ courses: [SDCourse], semester: String) {
-        guard let atm = authService.authTokenManager else { return }
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
                 semester: semester,
@@ -1327,11 +1336,9 @@ final class AppState {
                 instructors: c.instructor.isEmpty ? [] : [c.instructor]
             )
         }
+        let coordinator = pushCoordinator
         Task.detached {
-            let client = PushAPIClient(
-                authHeaderProvider: { await atm.authorizationHeader() }
-            )
-            try? await client.uploadCourses(
+            try? await coordinator.uploadCourses(
                 PushAPI.CourseUploadRequest(courses: entries)
             )
         }
