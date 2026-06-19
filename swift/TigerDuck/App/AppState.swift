@@ -1337,12 +1337,15 @@ final class AppState {
 
     func uploadCourses(_ courses: [SDCourse], semester: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
+        let isEnglish = LanguageManager.isCourseApiEnglish(
+            appLanguage: Defaults[.appLanguage]
+        )
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
                 semester: semester,
                 courseNo: c.courseNo,
                 courseName: c.courseName,
-                courseNameEn: nil,
+                courseNameEn: isEnglish ? c.courseName : nil,
                 moodleId: c.moodleIdNumber,
                 credits: c.credits > 0 ? Double(c.credits) : nil,
                 classroom: c.classroom.isEmpty ? nil : c.classroom,

@@ -303,16 +303,16 @@ enum AppServiceBridge {
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveCourses(courses, semester: semester)
 
-                // Fire-and-forget: upload the course list to the backend so
-                // it can populate its courses table for cross-device sync.
-                #if os(iOS)
                 if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
+                    let isEnglish = LanguageManager.isCourseApiEnglish(
+                        appLanguage: Defaults[.appLanguage]
+                    )
                     let entries = courses.map { c in
                         PushAPI.CourseUploadEntry(
                             semester: semester,
                             courseNo: c.courseNo,
                             courseName: c.courseName,
-                            courseNameEn: nil,
+                            courseNameEn: isEnglish ? c.courseName : nil,
                             moodleId: c.moodleIdNumber,
                             credits: c.credits > 0 ? Double(c.credits) : nil,
                             classroom: c.classroom.isEmpty ? nil : c.classroom,
@@ -328,7 +328,6 @@ enum AppServiceBridge {
                         )
                     }
                 }
-                #endif
             }
             return courses
         } catch {
