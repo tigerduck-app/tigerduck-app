@@ -331,9 +331,11 @@ private struct MacSidebarSettingsView: View {
 
 private struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @State private var showSignIn = false
 
     var body: some View {
+        @Bindable var state = appState
         Form {
             Section(String(localized: "desktop_settings_section_ntust")) {
                 if appState.authService.hasStoredCredentials {
@@ -350,10 +352,6 @@ private struct MacAccountSettingsView: View {
                 } else {
                     Text(String(localized: "common_not_signed_in"))
                         .foregroundStyle(.secondary)
-                    // Closes the loop for users who took the "Skip for
-                    // now" path on `MacLoginView`: without this they'd
-                    // have no way back to the login form short of
-                    // resetting onboarding state.
                     Button {
                         showSignIn = true
                     } label: {
@@ -361,20 +359,41 @@ private struct MacAccountSettingsView: View {
                     }
                 }
             }
+
+            Section(String(localized: "settings_cloud_sync_title")) {
+                Toggle(String(localized: "settings_sync_toggle_label"), isOn: $state.cloudSyncEnabled)
+
+                Text(String(localized: "settings_sync_brief_description"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    openURL(AppURLs.learnMoreBackend)
+                } label: {
+                    HStack {
+                        Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
+                        Spacer()
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    appState.backgroundSync()
+                } label: {
+                    Label(String(localized: "cloud_sync_sync_now"), systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(appState.sessionManager.loadingState == .loading)
+            }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $showSignIn) {
-            // `showsSkipButton: false` — the user is already inside the
-            // app, so "Skip for now" would only re-flip an already-true
-            // `didSkipMacLogin` and leave the sheet visually stuck.
             MacLoginView(showsSkipButton: false)
                 .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
-                // `MacLoginView` already calls `completeOnboarding()` on
-                // success; here we just observe the resulting credential
-                // flip and dismiss the sheet so the user lands back on
-                // the Account tab with the signed-in state showing.
                 .onChange(of: appState.authService.hasStoredCredentials) { _, signedIn in
                     if signedIn { showSignIn = false }
                 }

@@ -55,7 +55,15 @@ struct CloudSyncSettingsView: View {
                 )
             }
 
-            if !syncEnabled {
+            if syncEnabled {
+                Section {
+                    Button {
+                        appState.backgroundSync()
+                    } label: {
+                        Label(String(localized: "cloud_sync_sync_now"), systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+            } else {
                 Section {
                     Label(
                         String(localized: "settings_sync_disabled_note"),
