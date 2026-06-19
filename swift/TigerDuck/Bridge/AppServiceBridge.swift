@@ -304,15 +304,12 @@ enum AppServiceBridge {
                 DataCache.shared.saveCourses(courses, semester: semester)
 
                 if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
-                    let isEnglish = LanguageManager.isCourseApiEnglish(
-                        appLanguage: Defaults[.appLanguage]
-                    )
                     let entries = courses.map { c in
                         PushAPI.CourseUploadEntry(
                             semester: semester,
                             courseNo: c.courseNo,
                             courseName: c.courseName,
-                            courseNameEn: isEnglish ? c.courseName : nil,
+                            courseNameEn: nil,
                             moodleId: c.moodleIdNumber,
                             credits: c.credits > 0 ? Double(c.credits) : nil,
                             classroom: c.classroom.isEmpty ? nil : c.classroom,
