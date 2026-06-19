@@ -1246,16 +1246,23 @@ final class AppState {
     private func attemptBackendRelogin() async -> Bool {
         #if os(iOS)
         let atm = authTokenManager
-        guard let studentId = authService.storedStudentId,
-              let password = authService.storedPassword else { return false }
+        guard let studentId = authService.storedStudentId else { return false }
+        let moodleToken = await MoodleTokenService.shared.currentToken()
+        let moodlePrivateToken = KeychainManager.loadString(
+            key: AppConstants.KeychainKeys.moodlePrivateToken
+        )
+        guard let moodleToken, !moodleToken.isEmpty else {
+            print("[Sync] auto-relogin skipped: no Moodle token")
+            return false
+        }
         let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
         let deviceName = UIDevice.current.name
         do {
             _ = try await atm.login(
                 studentId: studentId,
-                password: password,
-                moodleToken: nil,
-                moodlePrivateToken: nil,
+                password: "",
+                moodleToken: moodleToken,
+                moodlePrivateToken: moodlePrivateToken,
                 platform: platform,
                 deviceName: deviceName
             )
