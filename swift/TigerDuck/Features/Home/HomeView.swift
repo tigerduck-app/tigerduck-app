@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 struct HomeView: View {
@@ -42,7 +43,7 @@ struct HomeView: View {
                     Spacer()
                     NetworkStatusOverlay(
                         loadingState: appState.sessionManager.loadingState,
-                        isLocalOnly: appState.lastSyncSource == .local
+                        isLocalOnly: Defaults[.cloudSyncEnabled] && appState.lastSyncSource == .local
                     )
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -92,7 +93,9 @@ struct HomeView: View {
             // single in-flight fetch; status lives in the top-right
             // NetworkStatusOverlay.
             viewModel.triggerRefresh(authService: appState.authService)
-            Task { await appState.syncOverridesFromBackend() }
+            if Defaults[.cloudSyncEnabled] {
+                Task { await appState.syncOverridesFromBackend() }
+            }
         }
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)

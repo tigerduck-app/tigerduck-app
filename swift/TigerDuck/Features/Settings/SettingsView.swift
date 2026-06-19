@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 import CoreHaptics
 import UserNotifications
@@ -147,6 +148,22 @@ struct SettingsView: View {
 
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
+                NavigationLink {
+                    CloudSyncSettingsView()
+                } label: {
+                    HStack {
+                        Label(
+                            String(localized: "settings_sync_toggle_label"),
+                            systemImage: "arrow.triangle.2.circlepath.icloud.fill"
+                        )
+                        Spacer()
+                        Text(Defaults[.cloudSyncEnabled]
+                             ? String(localized: "settings_sync_status_on")
+                             : String(localized: "settings_sync_status_off"))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 #if os(iOS)
                 // The "denied -> open System Settings" deeplink is iOS-only;
                 // macOS has its own MacSettingsScene and no openSettingsURLString.
@@ -164,15 +181,20 @@ struct SettingsView: View {
                     }
                 }
                 #endif
-                NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
-                    AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
+
+                Group {
+                    NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
+                        AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
+                    }
+                    NavigationLink(String(localized: "live_activity_settings_nav_title")) {
+                        LiveActivitySettingsView(store: appState.liveActivityPreferences)
+                    }
+                    NavigationLink(String(localized: "settings_push_server_nav_label")) {
+                        PushServerSettingsView()
+                    }
                 }
-                NavigationLink(String(localized: "live_activity_settings_nav_title")) {
-                    LiveActivitySettingsView(store: appState.liveActivityPreferences)
-                }
-                NavigationLink(String(localized: "settings_push_server_nav_label")) {
-                    PushServerSettingsView()
-                }
+                .opacity(Defaults[.cloudSyncEnabled] ? 1 : 0.5)
+                .disabled(!Defaults[.cloudSyncEnabled])
             }
 
             // MARK: - Other settings

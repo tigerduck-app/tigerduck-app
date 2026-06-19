@@ -1315,6 +1315,7 @@ final class AppState {
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices.
     func syncAssignmentOverride(moodleId: String, status: String) {
+        guard Defaults[.cloudSyncEnabled] else { return }
         AppLogger.sync.debug("override sending: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         pendingOverrides.insert(moodleId)
         Task {
@@ -1337,6 +1338,7 @@ final class AppState {
         customName: String? = nil,
         locale: String? = nil
     ) {
+        guard Defaults[.cloudSyncEnabled] else { return }
         Task {
             _ = try? await pushCoordinator.patchCourseOverride(
                 moodleCourseId: moodleCourseId,
@@ -1349,6 +1351,7 @@ final class AppState {
     }
 
     func uploadCourses(_ courses: [SDCourse], semester: String) {
+        guard Defaults[.cloudSyncEnabled] else { return }
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
                 semester: semester,
