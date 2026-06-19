@@ -235,7 +235,6 @@ final class AppState {
     private var pendingSyncServerCompleted: Set<String> = []
 
     func resolveSyncConflicts(keepLocal: Bool) {
-        #if os(iOS)
         if keepLocal {
             for c in syncConflicts {
                 syncAssignmentOverride(moodleId: c.id, status: c.localStatus)
@@ -254,7 +253,6 @@ final class AppState {
         syncConflicts = []
         pendingSyncServerArchived = []
         pendingSyncServerCompleted = []
-        #endif
     }
 
     enum SyncSource { case none, backend, local }
