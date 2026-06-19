@@ -402,7 +402,6 @@ private struct SwipeableRow<Content: View>: View {
             }
             .onEnded { _ in
                 let triggered = abs(offset) > triggerThreshold
-                print("[Swipe] onEnded offset=\(offset) threshold=\(triggerThreshold) triggered=\(triggered) leading=\(leadingAction != nil) trailing=\(trailingAction != nil)")
                 if triggered, let action = (offset > 0 ? leadingAction : trailingAction) {
                     action.action()
                 }
