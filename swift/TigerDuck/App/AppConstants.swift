@@ -122,6 +122,9 @@ nonisolated enum AppConstants {
         static let classTableSelectedSemester = "classTableSelectedSemester"
         static let homeAssignmentFilter = "homeAssignmentFilter"
 
+        // MARK: Cloud sync
+        static let cloudSyncEnabled = "cloudSyncEnabled"
+
         // MARK: Push server
         static let pushServerEnabled = "pushServerEnabled"
         static let pushServerURLOverride = "pushServerURLOverride"

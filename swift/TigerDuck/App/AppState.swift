@@ -556,6 +556,30 @@ final class AppState {
         }
     }
 
+    /// Cross-device sync toggle. When OFF, all backend sync calls
+    /// (override download/upload, course upload, assignment upload) are
+    /// skipped and push notifications + Live Activity are unavailable.
+    var cloudSyncEnabled: Bool = Defaults[.cloudSyncEnabled] {
+        didSet {
+            guard cloudSyncEnabled != oldValue else { return }
+            Defaults[.cloudSyncEnabled] = cloudSyncEnabled
+            if cloudSyncEnabled {
+                // Turning sync back on — trigger an initial sync so the
+                // user gets fresh data from the backend immediately.
+                Task { await syncOverridesFromBackend() }
+                #if os(iOS)
+                pushCoordinator.enable()
+                requestPushScheduleSync()
+                #endif
+            } else {
+                #if os(iOS)
+                // Turning sync off — tear down push registration.
+                Task { await pushCoordinator.disable() }
+                #endif
+            }
+        }
+    }
+
     /// Browser preference for opening links
     var browserPreference: BrowserPreference = Defaults[.browserPreference] {
         didSet { Defaults[.browserPreference] = browserPreference }
@@ -1061,6 +1085,7 @@ final class AppState {
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
     func syncOverridesFromBackend(retried: Bool = false) async {
+        guard Defaults[.cloudSyncEnabled] else { return }
         guard await authTokenManager.isLoggedIn else { return }
         do {
             let json = try await pushCoordinator.fetchFullSync()

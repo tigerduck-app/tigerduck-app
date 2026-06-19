@@ -121,6 +121,12 @@ nonisolated extension Defaults.Keys {
         default: AssignmentFilter.incomplete.rawValue
     )
 
+    // MARK: Cloud sync
+    static let cloudSyncEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.cloudSyncEnabled,
+        default: true
+    )
+
     // MARK: Push server
     /// Default on as of the custom-push feature: every device registers on
     /// launch so operator-issued pushes can target it. Notification
