@@ -695,7 +695,6 @@ final class ClassTableViewModel {
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         persistUserAddedCourses()
         broadcastLocalChange()
-        syncVisibilityOverride(course: course, isHidden: true)
         onCoursesChanged?(courses, currentSemester)
     }
 
