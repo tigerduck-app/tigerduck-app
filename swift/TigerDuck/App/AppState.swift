@@ -249,6 +249,7 @@ final class AppState {
     private var pendingSyncServerCompleted: Set<String> = []
 
     func resolveSyncConflicts(keepLocal: Bool) {
+        #if os(iOS)
         if keepLocal {
             for c in syncConflicts {
                 syncAssignmentOverride(moodleId: c.id, status: c.localStatus)
@@ -267,6 +268,7 @@ final class AppState {
         syncConflicts = []
         pendingSyncServerArchived = []
         pendingSyncServerCompleted = []
+        #endif
     }
 
     enum SyncSource { case none, backend, local }
@@ -300,11 +302,10 @@ final class AppState {
     // MARK: - Push server (iOS only — APNs on Mac is a separate decision
     // and the entire PushCoordinator stack pulls in ActivityKit symbols).
 
+    #if os(iOS)
     let pushCoordinator: PushCoordinator
-    /// Manages v3 JWT tokens for the push backend. Initialised from the
-    /// same `PushIdentity` UUID that `PushCoordinator` uses so the two
-    /// always agree on the client device ID sent to `/v3/auth/login`.
     let authTokenManager: AuthTokenManager
+    #endif
 
     // MARK: - Custom-push tap routing
 
@@ -564,9 +565,9 @@ final class AppState {
             guard cloudSyncEnabled != oldValue else { return }
             Defaults[.cloudSyncEnabled] = cloudSyncEnabled
             if cloudSyncEnabled {
-                // Turning sync back on — trigger an initial sync so the
-                // user gets fresh data from the backend immediately.
+                #if os(iOS)
                 Task { await syncOverridesFromBackend() }
+                #endif
                 #if os(iOS)
                 pushCoordinator.enable()
                 requestPushScheduleSync()
@@ -1426,7 +1427,9 @@ final class AppState {
             // Moodle-direct for the assignment list (proven, correct
             // semester filtering). Backend handles override sync only.
             let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
+            #if os(iOS)
             await syncOverridesFromBackend()
+            #endif
 
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
             async let coursesTask: Bool = syncCoursesIfAuthenticated()
