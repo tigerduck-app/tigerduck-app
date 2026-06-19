@@ -1317,7 +1317,6 @@ final class AppState {
 
     func syncCourseOverride(
         moodleCourseId: String,
-        isHidden: Bool? = nil,
         colorHex: String? = nil,
         customName: String? = nil,
         locale: String? = nil
@@ -1326,7 +1325,6 @@ final class AppState {
         Task {
             _ = try? await pushCoordinator.patchCourseOverride(
                 moodleCourseId: moodleCourseId,
-                isHidden: isHidden,
                 colorHex: colorHex,
                 customName: customName,
                 locale: locale

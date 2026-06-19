@@ -151,13 +151,11 @@ enum PushAPI {
     }
 
     struct CourseOverrideRequest: Encodable, Sendable {
-        let isHidden: Bool?
         let colorHex: String?
         let customName: String?
         let locale: String?
 
         enum CodingKeys: String, CodingKey {
-            case isHidden = "is_hidden"
             case colorHex = "color_hex"
             case customName = "custom_name"
             case locale
@@ -166,14 +164,12 @@ enum PushAPI {
 
     struct CourseOverrideResponse: Decodable, Sendable {
         let id: Int
-        let isHidden: Bool
         let colorHex: String?
         let customNames: [String: String]
         let updatedAt: String
 
         enum CodingKeys: String, CodingKey {
             case id
-            case isHidden = "is_hidden"
             case colorHex = "color_hex"
             case customNames = "custom_names"
             case updatedAt = "updated_at"

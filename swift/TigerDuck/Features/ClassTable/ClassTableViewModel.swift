@@ -637,7 +637,7 @@ final class ClassTableViewModel {
             DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
             if let idnumber = course.moodleIdNumber,
                let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
-                onSyncCourseOverride?(String(numericId), false, nil, nil, nil)
+                onSyncCourseOverride?(String(numericId), nil, nil, nil)
             }
         }
 
@@ -703,7 +703,7 @@ final class ClassTableViewModel {
         for courseNo in deletedCourseNos {
             let idnumber = "\(semester)\(courseNo)"
             if let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
-                onSyncCourseOverride?(String(numericId), false, nil, nil, nil)
+                onSyncCourseOverride?(String(numericId), nil, nil, nil)
             }
         }
         deletedCourseNos.removeAll()
@@ -713,12 +713,6 @@ final class ClassTableViewModel {
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
         reloadFromCache()
         triggerRefresh(authService: authService)
-    }
-
-    private func syncVisibilityOverride(course: SDCourse, isHidden: Bool) {
-        guard let idnumber = course.moodleIdNumber,
-              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else { return }
-        onSyncCourseOverride?(String(numericId), isHidden, nil, nil, nil)
     }
 
     /// Undo a not-yet-committed user-added course without tombstoning the
@@ -813,16 +807,16 @@ final class ClassTableViewModel {
         guard let idnumber = course.moodleIdNumber,
               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else { return }
         let hexStr = String(format: "#%06X", hex)
-        onSyncCourseOverride?(String(numericId), nil, hexStr, nil, nil)
+        onSyncCourseOverride?(String(numericId), hexStr, nil, nil)
     }
 
     private func syncNameOverride(course: SDCourse, customName: String, locale: String) {
         guard let idnumber = course.moodleIdNumber,
               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else { return }
-        onSyncCourseOverride?(String(numericId), nil, nil, customName, locale)
+        onSyncCourseOverride?(String(numericId), nil, customName, locale)
     }
 
-    var onSyncCourseOverride: ((_ moodleCourseId: String, _ isHidden: Bool?, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
+    var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
 
     /// Wakes Home, the Live Activity coordinator, and any other observer

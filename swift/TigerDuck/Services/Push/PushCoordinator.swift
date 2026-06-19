@@ -198,14 +198,12 @@ final class PushCoordinator {
 
     func patchCourseOverride(
         moodleCourseId: String,
-        isHidden: Bool? = nil,
         colorHex: String? = nil,
         customName: String? = nil,
         locale: String? = nil
     ) async throws -> PushAPI.CourseOverrideResponse {
         try await apiClient.patchCourseOverride(
             moodleCourseId: moodleCourseId,
-            isHidden: isHidden,
             colorHex: colorHex,
             customName: customName,
             locale: locale

@@ -118,13 +118,11 @@ final class PushAPIClient: Sendable {
 
     func patchCourseOverride(
         moodleCourseId: String,
-        isHidden: Bool? = nil,
         colorHex: String? = nil,
         customName: String? = nil,
         locale: String? = nil
     ) async throws -> PushAPI.CourseOverrideResponse {
         let body = PushAPI.CourseOverrideRequest(
-            isHidden: isHidden,
             colorHex: colorHex,
             customName: customName,
             locale: locale
