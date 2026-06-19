@@ -1275,19 +1275,13 @@ final class AppState {
             return false
         }
         let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
-        #if os(iOS)
-        let deviceName = UIDevice.current.name
-        #elseif os(macOS)
-        let deviceName = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
-        #endif
         do {
             _ = try await atm.login(
                 studentId: studentId,
                 password: "",
                 moodleToken: moodleToken,
                 moodlePrivateToken: moodlePrivateToken,
-                platform: platform,
-                deviceName: deviceName
+                platform: platform
             )
             AppLogger.sync.info("auto-relogin: v3 JWT refreshed")
             return true

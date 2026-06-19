@@ -133,19 +133,13 @@ final class AuthService {
             key: AppConstants.KeychainKeys.moodlePrivateToken
         )
         let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
-        #if os(iOS)
-        let deviceName = UIDevice.current.name
-        #elseif os(macOS)
-        let deviceName = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
-        #endif
         do {
             _ = try await authTokenManager.login(
                 studentId: studentId,
                 password: password,
                 moodleToken: moodleToken,
                 moodlePrivateToken: moodlePrivateToken,
-                platform: platform,
-                deviceName: deviceName
+                platform: platform
             )
             onV3SignedIn?()
         } catch {

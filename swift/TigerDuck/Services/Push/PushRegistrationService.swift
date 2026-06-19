@@ -162,7 +162,7 @@ actor PushRegistrationService {
         let request = PushAPI.DeviceRegisterRequest(
             client_device_id: identity.uuid,
             platform: PushDeviceClass.platform(for: deviceClass),
-            device_name: Host.current().localizedName,
+            device_name: nil,
             app_version: appVersion,
             os_version: ProcessInfo.processInfo.operatingSystemVersionString,
             push_token: nil
