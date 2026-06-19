@@ -67,6 +67,9 @@ struct CloudSyncSettingsView: View {
             }
 
             Section {
+                Link(destination: AppURLs.learnMoreBackend) {
+                    Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
+                }
                 Link(destination: AppURLs.privacyPolicy) {
                     Label(String(localized: "onboarding_privacy_policy_label"), systemImage: "hand.raised.fill")
                 }

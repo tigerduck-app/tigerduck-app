@@ -305,6 +305,7 @@ enum AppServiceBridge {
 
                 // Fire-and-forget: upload the course list to the backend so
                 // it can populate its courses table for cross-device sync.
+                #if os(iOS)
                 if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
                     let entries = courses.map { c in
                         PushAPI.CourseUploadEntry(
@@ -327,6 +328,7 @@ enum AppServiceBridge {
                         )
                     }
                 }
+                #endif
             }
             return courses
         } catch {
@@ -569,6 +571,7 @@ enum AppServiceBridge {
                 // Fire-and-forget: upload the assignment list to the backend
                 // so it can populate its assignments table for cross-device
                 // sync and notification scheduling.
+                #if os(iOS)
                 if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
                     let iso = ISO8601DateFormatter()
                     iso.formatOptions = [.withInternetDateTime]
@@ -594,6 +597,7 @@ enum AppServiceBridge {
                         )
                     }
                 }
+                #endif
             }
             return assignmentsToPersist
         } catch {

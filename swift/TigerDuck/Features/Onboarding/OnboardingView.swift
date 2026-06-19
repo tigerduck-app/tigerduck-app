@@ -225,6 +225,10 @@ struct OnboardingView: View {
                     }
 
                     VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                        Link(destination: AppURLs.learnMoreBackend) {
+                            Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
+                                .font(.caption)
+                        }
                         Link(destination: AppURLs.privacyPolicy) {
                             Label(String(localized: "onboarding_privacy_policy_label"), systemImage: "hand.raised.fill")
                                 .font(.caption)

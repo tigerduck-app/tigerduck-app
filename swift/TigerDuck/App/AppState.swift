@@ -1085,6 +1085,9 @@ final class AppState {
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
     func syncOverridesFromBackend(retried: Bool = false) async {
+        #if os(macOS)
+        return
+        #else
         guard Defaults[.cloudSyncEnabled] else { return }
         guard await authTokenManager.isLoggedIn else { return }
         do {
@@ -1229,6 +1232,7 @@ final class AppState {
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
         }
+        #endif
     }
 
     private func applyCourseOverrides(_ overrides: [[String: Any]], coursesArray: [[String: Any]]) {
@@ -1315,6 +1319,7 @@ final class AppState {
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices.
     func syncAssignmentOverride(moodleId: String, status: String) {
+        #if os(iOS)
         guard Defaults[.cloudSyncEnabled] else { return }
         AppLogger.sync.debug("override sending: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         pendingOverrides.insert(moodleId)
@@ -1329,6 +1334,7 @@ final class AppState {
                 AppLogger.sync.error("override patch failed: \(moodleId, privacy: .private) → \(status, privacy: .public), error=\(error, privacy: .public)")
             }
         }
+        #endif
     }
 
     func syncCourseOverride(
@@ -1338,6 +1344,7 @@ final class AppState {
         customName: String? = nil,
         locale: String? = nil
     ) {
+        #if os(iOS)
         guard Defaults[.cloudSyncEnabled] else { return }
         Task {
             _ = try? await pushCoordinator.patchCourseOverride(
@@ -1348,9 +1355,13 @@ final class AppState {
                 locale: locale
             )
         }
+        #endif
     }
 
     func uploadCourses(_ courses: [SDCourse], semester: String) {
+        #if os(macOS)
+        return
+        #else
         guard Defaults[.cloudSyncEnabled] else { return }
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
@@ -1370,6 +1381,7 @@ final class AppState {
                 PushAPI.CourseUploadRequest(courses: entries)
             )
         }
+        #endif
     }
 
     /// Disable server push (tells server to drop the device, stops relay).
