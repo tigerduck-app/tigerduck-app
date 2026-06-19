@@ -146,8 +146,8 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Notifications & Live Activity
-            Section(String(localized: "settings_section_notifications")) {
+            // MARK: - Cross-Device Sync
+            Section(String(localized: "settings_cloud_sync_title")) {
                 NavigationLink {
                     CloudSyncSettingsView()
                 } label: {
@@ -163,7 +163,10 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
 
+            // MARK: - Notifications & Live Activity
+            Section(String(localized: "settings_section_notifications")) {
                 #if os(iOS)
                 // The "denied -> open System Settings" deeplink is iOS-only;
                 // macOS has its own MacSettingsScene and no openSettingsURLString.
