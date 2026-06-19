@@ -167,10 +167,12 @@ enum CourseSelectionService {
         let month = cal.component(.month, from: now)
         let rocYear = year - 1911
 
-        if month >= 2 && month <= 8 {
+        if month >= 2 && month <= 7 {
+            // Feb 1 – Jul 31 → spring semester
             return "\(rocYear - 1)2"
         } else {
-            let academicYear = month >= 9 ? rocYear : rocYear - 1
+            // Aug 1 – Jan 31 → fall semester
+            let academicYear = month >= 8 ? rocYear : rocYear - 1
             return "\(academicYear)1"
         }
     }
