@@ -1059,7 +1059,7 @@ final class AppState {
     /// Fetch override state (done/ignored) from the backend and apply it
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
-    func syncOverridesFromBackend() async {
+    func syncOverridesFromBackend(retried: Bool = false) async {
         guard await authTokenManager.isLoggedIn else { return }
         do {
             let json = try await pushCoordinator.fetchFullSync()
@@ -1184,12 +1184,12 @@ final class AppState {
             lastSyncSource = .backend
         } catch {
             lastSyncSource = .local
-            if case PushAPIError.httpStatus(401, _) = error {
+            if case PushAPIError.httpStatus(401, _) = error, !retried {
                 let reloginOk = await attemptBackendRelogin()
                 if reloginOk {
                     print("[Sync] auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
-                    await syncOverridesFromBackend()
+                    await syncOverridesFromBackend(retried: true)
                 }
             }
             print("[Sync] syncOverrides failed: \(error)")
