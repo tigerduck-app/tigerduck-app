@@ -326,7 +326,7 @@ actor PushRegistrationService {
                 client_device_id: identity.uuid,
                 platform: PushDeviceClass.platform(for: deviceClass),
                 app_version: appVersion,
-                os_version: nil,
+                os_version: ProcessInfo.processInfo.operatingSystemVersionString,
                 push_token: PushAPI.PushTokenIn(
                     provider: "apns",
                     token_kind: "push_to_start",
@@ -344,7 +344,7 @@ actor PushRegistrationService {
                     client_device_id: identity.uuid,
                     platform: PushDeviceClass.platform(for: deviceClass),
                     app_version: appVersion,
-                    os_version: nil,
+                    os_version: ProcessInfo.processInfo.operatingSystemVersionString,
                     push_token: PushAPI.PushTokenIn(
                         provider: "apns",
                         token_kind: "standard",
