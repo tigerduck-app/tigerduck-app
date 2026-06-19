@@ -1186,6 +1186,13 @@ final class AppState {
         } catch {
             lastSyncSource = .local
             if case PushAPIError.httpStatus(401, _) = error {
+                let reloginOk = await attemptBackendRelogin()
+                if reloginOk {
+                    print("[Sync] auto-relogin succeeded, retrying sync")
+                    try? await Task.sleep(for: .milliseconds(500))
+                    await syncOverridesFromBackend()
+                    return
+                }
                 await MainActor.run { showBackendSessionExpired = true }
             }
             print("[Sync] syncOverrides failed: \(error)")
@@ -1237,6 +1244,33 @@ final class AppState {
         if nameCount > 0 {
             DataCache.shared.saveCourseCustomNames(customNames)
         }
+    }
+
+    private func attemptBackendRelogin() async -> Bool {
+        #if os(iOS)
+        let atm = authTokenManager
+        guard let studentId = authService.storedStudentId,
+              let password = authService.storedPassword else { return false }
+        let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
+        let deviceName = UIDevice.current.name
+        do {
+            _ = try await atm.login(
+                studentId: studentId,
+                password: password,
+                moodleToken: nil,
+                moodlePrivateToken: nil,
+                platform: platform,
+                deviceName: deviceName
+            )
+            print("[Sync] auto-relogin: v3 JWT refreshed")
+            return true
+        } catch {
+            print("[Sync] auto-relogin failed: \(error)")
+            return false
+        }
+        #else
+        return false
+        #endif
     }
 
     /// Fire-and-forget override sync to the backend. Local state is already
