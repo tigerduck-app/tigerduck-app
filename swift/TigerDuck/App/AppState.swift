@@ -1351,9 +1351,14 @@ final class AppState {
         }
         let coordinator = pushCoordinator
         Task.detached {
-            try? await coordinator.uploadCourses(
-                PushAPI.CourseUploadRequest(courses: entries)
-            )
+            do {
+                try await coordinator.uploadCourses(
+                    PushAPI.CourseUploadRequest(courses: entries)
+                )
+                AppLogger.sync.info("uploadCourses: \(entries.count, privacy: .public) courses sent")
+            } catch {
+                AppLogger.sync.error("uploadCourses failed: \(error, privacy: .public)")
+            }
         }
     }
 
