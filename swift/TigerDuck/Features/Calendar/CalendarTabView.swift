@@ -24,7 +24,7 @@ struct CalendarTabView: View {
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
-                        NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
+                        NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState, isLocalOnly: appState.isSyncLocalOnly)
                         Button {
                             viewModel.goToToday()
                         } label: {

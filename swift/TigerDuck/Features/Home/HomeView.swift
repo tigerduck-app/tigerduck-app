@@ -43,7 +43,7 @@ struct HomeView: View {
                     Spacer()
                     NetworkStatusOverlay(
                         loadingState: appState.sessionManager.loadingState,
-                        isLocalOnly: Defaults[.cloudSyncEnabled] && appState.lastSyncSource == .local
+                        isLocalOnly: appState.isSyncLocalOnly
                     )
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)

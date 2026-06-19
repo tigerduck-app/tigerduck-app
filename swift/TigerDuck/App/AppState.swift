@@ -259,6 +259,7 @@ final class AppState {
 
     enum SyncSource { case none, backend, local }
     private(set) var lastSyncSource: SyncSource = .none
+    var isSyncLocalOnly: Bool { Defaults[.cloudSyncEnabled] && lastSyncSource == .local }
     private var pendingOverrides: Set<String> = []
 
 
