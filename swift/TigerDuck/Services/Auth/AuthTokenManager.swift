@@ -99,7 +99,7 @@ actor AuthTokenManager {
                 client_device_id: deviceUUID,
                 platform: platform,
                 app_version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-                os_version: ProcessInfo.processInfo.operatingSystemVersionString
+                os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }()
             )
         )
 

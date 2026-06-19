@@ -165,7 +165,7 @@ actor PushRegistrationService {
             client_device_id: identity.uuid,
             platform: PushDeviceClass.platform(for: deviceClass),
             app_version: appVersion,
-            os_version: ProcessInfo.processInfo.operatingSystemVersionString,
+            os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
             push_token: nil
         )
         do {
@@ -326,7 +326,7 @@ actor PushRegistrationService {
                 client_device_id: identity.uuid,
                 platform: PushDeviceClass.platform(for: deviceClass),
                 app_version: appVersion,
-                os_version: ProcessInfo.processInfo.operatingSystemVersionString,
+                os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
                 push_token: PushAPI.PushTokenIn(
                     provider: "apns",
                     token_kind: "push_to_start",
@@ -344,7 +344,7 @@ actor PushRegistrationService {
                     client_device_id: identity.uuid,
                     platform: PushDeviceClass.platform(for: deviceClass),
                     app_version: appVersion,
-                    os_version: ProcessInfo.processInfo.operatingSystemVersionString,
+                    os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
                     push_token: PushAPI.PushTokenIn(
                         provider: "apns",
                         token_kind: "standard",
