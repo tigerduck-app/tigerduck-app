@@ -433,7 +433,7 @@ private struct MacAccountSettingsView: View {
         .onAppear {
             refreshTimer?.invalidate()
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
-                Task { snapshot = await appState.pushCoordinator.currentSnapshot() }
+                Task { @MainActor in snapshot = await appState.pushCoordinator.currentSnapshot() }
             }
         }
         .onDisappear {
