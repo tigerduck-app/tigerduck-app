@@ -206,4 +206,32 @@ enum PushAPI {
     struct CourseUploadRequest: Encodable, Sendable {
         let courses: [CourseUploadEntry]
     }
+
+    // MARK: - Assignment upload
+
+    struct AssignmentUploadEntry: Encodable, Sendable {
+        let moodleAssignmentId: Int
+        let courseNo: String
+        let courseName: String
+        let title: String
+        let dueAt: String?
+        let moodleUrl: String?
+        let isSubmitted: Bool
+        let grade: String?
+
+        enum CodingKeys: String, CodingKey {
+            case moodleAssignmentId = "moodle_assignment_id"
+            case courseNo = "course_no"
+            case courseName = "course_name"
+            case title
+            case dueAt = "due_at"
+            case moodleUrl = "moodle_url"
+            case isSubmitted = "is_submitted"
+            case grade
+        }
+    }
+
+    struct AssignmentUploadRequest: Encodable, Sendable {
+        let assignments: [AssignmentUploadEntry]
+    }
 }

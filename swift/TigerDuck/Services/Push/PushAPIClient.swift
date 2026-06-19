@@ -143,6 +143,15 @@ final class PushAPIClient: Sendable {
         _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
     }
 
+    // MARK: - Assignment upload
+
+    /// Fire-and-forget upload of the user's current assignment list so the
+    /// backend can populate its `assignments` table for cross-device sync
+    /// and notification scheduling.
+    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {
+        _ = try await postExpectingNoBody(path: "/sync/assignments/upload", body: request)
+    }
+
     // MARK: - Sync
 
     func fetchFullSync() async throws -> [String: Any] {

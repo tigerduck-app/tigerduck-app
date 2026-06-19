@@ -565,6 +565,35 @@ enum AppServiceBridge {
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignmentsToPersist)
+
+                // Fire-and-forget: upload the assignment list to the backend
+                // so it can populate its assignments table for cross-device
+                // sync and notification scheduling.
+                if let atm = authService.authTokenManager {
+                    let iso = ISO8601DateFormatter()
+                    iso.formatOptions = [.withInternetDateTime]
+                    let entries = assignmentsToPersist.compactMap { a -> PushAPI.AssignmentUploadEntry? in
+                        guard let id = Int(a.assignmentId) else { return nil }
+                        return PushAPI.AssignmentUploadEntry(
+                            moodleAssignmentId: id,
+                            courseNo: a.courseNo,
+                            courseName: a.courseName,
+                            title: a.title,
+                            dueAt: iso.string(from: a.dueDate),
+                            moodleUrl: a.moodleUrl,
+                            isSubmitted: a.isCompleted,
+                            grade: nil
+                        )
+                    }
+                    Task.detached {
+                        let client = PushAPIClient(
+                            authHeaderProvider: { await atm.authorizationHeader() }
+                        )
+                        try? await client.uploadAssignments(
+                            PushAPI.AssignmentUploadRequest(assignments: entries)
+                        )
+                    }
+                }
             }
             return assignmentsToPersist
         } catch {
