@@ -24,6 +24,7 @@ struct LiveActivityScenarioResolver {
         self.timelineResolver = timelineResolver
     }
 
+    #if os(iOS)
     func resolve(
         courses: [SDCourse],
         assignments: [SDAssignment],
@@ -62,6 +63,7 @@ struct LiveActivityScenarioResolver {
 
         return nil
     }
+    #endif
 
     // MARK: - Snapshot factories (static, pure — easy to unit test)
 

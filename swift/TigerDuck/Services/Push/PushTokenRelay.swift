@@ -1,3 +1,4 @@
+#if os(iOS)
 import ActivityKit
 import Foundation
 import os
@@ -53,3 +54,4 @@ final class PushTokenRelay {
         task?.cancel()
     }
 }
+#endif

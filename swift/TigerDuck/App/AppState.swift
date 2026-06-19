@@ -47,9 +47,6 @@ final class AppState {
     /// Detect fresh install (no UserDefaults marker) and clear stale Keychain data
     /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
-        #if os(iOS)
-        // Build the shared PushIdentity first so both the AuthTokenManager
-        // and PushCoordinator use the same stable device UUID.
         let identity = PushIdentity.loadOrCreate()
         let atm = AuthTokenManager(
             baseURL: PushServerConfig.resolveServerURL().absoluteString,
@@ -60,7 +57,6 @@ final class AppState {
             identity: identity,
             authTokenManager: atm
         )
-        #endif
 
         if !Defaults[.appHasBeenInstalled] {
             #if os(iOS)
@@ -150,31 +146,16 @@ final class AppState {
         liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
             await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
         }
+        #endif
 
-        // Auto-enable the push stack on every launch so the device row
-        // exists in the backend regardless of subscription state — that's
-        // what lets operator-issued custom pushes target the device. The
-        // coordinator is idempotent. Notification *permission* is still
-        // requested through onboarding, not here; users can opt out of
-        // server pushes via `serverPushUserOptOut`.
         pushCoordinator.enable()
 
-        // Wire v3 JWT sign-in into the NTUST login flow. AuthService owns the
-        // credential path but not the token store; hand it the same
-        // AuthTokenManager built above (keyed to the shared device UUID) so a
-        // successful SSO login also mints the Bearer that authorizes every
-        // /v3 push + bulletin call. Without this the auto-registration above
-        // goes out with no Authorization header and 401s on every launch.
         authService.authTokenManager = atm
         authService.onV3SignedIn = { [weak self] in
             guard let self else { return }
-            // The launch-time registration ran before any JWT existed and
-            // 401'd; now that a Bearer is available, re-register the device
-            // and sync the schedule.
             self.pushCoordinator.refreshRegistrationAfterAuth()
             self.requestPushScheduleSync()
         }
-        #endif
 
         // Apply a stored in-app language override on launch so string lookups
         // use the user's chosen locale. Skip when "system" — calling apply()
@@ -298,15 +279,14 @@ final class AppState {
     #endif
     private var pendingRefreshTask: Task<Void, Never>?
     private var boundaryRefreshTask: Task<Void, Never>?
+    #endif // os(iOS) — Live Activity properties
 
-    // MARK: - Push server (iOS only — APNs on Mac is a separate decision
-    // and the entire PushCoordinator stack pulls in ActivityKit symbols).
+    // MARK: - Push server
 
-    #if os(iOS)
     let pushCoordinator: PushCoordinator
     let authTokenManager: AuthTokenManager
-    #endif
 
+    #if os(iOS)
     // MARK: - Custom-push tap routing
 
     /// In-process deep-link targets resolved from a custom-push tap. The
@@ -479,10 +459,7 @@ final class AppState {
         #endif
 
         authService.logout()
-        #if os(iOS)
-        // Clear v3 JWT tokens so the next login session starts fresh.
         Task { await authTokenManager.logout() }
-        #endif
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.
@@ -565,18 +542,11 @@ final class AppState {
             guard cloudSyncEnabled != oldValue else { return }
             Defaults[.cloudSyncEnabled] = cloudSyncEnabled
             if cloudSyncEnabled {
-                #if os(iOS)
                 Task { await syncOverridesFromBackend() }
-                #endif
-                #if os(iOS)
                 pushCoordinator.enable()
                 requestPushScheduleSync()
-                #endif
             } else {
-                #if os(iOS)
-                // Turning sync off — tear down push registration.
                 Task { await pushCoordinator.disable() }
-                #endif
             }
         }
     }
@@ -1009,12 +979,13 @@ final class AppState {
             requestPushScheduleSync()
         }
     }
+    #endif // os(iOS) — Live Activity / reminder refresh
 
     // MARK: - Push server integration
 
     /// Wire the `PushAppDelegate` at app launch so APNs device tokens flow
     /// into `PushRegistrationService`.
-    func bindPushDelegate(_ delegate: PushAppDelegate) {
+    func bindPushDelegate(_ delegate: some PushTokenSource) {
         pushCoordinator.bindTokenForwarding(delegate)
         delegate.onSyncTrigger = { [weak self] in
             await self?.syncOverridesFromBackend()
@@ -1038,6 +1009,7 @@ final class AppState {
                     showAssignmentScenario: false
                 )
             }
+            #if os(iOS)
             return ScheduleSyncService.Inputs(
                 courses: courseProvider.currentCourses(),
                 assignments: DataCache.shared.loadAssignments(),
@@ -1048,6 +1020,18 @@ final class AppState {
                 showInClass: liveActivityPreferences.showInClassScenario,
                 showAssignmentScenario: liveActivityPreferences.showAssignmentScenario
             )
+            #else
+            return ScheduleSyncService.Inputs(
+                courses: CanonicalCourseProvider().currentCourses(),
+                assignments: DataCache.shared.loadAssignments(),
+                accentHex: accentColorHex,
+                classPreparingLeadTime: 3600,
+                assignmentLeadTime: 8 * 3600,
+                showClassPreparing: true,
+                showInClass: true,
+                showAssignmentScenario: true
+            )
+            #endif
         }
     }
 
@@ -1086,9 +1070,6 @@ final class AppState {
     /// locally. The assignment LIST comes from Moodle-direct (proven
     /// semester filtering); this only syncs the user's swipe marks.
     func syncOverridesFromBackend(retried: Bool = false) async {
-        #if os(macOS)
-        return
-        #else
         guard Defaults[.cloudSyncEnabled] else { return }
         guard await authTokenManager.isLoggedIn else { return }
         do {
@@ -1233,7 +1214,6 @@ final class AppState {
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
         }
-        #endif
     }
 
     private func applyCourseOverrides(_ overrides: [[String: Any]], coursesArray: [[String: Any]]) {
@@ -1284,7 +1264,6 @@ final class AppState {
     }
 
     private func attemptBackendRelogin() async -> Bool {
-        #if os(iOS)
         let atm = authTokenManager
         guard let studentId = authService.storedStudentId else { return false }
         let moodleToken = await MoodleTokenService.shared.currentToken()
@@ -1296,7 +1275,11 @@ final class AppState {
             return false
         }
         let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
+        #if os(iOS)
         let deviceName = UIDevice.current.name
+        #elseif os(macOS)
+        let deviceName = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        #endif
         do {
             _ = try await atm.login(
                 studentId: studentId,
@@ -1312,15 +1295,11 @@ final class AppState {
             AppLogger.sync.error("auto-relogin failed: \(error, privacy: .public)")
             return false
         }
-        #else
-        return false
-        #endif
     }
 
     /// Fire-and-forget override sync to the backend. Local state is already
     /// updated by the ViewModel; this propagates to other devices.
     func syncAssignmentOverride(moodleId: String, status: String) {
-        #if os(iOS)
         guard Defaults[.cloudSyncEnabled] else { return }
         AppLogger.sync.debug("override sending: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         pendingOverrides.insert(moodleId)
@@ -1335,7 +1314,6 @@ final class AppState {
                 AppLogger.sync.error("override patch failed: \(moodleId, privacy: .private) → \(status, privacy: .public), error=\(error, privacy: .public)")
             }
         }
-        #endif
     }
 
     func syncCourseOverride(
@@ -1345,7 +1323,6 @@ final class AppState {
         customName: String? = nil,
         locale: String? = nil
     ) {
-        #if os(iOS)
         guard Defaults[.cloudSyncEnabled] else { return }
         Task {
             _ = try? await pushCoordinator.patchCourseOverride(
@@ -1356,13 +1333,9 @@ final class AppState {
                 locale: locale
             )
         }
-        #endif
     }
 
     func uploadCourses(_ courses: [SDCourse], semester: String) {
-        #if os(macOS)
-        return
-        #else
         guard Defaults[.cloudSyncEnabled] else { return }
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
@@ -1382,7 +1355,6 @@ final class AppState {
                 PushAPI.CourseUploadRequest(courses: entries)
             )
         }
-        #endif
     }
 
     /// Disable server push (tells server to drop the device, stops relay).
@@ -1398,7 +1370,6 @@ final class AppState {
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
-    #endif // os(iOS) — closes the Live Activity / reminder / push block
 
     /// Background sync all data on app launch.
     ///
@@ -1427,9 +1398,7 @@ final class AppState {
             // Moodle-direct for the assignment list (proven, correct
             // semester filtering). Backend handles override sync only.
             let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
-            #if os(iOS)
             await syncOverridesFromBackend()
-            #endif
 
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
             async let coursesTask: Bool = syncCoursesIfAuthenticated()

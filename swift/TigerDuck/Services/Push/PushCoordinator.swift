@@ -1,9 +1,21 @@
+#if canImport(ActivityKit)
 import ActivityKit
+#endif
 import Defaults
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 import UserNotifications
 import os
+
+protocol PushTokenSource: AnyObject {
+    var forwardToken: ((Data) -> Void)? { get set }
+    var forwardError: ((Error) -> Void)? { get set }
+    var onSyncTrigger: (() async -> Void)? { get set }
+}
 
 struct PushDiagnostic: Sendable {
     let enabled: Bool
@@ -35,7 +47,9 @@ final class PushCoordinator {
     /// every layer. The actor still owns its own state — callers only see
     /// its async methods.
     let registration: PushRegistrationService
+    #if os(iOS)
     private let relay: PushTokenRelay
+    #endif
     let scheduleSync: ScheduleSyncService
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Coord")
@@ -76,7 +90,9 @@ final class PushCoordinator {
             // reached from the main actor.
             deviceClass: PushDeviceClass.resolvedForBuild
         )
+        #if os(iOS)
         self.relay = PushTokenRelay(registration: registration)
+        #endif
         self.scheduleSync = ScheduleSyncService(
             identity: identity,
             apiClient: resolvedClient
@@ -87,7 +103,7 @@ final class PushCoordinator {
 
     /// Must be called from `TigerDuckApp.init` or `onAppear` so the
     /// `PushAppDelegate` can forward APNs tokens before they arrive.
-    func bindTokenForwarding(_ appDelegate: PushAppDelegate) {
+    func bindTokenForwarding(_ appDelegate: some PushTokenSource) {
         appDelegate.forwardToken = { [weak self] data in
             guard let self else { return }
             Task { await self.registration.update(deviceToken: data) }
@@ -125,7 +141,9 @@ final class PushCoordinator {
         let firstStart = !isStarted
         if firstStart {
             isStarted = true
+            #if os(iOS)
             relay.start()
+            #endif
         }
         logger.info("enabling push stack (firstStart=\(firstStart, privacy: .public), requestPermission=\(requestPermission, privacy: .public))")
 
@@ -141,7 +159,11 @@ final class PushCoordinator {
             // a later permission grant (via onboarding or iOS Settings)
             // flow into the existing token-forwarding pipeline without
             // another explicit hook.
+            #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
+            #elseif os(macOS)
+            NSApplication.shared.registerForRemoteNotifications()
+            #endif
         }
     }
 
@@ -203,7 +225,11 @@ final class PushCoordinator {
     /// Returns the latest diagnostic snapshot for the settings view.
     func currentSnapshot() async -> PushDiagnostic {
         let reg = await registration.snapshot()
+        #if os(iOS)
         let liveActivitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
+        #else
+        let liveActivitiesEnabled = false
+        #endif
         let notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         return PushDiagnostic(
             enabled: Defaults[.pushServerEnabled],
@@ -222,7 +248,9 @@ final class PushCoordinator {
         isStarted = false
         logger.info("disabling push stack")
 
+        #if os(iOS)
         relay.stop()
+        #endif
         pendingSyncTask?.cancel()
         // Wait for any already-running debounced sync to finish before we
         // unregister, so a stale POST can't recreate state we just deleted.
@@ -234,12 +262,14 @@ final class PushCoordinator {
         await registration.unregister()
     }
 
+    #if os(iOS)
     func registerLiveActivityUpdateToken(
         _ registrationPayload: LiveActivityUpdateTokenRegistration
     ) async {
         guard Defaults[.pushServerEnabled] else { return }
         await registration.registerLiveActivityUpdateToken(registrationPayload)
     }
+    #endif
 
     // MARK: - Sync driver
 
@@ -254,9 +284,9 @@ final class PushCoordinator {
         pendingSyncTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(debounceMs))
             guard !Task.isCancelled else { return }
-            // Don't run the inputs builder (which touches SwiftData / models)
-            // while backgrounded — the system can suspend us mid-build.
+            #if os(iOS)
             guard UIApplication.shared.applicationState != .background else { return }
+            #endif
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
         }

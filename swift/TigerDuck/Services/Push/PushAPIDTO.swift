@@ -88,8 +88,9 @@ enum PushAPI {
         let replaced: Int
     }
 
-    // MARK: - Live Activity token registration (v3)
+    // MARK: - Live Activity token registration (v3, iOS only)
 
+    #if os(iOS)
     struct LiveActivityRegisterV3Request: Encodable, Sendable {
         let activity_id: String
         let source_id: String
@@ -110,6 +111,7 @@ enum PushAPI {
             case endJobId = "end_job_id"
         }
     }
+    #endif
 
     // MARK: - Credential refresh
 

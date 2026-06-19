@@ -67,6 +67,7 @@ final class PushAPIClient: Sendable {
         try await post(path: "/schedule/sync", body: request, returning: PushAPI.ScheduleSyncResponse.self)
     }
 
+    #if os(iOS)
     func registerLiveActivityToken(
         _ request: PushAPI.LiveActivityRegisterV3Request
     ) async throws -> PushAPI.LiveActivityTokenRegisterResponse {
@@ -76,6 +77,7 @@ final class PushAPIClient: Sendable {
             returning: PushAPI.LiveActivityTokenRegisterResponse.self
         )
     }
+    #endif
 
     /// v3: device identity comes from the JWT; only `sourceId` is needed in the path.
     func cancelSchedule(sourceId: String) async throws {

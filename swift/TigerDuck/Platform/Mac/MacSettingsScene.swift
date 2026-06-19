@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import Defaults
 import SwiftUI
 
 /// Mac-native Settings window (⌘,).
@@ -332,7 +333,11 @@ private struct MacSidebarSettingsView: View {
 private struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @Default(.pushLastRegistrationAt) private var lastRegistrationAt
+    @Default(.pushLastSyncAt) private var lastSyncAt
     @State private var showSignIn = false
+    @State private var snapshot: PushDiagnostic?
+    @State private var refreshTimer: Timer?
 
     var body: some View {
         @Bindable var state = appState
@@ -387,16 +392,69 @@ private struct MacAccountSettingsView: View {
                 }
                 .disabled(appState.sessionManager.loadingState == .loading)
             }
+
+            if let s = snapshot, s.enabled {
+                Section(String(localized: "push_server_status_section")) {
+                    syncStatusRow(
+                        label: String(localized: "push_server_status_device_registration"),
+                        ok: s.registration.deviceTokenLength > 0,
+                        okText: String(localized: "push_server_status_done"),
+                        badText: String(localized: "push_server_status_waiting_token")
+                    )
+                    LabeledContent(String(localized: "push_server_last_registration")) {
+                        if let at = lastRegistrationAt {
+                            Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
+                        } else {
+                            Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
+                        }
+                    }
+                    LabeledContent(String(localized: "push_server_last_sync")) {
+                        if let at = lastSyncAt {
+                            Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
+                        } else {
+                            Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let error = s.registration.lastError {
+                        LabeledContent(String(localized: "push_server_latest_error")) {
+                            Text(error).foregroundStyle(.red).font(.caption)
+                        }
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task { snapshot = await appState.pushCoordinator.currentSnapshot() }
+        .onAppear {
+            refreshTimer?.invalidate()
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+                Task { snapshot = await appState.pushCoordinator.currentSnapshot() }
+            }
+        }
+        .onDisappear {
+            refreshTimer?.invalidate()
+            refreshTimer = nil
+        }
         .sheet(isPresented: $showSignIn) {
             MacLoginView(showsSkipButton: false)
                 .frame(minWidth: 460, idealWidth: 520, minHeight: 520, idealHeight: 560)
                 .onChange(of: appState.authService.hasStoredCredentials) { _, signedIn in
                     if signedIn { showSignIn = false }
                 }
+        }
+    }
+
+    @ViewBuilder
+    private func syncStatusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
+        LabeledContent(label) {
+            HStack(spacing: 6) {
+                Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(ok ? .green : .orange)
+                Text(ok ? okText : badText)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

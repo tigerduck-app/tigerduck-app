@@ -238,6 +238,9 @@ struct TigerDuckApp: App {
     @State private var appState = AppState()
     @State private var rootLanguageId = UUID()
     @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
+    @State private var sceneRefreshTask: Task<Void, Never>?
+    @NSApplicationDelegateAdaptor(MacPushAppDelegate.self) private var pushAppDelegate
+    @Environment(\.scenePhase) private var scenePhase
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -284,6 +287,7 @@ struct TigerDuckApp: App {
 
     init() {
         AppLogger.start()
+        PushCoordinator.assertEnvConsistency()
     }
 
     var body: some Scene {
@@ -292,16 +296,8 @@ struct TigerDuckApp: App {
                 .id(rootLanguageId)
                 .environment(appState)
                 .onAppear {
-                    // Mirror the iOS launch path: kick off the first
-                    // sync so Home/Class Table/Calendar don't sit on
-                    // stale cache until the user hits Refresh.
+                    appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
-                    // Widget extension reads its snapshot from the App
-                    // Group. Without this regenerate the Mac widget
-                    // would render the "Please sign in" placeholder
-                    // even when credentials exist — the writer pipeline
-                    // is what fills the snapshot store on iPhone and
-                    // we mirror it here.
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
@@ -315,6 +311,16 @@ struct TigerDuckApp: App {
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
                 ) { _ in
                     rootLanguageId = UUID()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        sceneRefreshTask?.cancel()
+                        sceneRefreshTask = Task {
+                            appState.requestPushScheduleSync()
+                            await appState.refreshMoodleCredentials()
+                        }
+                        widgetSnapshotWriter?.regenerate()
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)
