@@ -1065,7 +1065,7 @@
 					ScheduleSyncService.swift,
 					NotificationDelegate.swift,
 					AppURLs.swift,
-					SSLPinningDelegate.swift,
+
 					LiveActivity/Models/LiveActivitySnapshot.swift,
 					LiveActivity/Models/LiveActivityScenarioKind.swift,
 					LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
@@ -1260,7 +1260,7 @@
 					ScheduleSyncService.swift,
 					NotificationDelegate.swift,
 					AppURLs.swift,
-					SSLPinningDelegate.swift,
+
 					LiveActivity/Models/LiveActivitySnapshot.swift,
 					LiveActivity/Models/LiveActivityScenarioKind.swift,
 					LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,

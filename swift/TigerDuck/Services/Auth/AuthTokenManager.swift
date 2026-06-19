@@ -12,7 +12,6 @@ actor AuthTokenManager {
 
     private let baseURL: String
     private let deviceUUID: String
-    private let session: URLSession
 
     static let accessTokenKey = "v3_access_token"
     static let refreshTokenKey = "v3_refresh_token"
@@ -21,11 +20,6 @@ actor AuthTokenManager {
     init(baseURL: String, deviceUUID: String) {
         self.baseURL = baseURL
         self.deviceUUID = deviceUUID
-        self.session = URLSession(
-            configuration: .ephemeral,
-            delegate: SSLPinningDelegate.shared,
-            delegateQueue: nil
-        )
         self.accessToken = KeychainManager.loadString(key: Self.accessTokenKey)
         self.refreshToken = KeychainManager.loadString(key: Self.refreshTokenKey)
         if let raw = KeychainManager.loadString(key: Self.expiresAtKey),
@@ -109,7 +103,7 @@ actor AuthTokenManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw AuthError.loginFailed
         }
@@ -146,7 +140,7 @@ actor AuthTokenManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))
 
-        guard let (data, response) = try? await session.data(for: request),
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse, http.statusCode == 200,
               let result = try? JSONDecoder().decode(RefreshResponse.self, from: data)
         else {

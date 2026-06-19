@@ -276,7 +276,7 @@ final class PushAPIClient: Sendable {
         config.httpAdditionalHeaders = [
             "User-Agent": "TigerDuck-iOS/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")"
         ]
-        return URLSession(configuration: config, delegate: SSLPinningDelegate.shared, delegateQueue: nil)
+        return URLSession(configuration: config)
     }
 
     private static let encoder: JSONEncoder = {
