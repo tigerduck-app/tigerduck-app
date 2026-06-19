@@ -27,7 +27,6 @@ final class AppState {
     /// user to the login screen rather than stranding them in an
     /// unauthenticated `MacContentView`).
     var didSkipMacLogin = false
-    var showBackendSessionExpired = false
 
     let authService = AuthService()
     let sessionManager = NTUSTSessionManager.shared
@@ -1191,9 +1190,7 @@ final class AppState {
                     print("[Sync] auto-relogin succeeded, retrying sync")
                     try? await Task.sleep(for: .milliseconds(500))
                     await syncOverridesFromBackend()
-                    return
                 }
-                await MainActor.run { showBackendSessionExpired = true }
             }
             print("[Sync] syncOverrides failed: \(error)")
         }
