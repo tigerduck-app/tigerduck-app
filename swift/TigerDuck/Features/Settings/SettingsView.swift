@@ -167,9 +167,16 @@ struct SettingsView: View {
 
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
+                if !Defaults[.cloudSyncEnabled] {
+                    Label(
+                        String(localized: "settings_sync_off_notifications_warning"),
+                        systemImage: "icloud.slash"
+                    )
+                    .foregroundStyle(.orange)
+                    .font(.callout)
+                }
+
                 #if os(iOS)
-                // The "denied -> open System Settings" deeplink is iOS-only;
-                // macOS has its own MacSettingsScene and no openSettingsURLString.
                 if !notificationsAuthorized {
                     Button {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
