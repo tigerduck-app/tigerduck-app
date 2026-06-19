@@ -10,7 +10,6 @@ enum PushAPI {
     struct DeviceRegisterRequest: Encodable, Sendable {
         let client_device_id: String
         let platform: String
-        let device_name: String?
         let app_version: String?
         let os_version: String?
         let push_token: PushTokenIn?

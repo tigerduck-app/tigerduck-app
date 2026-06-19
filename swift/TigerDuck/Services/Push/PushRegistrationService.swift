@@ -164,7 +164,6 @@ actor PushRegistrationService {
         let request = PushAPI.DeviceRegisterRequest(
             client_device_id: identity.uuid,
             platform: PushDeviceClass.platform(for: deviceClass),
-            device_name: nil,
             app_version: appVersion,
             os_version: ProcessInfo.processInfo.operatingSystemVersionString,
             push_token: nil
@@ -326,7 +325,6 @@ actor PushRegistrationService {
             let ptsRequest = PushAPI.DeviceRegisterRequest(
                 client_device_id: identity.uuid,
                 platform: PushDeviceClass.platform(for: deviceClass),
-                device_name: nil,
                 app_version: appVersion,
                 os_version: nil,
                 push_token: PushAPI.PushTokenIn(
@@ -345,7 +343,6 @@ actor PushRegistrationService {
                 let deviceTokenRequest = PushAPI.DeviceRegisterRequest(
                     client_device_id: identity.uuid,
                     platform: PushDeviceClass.platform(for: deviceClass),
-                    device_name: nil,
                     app_version: appVersion,
                     os_version: nil,
                     push_token: PushAPI.PushTokenIn(
