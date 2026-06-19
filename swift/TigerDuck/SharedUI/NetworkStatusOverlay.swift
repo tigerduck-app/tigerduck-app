@@ -31,6 +31,7 @@ struct NetworkStatusOverlay: View {
                 EmptyView()
             }
         }
+        .frame(minHeight: 28)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: loadingState)
         // Drive the fade off `visible` here rather than inside the delayed
         // task: this modifier re-reads `reduceMotion` at render time, so a
@@ -49,6 +50,9 @@ struct NetworkStatusOverlay: View {
                 visible = false
             }
         }
-        .onDisappear { hideTask?.cancel() }
+        .onDisappear {
+            hideTask?.cancel()
+            visible = false
+        }
     }
 }
