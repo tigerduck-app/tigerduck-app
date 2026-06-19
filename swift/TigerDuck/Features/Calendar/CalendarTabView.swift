@@ -19,7 +19,7 @@ struct CalendarTabView: View {
     private var content: some View {
         ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
-                    HStack(alignment: .top) {
+                    HStack {
                         Text(String(localized: "feature_calendar"))
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
@@ -49,7 +49,7 @@ struct CalendarTabView: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
             .refreshable {
-                await viewModel.refresh(authService: appState.authService)
+                viewModel.triggerRefresh(authService: appState.authService)
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
