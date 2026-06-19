@@ -36,16 +36,16 @@ struct NetworkStatusOverlay: View {
         // task: this modifier re-reads `reduceMotion` at render time, so a
         // toggle made during the two-second delay is always respected.
         .animation(reduceMotion ? nil : .easeOut(duration: 0.5), value: visible)
-        .onChange(of: loadingState) { _, newValue in
+        .onChange(of: loadingState) { oldValue, newValue in
             hideTask?.cancel()
-            if newValue == .loaded {
+            if newValue == .loaded, oldValue == .loading {
                 visible = true
                 hideTask = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(2))
                     guard !Task.isCancelled else { return }
                     visible = false
                 }
-            } else {
+            } else if newValue != .loaded {
                 visible = false
             }
         }
