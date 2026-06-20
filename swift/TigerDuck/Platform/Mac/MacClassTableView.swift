@@ -207,9 +207,8 @@ struct MacClassTableView: View {
                     TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
                     cacheRevision &+= 1
                     NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-                    if let idnumber = course.moodleIdNumber,
-                       let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
-                        appState.syncCourseOverride(moodleCourseId: String(numericId), colorHex: String(format: "#%06X", hex))
+                    if let moodleId = course.moodleIdNumber {
+                        appState.syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
                     }
                 }
             )
@@ -758,9 +757,8 @@ struct MacClassTableView: View {
         courseToRename = nil
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        if let idnumber = course.moodleIdNumber,
-           let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
-            appState.syncCourseOverride(moodleCourseId: String(numericId), customName: trimmed, locale: locale)
+        if let moodleId = course.moodleIdNumber {
+            appState.syncCourseOverride(moodleCourseId: moodleId, customName: trimmed, locale: locale)
         }
     }
 
@@ -778,9 +776,8 @@ struct MacClassTableView: View {
         courseToRename = nil
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        if let idnumber = course.moodleIdNumber,
-           let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
-            appState.syncCourseOverride(moodleCourseId: String(numericId), customName: "", locale: locale)
+        if let moodleId = course.moodleIdNumber {
+            appState.syncCourseOverride(moodleCourseId: moodleId, customName: "", locale: locale)
         }
     }
 

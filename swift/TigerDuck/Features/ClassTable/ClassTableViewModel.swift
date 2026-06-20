@@ -804,16 +804,14 @@ final class ClassTableViewModel {
     }
 
     private func syncColorOverride(course: SDCourse, hex: UInt32) {
-        guard let idnumber = course.moodleIdNumber,
-              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else { return }
+        guard let moodleId = course.moodleIdNumber else { return }
         let hexStr = String(format: "#%06X", hex)
-        onSyncCourseOverride?(String(numericId), hexStr, nil, nil)
+        onSyncCourseOverride?(moodleId, hexStr, nil, nil)
     }
 
     private func syncNameOverride(course: SDCourse, customName: String, locale: String) {
-        guard let idnumber = course.moodleIdNumber,
-              let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else { return }
-        onSyncCourseOverride?(String(numericId), nil, customName, locale)
+        guard let moodleId = course.moodleIdNumber else { return }
+        onSyncCourseOverride?(moodleId, nil, customName, locale)
     }
 
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?

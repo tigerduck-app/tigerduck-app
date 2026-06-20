@@ -172,12 +172,11 @@ struct OtherSettingsView: View {
         if Defaults[.cloudSyncEnabled] {
             let colorMap = TigerDuckTheme.snapshot()
             for course in courses {
-                guard let idnumber = course.moodleIdNumber,
-                      let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber),
+                guard let moodleId = course.moodleIdNumber,
                       let hex = colorMap[course.courseNo]
                 else { continue }
                 appState.syncCourseOverride(
-                    moodleCourseId: String(numericId),
+                    moodleCourseId: moodleId,
                     colorHex: String(format: "#%06X", hex)
                 )
             }
