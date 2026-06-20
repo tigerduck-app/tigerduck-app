@@ -1244,6 +1244,7 @@ final class AppState {
                 // Merge courses that exist on the server but not locally.
                 // Save into userAddedCourses so they survive portal refreshes
                 // (portal fetch overwrites the main course cache).
+                let localNamesByNo = Dictionary(localCourses.map { ($0.courseNo, $0.courseName) }, uniquingKeysWith: { first, _ in first })
                 let userAddedNos = Set(DataCache.shared.loadUserAddedCourses().map(\.courseNo))
                 let allLocalNos = localCourseNos.union(userAddedNos)
                 let missingLocally = serverCourseNos.subtracting(allLocalNos).subtracting(deletedNos)
@@ -1266,7 +1267,7 @@ final class AppState {
                     let instructors = (courseDict["instructors"] as? [String])?.joined(separator: ", ") ?? existing.instructor
                     userAdded[idx] = SDCourse(
                         courseNo: existing.courseNo,
-                        courseName: courseDict["course_name"] as? String ?? existing.courseName,
+                        courseName: localNamesByNo[existing.courseNo] ?? courseDict["course_name"] as? String ?? existing.courseName,
                         instructor: instructors,
                         credits: Int(courseDict["credits"] as? Double ?? Double(existing.credits)),
                         classroom: courseDict["classroom"] as? String ?? existing.classroom,
@@ -1307,7 +1308,7 @@ final class AppState {
                         let cmap = courseDict["classroom_map"] as? [String: String] ?? [:]
                         let course = SDCourse(
                             courseNo: courseNo,
-                            courseName: courseDict["course_name"] as? String ?? courseNo,
+                            courseName: localNamesByNo[courseNo] ?? courseDict["course_name"] as? String ?? courseNo,
                             instructor: instructors,
                             credits: Int(courseDict["credits"] as? Double ?? 0),
                             classroom: courseDict["classroom"] as? String ?? "",
@@ -1326,6 +1327,40 @@ final class AppState {
 
                 if userAddedChanged {
                     DataCache.shared.saveUserAddedCourses(userAdded)
+                    let lang = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
+                    let needsLookup = userAdded.filter { localNamesByNo[$0.courseNo] == nil }
+                    if !needsLookup.isEmpty {
+                        Task.detached { [weak self] in
+                            var updated = false
+                            var current = DataCache.shared.loadUserAddedCourses()
+                            for course in needsLookup {
+                                guard let results = try? await CourseLookupService.lookupCourse(
+                                    semester: semester, courseNo: course.courseNo, language: lang
+                                ), let match = results.first else { continue }
+                                guard let idx = current.firstIndex(where: { $0.courseNo == course.courseNo }) else { continue }
+                                current[idx] = SDCourse(
+                                    courseNo: course.courseNo,
+                                    courseName: match.CourseName,
+                                    instructor: match.CourseTeacher,
+                                    credits: course.credits,
+                                    classroom: match.ClassRoomNo ?? course.classroom,
+                                    enrolledCount: course.enrolledCount,
+                                    maxCount: course.maxCount,
+                                    schedule: course.schedule,
+                                    moodleIdNumber: course.moodleIdNumber,
+                                    semester: course.semester,
+                                    classroomMap: course.classroomMap
+                                )
+                                updated = true
+                            }
+                            if updated {
+                                DataCache.shared.saveUserAddedCourses(current)
+                                await MainActor.run {
+                                    NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
