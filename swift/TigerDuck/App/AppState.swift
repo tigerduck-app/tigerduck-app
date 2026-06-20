@@ -1206,22 +1206,26 @@ final class AppState {
                     }
                 }
 
-                // Merge courses that exist on the server but not locally
-                let missingLocally = serverCourseNos.subtracting(localCourseNos).subtracting(deletedNos)
-                AppLogger.sync.info("[sync-debug] missingLocally=\(missingLocally.sorted(), privacy: .public) (after subtracting deletedNos=\(deletedNos.sorted(), privacy: .public))")
+                // Merge courses that exist on the server but not locally.
+                // Save into userAddedCourses so they survive portal refreshes
+                // (portal fetch overwrites the main course cache).
+                let userAddedNos = Set(DataCache.shared.loadUserAddedCourses().map(\.courseNo))
+                let allLocalNos = localCourseNos.union(userAddedNos)
+                let missingLocally = serverCourseNos.subtracting(allLocalNos).subtracting(deletedNos)
+                AppLogger.sync.info("[sync-debug] missingLocally=\(missingLocally.sorted(), privacy: .public) (after subtracting deletedNos=\(deletedNos.sorted(), privacy: .public) userAddedNos=\(userAddedNos.sorted(), privacy: .public))")
                 if !missingLocally.isEmpty {
-                    var updated = DataCache.shared.loadCourses(semester: semester)
-                    let updatedNos = Set(updated.map(\.courseNo))
+                    var userAdded = DataCache.shared.loadUserAddedCourses()
+                    let existingNos = Set(userAdded.map(\.courseNo))
                     for courseDict in coursesArray {
                         guard let courseNo = courseDict["course_no"] as? String,
                               missingLocally.contains(courseNo),
-                              !updatedNos.contains(courseNo),
+                              !existingNos.contains(courseNo),
                               let courseSemester = courseDict["semester"] as? String,
                               courseSemester == semester else {
                             let courseNo = courseDict["course_no"] as? String ?? "<nil>"
                             let courseSem = courseDict["semester"] as? String ?? "<nil>"
                             if missingLocally.contains(courseNo) {
-                                AppLogger.sync.info("[sync-debug] SKIP merge \(courseNo, privacy: .public): courseSemester=\(courseSem, privacy: .public) vs local=\(semester, privacy: .public) alreadyInUpdated=\(updatedNos.contains(courseNo), privacy: .public)")
+                                AppLogger.sync.info("[sync-debug] SKIP merge \(courseNo, privacy: .public): courseSemester=\(courseSem, privacy: .public) vs local=\(semester, privacy: .public) alreadyInUserAdded=\(existingNos.contains(courseNo), privacy: .public)")
                             }
                             continue
                         }
@@ -1237,11 +1241,11 @@ final class AppState {
                             moodleIdNumber: courseDict["moodle_id"] as? String,
                             semester: semester
                         )
-                        updated.append(course)
-                        AppLogger.sync.info("merged course from server: \(courseNo, privacy: .public)")
+                        userAdded.append(course)
+                        AppLogger.sync.info("[sync-debug] merged course from server into userAdded: \(courseNo, privacy: .public)")
                     }
-                    if updated.count != DataCache.shared.loadCourses(semester: semester).count {
-                        DataCache.shared.saveCourses(updated, semester: semester)
+                    if userAdded.count != DataCache.shared.loadUserAddedCourses().count {
+                        DataCache.shared.saveUserAddedCourses(userAdded)
                     }
                 }
             }
