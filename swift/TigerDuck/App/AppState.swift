@@ -187,6 +187,7 @@ final class AppState {
     }
 
     deinit {
+        revisionPollTimer?.invalidate()
         #if os(iOS)
         pendingRefreshTask?.cancel()
         boundaryRefreshTask?.cancel()
@@ -264,6 +265,17 @@ final class AppState {
     private var _libraryRevision = 0
     private var syncTask: Task<Void, Never>?
     private var relabelTask: Task<Void, Never>?
+
+    // MARK: - Revision polling
+
+    /// Last known server revision. When the server reports a higher value
+    /// the poller triggers a full sync via ``syncOverridesFromBackend()``.
+    @ObservationIgnored
+    private var _lastKnownRevision: Int = 0
+
+    /// Repeating timer that fires every 10 s while the app is foregrounded.
+    @ObservationIgnored
+    private var revisionPollTimer: Timer?
 
     #if os(iOS)
     // MARK: - Live Activity (iOS only — ActivityKit + reminder scheduler
@@ -453,6 +465,8 @@ final class AppState {
     /// `Task.isCancelled` before writing — abort cleanly rather than racing
     /// the cache purge below and resurrecting the previous user's data.
     func logoutNTUST() {
+        stopRevisionPolling()
+        _lastKnownRevision = 0
         syncTask?.cancel()
         syncTask = nil
         #if os(iOS)
@@ -549,7 +563,9 @@ final class AppState {
                 Task { await syncOverridesFromBackend() }
                 pushCoordinator.enable()
                 requestPushScheduleSync()
+                startRevisionPolling()
             } else {
+                stopRevisionPolling()
                 Task { await pushCoordinator.disable() }
             }
         }
@@ -1371,6 +1387,12 @@ final class AppState {
                 }
             }
 
+            // Update the revision watermark so the poller doesn't
+            // immediately re-trigger after a full sync.
+            if let rev = json["current_revision"] as? Int {
+                _lastKnownRevision = rev
+            }
+
             UserDefaults.standard.set(Date(), forKey: "lastCourseSyncAt")
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             lastSyncSource = .backend
@@ -1564,6 +1586,7 @@ final class AppState {
     /// Disable server push (tells server to drop the device, stops relay).
     func disablePushServer() async {
         Defaults[.pushServerEnabled] = false
+        stopRevisionPolling()
         await pushCoordinator.disable()
     }
 
@@ -1575,6 +1598,49 @@ final class AppState {
         try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
 
+    // MARK: - Revision polling
+
+    /// Start the foreground revision poller. Safe to call repeatedly —
+    /// re-entry invalidates the previous timer before scheduling a new one.
+    func startRevisionPolling() {
+        stopRevisionPolling()
+        guard Defaults[.cloudSyncEnabled] else { return }
+        revisionPollTimer = Timer.scheduledTimer(
+            withTimeInterval: 10,
+            repeats: true
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                await self.pollRevision()
+            }
+        }
+    }
+
+    /// Stop the foreground revision poller (e.g. when the app backgrounds).
+    func stopRevisionPolling() {
+        revisionPollTimer?.invalidate()
+        revisionPollTimer = nil
+    }
+
+    /// Single poll tick: fetch the lightweight revision endpoint, compare
+    /// with ``_lastKnownRevision``, and trigger a full sync when the
+    /// server is ahead.
+    private func pollRevision() async {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        guard await authTokenManager.isLoggedIn else { return }
+        do {
+            let serverRevision = try await pushCoordinator.fetchRevision()
+            if serverRevision > _lastKnownRevision {
+                _lastKnownRevision = serverRevision
+                await syncOverridesFromBackend()
+            }
+        } catch {
+            // Best-effort — next tick retries. Don't log at `.error` to
+            // avoid noise when the device is on flaky connectivity.
+            AppLogger.sync.debug("revision poll failed: \(error, privacy: .public)")
+        }
+    }
+
     /// Background sync all data on app launch.
     ///
     /// Three independent tracks run in parallel. Moodle rides a long-
@@ -1583,6 +1649,7 @@ final class AppState {
     /// and ICS are never held up behind `ensureAuthenticated()`.
     func backgroundSync() {
         guard hasCompletedOnboarding else { return }
+        startRevisionPolling()
         syncTask?.cancel()
         syncTask = Task {
             // Captive-aware reachability — under a hotel / campus Wi-Fi

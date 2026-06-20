@@ -143,6 +143,7 @@ struct TigerDuckApp: App {
                             appState.requestPushScheduleSync()
                             await appState.refreshMoodleCredentials()
                         }
+                        appState.startRevisionPolling()
                         widgetSnapshotWriter?.regenerate()
                         // Background "is there a newer build on the App
                         // Store?" check. Internally throttled to once
@@ -150,6 +151,8 @@ struct TigerDuckApp: App {
                         // rapid scene toggles don't generate iTunes
                         // Lookup traffic.
                         appState.updateNotifyCoordinator.checkInBackground()
+                    } else if newPhase == .background {
+                        appState.stopRevisionPolling()
                     }
                 }
         }
@@ -323,7 +326,10 @@ struct TigerDuckApp: App {
                             appState.requestPushScheduleSync()
                             await appState.refreshMoodleCredentials()
                         }
+                        appState.startRevisionPolling()
                         widgetSnapshotWriter?.regenerate()
+                    } else if newPhase == .background {
+                        appState.stopRevisionPolling()
                     }
                 }
         }

@@ -182,6 +182,10 @@ final class PushCoordinator {
         )
     }
 
+    func fetchRevision() async throws -> Int {
+        try await apiClient.fetchRevision()
+    }
+
     func fetchFullSync() async throws -> [String: Any] {
         try await apiClient.fetchFullSync()
     }

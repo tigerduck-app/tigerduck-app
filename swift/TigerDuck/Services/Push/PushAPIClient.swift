@@ -162,6 +162,26 @@ final class PushAPIClient: Sendable {
 
     // MARK: - Sync
 
+    /// Lightweight revision check. Returns the current server-side revision
+    /// number so the caller can decide whether a full sync is needed.
+    func fetchRevision() async throws -> Int {
+        let baseURL = baseURLProvider()
+        let url = baseURL.appendingPathComponent("sync/revision")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        await applyAuth(to: &request)
+        let data = try await execute(request)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let revision = json["revision"] as? Int else {
+            throw PushAPIError.decodingFailed(
+                NSError(domain: "PushAPI", code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Missing 'revision' in response"])
+            )
+        }
+        return revision
+    }
+
     func fetchFullSync() async throws -> [String: Any] {
         let baseURL = baseURLProvider()
         let url = baseURL.appendingPathComponent("sync/full")
