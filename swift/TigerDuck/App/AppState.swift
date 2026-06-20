@@ -1213,8 +1213,41 @@ final class AppState {
                 let allLocalNos = localCourseNos.union(userAddedNos)
                 let missingLocally = serverCourseNos.subtracting(allLocalNos).subtracting(deletedNos)
                 AppLogger.sync.info("[sync-debug] missingLocally=\(missingLocally.sorted(), privacy: .public) (after subtracting deletedNos=\(deletedNos.sorted(), privacy: .public) userAddedNos=\(userAddedNos.sorted(), privacy: .public))")
+
+                var userAdded = DataCache.shared.loadUserAddedCourses()
+                var userAddedChanged = false
+
+                // Update existing user-added courses with server data (e.g. schedule)
+                for (idx, existing) in userAdded.enumerated() {
+                    guard existing.schedule.isEmpty,
+                          let courseDict = coursesArray.first(where: { $0["course_no"] as? String == existing.courseNo }),
+                          let schedJson = courseDict["schedule_json"] as? [String: [String]],
+                          !schedJson.isEmpty else { continue }
+                    var schedule: [Int: [String]] = [:]
+                    for (key, val) in schedJson {
+                        if let weekday = Int(key) { schedule[weekday] = val }
+                    }
+                    let cmap = courseDict["classroom_map"] as? [String: String] ?? [:]
+                    let instructors = (courseDict["instructors"] as? [String])?.joined(separator: ", ") ?? existing.instructor
+                    userAdded[idx] = SDCourse(
+                        courseNo: existing.courseNo,
+                        courseName: courseDict["course_name"] as? String ?? existing.courseName,
+                        instructor: instructors,
+                        credits: Int(courseDict["credits"] as? Double ?? Double(existing.credits)),
+                        classroom: courseDict["classroom"] as? String ?? existing.classroom,
+                        enrolledCount: courseDict["enrolled_count"] as? Int ?? existing.enrolledCount,
+                        maxCount: courseDict["max_count"] as? Int ?? existing.maxCount,
+                        schedule: schedule,
+                        moodleIdNumber: courseDict["moodle_id"] as? String ?? existing.moodleIdNumber,
+                        semester: existing.semester,
+                        classroomMap: cmap
+                    )
+                    userAddedChanged = true
+                    AppLogger.sync.info("[sync-debug] updated userAdded \(existing.courseNo, privacy: .public) with schedule from server")
+                }
+
+                // Add new courses from server
                 if !missingLocally.isEmpty {
-                    var userAdded = DataCache.shared.loadUserAddedCourses()
                     let existingNos = Set(userAdded.map(\.courseNo))
                     for courseDict in coursesArray {
                         guard let courseNo = courseDict["course_no"] as? String,
@@ -1251,11 +1284,13 @@ final class AppState {
                             classroomMap: cmap
                         )
                         userAdded.append(course)
+                        userAddedChanged = true
                         AppLogger.sync.info("[sync-debug] merged course from server into userAdded: \(courseNo, privacy: .public)")
                     }
-                    if userAdded.count != DataCache.shared.loadUserAddedCourses().count {
-                        DataCache.shared.saveUserAddedCourses(userAdded)
-                    }
+                }
+
+                if userAddedChanged {
+                    DataCache.shared.saveUserAddedCourses(userAdded)
                 }
             }
 
