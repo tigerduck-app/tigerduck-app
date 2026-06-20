@@ -116,6 +116,10 @@ enum TigerDuckTheme {
         state.setColor(hex: hex & 0xFFFFFF, for: courseNo, palette: coursePaletteHexes)
     }
 
+    static func snapshot() -> [String: UInt32] {
+        state.snapshot()
+    }
+
     /// Refresh the in-memory map from disk. Called when the underlying
     /// user-scoped data is swapped (e.g. logout/login).
     static func reload() {
