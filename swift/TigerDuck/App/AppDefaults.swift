@@ -126,6 +126,10 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.cloudSyncEnabled,
         default: true
     )
+    static let syncCourses = Key<Bool>("syncCourses", default: true)
+    static let syncCourseColors = Key<Bool>("syncCourseColors", default: true)
+    static let syncCourseNames = Key<Bool>("syncCourseNames", default: true)
+    static let syncAssignments = Key<Bool>("syncAssignments", default: true)
 
     // MARK: Push server
     /// Default on as of the custom-push feature: every device registers on

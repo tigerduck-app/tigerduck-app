@@ -335,6 +335,10 @@ private struct MacAccountSettingsView: View {
     @Environment(\.openURL) private var openURL
     @Default(.pushLastRegistrationAt) private var lastRegistrationAt
     @Default(.pushLastSyncAt) private var lastSyncAt
+    @Default(.syncCourses) private var macSyncCourses
+    @Default(.syncCourseColors) private var macSyncCourseColors
+    @Default(.syncCourseNames) private var macSyncCourseNames
+    @Default(.syncAssignments) private var macSyncAssignments
     @State private var showSignIn = false
     @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
@@ -365,8 +369,15 @@ private struct MacAccountSettingsView: View {
                 }
             }
 
-            Section(String(localized: "settings_cloud_sync_title")) {
-                Toggle(String(localized: "settings_sync_toggle_label"), isOn: $state.cloudSyncEnabled)
+            Section("Cross-device sync") {
+                Toggle("Cross-device sync", isOn: $state.cloudSyncEnabled)
+
+                if state.cloudSyncEnabled {
+                    Toggle("Assignments", isOn: $macSyncAssignments)
+                    Toggle("Courses", isOn: $macSyncCourses)
+                    Toggle("Course colours", isOn: $macSyncCourseColors)
+                    Toggle("Custom course names", isOn: $macSyncCourseNames)
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "settings_sync_brief_description"))
@@ -380,7 +391,6 @@ private struct MacAccountSettingsView: View {
                         }
                         .font(.callout)
                     }
-                    .disabled(!state.cloudSyncEnabled)
                 }
 
                 Button {

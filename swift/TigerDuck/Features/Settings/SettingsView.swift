@@ -147,15 +147,12 @@ struct SettingsView: View {
             }
 
             // MARK: - Cross-Device Sync
-            Section(String(localized: "settings_cloud_sync_title")) {
+            Section("Cross-device sync") {
                 NavigationLink {
                     CloudSyncSettingsView()
                 } label: {
                     HStack {
-                        Label(
-                            String(localized: "settings_sync_toggle_label"),
-                            systemImage: "arrow.triangle.2.circlepath.icloud.fill"
-                        )
+                        Text("Cross-device sync")
                         Spacer()
                         Text(Defaults[.cloudSyncEnabled]
                              ? String(localized: "settings_sync_status_on")
@@ -205,8 +202,6 @@ struct SettingsView: View {
                         PushServerSettingsView()
                     }
                 }
-                .opacity(Defaults[.cloudSyncEnabled] ? 1 : 0.5)
-                .disabled(!Defaults[.cloudSyncEnabled])
             }
 
             // MARK: - Other settings

@@ -1,61 +1,42 @@
 import Defaults
 import SwiftUI
 
-/// Detail view for Cross-Device Sync, reachable from the Notifications
-/// section in SettingsView. Shows the same information as the onboarding
-/// cloud-sync page plus the master toggle.
 struct CloudSyncSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.cloudSyncEnabled) private var syncEnabled
+    @Default(.syncCourses) private var syncCourses
+    @Default(.syncCourseColors) private var syncCourseColors
+    @Default(.syncCourseNames) private var syncCourseNames
+    @Default(.syncAssignments) private var syncAssignments
 
     var body: some View {
         Form {
             Section {
-                Toggle(
-                    String(localized: "settings_sync_toggle_label"),
-                    isOn: $syncEnabled
-                )
-                .onChange(of: syncEnabled) { _, newValue in
-                    appState.cloudSyncEnabled = newValue
-                }
+                Toggle("Cross-device sync", isOn: $syncEnabled)
+                    .onChange(of: syncEnabled) { _, newValue in
+                        appState.cloudSyncEnabled = newValue
+                    }
             } footer: {
                 Text(String(localized: "settings_sync_brief_description"))
             }
 
-            Section(String(localized: "settings_sync_data_section")) {
-                cloudSyncInfoRow(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: String(localized: "onboarding_sync_shared_student_id")
-                )
-                cloudSyncInfoRow(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: String(localized: "onboarding_sync_shared_moodle_token")
-                )
-                cloudSyncInfoRow(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: String(localized: "onboarding_sync_shared_device_id")
-                )
-                cloudSyncInfoRow(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: String(localized: "onboarding_sync_shared_courses")
-                )
-                cloudSyncInfoRow(
-                    icon: "checkmark.circle.fill",
-                    color: .green,
-                    text: String(localized: "onboarding_sync_shared_assignments")
-                )
-                cloudSyncInfoRow(
-                    icon: "xmark.circle.fill",
-                    color: .red,
-                    text: String(localized: "onboarding_sync_not_shared_password")
-                )
-            }
-
             if syncEnabled {
+                Section("Sync options") {
+                    Toggle("Assignments", isOn: $syncAssignments)
+
+                    NavigationLink {
+                        classTableSyncOptions
+                    } label: {
+                        HStack {
+                            Text("Class table")
+                            Spacer()
+                            let count = [syncCourses, syncCourseColors, syncCourseNames].filter { $0 }.count
+                            Text("\(count)/3")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 Section {
                     Button {
                         appState.backgroundSync()
@@ -86,15 +67,19 @@ struct CloudSyncSettingsView: View {
                 }
             }
         }
-        .navigationTitle(String(localized: "settings_sync_toggle_label"))
+        .navigationTitle("Cross-device sync")
     }
 
-    private func cloudSyncInfoRow(icon: String, color: Color, text: String) -> some View {
-        HStack(spacing: TigerDuckTheme.Spacing.sm) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-            Text(text)
-                .font(.callout)
+    private var classTableSyncOptions: some View {
+        Form {
+            Section {
+                Toggle("Courses", isOn: $syncCourses)
+                Toggle("Course colours", isOn: $syncCourseColors)
+                Toggle("Custom course names", isOn: $syncCourseNames)
+            } footer: {
+                Text("Choose which class table data to sync across your devices.")
+            }
         }
+        .navigationTitle("Class table sync")
     }
 }
