@@ -1362,6 +1362,13 @@ final class AppState {
                         }
                     }
                 }
+            } else {
+                let semester = CourseSelectionService.currentSemesterCode()
+                let localCourses = DataCache.shared.loadCourses(semester: semester)
+                if !localCourses.isEmpty {
+                    uploadCourses(localCourses, semester: semester)
+                    AppLogger.sync.info("[sync] backend empty, auto-uploaded \(localCourses.count, privacy: .public) local courses")
+                }
             }
 
             UserDefaults.standard.set(Date(), forKey: "lastCourseSyncAt")
