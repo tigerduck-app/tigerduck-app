@@ -187,6 +187,8 @@ enum PushAPI {
         let credits: Double?
         let classroom: String?
         let instructors: [String]?
+        let scheduleJson: [String: [String]]?
+        let classroomMap: [String: String]?
 
         enum CodingKeys: String, CodingKey {
             case semester
@@ -197,6 +199,8 @@ enum PushAPI {
             case credits
             case classroom
             case instructors
+            case scheduleJson = "schedule_json"
+            case classroomMap = "classroom_map"
         }
     }
 

@@ -313,7 +313,9 @@ enum AppServiceBridge {
                             moodleId: c.moodleIdNumber,
                             credits: c.credits > 0 ? Double(c.credits) : nil,
                             classroom: c.classroom.isEmpty ? nil : c.classroom,
-                            instructors: c.instructor.isEmpty ? nil : [c.instructor]
+                            instructors: c.instructor.isEmpty ? nil : [c.instructor],
+                            scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),
+                            classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
                         )
                     }
                     let client = PushAPIClient(

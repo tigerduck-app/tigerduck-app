@@ -1230,6 +1230,13 @@ final class AppState {
                             continue
                         }
                         let instructors = (courseDict["instructors"] as? [String])?.joined(separator: ", ") ?? ""
+                        var schedule: [Int: [String]] = [:]
+                        if let schedJson = courseDict["schedule_json"] as? [String: [String]] {
+                            for (key, val) in schedJson {
+                                if let weekday = Int(key) { schedule[weekday] = val }
+                            }
+                        }
+                        let cmap = courseDict["classroom_map"] as? [String: String] ?? [:]
                         let course = SDCourse(
                             courseNo: courseNo,
                             courseName: courseDict["course_name"] as? String ?? courseNo,
@@ -1238,8 +1245,10 @@ final class AppState {
                             classroom: courseDict["classroom"] as? String ?? "",
                             enrolledCount: courseDict["enrolled_count"] as? Int ?? 0,
                             maxCount: courseDict["max_count"] as? Int ?? 0,
+                            schedule: schedule,
                             moodleIdNumber: courseDict["moodle_id"] as? String,
-                            semester: semester
+                            semester: semester,
+                            classroomMap: cmap
                         )
                         userAdded.append(course)
                         AppLogger.sync.info("[sync-debug] merged course from server into userAdded: \(courseNo, privacy: .public)")
@@ -1389,7 +1398,9 @@ final class AppState {
                 moodleId: c.moodleIdNumber,
                 credits: c.credits > 0 ? Double(c.credits) : nil,
                 classroom: c.classroom.isEmpty ? nil : c.classroom,
-                instructors: c.instructor.isEmpty ? [] : [c.instructor]
+                instructors: c.instructor.isEmpty ? [] : [c.instructor],
+                scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),
+                classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
             )
         }
         let coordinator = pushCoordinator
