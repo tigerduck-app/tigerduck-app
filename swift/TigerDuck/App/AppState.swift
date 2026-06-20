@@ -1517,7 +1517,7 @@ final class AppState {
         }
     }
 
-    func uploadCourses(_ courses: [SDCourse], semester: String) {
+    func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = []) {
         guard Defaults[.cloudSyncEnabled] else { return }
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
@@ -1545,7 +1545,7 @@ final class AppState {
         Task.detached {
             do {
                 try await coordinator.uploadCourses(
-                    PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides)
+                    PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides, forceKeys: forceKeys)
                 )
                 AppLogger.sync.info("uploadCourses: \(entries.count, privacy: .public) courses sent")
             } catch {

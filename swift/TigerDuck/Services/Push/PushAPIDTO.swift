@@ -217,10 +217,12 @@ enum PushAPI {
     struct CourseUploadRequest: Encodable, Sendable {
         let courses: [CourseUploadEntry]
         var courseOverrides: [CourseOverrideUploadEntry] = []
+        var forceKeys: [String] = []
 
         enum CodingKeys: String, CodingKey {
             case courses
             case courseOverrides = "course_overrides"
+            case forceKeys = "force_keys"
         }
     }
 

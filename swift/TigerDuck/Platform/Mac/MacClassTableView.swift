@@ -684,7 +684,8 @@ struct MacClassTableView: View {
         DataCache.shared.saveUserAddedCourses(existing + [course])
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        appState.uploadCourses(courses + [course], semester: selectedSemester)
+        let forceKey = "client:\(selectedSemester):\(course.courseNo)"
+        appState.uploadCourses(courses + [course], semester: selectedSemester, forceKeys: [forceKey])
         return true
     }
 

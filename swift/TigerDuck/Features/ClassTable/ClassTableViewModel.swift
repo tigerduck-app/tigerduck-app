@@ -672,7 +672,11 @@ final class ClassTableViewModel {
         courses.append(course)
         persistUserAddedCourses()
         broadcastLocalChange()
-        onCoursesChanged?(courses, currentSemester)
+        if onCourseAdded != nil {
+            onCourseAdded?(courses, currentSemester, course.courseNo)
+        } else {
+            onCoursesChanged?(courses, currentSemester)
+        }
         return true
     }
 
@@ -821,6 +825,7 @@ final class ClassTableViewModel {
 
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
     var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
     var onResetBackendCourses: (() async -> Void)?
 
