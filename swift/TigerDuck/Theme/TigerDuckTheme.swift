@@ -233,9 +233,10 @@ private final class ColorState: @unchecked Sendable {
     func reassignAll(courseNos: [String], palette: [UInt32]) {
         lock.withLock {
             map.removeAll(keepingCapacity: true)
+            let shuffled = palette.shuffled()
             var used: Set<UInt32> = []
             for courseNo in courseNos.sorted() {
-                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
+                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: shuffled)
                 map[courseNo] = assigned
                 used.insert(assigned)
             }
