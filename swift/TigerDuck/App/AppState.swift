@@ -1533,11 +1533,19 @@ final class AppState {
                 classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
             )
         }
+        let colorMap = TigerDuckTheme.courseColorMap
+        let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
+            guard let hex = colorMap[c.courseNo] else { return nil }
+            return PushAPI.CourseOverrideUploadEntry(
+                courseKey: "client:\(semester):\(c.courseNo)",
+                colorHex: String(format: "#%06X", hex)
+            )
+        }
         let coordinator = pushCoordinator
         Task.detached {
             do {
                 try await coordinator.uploadCourses(
-                    PushAPI.CourseUploadRequest(courses: entries)
+                    PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides)
                 )
                 AppLogger.sync.info("uploadCourses: \(entries.count, privacy: .public) courses sent")
             } catch {

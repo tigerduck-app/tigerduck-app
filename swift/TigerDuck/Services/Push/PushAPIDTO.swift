@@ -204,8 +204,24 @@ enum PushAPI {
         }
     }
 
+    struct CourseOverrideUploadEntry: Encodable, Sendable {
+        let courseKey: String
+        let colorHex: String?
+
+        enum CodingKeys: String, CodingKey {
+            case courseKey = "course_key"
+            case colorHex = "color_hex"
+        }
+    }
+
     struct CourseUploadRequest: Encodable, Sendable {
         let courses: [CourseUploadEntry]
+        var courseOverrides: [CourseOverrideUploadEntry] = []
+
+        enum CodingKeys: String, CodingKey {
+            case courses
+            case courseOverrides = "course_overrides"
+        }
     }
 
     // MARK: - Assignment upload
