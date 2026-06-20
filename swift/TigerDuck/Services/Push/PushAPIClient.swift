@@ -147,6 +147,10 @@ final class PushAPIClient: Sendable {
         try await delete(path: "/sync/courses")
     }
 
+    func deleteCourse(courseKey: String) async throws {
+        try await delete(path: "/sync/courses/\(courseKey)")
+    }
+
     // MARK: - Assignment upload
 
     /// Fire-and-forget upload of the user's current assignment list so the

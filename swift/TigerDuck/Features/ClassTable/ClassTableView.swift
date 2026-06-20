@@ -14,6 +14,7 @@ struct ClassTableView: View {
                     viewModel.load(authService: appState.authService)
                     viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
+                    viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
                     viewModel.onResetBackendCourses = { await appState.deleteAllBackendCourses() }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
@@ -26,6 +27,7 @@ struct ClassTableView: View {
                     viewModel.load(authService: appState.authService)
                     viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
+                    viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
                     viewModel.onResetBackendCourses = { await appState.deleteAllBackendCourses() }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }

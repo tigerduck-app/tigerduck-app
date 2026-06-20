@@ -801,6 +801,7 @@ struct MacClassTableView: View {
 
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        appState.deleteBackendCourse(courseNo: course.courseNo, semester: selectedSemester)
         appState.uploadCourses(courses.filter { $0.courseNo != course.courseNo }, semester: selectedSemester)
     }
 }

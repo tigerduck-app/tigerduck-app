@@ -380,6 +380,7 @@ private struct MacAccountSettingsView: View {
                         }
                         .font(.callout)
                     }
+                    .disabled(!state.cloudSyncEnabled)
                 }
 
                 Button {
@@ -387,10 +388,10 @@ private struct MacAccountSettingsView: View {
                 } label: {
                     Label(String(localized: "cloud_sync_sync_now"), systemImage: "arrow.triangle.2.circlepath")
                 }
-                .disabled(appState.sessionManager.loadingState == .loading)
+                .disabled(!state.cloudSyncEnabled || appState.sessionManager.loadingState == .loading)
             }
 
-            if let s = snapshot, s.enabled {
+            if state.cloudSyncEnabled, let s = snapshot {
                 Section(String(localized: "push_server_status_section")) {
                     syncStatusRow(
                         label: String(localized: "push_server_status_device_registration"),

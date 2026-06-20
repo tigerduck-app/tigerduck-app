@@ -1172,6 +1172,25 @@ final class AppState {
                 applyCourseOverrides(courseOverrides, coursesArray: coursesArray)
             }
 
+            // Conflict resolution: detect reset + process tombstones
+            let coursesResetAtStr = json["courses_reset_at"] as? String
+            let coursesResetAt = coursesResetAtStr.flatMap { ISO8601DateFormatter().date(from: $0) }
+            let tombstoneArray = json["course_tombstones"] as? [[String: Any]] ?? []
+            let lastCourseSyncAt = UserDefaults.standard.object(forKey: "lastCourseSyncAt") as? Date
+
+            if let resetAt = coursesResetAt, let syncAt = lastCourseSyncAt, resetAt > syncAt {
+                DataCache.shared.saveUserAddedCourses([])
+                DataCache.shared.saveDeletedCourseNos([])
+                AppLogger.sync.info("[sync] courses reset detected (reset=\(resetAt, privacy: .public) > lastSync=\(syncAt, privacy: .public)), wiped local state")
+            }
+
+            var tombstonedNos = Set<String>()
+            for t in tombstoneArray {
+                if let courseNo = t["course_no"] as? String {
+                    tombstonedNos.insert(courseNo)
+                }
+            }
+
             // Hard-delete detection: compare server courses against local deletedCourseNos
             if !coursesArray.isEmpty {
                 let serverCourseNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
@@ -1189,6 +1208,22 @@ final class AppState {
                     deletedNos.insert(courseNo)
                     changed = true
                     AppLogger.sync.info("[sync-debug] marking \(courseNo, privacy: .public) as deleted (local-only, not in server)")
+                }
+
+                // Apply tombstones: courses explicitly deleted on another device
+                for courseNo in tombstonedNos where !serverCourseNos.contains(courseNo) && !deletedNos.contains(courseNo) {
+                    deletedNos.insert(courseNo)
+                    changed = true
+                    AppLogger.sync.info("[sync-debug] marking \(courseNo, privacy: .public) as deleted (tombstone)")
+                }
+
+                // Bug fix: also remove userAddedCourses not present on server
+                var userAddedForDelete = DataCache.shared.loadUserAddedCourses()
+                let userAddedBeforeDelete = userAddedForDelete.count
+                userAddedForDelete.removeAll { !serverCourseNos.contains($0.courseNo) }
+                if userAddedForDelete.count != userAddedBeforeDelete {
+                    DataCache.shared.saveUserAddedCourses(userAddedForDelete)
+                    AppLogger.sync.info("[sync-debug] removed \(userAddedBeforeDelete - userAddedForDelete.count, privacy: .public) userAdded courses not on server")
                 }
 
                 // A courseNo in deletedNos that IS in server courses → un-deleted
@@ -1294,6 +1329,7 @@ final class AppState {
                 }
             }
 
+            UserDefaults.standard.set(Date(), forKey: "lastCourseSyncAt")
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             lastSyncSource = .backend
         } catch {
@@ -1419,6 +1455,20 @@ final class AppState {
                 customName: customName,
                 locale: locale
             )
+        }
+    }
+
+    func deleteBackendCourse(courseNo: String, semester: String) {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        let courseKey = "client:\(semester):\(courseNo)"
+        let coordinator = pushCoordinator
+        Task.detached {
+            do {
+                try await coordinator.deleteCourse(courseKey: courseKey)
+                AppLogger.sync.info("deleteBackendCourse ok: \(courseKey, privacy: .public)")
+            } catch {
+                AppLogger.sync.error("deleteBackendCourse failed: \(error, privacy: .public)")
+            }
         }
     }
 

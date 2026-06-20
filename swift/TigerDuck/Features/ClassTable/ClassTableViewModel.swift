@@ -690,11 +690,13 @@ final class ClassTableViewModel {
     }
 
     func deleteCourse(_ course: SDCourse) {
-        courses.removeAll { $0.courseNo == course.courseNo }
-        deletedCourseNos.insert(course.courseNo)
+        let courseNo = course.courseNo
+        courses.removeAll { $0.courseNo == courseNo }
+        deletedCourseNos.insert(courseNo)
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         persistUserAddedCourses()
         broadcastLocalChange()
+        onCourseDeleted?(courseNo, currentSemester)
         onCoursesChanged?(courses, currentSemester)
     }
 
@@ -819,6 +821,7 @@ final class ClassTableViewModel {
 
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
     var onResetBackendCourses: (() async -> Void)?
 
     /// Wakes Home, the Live Activity coordinator, and any other observer
