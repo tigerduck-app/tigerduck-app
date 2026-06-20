@@ -1172,31 +1172,6 @@ final class AppState {
                 applyCourseOverrides(courseOverrides, coursesArray: coursesArray)
             }
 
-            // Push local colors for courses the server has no color override for.
-            if !coursesArray.isEmpty {
-                var mIdToNo: [String: String] = [:]
-                var noToMId: [String: String] = [:]
-                for c in coursesArray {
-                    let mId = c["moodle_id"] as? String ?? (c["moodle_id"] as? Int).map(String.init)
-                    let no = c["course_no"] as? String
-                    if let mId, let no { mIdToNo[mId] = no; noToMId[no] = mId }
-                }
-                var serverHasColor: Set<String> = []
-                for o in courseOverrides {
-                    guard let hex = o["color_hex"] as? String, !hex.isEmpty,
-                          let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
-                          let no = mIdToNo[mId]
-                    else { continue }
-                    serverHasColor.insert(no)
-                }
-                let localColors = TigerDuckTheme.snapshot()
-                for (courseNo, hex) in localColors where !serverHasColor.contains(courseNo) {
-                    if let moodleId = noToMId[courseNo] {
-                        syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
-                    }
-                }
-            }
-
             // Hard-delete detection: compare server courses against local deletedCourseNos
             if !coursesArray.isEmpty {
                 let serverCourseNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
