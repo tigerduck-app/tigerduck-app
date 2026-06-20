@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 struct ClassTableView: View {
@@ -80,12 +81,10 @@ struct ClassTableView: View {
             }
             .scrollIndicators(.hidden)
             .refreshable {
-                // Fire-and-forget: the pull gesture should dismiss the
-                // UIRefreshControl spinner immediately once released.
-                // `triggerRefresh` coalesces rapid repeated pulls into a
-                // single in-flight fetch; status lives in the top-right
-                // NetworkStatusOverlay.
                 viewModel.triggerRefresh(authService: appState.authService)
+                if Defaults[.cloudSyncEnabled] {
+                    Task { await appState.syncOverridesFromBackend() }
+                }
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)

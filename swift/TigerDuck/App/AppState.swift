@@ -1202,6 +1202,37 @@ final class AppState {
                         DataCache.shared.saveCourses(filtered, semester: semester)
                     }
                 }
+
+                // Merge courses that exist on the server but not locally
+                let missingLocally = serverCourseNos.subtracting(localCourseNos).subtracting(deletedNos)
+                if !missingLocally.isEmpty {
+                    var updated = DataCache.shared.loadCourses(semester: semester)
+                    let updatedNos = Set(updated.map(\.courseNo))
+                    for courseDict in coursesArray {
+                        guard let courseNo = courseDict["course_no"] as? String,
+                              missingLocally.contains(courseNo),
+                              !updatedNos.contains(courseNo),
+                              let courseSemester = courseDict["semester"] as? String,
+                              courseSemester == semester else { continue }
+                        let instructors = (courseDict["instructors"] as? [String])?.joined(separator: ", ") ?? ""
+                        let course = SDCourse(
+                            courseNo: courseNo,
+                            courseName: courseDict["course_name"] as? String ?? courseNo,
+                            instructor: instructors,
+                            credits: Int(courseDict["credits"] as? Double ?? 0),
+                            classroom: courseDict["classroom"] as? String ?? "",
+                            enrolledCount: courseDict["enrolled_count"] as? Int ?? 0,
+                            maxCount: courseDict["max_count"] as? Int ?? 0,
+                            moodleIdNumber: courseDict["moodle_id"] as? String,
+                            semester: semester
+                        )
+                        updated.append(course)
+                        AppLogger.sync.info("merged course from server: \(courseNo, privacy: .public)")
+                    }
+                    if updated.count != DataCache.shared.loadCourses(semester: semester).count {
+                        DataCache.shared.saveCourses(updated, semester: semester)
+                    }
+                }
             }
 
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
