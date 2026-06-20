@@ -1179,20 +1179,23 @@ final class AppState {
                 let semester = CourseSelectionService.currentSemesterCode()
                 let localCourses = DataCache.shared.loadCourses(semester: semester)
                 let localCourseNos = Set(localCourses.map(\.courseNo))
+                AppLogger.sync.info("[sync-debug] semester=\(semester, privacy: .public) serverCourses=\(serverCourseNos.sorted(), privacy: .public) localCourses=\(localCourseNos.sorted(), privacy: .public) deletedNos=\(deletedNos.sorted(), privacy: .public)")
+                let serverSemesters = Set(coursesArray.compactMap { $0["semester"] as? String })
+                AppLogger.sync.info("[sync-debug] server course semesters=\(serverSemesters.sorted(), privacy: .public)")
                 var changed = false
 
                 // A local course NOT in server courses → deleted on another device
                 for courseNo in localCourseNos where !serverCourseNos.contains(courseNo) && !deletedNos.contains(courseNo) {
                     deletedNos.insert(courseNo)
                     changed = true
-                    AppLogger.sync.info("course deleted on another device (not in server courses)")
+                    AppLogger.sync.info("[sync-debug] marking \(courseNo, privacy: .public) as deleted (local-only, not in server)")
                 }
 
                 // A courseNo in deletedNos that IS in server courses → un-deleted
                 for courseNo in deletedNos where serverCourseNos.contains(courseNo) {
                     deletedNos.remove(courseNo)
                     changed = true
-                    AppLogger.sync.info("course un-deleted (present in server courses)")
+                    AppLogger.sync.info("[sync-debug] un-deleting \(courseNo, privacy: .public) (back in server courses)")
                 }
 
                 if changed {
@@ -1205,6 +1208,7 @@ final class AppState {
 
                 // Merge courses that exist on the server but not locally
                 let missingLocally = serverCourseNos.subtracting(localCourseNos).subtracting(deletedNos)
+                AppLogger.sync.info("[sync-debug] missingLocally=\(missingLocally.sorted(), privacy: .public) (after subtracting deletedNos=\(deletedNos.sorted(), privacy: .public))")
                 if !missingLocally.isEmpty {
                     var updated = DataCache.shared.loadCourses(semester: semester)
                     let updatedNos = Set(updated.map(\.courseNo))
@@ -1213,7 +1217,14 @@ final class AppState {
                               missingLocally.contains(courseNo),
                               !updatedNos.contains(courseNo),
                               let courseSemester = courseDict["semester"] as? String,
-                              courseSemester == semester else { continue }
+                              courseSemester == semester else {
+                            let courseNo = courseDict["course_no"] as? String ?? "<nil>"
+                            let courseSem = courseDict["semester"] as? String ?? "<nil>"
+                            if missingLocally.contains(courseNo) {
+                                AppLogger.sync.info("[sync-debug] SKIP merge \(courseNo, privacy: .public): courseSemester=\(courseSem, privacy: .public) vs local=\(semester, privacy: .public) alreadyInUpdated=\(updatedNos.contains(courseNo), privacy: .public)")
+                            }
+                            continue
+                        }
                         let instructors = (courseDict["instructors"] as? [String])?.joined(separator: ", ") ?? ""
                         let course = SDCourse(
                             courseNo: courseNo,
