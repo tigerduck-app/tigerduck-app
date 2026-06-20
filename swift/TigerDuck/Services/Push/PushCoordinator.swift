@@ -214,6 +214,10 @@ final class PushCoordinator {
         try await apiClient.uploadCourses(request)
     }
 
+    func deleteAllCourses() async throws {
+        try await apiClient.deleteAllCourses()
+    }
+
     /// Re-attempt device registration after a sign-in. The launch-time
     /// registration runs before the v3 JWT exists and 401s; calling this once
     /// a Bearer is available gives it a fresh attempt — and resets the give-up

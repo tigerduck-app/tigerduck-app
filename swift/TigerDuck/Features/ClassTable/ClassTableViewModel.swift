@@ -712,6 +712,9 @@ final class ClassTableViewModel {
         courseCustomNames.removeAll()
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
         reloadFromCache()
+        if let resetBackend = onResetBackendCourses {
+            Task { await resetBackend() }
+        }
         triggerRefresh(authService: authService)
     }
 
@@ -816,6 +819,7 @@ final class ClassTableViewModel {
 
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    var onResetBackendCourses: (() async -> Void)?
 
     /// Wakes Home, the Live Activity coordinator, and any other observer
     /// that subscribes to `dataDidUpdate`. Local Class Table edits used to

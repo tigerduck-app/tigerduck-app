@@ -143,6 +143,10 @@ final class PushAPIClient: Sendable {
         _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
     }
 
+    func deleteAllCourses() async throws {
+        try await delete(path: "/sync/courses")
+    }
+
     // MARK: - Assignment upload
 
     /// Fire-and-forget upload of the user's current assignment list so the

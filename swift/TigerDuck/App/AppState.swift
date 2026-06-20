@@ -1422,6 +1422,16 @@ final class AppState {
         }
     }
 
+    func deleteAllBackendCourses() async {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        do {
+            try await pushCoordinator.deleteAllCourses()
+            AppLogger.sync.info("deleteAllBackendCourses ok")
+        } catch {
+            AppLogger.sync.error("deleteAllBackendCourses failed: \(error, privacy: .public)")
+        }
+    }
+
     func uploadCourses(_ courses: [SDCourse], semester: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
         let entries = courses.map { c in
