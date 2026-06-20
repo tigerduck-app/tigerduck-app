@@ -1330,9 +1330,9 @@ final class AppState {
                     let lang = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
                     let needsLookup = userAdded.filter { localNamesByNo[$0.courseNo] == nil }
                     if !needsLookup.isEmpty {
-                        Task.detached { [weak self] in
+                        Task.detached {
                             var updated = false
-                            var current = DataCache.shared.loadUserAddedCourses()
+                            var current = await DataCache.shared.loadUserAddedCourses()
                             for course in needsLookup {
                                 guard let results = try? await CourseLookupService.lookupCourse(
                                     semester: semester, courseNo: course.courseNo, language: lang
@@ -1354,7 +1354,7 @@ final class AppState {
                                 updated = true
                             }
                             if updated {
-                                DataCache.shared.saveUserAddedCourses(current)
+                                await DataCache.shared.saveUserAddedCourses(current)
                                 await MainActor.run {
                                     NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
                                 }
