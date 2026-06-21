@@ -276,7 +276,6 @@ struct CloudSyncSettingsView: View {
                             syncCourses = newValue
                             if !newValue {
                                 syncCourseColors = false
-                                syncCourseNames = false
                             }
                             appState.pushSyncPreferences()
                         }
@@ -288,7 +287,6 @@ struct CloudSyncSettingsView: View {
                             appState.pushSyncPreferences()
                         }
                     Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $syncCourseNames)
-                        .disabled(!syncCourses)
                         .onChange(of: syncCourseNames) { old, new in
                             if new && !old { appState.markCategoryReenabled("course_names") }
                             appState.pushSyncPreferences()

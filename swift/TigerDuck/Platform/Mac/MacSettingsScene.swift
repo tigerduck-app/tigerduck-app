@@ -402,7 +402,6 @@ private struct MacAccountSettingsView: View {
                                 macSyncCourses = newValue
                                 if !newValue {
                                     macSyncCourseColors = false
-                                    macSyncCourseNames = false
                                 }
                                 appState.pushSyncPreferences()
                             }
@@ -417,7 +416,6 @@ private struct MacAccountSettingsView: View {
                             }
                         Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $macSyncCourseNames)
                             .padding(.leading, 20)
-                            .disabled(!macSyncCourses)
                             .onChange(of: macSyncCourseNames) { old, new in
                                 if new && !old { appState.markCategoryReenabled("course_names") }
                                 appState.pushSyncPreferences()
