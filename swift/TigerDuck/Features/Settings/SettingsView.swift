@@ -286,6 +286,39 @@ struct SettingsView: View {
                 // `@AppStorage` so toggling immediately re-evaluates
                 // every protected view. Compiled out of release builds.
                 Toggle("Disable screen-capture protection", isOn: $disableScreenCaptureProtection)
+
+                Button {} label: {
+                    VStack(alignment: .leading) {
+                        Text("Long press to erase everything and restart")
+                            .foregroundStyle(.red)
+                        Text("Wipes all data, accounts, and preferences")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onLongPressGesture(minimumDuration: 1) {
+                    #if os(iOS)
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    #endif
+
+                    appState.cloudSyncCoordinator.stop()
+                    Task {
+                        await appState.cloudSyncCoordinator.outbox.clearAll()
+                    }
+
+                    appState.logoutNTUST()
+                    appState.logoutLibrary()
+
+                    UserDefaults.standard.removePersistentDomain(
+                        forName: Bundle.main.bundleIdentifier!
+                    )
+                    Defaults.removeAll()
+
+                    SyncIdMap.clear(in: SyncIdMap.defaultDirectory())
+
+                    appState.hasCompletedOnboarding = false
+                    Defaults[.hasCompletedOnboarding] = false
+                }
             }
             #endif
         }
