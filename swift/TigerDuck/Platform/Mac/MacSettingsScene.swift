@@ -375,7 +375,10 @@ private struct MacAccountSettingsView: View {
                 if state.cloudSyncEnabled {
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $macSyncAssignments)
                         .onChange(of: macSyncAssignments) { old, new in
-                            if new && !old { appState.markCategoryReenabled("assignments") }
+                            if new && !old {
+                                appState.markCategoryReenabled("assignments")
+                                appState.checkPendingConflicts()
+                            }
                             appState.pushSyncPreferences()
                         }
 
@@ -386,6 +389,7 @@ private struct MacAccountSettingsView: View {
                                 appState.markCategoryReenabled("courses")
                                 appState.markCategoryReenabled("course_colors")
                                 appState.markCategoryReenabled("course_names")
+                                appState.checkPendingConflicts()
                             }
                             macSyncCourses = newValue
                             macSyncCourseColors = newValue
@@ -398,7 +402,10 @@ private struct MacAccountSettingsView: View {
                         Toggle(String(localized: "cloud_sync_courses"), isOn: Binding(
                             get: { macSyncCourses },
                             set: { newValue in
-                                if newValue && !macSyncCourses { appState.markCategoryReenabled("courses") }
+                                if newValue && !macSyncCourses {
+                                    appState.markCategoryReenabled("courses")
+                                    appState.checkPendingConflicts()
+                                }
                                 macSyncCourses = newValue
                                 if !newValue {
                                     macSyncCourseColors = false
@@ -411,13 +418,19 @@ private struct MacAccountSettingsView: View {
                             .padding(.leading, 20)
                             .disabled(!macSyncCourses)
                             .onChange(of: macSyncCourseColors) { old, new in
-                                if new && !old { appState.markCategoryReenabled("course_colors") }
+                                if new && !old {
+                                    appState.markCategoryReenabled("course_colors")
+                                    appState.checkPendingConflicts()
+                                }
                                 appState.pushSyncPreferences()
                             }
                         Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $macSyncCourseNames)
                             .padding(.leading, 20)
                             .onChange(of: macSyncCourseNames) { old, new in
-                                if new && !old { appState.markCategoryReenabled("course_names") }
+                                if new && !old {
+                                    appState.markCategoryReenabled("course_names")
+                                    appState.checkPendingConflicts()
+                                }
                                 appState.pushSyncPreferences()
                             }
                     }

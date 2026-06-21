@@ -40,7 +40,10 @@ struct CloudSyncSettingsView: View {
                 Section("Sync options") {
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
                         .onChange(of: syncAssignments) { old, new in
-                            if new && !old { appState.markCategoryReenabled("assignments") }
+                            if new && !old {
+                                appState.markCategoryReenabled("assignments")
+                                appState.checkPendingConflicts()
+                            }
                             appState.pushSyncPreferences()
                         }
 
@@ -250,6 +253,7 @@ struct CloudSyncSettingsView: View {
                     appState.markCategoryReenabled("courses")
                     appState.markCategoryReenabled("course_colors")
                     appState.markCategoryReenabled("course_names")
+                    appState.checkPendingConflicts()
                 }
                 syncCourses = newValue
                 syncCourseColors = newValue
@@ -272,7 +276,10 @@ struct CloudSyncSettingsView: View {
                     Toggle(String(localized: "cloud_sync_courses"), isOn: Binding(
                         get: { syncCourses },
                         set: { newValue in
-                            if newValue && !syncCourses { appState.markCategoryReenabled("courses") }
+                            if newValue && !syncCourses {
+                                appState.markCategoryReenabled("courses")
+                                appState.checkPendingConflicts()
+                            }
                             syncCourses = newValue
                             if !newValue {
                                 syncCourseColors = false
@@ -283,12 +290,18 @@ struct CloudSyncSettingsView: View {
                     Toggle(String(localized: "cloud_sync_course_colours"), isOn: $syncCourseColors)
                         .disabled(!syncCourses)
                         .onChange(of: syncCourseColors) { old, new in
-                            if new && !old { appState.markCategoryReenabled("course_colors") }
+                            if new && !old {
+                                appState.markCategoryReenabled("course_colors")
+                                appState.checkPendingConflicts()
+                            }
                             appState.pushSyncPreferences()
                         }
                     Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $syncCourseNames)
                         .onChange(of: syncCourseNames) { old, new in
-                            if new && !old { appState.markCategoryReenabled("course_names") }
+                            if new && !old {
+                                appState.markCategoryReenabled("course_names")
+                                appState.checkPendingConflicts()
+                            }
                             appState.pushSyncPreferences()
                         }
                 }
