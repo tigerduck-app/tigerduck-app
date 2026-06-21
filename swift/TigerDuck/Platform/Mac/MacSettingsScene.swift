@@ -374,13 +374,23 @@ private struct MacAccountSettingsView: View {
 
                 if state.cloudSyncEnabled {
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $macSyncAssignments)
+                        .onChange(of: macSyncAssignments) { old, new in
+                            if new && !old { appState.markCategoryReenabled("assignments") }
+                            appState.pushSyncPreferences()
+                        }
 
                     Toggle(String(localized: "cloud_sync_class_table"), isOn: Binding(
                         get: { macSyncCourses || macSyncCourseColors || macSyncCourseNames },
                         set: { newValue in
+                            if newValue && !(macSyncCourses || macSyncCourseColors || macSyncCourseNames) {
+                                appState.markCategoryReenabled("courses")
+                                appState.markCategoryReenabled("course_colors")
+                                appState.markCategoryReenabled("course_names")
+                            }
                             macSyncCourses = newValue
                             macSyncCourseColors = newValue
                             macSyncCourseNames = newValue
+                            appState.pushSyncPreferences()
                         }
                     ))
 
@@ -388,20 +398,30 @@ private struct MacAccountSettingsView: View {
                         Toggle(String(localized: "cloud_sync_courses"), isOn: Binding(
                             get: { macSyncCourses },
                             set: { newValue in
+                                if newValue && !macSyncCourses { appState.markCategoryReenabled("courses") }
                                 macSyncCourses = newValue
                                 if !newValue {
                                     macSyncCourseColors = false
                                     macSyncCourseNames = false
                                 }
+                                appState.pushSyncPreferences()
                             }
                         ))
                             .padding(.leading, 20)
                         Toggle(String(localized: "cloud_sync_course_colours"), isOn: $macSyncCourseColors)
                             .padding(.leading, 20)
                             .disabled(!macSyncCourses)
+                            .onChange(of: macSyncCourseColors) { old, new in
+                                if new && !old { appState.markCategoryReenabled("course_colors") }
+                                appState.pushSyncPreferences()
+                            }
                         Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $macSyncCourseNames)
                             .padding(.leading, 20)
                             .disabled(!macSyncCourses)
+                            .onChange(of: macSyncCourseNames) { old, new in
+                                if new && !old { appState.markCategoryReenabled("course_names") }
+                                appState.pushSyncPreferences()
+                            }
                     }
                 }
 
@@ -472,10 +492,30 @@ private struct MacAccountSettingsView: View {
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
                 Task { @MainActor in snapshot = await appState.pushCoordinator.currentSnapshot() }
             }
+            appState.checkPendingConflicts()
         }
         .onDisappear {
             refreshTimer?.invalidate()
             refreshTimer = nil
+            appState.checkPendingConflicts()
+        }
+        .alert(
+            String(localized: "sync_conflict_title"),
+            isPresented: Binding(
+                get: { appState.reenableConflict != nil },
+                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
+            )
+        ) {
+            Button(String(localized: "sync_conflict_use_server")) {
+                appState.resolveReenableConflict(keepLocal: false)
+            }
+            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
+                appState.resolveReenableConflict(keepLocal: true)
+            }
+        } message: {
+            Text(String(localized: "sync_conflict_reenable_message"))
+            + Text("\n")
+            + Text(appState.reenableConflict?.description ?? "")
         }
         .sheet(isPresented: $showSignIn) {
             MacLoginView(showsSkipButton: false)

@@ -256,6 +256,93 @@ final class AppState {
         pendingSyncServerCompleted = []
     }
 
+    struct ReenableConflict {
+        let categories: [String]
+        let description: String
+    }
+
+    var reenableConflict: ReenableConflict?
+
+    func markCategoryReenabled(_ category: String) {
+        Defaults[.pendingConflictCategories].insert(category)
+    }
+
+    func checkPendingConflicts() {
+        let pending = Defaults[.pendingConflictCategories]
+        guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else { return }
+        Task {
+            do {
+                let json = try await pushCoordinator.fetchFullSync()
+                var diffs: [String] = []
+
+                if pending.contains("courses") {
+                    let coursesArray = json["courses"] as? [[String: Any]] ?? []
+                    let serverNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
+                    let semester = CourseSelectionService.currentSemesterCode()
+                    let localNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
+                    if localNos != serverNos {
+                        let localOnly = localNos.subtracting(serverNos).count
+                        let serverOnly = serverNos.subtracting(localNos).count
+                        if localOnly > 0 && serverOnly > 0 {
+                            diffs.append(String(localized: "sync_conflict_reenable_courses \(localOnly) \(serverOnly)"))
+                        } else if localOnly > 0 {
+                            diffs.append(String(localized: "sync_conflict_reenable_courses_local_only \(localOnly)"))
+                        } else {
+                            diffs.append(String(localized: "sync_conflict_reenable_courses_server_only \(serverOnly)"))
+                        }
+                    }
+                }
+                if pending.contains("course_colors") {
+                    let overrides = json["course_overrides"] as? [[String: Any]] ?? []
+                    if overrides.contains(where: { ($0["color_hex"] as? String)?.isEmpty == false }) {
+                        diffs.append(String(localized: "sync_conflict_reenable_colors_differ"))
+                    }
+                }
+                if pending.contains("course_names") {
+                    let overrides = json["course_overrides"] as? [[String: Any]] ?? []
+                    if overrides.contains(where: { !( ($0["custom_names"] as? [String: String]) ?? [:] ).isEmpty }) {
+                        diffs.append(String(localized: "sync_conflict_reenable_names_differ"))
+                    }
+                }
+
+                await MainActor.run {
+                    if !diffs.isEmpty {
+                        reenableConflict = ReenableConflict(
+                            categories: Array(pending),
+                            description: diffs.joined(separator: "\n")
+                        )
+                    } else {
+                        Defaults[.pendingConflictCategories] = []
+                    }
+                }
+            } catch {
+                await MainActor.run { Defaults[.pendingConflictCategories] = [] }
+            }
+        }
+    }
+
+    func resolveReenableConflict(keepLocal: Bool) {
+        guard let conflict = reenableConflict else { return }
+        reenableConflict = nil
+        Defaults[.pendingConflictCategories] = []
+        let coordinator = pushCoordinator
+        Task {
+            if keepLocal {
+                if conflict.categories.contains("courses") {
+                    let semester = CourseSelectionService.currentSemesterCode()
+                    let courses = DataCache.shared.loadCourses(semester: semester)
+                    try? await coordinator.deleteAllCourses()
+                    uploadCourses(courses, semester: semester)
+                }
+            } else {
+                if conflict.categories.contains("courses") {
+                    DataCache.shared.saveDeletedCourseNos([])
+                }
+                await syncOverridesFromBackend()
+            }
+        }
+    }
+
     enum SyncSource { case none, backend, local }
     private(set) var lastSyncSource: SyncSource = .none
     var isSyncLocalOnly: Bool { Defaults[.cloudSyncEnabled] && lastSyncSource == .local }
@@ -560,13 +647,19 @@ final class AppState {
             guard cloudSyncEnabled != oldValue else { return }
             Defaults[.cloudSyncEnabled] = cloudSyncEnabled
             if cloudSyncEnabled {
-                Task { await syncOverridesFromBackend() }
                 pushCoordinator.enable()
+                Task {
+                    await pushCoordinator.registration.updateCloudSyncEnabled(true)
+                    await syncOverridesFromBackend()
+                }
                 requestPushScheduleSync()
                 startRevisionPolling()
             } else {
                 stopRevisionPolling()
-                Task { await pushCoordinator.disable() }
+                Task {
+                    await pushCoordinator.registration.updateCloudSyncEnabled(false)
+                    await pushCoordinator.disable()
+                }
             }
         }
     }

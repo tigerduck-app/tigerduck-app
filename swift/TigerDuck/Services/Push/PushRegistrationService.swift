@@ -233,6 +233,13 @@ actor PushRegistrationService {
         try await task.value
     }
 
+    func updateCloudSyncEnabled(_ enabled: Bool) async {
+        _ = try? await apiClient.updateDevicePreferences(
+            deviceId: identity.uuid,
+            cloudSyncEnabled: enabled
+        )
+    }
+
     func updateSyncPreferences(
         syncCourses: Bool,
         syncCourseColors: Bool,

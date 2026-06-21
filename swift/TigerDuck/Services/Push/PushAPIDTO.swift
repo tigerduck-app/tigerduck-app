@@ -44,6 +44,7 @@ enum PushAPI {
         var syncCourseColors: Bool?
         var syncCourseNames: Bool?
         var syncAssignments: Bool?
+        var cloudSyncEnabled: Bool?
 
         enum CodingKeys: String, CodingKey {
             case serverPushEnabled = "server_push_enabled"
@@ -51,6 +52,7 @@ enum PushAPI {
             case syncCourseColors = "sync_course_colors"
             case syncCourseNames = "sync_course_names"
             case syncAssignments = "sync_assignments"
+            case cloudSyncEnabled = "cloud_sync_enabled"
         }
     }
 
@@ -61,6 +63,7 @@ enum PushAPI {
         let syncCourseColors: Bool
         let syncCourseNames: Bool
         let syncAssignments: Bool
+        let cloudSyncEnabled: Bool
 
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"
@@ -69,6 +72,7 @@ enum PushAPI {
             case syncCourseColors = "sync_course_colors"
             case syncCourseNames = "sync_course_names"
             case syncAssignments = "sync_assignments"
+            case cloudSyncEnabled = "cloud_sync_enabled"
         }
     }
 

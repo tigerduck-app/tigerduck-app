@@ -130,6 +130,7 @@ nonisolated extension Defaults.Keys {
     static let syncCourseColors = Key<Bool>("syncCourseColors", default: true)
     static let syncCourseNames = Key<Bool>("syncCourseNames", default: true)
     static let syncAssignments = Key<Bool>("syncAssignments", default: true)
+    static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
 
     // MARK: Push server
     /// Default on as of the custom-push feature: every device registers on

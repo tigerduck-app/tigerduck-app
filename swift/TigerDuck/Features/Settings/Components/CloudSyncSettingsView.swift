@@ -39,7 +39,10 @@ struct CloudSyncSettingsView: View {
             if syncEnabled {
                 Section("Sync options") {
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
-                        .onChange(of: syncAssignments) { _, _ in appState.pushSyncPreferences() }
+                        .onChange(of: syncAssignments) { old, new in
+                            if new && !old { appState.markCategoryReenabled("assignments") }
+                            appState.pushSyncPreferences()
+                        }
 
                     NavigationLink {
                         classTableSyncOptions
@@ -130,8 +133,32 @@ struct CloudSyncSettingsView: View {
         }
         .navigationTitle(String(localized: "cloud_sync_title"))
         .task { await refreshSnapshot() }
-        .onAppear { startRefreshTimer() }
-        .onDisappear { stopRefreshTimer() }
+        .onAppear {
+            startRefreshTimer()
+            appState.checkPendingConflicts()
+        }
+        .onDisappear {
+            stopRefreshTimer()
+            appState.checkPendingConflicts()
+        }
+        .alert(
+            String(localized: "sync_conflict_title"),
+            isPresented: Binding(
+                get: { appState.reenableConflict != nil },
+                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
+            )
+        ) {
+            Button(String(localized: "sync_conflict_use_server")) {
+                appState.resolveReenableConflict(keepLocal: false)
+            }
+            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
+                appState.resolveReenableConflict(keepLocal: true)
+            }
+        } message: {
+            Text(String(localized: "sync_conflict_reenable_message"))
+            + Text("\n")
+            + Text(appState.reenableConflict?.description ?? "")
+        }
     }
 
     @State private var refreshTimer: Timer?
@@ -219,6 +246,11 @@ struct CloudSyncSettingsView: View {
         Binding(
             get: { syncCourses || syncCourseColors || syncCourseNames },
             set: { newValue in
+                if newValue && !(syncCourses || syncCourseColors || syncCourseNames) {
+                    appState.markCategoryReenabled("courses")
+                    appState.markCategoryReenabled("course_colors")
+                    appState.markCategoryReenabled("course_names")
+                }
                 syncCourses = newValue
                 syncCourseColors = newValue
                 syncCourseNames = newValue
@@ -240,6 +272,7 @@ struct CloudSyncSettingsView: View {
                     Toggle(String(localized: "cloud_sync_courses"), isOn: Binding(
                         get: { syncCourses },
                         set: { newValue in
+                            if newValue && !syncCourses { appState.markCategoryReenabled("courses") }
                             syncCourses = newValue
                             if !newValue {
                                 syncCourseColors = false
@@ -250,10 +283,16 @@ struct CloudSyncSettingsView: View {
                     ))
                     Toggle(String(localized: "cloud_sync_course_colours"), isOn: $syncCourseColors)
                         .disabled(!syncCourses)
-                        .onChange(of: syncCourseColors) { _, _ in appState.pushSyncPreferences() }
+                        .onChange(of: syncCourseColors) { old, new in
+                            if new && !old { appState.markCategoryReenabled("course_colors") }
+                            appState.pushSyncPreferences()
+                        }
                     Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $syncCourseNames)
                         .disabled(!syncCourses)
-                        .onChange(of: syncCourseNames) { _, _ in appState.pushSyncPreferences() }
+                        .onChange(of: syncCourseNames) { old, new in
+                            if new && !old { appState.markCategoryReenabled("course_names") }
+                            appState.pushSyncPreferences()
+                        }
                 }
             }
         }
