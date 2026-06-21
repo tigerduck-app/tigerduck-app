@@ -283,8 +283,9 @@ final class AppState {
                 let json = try await pushCoordinator.fetchFullSync()
                 var diffs: [String] = []
 
+                let coursesArray = json["courses"] as? [[String: Any]] ?? []
+
                 if pending.contains("courses") {
-                    let coursesArray = json["courses"] as? [[String: Any]] ?? []
                     let serverNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
                     let semester = CourseSelectionService.currentSemesterCode()
                     let localNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
@@ -300,16 +301,72 @@ final class AppState {
                         }
                     }
                 }
-                if pending.contains("course_colors") {
+
+                if pending.contains("course_colors") || pending.contains("course_names") {
                     let overrides = json["course_overrides"] as? [[String: Any]] ?? []
-                    if overrides.contains(where: { ($0["color_hex"] as? String)?.isEmpty == false }) {
-                        diffs.append(String(localized: "sync_conflict_reenable_colors_differ"))
+                    var moodleIdToNo: [String: String] = [:]
+                    for c in coursesArray {
+                        guard let mId = c["moodle_id"] as? String ?? (c["moodle_id"] as? Int).map(String.init) else { continue }
+                        if let courseNo = c["course_no"] as? String, !courseNo.isEmpty {
+                            moodleIdToNo[mId] = courseNo
+                        }
+                    }
+
+                    if pending.contains("course_colors") {
+                        let localColorMap = TigerDuckTheme.courseColorMap
+                        let hasColorDiff = overrides.contains { o in
+                            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
+                                  let courseNo = moodleIdToNo[mId],
+                                  let serverHex = o["color_hex"] as? String, !serverHex.isEmpty else { return false }
+                            let localHex = localColorMap[courseNo].map { String(format: "#%06X", $0) }
+                            return localHex != serverHex
+                        }
+                        if hasColorDiff {
+                            diffs.append(String(localized: "sync_conflict_reenable_colors_differ"))
+                        }
+                    }
+
+                    if pending.contains("course_names") {
+                        let localNames = DataCache.shared.loadCourseCustomNames()
+                        let hasNameDiff = overrides.contains { o in
+                            guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
+                                  let courseNo = moodleIdToNo[mId],
+                                  let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty else { return false }
+                            return (localNames[courseNo] ?? [:]) != serverNames
+                        }
+                        if hasNameDiff {
+                            diffs.append(String(localized: "sync_conflict_reenable_names_differ"))
+                        }
                     }
                 }
-                if pending.contains("course_names") {
-                    let overrides = json["course_overrides"] as? [[String: Any]] ?? []
-                    if overrides.contains(where: { !( ($0["custom_names"] as? [String: String]) ?? [:] ).isEmpty }) {
-                        diffs.append(String(localized: "sync_conflict_reenable_names_differ"))
+
+                if pending.contains("assignments") {
+                    let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
+                    var serverArchivedIds = Set<String>()
+                    var serverCompletedIds = Set<String>()
+                    for o in overridesArray {
+                        guard let status = o["local_status"] as? String else { continue }
+                        let moodleId: String?
+                        if let mid = o["moodle_assignment_id"] as? Int {
+                            moodleId = String(mid)
+                        } else if let assignPk = o["user_assignment_id"] as? Int,
+                                  let assignments = json["assignments"] as? [[String: Any]] {
+                            moodleId = assignments.first(where: { ($0["id"] as? Int) == assignPk })
+                                .flatMap { $0["moodle_assignment_id"] as? Int }.map(String.init)
+                        } else {
+                            moodleId = nil
+                        }
+                        guard let moodleId else { continue }
+                        switch status {
+                        case "archived", "ignored": serverArchivedIds.insert(moodleId)
+                        case "locally_completed": serverCompletedIds.insert(moodleId)
+                        default: break
+                        }
+                    }
+                    let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
+                    let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
+                    if localArchivedIds != serverArchivedIds || localCompletedIds != serverCompletedIds {
+                        diffs.append(String(localized: "sync_conflict_reenable_assignments_differ"))
                     }
                 }
 
@@ -342,9 +399,35 @@ final class AppState {
                     try? await coordinator.deleteAllCourses()
                     uploadCourses(courses, semester: semester)
                 }
+                if conflict.categories.contains("course_colors") {
+                    let colorMap = TigerDuckTheme.courseColorMap
+                    for (courseNo, hex) in colorMap {
+                        syncCourseOverride(moodleCourseId: courseNo, colorHex: String(format: "#%06X", hex))
+                    }
+                }
+                if conflict.categories.contains("course_names") {
+                    let customNames = DataCache.shared.loadCourseCustomNames()
+                    for (courseNo, locales) in customNames {
+                        for (locale, name) in locales where !name.isEmpty {
+                            syncCourseOverride(moodleCourseId: courseNo, customName: name, locale: locale)
+                        }
+                    }
+                }
+                if conflict.categories.contains("assignments") {
+                    for id in DataCache.shared.loadArchivedAssignmentIds() {
+                        syncAssignmentOverride(moodleId: id, status: "archived")
+                    }
+                    for id in DataCache.shared.loadLocallyCompletedAssignmentIds() {
+                        syncAssignmentOverride(moodleId: id, status: "locally_completed")
+                    }
+                }
             } else {
                 if conflict.categories.contains("courses") {
                     DataCache.shared.saveDeletedCourseNos([])
+                }
+                if conflict.categories.contains("assignments") {
+                    DataCache.shared.replaceArchivedAssignmentIds([])
+                    DataCache.shared.replaceLocallyCompletedAssignmentIds([])
                 }
                 await syncOverridesFromBackend()
             }
