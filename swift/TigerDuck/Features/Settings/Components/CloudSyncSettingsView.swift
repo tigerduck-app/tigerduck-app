@@ -308,5 +308,23 @@ struct CloudSyncSettingsView: View {
             }
         }
         .navigationTitle(String(localized: "cloud_sync_class_table_sync"))
+        .alert(
+            String(localized: "sync_conflict_title"),
+            isPresented: Binding(
+                get: { appState.reenableConflict != nil },
+                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
+            )
+        ) {
+            Button(String(localized: "sync_conflict_use_server")) {
+                appState.resolveReenableConflict(keepLocal: false)
+            }
+            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
+                appState.resolveReenableConflict(keepLocal: true)
+            }
+        } message: {
+            Text(String(localized: "sync_conflict_reenable_message"))
+            + Text("\n")
+            + Text(appState.reenableConflict?.description ?? "")
+        }
     }
 }
