@@ -57,6 +57,8 @@ final class AppState {
             identity: identity,
             authTokenManager: atm
         )
+        self.cloudSyncCoordinator = CloudSyncCoordinator(pushCoordinator: self.pushCoordinator)
+        CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
 
         if !Defaults[.appHasBeenInstalled] {
             #if os(iOS)
@@ -183,6 +185,12 @@ final class AppState {
             ClassroomAbbrCacheMigration.runIfNeeded()
             CustomNameCacheMigration.runIfNeeded()
             // Add future migrations here in sequence.
+        }
+    }
+
+    func startCloudSyncIfEnabled() {
+        if cloudSyncCoordinator.state == .active {
+            cloudSyncCoordinator.start()
         }
     }
 
@@ -388,6 +396,7 @@ final class AppState {
 
     let pushCoordinator: PushCoordinator
     let authTokenManager: AuthTokenManager
+    let cloudSyncCoordinator: CloudSyncCoordinator
 
     #if os(iOS)
     // MARK: - Custom-push tap routing
@@ -647,19 +656,15 @@ final class AppState {
             guard cloudSyncEnabled != oldValue else { return }
             Defaults[.cloudSyncEnabled] = cloudSyncEnabled
             if cloudSyncEnabled {
-                pushCoordinator.enable()
                 Task {
-                    await pushCoordinator.registration.updateCloudSyncEnabled(true)
+                    await cloudSyncCoordinator.enable()
                     await syncOverridesFromBackend()
                 }
                 requestPushScheduleSync()
                 startRevisionPolling()
             } else {
                 stopRevisionPolling()
-                Task {
-                    await pushCoordinator.registration.updateCloudSyncEnabled(false)
-                    await pushCoordinator.disable()
-                }
+                Task { await cloudSyncCoordinator.disable() }
             }
         }
     }
@@ -1101,6 +1106,7 @@ final class AppState {
     func bindPushDelegate(_ delegate: some PushTokenSource) {
         pushCoordinator.bindTokenForwarding(delegate)
         delegate.onSyncTrigger = { [weak self] in
+            self?.cloudSyncCoordinator.onSyncTrigger()
             await self?.syncOverridesFromBackend()
         }
     }
@@ -1583,19 +1589,16 @@ final class AppState {
     /// updated by the ViewModel; this propagates to other devices.
     func syncAssignmentOverride(moodleId: String, status: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        AppLogger.sync.debug("override sending: \(moodleId, privacy: .private) → \(status, privacy: .public)")
+        AppLogger.sync.debug("override enqueue: \(moodleId, privacy: .private) → \(status, privacy: .public)")
         pendingOverrides.insert(moodleId)
-        Task {
-            do {
-                _ = try await pushCoordinator.patchAssignmentOverride(
-                    moodleAssignmentId: moodleId, localStatus: status
-                )
-                pendingOverrides.remove(moodleId)
-                AppLogger.sync.debug("override patch ok: \(moodleId, privacy: .private) → \(status, privacy: .public)")
-            } catch {
-                AppLogger.sync.error("override patch failed: \(moodleId, privacy: .private) → \(status, privacy: .public), error=\(error, privacy: .public)")
-            }
+        if let moodleAssignmentId = Int(moodleId) {
+            cloudSyncCoordinator.enqueueAssignmentOverride(
+                moodleCourseId: 0,
+                moodleAssignmentId: moodleAssignmentId,
+                localStatus: status)
+            cloudSyncCoordinator.scheduleTick(after: 1)
         }
+        pendingOverrides.remove(moodleId)
     }
 
     func syncCourseOverride(
@@ -1605,14 +1608,16 @@ final class AppState {
         locale: String? = nil
     ) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        Task {
-            _ = try? await pushCoordinator.patchCourseOverride(
-                moodleCourseId: moodleCourseId,
-                colorHex: colorHex,
-                customName: customName,
-                locale: locale
-            )
+        let semester = CourseSelectionService.currentSemesterCode()
+        if let colorHex {
+            cloudSyncCoordinator.enqueueCourseColorOverride(
+                courseNo: moodleCourseId, semester: semester, colorHex: colorHex)
         }
+        if let customName {
+            cloudSyncCoordinator.enqueueCourseNameOverride(
+                courseNo: moodleCourseId, semester: semester, customName: customName)
+        }
+        cloudSyncCoordinator.scheduleTick(after: 1)
     }
 
     func deleteBackendCourse(courseNo: String, semester: String) {

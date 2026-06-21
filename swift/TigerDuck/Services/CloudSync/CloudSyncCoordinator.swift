@@ -1,0 +1,354 @@
+import Defaults
+import Foundation
+import Observation
+import os
+#if canImport(UIKit)
+import UIKit
+#endif
+
+// MARK: - State
+
+nonisolated enum CloudSyncState: Equatable, Sendable {
+    case disabled
+    case enabling(step: String)
+    case active
+    case needsReauth(reason: String)
+}
+
+// MARK: - CloudSyncCoordinator
+
+/// Owns the cloud-sync lifecycle: enable/disable state machine,
+/// periodic sync ticks, local-edit observers that feed the outbox,
+/// and outbox drain with retry. Delegates actual API calls to the
+/// existing PushCoordinator.
+///
+/// Architecture by xinshoutw — adapted for the v3-backend branch.
+@MainActor
+@Observable
+final class CloudSyncCoordinator {
+
+    // MARK: Tunables
+
+    enum Tunables {
+        static let dataUpdateDebounce: TimeInterval = 30
+        static let tickInterval: TimeInterval = 5 * 60
+    }
+
+    // MARK: Observable state
+
+    private(set) var state: CloudSyncState = .disabled
+    private(set) var lastSyncedAt: Date?
+    private(set) var lastError: String?
+
+    // MARK: Shared instance
+
+    private(set) static weak var shared: CloudSyncCoordinator?
+
+    static func registerShared(_ coordinator: CloudSyncCoordinator) {
+        shared = coordinator
+    }
+
+    // MARK: Dependencies
+
+    @ObservationIgnored private let pushCoordinator: PushCoordinator
+    @ObservationIgnored let outbox: SyncOutbox
+    @ObservationIgnored let stampsDirectory: URL
+    @ObservationIgnored private let logger = Logger(
+        subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
+
+    // MARK: Internal state
+
+    @ObservationIgnored var idMap: SyncIdMap
+    @ObservationIgnored private var tickInFlight = false
+    @ObservationIgnored var started = false
+
+    // Observer plumbing
+    @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
+    @ObservationIgnored var tickTimer: Timer?
+    @ObservationIgnored var dataDebounceTask: Task<Void, Never>?
+
+    // Loop guards
+    @ObservationIgnored var suppressLocalEvents = false
+
+    // MARK: Init
+
+    init(
+        pushCoordinator: PushCoordinator,
+        outbox: SyncOutbox = SyncOutbox(),
+        stampsDirectory: URL = SyncIdMap.defaultDirectory()
+    ) {
+        self.pushCoordinator = pushCoordinator
+        self.outbox = outbox
+        self.stampsDirectory = stampsDirectory
+        self.idMap = SyncIdMap.load(from: stampsDirectory)
+
+        if Defaults[.cloudSyncEnabled] {
+            state = .active
+        }
+        let ts = Defaults[.cloudSyncLastSyncedAt]
+        lastSyncedAt = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
+    }
+
+    // MARK: - Enable
+
+    func enable() async {
+        if case .enabling = state { return }
+        state = .enabling(step: "register")
+        lastError = nil
+
+        pushCoordinator.enable()
+
+        do {
+            await pushCoordinator.registration.updateCloudSyncEnabled(true)
+            state = .enabling(step: "sync")
+            try await pullAndApply()
+            Defaults[.cloudSyncLastSyncedAt] = Date().timeIntervalSince1970
+            lastSyncedAt = Date()
+        } catch {
+            lastError = String(describing: error)
+            AppLogger.captureError(error, context: ["phase": "cloudSync.enable"])
+        }
+
+        Defaults[.cloudSyncEnabled] = true
+        state = .active
+        lastError = nil
+        start()
+    }
+
+    // MARK: - Disable
+
+    func disable() async {
+        stop()
+
+        await pushCoordinator.registration.updateCloudSyncEnabled(false)
+        await pushCoordinator.disable()
+
+        SyncIdMap.clear(in: stampsDirectory)
+        idMap = SyncIdMap()
+        await outbox.clearAll()
+
+        Defaults[.cloudSyncEnabled] = false
+        Defaults[.cloudSyncLastSyncedAt] = 0
+        lastSyncedAt = nil
+        lastError = nil
+        state = .disabled
+    }
+
+    // MARK: - Sync tick
+
+    func syncTick() async {
+        guard state == .active, !tickInFlight else { return }
+        tickInFlight = true
+        defer { tickInFlight = false }
+
+        do {
+            try await pullAndApply()
+        } catch {
+            if isAuthError(error) {
+                state = .needsReauth(reason: "session_revoked")
+                return
+            }
+            if error is URLError { return }
+            lastError = String(describing: error)
+        }
+
+        guard state == .active else { return }
+
+        await outbox.drain(idMap: idMap) { [weak self] op in
+            guard let self else { throw CancellationError() }
+            try await self.execute(op)
+        }
+
+        guard state == .active else { return }
+
+        Defaults[.cloudSyncLastSyncedAt] = Date().timeIntervalSince1970
+        lastSyncedAt = Date()
+    }
+
+    /// Called by the revision poller when the server revision is ahead.
+    func onRevisionChanged() {
+        guard state == .active else { return }
+        scheduleTick()
+    }
+
+    /// Called when a sync_trigger push notification arrives.
+    func onSyncTrigger() {
+        guard state == .active else { return }
+        scheduleTick()
+    }
+
+    // MARK: - Enqueue helpers
+
+    func enqueueCourseColorOverride(courseNo: String, semester: String, colorHex: String) {
+        guard state == .active else { return }
+        let op = SyncOp.courseOverride(
+            semester: semester, courseKey: courseNo,
+            customName: nil, colorHex: colorHex, stamp: Date())
+        Task { await outbox.enqueue(op) }
+    }
+
+    func enqueueCourseNameOverride(courseNo: String, semester: String, customName: String) {
+        guard state == .active else { return }
+        let op = SyncOp.courseOverride(
+            semester: semester, courseKey: courseNo,
+            customName: customName, colorHex: nil, stamp: Date())
+        Task { await outbox.enqueue(op) }
+    }
+
+    func enqueueAssignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String) {
+        guard state == .active else { return }
+        let op = SyncOp.assignmentOverride(
+            moodleCourseId: moodleCourseId,
+            moodleAssignmentId: moodleAssignmentId,
+            localStatus: localStatus, stamp: Date())
+        Task { await outbox.enqueue(op) }
+    }
+
+    func enqueueUploadSnapshot() {
+        guard state == .active else { return }
+        Task { await outbox.enqueue(.uploadSnapshot) }
+    }
+
+    // MARK: - Pull & Apply
+
+    private func pullAndApply() async throws {
+        suppressLocalEvents = true
+        defer { suppressLocalEvents = false }
+
+        let result = try await pushCoordinator.fetchFullSync()
+        // Rebuild ID map from full sync response
+        rebuildIdMap(from: result)
+        // The existing AppState.syncOverridesFromBackend logic handles
+        // applying the sync data — we just need to trigger it.
+        // Post a notification so AppState can apply the data.
+        NotificationCenter.default.post(
+            name: .cloudSyncDidPull,
+            object: nil,
+            userInfo: ["result": result])
+    }
+
+    private func rebuildIdMap(from result: [String: Any]) {
+        var newMap = SyncIdMap()
+        // Extract course IDs from the full sync response
+        if let courses = result["courses"] as? [[String: Any]] {
+            for course in courses {
+                if let id = course["id"] as? Int,
+                   let courseKey = course["course_key"] as? String,
+                   let semester = (courseKey.split(separator: ":").dropFirst().first).map(String.init) {
+                    newMap.recordCourse(semester: semester, courseKey: courseKey, serverId: id)
+                }
+            }
+        }
+        if let assignments = result["assignments"] as? [[String: Any]] {
+            for assignment in assignments {
+                if let id = assignment["id"] as? Int,
+                   let moodleCourseId = assignment["moodle_course_id"] as? Int,
+                   let moodleAssignmentId = assignment["moodle_assignment_id"] as? Int {
+                    newMap.recordAssignment(
+                        moodleCourseId: moodleCourseId,
+                        moodleAssignmentId: moodleAssignmentId,
+                        serverId: id)
+                }
+            }
+        }
+        idMap = newMap
+        try? newMap.save(to: stampsDirectory)
+    }
+
+    // MARK: - Execute resolved op
+
+    private func execute(_ op: ResolvedSyncOp) async throws {
+        switch op {
+        case .courseOverride(let courseId, let colorHex, let customName, let locale):
+            _ = try await pushCoordinator.patchCourseOverride(
+                moodleCourseId: courseId,
+                colorHex: colorHex,
+                customName: customName,
+                locale: locale)
+
+        case .assignmentOverride(let assignmentId, let localStatus):
+            _ = try await pushCoordinator.patchAssignmentOverride(
+                moodleAssignmentId: String(assignmentId),
+                localStatus: localStatus)
+
+        case .uploadSnapshot:
+            // Delegate to AppState's existing upload logic
+            NotificationCenter.default.post(name: .cloudSyncNeedsUpload, object: nil)
+        }
+    }
+
+    // MARK: - Observers
+
+    func start() {
+        guard !started else { return }
+        started = true
+
+        attachObservers()
+
+        let timer = Timer.scheduledTimer(withTimeInterval: Tunables.tickInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.syncTick()
+            }
+        }
+        tickTimer = timer
+    }
+
+    func stop() {
+        tickTimer?.invalidate()
+        tickTimer = nil
+        for token in notificationTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        notificationTokens = []
+        dataDebounceTask?.cancel()
+        dataDebounceTask = nil
+        started = false
+    }
+
+    private func attachObservers() {
+        let center = NotificationCenter.default
+
+        func observe(_ name: Notification.Name, handler: @escaping @MainActor () -> Void) {
+            let token = center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { handler() }
+            }
+            notificationTokens.append(token)
+        }
+
+        #if canImport(UIKit)
+        observe(UIApplication.didBecomeActiveNotification) { [weak self] in
+            guard let self, self.state == .active else { return }
+            self.scheduleTick()
+        }
+        #endif
+    }
+
+    // MARK: - Helpers
+
+    func scheduleTick(after seconds: TimeInterval = 0) {
+        Task { [weak self] in
+            if seconds > 0 {
+                try? await Task.sleep(for: .seconds(seconds))
+            }
+            await self?.syncTick()
+        }
+    }
+
+    private func isAuthError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == "PushAPIError" && nsError.code == 401
+    }
+}
+
+// MARK: - Notification names
+
+extension Notification.Name {
+    static let cloudSyncDidPull = Notification.Name("cloudSyncDidPull")
+    static let cloudSyncNeedsUpload = Notification.Name("cloudSyncNeedsUpload")
+}
+
+// MARK: - Defaults keys
+
+extension Defaults.Keys {
+    static let cloudSyncLastSyncedAt = Key<TimeInterval>("cloudSyncLastSyncedAt", default: 0)
+}
