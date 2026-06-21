@@ -273,11 +273,16 @@ final class AppState {
 
     func markCategoryReenabled(_ category: String) {
         Defaults[.pendingConflictCategories].insert(category)
+        AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
     }
 
     func checkPendingConflicts() {
         let pending = Defaults[.pendingConflictCategories]
-        guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else { return }
+        guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
+            AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
+            return
+        }
+        AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
         Task {
             do {
                 let json = try await pushCoordinator.fetchFullSync()
@@ -288,10 +293,16 @@ final class AppState {
                 if pending.contains("courses") {
                     let serverNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
                     let semester = CourseSelectionService.currentSemesterCode()
-                    let localNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
+                    let allCachedNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
+                    let deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
+                    let localNos = allCachedNos.subtracting(deletedNos)
+                    AppLogger.sync.info("[reenable] courses: cached=\(allCachedNos.count, privacy: .public) deleted=\(deletedNos.count, privacy: .public) effective=\(localNos.count, privacy: .public) server=\(serverNos.count, privacy: .public)")
+                    AppLogger.sync.info("[reenable] courses local=\(localNos.sorted(), privacy: .public)")
+                    AppLogger.sync.info("[reenable] courses server=\(serverNos.sorted(), privacy: .public)")
                     if localNos != serverNos {
                         let localOnly = localNos.subtracting(serverNos).count
                         let serverOnly = serverNos.subtracting(localNos).count
+                        AppLogger.sync.info("[reenable] courses DIFFER: localOnly=\(localOnly, privacy: .public) serverOnly=\(serverOnly, privacy: .public)")
                         if localOnly > 0 && serverOnly > 0 {
                             diffs.append(String(localized: "sync_conflict_reenable_courses \(localOnly) \(serverOnly)"))
                         } else if localOnly > 0 {
@@ -299,6 +310,8 @@ final class AppState {
                         } else {
                             diffs.append(String(localized: "sync_conflict_reenable_courses_server_only \(serverOnly)"))
                         }
+                    } else {
+                        AppLogger.sync.info("[reenable] courses MATCH — no conflict")
                     }
                 }
 
@@ -311,30 +324,41 @@ final class AppState {
                             moodleIdToNo[mId] = courseNo
                         }
                     }
+                    AppLogger.sync.info("[reenable] overrides=\(overrides.count, privacy: .public) moodleIdMap=\(moodleIdToNo.count, privacy: .public)")
 
                     if pending.contains("course_colors") {
                         let localColorMap = TigerDuckTheme.courseColorMap
-                        let hasColorDiff = overrides.contains { o in
+                        var colorMismatches: [String] = []
+                        for o in overrides {
                             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
                                   let courseNo = moodleIdToNo[mId],
-                                  let serverHex = o["color_hex"] as? String, !serverHex.isEmpty else { return false }
+                                  let serverHex = o["color_hex"] as? String, !serverHex.isEmpty else { continue }
                             let localHex = localColorMap[courseNo].map { String(format: "#%06X", $0) }
-                            return localHex != serverHex
+                            if localHex != serverHex {
+                                colorMismatches.append("\(courseNo): local=\(localHex ?? "nil") server=\(serverHex)")
+                            }
                         }
-                        if hasColorDiff {
+                        AppLogger.sync.info("[reenable] colors: \(colorMismatches.isEmpty ? "MATCH" : "DIFFER (\(colorMismatches.count))", privacy: .public)")
+                        if !colorMismatches.isEmpty {
+                            for m in colorMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .public)") }
                             diffs.append(String(localized: "sync_conflict_reenable_colors_differ"))
                         }
                     }
 
                     if pending.contains("course_names") {
                         let localNames = DataCache.shared.loadCourseCustomNames()
-                        let hasNameDiff = overrides.contains { o in
+                        var nameMismatches: [String] = []
+                        for o in overrides {
                             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
                                   let courseNo = moodleIdToNo[mId],
-                                  let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty else { return false }
-                            return (localNames[courseNo] ?? [:]) != serverNames
+                                  let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty else { continue }
+                            if (localNames[courseNo] ?? [:]) != serverNames {
+                                nameMismatches.append("\(courseNo): local=\(localNames[courseNo] ?? [:]) server=\(serverNames)")
+                            }
                         }
-                        if hasNameDiff {
+                        AppLogger.sync.info("[reenable] names: \(nameMismatches.isEmpty ? "MATCH" : "DIFFER (\(nameMismatches.count))", privacy: .public)")
+                        if !nameMismatches.isEmpty {
+                            for m in nameMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .public)") }
                             diffs.append(String(localized: "sync_conflict_reenable_names_differ"))
                         }
                     }
@@ -365,11 +389,15 @@ final class AppState {
                     }
                     let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
                     let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
-                    if localArchivedIds != serverArchivedIds || localCompletedIds != serverCompletedIds {
+                    let archivedMatch = localArchivedIds == serverArchivedIds
+                    let completedMatch = localCompletedIds == serverCompletedIds
+                    AppLogger.sync.info("[reenable] assignments: localArchived=\(localArchivedIds.count, privacy: .public) serverArchived=\(serverArchivedIds.count, privacy: .public) match=\(archivedMatch, privacy: .public) | localCompleted=\(localCompletedIds.count, privacy: .public) serverCompleted=\(serverCompletedIds.count, privacy: .public) match=\(completedMatch, privacy: .public)")
+                    if !archivedMatch || !completedMatch {
                         diffs.append(String(localized: "sync_conflict_reenable_assignments_differ"))
                     }
                 }
 
+                AppLogger.sync.info("[reenable] result: \(diffs.count, privacy: .public) diffs → \(diffs.isEmpty ? "no conflict" : "SHOW POPUP", privacy: .public)")
                 await MainActor.run {
                     if !diffs.isEmpty {
                         reenableConflict = ReenableConflict(
@@ -381,6 +409,7 @@ final class AppState {
                     }
                 }
             } catch {
+                AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .public)")
                 await MainActor.run { Defaults[.pendingConflictCategories] = [] }
             }
         }
@@ -388,6 +417,7 @@ final class AppState {
 
     func resolveReenableConflict(keepLocal: Bool) {
         guard let conflict = reenableConflict else { return }
+        AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
         Defaults[.pendingConflictCategories] = []
         let coordinator = pushCoordinator
