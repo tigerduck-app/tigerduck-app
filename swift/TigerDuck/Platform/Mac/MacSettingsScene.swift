@@ -371,6 +371,15 @@ private struct MacAccountSettingsView: View {
 
             Section(String(localized: "cloud_sync_title")) {
                 Toggle(String(localized: "cloud_sync_title"), isOn: $state.cloudSyncEnabled)
+                    .onChange(of: state.cloudSyncEnabled) { old, newValue in
+                        if newValue && !old {
+                            if macSyncCourses { appState.markCategoryReenabled("courses") }
+                            if macSyncCourseColors { appState.markCategoryReenabled("course_colors") }
+                            if macSyncCourseNames { appState.markCategoryReenabled("course_names") }
+                            if macSyncAssignments { appState.markCategoryReenabled("assignments") }
+                            appState.checkPendingConflicts()
+                        }
+                    }
 
                 if state.cloudSyncEnabled {
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $macSyncAssignments)

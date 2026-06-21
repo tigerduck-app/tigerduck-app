@@ -25,7 +25,14 @@ struct CloudSyncSettingsView: View {
         Form {
             Section {
                 Toggle(String(localized: "cloud_sync_title"), isOn: $syncEnabled)
-                    .onChange(of: syncEnabled) { _, newValue in
+                    .onChange(of: syncEnabled) { old, newValue in
+                        if newValue && !old {
+                            if syncCourses { appState.markCategoryReenabled("courses") }
+                            if syncCourseColors { appState.markCategoryReenabled("course_colors") }
+                            if syncCourseNames { appState.markCategoryReenabled("course_names") }
+                            if syncAssignments { appState.markCategoryReenabled("assignments") }
+                            appState.checkPendingConflicts()
+                        }
                         appState.cloudSyncEnabled = newValue
                     }
             } footer: {
