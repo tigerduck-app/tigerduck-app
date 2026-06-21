@@ -409,8 +409,15 @@ final class AppState {
                     }
                 }
             } catch {
-                AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .public)")
-                await MainActor.run { Defaults[.pendingConflictCategories] = [] }
+                AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .public) — pending kept for retry")
+                if case PushAPIError.httpStatus(401, _) = error {
+                    let reloginOk = await attemptBackendRelogin()
+                    if reloginOk {
+                        AppLogger.sync.info("[reenable] relogin succeeded, retrying conflict check")
+                        try? await Task.sleep(for: .milliseconds(500))
+                        checkPendingConflicts()
+                    }
+                }
             }
         }
     }
@@ -1346,7 +1353,10 @@ final class AppState {
                 for id in localCompletedIds { syncAssignmentOverride(moodleId: id, status: "locally_completed") }
             }
 
-            if !isMigrating {
+            let pendingConflicts = Defaults[.pendingConflictCategories]
+            if pendingConflicts.contains("assignments") {
+                AppLogger.sync.info("[syncOverrides] skipping assignment overrides — conflict check pending")
+            } else if !isMigrating {
                 var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
                 let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
                 let assignmentCache = DataCache.shared.loadAssignments()
@@ -1394,11 +1404,11 @@ final class AppState {
                 }
             }
 
-            // Course overrides + hard-delete detection always run, even
-            // during first-time migration.
             let coursesArray = json["courses"] as? [[String: Any]] ?? []
             let courseOverrides = json["course_overrides"] as? [[String: Any]] ?? []
-            if !courseOverrides.isEmpty {
+            if pendingConflicts.contains("course_colors") || pendingConflicts.contains("course_names") {
+                AppLogger.sync.info("[syncOverrides] skipping course overrides — conflict check pending")
+            } else if !courseOverrides.isEmpty {
                 applyCourseOverrides(courseOverrides, coursesArray: coursesArray)
             }
 
@@ -1421,8 +1431,9 @@ final class AppState {
                 }
             }
 
-            // Hard-delete detection: compare server courses against local deletedCourseNos
-            if Defaults[.syncCourses], !coursesArray.isEmpty {
+            if pendingConflicts.contains("courses") {
+                AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
+            } else if Defaults[.syncCourses], !coursesArray.isEmpty {
                 let serverCourseNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
                 var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
                 let semester = CourseSelectionService.currentSemesterCode()
