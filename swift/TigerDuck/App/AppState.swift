@@ -348,13 +348,18 @@ final class AppState {
                     if pending.contains("course_names") {
                         let localNames = DataCache.shared.loadCourseCustomNames()
                         var nameMismatches: [String] = []
+                        var serverNosWithNames = Set<String>()
                         for o in overrides {
                             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init),
                                   let courseNo = moodleIdToNo[mId],
                                   let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty else { continue }
+                            serverNosWithNames.insert(courseNo)
                             if (localNames[courseNo] ?? [:]) != serverNames {
                                 nameMismatches.append("\(courseNo): local=\(localNames[courseNo] ?? [:]) server=\(serverNames)")
                             }
+                        }
+                        for (courseNo, locales) in localNames where !locales.isEmpty && !serverNosWithNames.contains(courseNo) {
+                            nameMismatches.append("\(courseNo): local=\(locales) server=default")
                         }
                         AppLogger.sync.info("[reenable] names: \(nameMismatches.isEmpty ? "MATCH" : "DIFFER (\(nameMismatches.count))", privacy: .public)")
                         if !nameMismatches.isEmpty {
@@ -461,6 +466,9 @@ final class AppState {
             } else {
                 if conflict.categories.contains("courses") {
                     DataCache.shared.saveDeletedCourseNos([])
+                }
+                if conflict.categories.contains("course_names") {
+                    DataCache.shared.saveCourseCustomNames([:])
                 }
                 if conflict.categories.contains("assignments") {
                     DataCache.shared.replaceArchivedAssignmentIds([])
