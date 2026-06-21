@@ -580,6 +580,8 @@ final class AppState {
         didSkipMacLogin = false
         DataCache.shared.clearUserScopedData()
         Task { @MainActor in
+            await cloudSyncCoordinator.disable()
+            await pushCoordinator.disable()
             #if os(iOS)
             await liveActivityCoordinator.endAll()
             await reminderScheduler.cancelAllOwnedRequests()

@@ -301,11 +301,6 @@ struct SettingsView: View {
                     UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                     #endif
 
-                    appState.cloudSyncCoordinator.stop()
-                    Task {
-                        await appState.cloudSyncCoordinator.outbox.clearAll()
-                    }
-
                     appState.logoutNTUST()
                     appState.logoutLibrary()
 
