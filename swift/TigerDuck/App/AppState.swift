@@ -1146,7 +1146,7 @@ final class AppState {
                     if localArchivedIds.contains(id) { localStatus = "ignored" }
                     else if localCompletedIds.contains(id) { localStatus = "locally_completed" }
                     else { localStatus = "none" }
-                    if serverStatus != localStatus {
+                    if serverStatus != localStatus && localStatus != "none" && serverStatus != "none" {
                         let title = assignmentsByMoodleId[id]?.displayTitle ?? "ID \(id)"
                         conflicts.append((id: id, kind: "作業", label: title, local: localStatus, server: serverStatus))
                     }
@@ -1208,7 +1208,7 @@ final class AppState {
             }
 
             // Hard-delete detection: compare server courses against local deletedCourseNos
-            if !coursesArray.isEmpty {
+            if Defaults[.syncCourses], !coursesArray.isEmpty {
                 let serverCourseNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
                 var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
                 let semester = CourseSelectionService.currentSemesterCode()
@@ -1431,14 +1431,14 @@ final class AppState {
         for o in overrides {
             guard let mId = o["moodle_id"] as? String ?? (o["moodle_id"] as? Int).map(String.init) else { continue }
             guard let courseNo = moodleIdToNo[mId] else { continue }
-            if let colorHex = o["color_hex"] as? String, !colorHex.isEmpty {
+            if Defaults[.syncCourseColors], let colorHex = o["color_hex"] as? String, !colorHex.isEmpty {
                 if let hex = UInt32(colorHex.dropFirst(), radix: 16) {
                     TigerDuckTheme.setColor(hex: hex, for: courseNo)
                     colorCount += 1
                     AppLogger.sync.debug("course color applied")
                 }
             }
-            if let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
+            if Defaults[.syncCourseNames], let serverNames = o["custom_names"] as? [String: String], !serverNames.isEmpty {
                 var existing = customNames[courseNo] ?? [:]
                 for (locale, name) in serverNames {
                     if name.isEmpty {
@@ -1598,13 +1598,29 @@ final class AppState {
         try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
 
+    func pushSyncPreferences() {
+        let reg = pushCoordinator.registration
+        Task.detached {
+            await reg.updateSyncPreferences(
+                syncCourses: Defaults[.syncCourses],
+                syncCourseColors: Defaults[.syncCourseColors],
+                syncCourseNames: Defaults[.syncCourseNames],
+                syncAssignments: Defaults[.syncAssignments]
+            )
+        }
+    }
+
     // MARK: - Revision polling
 
     /// Start the foreground revision poller. Safe to call repeatedly —
     /// re-entry invalidates the previous timer before scheduling a new one.
     func startRevisionPolling() {
         stopRevisionPolling()
-        guard Defaults[.cloudSyncEnabled] else { return }
+        guard Defaults[.cloudSyncEnabled] else {
+            AppLogger.sync.info("[poll] startRevisionPolling skipped — cloudSyncEnabled=false")
+            return
+        }
+        AppLogger.sync.info("[poll] startRevisionPolling — scheduling 10s timer")
         revisionPollTimer = Timer.scheduledTimer(
             withTimeInterval: 10,
             repeats: true
@@ -1618,6 +1634,9 @@ final class AppState {
 
     /// Stop the foreground revision poller (e.g. when the app backgrounds).
     func stopRevisionPolling() {
+        if revisionPollTimer != nil {
+            AppLogger.sync.info("[poll] stopRevisionPolling — timer invalidated")
+        }
         revisionPollTimer?.invalidate()
         revisionPollTimer = nil
     }
@@ -1626,18 +1645,24 @@ final class AppState {
     /// with ``_lastKnownRevision``, and trigger a full sync when the
     /// server is ahead.
     private func pollRevision() async {
-        guard Defaults[.cloudSyncEnabled] else { return }
-        guard await authTokenManager.isLoggedIn else { return }
+        guard Defaults[.cloudSyncEnabled] else {
+            AppLogger.sync.info("[poll] tick skipped — cloudSyncEnabled=false")
+            return
+        }
+        guard await authTokenManager.isLoggedIn else {
+            AppLogger.sync.info("[poll] tick skipped — not logged in")
+            return
+        }
+        AppLogger.sync.info("[poll] tick — fetching revision (lastKnown=\(self._lastKnownRevision))")
         do {
             let serverRevision = try await pushCoordinator.fetchRevision()
+            AppLogger.sync.info("[poll] server revision=\(serverRevision) lastKnown=\(self._lastKnownRevision)")
             if serverRevision > _lastKnownRevision {
-                _lastKnownRevision = serverRevision
+                AppLogger.sync.info("[poll] revision changed — triggering full sync")
                 await syncOverridesFromBackend()
             }
         } catch {
-            // Best-effort — next tick retries. Don't log at `.error` to
-            // avoid noise when the device is on flaky connectivity.
-            AppLogger.sync.debug("revision poll failed: \(error, privacy: .public)")
+            AppLogger.sync.info("[poll] tick failed: \(error, privacy: .public)")
         }
     }
 

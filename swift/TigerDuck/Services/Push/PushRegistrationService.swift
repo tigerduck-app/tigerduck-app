@@ -233,6 +233,21 @@ actor PushRegistrationService {
         try await task.value
     }
 
+    func updateSyncPreferences(
+        syncCourses: Bool,
+        syncCourseColors: Bool,
+        syncCourseNames: Bool,
+        syncAssignments: Bool
+    ) async {
+        _ = try? await apiClient.updateDevicePreferences(
+            deviceId: identity.uuid,
+            syncCourses: syncCourses,
+            syncCourseColors: syncCourseColors,
+            syncCourseNames: syncCourseNames,
+            syncAssignments: syncAssignments
+        )
+    }
+
     /// Snapshot of internal state for UI display. Safe to call from any isolation.
     func snapshot() -> PushRegistrationSnapshot {
         PushRegistrationSnapshot(

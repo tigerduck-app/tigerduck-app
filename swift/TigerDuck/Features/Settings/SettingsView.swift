@@ -146,13 +146,13 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - Cross-Device Sync
-            Section("Cross-device sync") {
+            // MARK: - Cloud Sync
+            Section(String(localized: "cloud_sync_title")) {
                 NavigationLink {
                     CloudSyncSettingsView()
                 } label: {
                     HStack {
-                        Text("Cross-device sync")
+                        Text(String(localized: "cloud_sync_title"))
                         Spacer()
                         Text(Defaults[.cloudSyncEnabled]
                              ? String(localized: "settings_sync_status_on")

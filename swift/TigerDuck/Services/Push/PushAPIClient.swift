@@ -52,9 +52,19 @@ final class PushAPIClient: Sendable {
     /// `/devices/register` call.
     func updateDevicePreferences(
         deviceId: String,
-        serverPushEnabled: Bool
+        serverPushEnabled: Bool? = nil,
+        syncCourses: Bool? = nil,
+        syncCourseColors: Bool? = nil,
+        syncCourseNames: Bool? = nil,
+        syncAssignments: Bool? = nil
     ) async throws -> PushAPI.DevicePreferencesResponse {
-        let body = PushAPI.DevicePreferencesRequest(serverPushEnabled: serverPushEnabled)
+        let body = PushAPI.DevicePreferencesRequest(
+            serverPushEnabled: serverPushEnabled,
+            syncCourses: syncCourses,
+            syncCourseColors: syncCourseColors,
+            syncCourseNames: syncCourseNames,
+            syncAssignments: syncAssignments
+        )
         let safeDevice = Self.percentEncoded(deviceId)
         return try await patch(
             path: "/devices/\(safeDevice)/preferences",

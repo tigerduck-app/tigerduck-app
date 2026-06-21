@@ -369,14 +369,40 @@ private struct MacAccountSettingsView: View {
                 }
             }
 
-            Section("Cross-device sync") {
-                Toggle("Cross-device sync", isOn: $state.cloudSyncEnabled)
+            Section(String(localized: "cloud_sync_title")) {
+                Toggle(String(localized: "cloud_sync_title"), isOn: $state.cloudSyncEnabled)
 
                 if state.cloudSyncEnabled {
-                    Toggle("Assignments", isOn: $macSyncAssignments)
-                    Toggle("Courses", isOn: $macSyncCourses)
-                    Toggle("Course colours", isOn: $macSyncCourseColors)
-                    Toggle("Custom course names", isOn: $macSyncCourseNames)
+                    Toggle(String(localized: "cloud_sync_assignments"), isOn: $macSyncAssignments)
+
+                    Toggle(String(localized: "cloud_sync_class_table"), isOn: Binding(
+                        get: { macSyncCourses || macSyncCourseColors || macSyncCourseNames },
+                        set: { newValue in
+                            macSyncCourses = newValue
+                            macSyncCourseColors = newValue
+                            macSyncCourseNames = newValue
+                        }
+                    ))
+
+                    if macSyncCourses || macSyncCourseColors || macSyncCourseNames {
+                        Toggle(String(localized: "cloud_sync_courses"), isOn: Binding(
+                            get: { macSyncCourses },
+                            set: { newValue in
+                                macSyncCourses = newValue
+                                if !newValue {
+                                    macSyncCourseColors = false
+                                    macSyncCourseNames = false
+                                }
+                            }
+                        ))
+                            .padding(.leading, 20)
+                        Toggle(String(localized: "cloud_sync_course_colours"), isOn: $macSyncCourseColors)
+                            .padding(.leading, 20)
+                            .disabled(!macSyncCourses)
+                        Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $macSyncCourseNames)
+                            .padding(.leading, 20)
+                            .disabled(!macSyncCourses)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {

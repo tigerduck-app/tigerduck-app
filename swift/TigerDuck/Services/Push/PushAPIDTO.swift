@@ -39,20 +39,36 @@ enum PushAPI {
     // MARK: - Device preferences (unchanged shape)
 
     struct DevicePreferencesRequest: Codable, Sendable {
-        let serverPushEnabled: Bool
+        var serverPushEnabled: Bool?
+        var syncCourses: Bool?
+        var syncCourseColors: Bool?
+        var syncCourseNames: Bool?
+        var syncAssignments: Bool?
 
         enum CodingKeys: String, CodingKey {
             case serverPushEnabled = "server_push_enabled"
+            case syncCourses = "sync_courses"
+            case syncCourseColors = "sync_course_colors"
+            case syncCourseNames = "sync_course_names"
+            case syncAssignments = "sync_assignments"
         }
     }
 
     struct DevicePreferencesResponse: Codable, Sendable {
         let deviceId: String
         let serverPushEnabled: Bool
+        let syncCourses: Bool
+        let syncCourseColors: Bool
+        let syncCourseNames: Bool
+        let syncAssignments: Bool
 
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"
             case serverPushEnabled = "server_push_enabled"
+            case syncCourses = "sync_courses"
+            case syncCourseColors = "sync_course_colors"
+            case syncCourseNames = "sync_course_names"
+            case syncAssignments = "sync_assignments"
         }
     }
 
