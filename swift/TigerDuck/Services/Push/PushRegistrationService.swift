@@ -166,7 +166,8 @@ actor PushRegistrationService {
             platform: PushDeviceClass.platform(for: deviceClass),
             app_version: appVersion,
             os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
-            push_token: nil
+            push_token: nil,
+            cloud_sync_enabled: Defaults[.cloudSyncEnabled]
         )
         do {
             let response = try await apiClient.registerDevice(request)
@@ -344,6 +345,7 @@ actor PushRegistrationService {
         guard let pts = ptsTokenHex else { return }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         do {
+            let cloudSync = Defaults[.cloudSyncEnabled]
             let ptsRequest = PushAPI.DeviceRegisterRequest(
                 client_device_id: identity.uuid,
                 platform: PushDeviceClass.platform(for: deviceClass),
@@ -356,7 +358,8 @@ actor PushRegistrationService {
                     bundle_id: bundleId,
                     environment: apnsEnv,
                     scope_key: attrsType
-                )
+                ),
+                cloud_sync_enabled: cloudSync
             )
             let ptsResponse = try await apiClient.registerDevice(ptsRequest)
             logger.info("registered device (PTS) device_id=\(ptsResponse.device_id, privacy: .public)")
@@ -374,7 +377,8 @@ actor PushRegistrationService {
                         bundle_id: bundleId,
                         environment: apnsEnv,
                         scope_key: ""
-                    )
+                    ),
+                    cloud_sync_enabled: cloudSync
                 )
                 let tokenResponse = try await apiClient.registerDevice(deviceTokenRequest)
                 logger.info("registered device (standard APNs) device_id=\(tokenResponse.device_id, privacy: .public)")

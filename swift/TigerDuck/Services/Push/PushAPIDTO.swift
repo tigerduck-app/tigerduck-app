@@ -13,6 +13,7 @@ enum PushAPI {
         let app_version: String?
         let os_version: String?
         let push_token: PushTokenIn?
+        let cloud_sync_enabled: Bool?
     }
 
     struct PushTokenIn: Encodable, Sendable {
