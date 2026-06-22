@@ -111,8 +111,9 @@ final class CloudSyncCoordinator {
 
         Defaults[.cloudSyncEnabled] = true
         state = .active
-        lastError = nil
-        start()
+        if lastError == nil {
+            start()
+        }
     }
 
     // MARK: - Disable

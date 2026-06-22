@@ -142,16 +142,13 @@ actor SyncOutbox {
 
     private func resolve(_ op: SyncOp, idMap: SyncIdMap) -> ResolvedSyncOp? {
         switch op {
-        case .courseOverride(_, _, let customName, let colorHex, _):
+        case .courseOverride(let semester, let courseKey, let customName, let colorHex, _):
+            let moodleId = "\(semester)\(courseKey)"
             let locale = customName != nil ? Locale.current.language.languageCode?.identifier : nil
-            return .courseOverride(courseId: "", colorHex: colorHex, customName: customName, locale: locale)
+            return .courseOverride(courseId: moodleId, colorHex: colorHex, customName: customName, locale: locale)
 
-        case .assignmentOverride(let moodleCourseId, let moodleAssignmentId, let localStatus, _):
-            guard let assignmentId = idMap.assignmentId(
-                moodleCourseId: moodleCourseId,
-                moodleAssignmentId: moodleAssignmentId
-            ) else { return nil }
-            return .assignmentOverride(assignmentId: assignmentId, localStatus: localStatus)
+        case .assignmentOverride(_, let moodleAssignmentId, let localStatus, _):
+            return .assignmentOverride(assignmentId: moodleAssignmentId, localStatus: localStatus)
 
         case .uploadSnapshot:
             return .uploadSnapshot

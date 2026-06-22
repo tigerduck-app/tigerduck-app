@@ -415,10 +415,11 @@ final class AppState {
                 }
             } catch {
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .public) — pending kept for retry")
-                if case PushAPIError.httpStatus(401, _) = error {
+                if case PushAPIError.httpStatus(401, _) = error, conflictCheckRetries < 2 {
                     let reloginOk = await attemptBackendRelogin()
                     if reloginOk {
                         AppLogger.sync.info("[reenable] relogin succeeded, retrying conflict check")
+                        conflictCheckRetries += 1
                         try? await Task.sleep(for: .milliseconds(500))
                         checkPendingConflicts()
                     }
@@ -483,6 +484,7 @@ final class AppState {
     private(set) var lastSyncSource: SyncSource = .none
     var isSyncLocalOnly: Bool { Defaults[.cloudSyncEnabled] && lastSyncSource == .local }
     private var pendingOverrides: Set<String> = []
+    private var conflictCheckRetries = 0
 
 
     private var _libraryRevision = 0
@@ -788,7 +790,6 @@ final class AppState {
             if cloudSyncEnabled {
                 Task {
                     await cloudSyncCoordinator.enable()
-                    await syncOverridesFromBackend()
                 }
                 requestPushScheduleSync()
                 startRevisionPolling()
@@ -1322,6 +1323,9 @@ final class AppState {
         guard Defaults[.cloudSyncEnabled] else { return }
         guard await authTokenManager.isLoggedIn else { return }
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.backend)
+            #endif
             let json = try await pushCoordinator.fetchFullSync()
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
 
@@ -1628,8 +1632,10 @@ final class AppState {
 
             UserDefaults.standard.set(Date(), forKey: "lastCourseSyncAt")
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            ServerStatusTracker.shared.set(.ok, for: .backend)
             lastSyncSource = .backend
         } catch {
+            ServerStatusTracker.shared.set(.failed, for: .backend)
             lastSyncSource = .local
             if case PushAPIError.httpStatus(401, _) = error, !retried {
                 let reloginOk = await attemptBackendRelogin()
