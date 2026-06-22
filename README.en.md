@@ -190,7 +190,7 @@ open swift/TigerDuck.xcodeproj
 > 💡 Name abbreviations (`name-abbr/`) and localization strings (`localization/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
 
 ### Push Backend
-The production FastAPI push service (APNs Push-to-Start, schedule sync, bulletin scraping, and LLM classification) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v2/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
+The production FastAPI service (APNs Push-to-Start, schedule sync, bulletin scraping, LLM classification, and cloud sync) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v3/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
 
 ### Network Request Verification (`api-poc/`)
 

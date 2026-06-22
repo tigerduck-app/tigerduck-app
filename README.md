@@ -191,7 +191,7 @@ open swift/TigerDuck.xcodeproj
 > 💡 名稱簡稱（`name-abbr/`）與多語系字串（`localization/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
 
 ### 推播後端
-正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v2/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
+正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類、雲端同步）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v3/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
 
 ### 網路請求方法驗證（`api-poc/`）
 
