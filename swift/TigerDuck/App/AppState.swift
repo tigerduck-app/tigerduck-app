@@ -282,6 +282,7 @@ final class AppState {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
             return
         }
+        conflictCheckRetries = 0
         AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
         Task {
             do {
@@ -467,6 +468,10 @@ final class AppState {
             } else {
                 if conflict.categories.contains("courses") {
                     DataCache.shared.saveDeletedCourseNos([])
+                }
+                if conflict.categories.contains("course_colors") {
+                    DataCache.shared.saveCourseColorMap([:])
+                    TigerDuckTheme.reload()
                 }
                 if conflict.categories.contains("course_names") {
                     DataCache.shared.saveCourseCustomNames([:])
