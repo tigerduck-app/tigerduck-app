@@ -1242,7 +1242,6 @@ final class AppState {
     func bindPushDelegate(_ delegate: some PushTokenSource) {
         pushCoordinator.bindTokenForwarding(delegate)
         delegate.onSyncTrigger = { [weak self] in
-            self?.cloudSyncCoordinator.onSyncTrigger()
             await self?.syncOverridesFromBackend()
         }
     }
