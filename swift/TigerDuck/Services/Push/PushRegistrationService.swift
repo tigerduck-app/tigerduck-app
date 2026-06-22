@@ -235,10 +235,15 @@ actor PushRegistrationService {
     }
 
     func updateCloudSyncEnabled(_ enabled: Bool) async {
-        _ = try? await apiClient.updateDevicePreferences(
-            deviceId: identity.uuid,
-            cloudSyncEnabled: enabled
-        )
+        do {
+            _ = try await apiClient.updateDevicePreferences(
+                deviceId: identity.uuid,
+                cloudSyncEnabled: enabled
+            )
+            logger.info("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH succeeded")
+        } catch {
+            logger.error("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func updateSyncPreferences(
@@ -346,6 +351,7 @@ actor PushRegistrationService {
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         do {
             let cloudSync = Defaults[.cloudSyncEnabled]
+            logger.info("[register] cloud_sync_enabled=\(cloudSync, privacy: .public)")
             let ptsRequest = PushAPI.DeviceRegisterRequest(
                 client_device_id: identity.uuid,
                 platform: PushDeviceClass.platform(for: deviceClass),
