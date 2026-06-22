@@ -208,6 +208,7 @@ struct ClassTableView: View {
             if pageAccessState != .loginRequired {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
                     NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState, isLocalOnly: appState.isSyncLocalOnly)
+                    ServerStatusIcons(servers: [.moodle, .courseSelection, .backend])
                     Button {
                         viewModel.showResetConfirm = true
                     } label: {

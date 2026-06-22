@@ -103,6 +103,7 @@ struct TigerDuckApp: App {
                         }
                     }
                     appState.backgroundSync()
+                    appState.startCloudSyncIfEnabled()
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
@@ -305,11 +306,12 @@ struct TigerDuckApp: App {
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
+                    appState.startCloudSyncIfEnabled()
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
                     }
-                }
+}
                 .onOpenURL { url in
                     guard let destination = WidgetURLRouter.route(url) else { return }
                     appState.openFromWidget(destination)

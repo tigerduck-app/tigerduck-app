@@ -276,6 +276,9 @@ struct SettingsView: View {
                 NavigationLink("API endpoint") {
                     DebugEndpointView()
                 }
+                NavigationLink("Server failure simulation") {
+                    DebugServerFailureView()
+                }
                 #if os(iOS)
                 NavigationLink("Triggers") {
                     TriggersDebugView()

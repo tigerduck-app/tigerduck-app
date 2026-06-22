@@ -1154,6 +1154,8 @@
 					MinuteTicker.swift,
 					EqualHeightCards.swift,
 					BadgeOverlay.swift,
+					ServerStatusTracker.swift,
+					ServerStatusIcons.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1351,6 +1353,8 @@
 					MinuteTicker.swift,
 					EqualHeightCards.swift,
 					BadgeOverlay.swift,
+					ServerStatusTracker.swift,
+					ServerStatusIcons.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

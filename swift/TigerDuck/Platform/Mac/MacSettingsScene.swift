@@ -610,6 +610,30 @@ private struct MacDeveloperSettingsView: View {
                 Text("Notes")
             }
 
+            // MARK: Server failure simulation
+
+            Section("Server failure simulation") {
+                ForEach(ServerKind.allCases) { server in
+                    Picker(server.label, selection: Binding(
+                        get: { ServerFailureSimulator.shared.failure(for: server) },
+                        set: { ServerFailureSimulator.shared.failures[server] = $0 }
+                    )) {
+                        ForEach(SimulatedFailure.allCases) { failure in
+                            Text(failure.label).tag(failure)
+                        }
+                    }
+                }
+                HStack {
+                    Button("Reset all") {
+                        ServerFailureSimulator.shared.failures.removeAll()
+                    }
+                    Spacer()
+                    Button("Reset statuses") {
+                        ServerStatusTracker.shared.statuses.removeAll()
+                    }
+                }
+            }
+
             // MARK: API endpoint
 
             Section {

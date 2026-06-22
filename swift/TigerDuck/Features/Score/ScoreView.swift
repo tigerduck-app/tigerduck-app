@@ -80,6 +80,7 @@ struct ScoreView: View {
                 .foregroundStyle(Color.textPrimary)
             Spacer()
             NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState, isLocalOnly: appState.isSyncLocalOnly)
+            ServerStatusIcons(servers: [.courseSelection])
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)

@@ -25,6 +25,7 @@ struct CalendarTabView: View {
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
                         NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState, isLocalOnly: appState.isSyncLocalOnly)
+                        ServerStatusIcons(servers: [.moodle])
                         Button {
                             viewModel.goToToday()
                         } label: {

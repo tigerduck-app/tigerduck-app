@@ -88,6 +88,9 @@ enum AppServiceBridge {
         }
 
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.courseSelection)
+            #endif
             let session = NTUSTSessionManager.shared.session
             // NTUST SSO is the "nice to have" source here — Moodle's long-lived
             // OIDC token is the primary. If SSO is unreachable (cookies cleared,
@@ -107,8 +110,10 @@ enum AppServiceBridge {
                             authService?.loginGeneration == startGeneration
                         }
                     )
+                    await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .courseSelection) }
                 } catch {
                     await MainActor.run {
+                        ServerStatusTracker.shared.set(.failed, for: .courseSelection)
                         AppLogger.captureError(error, context: [
                             "service": "fetchEnrolledCourseNos",
                             "semester": semester,
@@ -339,6 +344,7 @@ enum AppServiceBridge {
             return courses
         } catch {
             await MainActor.run {
+                ServerStatusTracker.shared.set(.failed, for: .courseSelection)
                 AppLogger.captureError(error, context: ["bridge": "fetchCourses", "semester": semester])
             }
             return DataCache.shared.loadCourses(semester: semester)
@@ -457,6 +463,9 @@ enum AppServiceBridge {
         }
 
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.moodle)
+            #endif
             let currentSemester = CourseSelectionService.currentSemesterCode()
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
 
@@ -605,9 +614,11 @@ enum AppServiceBridge {
                 }
                 #endif
             }
+            await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .moodle) }
             return assignmentsToPersist
         } catch {
             await MainActor.run {
+                ServerStatusTracker.shared.set(.failed, for: .moodle)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()

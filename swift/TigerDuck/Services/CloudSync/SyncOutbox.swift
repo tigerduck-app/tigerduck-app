@@ -143,7 +143,7 @@ actor SyncOutbox {
     private func resolve(_ op: SyncOp, idMap: SyncIdMap) -> ResolvedSyncOp? {
         switch op {
         case .courseOverride(let semester, let courseKey, let customName, let colorHex, _):
-            let moodleId = "\(semester)\(courseKey)"
+            let moodleId = "client:\(semester):\(courseKey)"
             let locale = customName != nil ? Locale.current.language.languageCode?.identifier : nil
             return .courseOverride(courseId: moodleId, colorHex: colorHex, customName: customName, locale: locale)
 

@@ -45,6 +45,7 @@ struct HomeView: View {
                         loadingState: appState.sessionManager.loadingState,
                         isLocalOnly: appState.isSyncLocalOnly
                     )
+                    ServerStatusIcons(servers: [.moodle, .backend])
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                 .padding(.top, TigerDuckTheme.Spacing.md)
