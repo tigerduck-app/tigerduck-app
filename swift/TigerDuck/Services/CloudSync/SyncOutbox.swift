@@ -85,11 +85,22 @@ actor SyncOutbox {
         idMap: SyncIdMap,
         execute: @Sendable (ResolvedSyncOp) async throws -> Void
     ) async -> Bool {
+        // Iterate over a snapshot: the actor is reentrant at `await execute`,
+        // so `enqueue` can mutate `entries` mid-drain. Entries added during
+        // the drain are merged back at the end and handled on the next tick.
+        let snapshot = entries
+        let snapshotIds = Set(snapshot.map(\.id))
         var kept: [OutboxEntry] = []
         var index = 0
 
-        while index < entries.count {
-            let entry = entries[index]
+        func mergeAndStore(retainRemainder fromIndex: Int) {
+            kept.append(contentsOf: snapshot[fromIndex...])
+            let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
+            entries = kept + newlyEnqueued
+        }
+
+        while index < snapshot.count {
+            let entry = snapshot[index]
 
             guard let resolved = resolve(entry.op, idMap: idMap) else {
                 kept.append(entry)
@@ -100,23 +111,17 @@ actor SyncOutbox {
             do {
                 try await execute(resolved)
             } catch is CancellationError {
-                kept.append(entry)
-                kept.append(contentsOf: entries[(index + 1)...])
-                entries = kept
+                mergeAndStore(retainRemainder: index)
                 persist()
                 return false
             } catch is URLError {
-                kept.append(entry)
-                kept.append(contentsOf: entries[(index + 1)...])
-                entries = kept
+                mergeAndStore(retainRemainder: index)
                 persist()
                 return false
             } catch {
                 let statusCode = (error as? SyncOutboxAuthError)?.statusCode
                 if statusCode == 401 {
-                    kept.append(entry)
-                    kept.append(contentsOf: entries[(index + 1)...])
-                    entries = kept
+                    mergeAndStore(retainRemainder: index)
                     persist()
                     return false
                 }
@@ -133,7 +138,8 @@ actor SyncOutbox {
             index += 1
         }
 
-        entries = kept
+        let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
+        entries = kept + newlyEnqueued
         persist()
         return entries.isEmpty
     }
