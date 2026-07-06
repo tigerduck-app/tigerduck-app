@@ -285,13 +285,12 @@ final class AppState {
         AppLogger.sync.info("[reenable] marked category: \(category, privacy: .public), pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public)")
     }
 
-    func checkPendingConflicts() {
+    func checkPendingConflicts(retriesLeft: Int = 2) {
         let pending = Defaults[.pendingConflictCategories]
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
             return
         }
-        conflictCheckRetries = 0
         AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
         Task {
             do {
@@ -425,13 +424,12 @@ final class AppState {
                 }
             } catch {
                 AppLogger.sync.error("[reenable] checkPendingConflicts FAILED: \(error, privacy: .public) — pending kept for retry")
-                if case PushAPIError.httpStatus(401, _) = error, conflictCheckRetries < 2 {
+                if case PushAPIError.httpStatus(401, _) = error, retriesLeft > 0 {
                     let reloginOk = await attemptBackendRelogin()
                     if reloginOk {
                         AppLogger.sync.info("[reenable] relogin succeeded, retrying conflict check")
-                        conflictCheckRetries += 1
                         try? await Task.sleep(for: .milliseconds(500))
-                        checkPendingConflicts()
+                        checkPendingConflicts(retriesLeft: retriesLeft - 1)
                     }
                 }
             }
@@ -516,7 +514,6 @@ final class AppState {
     /// window contains a bump skips conflict detection for that round —
     /// its server payload is stale relative to the edit.
     private var overrideEditGeneration = 0
-    private var conflictCheckRetries = 0
 
 
     private var _libraryRevision = 0
