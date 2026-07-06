@@ -167,15 +167,32 @@ final class CloudSyncCoordinator {
     }
 
     /// Called by the revision poller when the server revision is ahead.
-    func onRevisionChanged() {
-        guard state == .active else { return }
-        scheduleTick()
+    /// The caller has already pulled and applied server data via
+    /// `syncOverridesFromBackend()`, so only the push half runs here.
+    func onRevisionChanged() async {
+        await drainOutbox()
     }
 
-    /// Called when a sync_trigger push notification arrives.
-    func onSyncTrigger() {
-        guard state == .active else { return }
-        scheduleTick()
+    /// Called when a sync_trigger push notification arrives. Same contract
+    /// as `onRevisionChanged()`: the pull already happened, push only.
+    func onSyncTrigger() async {
+        await drainOutbox()
+    }
+
+    /// Push half of `syncTick()`: drain pending outbox entries without the
+    /// full-sync pull. The pull would be redundant here (the caller just
+    /// pulled), and a transient pull failure must not abort the drain.
+    private func drainOutbox() async {
+        guard state == .active, !tickInFlight else { return }
+        tickInFlight = true
+        defer { tickInFlight = false }
+
+        guard await outbox.pendingCount() > 0 else { return }
+
+        await outbox.drain(idMap: idMap) { [weak self] op in
+            guard let self else { throw CancellationError() }
+            try await self.execute(op)
+        }
     }
 
     // MARK: - Enqueue helpers

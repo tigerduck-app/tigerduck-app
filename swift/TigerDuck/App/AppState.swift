@@ -1243,6 +1243,7 @@ final class AppState {
         pushCoordinator.bindTokenForwarding(delegate)
         delegate.onSyncTrigger = { [weak self] in
             await self?.syncOverridesFromBackend()
+            await self?.cloudSyncCoordinator.onSyncTrigger()
         }
     }
 
@@ -1902,6 +1903,7 @@ final class AppState {
             if serverRevision > _lastKnownRevision {
                 AppLogger.sync.info("[poll] revision changed — triggering full sync")
                 await syncOverridesFromBackend()
+                await cloudSyncCoordinator.onRevisionChanged()
             }
         } catch {
             AppLogger.sync.info("[poll] tick failed: \(error, privacy: .public)")
