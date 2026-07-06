@@ -249,15 +249,24 @@ final class AppState {
                 syncAssignmentOverride(moodleId: c.id, status: c.localStatus)
             }
         } else {
-            let safeArchived = pendingSyncServerArchived.union(
-                DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) }
-            )
-            let safeCompleted = pendingSyncServerCompleted.union(
-                DataCache.shared.loadLocallyCompletedAssignmentIds().filter { pendingOverrides.contains($0) }
-            )
-            DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
-            DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            let serverArchived = pendingSyncServerArchived
+            let serverCompleted = pendingSyncServerCompleted
+            Task { [weak self] in
+                guard let self else { return }
+                // Same guard as the pull path: edits queued in the outbox are
+                // in flight to the server and must survive "keep server".
+                let inFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
+                let protectedOverrides = pendingOverrides.union(inFlight)
+                let safeArchived = serverArchived.union(
+                    DataCache.shared.loadArchivedAssignmentIds().filter { protectedOverrides.contains($0) }
+                )
+                let safeCompleted = serverCompleted.union(
+                    DataCache.shared.loadLocallyCompletedAssignmentIds().filter { protectedOverrides.contains($0) }
+                )
+                DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
+                DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)
+                NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+            }
         }
         syncConflicts = []
         pendingSyncServerArchived = []
@@ -443,17 +452,31 @@ final class AppState {
                     try? await coordinator.deleteAllCourses()
                     uploadCourses(courses, semester: semester)
                 }
-                if conflict.categories.contains("course_colors") {
-                    let colorMap = TigerDuckTheme.courseColorMap
-                    for (courseNo, hex) in colorMap {
-                        syncCourseOverride(moodleCourseId: courseNo, colorHex: String(format: "#%06X", hex))
+                if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
+                    // The color/name maps are keyed by courseNo, but the
+                    // override endpoint resolves moodle_id — map through the
+                    // cached course list (and skip courses without one, same
+                    // as the live edit paths).
+                    let semester = CourseSelectionService.currentSemesterCode()
+                    let moodleIdByCourseNo = Dictionary(
+                        DataCache.shared.loadCourses(semester: semester).compactMap { c in
+                            c.moodleIdNumber.map { (c.courseNo, $0) }
+                        },
+                        uniquingKeysWith: { first, _ in first })
+                    if conflict.categories.contains("course_colors") {
+                        let colorMap = TigerDuckTheme.courseColorMap
+                        for (courseNo, hex) in colorMap {
+                            guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
+                            syncCourseOverride(moodleCourseId: moodleId, colorHex: String(format: "#%06X", hex))
+                        }
                     }
-                }
-                if conflict.categories.contains("course_names") {
-                    let customNames = DataCache.shared.loadCourseCustomNames()
-                    for (courseNo, locales) in customNames {
-                        for (locale, name) in locales where !name.isEmpty {
-                            syncCourseOverride(moodleCourseId: courseNo, customName: name, locale: locale)
+                    if conflict.categories.contains("course_names") {
+                        let customNames = DataCache.shared.loadCourseCustomNames()
+                        for (courseNo, locales) in customNames {
+                            guard let moodleId = moodleIdByCourseNo[courseNo] else { continue }
+                            for (locale, name) in locales where !name.isEmpty {
+                                syncCourseOverride(moodleCourseId: moodleId, customName: name, locale: locale)
+                            }
                         }
                     }
                 }
@@ -489,6 +512,10 @@ final class AppState {
     private(set) var lastSyncSource: SyncSource = .none
     var isSyncLocalOnly: Bool { Defaults[.cloudSyncEnabled] && lastSyncSource == .local }
     private var pendingOverrides: Set<String> = []
+    /// Bumped on every local assignment-override edit. A pull whose fetch
+    /// window contains a bump skips conflict detection for that round —
+    /// its server payload is stale relative to the edit.
+    private var overrideEditGeneration = 0
     private var conflictCheckRetries = 0
 
 
@@ -1331,6 +1358,12 @@ final class AppState {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)
             #endif
+            // Sample the pending set on both sides of the fetch: an edit whose
+            // PATCH fully lands while the fetch is in flight leaves both the
+            // marker set and the outbox before the (stale) payload arrives.
+            let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
+            let preFetchProtected = preFetchInFlight.union(pendingOverrides)
+            let editGenerationAtFetch = overrideEditGeneration
             let json = try await pushCoordinator.fetchFullSync()
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
 
@@ -1370,15 +1403,31 @@ final class AppState {
                 for id in localCompletedIds { syncAssignmentOverride(moodleId: id, status: "locally_completed") }
             }
 
+            // Ops still queued in the outbox are local edits in flight to the
+            // server — differences against the (possibly stale) pull payload
+            // are not cross-device conflicts.
+            let inFlightOverrides = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
+            let protectedOverrides = preFetchProtected
+                .union(pendingOverrides)
+                .union(inFlightOverrides)
+
             let pendingConflicts = Defaults[.pendingConflictCategories]
             if pendingConflicts.contains("assignments") {
                 AppLogger.sync.info("[syncOverrides] skipping assignment overrides — conflict check pending")
-            } else if !isMigrating {
+            } else if isMigrating {
+                // Local overrides were just uploaded above; nothing to
+                // reconcile until the server echoes them back.
+            } else if overrideEditGeneration != editGenerationAtFetch {
+                // An edit landed while the pull was in flight; the payload
+                // predates it. Defer to the next pull (the drain's revision
+                // bump re-triggers one) instead of comparing stale state.
+                AppLogger.sync.info("[syncOverrides] skipping assignment overrides — local edit during fetch")
+            } else {
                 var conflicts: [(id: String, kind: String, label: String, local: String, server: String)] = []
                 let allIds = serverArchivedIds.union(serverCompletedIds).union(localArchivedIds).union(localCompletedIds)
                 let assignmentCache = DataCache.shared.loadAssignments()
                 let assignmentsByMoodleId = Dictionary(assignmentCache.map { ($0.assignmentId, $0) }, uniquingKeysWith: { first, _ in first })
-                for id in allIds where !pendingOverrides.contains(id) {
+                for id in allIds where !protectedOverrides.contains(id) {
                     let serverStatus: String
                     if serverArchivedIds.contains(id) { serverStatus = "ignored" }
                     else if serverCompletedIds.contains(id) { serverStatus = "locally_completed" }
@@ -1396,9 +1445,9 @@ final class AppState {
                 // Always apply non-conflicting items
                 let conflictIds = Set(conflicts.map(\.id))
                 var safeArchived = serverArchivedIds.filter { !conflictIds.contains($0) }
-                    .union(DataCache.shared.loadArchivedAssignmentIds().filter { pendingOverrides.contains($0) })
+                    .union(DataCache.shared.loadArchivedAssignmentIds().filter { protectedOverrides.contains($0) })
                 var safeCompleted = serverCompletedIds.filter { !conflictIds.contains($0) }
-                    .union(DataCache.shared.loadLocallyCompletedAssignmentIds().filter { pendingOverrides.contains($0) })
+                    .union(DataCache.shared.loadLocallyCompletedAssignmentIds().filter { protectedOverrides.contains($0) })
                 // Preserve local state for conflicting items until user resolves
                 for c in conflicts {
                     switch c.local {
@@ -1630,8 +1679,12 @@ final class AppState {
             }
 
             // Update the revision watermark so the poller doesn't
-            // immediately re-trigger after a full sync.
-            if let rev = json["current_revision"] as? Int {
+            // immediately re-trigger after a full sync. When the reconcile was
+            // skipped (edit raced the fetch), leave it stale so the next poll
+            // re-pulls — the local op's drain can't be counted on to bump the
+            // server revision (its PATCH may fail).
+            if overrideEditGeneration == editGenerationAtFetch,
+               let rev = json["current_revision"] as? Int {
                 _lastKnownRevision = rev
             }
 
@@ -1735,15 +1788,21 @@ final class AppState {
     func syncAssignmentOverride(moodleId: String, status: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
         AppLogger.sync.debug("override enqueue: \(moodleId, privacy: .private) → \(status, privacy: .public)")
+        guard let moodleAssignmentId = Int(moodleId) else { return }
+        overrideEditGeneration &+= 1
+        // Bridge the gap until the op is durably in the outbox; from then
+        // on pendingAssignmentOverrideIds() is the conflict-guard signal
+        // until the PATCH actually lands on the server.
         pendingOverrides.insert(moodleId)
-        if let moodleAssignmentId = Int(moodleId) {
-            cloudSyncCoordinator.enqueueAssignmentOverride(
+        Task { [weak self] in
+            guard let self else { return }
+            await cloudSyncCoordinator.enqueueAssignmentOverride(
                 moodleCourseId: 0,
                 moodleAssignmentId: moodleAssignmentId,
                 localStatus: status)
-            cloudSyncCoordinator.scheduleTick(after: 1)
+            pendingOverrides.remove(moodleId)
         }
-        pendingOverrides.remove(moodleId)
+        cloudSyncCoordinator.scheduleTick(after: 1)
     }
 
     func syncCourseOverride(
@@ -1756,11 +1815,11 @@ final class AppState {
         let semester = CourseSelectionService.currentSemesterCode()
         if let colorHex {
             cloudSyncCoordinator.enqueueCourseColorOverride(
-                courseNo: moodleCourseId, semester: semester, colorHex: colorHex)
+                moodleId: moodleCourseId, semester: semester, colorHex: colorHex)
         }
         if let customName {
             cloudSyncCoordinator.enqueueCourseNameOverride(
-                courseNo: moodleCourseId, semester: semester, customName: customName)
+                moodleId: moodleCourseId, semester: semester, customName: customName)
         }
         cloudSyncCoordinator.scheduleTick(after: 1)
     }

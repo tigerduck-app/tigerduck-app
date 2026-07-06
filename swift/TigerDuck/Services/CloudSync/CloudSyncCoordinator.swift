@@ -12,7 +12,6 @@ nonisolated enum CloudSyncState: Equatable, Sendable {
     case disabled
     case enabling(step: String)
     case active
-    case needsReauth(reason: String)
 }
 
 // MARK: - CloudSyncCoordinator
@@ -67,9 +66,6 @@ final class CloudSyncCoordinator {
     @ObservationIgnored var tickTimer: Timer?
     @ObservationIgnored var dataDebounceTask: Task<Void, Never>?
 
-    // Loop guards
-    @ObservationIgnored var suppressLocalEvents = false
-
     // MARK: Init
 
     init(
@@ -101,7 +97,7 @@ final class CloudSyncCoordinator {
         do {
             await pushCoordinator.registration.updateCloudSyncEnabled(true)
             state = .enabling(step: "sync")
-            try await pullAndApply()
+            try await pullAndRebuildIdMap()
             Defaults[.cloudSyncLastSyncedAt] = Date().timeIntervalSince1970
             lastSyncedAt = Date()
         } catch {
@@ -111,9 +107,10 @@ final class CloudSyncCoordinator {
 
         Defaults[.cloudSyncEnabled] = true
         state = .active
-        if lastError == nil {
-            start()
-        }
+        // Start even when the initial pull failed (e.g. enabled while
+        // offline): the timer and observers are how sync self-heals, and
+        // a relaunch would start them in this state anyway.
+        start()
     }
 
     // MARK: - Disable
@@ -143,13 +140,12 @@ final class CloudSyncCoordinator {
         defer { tickInFlight = false }
 
         do {
-            try await pullAndApply()
+            try await pullAndRebuildIdMap()
         } catch {
-            if isAuthError(error) {
-                state = .needsReauth(reason: "session_revoked")
-                return
-            }
-            if error is URLError { return }
+            // 401 means the JWT lapsed; AppState's relogin machinery
+            // refreshes it, so retry on a later tick like any transient.
+            // Blocking here would also drop local edits from the queue.
+            if error is URLError || isUnauthorized(error) { return }
             lastError = String(describing: error)
         }
 
@@ -197,52 +193,55 @@ final class CloudSyncCoordinator {
 
     // MARK: - Enqueue helpers
 
-    func enqueueCourseColorOverride(courseNo: String, semester: String, colorHex: String) {
+    func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) {
         guard state == .active else { return }
         let op = SyncOp.courseOverride(
-            semester: semester, courseKey: courseNo,
+            semester: semester, moodleId: moodleId,
             customName: nil, colorHex: colorHex, stamp: Date())
         Task { await outbox.enqueue(op) }
     }
 
-    func enqueueCourseNameOverride(courseNo: String, semester: String, customName: String) {
+    func enqueueCourseNameOverride(moodleId: String, semester: String, customName: String) {
         guard state == .active else { return }
         let op = SyncOp.courseOverride(
-            semester: semester, courseKey: courseNo,
+            semester: semester, moodleId: moodleId,
             customName: customName, colorHex: nil, stamp: Date())
         Task { await outbox.enqueue(op) }
     }
 
-    func enqueueAssignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String) {
+    /// Awaitable so callers can key "op is durably queued" transitions
+    /// (e.g. AppState's pending-override conflict guard) off completion.
+    func enqueueAssignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String) async {
         guard state == .active else { return }
         let op = SyncOp.assignmentOverride(
             moodleCourseId: moodleCourseId,
             moodleAssignmentId: moodleAssignmentId,
             localStatus: localStatus, stamp: Date())
-        Task { await outbox.enqueue(op) }
+        await outbox.enqueue(op)
     }
 
-    func enqueueUploadSnapshot() {
-        guard state == .active else { return }
-        Task { await outbox.enqueue(.uploadSnapshot) }
+    /// Moodle assignment ids (as strings) with a queued outbox op that has
+    /// not yet reached the server. Conflict detection must treat these as
+    /// local-pending rather than cross-device conflicts.
+    func pendingAssignmentOverrideIds() async -> Set<String> {
+        var ids = Set<String>()
+        for entry in await outbox.snapshot() {
+            if case .assignmentOverride(_, let moodleAssignmentId, _, _) = entry.op {
+                ids.insert(String(moodleAssignmentId))
+            }
+        }
+        return ids
     }
 
     // MARK: - Pull & Apply
 
-    private func pullAndApply() async throws {
-        suppressLocalEvents = true
-        defer { suppressLocalEvents = false }
-
+    /// Fetch the full sync payload and rebuild the server-ID map. Applying
+    /// server data to local caches is AppState's job (via
+    /// `syncOverridesFromBackend`); this pull validates connectivity and
+    /// keeps `idMap` fresh for the outbox drain.
+    private func pullAndRebuildIdMap() async throws {
         let result = try await pushCoordinator.fetchFullSync()
-        // Rebuild ID map from full sync response
         rebuildIdMap(from: result)
-        // The existing AppState.syncOverridesFromBackend logic handles
-        // applying the sync data — we just need to trigger it.
-        // Post a notification so AppState can apply the data.
-        NotificationCenter.default.post(
-            name: .cloudSyncDidPull,
-            object: nil,
-            userInfo: ["result": result])
     }
 
     private func rebuildIdMap(from result: [String: Any]) {
@@ -275,23 +274,29 @@ final class CloudSyncCoordinator {
 
     // MARK: - Execute resolved op
 
+    /// 401s are rethrown as `SyncOutboxAuthError` so the drain aborts and
+    /// retains the queue without burning retry attempts — the token layer
+    /// refreshes the JWT, and a later tick delivers the ops.
     private func execute(_ op: ResolvedSyncOp) async throws {
-        switch op {
-        case .courseOverride(let courseId, let colorHex, let customName, let locale):
-            _ = try await pushCoordinator.patchCourseOverride(
-                moodleCourseId: courseId,
-                colorHex: colorHex,
-                customName: customName,
-                locale: locale)
+        do {
+            switch op {
+            case .courseOverride(let courseId, let colorHex, let customName, let locale):
+                _ = try await pushCoordinator.patchCourseOverride(
+                    moodleCourseId: courseId,
+                    colorHex: colorHex,
+                    customName: customName,
+                    locale: locale)
 
-        case .assignmentOverride(let assignmentId, let localStatus):
-            _ = try await pushCoordinator.patchAssignmentOverride(
-                moodleAssignmentId: String(assignmentId),
-                localStatus: localStatus)
-
-        case .uploadSnapshot:
-            // Delegate to AppState's existing upload logic
-            NotificationCenter.default.post(name: .cloudSyncNeedsUpload, object: nil)
+            case .assignmentOverride(let assignmentId, let localStatus):
+                _ = try await pushCoordinator.patchAssignmentOverride(
+                    moodleAssignmentId: String(assignmentId),
+                    localStatus: localStatus)
+            }
+        } catch {
+            if isUnauthorized(error) {
+                throw SyncOutboxAuthError(statusCode: 401)
+            }
+            throw error
         }
     }
 
@@ -352,18 +357,12 @@ final class CloudSyncCoordinator {
         }
     }
 
-    private func isAuthError(_ error: Error) -> Bool {
-        let nsError = error as NSError
-        return nsError.domain == "PushAPIError" && nsError.code == 401
+    private func isUnauthorized(_ error: Error) -> Bool {
+        if case PushAPIError.httpStatus(401, _) = error { return true }
+        return false
     }
 }
 
-// MARK: - Notification names
-
-extension Notification.Name {
-    static let cloudSyncDidPull = Notification.Name("cloudSyncDidPull")
-    static let cloudSyncNeedsUpload = Notification.Name("cloudSyncNeedsUpload")
-}
 
 // MARK: - Defaults keys
 
