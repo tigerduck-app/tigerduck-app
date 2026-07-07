@@ -70,7 +70,8 @@ nonisolated enum SyncOp: Codable, Sendable {
 
 // MARK: - ResolvedSyncOp
 
-/// What the executor receives after server IDs are resolved via SyncIdMap.
+/// What the executor receives: the queued op flattened to the Moodle
+/// identifiers the override PATCH endpoints resolve directly.
 nonisolated enum ResolvedSyncOp: Sendable {
     case courseOverride(courseId: String, colorHex: String?, customName: String?, locale: String?)
     case assignmentOverride(assignmentId: Int, localStatus: String)
@@ -97,9 +98,14 @@ actor SyncOutbox {
     private var generation = 0
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Outbox")
 
-    init(directory: URL = SyncIdMap.defaultDirectory()) {
+    init(directory: URL = SyncOutbox.defaultDirectory()) {
         self.directory = directory
         self.entries = Self.loadEntries(from: directory)
+    }
+
+    static func defaultDirectory() -> URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("TigerDuckCloudSync", isDirectory: true)
     }
 
     func enqueue(_ op: SyncOp) {
@@ -125,7 +131,6 @@ actor SyncOutbox {
     /// Returns `true` if the queue is empty at the end.
     @discardableResult
     func drain(
-        idMap: SyncIdMap,
         execute: @Sendable (ResolvedSyncOp) async throws -> Void
     ) async -> Bool {
         // Iterate over a snapshot: the actor is reentrant at `await execute`,
@@ -151,14 +156,8 @@ actor SyncOutbox {
             guard generation == startGeneration else { return entries.isEmpty }
             let entry = snapshot[index]
 
-            guard let resolved = resolve(entry.op, idMap: idMap) else {
-                kept.append(entry)
-                index += 1
-                continue
-            }
-
             do {
-                try await execute(resolved)
+                try await execute(resolve(entry.op))
             } catch is CancellationError {
                 mergeAndStore(retainRemainder: index)
                 return false
@@ -190,7 +189,7 @@ actor SyncOutbox {
 
     // MARK: - Resolution
 
-    private func resolve(_ op: SyncOp, idMap: SyncIdMap) -> ResolvedSyncOp? {
+    private func resolve(_ op: SyncOp) -> ResolvedSyncOp {
         switch op {
         case .courseOverride(_, let moodleId, let customName, let colorHex, _):
             let locale = customName != nil ? Locale.current.language.languageCode?.identifier : nil

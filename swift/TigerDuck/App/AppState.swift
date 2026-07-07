@@ -223,23 +223,28 @@ final class AppState {
         let localStatus: String
         let serverStatus: String
 
-        var localLabel: String {
-            switch localStatus {
-            case "ignored", "archived": return "已忽略"
-            case "locally_completed": return "標示為完成"
-            default: return "原始狀態"
-            }
-        }
-        var serverLabel: String {
-            switch serverStatus {
-            case "ignored", "archived": return "已忽略"
-            case "locally_completed": return "標示為完成"
-            default: return "原始狀態"
+        var localLabel: String { Self.statusLabel(localStatus) }
+        var serverLabel: String { Self.statusLabel(serverStatus) }
+
+        private static func statusLabel(_ status: String) -> String {
+            switch status {
+            case "ignored", "archived": return String(localized: "sync_conflict_status_ignored")
+            case "locally_completed": return String(localized: "sync_conflict_status_completed")
+            default: return String(localized: "sync_conflict_status_none")
             }
         }
     }
 
     var syncConflicts: [SyncConflictItem] = []
+
+    /// Body of the sync-conflict alert, shared by HomeView and MacHomeView.
+    var syncConflictAlertMessage: String {
+        let lines = syncConflicts.map { item in
+            "• " + String(format: String(localized: "sync_conflict_item_header"), item.kind, item.label)
+                + "\n  " + String(format: String(localized: "sync_conflict_item_detail"), item.localLabel, item.serverLabel)
+        }
+        return ([String(localized: "sync_conflict_message")] + lines).joined(separator: "\n")
+    }
     private var pendingSyncServerArchived: Set<String> = []
     private var pendingSyncServerCompleted: Set<String> = []
 
@@ -1435,7 +1440,7 @@ final class AppState {
                     else { localStatus = "none" }
                     if serverStatus != localStatus && localStatus != "none" && serverStatus != "none" {
                         let title = assignmentsByMoodleId[id]?.displayTitle ?? "ID \(id)"
-                        conflicts.append((id: id, kind: "作業", label: title, local: localStatus, server: serverStatus))
+                        conflicts.append((id: id, kind: String(localized: "live_activity_status_assignment_short"), label: title, local: localStatus, server: serverStatus))
                     }
                 }
 

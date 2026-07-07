@@ -312,7 +312,8 @@ struct SettingsView: View {
                     )
                     Defaults.removeAll()
 
-                    SyncIdMap.clear(in: SyncIdMap.defaultDirectory())
+                    // Removes outbox.json and any legacy id_map.json.
+                    try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
 
                     appState.hasCompletedOnboarding = false
                     Defaults[.hasCompletedOnboarding] = false

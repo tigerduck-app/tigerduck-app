@@ -51,13 +51,11 @@ final class CloudSyncCoordinator {
 
     @ObservationIgnored private let pushCoordinator: PushCoordinator
     @ObservationIgnored let outbox: SyncOutbox
-    @ObservationIgnored let stampsDirectory: URL
     @ObservationIgnored private let logger = Logger(
         subsystem: "org.ntust.app.TigerDuck", category: "CloudSync.Coordinator")
 
     // MARK: Internal state
 
-    @ObservationIgnored var idMap: SyncIdMap
     @ObservationIgnored private var tickInFlight = false
     @ObservationIgnored var started = false
 
@@ -70,13 +68,10 @@ final class CloudSyncCoordinator {
 
     init(
         pushCoordinator: PushCoordinator,
-        outbox: SyncOutbox = SyncOutbox(),
-        stampsDirectory: URL = SyncIdMap.defaultDirectory()
+        outbox: SyncOutbox = SyncOutbox()
     ) {
         self.pushCoordinator = pushCoordinator
         self.outbox = outbox
-        self.stampsDirectory = stampsDirectory
-        self.idMap = SyncIdMap.load(from: stampsDirectory)
 
         if Defaults[.cloudSyncEnabled] {
             state = .active
@@ -97,7 +92,7 @@ final class CloudSyncCoordinator {
         do {
             await pushCoordinator.registration.updateCloudSyncEnabled(true)
             state = .enabling(step: "sync")
-            try await pullAndRebuildIdMap()
+            try await pullFullSync()
             Defaults[.cloudSyncLastSyncedAt] = Date().timeIntervalSince1970
             lastSyncedAt = Date()
         } catch {
@@ -121,8 +116,6 @@ final class CloudSyncCoordinator {
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
         await pushCoordinator.disable()
 
-        SyncIdMap.clear(in: stampsDirectory)
-        idMap = SyncIdMap()
         await outbox.clearAll()
 
         Defaults[.cloudSyncEnabled] = false
@@ -140,7 +133,7 @@ final class CloudSyncCoordinator {
         defer { tickInFlight = false }
 
         do {
-            try await pullAndRebuildIdMap()
+            try await pullFullSync()
         } catch {
             // 401 means the JWT lapsed; AppState's relogin machinery
             // refreshes it, so retry on a later tick like any transient.
@@ -151,7 +144,7 @@ final class CloudSyncCoordinator {
 
         guard state == .active else { return }
 
-        await outbox.drain(idMap: idMap) { [weak self] op in
+        await outbox.drain { [weak self] op in
             guard let self else { throw CancellationError() }
             try await self.execute(op)
         }
@@ -185,7 +178,7 @@ final class CloudSyncCoordinator {
 
         guard await outbox.pendingCount() > 0 else { return }
 
-        await outbox.drain(idMap: idMap) { [weak self] op in
+        await outbox.drain { [weak self] op in
             guard let self else { throw CancellationError() }
             try await self.execute(op)
         }
@@ -233,43 +226,13 @@ final class CloudSyncCoordinator {
         return ids
     }
 
-    // MARK: - Pull & Apply
+    // MARK: - Pull
 
-    /// Fetch the full sync payload and rebuild the server-ID map. Applying
-    /// server data to local caches is AppState's job (via
-    /// `syncOverridesFromBackend`); this pull validates connectivity and
-    /// keeps `idMap` fresh for the outbox drain.
-    private func pullAndRebuildIdMap() async throws {
-        let result = try await pushCoordinator.fetchFullSync()
-        rebuildIdMap(from: result)
-    }
-
-    private func rebuildIdMap(from result: [String: Any]) {
-        var newMap = SyncIdMap()
-        // Extract course IDs from the full sync response
-        if let courses = result["courses"] as? [[String: Any]] {
-            for course in courses {
-                if let id = course["id"] as? Int,
-                   let courseKey = course["course_key"] as? String,
-                   let semester = (courseKey.split(separator: ":").dropFirst().first).map(String.init) {
-                    newMap.recordCourse(semester: semester, courseKey: courseKey, serverId: id)
-                }
-            }
-        }
-        if let assignments = result["assignments"] as? [[String: Any]] {
-            for assignment in assignments {
-                if let id = assignment["id"] as? Int,
-                   let moodleCourseId = assignment["moodle_course_id"] as? Int,
-                   let moodleAssignmentId = assignment["moodle_assignment_id"] as? Int {
-                    newMap.recordAssignment(
-                        moodleCourseId: moodleCourseId,
-                        moodleAssignmentId: moodleAssignmentId,
-                        serverId: id)
-                }
-            }
-        }
-        idMap = newMap
-        try? newMap.save(to: stampsDirectory)
+    /// Fetch the full sync payload. Applying server data to local caches is
+    /// AppState's job (via `syncOverridesFromBackend`); this pull validates
+    /// connectivity and auth before the outbox drain.
+    private func pullFullSync() async throws {
+        _ = try await pushCoordinator.fetchFullSync()
     }
 
     // MARK: - Execute resolved op

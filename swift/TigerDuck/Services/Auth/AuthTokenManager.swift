@@ -9,6 +9,12 @@ actor AuthTokenManager {
     private var accessToken: String?
     private var refreshToken: String?
     private var expiresAt: Date = .distantPast
+    /// In-flight refresh, if any. The actor suspends at the network await
+    /// inside `refresh()`, so without this a second concurrent
+    /// `validAccessToken()` call would start its own refresh — and since the
+    /// server rotates the refresh token on use, that second request would
+    /// send an already-invalidated token and fail.
+    private var refreshTask: Task<String?, Never>?
 
     private let baseURL: String
     private let deviceUUID: String
@@ -36,12 +42,22 @@ actor AuthTokenManager {
     var isLoggedIn: Bool { refreshToken != nil }
 
     /// Returns a valid access token, refreshing if needed. Nil if not logged in.
+    /// Concurrent callers coalesce onto a single refresh request.
     func validAccessToken() async -> String? {
         guard refreshToken != nil else { return nil }
         if let token = accessToken, Date.now < expiresAt.addingTimeInterval(-30) {
             return token
         }
-        return await refresh()
+        if let inFlight = refreshTask {
+            return await inFlight.value
+        }
+        // No suspension between the check above and this assignment, so only
+        // one caller can create the task.
+        let task = Task { await refresh() }
+        refreshTask = task
+        let token = await task.value
+        refreshTask = nil
+        return token
     }
 
     func authorizationHeader() async -> String? {
