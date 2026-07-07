@@ -52,7 +52,9 @@ struct TodayProvider: TimelineProvider {
         if hasCourses {
             policy = .atEnd
         } else {
-            let midnight = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86400)
+            let startOfToday = Calendar.current.startOfDay(for: Date())
+            let midnight = Calendar.current.date(byAdding: .day, value: 1, to: startOfToday)
+                ?? startOfToday.addingTimeInterval(86400)
             policy = .after(midnight)
         }
         completion(Timeline(entries: entries, policy: policy))

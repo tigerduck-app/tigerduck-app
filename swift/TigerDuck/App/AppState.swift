@@ -47,34 +47,15 @@ final class AppState {
     /// Detect fresh install (no UserDefaults marker) and clear stale Keychain data
     /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
-        let identity = PushIdentity.loadOrCreate()
-        let atm = AuthTokenManager(
-            baseURL: PushServerConfig.resolveServerURL().absoluteString,
-            deviceUUID: identity.uuid
-        )
-        self.authTokenManager = atm
-        self.pushCoordinator = PushCoordinator(
-            identity: identity,
-            authTokenManager: atm
-        )
-        self.cloudSyncCoordinator = CloudSyncCoordinator(pushCoordinator: self.pushCoordinator)
-        CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
-
-        if !Defaults[.appHasBeenInstalled] {
-            #if os(iOS)
-            // Stamp the running version as "already shown" so the
-            // What's New sheet does NOT fire on the very first launch
-            // after install — a freshly downloaded app has no upgrade
-            // history to summarise. Run this BEFORE the Keychain wipe
-            // and independently of its outcome: the seed has nothing
-            // to do with credential cleanup, and gating it on a
-            // successful wipe would let a partial wipe failure
-            // misroute the user into the "no lastShownWhatsNewVersion"
-            // fallback that pops "What's New in vN" on a freshly
-            // downloaded version.
-            updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
-            #endif
-
+        // Keychain persists across uninstall/reinstall on iOS. Detect a fresh
+        // install (no UserDefaults marker) and purge stale Keychain credentials
+        // BEFORE constructing AuthTokenManager — its init eagerly caches the v3
+        // tokens into memory, so wiping the Keychain afterwards would leave the
+        // live manager holding a previous user's tokens and rewrite them on the
+        // next refresh, defeating the purge (a different user reinstalling could
+        // then sync the previous user's cloud data).
+        let isFreshInstall = !Defaults[.appHasBeenInstalled]
+        if isFreshInstall {
             // Fresh install — purge any leftover Keychain items.
             let keysToWipe: [String] = [
                 AppConstants.KeychainKeys.studentId,
@@ -99,6 +80,31 @@ final class AppState {
                 Defaults[.appHasBeenInstalled] = true
             }
         }
+
+        let identity = PushIdentity.loadOrCreate()
+        let atm = AuthTokenManager(
+            baseURL: PushServerConfig.resolveServerURL().absoluteString,
+            deviceUUID: identity.uuid
+        )
+        self.authTokenManager = atm
+        self.pushCoordinator = PushCoordinator(
+            identity: identity,
+            authTokenManager: atm
+        )
+        self.cloudSyncCoordinator = CloudSyncCoordinator(pushCoordinator: self.pushCoordinator)
+        CloudSyncCoordinator.registerShared(self.cloudSyncCoordinator)
+
+        #if os(iOS)
+        if isFreshInstall {
+            // Stamp the running version as "already shown" so the What's New
+            // sheet does NOT fire on the very first launch after install — a
+            // freshly downloaded app has no upgrade history to summarise.
+            // Gated on fresh-install only (never on the wipe outcome above) so
+            // a partial wipe failure can't misroute the user into the "no
+            // lastShownWhatsNewVersion" fallback that pops "What's New in vN".
+            updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
+        }
+        #endif
 
         #if os(iOS)
         liveActivityObserver = NotificationCenter.default.addObserver(
@@ -150,6 +156,15 @@ final class AppState {
         }
         #endif
 
+        // Install the refresh-failure relogin handler BEFORE enabling the push
+        // stack, so a token refresh triggered by the first registration has a
+        // relogin path instead of falling through to logout() on a nil handler.
+        Task {
+            await atm.setRefreshFailedHandler { [weak self] in
+                await self?.attemptBackendRelogin() ?? false
+            }
+        }
+
         pushCoordinator.enable()
 
         authService.authTokenManager = atm
@@ -157,11 +172,6 @@ final class AppState {
             guard let self else { return }
             self.pushCoordinator.refreshRegistrationAfterAuth()
             self.requestPushScheduleSync()
-        }
-        Task {
-            await atm.setRefreshFailedHandler { [weak self] in
-                await self?.attemptBackendRelogin() ?? false
-            }
         }
 
         // Apply a stored in-app language override on launch so string lookups
@@ -305,11 +315,19 @@ final class AppState {
                 let coursesArray = json["courses"] as? [[String: Any]] ?? []
 
                 if pending.contains("courses") {
-                    let serverNos = Set(coursesArray.compactMap { $0["course_no"] as? String })
                     let semester = CourseSelectionService.currentSemesterCode()
+                    // Scope both sides to the current semester and include
+                    // user-added courses (they're uploaded, so the server lists
+                    // them). Comparing a current-semester local set against an
+                    // all-semester server set — or omitting user-added courses —
+                    // produced phantom re-enable conflicts.
+                    let serverNos = Set(coursesArray
+                        .filter { ($0["semester"] as? String) == semester }
+                        .compactMap { $0["course_no"] as? String })
                     let allCachedNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
+                    let userAddedNos = Set(DataCache.shared.loadUserAddedCourses().map(\.courseNo))
                     let deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
-                    let localNos = allCachedNos.subtracting(deletedNos)
+                    let localNos = allCachedNos.union(userAddedNos).subtracting(deletedNos)
                     AppLogger.sync.info("[reenable] courses: cached=\(allCachedNos.count, privacy: .public) deleted=\(deletedNos.count, privacy: .public) effective=\(localNos.count, privacy: .public) server=\(serverNos.count, privacy: .public)")
                     AppLogger.sync.info("[reenable] courses local=\(localNos.sorted(), privacy: .public)")
                     AppLogger.sync.info("[reenable] courses server=\(serverNos.sorted(), privacy: .public)")
@@ -451,9 +469,17 @@ final class AppState {
             if keepLocal {
                 if conflict.categories.contains("courses") {
                     let semester = CourseSelectionService.currentSemesterCode()
-                    let courses = DataCache.shared.loadCourses(semester: semester)
+                    // Include user-added courses (stored separately from the
+                    // portal cache). Uploading only the portal cache drops them
+                    // from the backend, and the next reconcile then deletes them
+                    // locally too — permanent loss on the path meant to preserve
+                    // local state. forceKeys re-asserts them past any tombstone.
+                    let userAdded = DataCache.shared.loadUserAddedCourses()
+                        .filter { $0.semester == semester || $0.semester.isEmpty }
+                    let courses = DataCache.shared.loadCourses(semester: semester) + userAdded
+                    let forceKeys = userAdded.map { "client:\(semester):\($0.courseNo)" }
                     try? await coordinator.deleteAllCourses()
-                    uploadCourses(courses, semester: semester)
+                    uploadCourses(courses, semester: semester, forceKeys: forceKeys)
                 }
                 if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
                     // The color/name maps are keyed by courseNo, but the
@@ -519,6 +545,20 @@ final class AppState {
     /// window contains a bump skips conflict detection for that round —
     /// its server payload is stale relative to the edit.
     private var overrideEditGeneration = 0
+
+    /// Reentrancy guard for `syncOverridesFromBackend`. The revision poll,
+    /// pull-to-refresh, and sync_trigger push can all invoke it concurrently;
+    /// they run on the MainActor but interleave at await suspension points, so
+    /// without this they clobber each other's cache read-modify-writes and can
+    /// resurrect a just-dismissed conflict alert.
+    private var isSyncingOverrides = false
+
+    /// courseNo → local delete timestamp. The sync reconcile skips
+    /// "un-deleting" a course still listed by the server if the user deleted it
+    /// within the grace window — its backend DELETE may not have propagated
+    /// yet, and un-deleting would flap the course back into the timetable.
+    private var recentCourseDeletions: [String: Date] = [:]
+    private static let courseDeleteGraceInterval: TimeInterval = 120
 
 
     private var _libraryRevision = 0
@@ -1355,6 +1395,18 @@ final class AppState {
     /// semester filtering); this only syncs the user's swipe marks.
     func syncOverridesFromBackend(retried: Bool = false) async {
         guard Defaults[.cloudSyncEnabled] else { return }
+        // Reentrancy guard set before the first await so two MainActor callers
+        // can't both pass. The 401-retry (retried: true) is a controlled
+        // re-entry from our own catch, so it bypasses the guard and reuses the
+        // flag the outer call still holds.
+        if !retried {
+            guard !isSyncingOverrides else {
+                AppLogger.sync.info("[syncOverrides] skipped — already in flight")
+                return
+            }
+            isSyncingOverrides = true
+        }
+        defer { if !retried { isSyncingOverrides = false } }
         guard await authTokenManager.isLoggedIn else { return }
         do {
             #if DEBUG
@@ -1535,8 +1587,21 @@ final class AppState {
                     AppLogger.sync.info("[sync-debug] removed \(userAddedBeforeDelete - userAddedForDelete.count, privacy: .public) userAdded courses not on server")
                 }
 
-                // A courseNo in deletedNos that IS in server courses → un-deleted
+                // A courseNo in deletedNos that IS in server courses → the
+                // course is back on the server, so treat it as un-deleted —
+                // EXCEPT when the user just deleted it locally and the backend
+                // DELETE may still be in flight. Honour a short grace window so
+                // the course doesn't flap back into the timetable before the
+                // delete lands. Expire stale grace entries as we go.
+                let graceNow = Date()
+                recentCourseDeletions = recentCourseDeletions.filter {
+                    graceNow.timeIntervalSince($0.value) < Self.courseDeleteGraceInterval
+                }
                 for courseNo in deletedNos where serverCourseNos.contains(courseNo) {
+                    if recentCourseDeletions[courseNo] != nil {
+                        AppLogger.sync.info("[sync-debug] keeping \(courseNo, privacy: .public) deleted (backend delete still in flight)")
+                        continue
+                    }
                     deletedNos.remove(courseNo)
                     changed = true
                     AppLogger.sync.info("[sync-debug] un-deleting \(courseNo, privacy: .public) (back in server courses)")
@@ -1639,39 +1704,74 @@ final class AppState {
                     let lang = LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
                     let needsLookup = userAdded.filter { localNamesByNo[$0.courseNo] == nil }
                     if !needsLookup.isEmpty {
+                        // SDCourse is @MainActor-isolated (@Model), so snapshot
+                        // the fields we need into Sendable value types here on
+                        // the main actor. The detached task does only the
+                        // network lookups, then hops back to the MainActor to
+                        // touch SDCourse / DataCache — reading or constructing
+                        // an @Model off-main is a data race.
+                        struct LookupSeed: Sendable {
+                            let courseNo: String
+                            let credits: Int
+                            let classroom: String
+                            let enrolledCount: Int
+                            let maxCount: Int
+                            let schedule: [Int: [String]]
+                            let moodleIdNumber: String?
+                            let semester: String
+                            let classroomMap: [String: String]
+                        }
+                        let seeds = needsLookup.map {
+                            LookupSeed(
+                                courseNo: $0.courseNo, credits: $0.credits,
+                                classroom: $0.classroom, enrolledCount: $0.enrolledCount,
+                                maxCount: $0.maxCount, schedule: $0.schedule,
+                                moodleIdNumber: $0.moodleIdNumber, semester: $0.semester,
+                                classroomMap: $0.classroomMap)
+                        }
                         Task.detached {
-                            var updated = false
-                            var current = await DataCache.shared.loadUserAddedCourses()
-                            for course in needsLookup {
+                            var resolved: [(seed: LookupSeed, name: String, instructor: String, classroom: String)] = []
+                            for seed in seeds {
                                 guard let results = try? await CourseLookupService.lookupCourse(
-                                    semester: semester, courseNo: course.courseNo, language: lang
+                                    semester: seed.semester, courseNo: seed.courseNo, language: lang
                                 ), let match = results.first else { continue }
-                                guard let idx = current.firstIndex(where: { $0.courseNo == course.courseNo }) else { continue }
-                                current[idx] = SDCourse(
-                                    courseNo: course.courseNo,
-                                    courseName: match.CourseName,
-                                    instructor: match.CourseTeacher,
-                                    credits: course.credits,
-                                    classroom: match.ClassRoomNo ?? course.classroom,
-                                    enrolledCount: course.enrolledCount,
-                                    maxCount: course.maxCount,
-                                    schedule: course.schedule,
-                                    moodleIdNumber: course.moodleIdNumber,
-                                    semester: course.semester,
-                                    classroomMap: course.classroomMap
-                                )
-                                updated = true
+                                resolved.append((seed, match.CourseName, match.CourseTeacher, match.ClassRoomNo ?? seed.classroom))
                             }
-                            if updated {
-                                await DataCache.shared.saveUserAddedCourses(current)
-                                await MainActor.run {
+                            let finalResolved = resolved
+                            guard !finalResolved.isEmpty else { return }
+                            await MainActor.run {
+                                var current = DataCache.shared.loadUserAddedCourses()
+                                var updated = false
+                                for r in finalResolved {
+                                    guard let idx = current.firstIndex(where: { $0.courseNo == r.seed.courseNo }) else { continue }
+                                    current[idx] = SDCourse(
+                                        courseNo: r.seed.courseNo,
+                                        courseName: r.name,
+                                        instructor: r.instructor,
+                                        credits: r.seed.credits,
+                                        classroom: r.classroom,
+                                        enrolledCount: r.seed.enrolledCount,
+                                        maxCount: r.seed.maxCount,
+                                        schedule: r.seed.schedule,
+                                        moodleIdNumber: r.seed.moodleIdNumber,
+                                        semester: r.seed.semester,
+                                        classroomMap: r.seed.classroomMap
+                                    )
+                                    updated = true
+                                }
+                                if updated {
+                                    DataCache.shared.saveUserAddedCourses(current)
                                     NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
                                 }
                             }
                         }
                     }
                 }
-            } else {
+            } else if Defaults[.syncCourses] {
+                // Reached only when course sync is ON but the server has no
+                // courses yet (first-time upload). When the toggle is OFF we
+                // fall through and upload nothing — otherwise a disabled toggle
+                // would still re-upload and resurrect cross-device deletions.
                 let semester = CourseSelectionService.currentSemesterCode()
                 let localCourses = DataCache.shared.loadCourses(semester: semester)
                 if !localCourses.isEmpty {
@@ -1821,14 +1921,26 @@ final class AppState {
         }
         if let customName {
             cloudSyncCoordinator.enqueueCourseNameOverride(
-                moodleId: moodleCourseId, semester: semester, customName: customName)
+                moodleId: moodleCourseId, semester: semester, customName: customName, locale: locale)
         }
         cloudSyncCoordinator.scheduleTick(after: 1)
     }
 
     func deleteBackendCourse(courseNo: String, semester: String) {
         guard Defaults[.cloudSyncEnabled] else { return }
-        let courseKey = "client:\(semester):\(courseNo)"
+        // Record the local delete so the sync reconcile's grace window doesn't
+        // resurrect this course before the backend DELETE propagates (F).
+        recentCourseDeletions[courseNo] = Date()
+        // Enrolled (Moodle-linked) courses are keyed on the backend by
+        // moodle_id; deleting them by the client key is a no-op server-side and
+        // the course resurrects on the next sync. Prefer the moodle_id resolved
+        // from the cached course; fall back to the client key for purely manual
+        // courses that have no moodle_id.
+        let moodleId = (DataCache.shared.loadCourses(semester: semester)
+            + DataCache.shared.loadUserAddedCourses())
+            .first { $0.courseNo == courseNo }?.moodleIdNumber
+            .flatMap { $0.isEmpty ? nil : $0 }
+        let courseKey = moodleId ?? "client:\(semester):\(courseNo)"
         let coordinator = pushCoordinator
         Task.detached {
             do {
@@ -1869,8 +1981,14 @@ final class AppState {
         let colorMap = TigerDuckTheme.courseColorMap
         let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
             guard let hex = colorMap[c.courseNo] else { return nil }
+            // Key enrolled courses by moodle_id so the override round-trips: the
+            // override endpoint resolves moodle_id, and applyCourseOverrides
+            // maps server overrides back via moodle_id. A client-keyed override
+            // for a moodle-linked course never maps back. Manual courses (no
+            // moodle_id) keep the client key.
+            let moodleId = c.moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 }
             return PushAPI.CourseOverrideUploadEntry(
-                courseKey: "client:\(semester):\(c.courseNo)",
+                courseKey: moodleId ?? "client:\(semester):\(c.courseNo)",
                 colorHex: String(format: "#%06X", hex)
             )
         }

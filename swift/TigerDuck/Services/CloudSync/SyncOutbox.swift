@@ -9,14 +9,14 @@ nonisolated enum SyncOp: Codable, Sendable {
     /// `{semester}{courseNo}` fallback) — the value the override endpoint
     /// resolves against. It is NOT the `client:{semester}:{courseNo}`
     /// course_key, which that endpoint never consults.
-    case courseOverride(semester: String, moodleId: String, customName: String?, colorHex: String?, stamp: Date)
+    case courseOverride(semester: String, moodleId: String, customName: String?, colorHex: String?, locale: String?, stamp: Date)
     case assignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String, stamp: Date)
 
     private enum CodingKeys: String, CodingKey {
         case courseOverride, assignmentOverride
     }
     private enum CourseOverrideKeys: String, CodingKey {
-        case semester, moodleId, courseKey, customName, colorHex, stamp
+        case semester, moodleId, courseKey, customName, colorHex, locale, stamp
     }
     private enum AssignmentOverrideKeys: String, CodingKey {
         case moodleCourseId, moodleAssignmentId, localStatus, stamp
@@ -36,6 +36,7 @@ nonisolated enum SyncOp: Codable, Sendable {
                 moodleId: moodleId,
                 customName: try c.decodeIfPresent(String.self, forKey: .customName),
                 colorHex: try c.decodeIfPresent(String.self, forKey: .colorHex),
+                locale: try c.decodeIfPresent(String.self, forKey: .locale),
                 stamp: try c.decode(Date.self, forKey: .stamp))
         } else if container.contains(.assignmentOverride) {
             let c = try container.nestedContainer(keyedBy: AssignmentOverrideKeys.self, forKey: .assignmentOverride)
@@ -52,16 +53,17 @@ nonisolated enum SyncOp: Codable, Sendable {
     }
 
     /// Ops with the same dedupKey replace each other (last writer wins).
-    /// courseOverride keys include the field set so simultaneous name and
-    /// color edits can coexist in the queue.
+    /// courseOverride keys include the field set (and the locale for name
+    /// edits) so simultaneous name and color edits — and per-locale custom
+    /// names — can coexist in the queue rather than evicting each other.
     var dedupKey: String {
         switch self {
-        case .courseOverride(let semester, let moodleId, let customName, let colorHex, _):
+        case .courseOverride(let semester, let moodleId, let customName, let colorHex, let locale, _):
             let fields = [
                 customName != nil ? "n" : "",
                 colorHex != nil ? "c" : "",
             ].joined()
-            return "co|\(semester)|\(moodleId)|\(fields)"
+            return "co|\(semester)|\(moodleId)|\(fields)|\(locale ?? "")"
         case .assignmentOverride(let moodleCourseId, let moodleAssignmentId, _, _):
             return "ao|\(moodleCourseId)|\(moodleAssignmentId)"
         }
@@ -148,7 +150,13 @@ actor SyncOutbox {
             guard generation == startGeneration else { return }
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
-            entries = kept + newlyEnqueued
+            // A mid-drain enqueue may share a dedupKey with a retained entry
+            // (e.g. a new color pick while the old PATCH was still failing).
+            // The newly-enqueued op is the last writer, so drop any retained
+            // entry it supersedes — otherwise both persist and the next drain
+            // PATCHes the stale value before the fresh one.
+            let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
+            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) } + newlyEnqueued
             persist()
         }
 
@@ -191,9 +199,14 @@ actor SyncOutbox {
 
     private func resolve(_ op: SyncOp) -> ResolvedSyncOp {
         switch op {
-        case .courseOverride(_, let moodleId, let customName, let colorHex, _):
-            let locale = customName != nil ? Locale.current.language.languageCode?.identifier : nil
-            return .courseOverride(courseId: moodleId, colorHex: colorHex, customName: customName, locale: locale)
+        case .courseOverride(_, let moodleId, let customName, let colorHex, let locale, _):
+            // Use the locale the name was stored under. Legacy queued ops
+            // predate locale tracking (decode to nil) — fall back to the
+            // device locale so the name still carries a tag.
+            let resolvedLocale = customName != nil
+                ? (locale ?? Locale.current.language.languageCode?.identifier)
+                : nil
+            return .courseOverride(courseId: moodleId, colorHex: colorHex, customName: customName, locale: resolvedLocale)
 
         case .assignmentOverride(_, let moodleAssignmentId, let localStatus, _):
             return .assignmentOverride(assignmentId: moodleAssignmentId, localStatus: localStatus)

@@ -243,14 +243,15 @@ struct MoodleHomeworkRegressionTests {
         #expect(!AssignmentStatus.locallyCompleted.usesEmphasis)
     }
 
-    @Test func assignmentStatus_swipeEligibleForRawUnsubmittedStates() {
+    @Test func assignmentStatus_onlyMoodleSubmittedRowsAreNonSwipeable() {
         #expect(AssignmentStatus.pending.isSwipeActionEligible)
         #expect(!AssignmentStatus.submitted.isSwipeActionEligible)
         #expect(!AssignmentStatus.submittedLate.isSwipeActionEligible)
         #expect(AssignmentStatus.overdueAcceptable.isSwipeActionEligible)
         #expect(AssignmentStatus.overdueRejected.isSwipeActionEligible)
-        #expect(!AssignmentStatus.archived.isSwipeActionEligible)
-        #expect(!AssignmentStatus.locallyCompleted.isSwipeActionEligible)
+        // Archived and locally-completed rows stay swipeable so the user can undo.
+        #expect(AssignmentStatus.archived.isSwipeActionEligible)
+        #expect(AssignmentStatus.locallyCompleted.isSwipeActionEligible)
     }
 
     @Test func arrayUpcomingSorted_excludesCompletedAndOrdersByDueDateAscending() {

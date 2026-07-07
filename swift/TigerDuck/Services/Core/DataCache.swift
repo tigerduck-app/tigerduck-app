@@ -256,7 +256,26 @@ final class DataCache {
     }
 
     func loadCourseCustomNames() -> [String: [String: String]] {
-        load(from: "course_custom_names.json", in: persistentDir) ?? [:]
+        let url = persistentDir.appendingPathComponent("course_custom_names.json")
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        // Current per-locale shape.
+        if let perLocale = try? decoder.decode([String: [String: String]].self, from: data) {
+            return perLocale
+        }
+        // Migrate the legacy flat `courseNo → name` shape (same filename, from
+        // before per-locale custom names) by nesting each value under the
+        // current course API locale, then persist so this fallback runs once.
+        // Read directly (rather than via `load`) so the legacy shape doesn't
+        // trip `load`'s decode-error reporting.
+        guard let legacy = try? decoder.decode([String: String].self, from: data),
+              !legacy.isEmpty
+        else {
+            return [:]
+        }
+        let locale = currentCourseApiLanguage()
+        let migrated = legacy.mapValues { [locale: $0] }
+        saveCourseCustomNames(migrated)
+        return migrated
     }
 
     /// Flattened view of custom names for the current course API locale.

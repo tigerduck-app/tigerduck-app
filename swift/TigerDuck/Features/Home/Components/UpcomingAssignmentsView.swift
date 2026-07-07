@@ -275,8 +275,9 @@ struct UpcomingAssignmentsView: View {
     }
 
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
-        let isDone = assignment.isCompleted || assignment.isLocallyCompleted || assignment.isArchived
-        if showAbsoluteTime || (isDone && assignment.dueDate < now) {
+        // Past-due rows render the absolute deadline rather than the relative
+        // "Overdue" string, which would duplicate the status badge. Matches macOS.
+        if showAbsoluteTime || assignment.dueDate < now {
             return assignment.dueDate.absoluteTimeString
         }
         return assignment.dueDate.relativeTimeString(from: now)

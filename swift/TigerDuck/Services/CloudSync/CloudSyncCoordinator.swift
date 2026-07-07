@@ -80,9 +80,37 @@ final class CloudSyncCoordinator {
         lastSyncedAt = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
     }
 
+    // MARK: - Lifecycle serialization
+
+    /// enable()/disable() run multi-step async work with side effects (push
+    /// enable/disable, outbox clear). MainActor isolation does NOT serialize
+    /// across await suspension points, so an interleaved enable/disable could
+    /// leave the coordinator active while the push stack is disabled. Chain
+    /// every lifecycle transition through this task so they run to completion
+    /// one at a time — the last toggle wins.
+    @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
+    private enum LifecycleOp { case enable, disable }
+
+    private func runLifecycle(_ op: LifecycleOp) async {
+        let previous = lifecycleTask
+        let task = Task { @MainActor [weak self] in
+            await previous?.value
+            switch op {
+            case .enable: await self?.performEnable()
+            case .disable: await self?.performDisable()
+            }
+        }
+        lifecycleTask = task
+        await task.value
+    }
+
     // MARK: - Enable
 
     func enable() async {
+        await runLifecycle(.enable)
+    }
+
+    private func performEnable() async {
         if case .enabling = state { return }
         state = .enabling(step: "register")
         lastError = nil
@@ -106,11 +134,18 @@ final class CloudSyncCoordinator {
         // offline): the timer and observers are how sync self-heals, and
         // a relaunch would start them in this state anyway.
         start()
+        // Flush any edits queued during the .enabling pull window now that
+        // we're active (their scheduleTick fired while draining was gated).
+        await drainOutbox()
     }
 
     // MARK: - Disable
 
     func disable() async {
+        await runLifecycle(.disable)
+    }
+
+    private func performDisable() async {
         stop()
 
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
@@ -187,25 +222,28 @@ final class CloudSyncCoordinator {
     // MARK: - Enqueue helpers
 
     func enqueueCourseColorOverride(moodleId: String, semester: String, colorHex: String) {
-        guard state == .active else { return }
+        // Accept edits during the enable() pull window (.enabling) too: the op
+        // queues durably in the outbox and drains once state flips to .active.
+        // Gating on == .active would silently drop them.
+        guard state != .disabled else { return }
         let op = SyncOp.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: nil, colorHex: colorHex, stamp: Date())
+            customName: nil, colorHex: colorHex, locale: nil, stamp: Date())
         Task { await outbox.enqueue(op) }
     }
 
-    func enqueueCourseNameOverride(moodleId: String, semester: String, customName: String) {
-        guard state == .active else { return }
+    func enqueueCourseNameOverride(moodleId: String, semester: String, customName: String, locale: String?) {
+        guard state != .disabled else { return }
         let op = SyncOp.courseOverride(
             semester: semester, moodleId: moodleId,
-            customName: customName, colorHex: nil, stamp: Date())
+            customName: customName, colorHex: nil, locale: locale, stamp: Date())
         Task { await outbox.enqueue(op) }
     }
 
     /// Awaitable so callers can key "op is durably queued" transitions
     /// (e.g. AppState's pending-override conflict guard) off completion.
     func enqueueAssignmentOverride(moodleCourseId: Int, moodleAssignmentId: Int, localStatus: String) async {
-        guard state == .active else { return }
+        guard state != .disabled else { return }
         let op = SyncOp.assignmentOverride(
             moodleCourseId: moodleCourseId,
             moodleAssignmentId: moodleAssignmentId,

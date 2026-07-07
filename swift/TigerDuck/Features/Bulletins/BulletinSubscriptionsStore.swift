@@ -37,11 +37,26 @@ final class BulletinSubscriptionsStore {
     /// nag the user when there's actual unsaved work.
     private(set) var isDirty: Bool = false
 
-    private let apiClient: BulletinAPIClient
+    private var apiClient: BulletinAPIClient
+    private let usesInjectedClient: Bool
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Subs")
 
     init(apiClient: BulletinAPIClient? = nil) {
         self.apiClient = apiClient ?? BulletinAPIClient()
+        self.usesInjectedClient = apiClient != nil
+    }
+
+    /// Inject the app's v3 auth so subscription requests carry the Bearer
+    /// token. The `/bulletin-subscriptions` endpoints are identity-scoped
+    /// and Bearer-protected; without this the GET/PUT go out with no
+    /// Authorization header and 401. A `@State` store can't read the SwiftUI
+    /// environment at init, so the editor page calls this from `.task`
+    /// before the first `load()`. No-op when a client was injected (tests).
+    func configure(authTokenManager: AuthTokenManager) {
+        guard !usesInjectedClient else { return }
+        apiClient = BulletinAPIClient(
+            authHeaderProvider: { await authTokenManager.authorizationHeader() }
+        )
     }
 
     // MARK: - Lifecycle

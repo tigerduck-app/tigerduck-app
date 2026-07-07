@@ -161,18 +161,33 @@ actor AuthTokenManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))
 
+        // Transient failures (no network, 5xx, or a malformed 200 body) must
+        // NOT delete the still-valid refresh token — return nil so a later call
+        // retries. Only an outright auth rejection (4xx) means the refresh token
+        // itself is dead, in which case we try a full relogin before clearing it.
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
-              let result = try? JSONDecoder().decode(RefreshResponse.self, from: data)
+              let http = response as? HTTPURLResponse
         else {
-            if let relogin = onRefreshFailed, await relogin() {
-                return accessToken
-            }
-            logout()
             return nil
         }
-        store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
-        return result.access_token
+
+        if http.statusCode == 200 {
+            guard let result = try? JSONDecoder().decode(RefreshResponse.self, from: data) else {
+                return nil
+            }
+            store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
+            return result.access_token
+        }
+
+        guard (400...499).contains(http.statusCode) else {
+            return nil
+        }
+
+        if let relogin = onRefreshFailed, await relogin() {
+            return accessToken
+        }
+        logout()
+        return nil
     }
 
     private func store(access: String, refresh: String, expiresIn: Int) {
