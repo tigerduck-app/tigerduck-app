@@ -478,8 +478,17 @@ final class AppState {
                         .filter { $0.semester == semester || $0.semester.isEmpty }
                     let courses = DataCache.shared.loadCourses(semester: semester) + userAdded
                     let forceKeys = userAdded.map { "client:\(semester):\($0.courseNo)" }
-                    try? await coordinator.deleteAllCourses()
-                    uploadCourses(courses, semester: semester, forceKeys: forceKeys)
+                    // Wipe the server list first, THEN upload. uploadCourses
+                    // upserts (never replaces), so if the delete fails we must
+                    // not upload — that would layer local courses onto the stale
+                    // server state and resurrect the very courses the user
+                    // deleted locally, contradicting "keep local".
+                    do {
+                        try await coordinator.deleteAllCourses()
+                        uploadCourses(courses, semester: semester, forceKeys: forceKeys)
+                    } catch {
+                        AppLogger.sync.error("[reenable] deleteAllCourses failed — skipping course upload to avoid resurrecting deleted courses: \(error, privacy: .public)")
+                    }
                 }
                 if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
                     // The color/name maps are keyed by courseNo, but the
