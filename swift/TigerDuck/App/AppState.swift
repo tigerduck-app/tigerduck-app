@@ -138,7 +138,14 @@ final class AppState {
         // coordinator is idempotent. Notification *permission* is still
         // requested through onboarding, not here; users can opt out of
         // server pushes via `serverPushUserOptOut`.
-        pushCoordinator.enable()
+        //
+        // Gated on onboarding for the same reason `backgroundSync()` is:
+        // enabling POSTs a device id and an Apple push token to our server,
+        // and on a fresh install `init` runs before the user has seen a
+        // single screen. `completeOnboarding()` enables it once they have.
+        if hasCompletedOnboarding {
+            pushCoordinator.enable()
+        }
         #endif
 
         // Apply a stored in-app language override on launch so string lookups
@@ -757,6 +764,11 @@ final class AppState {
     func completeOnboarding() {
         hasCompletedOnboarding = true
         Defaults[.hasCompletedOnboarding] = true
+        #if os(iOS)
+        // A fresh install registers its device here rather than in `init`,
+        // so nothing reaches the push server before this point.
+        pushCoordinator.enable()
+        #endif
         backgroundSync()
     }
 

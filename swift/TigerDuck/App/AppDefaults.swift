@@ -126,10 +126,12 @@ nonisolated extension Defaults.Keys {
     )
 
     // MARK: Push server
-    /// Default on as of the custom-push feature: every device registers on
-    /// launch so operator-issued pushes can target it. Notification
-    /// *permission* is still requested only via onboarding; the device row
-    /// just exists either way. Users can opt out via `serverPushUserOptOut`.
+    /// Default on as of the custom-push feature: every device registers
+    /// once onboarding is complete, so operator-issued pushes can target it.
+    /// Notification *permission* is still requested only via onboarding; the
+    /// device row just exists either way. Users can opt out via
+    /// `serverPushUserOptOut`. `AppState` gates the launch-time enable on
+    /// `hasCompletedOnboarding` so no device identity is sent pre-consent.
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
         default: true
