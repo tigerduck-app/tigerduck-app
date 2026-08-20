@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.7.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.3)
+[![Version](https://img.shields.io/badge/Version-v1.8.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.8.1)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
@@ -93,6 +93,8 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v1.8.1`** | 2026-08-21 | 圖書證 QR 改回只靠 HDR 局部高亮，不再調整整台裝置的螢幕亮度 — EDR 判斷誤用了「當下是否正在顯示 HDR 內容」的數值，而 QR 還沒畫出來時它必然為否，於是 EDR 機型仍舊被鎖在最大亮度 |
+| **`v1.8.0`** | 2026-08-20 | 🔔 **公告推播上線** — 裝置註冊、推播偏好與公告深層連結全鏈路；有新版本時主動提醒，更新後顯示「這一版有什麼」；手機翻面朝下叫出圖書證 QR；密碼與圖書證 QR 在截圖與螢幕錄影中自動遮蔽；NTUST 與圖書館連線加上 TLS SPKI pinning；課名字級滑桿、設定頁依 Android 順序重整、macOS 各頁面與色盲友善的衝堂標示 |
 | **`v1.7.3`** | 2026-08-20 | 手動加入的課程只留在加入時所選的學期 — 先前會同時出現在每個學期的課表、首頁與小工具中 |
 | **`v1.7.2`** | 2026-08-20 | 📋 **學期期間限定顯示** — 首頁「時光機」與課表「今日課程」只在學期內（2026-09-07 ~ 2026-12-25）出現，開學前後不再顯示空白或錯期的當日課表；當前學期一律標示為 115-1 |
 | **`v1.7.1`** | 2026-08-20 | 📋 **課表學期修正** — 學期清單改由學校課程查詢 API 供應，學校提前釋出的 115-1 立刻可選；選課系統的選課清單改依「實際開放中的學期」歸戶，114-2 與 115-1 不再疊進同一張課表；學期選單預設沿用上次選取，從未選過則落在最新學期；一次性清掉舊版寫錯學期的課程快取 |
