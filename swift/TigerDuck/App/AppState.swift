@@ -119,6 +119,7 @@ final class AppState {
             HomeSectionTitleMigration.runIfNeeded()
             ClassroomAbbrCacheMigration.runIfNeeded()
             CustomNameCacheMigration.runIfNeeded()
+            SemesterAttributionCacheMigration.runIfNeeded()
             // Add future migrations here in sequence.
         }
     }
