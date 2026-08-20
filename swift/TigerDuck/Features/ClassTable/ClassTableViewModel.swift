@@ -25,35 +25,48 @@ final class ClassTableViewModel {
     /// selection entry point.
     var selectedCourseBlockTimeRange: String? = nil
 
-    var currentSemester: String = Defaults[.classTableSelectedSemester] {
+    var currentSemester: String = SemesterCatalog.selectedSemester(
+        storedPick: Defaults[.classTableSelectedSemester]
+    ) {
         didSet {
             guard currentSemester != oldValue else { return }
-            Defaults[.classTableSelectedSemester] = currentSemester
+            if !isFollowingNewestSemester {
+                Defaults[.classTableSelectedSemester] = currentSemester
+            }
             reloadFromCache()
         }
     }
-    let availableSemesters: [String] = {
-        let code = CourseSelectionService.currentSemesterCode()
-        // Defensive parsing: a future `currentSemesterCode()` returning
-        // an empty string or a non-numeric trailing digit would crash
-        // ClassTableView's default-init via the previous `code.last!` /
-        // `Int(sem)!`. Fall back to `[code]` so the UI still renders.
-        let yearStr = String(code.dropLast())
-        guard let year = Int(yearStr),
-              let lastChar = code.last,
-              let s0 = Int(String(lastChar)) else {
-            return [code]
-        }
-        var semesters: [String] = []
-        var y = year
-        var s = s0
-        for _ in 0..<4 {
-            semesters.append("\(y)\(s)")
-            s -= 1
-            if s < 1 { s = 2; y -= 1 }
-        }
-        return semesters
-    }()
+
+    /// Set only while `followNewestSemesterIfUnpicked()` moves the selection,
+    /// so that assignment doesn't get recorded as a user pick.
+    private var isFollowingNewestSemester = false
+
+    /// Re-read once `SemesterCatalog.refresh()` lands, so a term the school
+    /// publishes ahead of the month heuristic (115-1 opened weeks before the
+    /// heuristic rolled off 114-2) becomes selectable in the same session.
+    private(set) var availableSemesters: [String] = ClassTableViewModel.semesterOptions(
+        including: SemesterCatalog.selectedSemester(
+            storedPick: Defaults[.classTableSelectedSemester]
+        )
+    )
+
+    /// Keeps the persisted selection selectable even after it ages out of the
+    /// catalogue window — a `Picker` whose tag matches no option renders blank.
+    private static func semesterOptions(including selected: String) -> [String] {
+        let options = SemesterCatalog.availableSemesters()
+        return options.contains(selected) ? options : options + [selected]
+    }
+
+    /// The catalogue can land after `init` on a cold launch, so re-apply the
+    /// "never picked → newest term" rule once it does.
+    private func followNewestSemesterIfUnpicked() {
+        guard Defaults[.classTableSelectedSemester] == nil,
+              let newest = SemesterCatalog.availableSemesters().first,
+              newest != currentSemester else { return }
+        isFollowingNewestSemester = true
+        currentSemester = newest
+        isFollowingNewestSemester = false
+    }
 
     /// Format semester code for display: "1142" → "114-2"
     func displayLabel(for code: String) -> String {
@@ -68,7 +81,10 @@ final class ClassTableViewModel {
         hasWarmedCaches = true
         await AppServiceBridge.warmAllSemesterCaches(authService: authService)
         await MainActor.run { [weak self] in
-            self?.reloadCurrentSemesterCourses()
+            guard let self else { return }
+            self.followNewestSemesterIfUnpicked()
+            self.availableSemesters = Self.semesterOptions(including: self.currentSemester)
+            self.reloadCurrentSemesterCourses()
         }
     }
 
@@ -84,7 +100,7 @@ final class ClassTableViewModel {
         )
         await MainActor.run { [weak self] in
             guard let self, self.currentSemester == target else { return }
-            let userAdded = DataCache.shared.loadUserAddedCourses()
+            let userAdded = DataCache.shared.loadUserAddedCourses(semester: target)
             let merged = self.buildCourseList(fresh, userAdded)
             // Silent overwrite: only swap in-memory list when content actually
             // changed, so SwiftUI doesn't churn on identical data.
@@ -217,7 +233,7 @@ final class ClassTableViewModel {
         reloadCurrentSemesterCourses()
         courses = buildCourseList(
             DataCache.shared.loadCourses(semester: currentSemester),
-            DataCache.shared.loadUserAddedCourses()
+            DataCache.shared.loadUserAddedCourses(semester: currentSemester)
         )
         assignments = DataCache.shared.loadAssignments()
     }
@@ -286,6 +302,10 @@ final class ClassTableViewModel {
         // dependency tracking aware of debug-time-override flips.
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
+        // ponytail: outside the term there is no "today" worth showing —
+        // the carousel would either be empty or surface a stale day. Empty
+        // here also hides the section, which keys off `todayCourses.isEmpty`.
+        guard AppConstants.CurrentTerm.isInSession else { return [] }
         return currentSemesterCourses.coursesForToday()
     }
 
@@ -663,9 +683,34 @@ final class ClassTableViewModel {
         return true
     }
 
+    /// Replaces only `currentSemester`'s slice of the user-added store.
+    ///
+    /// `courses` holds one semester, so writing it wholesale — which this
+    /// used to do — drops every other semester's manual additions the moment
+    /// the user adds or removes one here. That stayed invisible while the
+    /// merge surfaced all semesters' rows in every timetable; scoping the
+    /// merge is what makes the wholesale write destructive.
     private func persistUserAddedCourses() {
-        let userAdded = courses.filter { $0.moodleIdNumber == nil }
-        DataCache.shared.saveUserAddedCourses(userAdded)
+        let mine = courses.filter { $0.moodleIdNumber == nil }
+        // Stamp rows that predate per-semester tracking with the semester
+        // they are being shown in, so they stop leaking into all of them.
+        for course in mine where course.semester.isEmpty {
+            course.semester = currentSemester
+        }
+        // Keep everything `mine` does not stand in for. An unstamped row is
+        // only replaced when it actually surfaced here — `mergeWithUserAdded`
+        // drops a manual row whose courseNo a fetched course already owns, so
+        // matching it on semester alone would erase it from the store, and
+        // with no semester recorded there is no other slice it could return
+        // in. A row stamped for this semester is replaced unconditionally:
+        // that is how a delete removes it.
+        let survivingNos = Set(mine.map(\.courseNo))
+        let others = DataCache.shared.loadUserAddedCourses().filter { stored in
+            if stored.semester == currentSemester { return false }
+            if stored.semester.isEmpty { return !survivingNos.contains(stored.courseNo) }
+            return true
+        }
+        DataCache.shared.saveUserAddedCourses(others + mine)
     }
 
     private func applyCustomizations(_ courses: inout [SDCourse]) {
@@ -781,7 +826,7 @@ final class ClassTableViewModel {
         let cachedAssignments = DataCache.shared.loadAssignments()
         let merged = buildCourseList(
             DataCache.shared.loadCourses(semester: currentSemester),
-            DataCache.shared.loadUserAddedCourses()
+            DataCache.shared.loadUserAddedCourses(semester: currentSemester)
         )
         reloadCurrentSemesterCourses()
         assignments = cachedAssignments
@@ -828,7 +873,7 @@ final class ClassTableViewModel {
                 )
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    let userAdded = DataCache.shared.loadUserAddedCourses()
+                    let userAdded = DataCache.shared.loadUserAddedCourses(semester: latestSemester)
                     self.currentSemesterCourses = self.buildCourseList(latestCourses, userAdded)
                     self.refreshCourseColors()
                 }
@@ -866,7 +911,7 @@ final class ClassTableViewModel {
         let fetchedCourses = await coursesTask
         let fetchedAssignments = await assignmentsTask
 
-        let userAdded = DataCache.shared.loadUserAddedCourses()
+        let userAdded = DataCache.shared.loadUserAddedCourses(semester: targetSemester)
 
         await MainActor.run {
             isUpdatingFromNetwork = true
