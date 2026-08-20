@@ -29,7 +29,10 @@ enum CourseSelectionService {
         forceRefresh: Bool = false,
         persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> [String] {
-        let semester = currentSemesterCode()
+        // The D01 page returns whichever term 選課 is open for, which runs
+        // ahead of the term in session — cache it under that term, not under
+        // the month heuristic's guess.
+        let semester = SemesterCatalog.selectionSemesterCode()
         if !forceRefresh, let cached = loadEnrolledCoursesCache(studentId: studentId, semester: semester) {
             return cached
         }

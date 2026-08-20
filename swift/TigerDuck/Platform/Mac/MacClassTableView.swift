@@ -67,24 +67,14 @@ struct MacClassTableView: View {
     private let rowSpacing: CGFloat = 4
     private let periodLabelWidth: CGFloat = 56
 
-    private let availableSemesters: [String] = {
-        let code = CourseSelectionService.currentSemesterCode()
-        let yearStr = String(code.dropLast())
-        guard let year = Int(yearStr),
-              let lastChar = code.last,
-              let s0 = Int(String(lastChar)) else {
-            return [code]
-        }
-        var semesters: [String] = []
-        var y = year
-        var s = s0
-        for _ in 0..<4 {
-            semesters.append("\(y)\(s)")
-            s -= 1
-            if s < 1 { s = 2; y -= 1 }
-        }
-        return semesters
-    }()
+    /// Computed, not stored: `SemesterCatalog.refresh()` runs inside the
+    /// cache warm below, so a term published mid-session has to be able to
+    /// appear without rebuilding the view. `selectedSemester` is folded in so
+    /// a persisted selection that aged out of the window still renders its label.
+    private var availableSemesters: [String] {
+        let options = SemesterCatalog.availableSemesters()
+        return options.contains(selectedSemester) ? options : options + [selectedSemester]
+    }
 
     private var courses: [SDCourse] {
         _ = cacheRevision
