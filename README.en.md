@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.7.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.3)
+[![Version](https://img.shields.io/badge/Version-v1.8.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.8.1)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
@@ -92,6 +92,8 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v1.8.1`** | 2026-08-21 | The library QR leans on HDR local highlighting again instead of overriding whole-device brightness — the EDR check read "is HDR content on screen right now", which is always false before the QR has drawn, so EDR devices still ended up pinned at full brightness |
+| **`v1.8.0`** | 2026-08-20 | 🔔 **Bulletin push notifications** — device registration, push preferences and bulletin deep links end to end; update prompts plus a What's New sheet after installing; flip the phone face-down to open the library QR; passwords and the library QR masked in screenshots and recordings; TLS SPKI pinning on NTUST and Library traffic; course-name font-size slider, Settings reordered to match Android, macOS surfaces and colour-blind-friendly conflict marking |
 | **`v1.7.3`** | 2026-08-20 | Manually added courses stay in the semester they were added to — they previously showed up in every semester's timetable, Home and widgets |
 | **`v1.7.2`** | 2026-08-20 | 📋 **Term-window gating** — Home's time slider and the class table's today carousel appear only while classes are in session (2026-09-07 – 2026-12-25), so neither shows a blank or wrong-term day outside it; the current term is pinned to 115-1 |
 | **`v1.7.1`** | 2026-08-20 | 📋 **Class-table semester fixes** — the semester list now comes from the university's course-query API, so a term released early (115-1) is selectable right away; 選課 enrolments are filed under the term that system actually has open, so 114-2 and 115-1 no longer render into one grid; the picker reopens on your last pick, or the newest term if you never picked one; one-shot clear of course caches written under the wrong term |
