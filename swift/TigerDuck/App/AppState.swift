@@ -115,19 +115,21 @@ final class AppState {
     /// in a detached background task so it never blocks the main thread or app
     /// startup.
     func runPendingMigrations() {
-        // Runs synchronously, ahead of the task below: this migration *deletes*
-        // course caches, and `backgroundSync()` (fired from the scene once init
-        // returns) can have written fresh ones by the time an awaited migration
-        // resumes. Clearing them then would blank the very grids this is meant
-        // to repair, and the warm pass that would refill them has already run.
-        // Called from init() on the main actor with nothing awaited before it,
-        // so it always lands before the first sync can start.
+        // Every migration that *deletes* course caches runs synchronously,
+        // ahead of the task below. `backgroundSync()` fires from the scene as
+        // soon as init() returns, so it can have written fresh caches by the
+        // time a migration queued behind an awaited one resumes — clearing
+        // them then blanks the very grids these exist to repair, with the warm
+        // pass that would refill them already spent. Each is a doneKey-guarded
+        // one-shot over a handful of files, and init() runs on the main actor
+        // with nothing awaited ahead of it, so they always land before the
+        // first sync starts.
+        ClassroomAbbrCacheMigration.runIfNeeded()
+        CustomNameCacheMigration.runIfNeeded()
         SemesterAttributionCacheMigration.runIfNeeded()
         Task(priority: .utility) { @MainActor in
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
-            ClassroomAbbrCacheMigration.runIfNeeded()
-            CustomNameCacheMigration.runIfNeeded()
             // Add future migrations here in sequence. Anything that deletes
             // cached data belongs above the task, not in it.
         }
