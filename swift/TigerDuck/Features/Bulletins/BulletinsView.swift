@@ -28,12 +28,19 @@ struct BulletinsView: View {
     /// can evaporate, the fallback `.onAppear { id = nil }` fires, and
     /// the navigation stack oscillates.
     @State private var detailingBulletin: BulletinAPI.BulletinSummary?
+    /// Deep-link ids currently being resolved. Prevents SwiftUI re-renders
+    /// from re-triggering the same fetch while it's in flight and lets us
+    /// leave `pendingDeepLink` set until the fetch resolves (so a slow
+    /// network doesn't lose the tap by clearing it eagerly).
+    @State private var inflightDeepLinkIds: Set<Int> = []
     @State private var unreadOnly: Bool = false
     /// Drives `.searchable`'s expansion — bound so we can force-collapse
     /// it when the app returns to foreground (users expect the search
     /// scope to reset across sessions rather than persist).
     @State private var searchIsPresented: Bool = false
     @State private var lastBackgroundedAt: Date?
+
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
 
     var body: some View {
         Group {
@@ -66,8 +73,76 @@ struct BulletinsView: View {
             if newPhase == .background {
                 lastBackgroundedAt = Date()
             }
+            #if os(iOS)
+            // Foregrounding is the natural retry point for a deep link that
+            // a previous tap couldn't resolve (poor signal at tap time, app
+            // suspended mid-fetch). The `pendingDeepLink` value itself
+            // hasn't changed, so the `onChange` observer below wouldn't
+            // re-fire on its own — kick the drain here.
+            if newPhase == .active {
+                drainPendingBulletinDeepLink()
+            }
+            #endif
+        }
+        #if os(iOS)
+        .onAppear { drainPendingBulletinDeepLink() }
+        .onChange(of: appState.pendingDeepLink) { _, _ in
+            drainPendingBulletinDeepLink()
+        }
+        // A successful list refresh indicates network is back AND may have
+        // pulled the target bulletin into `items`, so this is a cheap
+        // retry point for a deep link that was preserved through an
+        // earlier transient failure.
+        .onChange(of: viewModel.loadState) { _, newState in
+            if case .loaded = newState {
+                drainPendingBulletinDeepLink()
+            }
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    /// Resolve a tap-routed deep link into a navigation push. Done in two
+    /// hops because we have to materialise a `BulletinSummary` to feed
+    /// `.navigationDestination(item:)` before we can show the detail
+    /// view — `summary(forId:)` first checks the live list, then disk
+    /// cache, then falls back to the detail endpoint.
+    private func drainPendingBulletinDeepLink() {
+        guard case .bulletin(let id) = appState.pendingDeepLink else { return }
+        // Use an inflight guard instead of clearing the deep link eagerly:
+        //   * Prevents a SwiftUI re-render (e.g. a sibling onChange firing
+        //     for an unrelated state change) from re-entering this drain
+        //     for the same id while the fetch is still resolving.
+        //   * Leaves `pendingDeepLink` set during the network hop so a
+        //     transient failure / cold start doesn't permanently lose the
+        //     tap before any user-visible navigation happens.
+        guard !inflightDeepLinkIds.contains(id) else { return }
+        inflightDeepLinkIds.insert(id)
+        Task {
+            defer { inflightDeepLinkIds.remove(id) }
+            let summary: BulletinAPI.BulletinSummary?
+            do {
+                summary = try await viewModel.summary(forId: id)
+            } catch {
+                // Transient failure (network drop, timeout, etc.) — leave
+                // `pendingDeepLink` set so a later drain (foreground return,
+                // list refresh) can re-attempt navigation. Without this the
+                // tap is lost on the first poor-connectivity attempt.
+                return
+            }
+            // Terminal outcome — either we have a summary or the bulletin
+            // is tombstoned and will never become navigable. Either way,
+            // clear the deep link so we don't keep redriving the drain.
+            if case .bulletin(let pendingId) = appState.pendingDeepLink,
+               pendingId == id {
+                appState.pendingDeepLink = nil
+            }
+            if let summary {
+                detailingBulletin = summary
+            }
         }
     }
+    #endif
 
     private var hasUnreadBulletins: Bool {
         viewModel.items.contains { !readState.isRead($0.id) }
@@ -300,7 +375,7 @@ struct BulletinsView: View {
     private func errorState(message: String) -> some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 36))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.orange)
             Text(String(localized: "bulletin_load_failed_title"))
                 .font(TigerDuckTheme.Typography.headline)

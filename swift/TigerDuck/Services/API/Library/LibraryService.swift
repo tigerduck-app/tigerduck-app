@@ -9,7 +9,7 @@ enum LibraryServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .credentialsNotFound: String(localized: "error_library_credentials_not_found")
-        case .loginFailed(let msg): String(format: String(localized: "error_library_login_failed_format"), msg)
+        case .loginFailed(let msg): String(format: String(localized: "error_library_sign_in_failed_format"), msg)
         case .qrGenerationFailed(let msg): String(format: String(localized: "error_qr_generation_failed_format"), msg)
         case .networkError(let e): String(format: String(localized: "error_network_format"), e.localizedDescription)
         }
@@ -30,7 +30,14 @@ enum LibraryService {
         config.timeoutIntervalForResource = 30
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        return URLSession(configuration: config)
+        // SPKI pin against the api.lib.ntust.edu.tw set. Library
+        // bearer tokens are exchanged here and gate every QR-generate
+        // call, so hostile-network MITM is the relevant risk to close.
+        return URLSession(
+            configuration: config,
+            delegate: TLSPinningDelegate.shared,
+            delegateQueue: nil,
+        )
     }()
 
     /// Validate that the response is HTTP 2xx before decoding. Without this
@@ -161,7 +168,7 @@ enum LibraryService {
                 throw error
             }
 
-            await saveCredentials(username: username, password: password)
+            saveCredentials(username: username, password: password)
             saveToken(loginData.token, expirationMs: loginData.expirationTimeStamp)
             return loginData.token
         } catch {

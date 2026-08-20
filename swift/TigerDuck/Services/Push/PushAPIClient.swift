@@ -8,21 +8,27 @@ import os
 /// ISO-8601 with fractional seconds for Date, matching what the Python
 /// server emits from `datetime.isoformat()`.
 final class PushAPIClient: Sendable {
-    private let baseURL: URL
+    private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    private let sharedSecret: String?
+    private let sharedSecretProvider: @Sendable (URL) -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
+    /// `baseURLProvider` is re-evaluated on every request, and the
+    /// resolved URL is then fed to `sharedSecretProvider` so the secret
+    /// is selected as a pair with the host actually being hit. A Debug
+    /// build that switches the API endpoint at runtime (via
+    /// `DebugEndpointView`) takes effect on the next push call without
+    /// an app relaunch — and if the override points at the public host,
+    /// the request carries the production `APIToken` instead of the
+    /// local `DebugAPIToken` that pairs with `DebugServerURL`.
     init(
-        baseURL: URL = PushServerConfig.resolveServerURL(),
+        baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        sharedSecret: String? = nil
+        sharedSecretProvider: @escaping @Sendable (URL) -> String? = { PushServerConfig.resolveSharedSecret(for: $0) }
     ) {
-        self.baseURL = baseURL
+        self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
-        // Only keep non-empty secrets — empty strings mean "auth disabled"
-        // on the server side, and we want the client to behave identically.
-        self.sharedSecret = sharedSecret.flatMap { $0.isEmpty ? nil : $0 }
+        self.sharedSecretProvider = sharedSecretProvider
     }
 
     // MARK: - Public surface
@@ -34,6 +40,22 @@ final class PushAPIClient: Sendable {
     func unregisterDevice(deviceId: String) async throws {
         let body = PushAPI.DeviceUnregisterRequest(deviceId: deviceId)
         _ = try await postExpectingNoBody(path: "/devices/unregister", body: body)
+    }
+
+    /// PATCH the user-facing server-push opt-out. Called from the Settings
+    /// toggle so the change propagates without waiting for the next
+    /// `/devices/register` call.
+    func updateDevicePreferences(
+        deviceId: String,
+        serverPushEnabled: Bool
+    ) async throws -> PushAPI.DevicePreferencesResponse {
+        let body = PushAPI.DevicePreferencesRequest(serverPushEnabled: serverPushEnabled)
+        let safeDevice = Self.percentEncoded(deviceId)
+        return try await patch(
+            path: "/devices/\(safeDevice)/preferences",
+            body: body,
+            returning: PushAPI.DevicePreferencesResponse.self
+        )
     }
 
     func syncSchedule(_ request: PushAPI.ScheduleSyncRequest) async throws -> PushAPI.ScheduleSyncResponse {
@@ -53,10 +75,11 @@ final class PushAPIClient: Sendable {
     func cancelSchedule(deviceId: String, sourceId: String) async throws {
         let safeDevice = Self.percentEncoded(deviceId)
         let safeSource = Self.percentEncoded(sourceId)
+        let baseURL = baseURLProvider()
         let url = baseURL.appendingPathComponent("schedule/\(safeDevice)/\(safeSource)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        applyAuth(to: &request)
+        applyAuth(to: &request, baseURL: baseURL)
         _ = try await execute(request)
     }
 
@@ -64,7 +87,7 @@ final class PushAPIClient: Sendable {
     /// `/ping` is public so connectivity / TLS / DNS can be diagnosed
     /// without needing the shared secret.
     func ping() async throws {
-        let url = baseURL.appendingPathComponent("ping")
+        let url = baseURLProvider().appendingPathComponent("ping")
         _ = try await execute(URLRequest(url: url))
     }
 
@@ -94,12 +117,33 @@ final class PushAPIClient: Sendable {
         return try await execute(request)
     }
 
+    private func patch<Request: Encodable, Response: Decodable>(
+        path: String,
+        body: Request,
+        returning: Response.Type
+    ) async throws -> Response {
+        var request = try makePostRequest(path: path, body: body)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let data = try await execute(request)
+        do {
+            return try Self.decoder.decode(Response.self, from: data)
+        } catch {
+            logger.error("Push.API decode failed path=\(path, privacy: .public) error=\(String(describing: error), privacy: .public)")
+            throw PushAPIError.decodingFailed(error)
+        }
+    }
+
     private func makePostRequest<Request: Encodable>(path: String, body: Request) throws -> URLRequest {
+        // Resolve baseURL once so the secret provider sees the same host
+        // the request is going to — no window for an override flip
+        // between URL and secret lookups.
+        let baseURL = baseURLProvider()
         let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request)
+        applyAuth(to: &request, baseURL: baseURL)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -108,11 +152,14 @@ final class PushAPIClient: Sendable {
         return request
     }
 
-    /// Attach the `X-Push-Token` shared-secret header when one is configured.
-    /// No-op for dev builds that leave the secret unset; mirrors the
-    /// server's behaviour when `TIGERDUCK_API_SHARED_SECRET` is empty.
-    private func applyAuth(to request: inout URLRequest) {
-        guard let secret = sharedSecret else { return }
+    /// Attach the `X-Push-Token` shared-secret header when one is
+    /// configured. No-op for dev builds that leave the secret unset;
+    /// mirrors the server's behaviour when `TIGERDUCK_API_SHARED_SECRET`
+    /// is empty. The secret is chosen from `baseURL`'s host so a Debug
+    /// override pointed at the public apex carries `APIToken` instead of
+    /// the local-backend `DebugAPIToken`.
+    private func applyAuth(to request: inout URLRequest, baseURL: URL) {
+        guard let secret = sharedSecretProvider(baseURL), !secret.isEmpty else { return }
         request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
     }
 

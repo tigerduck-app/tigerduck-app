@@ -117,6 +117,13 @@ struct AddCourseSheet: View {
                 }
             }
         }
+        // The Form's `.background(Color.backgroundPrimary)` only paints the
+        // scrollable area — at the .medium detent the nav bar at the top
+        // and the bottom safe-area inset fall back to the sheet's default
+        // translucent backing and visibly show the underlying class table
+        // bleeding through. `.presentationBackground` paints the entire
+        // sheet container so the popup reads as one solid panel.
+        .presentationBackground(Color.backgroundPrimary)
     }
 
     // MARK: - macOS body

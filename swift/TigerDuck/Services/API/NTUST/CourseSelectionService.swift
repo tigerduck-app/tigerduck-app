@@ -9,7 +9,7 @@ enum CourseServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notAuthenticated: return String(localized: "common_not_logged_in")
+        case .notAuthenticated: return String(localized: "common_not_signed_in")
         case .redirectedToSSO: return String(localized: "error_session_expired")
         case .noCourseData: return String(localized: "error_courses_unavailable")
         case .networkError(let e): return String(format: String(localized: "error_network_format"), e.localizedDescription)

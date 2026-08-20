@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UserNotifications
+#endif
 
 #if os(iOS)
 
@@ -81,11 +84,32 @@ struct TigerDuckApp: App {
                 .environment(appState)
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
+                    // Route custom-push taps into AppState. Capture the
+                    // class instance weakly to avoid a retain cycle
+                    // through `pushAppDelegate.notificationDelegate`.
+                    if let nd = pushAppDelegate.notificationDelegate {
+                        let state = appState
+                        nd.routeTap = { [weak state] response in
+                            Task { @MainActor in
+                                Self.routeServerPushTap(
+                                    response: response,
+                                    appState: state
+                                )
+                            }
+                        }
+                    }
                     appState.backgroundSync()
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
                     }
+                    // First-launch path. `.onChange(of: scenePhase)` does
+                    // not fire for the initial `.active` value, so the
+                    // first background check needs an explicit kickoff
+                    // here; subsequent foreground returns go through the
+                    // scene-phase observer.
+                    appState.updateNotifyCoordinator.checkInBackground()
+                    UNUserNotificationCenter.current().setBadgeCount(0)
                 }
                 .onOpenURL { url in
                     guard let destination = WidgetURLRouter.route(url) else { return }
@@ -98,6 +122,11 @@ struct TigerDuckApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
+                        // Reset the app-icon badge but leave delivered
+                        // notifications in Notification Center — user can
+                        // still scroll back to them, the red badge just
+                        // stops nagging once they've opened the app.
+                        UNUserNotificationCenter.current().setBadgeCount(0)
                         // Cancel any still-running refresh from a previous
                         // .active transition so rapid scene toggles do not
                         // interleave through cancelAllOwnedRequests()'s
@@ -110,10 +139,94 @@ struct TigerDuckApp: App {
                             appState.requestPushScheduleSync()
                         }
                         widgetSnapshotWriter?.regenerate()
+                        // Background "is there a newer build on the App
+                        // Store?" check. Internally throttled to once
+                        // per ``AppConstants/updateCheckThrottle`` so
+                        // rapid scene toggles don't generate iTunes
+                        // Lookup traffic.
+                        appState.updateNotifyCoordinator.checkInBackground()
                     }
                 }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    /// Translates a tapped notification into the right AppState mutation.
+    /// Kept as a static helper so the SwiftUI body stays uncluttered and
+    /// the routing logic can be unit-tested independently of the App
+    /// scene plumbing.
+    ///
+    /// - Note: `bulletin_id` is decoded through three paths (`Int`,
+    ///   `NSNumber.intValue`, and `String → Int`) because APNs / FCM /
+    ///   intermediate relays bridge JSON numbers inconsistently — some
+    ///   land as a tagged-int NSNumber that succeeds `as? Int`, others
+    ///   as a Double-tagged NSNumber where `as? Int` fails, and a few
+    ///   re-encode the value as a quoted string.
+    @MainActor
+    private static func routeServerPushTap(
+        response: UNNotificationResponse,
+        appState: AppState?
+    ) {
+        guard let appState else { return }
+        let info = response.notification.request.content.userInfo
+        let kind = info["kind"] as? String
+        switch kind {
+        case "custom_push_bulletin":
+            if let id = bulletinId(from: info["bulletin_id"]) {
+                appState.pendingDeepLink = .bulletin(id)
+            }
+        case "custom_push_popup":
+            guard let nid = info["notification_id"] as? String,
+                  let title = info["title"] as? String,
+                  let body = info["body"] as? String else { return }
+            // Only the *check* runs at routing time — the actual mark
+            // happens when the user dismisses the alert (see
+            // `ServerPushPopupHost`). That way a popup that's suppressed
+            // by a competing modal (mid-onboarding etc.) isn't permanently
+            // deduped before the user ever sees it.
+            guard !appState.isServerPopupShown(nid) else { return }
+            let payload = AppState.ServerPopupPayload(
+                id: nid,
+                title: title,
+                body: body
+            )
+            // Force SwiftUI's `.alert(_:isPresented:presenting:)` to
+            // refresh when a second popup arrives while the first alert
+            // is still on screen: dismiss the current alert, then present
+            // the new payload on the next runloop tick so `isPresented`
+            // actually transitions false → true.
+            //
+            // Always cancel any previous swap first — if popup B's swap
+            // is mid-sleep when popup C arrives, the stale B task would
+            // otherwise wake up and overwrite C's payload with B's.
+            appState.pendingServerPopupSwapTask?.cancel()
+            appState.pendingServerPopupSwapTask = nil
+            if appState.pendingServerPopup != nil {
+                appState.pendingServerPopup = nil
+                appState.pendingServerPopupSwapTask = Task { @MainActor [weak appState] in
+                    try? await Task.sleep(for: .milliseconds(50))
+                    guard !Task.isCancelled, let appState else { return }
+                    appState.pendingServerPopup = payload
+                    appState.pendingServerPopupSwapTask = nil
+                }
+            } else {
+                appState.pendingServerPopup = payload
+            }
+        default:
+            // Unknown / legacy kinds fall through to the OS default open
+            // behaviour — no-op here so we don't accidentally swallow them.
+            break
+        }
+    }
+
+    /// Decode `bulletin_id` from a JSON-bridged userInfo value. See the
+    /// `routeServerPushTap` doc comment for why all three paths exist.
+    @MainActor
+    private static func bulletinId(from raw: Any?) -> Int? {
+        if let n = raw as? Int { return n }
+        if let n = raw as? NSNumber { return n.intValue }
+        if let s = raw as? String { return Int(s) }
+        return nil
     }
 }
 

@@ -48,8 +48,8 @@ struct ClassTableView: View {
                     case .loginRequired:
                         LoginRequiredView(
                             layout: .page,
-                            title: String(localized: "common_not_logged_in"),
-                            message: String(localized: "class_table_login_required_message"),
+                            title: String(localized: "common_not_signed_in"),
+                            message: String(localized: "class_table_sign_in_required_message"),
                             onPrimary: { appState.presentNTUSTLogin() }
                         )
                     case .empty:
@@ -109,6 +109,32 @@ struct ClassTableView: View {
                     }
                 )
                 .presentationDetents([.medium, .large])
+                // The conflict alert lives on the sheet's content, not the
+                // parent — when it lived on the parent, iOS dismissed the
+                // sheet to present the alert (only one presentation at a
+                // time per host view). Anchoring it here lets the alert
+                // surface above the search results without exiting search.
+                .alert(
+                    String(localized: "class_table_conflict_add_failed_title"),
+                    isPresented: Binding(
+                        get: { viewModel.tripleConflictError != nil },
+                        set: { if !$0 { viewModel.tripleConflictError = nil } }
+                    ),
+                    presenting: viewModel.tripleConflictError
+                ) { _ in
+                    Button(String(localized: "action_confirm"), role: .cancel) {
+                        viewModel.tripleConflictError = nil
+                    }
+                } message: { err in
+                    Text(String(
+                        format: String(localized: "class_table_conflict_add_failed_message"),
+                        err.newCourseName,
+                        "\(err.weekday)",
+                        err.periodId,
+                        err.existingA.displayName,
+                        err.existingB.displayName
+                    ))
+                }
             }
             .alert(String(localized: "class_table_rename_title"), isPresented: $viewModel.showRenameAlert) {
                 TextField(String(localized: "class_table_course_name"), text: $viewModel.renameText)
@@ -141,27 +167,6 @@ struct ClassTableView: View {
                     onPick: { viewModel.pickFromConflict($0) }
                 )
                 .presentationDetents([.medium])
-            }
-            .alert(
-                String(localized: "class_table_conflict_add_failed_title"),
-                isPresented: Binding(
-                    get: { viewModel.tripleConflictError != nil },
-                    set: { if !$0 { viewModel.tripleConflictError = nil } }
-                ),
-                presenting: viewModel.tripleConflictError
-            ) { _ in
-                Button(String(localized: "action_confirm"), role: .cancel) {
-                    viewModel.tripleConflictError = nil
-                }
-            } message: { err in
-                Text(String(
-                    format: String(localized: "class_table_conflict_add_failed_message"),
-                    err.newCourseName,
-                    "\(err.weekday)",
-                    err.periodId,
-                    err.existingA.displayName,
-                    err.existingB.displayName
-                ))
             }
     }
 

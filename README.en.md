@@ -9,6 +9,7 @@
 [![Version](https://img.shields.io/badge/Version-v1.7.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.3)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
+[![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
 
 [繁體中文](README.md) | **English**
@@ -41,6 +42,10 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 ### 🏛️ **Library** (Experimental)
 - Instant library entry QR code with zero delay
+
+### ⌚ **Apple Watch**
+- Raise your wrist for the **library entry QR code** — fullscreen, with idle-fade page dots
+- Credentials sync over WatchConnectivity — no separate sign-in on the Watch
 
 ### 🌏 **Multilingual**
 - Built-in support for **67+ locales** — follows the system language or set per-app
@@ -76,6 +81,8 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 <br/>
 
 ## Get the App
+[![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
+
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
 
 <br/>
@@ -145,6 +152,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 | Item | Requirement |
 |------|-------------|
 | OS | iOS 18 or later |
+| Apple Watch (optional) | watchOS 11+, paired iPhone required |
 | SSO Account | Student account (required for some features) |
 | Library | Library account (required for some features) |
 
@@ -209,34 +217,39 @@ cp api/.env.template api/.env
 
 ```
 tigerduck-app/
-├── swift/                              # iOS App (Xcode 26+ / iOS 18+)
-│   └── TigerDuck/
-│       ├── App/                        # Global state (AppState), language manager, push delegate
-│       ├── Bridge/                     # Service orchestration (KMP / native fetch bridge)
-│       ├── Features/                   # Screen-level feature modules
-│       │   ├── Home/                   # Home (Time Slider, assignments, widgets)
-│       │   ├── ClassTable/             # Class table
-│       │   ├── Calendar/               # Academic calendar
-│       │   ├── Bulletins/              # Server-driven, LLM-classified announcements
-│       │   ├── Score/                  # Historical GPA & rankings
-│       │   ├── Library/                # Library
-│       │   ├── More/                   # "More" hub + feature pinning
-│       │   ├── Settings/               # Settings (language, abbreviations, theme, source)
-│       │   └── Onboarding/             # First-run onboarding flow
-│       ├── LiveActivity/               # Live Activity / Dynamic Island
-│       │   ├── Models/  Preferences/  Providers/
-│       │   ├── Resolvers/  Runtime/  Scheduling/
-│       ├── Models/
-│       │   ├── Domain/                 # Business logic models
-│       │   └── SwiftData/              # Local persistence models
-│       ├── Services/
-│       │   ├── Auth/                   # NTUST SSO authentication
-│       │   ├── Network/                # Networking layer
-│       │   ├── Push/                   # APNs / push registration
-│       │   ├── Logging/                # Structured logging
-│       │   └── Migrations/             # One-shot migrations
-│       ├── SharedUI/                   # Reusable cross-feature views
-│       └── Theme/                      # Tokens, palette, visual presets
+├── swift/                              # iOS App + companion targets (Xcode 26+ / iOS 18+ / watchOS 11+)
+│   ├── TigerDuck/                      # Main iOS app sources
+│   │   ├── App/                        # Global state (AppState), language manager, push delegate
+│   │   ├── Bridge/                     # Service orchestration (KMP / native fetch bridge)
+│   │   ├── Features/                   # Screen-level feature modules
+│   │   │   ├── Home/                   # Home (Time Slider, assignments, widgets)
+│   │   │   ├── ClassTable/             # Class table
+│   │   │   ├── Calendar/               # Academic calendar
+│   │   │   ├── Bulletins/              # Server-driven, LLM-classified announcements
+│   │   │   ├── Score/                  # Historical GPA & rankings
+│   │   │   ├── Library/                # Library
+│   │   │   ├── More/                   # "More" hub + feature pinning
+│   │   │   ├── Settings/               # Settings (language, abbreviations, theme, source)
+│   │   │   └── Onboarding/             # First-run onboarding flow
+│   │   ├── LiveActivity/               # Live Activity / Dynamic Island (in-app logic)
+│   │   │   ├── Models/  Preferences/  Providers/
+│   │   │   ├── Resolvers/  Runtime/  Scheduling/
+│   │   ├── Models/
+│   │   │   ├── Domain/                 # Business logic models
+│   │   │   └── SwiftData/              # Local persistence models
+│   │   ├── Services/
+│   │   │   ├── Auth/                   # NTUST SSO authentication
+│   │   │   ├── Network/                # Networking layer
+│   │   │   ├── Push/                   # APNs / push registration
+│   │   │   ├── Logging/                # Structured logging
+│   │   │   └── Migrations/             # One-shot migrations
+│   │   ├── SharedUI/                   # Reusable cross-feature views
+│   │   └── Theme/                      # Tokens, palette, visual presets
+│   ├── TigerDuckLiveActivity/          # Live Activity / Dynamic Island widget extension
+│   ├── TigerDuckWidgets/               # iOS Home / Lock Screen widgets
+│   ├── TigerDuckWatch Watch App/       # Apple Watch app (Library QR)
+│   ├── TigerDuckWatchWidget/           # Apple Watch complication
+│   └── Shared/                         # Cross-target shared code (sensors, Watch comms, theme)
 ├── api-poc/                            # Third-party API validation scripts (NTUST / Moodle / Calendar)
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
 ├── docs/                               # Planning docs, migration notes (iOS side)
@@ -251,7 +264,10 @@ Pull requests and issues are welcome!
 
 Before submitting, please make sure to:
 1. Follow the existing SwiftUI code style and architectural conventions
-2. Verify the build runs correctly on an iOS 18 & iOS 26 simulator or device
+2. Verify the build runs correctly on the following versions of simulator or device
+- iOS 18 / 26 (/ 27 if possible)
+- watchOS 11 / 26 (/ 27 if possible)
+- macOS 15 / 26 (/ 27 if possible)
 3. Name your branch using `feature/your-feature` or `fix/your-fix`
 4. Target the `dev` branch when opening a PR, and enable Copilot review
 5. For translation strings, open a separate PR against the `localization/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`

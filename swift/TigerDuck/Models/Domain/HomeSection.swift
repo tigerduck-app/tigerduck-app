@@ -19,7 +19,7 @@ struct HomeSection: Identifiable, Equatable, Codable {
             case .todayCourses: String(localized: "home_time_slider_title")
             case .upcomingAssignments: String(localized: "live_activity_status_assignment_short")
             case .quickWidgets: String(localized: "home_section_quick_widgets")
-            case .custom: String(localized: "home_section_custom")
+            case .custom: String(localized: "home_custom_section")
             }
         }
 

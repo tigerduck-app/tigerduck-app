@@ -6,6 +6,7 @@ struct HomeView: View {
     var embedded = false
 
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = HomeViewModel()
     @State private var showAddSection = false
     @State private var showNotImplementedAlert = false
@@ -92,12 +93,13 @@ struct HomeView: View {
                 )
             )
             .contentShape(Rectangle())
-            .onLongPressGesture {
-                if !viewModel.isEditingHome {
-                    withAnimation(.smoothSpring) {
-                        viewModel.isEditingHome = true
-                    }
-                }
+            // Long-press anywhere in the scroll content (empty space, section
+            // headers, the course slider) enters edit mode. `longPressToEdit`
+            // attaches it via `.simultaneousGesture` so on iOS 18 it coexists
+            // with — rather than swallows — the first tap on every child
+            // (widgets, course cards). See View+ScrollSafeGesture.
+            .longPressToEdit(reduceMotion: reduceMotion) {
+                if !viewModel.isEditingHome { viewModel.isEditingHome = true }
             }
         }
         .refreshable {
@@ -129,7 +131,7 @@ struct HomeView: View {
                         .accessibilityLabel(Text("home_add_section_title"))
                     }
                     Button(String(localized: "action_done")) {
-                        withAnimation(.smoothSpring) {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) {
                             finishSectionDrag()
                             viewModel.isEditingHome = false
                         }
@@ -221,7 +223,7 @@ struct HomeView: View {
         .overlay(alignment: .topTrailing) {
             if viewModel.isEditingHome {
                 Button {
-                    withAnimation(.smoothSpring) {
+                    withAnimation(reduceMotion ? nil : .smoothSpring) {
                         viewModel.removeSection(section)
                     }
                 } label: {
@@ -317,6 +319,8 @@ private struct HomeSectionView: View {
     let appState: AppState
     var onFeatureTap: ((AppFeature) -> Void)? = nil
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @ViewBuilder
     private var upcomingAssignmentsContent: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -333,8 +337,8 @@ private struct HomeSectionView: View {
             case .loginRequired:
                 LoginRequiredView(
                     layout: .section,
-                    title: String(localized: "common_not_logged_in"),
-                    message: String(localized: "home_assignments_login_required_message"),
+                    title: String(localized: "common_not_signed_in"),
+                    message: String(localized: "home_assignments_sign_in_required_message"),
                     onPrimary: { appState.presentNTUSTLogin() }
                 )
             case .empty:
@@ -406,7 +410,7 @@ private struct HomeSectionView: View {
                     ),
                     dragContainerID: section.id,
                     onRemove: { widget in
-                        withAnimation(.smoothSpring) {
+                        withAnimation(reduceMotion ? nil : .smoothSpring) {
                             viewModel.removeWidget(from: section.id, widget: widget)
                         }
                     },

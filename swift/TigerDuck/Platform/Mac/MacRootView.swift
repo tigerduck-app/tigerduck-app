@@ -4,17 +4,19 @@ import SwiftUI
 /// Root scene content for the macOS app.
 ///
 /// Routes between the login wall (`MacLoginView`) and the main sidebar
-/// layout (`MacContentView`) based on `authService.hasStoredCredentials`.
-/// Once credentials are in the Keychain the user sees the sidebar; full
-/// logout drops them back to login. Silent re-auth failures keep the
-/// sidebar visible and surface through `appState.ntustReauthErrorMessage`
-/// instead, mirroring the iOS cached-first contract.
+/// layout (`MacContentView`) based on `authService.hasStoredCredentials`,
+/// with an in-session bypass via `appState.didSkipMacLogin` (set by the
+/// "Skip for now" button on `MacLoginView`). The bypass is intentionally
+/// transient: first launch and post-logout always show the login wall
+/// again. Silent re-auth failures keep the sidebar visible and surface
+/// through `appState.ntustReauthErrorMessage` instead, mirroring the
+/// iOS cached-first contract.
 struct MacRootView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
         Group {
-            if appState.authService.hasStoredCredentials {
+            if appState.authService.hasStoredCredentials || appState.didSkipMacLogin {
                 MacContentView()
             } else {
                 MacLoginView()

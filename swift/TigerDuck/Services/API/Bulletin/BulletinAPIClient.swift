@@ -8,19 +8,27 @@ import os
 /// attach `X-Push-Token` when one is configured — the server ignores it
 /// on the public routes.
 final class BulletinAPIClient: Sendable {
-    private let baseURL: URL
+    private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    private let sharedSecret: String?
+    private let sharedSecretProvider: @Sendable (URL) -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
 
+    /// `baseURLProvider` is re-evaluated on every request, and the
+    /// resolved URL is then fed to `sharedSecretProvider` so the secret
+    /// is selected as a pair with the host actually being hit. A Debug
+    /// build that switches the endpoint at runtime (via
+    /// `DebugEndpointView`) takes effect on the next bulletin call —
+    /// and if the override points at the public host, the request
+    /// carries the production `APIToken` instead of replaying the local
+    /// `DebugAPIToken` that pairs with `DebugServerURL`.
     init(
-        baseURL: URL = PushServerConfig.resolveServerURL(),
+        baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        sharedSecret: String? = nil
+        sharedSecretProvider: @escaping @Sendable (URL) -> String? = { PushServerConfig.resolveSharedSecret(for: $0) }
     ) {
-        self.baseURL = baseURL
+        self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
-        self.sharedSecret = sharedSecret.flatMap { $0.isEmpty ? nil : $0 }
+        self.sharedSecretProvider = sharedSecretProvider
     }
 
     // MARK: - Public surface
@@ -82,11 +90,15 @@ final class BulletinAPIClient: Sendable {
         query: [URLQueryItem] = [],
         returning _: Response.Type
     ) async throws -> Response {
+        // Resolve baseURL once so the secret provider sees the same host
+        // the request is actually going to — avoids any window where the
+        // override could flip between URL and secret lookups.
+        let baseURL = baseURLProvider()
         let url = try Self.resolveURL(baseURL: baseURL, path: path, query: query)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        applyAuth(to: &request)
+        applyAuth(to: &request, baseURL: baseURL)
         let data = try await execute(request)
         return try decode(data, path: path)
     }
@@ -96,12 +108,13 @@ final class BulletinAPIClient: Sendable {
         body: Request,
         returning _: Response.Type
     ) async throws -> Response {
+        let baseURL = baseURLProvider()
         let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request)
+        applyAuth(to: &request, baseURL: baseURL)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -111,13 +124,27 @@ final class BulletinAPIClient: Sendable {
         return try decode(data, path: path)
     }
 
-    private func applyAuth(to request: inout URLRequest) {
-        guard let secret = sharedSecret else { return }
+    private func applyAuth(to request: inout URLRequest, baseURL: URL) {
+        guard let secret = sharedSecretProvider(baseURL), !secret.isEmpty else { return }
         request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
     }
 
     private func execute(_ request: URLRequest) async throws -> Data {
-        let (data, response) = try await session.data(for: request)
+        // Surface the URL host+path before the call so a hung or DNS-failed
+        // request still leaves a breadcrumb (the `await` below can block
+        // for `timeoutIntervalForResource` without ever logging otherwise).
+        let method = request.httpMethod ?? "GET"
+        let host = request.url?.host ?? "?"
+        let path = request.url?.path ?? "?"
+        logger.info("Bulletin.API → \(method, privacy: .public) \(host, privacy: .public)\(path, privacy: .public)")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            logger.error("Bulletin.API ✗ \(method, privacy: .public) \(host, privacy: .public)\(path, privacy: .public) — \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
         guard let http = response as? HTTPURLResponse else {
             throw BulletinAPIError.invalidResponse
         }
@@ -126,9 +153,10 @@ final class BulletinAPIClient: Sendable {
             // Body snippet stays .private — error responses occasionally
             // echo headers (incl. X-Push-Token) or correlation tokens that
             // must not be retained in the system log indefinitely.
-            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
+            logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(path, privacy: .public): \(snippet, privacy: .private)")
             throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
         }
+        logger.info("Bulletin.API ← \(http.statusCode, privacy: .public) \(path, privacy: .public) (\(data.count, privacy: .public)B)")
         return data
     }
 

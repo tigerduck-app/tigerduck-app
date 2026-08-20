@@ -4,6 +4,7 @@ struct WidgetGridEditMode: View {
     @Binding var widgets: [WidgetItem]
     @Binding var isEditing: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let availableFeatures = AppFeature.widgetFeatures
 
     var body: some View {
@@ -20,7 +21,7 @@ struct WidgetGridEditMode: View {
                         isEditing: .constant(true),
                         dragContainerID: "widget-grid-edit-mode",
                         onRemove: { widget in
-                            withAnimation(.smoothSpring) {
+                            withAnimation(reduceMotion ? nil : .smoothSpring) {
                                 widgets.removeAll { $0.id == widget.id }
                             }
                         }
@@ -40,7 +41,7 @@ struct WidgetGridEditMode: View {
                     ) {
                         ForEach(addable) { feature in
                             Button {
-                                withAnimation(.smoothSpring) {
+                                withAnimation(reduceMotion ? nil : .smoothSpring) {
                                     widgets.append(
                                         WidgetItem(
                                             id: UUID().uuidString,

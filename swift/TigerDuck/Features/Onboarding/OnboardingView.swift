@@ -3,6 +3,7 @@ import UserNotifications
 
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var currentPage = 0
     @State private var studentId = ""
     @State private var password = ""
@@ -22,11 +23,24 @@ struct OnboardingView: View {
         case welcome, privacy, watchOS, login, notifications, ready
     }
 
+    /// iPad has no Apple Watch pairing affordance — there's no Watch app to
+    /// install from the iPad, so the slide is pure noise there. Keep it for
+    /// iPhone (the canonical pairing host) and for any non-iOS host.
+    private var showsWatchPage: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom != .pad
+        #else
+        true
+        #endif
+    }
+
     var body: some View {
         TabView(selection: $currentPage) {
             welcomePage.tag(Page.welcome.rawValue)
             privacyPage.tag(Page.privacy.rawValue)
-            watchOSPage.tag(Page.watchOS.rawValue)
+            if showsWatchPage {
+                watchOSPage.tag(Page.watchOS.rawValue)
+            }
             loginPage.tag(Page.login.rawValue)
             notificationsPage.tag(Page.notifications.rawValue)
             readyPage.tag(Page.ready.rawValue)
@@ -43,7 +57,10 @@ struct OnboardingView: View {
         // give the user a way to clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
-        .onTapGesture { focusedField = nil }
+        // Simultaneous (not `.onTapGesture`) so this keyboard-dismiss tap on the
+        // TabView root doesn't swallow taps on interactive children — see
+        // View+ScrollSafeGesture for the iOS 18 gesture-arbitration details.
+        .dismissTapGesture { focusedField = nil }
         .onChange(of: currentPage) { _, _ in focusedField = nil }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, newPhase in
@@ -73,10 +90,25 @@ struct OnboardingView: View {
                         .lineLimit(12)
                         .minimumScaleFactor(0.6)
 
-                    VStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Link(String(localized: "onboarding_welcome_website_label"), destination: AppURLs.website)
-                        Link(String(localized: "onboarding_welcome_github_label"), destination: AppURLs.github)
+                    // `Link` (not a bare `Button`) keeps the semantic
+                    // `.isLink` VoiceOver trait and the system URL affordances
+                    // (long-press peek / Copy Link / Share). The bordered,
+                    // large control size gives the reliable hit target the
+                    // plain text links lacked, and now that the page's
+                    // keyboard-dismiss tap is a `.simultaneousGesture` it no
+                    // longer swallows these links' first tap on iOS 18.
+                    VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                        Link(destination: AppURLs.website) {
+                            Label(String(localized: "onboarding_welcome_website_label"), systemImage: "globe")
+                                .frame(maxWidth: .infinity)
+                        }
+                        Link(destination: AppURLs.github) {
+                            Label(String(localized: "onboarding_welcome_github_label"), systemImage: "chevron.left.forwardslash.chevron.right")
+                                .frame(maxWidth: .infinity)
+                        }
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                     .font(.callout.weight(.semibold))
                     .padding(.top, TigerDuckTheme.Spacing.sm)
                 }
@@ -84,7 +116,7 @@ struct OnboardingView: View {
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Button(String(localized: "action_next")) {
-                        withAnimation { currentPage = Page.privacy.rawValue }
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.privacy.rawValue }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -127,7 +159,8 @@ struct OnboardingView: View {
                         .opacity(agreedPrivacy && agreedDeletion ? 0 : 1)
 
                     Button(String(localized: "action_next")) {
-                        withAnimation { currentPage = Page.watchOS.rawValue }
+                        let nextPage = showsWatchPage ? Page.watchOS.rawValue : Page.login.rawValue
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = nextPage }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -148,11 +181,17 @@ struct OnboardingView: View {
                     .font(.title2)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(isOn.wrappedValue ? Color.accentPrimary : Color.textSecondary)
-                    .contentTransition(.symbolEffect(.replace))
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
             }
             .buttonStyle(.plain)
             .sensoryFeedback(.selection, trigger: isOn.wrappedValue)
+            .accessibilityRepresentation {
+                Toggle(label, isOn: isOn)
+            }
 
+            // Kept reachable by VoiceOver: the checkbox above is exposed as
+            // a Toggle, so this is the only way an assistive-tech user can
+            // open the privacy / delete-account page before accepting it.
             Link(label, destination: destination)
                 .font(.callout)
         }
@@ -168,7 +207,7 @@ struct OnboardingView: View {
             accentColor: .red
         ) {
             Button(String(localized: "action_next")) {
-                withAnimation { currentPage = Page.login.rawValue }
+                withAnimation(reduceMotion ? nil : .default) { currentPage = Page.login.rawValue }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -182,8 +221,8 @@ struct OnboardingView: View {
 
         return OnboardingPageView(
             icon: "person.badge.key.fill",
-            title: String(localized: "onboarding_login_title"),
-            subtitle: String(localized: "onboarding_login_subtitle"),
+            title: String(localized: "onboarding_sign_in_title"),
+            subtitle: String(localized: "onboarding_sign_in_subtitle"),
             accentColor: .green,
             content: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
@@ -192,7 +231,7 @@ struct OnboardingView: View {
                             Image(systemName: "person.fill")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
-                            TextField(String(localized: "login_student_id"), text: $studentId)
+                            TextField(String(localized: "sign_in_student_id"), text: $studentId)
                                 .keyboardType(.asciiCapable)
                                 .focused($focusedField, equals: .studentId)
                                 .textContentType(.username)
@@ -213,7 +252,7 @@ struct OnboardingView: View {
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
                             PasswordField(
-                                placeholder: String(localized: "login_password"),
+                                placeholder: String(localized: "sign_in_password"),
                                 text: $password,
                                 focusBinding: $focusedField,
                                 focusValue: .password,
@@ -245,7 +284,7 @@ struct OnboardingView: View {
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Button(String(localized: "onboarding_skip_for_now")) {
-                        withAnimation { currentPage = Page.notifications.rawValue }
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue }
                     }
                     .foregroundStyle(Color.textSecondary)
 
@@ -256,7 +295,7 @@ struct OnboardingView: View {
                             isLoading: appState.authService.isLoggingIn,
                             tint: .white
                         ) {
-                            Text(String(localized: "onboarding_login_button"))
+                            Text(String(localized: "onboarding_sign_in_button"))
                                 .font(.callout.weight(.semibold))
                         }
                     }
@@ -280,7 +319,7 @@ struct OnboardingView: View {
             let success = await appState.authService.login(
                 studentId: trimmedId, password: trimmedPwd
             )
-            if success { withAnimation { currentPage = Page.notifications.rawValue } }
+            if success { withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue } }
         }
     }
 
@@ -312,7 +351,7 @@ struct OnboardingView: View {
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Button(String(localized: "onboarding_skip_for_now")) {
-                        withAnimation { currentPage = Page.ready.rawValue }
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.ready.rawValue }
                     }
                     .foregroundStyle(Color.textSecondary)
 
@@ -324,7 +363,7 @@ struct OnboardingView: View {
                     // in `.notDetermined` with no registration path.
                     if notificationStatus != .notDetermined {
                         Button(String(localized: "action_next")) {
-                            withAnimation { currentPage = Page.ready.rawValue }
+                            withAnimation(reduceMotion ? nil : .default) { currentPage = Page.ready.rawValue }
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)

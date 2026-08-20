@@ -12,8 +12,53 @@ struct ContentView: View {
             }
         }
         .ntustLoginSheetHost()
+        #if os(iOS)
+        .serverPushPopupHost()
+        #endif
     }
 }
+
+#if os(iOS)
+/// Hosts the modal alert that surfaces an operator-issued
+/// `custom_push_popup` tap. Pulled into its own modifier so the binding
+/// dance (Optional<ServerPopupPayload> → Bool) stays local and the
+/// root view's `body` doesn't grow another inline `.alert`.
+private struct ServerPushPopupHost: ViewModifier {
+    @Environment(AppState.self) private var appState
+
+    func body(content: Content) -> some View {
+        @Bindable var bindable = appState
+        content
+            .alert(
+                bindable.pendingServerPopup?.title ?? "",
+                isPresented: Binding(
+                    get: { bindable.pendingServerPopup != nil },
+                    set: { newValue in
+                        if !newValue { bindable.pendingServerPopup = nil }
+                    }
+                ),
+                presenting: bindable.pendingServerPopup
+            ) { popup in
+                // System-localized "OK" / "確定" comes from the cancel role.
+                // Marking happens here (not at routing time) so a popup
+                // that was actually presented gets added to the FIFO
+                // dedupe — but one that was suppressed by a competing
+                // modal stays "unseen" and can re-present on next tap.
+                Button(String(localized: "action_got_it"), role: .cancel) {
+                    appState.markServerPopupShown(popup.id)
+                }
+            } message: { popup in
+                Text(popup.body)
+            }
+    }
+}
+
+private extension View {
+    func serverPushPopupHost() -> some View {
+        modifier(ServerPushPopupHost())
+    }
+}
+#endif
 
 struct MainTabView: View {
     @Environment(AppState.self) private var appState
@@ -61,10 +106,36 @@ struct MainTabView: View {
             // to come from here. Subsequent foreground returns go
             // through the scene-phase observer below.
             evaluateTimezoneAlert()
+            #if os(iOS)
+            // Only check the What's New gate AFTER onboarding completes
+            // (MainTabView is itself gated on that in ContentView), so
+            // a brand-new user finishing onboarding doesn't get
+            // What's New layered on top of their first home screen —
+            // the seed in AppState.init's fresh-install branch already
+            // stamped lastShownWhatsNewVersion in that case.
+            appState.updateNotifyCoordinator.evaluateWhatsNewOnLaunch()
+            // Background update check is gated on `hasCompletedOnboarding`
+            // inside the coordinator, so a brand-new user landing on
+            // MainTabView for the first time gets the first iTunes
+            // Lookup HERE (the `TigerDuckApp.onAppear` kick-off no-oped
+            // while OnboardingView was on screen, which would otherwise
+            // strand `pendingUpdate` behind an un-mounted sheet host).
+            // Throttle absorbs the dupe on subsequent appearances.
+            appState.updateNotifyCoordinator.checkInBackground()
+            #endif
         }
         .onChange(of: appState.pendingWidgetDestination) { _, _ in
             drainPendingWidgetDestination()
         }
+        #if os(iOS)
+        // Tap on a custom_push_bulletin notification arrives as a
+        // pendingDeepLink before BulletinsView is mounted. Switch to the
+        // announcements tab (or route via More if it isn't pinned) so the
+        // view drains the deep link and pushes the detail screen.
+        .onChange(of: appState.pendingDeepLink, initial: true) { _, new in
+            routeBulletinDeepLinkIfNeeded(new)
+        }
+        #endif
         .onChange(of: scenePhase) { _, newPhase in
             // Multitask-switch path: every time the app re-enters the
             // foreground, re-evaluate. The observer keeps `isNonTaipei`
@@ -85,6 +156,11 @@ struct MainTabView: View {
                 showTimezoneAlert = true
             }
         }
+        #if os(iOS)
+        .flipToLibraryAttached()
+        .firstTriggerPromptHost()
+        .updateNotifySheetHost()
+        #endif
     }
 
     private func evaluateTimezoneAlert() {
@@ -93,6 +169,22 @@ struct MainTabView: View {
         }
     }
 
+    #if os(iOS)
+    /// Switches to the announcements tab when a bulletin deep link is set
+    /// so `BulletinsView` mounts and its own onChange handler can navigate
+    /// to the detail view. The deep link itself is left in place — the
+    /// downstream view clears it after acting.
+    private func routeBulletinDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
+        guard case .bulletin = link else { return }
+        if visibleTabs.contains(.announcements) {
+            selectedTab = .announcements
+        } else {
+            selectedTab = .more
+            appState.pendingMoreDeepLink = .announcements
+        }
+    }
+    #endif
+
     private func drainPendingWidgetDestination() {
         guard let destination = appState.pendingWidgetDestination else { return }
         switch destination {
@@ -100,8 +192,23 @@ struct MainTabView: View {
             // Library has a feature-disabled flag; if disabled, send the user
             // to the More tab and raise an "enable first" alert there, mirroring
             // the Android library-shortcut behavior.
+            //
+            // Library can also be enabled-but-not-pinned-as-a-tab (fresh
+            // defaults pin only Home/Class/Calendar, and the Settings enable
+            // path only auto-adds Library when there is room). Selecting a
+            // value that no `Tab` matches would leave the `TabView` in a
+            // broken state, so route to More and ask MoreView to push the
+            // Library destination onto its NavigationStack — that's the
+            // only path that actually surfaces the QR. Just switching to
+            // More would leave the user on the category list and the
+            // flip would silently fail to open Library.
             if appState.libraryFeatureEnabled {
-                selectedTab = .library
+                if visibleTabs.contains(.library) {
+                    selectedTab = .library
+                } else {
+                    selectedTab = .more
+                    appState.pendingMoreDeepLink = .library
+                }
             } else {
                 selectedTab = .more
                 appState.pendingLibraryEnablePrompt = true
@@ -137,12 +244,13 @@ struct MainTabView: View {
 
 struct PlaceholderFeatureView: View {
     let feature: AppFeature
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 48
 
     var body: some View {
         NavigationStack {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 Image(systemName: feature.iconName)
-                    .font(.system(size: 48))
+                    .font(.system(size: heroIconSize))
                     .foregroundStyle(Color.accentPrimary)
                 Text(feature.displayName)
                     .font(TigerDuckTheme.Typography.title)

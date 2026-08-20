@@ -37,7 +37,7 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
     var recoverySuggestion: String? {
         switch self {
         case .invalidToken, .missingStoredCredentials, .ssoLoginRejected:
-            String(localized: "error_moodle_recovery_relogin_ntust")
+            String(localized: "error_moodle_recovery_re_sign_in_ntust")
         case .invalidCredentials:
             String(localized: "error_moodle_recovery_check_credentials")
         case .webserviceDisabled, .transientNetwork, .malformedResponse, .httpStatus:

@@ -37,8 +37,8 @@ struct ScoreView: View {
                 case .loginRequired:
                     LoginRequiredView(
                         layout: .page,
-                        title: String(localized: "common_not_logged_in"),
-                        message: String(localized: "score_login_required_message"),
+                        title: String(localized: "common_not_signed_in"),
+                        message: String(localized: "score_sign_in_required_message"),
                         onPrimary: { appState.presentNTUSTLogin() }
                     )
                 case .empty:

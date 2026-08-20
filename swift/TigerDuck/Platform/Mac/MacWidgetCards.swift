@@ -136,13 +136,6 @@ private struct NextClassWidgetCard: View {
                 let color = TigerDuckTheme.courseColor(for: primary.course.courseNo)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text(target.label.uppercased())
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(color))
-                        Spacer()
                         // Render the chosen slot's bounds, not the day's
                         // first-to-last span — the countdown above counts
                         // down to `primary.start`, so a split same-day
@@ -151,6 +144,21 @@ private struct NextClassWidgetCard: View {
                         Text("\(primary.start.timeString) - \(primary.end.timeString)")
                             .font(.title3.monospacedDigit().weight(.semibold))
                             .foregroundStyle(color)
+                        Spacer()
+                        // Only show a badge when the class is actively in
+                        // session — the "next up" caption used to duplicate
+                        // the card title (#136) and the white-on-course-color
+                        // pill was also hard to read for several palette
+                        // entries. The live-state label is genuinely
+                        // distinct info, so it stays.
+                        if case .live = target.kind {
+                            Text(String(localized: "live_activity_status_in_class").uppercased())
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(color))
+                        }
                     }
                     if target.slots.count >= 2 {
                         // 衝堂: list every overlapping course on its own line so
@@ -198,33 +206,38 @@ private struct NextClassWidgetCard: View {
         let liveSlots = slots.filter { $0.start <= now && now < $0.end }
         if let targetStart = liveSlots.map(\.start).max() {
             let tiedLive = liveSlots.filter { $0.start == targetStart }
-            return NextClassTarget(slots: tiedLive, label: String(localized: "live_activity_status_in_class"))
+            return NextClassTarget(slots: tiedLive, kind: .live)
         }
         guard let earliestNext = slots.filter({ $0.start > now }).min(by: { $0.start < $1.start })
         else { return nil }
         let tied = slots.filter { $0.start == earliestNext.start }
-        return NextClassTarget(slots: tied, label: String(localized: "desktop_widget_up_next"))
+        return NextClassTarget(slots: tied, kind: .upcoming)
     }
 }
 
 private struct NextClassTarget {
+    enum Kind {
+        case live
+        case upcoming
+    }
+
     /// 1 entry for solo classes, 2+ for 衝堂 (every slot sharing the same
     /// start). Countdown reads start from `slots[0]` (all members share it)
     /// and end from the latest finishing slot so a conflict block built from
     /// courses with different period spans still ticks down to the moment
     /// the block is fully over.
     let slots: [CourseTimeSlot]
-    let label: String
+    let kind: Kind
 
     func countdownLabel(from now: Date) -> String {
         let start = slots[0].start
         let end = slots.map(\.end).max() ?? slots[0].end
         if start <= now && now < end {
             let remaining = max(0, Int(end.timeIntervalSince(now)))
-            return "Ends in \(format(remaining))"
+            return String(format: String(localized: "desktop_widget_ends_in"), format(remaining))
         }
         let until = max(0, Int(start.timeIntervalSince(now)))
-        return "Starts in \(format(until))"
+        return String(format: String(localized: "desktop_widget_starts_in"), format(until))
     }
 
     private func format(_ seconds: Int) -> String {

@@ -59,7 +59,9 @@ struct ScoreCourseDetailSheet: View {
             }
             Spacer()
             Text(gradeDisplay)
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(gradeColor)
         }
         .padding(TigerDuckTheme.Spacing.md)

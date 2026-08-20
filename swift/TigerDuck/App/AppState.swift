@@ -4,6 +4,14 @@ import Defaults
 
 @Observable
 final class AppState {
+    /// Debounced reload channel for widgets when course-name font scale
+    /// changes. The slider's stepped binding fires didSet on every step
+    /// crossing during a drag (up to 16 across the 0.8–1.6 range), so
+    /// routing through the coordinator collapses a fast drag into a
+    /// single 300ms-debounced WidgetKit reload instead of saturating
+    /// the per-app reload budget.
+    private let widgetReloadCoordinator = WidgetReloadCoordinator()
+
     var hasCompletedOnboarding = Defaults[.hasCompletedOnboarding]
 
     /// App-level presenter flag for the NTUST login sheet. Owned by
@@ -12,8 +20,25 @@ final class AppState {
     /// separate `.sheet` modifier.
     var isShowingNTUSTLoginSheet = false
 
+    /// Mac-only, intentionally non-persisted: set by `MacLoginView`'s
+    /// "Skip for now" button so the user can preview the app without
+    /// credentials. Resets on every app launch (so first-launch always
+    /// shows the login wall) and on logout (so signing out returns the
+    /// user to the login screen rather than stranding them in an
+    /// unauthenticated `MacContentView`).
+    var didSkipMacLogin = false
+
     let authService = AuthService()
     let sessionManager = NTUSTSessionManager.shared
+
+    #if os(iOS)
+    /// Coordinator owning the iTunes Lookup + What's New plumbing. Lives
+    /// on `AppState` (not as a top-level singleton) so SwiftUI views observe
+    /// changes through the same `@Environment(AppState.self)` they already
+    /// use, and so its sheet-presentation flags reset alongside the rest of
+    /// app state on logout / fresh install paths.
+    let updateNotifyCoordinator = UpdateNotifyCoordinator()
+    #endif
 
     // MARK: - Fresh Install Keychain Cleanup
 
@@ -22,6 +47,20 @@ final class AppState {
     /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
         if !Defaults[.appHasBeenInstalled] {
+            #if os(iOS)
+            // Stamp the running version as "already shown" so the
+            // What's New sheet does NOT fire on the very first launch
+            // after install — a freshly downloaded app has no upgrade
+            // history to summarise. Run this BEFORE the Keychain wipe
+            // and independently of its outcome: the seed has nothing
+            // to do with credential cleanup, and gating it on a
+            // successful wipe would let a partial wipe failure
+            // misroute the user into the "no lastShownWhatsNewVersion"
+            // fallback that pops "What's New in vN" on a freshly
+            // downloaded version.
+            updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
+            #endif
+
             // Fresh install — purge any leftover Keychain items.
             let keysToWipe: [String] = [
                 AppConstants.KeychainKeys.studentId,
@@ -93,10 +132,20 @@ final class AppState {
             await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
         }
 
-        // Auto-enable the push stack when the user has already opted in
-        // (e.g. across app launches). The coordinator no-ops when the
-        // toggle is off, so this is safe to call unconditionally.
-        pushCoordinator.enable()
+        // Auto-enable the push stack on every launch so the device row
+        // exists in the backend regardless of subscription state — that's
+        // what lets operator-issued custom pushes target the device. The
+        // coordinator is idempotent. Notification *permission* is still
+        // requested through onboarding, not here; users can opt out of
+        // server pushes via `serverPushUserOptOut`.
+        //
+        // Gated on onboarding for the same reason `backgroundSync()` is:
+        // enabling POSTs a device id and an Apple push token to our server,
+        // and on a fresh install `init` runs before the user has seen a
+        // single screen. `completeOnboarding()` enables it once they have.
+        if hasCompletedOnboarding {
+            pushCoordinator.enable()
+        }
         #endif
 
         // Apply a stored in-app language override on launch so string lookups
@@ -183,6 +232,70 @@ final class AppState {
     // and the entire PushCoordinator stack pulls in ActivityKit symbols).
 
     let pushCoordinator = PushCoordinator()
+
+    // MARK: - Custom-push tap routing
+
+    /// In-process deep-link targets resolved from a custom-push tap. The
+    /// `NotificationDelegate` writes here; the destination view observes
+    /// and clears the value once it has acted on it.
+    enum DeepLink: Equatable {
+        case bulletin(Int)
+    }
+
+    /// Payload for an operator-issued popup push. `id` is the server-side
+    /// notification id and is also used by SwiftUI's `.alert(_:isPresented:
+    /// presenting:)` for view identity, so re-tapping the same notification
+    /// while the previous alert is still on screen does not double-present.
+    struct ServerPopupPayload: Equatable, Identifiable {
+        let id: String   // notification_id
+        let title: String
+        let body: String
+    }
+
+    /// Set by the notification delegate when the user taps a
+    /// `custom_push_bulletin` push. Bulletins UI observes this and clears
+    /// it after navigating into the detail view.
+    var pendingDeepLink: DeepLink?
+
+    /// Set by the notification delegate when the user taps a
+    /// `custom_push_popup` push and the id has not been shown before.
+    /// The root view presents an alert against this binding and clears
+    /// the value when the user dismisses.
+    var pendingServerPopup: ServerPopupPayload?
+
+    /// In-flight task that re-assigns `pendingServerPopup` after the
+    /// nil-bounce used to force SwiftUI's alert to refresh. Stored here
+    /// so back-to-back popup taps can cancel a stale swap before it
+    /// wakes from its short sleep and overwrites a newer payload.
+    /// `@ObservationIgnored` because it isn't UI state.
+    @ObservationIgnored
+    var pendingServerPopupSwapTask: Task<Void, Never>?
+
+    /// Has the user already been shown the popup for this notification id?
+    /// Persisted via `Defaults[.shownServerPopupIds]` as a FIFO list
+    /// capped at 100 entries. Read-only — call `markServerPopupShown`
+    /// from the alert's dismiss action so an alert that was suppressed
+    /// (e.g. by a competing onboarding sheet) isn't permanently deduped.
+    @MainActor
+    func isServerPopupShown(_ id: String) -> Bool {
+        Defaults[.shownServerPopupIds].contains(id)
+    }
+
+    /// Record that the user has actually seen the popup for `id`. Only
+    /// call this from the alert dismiss path — calling it at routing
+    /// time risks marking a popup as seen when its alert never rendered
+    /// (mid-onboarding, modal collision, etc.), permanently suppressing
+    /// it on future taps.
+    @MainActor
+    func markServerPopupShown(_ id: String) {
+        var seen = Defaults[.shownServerPopupIds]
+        if seen.contains(id) { return }
+        seen.append(id)
+        if seen.count > 100 {
+            seen.removeFirst(seen.count - 100)
+        }
+        Defaults[.shownServerPopupIds] = seen
+    }
     #endif
 
     var isNTUSTLoggedIn: Bool { authService.isNTUSTAuthenticated }
@@ -237,6 +350,13 @@ final class AppState {
     /// "enable first" alert. Not persisted — lives only within the process.
     var pendingLibraryEnablePrompt = false
 
+    /// Transient deep-link into the More tab's NavigationStack. Set when a
+    /// feature needs to be opened but isn't pinned as a top-level tab (e.g.
+    /// flip-to-Library when the user hasn't added the Library tab to their
+    /// tab bar). `MoreView` observes this, appends the feature to its local
+    /// navigationPath, and clears the flag. Not persisted.
+    var pendingMoreDeepLink: AppFeature?
+
     func openFromWidget(_ destination: WidgetDestination) {
         pendingWidgetDestination = destination
     }
@@ -285,6 +405,10 @@ final class AppState {
         #endif
 
         authService.logout()
+        // Drop the Mac skip-login bypass too; otherwise a Mac user who
+        // skipped, then logged in, then logged out, would stay in
+        // `MacContentView` instead of returning to `MacLoginView`.
+        didSkipMacLogin = false
         DataCache.shared.clearUserScopedData()
         Task { @MainActor in
             #if os(iOS)
@@ -360,6 +484,14 @@ final class AppState {
         didSet { Defaults[.browserPreference] = browserPreference }
     }
 
+    /// Mac-only: where the "open in Moodle" actions route to. The iPad
+    /// Moodle app installed via Mac App Store registers `moodlemobile://`
+    /// too, so users who installed it can opt into the deep-link path.
+    /// iOS ignores this — it always uses the deep link.
+    var macMoodleOpenTarget: MoodleOpenTarget = Defaults[.macMoodleOpenTarget] {
+        didSet { Defaults[.macMoodleOpenTarget] = macMoodleOpenTarget }
+    }
+
     /// Invert slider scroll direction: false = natural scroll (drag right → past), true = reversed
     var invertSliderDirection: Bool = Defaults[.invertSliderDirection] {
         didSet { Defaults[.invertSliderDirection] = invertSliderDirection }
@@ -373,6 +505,46 @@ final class AppState {
     /// Whether library-related features are enabled (requires explicit user consent)
     var libraryFeatureEnabled: Bool = Defaults[.libraryFeatureEnabled] {
         didSet { Defaults[.libraryFeatureEnabled] = libraryFeatureEnabled }
+    }
+
+    /// Whether the "flip phone face-down to open Library QR" gesture is armed.
+    /// iPhone-only at the read site; macOS still persists the bool via
+    /// `Defaults` since the property lives on the cross-platform `AppState`.
+    var flipToLibraryEnabled: Bool = Defaults[.flipToLibraryEnabled] {
+        didSet { Defaults[.flipToLibraryEnabled] = flipToLibraryEnabled }
+    }
+
+    /// User-selected multiplier applied to the course-name font in the
+    /// class table (`TimetableGridView`) and the course-name labels
+    /// inside home-screen widgets. 1.0 = pre-feature baseline.
+    ///
+    /// Persisted through ``CourseCardFontScaleStore`` (App Group
+    /// `UserDefaults`) rather than the `Defaults` library because the
+    /// widget extension also reads this key — keeping it in the same
+    /// suite avoids a second source-of-truth for the widget side.
+    var courseCardFontScale: Double = CourseCardFontScaleStore().read() {
+        didSet {
+            // Compare on the normalized (snapped) values so the slider's
+            // every-frame writes during a drag don't all trigger a
+            // widget reload — only when the user crossed a step boundary
+            // do we persist + reload. The store always writes the
+            // normalized value, so downstream readers (widgets,
+            // TimetableGridView) see snapped sizes regardless of the
+            // raw in-memory binding state.
+            let newSnapped = CourseCardFontScale.normalize(courseCardFontScale)
+            let oldSnapped = CourseCardFontScale.normalize(oldValue)
+            guard newSnapped != oldSnapped else { return }
+            CourseCardFontScaleStore().write(newSnapped)
+            // Widgets render in a separate process; ask the coordinator
+            // for a debounced reload so a fast slider drag collapses
+            // into a single timeline refresh instead of one-per-step.
+            // Snapshot data is unchanged, so we skip the
+            // WidgetSnapshotWriter regenerate pipeline.
+            let coordinator = widgetReloadCoordinator
+            Task { @MainActor in
+                coordinator.requestReload()
+            }
+        }
     }
 
     /// User-selected visual preset controlling presentation-layer decisions
@@ -592,6 +764,11 @@ final class AppState {
     func completeOnboarding() {
         hasCompletedOnboarding = true
         Defaults[.hasCompletedOnboarding] = true
+        #if os(iOS)
+        // A fresh install registers its device here rather than in `init`,
+        // so nothing reaches the push server before this point.
+        pushCoordinator.enable()
+        #endif
         backgroundSync()
     }
 
@@ -696,7 +873,11 @@ final class AppState {
         let assignments = DataCache.shared.loadAssignments()
         await reminderScheduler.reschedule(
             assignments: assignments,
-            offsets: liveActivityPreferences.assignmentReminderOffsets
+            // Master switch off -> empty set, which makes the scheduler cancel
+            // all pending reminders and bail.
+            offsets: liveActivityPreferences.isAssignmentReminderEnabled
+                ? liveActivityPreferences.assignmentReminderOffsets
+                : []
         )
     }
 
@@ -772,10 +953,11 @@ final class AppState {
 
     /// Enable server push (registers for remote notifications, starts PTS
     /// relay, queues an immediate sync). Call only from explicit user intent
-    /// — turning on the Settings toggle.
+    /// — turning on the Settings toggle. Passes `requestPermission: true`
+    /// so the user sees an iOS prompt as feedback for their tap.
     func enablePushServer() {
         Defaults[.pushServerEnabled] = true
-        pushCoordinator.enable()
+        pushCoordinator.enable(requestPermission: true)
         requestPushScheduleSync()
     }
 
@@ -783,6 +965,14 @@ final class AppState {
     func disablePushServer() async {
         Defaults[.pushServerEnabled] = false
         await pushCoordinator.disable()
+    }
+
+    /// Wire the settings toggle to the registration actor. The actor
+    /// PATCHes the backend and only then persists the local pref so a
+    /// transient failure doesn't leave the UI claiming agreement with
+    /// the server. Throws on failure so the caller can roll back.
+    func updateServerPushOptOut(_ optOut: Bool) async throws {
+        try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
     #endif // os(iOS) — closes the Live Activity / reminder / push block
 
@@ -796,7 +986,12 @@ final class AppState {
         guard hasCompletedOnboarding else { return }
         syncTask?.cancel()
         syncTask = Task {
-            guard NetworkMonitor.shared.isConnected else {
+            // Captive-aware reachability — under a hotel / campus Wi-Fi
+            // login page the link is "satisfied" but actual egress is
+            // blocked, and the pinned NTUST hosts would hard-fail with
+            // an ATS error. Bail early with a clean "no internet"
+            // message instead.
+            guard await NetworkMonitor.shared.isReachable() else {
                 await MainActor.run {
                     sessionManager.loadingState = .error(String(localized: "error_network_unavailable"))
                 }

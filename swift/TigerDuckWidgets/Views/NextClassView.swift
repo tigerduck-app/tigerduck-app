@@ -6,6 +6,23 @@ struct NextClassView: View {
     let palette: WidgetPalette
     let family: WidgetFamily
 
+    /// User-chosen multiplier for course-name font, read from the App
+    /// Group at struct init. The main app reloads widget timelines after
+    /// changing the value, so the next render picks up a fresh struct
+    /// with the new scale.
+    private let userScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
+
+    /// Dynamic-Type-anchored baselines for the system fonts we replaced
+    /// to multiply in `userScale`. `@ScaledMetric(relativeTo:)` makes
+    /// the default Dynamic Type point size grow/shrink with the user's
+    /// system text-size preference — so the surrounding `.subheadline`
+    /// /  `.caption` / `.title3` labels (still semantic) and these
+    /// course-name labels keep moving together as the user changes
+    /// Display & Text Size. Without this, the course name would be a
+    /// hard 15pt / 20pt / 12pt while neighbors continued to scale.
+    @ScaledMetric(relativeTo: .subheadline) private var subheadlineBase: CGFloat = 15
+    @ScaledMetric(relativeTo: .title3) private var title3Base: CGFloat = 20
+
     var body: some View {
         switch derived {
         case .signInRequired:
@@ -63,9 +80,10 @@ struct NextClassView: View {
                 }
             }
             Text(info.course.displayName)
-                .font(.subheadline.weight(.bold))
+                .font(.system(size: subheadlineBase * userScale, weight: .bold))
                 .foregroundStyle(palette.onSurface)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Text(String.localizedStringWithFormat(
                 String(localized: "widget_until_time"), info.endTime))
                 .font(.caption)
@@ -83,9 +101,10 @@ struct NextClassView: View {
                 .background(palette.highlight, in: RoundedRectangle(cornerRadius: 8))
                 .foregroundStyle(.white)
             Text(info.course.displayName)
-                .font(.title3.weight(.bold))
+                .font(.system(size: title3Base * userScale, weight: .bold))
                 .foregroundStyle(palette.onSurface)
                 .lineLimit(2)
+                .minimumScaleFactor(0.7)
             Text("\(info.startTime)–\(info.endTime)  \(info.periodRange)")
                 .font(.caption)
                 .foregroundStyle(palette.onSurfaceVariant)
@@ -114,9 +133,13 @@ struct NextClassView: View {
                     .foregroundStyle(palette.onSurfaceVariant)
             }
             Text(info.course.displayName)
-                .font(isCompact ? .subheadline.weight(.bold) : .title3.weight(.bold))
+                .font(.system(
+                    size: (isCompact ? subheadlineBase : title3Base) * userScale,
+                    weight: .bold
+                ))
                 .foregroundStyle(palette.onSurface)
                 .lineLimit(2)
+                .minimumScaleFactor(0.7)
             Text(info.startTime)
                 .font(.caption)
                 .foregroundStyle(palette.onSurfaceVariant)

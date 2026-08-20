@@ -16,10 +16,12 @@ struct LoginRequiredView: View {
     let layout: Layout
     let title: String
     let message: String
-    var primaryTitle: String = String(localized: "onboarding_login_button")
+    var primaryTitle: String = String(localized: "onboarding_sign_in_button")
     var secondaryTitle: String? = nil
     let onPrimary: () -> Void
     var onSecondary: (() -> Void)? = nil
+
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 48
 
     var body: some View {
         switch layout {
@@ -33,7 +35,7 @@ struct LoginRequiredView: View {
     private var pageBody: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             Image(systemName: "lock.shield")
-                .font(.system(size: 48))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.accentPrimary)
             Text(title)
                 .font(TigerDuckTheme.Typography.title)

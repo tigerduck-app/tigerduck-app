@@ -80,7 +80,7 @@ struct LoginSheet: View {
                         LoadingButtonLabel(isLoading: isLoggingIn) {
                             HStack {
                                 Spacer()
-                                Text(String(localized: "action_login"))
+                                Text(String(localized: "action_sign_in"))
                                     .fontWeight(.semibold)
                                 Spacer()
                             }

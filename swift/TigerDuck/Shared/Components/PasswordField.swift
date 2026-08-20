@@ -4,8 +4,35 @@ import UIKit
 /// Password input with a trailing eye toggle.
 ///
 /// Backed by a single `UITextField` via `UIViewRepresentable` so toggling
-/// secure entry does not tear down the first responder. The keyboard stays
-/// up across visibility toggles and across taps to/from this field.
+/// secure entry does not tear down the first responder. The field tracks
+/// `isVisible` directly: masked uses `isSecureTextEntry = true` (keyboard
+/// in passcode mode → no key-preview popovers, no QuickType bar, excluded
+/// from screen recording); revealed uses normal text entry (visible
+/// cleartext, native cursor positioning, selection, copy / paste, normal
+/// keyboard).
+///
+/// The reveal threat model: if the user has tapped the eye, the password
+/// is already on screen. The keyboard becoming a normal (visible-in-
+/// recording) keyboard at that point is consistent with the exposure the
+/// user just opted into — it isn't a new leak. To minimize the surface,
+/// the eye tap dismisses the keyboard first; the user can tap the field
+/// again to bring it up in whichever mode matches the current state.
+///
+/// Two extra defense-in-depth layers on top of the always-on
+/// `.screenCaptureProtected(true)` (which keeps the field's pixels out of
+/// screenshots/recording even when revealed):
+///
+/// - **Lock reveal during active capture.** While `UIScreen.main.isCaptured`
+///   is true (screen recording, mirroring, AirPlay), the eye button is
+///   disabled and any current reveal is force-masked. The user can't
+///   accidentally expose the password to whoever is on the other end of
+///   the stream.
+/// - **Auto-mask on screenshot.** iOS doesn't expose a pre-screenshot
+///   hook (only `userDidTakeScreenshotNotification`, which fires *after*
+///   the volume+power press). The secure canvas already blanks the
+///   password area in the captured image, but we additionally flip back
+///   to masked on the notification so any subsequent glance / second
+///   screenshot also sees the dots.
 struct PasswordField<Field: Hashable>: View {
     let placeholder: String
     @Binding var text: String
@@ -15,6 +42,17 @@ struct PasswordField<Field: Hashable>: View {
     var onSubmit: () -> Void = {}
 
     @State private var isVisible = false
+    /// Drives the eye gating. Populated by `CapturedScreenReader` below,
+    /// which reads `isCaptured` from the *hosting window's* `UIScreen` —
+    /// `UIScreen.main` is deprecated on iOS 16+ and returns the wrong
+    /// screen in multi-scene / Stage Manager / Sidecar configurations.
+    @State private var isScreenCaptured = false
+    @State private var showsCaptureExplanation = false
+    /// Monotonically incremented each time the explanation popover opens;
+    /// the deferred auto-dismiss closure ignores its work if a newer open
+    /// has happened in the meantime, so rapid re-taps don't get their
+    /// fresh popover dismissed by a stale timer.
+    @State private var captureExplanationGen = 0
 
     var body: some View {
         HStack(spacing: 4) {
@@ -35,12 +73,24 @@ struct PasswordField<Field: Hashable>: View {
                 returnKeyType: returnKeyType,
                 onSubmit: onSubmit
             )
+            .screenCaptureProtected(true)
 
             Button {
-                isVisible.toggle()
+                if isScreenCaptured {
+                    // Tapping the eye while capture is active surfaces an
+                    // inline popover explaining why reveal is unavailable
+                    // rather than just being inert. See the `.popover`
+                    // modifier below.
+                    showsCaptureExplanation = true
+                } else {
+                    handleEyeTap()
+                }
             } label: {
-                Image(systemName: isVisible ? "eye.slash" : "eye")
-                    .foregroundStyle(.secondary)
+                // Open eye = password is currently visible; eye.slash =
+                // currently hidden. (Mirror-the-state reading, not
+                // tap-to-action.)
+                Image(systemName: isVisible ? "eye" : "eye.slash")
+                    .foregroundStyle(isScreenCaptured ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
@@ -48,6 +98,173 @@ struct PasswordField<Field: Hashable>: View {
             .accessibilityLabel(isVisible
                 ? String(localized: "password_hide")
                 : String(localized: "password_show"))
+            .popover(isPresented: $showsCaptureExplanation, arrowEdge: .top) {
+                Text(String(localized: "password_eye_unavailable_during_capture"))
+                    .font(.callout)
+                    .multilineTextAlignment(.leading)
+                    // `.fixedSize(vertical: true)` lets the text grow
+                    // downward to fit; the surrounding `.frame(width:)`
+                    // gives it a stable horizontal budget. Without
+                    // fixedSize, the popover assigns a 1-line slot and
+                    // truncates with an ellipsis.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding()
+                    .frame(width: 260)
+                    // Forces a real popover with arrow on compact-width
+                    // (iPhone) instead of SwiftUI's default sheet
+                    // adaptation, so the arrow can actually point at the
+                    // eye glyph.
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+        .background(
+            // Reads the hosting window's `UIScreen.isCaptured` and
+            // observes change notifications scoped to that specific
+            // screen (not all screens) — handles multi-scene / external
+            // display correctly, and notifications fire only for the
+            // screen this field is actually showing on.
+            CapturedScreenReader { captured in
+                let wasCaptured = isScreenCaptured
+                isScreenCaptured = captured
+                if captured {
+                    forceMask()
+                } else if wasCaptured {
+                    // Capture ended — the "unavailable" explanation is no
+                    // longer accurate, so close it if it was open.
+                    showsCaptureExplanation = false
+                }
+            }
+        )
+        .onChange(of: showsCaptureExplanation) { _, isShown in
+            // Auto-dismiss after ~4s; users can also dismiss by tapping
+            // outside (default popover behavior). The gen counter
+            // prevents a stale timer from closing a newer popover that
+            // was opened after a quick re-tap.
+            guard isShown else { return }
+            captureExplanationGen &+= 1
+            let gen = captureExplanationGen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                guard gen == captureExplanationGen else { return }
+                showsCaptureExplanation = false
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+            forceMask()
+        }
+    }
+
+    /// The eye is gated while a capture is in progress (tap routes to
+    /// the explainer popover instead — see the button action above), so
+    /// toggling can only happen when nothing is being recorded. That
+    /// means the brief passcode↔normal keyboard-mode transition when
+    /// `isSecureTextEntry` flips on a focused field is safe to render
+    /// in place. Keeping the keyboard up means the user doesn't have
+    /// to re-tap the field to keep typing after they've checked their
+    /// password.
+    private func handleEyeTap() {
+        isVisible.toggle()
+    }
+
+    /// Force-mask without changing focus state if there's nothing to
+    /// mask. Called from the capture / screenshot observers.
+    ///
+    /// IMPORTANT: only touches focus when *this* field is the focused
+    /// one. The same `@FocusState` is shared across the surrounding
+    /// form's username + password fields (e.g. LibraryView /
+    /// LoginSheet / OnboardingView all pass a single `$focusedField`
+    /// binding); unconditionally clearing it would yank focus off the
+    /// username field a user has just tabbed back to while the
+    /// password reveal was incidentally still on.
+    private func forceMask() {
+        guard isVisible else { return }
+        let owningFocus = focusBinding.wrappedValue == focusValue
+        if owningFocus {
+            UIApplication.dismissKeyboard()
+            focusBinding.wrappedValue = nil
+        }
+        isVisible = false
+    }
+}
+
+/// Reports the captured state of the `UIScreen` hosting this view, and
+/// re-reports whenever that screen posts `capturedDidChangeNotification`.
+///
+/// Scoped by `object: screen` so a capture flip on an *external* screen
+/// (e.g. an attached USB-C display) doesn't fire the handler for a view
+/// living on the iPhone's internal screen. Replaces direct
+/// `UIScreen.main.isCaptured` reads, which are deprecated on iOS 16+ and
+/// undefined on multi-scene iPad / Stage Manager.
+private struct CapturedScreenReader: UIViewRepresentable {
+    let onChange: (Bool) -> Void
+
+    func makeUIView(context: Context) -> CapturedScreenReaderView {
+        let view = CapturedScreenReaderView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateUIView(_ uiView: CapturedScreenReaderView, context: Context) {
+        uiView.onChange = onChange
+    }
+}
+
+private final class CapturedScreenReaderView: UIView {
+    var onChange: ((Bool) -> Void)?
+    private var observer: NSObjectProtocol?
+    private weak var observedScreen: UIScreen?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isHidden = true
+        isUserInteractionEnabled = false
+        // The reader is a SwiftUI `.background`, but it carries zero
+        // visual weight — let it shrink to zero rather than influencing
+        // layout of the wrapped content.
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used; this view is created programmatically")
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // Reattach the observer to whichever `UIScreen` now hosts us
+        // (or detach entirely if the view left the hierarchy).
+        let newScreen = window?.screen
+        if newScreen === observedScreen { return }
+
+        if let observer {
+            NotificationCenter.default.removeObserver(observer)
+            self.observer = nil
+        }
+        observedScreen = newScreen
+        guard let newScreen else { return }
+
+        onChange?(newScreen.isCaptured)
+        observer = NotificationCenter.default.addObserver(
+            forName: UIScreen.capturedDidChangeNotification,
+            object: newScreen,
+            queue: .main
+        ) { [weak self, weak newScreen] _ in
+            guard let newScreen else { return }
+            // iOS posts the notification a tick before `isCaptured`
+            // flips to its new value on `recording stopped`. Hop to
+            // the next runloop turn so the read picks up the updated
+            // value.
+            DispatchQueue.main.async {
+                self?.onChange?(newScreen.isCaptured)
+            }
+        }
+    }
+
+    deinit {
+        if let observer {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 }

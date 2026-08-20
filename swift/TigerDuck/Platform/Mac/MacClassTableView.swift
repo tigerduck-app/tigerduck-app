@@ -28,6 +28,13 @@ struct MacClassTableView: View {
     /// the Mac classtable is a plain View so it lives in @State here.
     @State private var courseToRecolor: SDCourse?
 
+    /// Rename state — mirrors the iOS `ClassTableViewModel` triple
+    /// (`courseToRename`, `renameText`, `showRenameAlert`). Mac has no
+    /// view-model so it lives on the view directly.
+    @State private var courseToRename: SDCourse?
+    @State private var renameText: String = ""
+    @State private var showRenameAlert: Bool = false
+
     /// Carries the weekday alongside the tapped course so the detail sheet
     /// can render the concrete slot's classroom + time range. Without the
     /// weekday context, `CourseDetailSheet` falls back to the aggregate
@@ -146,20 +153,12 @@ struct MacClassTableView: View {
                     // semester picker grows wide.
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
-                        Text(String(localized: "class_table_add_course"))
+                        Text(String(localized: "add_course_title"))
                     }
                     .fixedSize()
                 }
-                .help(String(localized: "class_table_add_course"))
+                .help(String(localized: "add_course_title"))
             }
-        }
-        .sheet(item: $selectedSlot) { slot in
-            CourseDetailSheet(
-                course: slot.course,
-                assignments: DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo),
-                timeRange: slot.course.timeRange(for: slot.weekday),
-                weekday: slot.weekday
-            )
         }
         .sheet(isPresented: $showAddCourse) {
             AddCourseSheet(
@@ -168,6 +167,32 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
+            // Conflict alert lives on the sheet's content: on iPhone
+            // hosting an alert on the parent forces SwiftUI to dismiss the
+            // sheet to present it. macOS doesn't have the same dismissal,
+            // but keeping both platforms anchored to the sheet keeps the
+            // alert visually attached to the search results either way.
+            .alert(
+                String(localized: "class_table_conflict_add_failed_title"),
+                isPresented: Binding(
+                    get: { tripleConflictError != nil },
+                    set: { if !$0 { tripleConflictError = nil } }
+                ),
+                presenting: tripleConflictError
+            ) { _ in
+                Button(String(localized: "action_confirm"), role: .cancel) {
+                    tripleConflictError = nil
+                }
+            } message: { err in
+                Text(String(
+                    format: String(localized: "class_table_conflict_add_failed_message"),
+                    err.newCourseName,
+                    "\(err.weekday)",
+                    err.periodId,
+                    err.existingA.displayName,
+                    err.existingB.displayName
+                ))
+            }
         }
         .sheet(item: $courseToRecolor) { course in
             CourseColorPickerSheet(
@@ -180,26 +205,23 @@ struct MacClassTableView: View {
             )
             .frame(minWidth: 360, minHeight: 480)
         }
-        .alert(
-            String(localized: "class_table_conflict_add_failed_title"),
-            isPresented: Binding(
-                get: { tripleConflictError != nil },
-                set: { if !$0 { tripleConflictError = nil } }
-            ),
-            presenting: tripleConflictError
-        ) { _ in
-            Button(String(localized: "action_confirm"), role: .cancel) {
-                tripleConflictError = nil
+        .alert(String(localized: "class_table_rename_title"), isPresented: $showRenameAlert) {
+            TextField(String(localized: "class_table_course_name"), text: $renameText)
+            Button(String(localized: "action_confirm")) {
+                confirmRename()
             }
-        } message: { err in
-            Text(String(
-                format: String(localized: "class_table_conflict_add_failed_message"),
-                err.newCourseName,
-                "\(err.weekday)",
-                err.periodId,
-                err.existingA.displayName,
-                err.existingB.displayName
-            ))
+            if let course = courseToRename, course.customName != nil {
+                Button(String(localized: "class_table_rename_revert"), role: .destructive) {
+                    revertRename(course)
+                }
+            }
+            Button(String(localized: "action_cancel"), role: .cancel) {
+                courseToRename = nil
+            }
+        } message: {
+            if let course = courseToRename {
+                Text(String(format: String(localized: "class_table_rename_default_label"), course.courseName))
+            }
         }
         .task {
             await warmCachesIfNeeded()
@@ -216,6 +238,54 @@ struct MacClassTableView: View {
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
             cacheRevision &+= 1
         }
+        // Course detail uses a custom overlay (not `.sheet`) so the user can
+        // dismiss by clicking the backdrop — macOS sheets are window-modal
+        // and swallow all outside clicks, leaving ESC as the only escape.
+        .overlay {
+            if let slot = selectedSlot {
+                courseDetailOverlay(slot: slot)
+            }
+        }
+        .animation(.easeInOut(duration: 0.18), value: selectedSlot?.id)
+    }
+
+    @ViewBuilder
+    private func courseDetailOverlay(slot: SelectedSlot) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.black.opacity(0.35))
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { selectedSlot = nil }
+
+            CourseDetailSheet(
+                course: slot.course,
+                assignments: DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo),
+                timeRange: slot.course.timeRange(for: slot.weekday),
+                weekday: slot.weekday
+            )
+            // Max-bound rather than fixed: a small window (e.g. MacBook Air
+            // with the inspector open) shrinks the overlay to fit, while
+            // larger windows give the inner ScrollView more room before it
+            // has to scroll. `CourseDetailSheet` enforces its own minWidth
+            // 460 / minHeight 360 so the lower bound is preserved.
+            .frame(maxWidth: 560, maxHeight: 620)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 24, y: 8)
+            // Swallow taps on the content so they don't reach the backdrop.
+            .onTapGesture { }
+
+            // Restore ESC dismissal — custom overlays don't inherit a sheet's
+            // automatic cancel handling. Hidden button keeps the shortcut
+            // active without affecting the visible layout.
+            Button("") { selectedSlot = nil }
+                .keyboardShortcut(.escape, modifiers: [])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .transition(.opacity)
     }
 
     // MARK: - Async fetch
@@ -520,10 +590,28 @@ struct MacClassTableView: View {
         )
         .contentShape(Rectangle())
         .contextMenu {
+            // Rename writes to a courseNo-keyed store shared across semesters;
+            // only expose it from the current semester to avoid leaking aliases
+            // into other terms. See `isViewingCurrentSemester`.
+            if isViewingCurrentSemester {
+                Button {
+                    startRename(course)
+                } label: {
+                    Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
+                }
+            }
             Button {
                 courseToRecolor = course
             } label: {
                 Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
+            }
+            if isViewingCurrentSemester {
+                Divider()
+                Button(role: .destructive) {
+                    deleteCourse(course)
+                } label: {
+                    Label(String(localized: "class_table_delete"), systemImage: "trash")
+                }
             }
         }
     }
@@ -537,6 +625,16 @@ struct MacClassTableView: View {
     private func displayLabel(for code: String) -> String {
         guard code.count >= 2 else { return code }
         return String(code.dropLast()) + "-" + String(code.last!)
+    }
+
+    /// True when the Mac picker is on the currently-enrolled semester.
+    /// Rename and Delete are gated on this because their on-disk stores
+    /// (`courseCustomNames`, `deletedCourseNos`) are keyed by `courseNo`
+    /// only — a write made while viewing a past term would leak into the
+    /// current schedule, widgets, and Live Activity for any course that
+    /// reuses the same code.
+    private var isViewingCurrentSemester: Bool {
+        selectedSemester == CourseSelectionService.currentSemesterCode()
     }
 
     // MARK: - User-added courses
@@ -633,6 +731,72 @@ struct MacClassTableView: View {
         }
         guard updated.count != existing.count else { return }
         DataCache.shared.saveUserAddedCourses(updated)
+        cacheRevision &+= 1
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+    }
+
+    // MARK: - Rename
+
+    /// Right-click "Rename" — opens the rename alert pre-filled with the
+    /// course's current display name. Mirrors `ClassTableViewModel.startRename`.
+    private func startRename(_ course: SDCourse) {
+        courseToRename = course
+        renameText = course.displayName
+        showRenameAlert = true
+    }
+
+    /// Commit the typed alias to `DataCache.courseCustomNames`. Empty or
+    /// equal-to-canonical input is treated as a revert so the user can clear
+    /// the override by typing nothing. Mirrors the iPhone confirmRename rules
+    /// 1:1 so renames stay consistent across platforms.
+    private func confirmRename() {
+        guard let course = courseToRename else { return }
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == course.courseName {
+            revertRename(course)
+            return
+        }
+        var names = DataCache.shared.loadCourseCustomNames()
+        names[course.courseNo] = trimmed
+        DataCache.shared.saveCourseCustomNames(names)
+        courseToRename = nil
+        cacheRevision &+= 1
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+    }
+
+    /// Clear the alias so `displayName` falls back to the canonical NTUST
+    /// course name. Also surfaced as the destructive button in the rename
+    /// alert when an override is already set.
+    private func revertRename(_ course: SDCourse) {
+        var names = DataCache.shared.loadCourseCustomNames()
+        guard names.removeValue(forKey: course.courseNo) != nil else {
+            courseToRename = nil
+            return
+        }
+        DataCache.shared.saveCourseCustomNames(names)
+        courseToRename = nil
+        cacheRevision &+= 1
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+    }
+
+    /// Right-click "Delete" — mirrors `ClassTableViewModel.deleteCourse` on
+    /// iPhone. Tombstones the courseNo so a future cache refresh from NTUST
+    /// can't resurrect a course the user deliberately removed, AND drops any
+    /// user-added entry for the courseNo in this semester so the row vanishes
+    /// immediately whether the source was an enrolled course or a manual add.
+    private func deleteCourse(_ course: SDCourse) {
+        var deleted = Set(DataCache.shared.loadDeletedCourseNos())
+        deleted.insert(course.courseNo)
+        DataCache.shared.saveDeletedCourseNos(Array(deleted))
+
+        let existing = DataCache.shared.loadUserAddedCourses()
+        let pruned = existing.filter { entry in
+            !(entry.courseNo == course.courseNo && (entry.semester == selectedSemester || entry.semester.isEmpty))
+        }
+        if pruned.count != existing.count {
+            DataCache.shared.saveUserAddedCourses(pruned)
+        }
+
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }

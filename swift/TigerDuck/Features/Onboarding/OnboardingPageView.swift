@@ -17,6 +17,9 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 64
+
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             iconView
@@ -62,7 +65,12 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         #if canImport(UIKit)
-        .onTapGesture { UIApplication.dismissKeyboard() }
+        // `dismissTapGesture` attaches via `.simultaneousGesture` (not
+        // `.onTapGesture`): a plain tap recognizer on the page root competes
+        // with — and on iOS 18 swallows — taps on the interactive `Link`s /
+        // `Button`s inside `content`, which is what left the lower welcome-page
+        // links (e.g. GitHub) dead. See View+ScrollSafeGesture.
+        .dismissTapGesture { UIApplication.dismissKeyboard() }
         #endif
     }
 
@@ -71,22 +79,22 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         switch iconAnimation {
         case .pulse:
             Image(systemName: icon)
-                .font(.system(size: 64))
+                .font(.system(size: heroIconSize))
                 .foregroundStyle(accentColor)
-                .symbolEffect(.pulse)
+                .symbolEffect(.pulse, isActive: !reduceMotion)
         case .layerFlash:
             // Compose the shield and lock as separate images so only the
             // lock animates (the built-in lock.shield.fill effect would
             // pulse both layers).
             ZStack {
                 Image(systemName: "shield.fill")
-                    .font(.system(size: 64))
+                    .font(.system(size: heroIconSize))
                     .foregroundStyle(accentColor)
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 32, weight: .semibold))
+                    .font(.system(size: heroIconSize * 0.5, weight: .semibold))
                     .foregroundStyle(.white)
-                    .symbolEffect(.pulse, options: .repeating.speed(0.35))
-                    .offset(y: -4)
+                    .symbolEffect(.pulse, options: .repeating.speed(0.35), isActive: !reduceMotion)
+                    .offset(y: -heroIconSize / 16)
             }
         }
     }

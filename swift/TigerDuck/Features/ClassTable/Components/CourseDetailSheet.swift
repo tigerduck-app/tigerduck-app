@@ -50,15 +50,13 @@ struct CourseDetailSheet: View {
                     .foregroundStyle(Color.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if course.moodleDeepLink != nil {
+                if course.moodleOpenURL != nil {
                     Button(action: openMoodleCourse) {
                         Image(systemName: "arrow.up.right.square.fill")
-                            .font(.system(size: 22))
+                            .font(.title2)
                             .foregroundStyle(Color.accentPrimary)
                     }
-                    // TODO(l10n): add `course_detail_open_moodle_a11y` —
-                    // "在 Moodle 開啟課程" / "Open course in Moodle"
-                    // .accessibilityLabel(String(localized: "course_detail_open_moodle_a11y"))
+                    .accessibilityLabel(String(localized: "a11y_course_detail_open_moodle"))
                 }
             }
 
@@ -145,7 +143,7 @@ struct CourseDetailSheet: View {
 
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
-                    if let url = assignment.moodleDeepLink {
+                    if let url = assignment.moodleOpenURL {
                         openURL(url)
                     }
                 } label: {
@@ -176,13 +174,13 @@ struct CourseDetailSheet: View {
 
     // MARK: - Actions
 
-    /// Always route through the `moodlemobile://` deep link — matches the
-    /// assignment-row convention above and keeps the user inside the Moodle
-    /// app instead of bouncing out to Safari. `openURL` falls back to the
-    /// system browser on macOS when no Moodle app is installed.
+    /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile
+    /// picks the user up inside the app. On macOS no Moodle Mac app exists
+    /// and the deep link would surface as an "unhandled URL" error, so the
+    /// platform-aware `moodleOpenURL` returns the HTTPS URL instead.
     private func openMoodleCourse() {
-        guard let deepLink = course.moodleDeepLink else { return }
-        openURL(deepLink)
+        guard let url = course.moodleOpenURL else { return }
+        openURL(url)
     }
 }
 
@@ -204,7 +202,7 @@ private struct EmphasisCard: View {
                 .foregroundStyle(Color.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(value)
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(2)
                 .minimumScaleFactor(0.7)

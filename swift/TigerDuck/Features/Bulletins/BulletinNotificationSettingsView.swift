@@ -359,8 +359,8 @@ struct BulletinNotificationSettingsView: View {
     private func ruleSubtitle(_ rule: BulletinAPI.SubscriptionRule) -> String {
         let separator = String(localized: "bulletin_rule_filter_separator")
         let orgText = rule.orgs.isEmpty
-            ? String(localized: "bulletin_rule_all_orgs")
-            : String(localized: "bulletin_rule_orgs_prefix") + rule.orgs.map { taxonomy.orgLabel(for: $0) }.joined(separator: separator)
+            ? String(localized: "bulletin_rule_all_depts")
+            : String(localized: "bulletin_rule_dept_prefix") + rule.orgs.map { taxonomy.orgLabel(for: $0) }.joined(separator: separator)
         let tagText = rule.tags.isEmpty
             ? String(localized: "bulletin_rule_all_tags")
             : String(localized: "bulletin_rule_tags_prefix") + rule.tags.map { taxonomy.tagLabel(for: $0) }.joined(separator: separator)

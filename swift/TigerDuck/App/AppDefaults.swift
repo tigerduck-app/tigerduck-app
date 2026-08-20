@@ -2,6 +2,7 @@ import Defaults
 import Foundation
 
 extension BrowserPreference: Defaults.Serializable, Defaults.PreferRawRepresentable {}
+extension MoodleOpenTarget: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 extension VisualPreset: Defaults.Serializable, Defaults.PreferRawRepresentable {}
 
 nonisolated extension Defaults.Keys {
@@ -28,6 +29,13 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.browserPreference,
         default: .system
     )
+    /// Mac-only. Default `.browser` because the iPad Moodle app isn't
+    /// installed by default on Mac; sending the user there before they
+    /// opt in would fail with "no app handles this URL".
+    static let macMoodleOpenTarget = Key<MoodleOpenTarget>(
+        AppConstants.UserDefaultsKeys.macMoodleOpenTarget,
+        default: .browser
+    )
     static let showAbsoluteAssignmentTime = Key<Bool>(
         AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime,
         default: false
@@ -46,6 +54,13 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.libraryFeatureEnabled,
         default: false
     )
+    /// Default ON: the gesture is harmless when the parent library feature
+    /// is off (which is itself default-off), and the first-trigger prompt
+    /// gives users an explicit choice on their first accidental flip.
+    static let flipToLibraryEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.flipToLibraryEnabled,
+        default: true
+    )
     static let homeSectionLayoutData = Key<Data?>(
         AppConstants.UserDefaultsKeys.homeSectionLayout
     )
@@ -55,6 +70,10 @@ nonisolated extension Defaults.Keys {
     )
     static let assignmentReminderOffsetsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.assignmentReminderOffsets
+    )
+    static let isAssignmentReminderEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.isAssignmentReminderEnabled,
+        default: true
     )
     static let isLiveActivityEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.isLiveActivityEnabled,
@@ -107,12 +126,15 @@ nonisolated extension Defaults.Keys {
     )
 
     // MARK: Push server
-    /// Default off: device tokens / metadata are POSTed to the push server
-    /// only after the user explicitly opts in. The previous default sent
-    /// device data on first launch with no consent surface.
+    /// Default on as of the custom-push feature: every device registers
+    /// once onboarding is complete, so operator-issued pushes can target it.
+    /// Notification *permission* is still requested only via onboarding; the
+    /// device row just exists either way. Users can opt out via
+    /// `serverPushUserOptOut`. `AppState` gates the launch-time enable on
+    /// `hasCompletedOnboarding` so no device identity is sent pre-consent.
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
-        default: false
+        default: true
     )
     static let pushServerURLOverride = Key<String?>(
         AppConstants.UserDefaultsKeys.pushServerURLOverride
@@ -122,6 +144,20 @@ nonisolated extension Defaults.Keys {
     )
     static let pushLastSyncAt = Key<Date?>(
         AppConstants.UserDefaultsKeys.pushLastSyncAt
+    )
+    /// User-facing opt-out for operator-issued "server" pushes. Default off
+    /// (i.e. user is opted in). Backend reads the inverse as
+    /// `server_push_enabled` and the dispatcher filters on
+    /// `server_push_enabled = true`.
+    static let serverPushUserOptOut = Key<Bool>(
+        AppConstants.UserDefaultsKeys.serverPushUserOptOut,
+        default: false
+    )
+    /// FIFO-capped set of custom-push popup ids the client has already
+    /// rendered. Caps at 100 entries to dedupe replayed taps.
+    static let shownServerPopupIds = Key<[String]>(
+        AppConstants.UserDefaultsKeys.shownServerPopupIds,
+        default: []
     )
 
     // MARK: Bulletins
@@ -146,5 +182,27 @@ nonisolated extension Defaults.Keys {
     static let classroomMandarinDisplay = Key<String>(
         AppConstants.UserDefaultsKeys.classroomMandarinDisplay,
         default: "original"
+    )
+
+    // MARK: App-update prompt + What's New (iOS only — declared at the
+    // cross-platform `Defaults.Keys` level because the keys themselves
+    // are plain `String?` / `Date?` and the macOS build of `AppState`
+    // does not reference any of these; the iOS-only update coordinator
+    // is the sole reader/writer.
+
+    static let skippedUpdateVersion = Key<String?>(
+        AppConstants.UserDefaultsKeys.skippedUpdateVersion
+    )
+    static let lastUpdateCheckAt = Key<Date?>(
+        AppConstants.UserDefaultsKeys.lastUpdateCheckAt
+    )
+    static let lastPromptedUpdateVersion = Key<String?>(
+        AppConstants.UserDefaultsKeys.lastPromptedUpdateVersion
+    )
+    static let lastPromptedUpdateAt = Key<Date?>(
+        AppConstants.UserDefaultsKeys.lastPromptedUpdateAt
+    )
+    static let lastShownWhatsNewVersion = Key<String?>(
+        AppConstants.UserDefaultsKeys.lastShownWhatsNewVersion
     )
 }

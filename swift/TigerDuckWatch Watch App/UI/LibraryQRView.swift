@@ -1,5 +1,13 @@
 import SwiftUI
 
+// Express Transit suppression note:
+// PassKit's `requestAutomaticPassPresentationSuppression` is iOS-only —
+// watchOS exposes `PKPassLibrary` but not the suppression API, so there is
+// no public way to block a side-button double-press from invoking Apple
+// Pay / Express Transit while this view is on screen. If Apple ships an
+// equivalent watchOS API later, mirror `LibraryView`'s suppress / release
+// pattern here. (Last checked against the watchOS 11 SDK.)
+
 struct LibraryQRView: View {
     @State private var viewModel = LibraryQRViewModel()
     @State private var isFullScreen = false
@@ -47,7 +55,7 @@ struct LibraryQRView: View {
 
     private var emptyState: some View {
         ContentUnavailableView(
-            String(localized: "library_login_qr_prompt"),
+            String(localized: "library_sign_in_qr_prompt"),
             systemImage: "iphone.gen3",
             description: Text(String(localized: "watch_open_phone_to_sync"))
         )
@@ -65,6 +73,14 @@ struct LibraryQRView: View {
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 4)
                 .accessibilityLabel(String(localized: "library_qr_content_description"))
+                // No-op on watchOS today: Apple has not exposed a
+                // window-level capture-exclusion API (the equivalent of
+                // FLAG_SECURE on Wear OS). Marked for parity with the
+                // phone — if a public API ever lands, the modifier will
+                // start enforcing without per-call-site changes. The
+                // residual exposure is bounded by the user's deliberate
+                // side-button + Digital Crown screenshot gesture.
+                .screenCaptureProtected()
                 .onTapGesture(count: 2) {
                     isFullScreen = true
                 }
@@ -155,6 +171,9 @@ private struct FullScreenQRView: View {
             }
         }
         .ignoresSafeArea()
+        // See note in `qrSection` above: no-op on watchOS today, marked
+        // for parity in case a public capture-exclusion API ships.
+        .screenCaptureProtected()
         // Hide the system close indicator so it stops landing on top of
         // the matrix. Drag-up or drag-down is the documented dismiss
         // gesture for this presentation.

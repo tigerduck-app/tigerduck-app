@@ -171,6 +171,9 @@ struct CourseColorPickerSheet: View {
                 }
             if isSelected {
                 Image(systemName: "checkmark")
+                    // Fixed size: the swatch circle (42pt) and row (50pt) are
+                    // fixed, so a dynamic font would let the checkmark grow
+                    // past the swatch at accessibility text sizes.
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.25), radius: 1)

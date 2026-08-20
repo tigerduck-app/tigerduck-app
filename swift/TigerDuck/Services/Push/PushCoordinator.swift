@@ -12,6 +12,8 @@ struct PushDiagnostic: Sendable {
     let notificationAuthStatus: UNAuthorizationStatus
     let registration: PushRegistrationSnapshot
     let resolvedServerURL: URL
+    let userId: String
+    let deviceId: String
 }
 
 /// Owns the push-server lifecycle for the app.
@@ -29,7 +31,11 @@ struct PushDiagnostic: Sendable {
 final class PushCoordinator {
     private let identity: PushIdentity
     private let apiClient: PushAPIClient
-    private let registration: PushRegistrationService
+    /// Exposed `internal` so AppState can call user-preference helpers
+    /// (e.g. `updateServerPushOptOut`) without re-plumbing them through
+    /// every layer. The actor still owns its own state — callers only see
+    /// its async methods.
+    let registration: PushRegistrationService
     private let relay: PushTokenRelay
     let scheduleSync: ScheduleSyncService
 
@@ -43,14 +49,21 @@ final class PushCoordinator {
         apiClient: PushAPIClient? = nil
     ) {
         self.identity = identity
-        let resolvedClient = apiClient ?? PushAPIClient(
-            baseURL: PushServerConfig.resolveServerURL(),
-            sharedSecret: PushServerConfig.resolveSharedSecret()
-        )
+        // No `baseURL:` argument — `PushAPIClient` defaults to providers
+        // that re-resolve the URL *and* shared secret through
+        // `PushServerConfig` on every request, so a Debug build's runtime
+        // endpoint override (Settings → Developer → API endpoint) takes
+        // effect without an app relaunch and the auth header tracks
+        // whichever backend the override points at.
+        let resolvedClient = apiClient ?? PushAPIClient()
         self.apiClient = resolvedClient
         self.registration = PushRegistrationService(
             identity: identity,
-            apiClient: resolvedClient
+            apiClient: resolvedClient,
+            // Evaluated here in `PushCoordinator`'s `@MainActor` init so the
+            // `@MainActor` `resolvedForBuild` (reads `UIDevice.current`) is
+            // reached from the main actor.
+            deviceClass: PushDeviceClass.resolvedForBuild
         )
         self.relay = PushTokenRelay(registration: registration)
         self.scheduleSync = ScheduleSyncService(
@@ -75,28 +88,50 @@ final class PushCoordinator {
     }
 
     /// Enable the full push stack. Safe to call repeatedly.
-    func enable() {
-        guard !isStarted else { return }
+    ///
+    /// - Parameter requestPermission: When `true`, the call also fires
+    ///   the iOS system permission prompt — appropriate for the explicit
+    ///   "turn on" Settings toggle, which needs visible feedback that the
+    ///   toggle "did something". Pass `false` for the silent auto-enable
+    ///   path that runs at every launch: it only calls
+    ///   `registerForRemoteNotifications`, which is a no-op until the
+    ///   user has granted permission elsewhere (typically onboarding).
+    ///   Auto-enable must NOT prompt — that would land the system alert
+    ///   on top of OnboardingView.
+    func enable(requestPermission: Bool = false) {
         guard Defaults[.pushServerEnabled] else {
             logger.info("enable skipped — pushServerEnabled=false")
             return
         }
-        isStarted = true
-        logger.info("enabling push stack")
+        // One-time stack bring-up: relay + `isStarted` flip happen on the
+        // first call only. The permission/register block below intentionally
+        // runs every time — auto-enable at launch (`requestPermission:
+        // false`) lands first and sets `isStarted = true`, so a later
+        // onboarding/Settings call with `requestPermission: true` must NOT
+        // return early; otherwise the system alert never appears and APNs
+        // is never asked to deliver a token, and the device never gets a
+        // server registration row even with notifications granted.
+        let firstStart = !isStarted
+        if firstStart {
+            isStarted = true
+            relay.start()
+        }
+        logger.info("enabling push stack (firstStart=\(firstStart, privacy: .public), requestPermission=\(requestPermission, privacy: .public))")
 
-        // Request user-visible notification permission first so the user gets
-        // an iOS system prompt as visible feedback that the toggle "did
-        // something". PTS (Push-to-Start) tokens don't strictly require this
-        // permission, but it unblocks standard-alert push later AND avoids
-        // the silent-toggle-does-nothing UX.
         Task { @MainActor in
-            let granted = (try? await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-            logger.info("notification authorization granted=\(granted, privacy: .public)")
+            if requestPermission {
+                let granted = (try? await UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+                logger.info("notification authorization granted=\(granted, privacy: .public)")
+            }
+            // registerForRemoteNotifications is safe to call regardless of
+            // permission state — it returns an APNs token if authorized
+            // and stays quiet otherwise. Calling it on every enable lets
+            // a later permission grant (via onboarding or iOS Settings)
+            // flow into the existing token-forwarding pipeline without
+            // another explicit hook.
             UIApplication.shared.registerForRemoteNotifications()
         }
-
-        relay.start()
     }
 
     /// Returns the latest diagnostic snapshot for the settings view.
@@ -110,7 +145,9 @@ final class PushCoordinator {
             liveActivitiesEnabled: liveActivitiesEnabled,
             notificationAuthStatus: notificationStatus,
             registration: reg,
-            resolvedServerURL: PushServerConfig.resolveServerURL()
+            resolvedServerURL: PushServerConfig.resolveServerURL(),
+            userId: identity.userId,
+            deviceId: identity.deviceId
         )
     }
 
@@ -172,13 +209,21 @@ final class PushCoordinator {
     /// or seeds a stale UserDefaults override pointing the wrong way.
     nonisolated static func assertEnvConsistency() {
         let resolved = PushServerConfig.resolveServerURL()
-        let host = resolved.host ?? ""
+        let host = resolved.host?.lowercased() ?? ""
         #if DEBUG
         let expectedEnv = "development"
+        // Mirror the runtime override gate: any host `isOverrideAllowed`
+        // accepts must also pass this assert, otherwise a Debug build
+        // that saved an `api.tigerduck.app` apex or `*.api.tigerduck.app`
+        // subdomain override would crash on next launch with a Keychain
+        // value the user can't reach to clear. The apns_env mismatch when
+        // pointing at prod is still real, but it surfaces as push failing
+        // at registration time — not as a hard launch crash before any
+        // UI renders.
         let hostOK = host == "localhost"
             || host == "127.0.0.1"
             || PushServerConfig.isPrivateIPv4(host)
-            || host == "staging.api.tigerduck.app"
+            || PushServerConfig.isAllowedPublicHost(host)
         #else
         let expectedEnv = "production"
         let hostOK = host == "api.tigerduck.app"

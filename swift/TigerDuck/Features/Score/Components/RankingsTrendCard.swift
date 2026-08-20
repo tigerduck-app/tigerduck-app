@@ -78,6 +78,13 @@ struct RankingsTrendCard: View {
                     )
                     .foregroundStyle(Color(hex: 0x4ECDC4))
                     .symbolSize(isSelected(ranking.term) ? 160 : 64)
+                    .accessibilityLabel(
+                        Text(String(
+                            format: String(localized: "a11y_rankings_trend_point"),
+                            ranking.term as CVarArg,
+                            value.formatted(.number.precision(.fractionLength(2))) as CVarArg
+                        ))
+                    )
                 }
             }
 
@@ -124,6 +131,9 @@ struct RankingsTrendCard: View {
             }
         }
         .frame(height: 160)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(String(localized: "a11y_rankings_trend_chart")))
+        .accessibilityValue(Text(currentSelectionDescription))
     }
 
     @ViewBuilder
@@ -137,7 +147,7 @@ struct RankingsTrendCard: View {
                 value: formatGPA(source.flatMap(gpa))
             )
             summaryCell(
-                title: String(localized: "score_ranking_class_label"),
+                title: String(localized: "score_rank_class"),
                 value: formatRank(source.map(rank)?.classRank)
             )
             summaryCell(
@@ -193,6 +203,18 @@ struct RankingsTrendCard: View {
 
     private func isSelected(_ term: String) -> Bool {
         selectedTerm == term
+    }
+
+    private var currentSelectionDescription: String {
+        guard let selected = resolvedSelection,
+              let value = gpa(for: selected) else {
+            return String(localized: "a11y_rankings_trend_no_selection")
+        }
+        return String(
+            format: String(localized: "a11y_rankings_trend_point"),
+            selected.term as CVarArg,
+            value.formatted(.number.precision(.fractionLength(2))) as CVarArg
+        )
     }
 
     // MARK: - Helpers

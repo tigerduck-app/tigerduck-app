@@ -82,12 +82,21 @@ final class LibraryViewModel {
     // MARK: - Login
 
     func loginAndStart() {
+        // Keyboard Return key bypasses the login button's `.disabled(...)` —
+        // reject empty credentials here so a stray Submit doesn't hit the
+        // NTUST endpoint with blank fields.
+        let trimmedUsername = libUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUsername.isEmpty, !libPassword.isEmpty, !isLoggingIn else { return }
+        // Flip the flag synchronously, before the Task is scheduled, so a
+        // second submit (e.g. Return + button tap landing on the same
+        // runloop turn) sees `isLoggingIn = true` and bails — otherwise
+        // both calls clear the guard before the first Task body runs.
+        isLoggingIn = true
         Task { @MainActor in
-            isLoggingIn = true
             errorMessage = nil
             do {
                 try await LibraryService.login(
-                    username: libUsername.trimmingCharacters(in: .whitespaces).uppercased(),
+                    username: trimmedUsername.uppercased(),
                     password: libPassword
                 )
                 libPassword = ""
@@ -149,6 +158,11 @@ final class LibraryViewModel {
     }
 
     private static func generateQRImage(from string: String) -> UIImage? {
+        // Plain SDR black/white render. HDR brightness is applied at draw
+        // time by `HDRQRCodeImage` via a Metal shader against an EDR-enabled
+        // CAMetalLayer — doing it here through CoreImage's filter chain
+        // proved unreliable (false-color clamping + SwiftUI not tagging
+        // synthetic UIImages as HDR).
         let context = CIContext()
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(string.utf8)

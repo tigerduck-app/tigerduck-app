@@ -53,10 +53,11 @@ final class BulletinsViewModel {
     private var prefetchTask: Task<Void, Never>?
 
     init(apiClient: BulletinAPIClient? = nil) {
-        self.apiClient = apiClient ?? BulletinAPIClient(
-            baseURL: PushServerConfig.resolveServerURL(),
-            sharedSecret: PushServerConfig.resolveSharedSecret()
-        )
+        // Defaults to providers that re-resolve through PushServerConfig
+        // on every request, so a Debug endpoint override applies to bulletin
+        // fetches immediately and the shared secret tracks the endpoint —
+        // matching the push stack's behaviour.
+        self.apiClient = apiClient ?? BulletinAPIClient()
         // Seed synchronously from disk so the very first render after
         // launch paints real cards instead of a spinner.
         let cached = DataCache.shared.loadBulletinSummaries()
@@ -82,6 +83,77 @@ final class BulletinsViewModel {
             await self?.performRefresh()
         }
         await inflight?.value
+    }
+
+    /// Resolve a bulletin id (typically from a push-tap deep link) into a
+    /// `BulletinSummary` the view can hand to its `.navigationDestination`.
+    /// Prefers the in-memory list, then the on-disk summary cache, and as
+    /// a last resort fetches the detail endpoint and synthesises a summary
+    /// shaped row from it — that mirror lets `BulletinDetailView` re-fetch
+    /// the same detail and render normally without an extra contract.
+    ///
+    /// Returns `nil` for a *terminal* miss (the bulletin is tombstoned and
+    /// will never be navigable). Throws for a *transient* miss (network /
+    /// decode failure) so the caller can preserve the deep link and retry
+    /// when conditions improve, instead of dropping the tap.
+    func summary(forId id: Int) async throws -> BulletinAPI.BulletinSummary? {
+        if let existing = items.first(where: { $0.id == id }) {
+            // `items` is seeded from the on-disk cache at init, so a row
+            // that has since been tombstoned on the server can already
+            // be in memory when the push tap arrives. Honour the flag
+            // here too, mirroring the cache and detail-fetch guards.
+            guard !existing.isDeleted else {
+                logger.info("summary(forId:) skipped in-memory deleted bulletin id=\(id, privacy: .public)")
+                return nil
+            }
+            return existing
+        }
+        let cached = DataCache.shared.loadBulletinSummaries()
+        if let hit = cached.first(where: { $0.id == id }) {
+            // Cache can hold a pre-tombstone row written before the server
+            // marked the bulletin deleted; honour the flag here so the tap
+            // doesn't land on a ghost detail page.
+            guard !hit.isDeleted else {
+                logger.info("summary(forId:) skipped cached deleted bulletin id=\(id, privacy: .public)")
+                return nil
+            }
+            return hit
+        }
+        let detail: BulletinAPI.BulletinDetail
+        do {
+            detail = try await apiClient.getBulletin(id: id)
+        } catch {
+            logger.error("summary(forId:) fetch failed id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+        // Don't surface or merge a tombstoned bulletin — the /list
+        // endpoint filters these out, and merging here would inject
+        // a ghost row at the top of the feed AND persist it to disk
+        // cache where it would survive until the next page load
+        // overwrote it.
+        guard !detail.isDeleted else {
+            logger.info("summary(forId:) skipped deleted bulletin id=\(id, privacy: .public)")
+            return nil
+        }
+        let synthesised = BulletinAPI.BulletinSummary(
+            id: detail.id,
+            externalId: detail.externalId,
+            title: detail.title,
+            titleClean: detail.titleClean,
+            canonicalOrg: detail.canonicalOrg,
+            contentTags: detail.contentTags,
+            importance: detail.importance,
+            summary: detail.summary,
+            sourceUrl: detail.sourceUrl,
+            postedAt: detail.postedAt,
+            isDeleted: detail.isDeleted
+        )
+        // Merge into the live list so a subsequent return to the list
+        // shows the row without another network round trip.
+        items = Self.merge(existing: items, incoming: [synthesised])
+        refilter()
+        persistSummaries()
+        return synthesised
     }
 
     /// Request the next page. Safe to call on every scroll — guarded by

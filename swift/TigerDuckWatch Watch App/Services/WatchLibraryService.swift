@@ -10,9 +10,9 @@ enum WatchLibraryServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .credentialsNotFound:
-            return String(localized: "library_login_qr_prompt")
+            return String(localized: "library_sign_in_qr_prompt")
         case .loginFailed(let m):
-            return String(format: String(localized: "error_library_login_failed_format"), m)
+            return String(format: String(localized: "error_library_sign_in_failed_format"), m)
         case .qrGenerationFailed:
             // Server-side detail is logged in generateQRCode(); the
             // user-facing message stays short to fit the watch screen.
@@ -39,7 +39,14 @@ enum WatchLibraryService {
         config.timeoutIntervalForResource = 30
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        return URLSession(configuration: config)
+        // Mirror the phone's pinning so a watch refresh over hostile
+        // Wi-Fi (the watch falls back to its own Wi-Fi when out of
+        // BT range of the phone) doesn't downgrade the trust path.
+        return URLSession(
+            configuration: config,
+            delegate: TLSPinningDelegate.shared,
+            delegateQueue: nil,
+        )
     }()
 
     private static func validateHTTP(_ response: URLResponse) throws {

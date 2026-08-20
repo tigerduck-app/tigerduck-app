@@ -5,6 +5,7 @@ import UserNotifications
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var notifyAssignments = true
     @State private var notifyAnnouncements = true
     @State private var notifyFreeLunch = true
@@ -21,7 +22,28 @@ struct SettingsView: View {
     @State private var hapticPlayer: CHHapticPatternPlayer?
     @State private var notificationsAuthorized: Bool = true
     @State private var showOfficialWebsite = false
+    #if os(iOS)
+    /// Drives the "you're up to date" / "couldn't reach the App Store"
+    /// feedback alert that fires after the manual Check for Updates row.
+    /// Only true when the coordinator emitted a result that isn't already
+    /// surfaced through the auto-presented update sheet — an `.offered`
+    /// result is shown via that sheet path, not this alert.
+    @State private var showManualUpdateCheckResultAlert = false
+    /// Item for the Settings → What's New row, allowing repeat
+    /// presentation of the latest release notes independent of the
+    /// auto-launch gate's seen-state. Driven by `.sheet(item:)` rather
+    /// than `.sheet(isPresented:)` so the entry is captured at present
+    /// time — a stale `latestWhatsNew == nil` between the row tap and
+    /// the sheet body evaluation cannot leak an empty sheet onto
+    /// screen.
+    @State private var manualWhatsNewItem: WhatsNewRepository.ResolvedWhatsNew?
+    #endif
     @Environment(\.scenePhase) private var scenePhase
+
+    #if DEBUG
+    @AppStorage(ScreenCaptureProtectionDebugFlag.userDefaultsKey)
+    private var disableScreenCaptureProtection = false
+    #endif
 
     private static let websiteURL = AppURLs.website
 
@@ -52,7 +74,7 @@ struct SettingsView: View {
                     HStack(spacing: 12) {
                         ForEach(AppState.themeColors, id: \.hex) { theme in
                             Button {
-                                withAnimation(.smoothSpring) {
+                                withAnimation(reduceMotion ? nil : .smoothSpring) {
                                     appState.accentColorHex = theme.hex
                                 }
                             } label: {
@@ -101,6 +123,12 @@ struct SettingsView: View {
                         isOn: $appState.useEnglishClassroomAbbreviation
                     )
                     if appState.useEnglishClassroomAbbreviation {
+                        // `.menu` style (the Form default) packs label and
+                        // value into one row whose height is computed from
+                        // a single line — long localized labels then wrap
+                        // to two lines and get clipped at the bottom.
+                        // `.navigationLink` renders the picker as a real
+                        // NavigationLink whose row sizes to fit the label.
                         Picker(
                             String(localized: "settings_classroom_mandarin_display"),
                             selection: $appState.classroomMandarinDisplay
@@ -112,18 +140,8 @@ struct SettingsView: View {
                             Text(String(localized: "settings_classroom_mandarin_display_translated"))
                                 .tag("translated")
                         }
+                        .pickerStyle(.navigationLink)
                     }
-                }
-            }
-
-            // MARK: - Other settings
-            // Library toggle keeps its position at the top of the
-            // "Other settings" group; the rest of the miscellany now lives
-            // behind a NavigationLink to `OtherSettingsView`.
-            Section(String(localized: "settings_section_other_settings")) {
-                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
-                NavigationLink(String(localized: "settings_section_other_settings")) {
-                    OtherSettingsView()
                 }
             }
 
@@ -146,11 +164,25 @@ struct SettingsView: View {
                     }
                 }
                 #endif
+                NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
+                    AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
+                }
                 NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }
                 NavigationLink(String(localized: "settings_push_server_nav_label")) {
                     PushServerSettingsView()
+                }
+            }
+
+            // MARK: - Other settings
+            // Library toggle keeps its position at the top of the
+            // "Other settings" group; the rest of the miscellany now lives
+            // behind a NavigationLink to `OtherSettingsView`.
+            Section(String(localized: "settings_section_other_settings")) {
+                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
+                NavigationLink(String(localized: "settings_section_other_settings")) {
+                    OtherSettingsView()
                 }
             }
 
@@ -180,6 +212,10 @@ struct SettingsView: View {
             // MARK: - About
             Section(String(localized: "settings_section_about")) {
                 LabeledContent(String(localized: "settings_version"), value: appVersion)
+                #if os(iOS)
+                checkForUpdatesRow
+                whatsNewRow
+                #endif
                 Button {
                     if appState.browserPreference == .inApp {
                         showOfficialWebsite = true
@@ -208,6 +244,19 @@ struct SettingsView: View {
                 NavigationLink("Notifications") {
                     DebugNotificationsView()
                 }
+                NavigationLink("API endpoint") {
+                    DebugEndpointView()
+                }
+                #if os(iOS)
+                NavigationLink("Triggers") {
+                    TriggersDebugView()
+                }
+                #endif
+                // Bypass `.screenCaptureProtected(...)` system-wide for
+                // demo recordings / layout debugging. Backed by
+                // `@AppStorage` so toggling immediately re-evaluates
+                // every protected view. Compiled out of release builds.
+                Toggle("Disable screen-capture protection", isOn: $disableScreenCaptureProtection)
             }
             #endif
         }
@@ -232,8 +281,8 @@ struct SettingsView: View {
             LoginSheet(
                 title: String(localized: "settings_account_library_system"),
                 subtitle: String(localized: "settings_library_account_subtitle"),
-                usernamePlaceholder: String(localized: "login_student_id"),
-                passwordPlaceholder: String(localized: "login_password"),
+                usernamePlaceholder: String(localized: "sign_in_student_id"),
+                passwordPlaceholder: String(localized: "sign_in_password"),
                 initialUsername: appState.authService.storedStudentId ?? "",
                 isLoggingIn: libIsLoggingIn,
                 loginError: libLoginError,
@@ -283,8 +332,10 @@ struct SettingsView: View {
                 )
                 .onAppear {
                     warningFlash = false
-                    withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                        warningFlash = true
+                    if !reduceMotion {
+                        withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                            warningFlash = true
+                        }
                     }
                     triggerWarningVibration()
                 }
@@ -302,7 +353,62 @@ struct SettingsView: View {
             libraryWarningTask?.cancel()
             libraryWarningTask = nil
         }
+        #if os(iOS)
+        // Manual-check-result alert — covers the "you're up to date" and
+        // "couldn't reach the App Store" outcomes. The .offered case is
+        // handled by `.updateNotifySheetHost()` instead, so the row's
+        // Task explicitly suppresses this alert in that branch.
+        .alert(
+            manualCheckResultAlertTitle,
+            isPresented: $showManualUpdateCheckResultAlert,
+            actions: {
+                Button(String(localized: "action_got_it"), role: .cancel) {
+                    appState.updateNotifyCoordinator.lastManualCheckResult = nil
+                }
+            },
+            message: {
+                Text(manualCheckResultAlertMessage)
+            }
+        )
+        .sheet(item: $manualWhatsNewItem) { entry in
+            WhatsNewSheetView(entry: entry) {
+                // Manual open does NOT advance
+                // `lastShownWhatsNewVersion` — the Settings entry is a
+                // re-visit surface, and stamping the seen marker here
+                // would silently suppress the next auto-prompt after
+                // viewing release notes again.
+                manualWhatsNewItem = nil
+            }
+            .presentationDetents([.fraction(0.85), .large])
+        }
+        #endif
     }
+
+    #if os(iOS)
+    /// Title for the manual update-check result alert. Mirrors iOS App
+    /// Store style: "You're Up to Date" vs "Update Check Failed".
+    private var manualCheckResultAlertTitle: String {
+        switch appState.updateNotifyCoordinator.lastManualCheckResult {
+        case .upToDate: return String(localized: "update_up_to_date_title")
+        case .failed: return String(localized: "update_check_failed_title")
+        case .offered, nil: return ""
+        }
+    }
+
+    private var manualCheckResultAlertMessage: String {
+        switch appState.updateNotifyCoordinator.lastManualCheckResult {
+        case .upToDate:
+            return String(format: NSLocalizedString(
+                "update_up_to_date_message",
+                comment: ""
+            ), AppConstants.appName)
+        case .failed:
+            return String(localized: "update_check_failed_message")
+        case .offered, nil:
+            return ""
+        }
+    }
+    #endif
 
     private var libraryToggleBinding: Binding<Bool> {
         Binding(
@@ -349,6 +455,68 @@ struct SettingsView: View {
             // Silently fail on devices without haptic support
         }
     }
+
+    #if os(iOS)
+    /// "Check for Updates" row. Tapping forces an iTunes Lookup ignoring
+    /// the 24h throttle. When the lookup succeeds and an update is
+    /// available the existing `.updateNotifySheetHost()` modifier surfaces
+    /// the regular prompt sheet — this row only handles the "already up
+    /// to date" and "couldn't reach the App Store" feedback paths.
+    @ViewBuilder
+    private var checkForUpdatesRow: some View {
+        Button {
+            Task {
+                await appState.updateNotifyCoordinator.checkManually()
+                // Only raise the local alert when the coordinator decided
+                // not to drive the auto-sheet (.upToDate / .failed). An
+                // `.offered` result hands off to the sheet host so a
+                // duplicate alert here would stack on top of the sheet.
+                let result = appState.updateNotifyCoordinator.lastManualCheckResult
+                if case .offered = result { return }
+                if result != nil { showManualUpdateCheckResultAlert = true }
+            }
+        } label: {
+            HStack {
+                Text(String(localized: "settings_check_for_updates"))
+                    .foregroundStyle(.primary)
+                Spacer()
+                if appState.updateNotifyCoordinator.isCheckingForUpdate {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+        }
+        .disabled(appState.updateNotifyCoordinator.isCheckingForUpdate)
+    }
+
+    /// "What's New" entry — always opens the latest entry registered
+    /// in `whatsnew.json`, independent of the
+    /// `lastShownWhatsNewVersion` gate. Hidden when the asset has no
+    /// entries for the resolved locale (e.g. during early bring-up of
+    /// a release where the JSON hasn't been filled in yet).
+    @ViewBuilder
+    private var whatsNewRow: some View {
+        if appState.updateNotifyCoordinator.hasWhatsNewContent {
+            Button {
+                // Capture the entry at tap time and pass it directly to
+                // `.sheet(item:)` — avoids the empty-sheet edge case
+                // where the row was visible on the latest render but
+                // `latestWhatsNew` evaluates to nil inside the sheet
+                // body (e.g. language change between render and tap).
+                manualWhatsNewItem = appState.updateNotifyCoordinator.latestWhatsNew
+            } label: {
+                HStack {
+                    Text(String(localized: "settings_whats_new"))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+    #endif
 
     private var ntustAccountRow: some View {
         accountRow(
@@ -404,14 +572,14 @@ struct SettingsView: View {
     ) -> some View {
         if isLoggedIn {
             Button(role: .destructive, action: onLogout) {
-                Text(String(localized: "action_logout"))
+                Text(String(localized: "action_sign_out"))
                     .font(.callout.weight(.semibold))
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
         } else {
             Button(action: onLogin) {
-                Text(String(localized: "action_login"))
+                Text(String(localized: "action_sign_in"))
                     .font(.callout.weight(.semibold))
             }
             .buttonStyle(.borderedProminent)
@@ -439,6 +607,7 @@ private struct LibraryWarningOverlay: View {
     let onCancel: () -> Void
     let onConfirm: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var countdown = 5
     @State private var confirmEnabled = false
 
@@ -509,7 +678,7 @@ private struct LibraryWarningOverlay: View {
                 try? await Task.sleep(for: .seconds(1))
                 countdown = i
             }
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                 confirmEnabled = true
             }
         }

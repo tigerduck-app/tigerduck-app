@@ -12,12 +12,12 @@ struct CreditSummaryBento: View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
             HStack(spacing: TigerDuckTheme.Spacing.sm) {
                 tile(
-                    label: String(localized: "score_credit_earned_label"),
+                    label: String(localized: "score_credit_earned"),
                     breakdown: summary.earned,
                     accent: Color(hex: 0x2ECC71)
                 )
                 tile(
-                    label: String(localized: "score_credit_enrolled_label"),
+                    label: String(localized: "score_credit_enrolled"),
                     breakdown: summary.enrolled,
                     accent: Color(hex: 0x45B7D1)
                 )
@@ -40,7 +40,9 @@ struct CreditSummaryBento: View {
 
             HStack(alignment: .lastTextBaseline, spacing: 4) {
                 Text("\(breakdown.total)")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .foregroundStyle(accent)
                 Text(String(localized: "course_detail_credits_label"))
                     .font(TigerDuckTheme.Typography.caption2)

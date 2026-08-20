@@ -1,9 +1,12 @@
 import SwiftUI
+import UIKit
 import Defaults
 
 @Observable
 final class HomeViewModel {
     private static let assignmentMutationAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
+
+    private var prefersReducedMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
     var sections: [HomeSection] = []
     var allCourses: [SDCourse] = []
@@ -151,7 +154,12 @@ final class HomeViewModel {
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
 
-        guard NetworkMonitor.shared.isConnected else {
+        // `isReachable()` adds Apple's captive-portal probe on top of
+        // the bare interface-up check, so refreshing under a hotel /
+        // campus login Wi-Fi surfaces "no internet" instead of the
+        // ATS pin failure that would otherwise come from the actual
+        // NTUST / Moodle call.
+        guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
         }
@@ -215,7 +223,7 @@ final class HomeViewModel {
 
     func archiveAssignment(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
-        withAnimation(Self.assignmentMutationAnimation) {
+        withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isArchived = true
             DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()
@@ -224,7 +232,7 @@ final class HomeViewModel {
 
     func unarchiveAssignment(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
-        withAnimation(Self.assignmentMutationAnimation) {
+        withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isArchived = false
             DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()
@@ -233,7 +241,7 @@ final class HomeViewModel {
 
     func markAssignmentAsLocallyCompleted(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
-        withAnimation(Self.assignmentMutationAnimation) {
+        withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isLocallyCompleted = true
             DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()
@@ -242,7 +250,7 @@ final class HomeViewModel {
 
     func undoLocallyCompleted(_ assignment: SDAssignment) {
         guard let idx = allAssignmentsCache.firstIndex(where: { $0.assignmentId == assignment.assignmentId }) else { return }
-        withAnimation(Self.assignmentMutationAnimation) {
+        withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isLocallyCompleted = false
             DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()

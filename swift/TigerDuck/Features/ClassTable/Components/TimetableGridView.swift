@@ -1,13 +1,54 @@
 import SwiftUI
 
+/// Maps the codebase weekday convention (1=Mon, 2=Tue, ..., 7=Sun) to a
+/// localized short weekday name. DateFormatter's symbol arrays use a
+/// 1=Sunday convention, so we remap before indexing. The fallback to the
+/// raw int keeps VoiceOver labels usable even if symbol lookup fails.
+private func weekdayDisplayName(_ weekday: Int) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = Locale.current
+    let symbols = formatter.shortStandaloneWeekdaySymbols ?? formatter.shortWeekdaySymbols ?? []
+    // Codebase: 1=Mon...6=Sat,7=Sun → DateFormatter index: 2=Mon...7=Sat,1=Sun
+    let dfIndex: Int
+    switch weekday {
+    case 1...6: dfIndex = weekday + 1 // Mon..Sat → 2..7
+    case 7: dfIndex = 1               // Sun → 1
+    default: dfIndex = 0
+    }
+    guard dfIndex >= 1, dfIndex <= symbols.count else { return "\(weekday)" }
+    return symbols[dfIndex - 1]
+}
+
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
+    @Environment(AppState.self) private var appState
 
     private let cellHeight: CGFloat = 52
     private let rowSpacing: CGFloat = 3
     private let colSpacing: CGFloat = 3
     private let headerHeight: CGFloat = 30
     private let periodWidth: CGFloat = 12
+    @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
+
+    @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
+
+    /// User multiplier from Settings → Font size. Multiplied into the
+    /// Dynamic-Type-scaled base so the cell respects both the system
+    /// Dynamic Type preference and the user's per-app override. Reads
+    /// from `AppState` (not the store directly) so SwiftUI tracks the
+    /// `@Observable` dependency and re-renders the grid the instant the
+    /// slider moves — without that hop the cells stayed at the old size
+    /// until the app was relaunched.
+    ///
+    /// We normalize the raw in-memory value here so the live timetable
+    /// stays consistent with the App-Group-persisted value the widgets
+    /// read. The Slider's `step:` snaps interactively, but any non-Slider
+    /// writer (debug menu, migration, tests) could land us at a
+    /// non-stepped raw value — normalizing at the read site keeps all
+    /// three surfaces (timetable / Settings readout / widget) in sync.
+    private var courseNameSize: CGFloat {
+        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
+    }
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
@@ -37,7 +78,7 @@ struct TimetableGridView: View {
                 HStack(spacing: colSpacing) {
                     // Period label
                     Text(period.displayLabel)
-                        .font(.system(size: 10))
+                        .font(.caption2)
                         .foregroundStyle(Color.textSecondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -68,40 +109,50 @@ struct TimetableGridView: View {
 
             Color.clear
                 .overlay(alignment: .top) {
-                    Button {
-                        viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
-                    } label: {
-                        RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
-                            .fill(course.color.opacity(0.4))
-                            .overlay {
-                                Text(course.displayName)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color.textPrimary)
-                                    .lineLimit(spanCount > 1 ? 3 : 2)
-                                    .multilineTextAlignment(.center)
-                                    .padding(2)
+                    // `scrollSafeTapAction` wraps the cell in a real `Button` so
+                    // the first tap wins iOS 18 arbitration against the grid's
+                    // scroll view. See View+ScrollSafeGesture.
+                    RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                        .fill(course.color.opacity(0.4))
+                        .overlay {
+                            Text(course.displayName)
+                                .font(.system(size: courseNameSize, weight: .medium))
+                                .foregroundStyle(Color.textPrimary)
+                                .lineLimit(spanCount > 1 ? 3 : 2)
+                                .minimumScaleFactor(0.7)
+                                .multilineTextAlignment(.center)
+                                .padding(2)
+                        }
+                        .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
+                        .frame(height: totalHeight)
+                        .scrollSafeTapAction {
+                            viewModel.selectCourse(course, weekday: weekday, periodId: periodId)
+                        }
+                        .accessibilityLabel(
+                            Text(String(
+                                format: String(localized: "a11y_timetable_cell"),
+                                weekdayDisplayName(weekday),
+                                viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                                course.displayName
+                            ))
+                        )
+                        .contextMenu {
+                            Button {
+                                viewModel.startRename(course)
+                            } label: {
+                                Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
                             }
-                            .assignmentBadge(show: hasBadge, iconSize: 8, padding: 4)
-                            .frame(height: totalHeight)
-                    }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        Button {
-                            viewModel.startRename(course)
-                        } label: {
-                            Label(String(localized: "class_table_rename_title"), systemImage: "pencil")
+                            Button {
+                                viewModel.startRecolor(course)
+                            } label: {
+                                Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
+                            }
+                            Button(role: .destructive) {
+                                viewModel.deleteCourse(course)
+                            } label: {
+                                Label(String(localized: "class_table_delete"), systemImage: "trash")
+                            }
                         }
-                        Button {
-                            viewModel.startRecolor(course)
-                        } label: {
-                            Label(String(localized: "course_color_picker_title"), systemImage: "paintpalette")
-                        }
-                        Button(role: .destructive) {
-                            viewModel.deleteCourse(course)
-                        } label: {
-                            Label(String(localized: "class_table_delete"), systemImage: "trash")
-                        }
-                    }
                 }
                 .zIndex(1)
 
@@ -142,6 +193,19 @@ private struct ConflictClusterView: View {
     let rowSpacing: CGFloat
     let weekday: Int
     let periodId: String
+
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
+    @Environment(AppState.self) private var appState
+    @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
+    @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
+
+    /// Same convention as `TimetableGridView.courseNameSize` — see there
+    /// for the rationale, including why we read through `AppState`
+    /// rather than `CourseCardFontScaleStore` directly, and why we
+    /// normalize at the read site.
+    private var courseNameSize: CGFloat {
+        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
+    }
 
     private var courseA: SDCourse { segments[0].course }
     private var spanA: Int { segments[0].span }
@@ -225,6 +289,14 @@ private struct ConflictClusterView: View {
                 sharpBottomOuter: sharpBottom
             )
 
+            // `scrollSafeTapAction` wraps the cluster in a real `Button` so the
+            // first tap wins iOS 18 arbitration against the surrounding scroll
+            // view, matching the single-course cell above. One tap anywhere in
+            // the cluster opens the picker, which resolves which course to
+            // inspect — per-shape hit-testing would bypass the picker, but the
+            // Android version also routes through the sheet so the user sees
+            // both options. `Button` supplies the `.isButton` trait and hit
+            // shape. See View+ScrollSafeGesture.
             ZStack(alignment: .topLeading) {
                 courseRegion(
                     course: courseA,
@@ -244,17 +316,28 @@ private struct ConflictClusterView: View {
                 .frame(width: proxy.size.width, height: bHeight)
                 .offset(y: bTop)
             }
-            // One tap anywhere in the cluster opens the picker; the picker
-            // resolves which course to inspect. Per-shape hit-testing would
-            // bypass the picker entirely, but the Android version still goes
-            // through the sheet so the user can see both options.
-            .contentShape(Rectangle())
-            .onTapGesture {
+            .overlay(alignment: .topTrailing) {
+                if diffWithoutColor {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .padding(2)
+                        .accessibilityHidden(true)
+                }
+            }
+            .scrollSafeTapAction {
                 viewModel.presentConflictPicker(
                     courseA: courseA, courseB: courseB,
                     weekday: weekday, periodId: periodId
                 )
             }
+            .accessibilityLabel(
+                Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
+                     String(format: String(localized: "a11y_timetable_cell"),
+                            weekdayDisplayName(weekday),
+                            viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                            "\(courseA.displayName), \(courseB.displayName)"))
+            )
             .contextMenu {
                 conflictContextMenu()
             }
@@ -273,6 +356,15 @@ private struct ConflictClusterView: View {
         HStack(spacing: rowSpacing) {
             ForEach(segments, id: \.course.courseNo) { segment in
                 conflictColumn(segment: segment)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if diffWithoutColor {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .padding(2)
+                    .accessibilityHidden(true)
             }
         }
     }
@@ -295,16 +387,24 @@ private struct ConflictClusterView: View {
                     .fill(course.color.opacity(0.4))
                     .overlay {
                         Text(course.displayName)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: courseNameSize, weight: .medium))
                             .foregroundStyle(Color.textPrimary)
                             .lineLimit(span > 1 ? 3 : 2)
+                            .minimumScaleFactor(0.7)
                             .multilineTextAlignment(.center)
                             .padding(2)
                     }
-                    .assignmentBadge(show: hasBadge, iconSize: 8, padding: 4)
+                    .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
                     .frame(height: blockHeight(span))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(
+                Text("\(String(localized: "a11y_class_table_conflict_prefix")): " +
+                     String(format: String(localized: "a11y_timetable_cell"),
+                            weekdayDisplayName(weekday),
+                            viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
+                            course.displayName))
+            )
             .contextMenu {
                 Button {
                     viewModel.startRename(course)
@@ -370,9 +470,10 @@ private struct ConflictClusterView: View {
                 // tail width). Aligning top-right (Γ) / bottom-left (L)
                 // keeps the text inside the visible color region.
                 Text(course.displayName)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: courseNameSize, weight: .medium))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.7)
                     .multilineTextAlignment(.center)
                     .padding(2)
                     .frame(
@@ -382,7 +483,7 @@ private struct ConflictClusterView: View {
 
                 if hasBadge {
                     Image(systemName: "book.fill")
-                        .font(.system(size: 8))
+                        .font(.system(size: badgeIconSize))
                         .foregroundStyle(Color.textPrimary.opacity(0.7))
                         .padding(3)
                 }

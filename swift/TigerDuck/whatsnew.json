@@ -1,0 +1,40 @@
+{
+  "1.7.0": {
+    "zh-TW": {
+      "title": "1.7.0 有什麼新功能",
+      "highlights": [
+        "可以調整課表與主畫面小工具中的課名字型大小。",
+        "App Store 上推出新版本時，會在 App 內提醒你更新。",
+        "升級後首次開啟會顯示這個「新功能」說明。"
+      ]
+    },
+    "en": {
+      "title": "What's new in 1.7.0",
+      "highlights": [
+        "Resize course names in the class table and home-screen widgets.",
+        "We'll let you know when a new release is ready on the App Store.",
+        "After upgrading, this 'What's new' summary appears on first launch."
+      ]
+    }
+  },
+  "1.8.0": {
+    "en": {
+      "title": "What's new in 1.8.0",
+      "highlights": [
+        "Bulletin push notifications, with a switch in Settings to turn them off.",
+        "The app offers to update itself, and shows what changed once you install.",
+        "Flip your phone face-down to bring up your library QR code.",
+        "Passwords and the library QR are now hidden from screenshots and screen recordings."
+      ]
+    },
+    "zh-TW": {
+      "title": "1.8.0 更新內容",
+      "highlights": [
+        "公告推播通知，可在設定中隨時關閉。",
+        "有新版本時會主動提醒，更新後告訴你這一版改了什麼。",
+        "手機翻面朝下即可叫出圖書證 QR Code。",
+        "密碼與圖書證 QR 在截圖和螢幕錄影中會自動遮蔽。"
+      ]
+    }
+  }
+}

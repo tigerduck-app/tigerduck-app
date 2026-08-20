@@ -100,13 +100,27 @@ final class ScoreViewModel {
         guard !isRefreshing else { return }
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
-            errorMessage = String(localized: "common_not_logged_in")
+            errorMessage = String(localized: "common_not_signed_in")
             return
         }
 
         isRefreshing = true
         errorMessage = nil
         let manager = NTUSTSessionManager.shared
+        // Captive-portal pre-flight: NTUSTScoreService rides the pinned
+        // SSO chain, so a login-required Wi-Fi would otherwise surface
+        // as a confusing TLS error. Reset state and bail clean.
+        // Mirror the manager.loadingState write the other migrated bail
+        // paths do (Home / ClassTable / Calendar / AppState) so the
+        // NetworkStatusOverlay in ScoreView reflects the same offline
+        // state as every other tab.
+        guard await NetworkMonitor.shared.isReachable() else {
+            isRefreshing = false
+            let message = String(localized: "error_network_unavailable")
+            errorMessage = message
+            manager.loadingState = .error(message)
+            return
+        }
         manager.loadingState = .loading
 
         // Capture the auth generation that owns this fetch. If the user

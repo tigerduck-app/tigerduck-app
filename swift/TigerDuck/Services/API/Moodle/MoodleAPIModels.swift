@@ -17,7 +17,14 @@ nonisolated enum MoodleWebserviceClient {
             "User-Agent": userAgent,
             "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         ]
-        return URLSession(configuration: config)
+        // SPKI pin on every webservice REST call — every request
+        // carries the long-lived `wstoken` as a query string, so an
+        // unpinned session over a hostile root CA leaks the token.
+        return URLSession(
+            configuration: config,
+            delegate: TLSPinningDelegate.shared,
+            delegateQueue: nil,
+        )
     }()
 }
 

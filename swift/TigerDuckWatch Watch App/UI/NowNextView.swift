@@ -41,7 +41,7 @@ struct NowNextView: View {
                         )
                     } else if store.snapshot?.loggedIn == false {
                         ContentUnavailableView(
-                            String(localized: "watch_empty_not_logged_in"),
+                            String(localized: "watch_empty_not_signed_in"),
                             systemImage: "person.crop.circle.badge.exclamationmark"
                         )
                     } else {

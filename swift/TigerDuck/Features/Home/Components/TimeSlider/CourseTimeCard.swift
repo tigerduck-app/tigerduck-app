@@ -37,6 +37,18 @@ struct CourseTimeCard: View {
 
     @ViewBuilder
     private func cardContent(slot: CourseTimeSlot, opacity: Double) -> some View {
+        // `scrollSafeTapAction` wraps the surface in a real `Button` so the
+        // first tap inside Home's ScrollView opens the detail sheet instead of
+        // being swallowed (iOS 18 arbitration). `Button` supplies the
+        // `.isButton` trait and the hit shape, so the surface no longer adds
+        // those by hand.
+        cardSurface(slot: slot, opacity: opacity)
+            .scrollSafeTapAction { onSelect?(slot) }
+            .accessibilityHint(Text(String(localized: "a11y_course_card_open_details_hint")))
+    }
+
+    @ViewBuilder
+    private func cardSurface(slot: CourseTimeSlot, opacity: Double) -> some View {
         let course = slot.course
         let weekday = slot.date.scheduleWeekday
         let isToday = AppConstants.taipeiCalendar.isDateInToday(slot.date)
@@ -86,7 +98,8 @@ struct CourseTimeCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(CourseCardSurfaceModifier(tint: course.color, policy: policy))
         .opacity(opacity)
-        .onTapGesture { onSelect?(slot) }
+        // Hit shape + tap handling come from `scrollSafeTapAction` in
+        // `cardContent`, which wraps this surface in a `Button`.
     }
 
     private func subtitle(for course: SDCourse, weekday: Int) -> String {

@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// Sub-page collecting the "miscellaneous" settings that used to live as a
 /// run of header-less Sections at the bottom of `SettingsView`'s
@@ -28,6 +31,54 @@ struct OtherSettingsView: View {
                 Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
             }
             Section {
+                NavigationLink {
+                    FontSizeSettingsView()
+                } label: {
+                    HStack {
+                        Text(String(localized: "settings_font_size_title"))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        // Locale-aware decimal separator: en "1.20×",
+                        // de/fr/es/it "1,20×". `String(format:)` would
+                        // be POSIX-only and break the non-period locales.
+                        Text(CourseCardFontScale
+                            .normalize(appState.courseCardFontScale)
+                            .formatted(.number.precision(.fractionLength(2))) + "×")
+                            .font(.body.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            } footer: {
+                Text(String(localized: "settings_font_size_summary"))
+            }
+            #if os(iOS)
+            // Flip-to-Library: only meaningful when the library feature is
+            // on (the gesture routes to the Library tab) and only available
+            // on iPhone (iPad use case is unclear and the issue scope says
+            // "phone only"). Mirrors the Android equivalent in
+            // `Settings → 圖書館 → 翻轉開啟圖書館 QR`.
+            //
+            // The row is rendered (not hidden) even when library is off so
+            // the user can see the preference exists and inspect its state
+            // before enabling library — hiding it caused users who turned
+            // library off-then-on to be silently re-armed with the default-
+            // true persisted value. The toggle is also kept enabled in that
+            // state so the user can opt out before flipping the library
+            // feature back on; the gesture is gated at fire time by
+            // `libraryFeatureEnabled` in the coordinator either way.
+            if UIDevice.current.userInterfaceIdiom == .phone && FlipDetector.isSupported {
+                Section {
+                    Toggle(
+                        String(localized: "settings_flip_to_library_title"),
+                        isOn: $appState.flipToLibraryEnabled
+                    )
+                } footer: {
+                    Text(String(localized: "settings_flip_to_library_summary"))
+                }
+            }
+            #endif
+            Section {
                 Button {
                     showReassignColorsConfirm = true
                 } label: {
@@ -56,6 +107,16 @@ struct OtherSettingsView: View {
                     Text(String(localized: "settings_privacy_policy"))
                         .foregroundStyle(.primary)
                 }
+                Button {
+                    if appState.browserPreference == .inApp {
+                        showDeleteAccount = true
+                    } else {
+                        openURL(Self.deleteAccountURL)
+                    }
+                } label: {
+                    Text(String(localized: "settings_delete_account"))
+                        .foregroundStyle(.primary)
+                }
                 Button(String(localized: "settings_open_source_licenses")) {
                     if appState.browserPreference == .inApp {
                         showLicense = true
@@ -66,16 +127,6 @@ struct OtherSettingsView: View {
                 .foregroundStyle(.primary)
                 NavigationLink(String(localized: "settings_view_source_code")) {
                     SourceCodePickerView()
-                }
-                Button {
-                    if appState.browserPreference == .inApp {
-                        showDeleteAccount = true
-                    } else {
-                        openURL(Self.deleteAccountURL)
-                    }
-                } label: {
-                    Text(String(localized: "settings_delete_account"))
-                        .foregroundStyle(.primary)
                 }
             }
         }
