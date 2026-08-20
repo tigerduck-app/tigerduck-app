@@ -23,7 +23,6 @@ HANDOVER.md
 # tracked equivalents because the committed Xcode project wires them up,
 # but the widget target wiring isn't committed, so tracking the widget
 # symlinks just creates stale-file drift when locales come and go.
-swift/TigerDuckWidgets/Resources/*.lproj
 
 # Created by https://www.toptal.com/developers/gitignore/api/linux,macos,swift,xcode,kotlin,python,pycharm,windows,intellij,visualstudio,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,macos,swift,xcode,kotlin,python,pycharm,windows,intellij,visualstudio,visualstudiocode
