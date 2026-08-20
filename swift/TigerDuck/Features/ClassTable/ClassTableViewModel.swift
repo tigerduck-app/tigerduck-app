@@ -697,8 +697,18 @@ final class ClassTableViewModel {
         for course in mine where course.semester.isEmpty {
             course.semester = currentSemester
         }
-        let others = DataCache.shared.loadUserAddedCourses().filter {
-            !DataCache.userAddedCourse($0, belongsTo: currentSemester)
+        // Keep everything `mine` does not stand in for. An unstamped row is
+        // only replaced when it actually surfaced here — `mergeWithUserAdded`
+        // drops a manual row whose courseNo a fetched course already owns, so
+        // matching it on semester alone would erase it from the store, and
+        // with no semester recorded there is no other slice it could return
+        // in. A row stamped for this semester is replaced unconditionally:
+        // that is how a delete removes it.
+        let survivingNos = Set(mine.map(\.courseNo))
+        let others = DataCache.shared.loadUserAddedCourses().filter { stored in
+            if stored.semester == currentSemester { return false }
+            if stored.semester.isEmpty { return !survivingNos.contains(stored.courseNo) }
+            return true
         }
         DataCache.shared.saveUserAddedCourses(others + mine)
     }
