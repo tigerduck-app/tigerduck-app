@@ -20,7 +20,7 @@ struct CanonicalCourseProvider {
     func currentCourses() -> [SDCourse] {
         Self.merge(
             primary: cache.loadCourses(semester: CourseSelectionService.currentSemesterCode()),
-            userAdded: cache.loadUserAddedCourses(),
+            userAdded: cache.loadUserAddedCourses(semester: CourseSelectionService.currentSemesterCode()),
             deletedCourseNos: Set(cache.loadDeletedCourseNos()),
             customNames: cache.loadCourseCustomNames()
         )
