@@ -64,6 +64,19 @@ enum SemesterCatalog {
         return Array(cached.prefix(pickerDepth))
     }
 
+    /// The term the picker should open on: the user's last pick, or the newest
+    /// published term when they have never picked one.
+    ///
+    /// The stored pick is passed in rather than read here so the rule stays
+    /// testable, and callers deliberately do *not* persist the fallback — an
+    /// untouched picker should keep tracking the newest term rather than
+    /// freezing on whichever one happened to be newest at first launch.
+    nonisolated static func selectedSemester(storedPick: String?) -> String {
+        storedPick
+            ?? availableSemesters().first
+            ?? CourseSelectionService.currentSemesterCode()
+    }
+
     /// The term the 選課 system is currently serving — the one whose
     /// enrolments `CourseSelectionService.fetchEnrolledCourseNos` returns.
     ///

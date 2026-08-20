@@ -25,18 +25,29 @@ final class ClassTableViewModel {
     /// selection entry point.
     var selectedCourseBlockTimeRange: String? = nil
 
-    var currentSemester: String = Defaults[.classTableSelectedSemester] {
+    var currentSemester: String = SemesterCatalog.selectedSemester(
+        storedPick: Defaults[.classTableSelectedSemester]
+    ) {
         didSet {
             guard currentSemester != oldValue else { return }
-            Defaults[.classTableSelectedSemester] = currentSemester
+            if !isFollowingNewestSemester {
+                Defaults[.classTableSelectedSemester] = currentSemester
+            }
             reloadFromCache()
         }
     }
+
+    /// Set only while `followNewestSemesterIfUnpicked()` moves the selection,
+    /// so that assignment doesn't get recorded as a user pick.
+    private var isFollowingNewestSemester = false
+
     /// Re-read once `SemesterCatalog.refresh()` lands, so a term the school
     /// publishes ahead of the month heuristic (115-1 opened weeks before the
     /// heuristic rolled off 114-2) becomes selectable in the same session.
     private(set) var availableSemesters: [String] = ClassTableViewModel.semesterOptions(
-        including: Defaults[.classTableSelectedSemester]
+        including: SemesterCatalog.selectedSemester(
+            storedPick: Defaults[.classTableSelectedSemester]
+        )
     )
 
     /// Keeps the persisted selection selectable even after it ages out of the
@@ -44,6 +55,17 @@ final class ClassTableViewModel {
     private static func semesterOptions(including selected: String) -> [String] {
         let options = SemesterCatalog.availableSemesters()
         return options.contains(selected) ? options : options + [selected]
+    }
+
+    /// The catalogue can land after `init` on a cold launch, so re-apply the
+    /// "never picked → newest term" rule once it does.
+    private func followNewestSemesterIfUnpicked() {
+        guard Defaults[.classTableSelectedSemester] == nil,
+              let newest = SemesterCatalog.availableSemesters().first,
+              newest != currentSemester else { return }
+        isFollowingNewestSemester = true
+        currentSemester = newest
+        isFollowingNewestSemester = false
     }
 
     /// Format semester code for display: "1142" → "114-2"
@@ -60,6 +82,7 @@ final class ClassTableViewModel {
         await AppServiceBridge.warmAllSemesterCaches(authService: authService)
         await MainActor.run { [weak self] in
             guard let self else { return }
+            self.followNewestSemesterIfUnpicked()
             self.availableSemesters = Self.semesterOptions(including: self.currentSemester)
             self.reloadCurrentSemesterCourses()
         }

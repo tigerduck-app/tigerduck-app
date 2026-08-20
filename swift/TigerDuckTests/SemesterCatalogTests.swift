@@ -33,6 +33,11 @@ struct SemesterCatalogTests {
         #expect(SemesterCatalog.openTerm(in: list) == "1151")
     }
 
+    @Test("A stored pick wins over the newest published term")
+    func storedPickWins() {
+        #expect(SemesterCatalog.selectedSemester(storedPick: "1132") == "1132")
+    }
+
     @Test("No open term yields nil so the last known value is kept")
     func toleratesNoOpenTerm() throws {
         let closed = Data("""
