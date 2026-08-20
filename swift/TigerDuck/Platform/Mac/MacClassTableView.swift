@@ -90,8 +90,7 @@ struct MacClassTableView: View {
         // the live `CourseSelectionService` semester) — feed the static
         // `merge` directly with per-semester inputs instead.
         let cached = DataCache.shared.loadCourses(semester: selectedSemester)
-        let userAdded = DataCache.shared.loadUserAddedCourses()
-            .filter { $0.semester == selectedSemester || $0.semester.isEmpty }
+        let userAdded = DataCache.shared.loadUserAddedCourses(semester: selectedSemester)
         return CanonicalCourseProvider.merge(
             primary: cached,
             userAdded: userAdded,

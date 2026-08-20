@@ -100,7 +100,7 @@ final class ClassTableViewModel {
         )
         await MainActor.run { [weak self] in
             guard let self, self.currentSemester == target else { return }
-            let userAdded = DataCache.shared.loadUserAddedCourses()
+            let userAdded = DataCache.shared.loadUserAddedCourses(semester: target)
             let merged = self.buildCourseList(fresh, userAdded)
             // Silent overwrite: only swap in-memory list when content actually
             // changed, so SwiftUI doesn't churn on identical data.
@@ -233,7 +233,7 @@ final class ClassTableViewModel {
         reloadCurrentSemesterCourses()
         courses = buildCourseList(
             DataCache.shared.loadCourses(semester: currentSemester),
-            DataCache.shared.loadUserAddedCourses()
+            DataCache.shared.loadUserAddedCourses(semester: currentSemester)
         )
         assignments = DataCache.shared.loadAssignments()
     }
@@ -683,9 +683,24 @@ final class ClassTableViewModel {
         return true
     }
 
+    /// Replaces only `currentSemester`'s slice of the user-added store.
+    ///
+    /// `courses` holds one semester, so writing it wholesale — which this
+    /// used to do — drops every other semester's manual additions the moment
+    /// the user adds or removes one here. That stayed invisible while the
+    /// merge surfaced all semesters' rows in every timetable; scoping the
+    /// merge is what makes the wholesale write destructive.
     private func persistUserAddedCourses() {
-        let userAdded = courses.filter { $0.moodleIdNumber == nil }
-        DataCache.shared.saveUserAddedCourses(userAdded)
+        let mine = courses.filter { $0.moodleIdNumber == nil }
+        // Stamp rows that predate per-semester tracking with the semester
+        // they are being shown in, so they stop leaking into all of them.
+        for course in mine where course.semester.isEmpty {
+            course.semester = currentSemester
+        }
+        let others = DataCache.shared.loadUserAddedCourses().filter {
+            !DataCache.userAddedCourse($0, belongsTo: currentSemester)
+        }
+        DataCache.shared.saveUserAddedCourses(others + mine)
     }
 
     private func applyCustomizations(_ courses: inout [SDCourse]) {
@@ -801,7 +816,7 @@ final class ClassTableViewModel {
         let cachedAssignments = DataCache.shared.loadAssignments()
         let merged = buildCourseList(
             DataCache.shared.loadCourses(semester: currentSemester),
-            DataCache.shared.loadUserAddedCourses()
+            DataCache.shared.loadUserAddedCourses(semester: currentSemester)
         )
         reloadCurrentSemesterCourses()
         assignments = cachedAssignments
@@ -835,7 +850,7 @@ final class ClassTableViewModel {
                 )
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    let userAdded = DataCache.shared.loadUserAddedCourses()
+                    let userAdded = DataCache.shared.loadUserAddedCourses(semester: latestSemester)
                     self.currentSemesterCourses = self.buildCourseList(latestCourses, userAdded)
                     self.refreshCourseColors()
                 }
@@ -865,7 +880,7 @@ final class ClassTableViewModel {
         let fetchedCourses = await coursesTask
         let fetchedAssignments = await assignmentsTask
 
-        let userAdded = DataCache.shared.loadUserAddedCourses()
+        let userAdded = DataCache.shared.loadUserAddedCourses(semester: targetSemester)
 
         await MainActor.run {
             isUpdatingFromNetwork = true
