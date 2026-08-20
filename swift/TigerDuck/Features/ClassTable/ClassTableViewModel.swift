@@ -302,6 +302,10 @@ final class ClassTableViewModel {
         // dependency tracking aware of debug-time-override flips.
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
+        // ponytail: outside the term there is no "today" worth showing —
+        // the carousel would either be empty or surface a stale day. Empty
+        // here also hides the section, which keys off `todayCourses.isEmpty`.
+        guard AppConstants.CurrentTerm.isInSession else { return [] }
         return currentSemesterCourses.coursesForToday()
     }
 

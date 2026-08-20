@@ -162,6 +162,16 @@ enum CourseSelectionService {
     /// During those windows callers may briefly see the previous term's
     /// data; if precision is required, prefer a server-driven term code.
     nonisolated static func currentSemesterCode() -> String {
+        // ponytail: pinned to the hard-coded term. The heuristic below still
+        // says 114-2 through August, which mislabels the 115-1 term the
+        // school opened early. Delete this line to hand control back to
+        // `heuristicSemesterCode()`, which is left intact below.
+        AppConstants.CurrentTerm.code
+    }
+
+    /// The month-based guess `currentSemesterCode()` used before it was
+    /// pinned. Kept so lifting the pin is a one-line change.
+    nonisolated static func heuristicSemesterCode() -> String {
         // Pin to gregorian — Calendar.current returns ROC/Buddhist-era
         // years on a TW device and would shift the rocYear math.
         let cal = Calendar(identifier: .gregorian)

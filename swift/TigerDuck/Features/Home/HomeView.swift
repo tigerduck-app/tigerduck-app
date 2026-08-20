@@ -13,6 +13,15 @@ struct HomeView: View {
     @State private var activeSectionDrag: ReorderDragPayload?
     @State private var didReorderSection = false
 
+    /// ponytail: Home's time slider is a "today" surface, so it is dropped
+    /// outside the term rather than left to scrub a day with no classes.
+    /// Reorder and drag are unaffected — everything downstream keys off
+    /// `section.id`, never this array's indices.
+    private var visibleSections: [HomeSection] {
+        guard !AppConstants.CurrentTerm.isInSession else { return viewModel.sections }
+        return viewModel.sections.filter { $0.type != .todayCourses }
+    }
+
     var body: some View {
         if embedded {
             content
@@ -56,7 +65,7 @@ struct HomeView: View {
                 }
 
                 // Sections
-                ForEach(viewModel.sections) { section in
+                ForEach(visibleSections) { section in
                     sectionCell(section)
                 }
             }
