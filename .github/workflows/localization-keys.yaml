@@ -12,7 +12,11 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
-          ref: ${{ github.event.pull_request.head.sha }}
+          # No `ref:` override on purpose. The default for a pull_request
+          # event is the merge ref, which is what we actually want to check:
+          # whether the *merged* result would ship a raw key. Pinning to
+          # head.sha also breaks whenever the checker itself only exists on
+          # the base branch.
 
       - name: Check every referenced localization key is translated
         run: python3 tools/localization/check_keys.py

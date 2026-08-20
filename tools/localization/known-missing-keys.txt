@@ -1,49 +1,11 @@
 # Localization keys referenced by Swift that have no translation in
 # localization/. Every key here renders as its own raw name on screen.
 #
-# These predate the check: they were introduced by the i18n commits that
-# replaced hardcoded Chinese (9fe9e5f, 60a14ee, d6a1a50) without the matching
-# strings ever landing in tigerduck-app/app-translation. `dev` already
-# repoints all but `error_browser_unsupported_url` to keys that do exist
-# (chore/i18n-unify, Phase 2.1-2.3), so this list should collapse to that one
-# entry when dev merges, and the file should be deleted once it is empty.
+# The 37 entries this file opened with came from the i18n commits that
+# replaced hardcoded Chinese (9fe9e5f, 60a14ee, d6a1a50) without the strings
+# ever landing in tigerduck-app/app-translation. The i18n-unify work on dev
+# repointed all of them to keys that exist, so only the one below is left.
+# Add the string to app-translation, bump the submodule, and delete this file.
 #
 # Do not add to this list. A new entry means shipping a visible placeholder.
-action_login
-action_logout
-action_re_login
-bulletin_rule_all_orgs
-bulletin_rule_orgs_prefix
-calendar_event_source_exam
-calendar_event_source_school
-class_table_add_course
-class_table_login_required_message
-common_auto_login_failed
-common_not_logged_in
-course_detail_open_moodle_a11y
-desktop_login_disclaimer
-desktop_login_subtitle
-desktop_widget_up_next
 error_browser_unsupported_url
-error_library_login_failed_format
-error_moodle_recovery_relogin_ntust
-error_sso_login_failed
-error_sso_login_form_not_found
-home_assignments_login_required_message
-home_section_custom
-home_time_slider_login_required_message
-library_logging_in_label
-library_login_action
-library_login_password
-library_login_qr_prompt
-library_status_logged_in
-login_password
-login_student_id
-onboarding_login_button
-onboarding_login_subtitle
-onboarding_login_title
-score_credit_earned_label
-score_credit_enrolled_label
-score_login_required_message
-score_ranking_class_label
-watch_empty_not_logged_in
