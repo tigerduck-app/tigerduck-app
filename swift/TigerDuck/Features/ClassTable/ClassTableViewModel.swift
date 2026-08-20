@@ -25,35 +25,48 @@ final class ClassTableViewModel {
     /// selection entry point.
     var selectedCourseBlockTimeRange: String? = nil
 
-    var currentSemester: String = Defaults[.classTableSelectedSemester] {
+    var currentSemester: String = SemesterCatalog.selectedSemester(
+        storedPick: Defaults[.classTableSelectedSemester]
+    ) {
         didSet {
             guard currentSemester != oldValue else { return }
-            Defaults[.classTableSelectedSemester] = currentSemester
+            if !isFollowingNewestSemester {
+                Defaults[.classTableSelectedSemester] = currentSemester
+            }
             reloadFromCache()
         }
     }
-    let availableSemesters: [String] = {
-        let code = CourseSelectionService.currentSemesterCode()
-        // Defensive parsing: a future `currentSemesterCode()` returning
-        // an empty string or a non-numeric trailing digit would crash
-        // ClassTableView's default-init via the previous `code.last!` /
-        // `Int(sem)!`. Fall back to `[code]` so the UI still renders.
-        let yearStr = String(code.dropLast())
-        guard let year = Int(yearStr),
-              let lastChar = code.last,
-              let s0 = Int(String(lastChar)) else {
-            return [code]
-        }
-        var semesters: [String] = []
-        var y = year
-        var s = s0
-        for _ in 0..<4 {
-            semesters.append("\(y)\(s)")
-            s -= 1
-            if s < 1 { s = 2; y -= 1 }
-        }
-        return semesters
-    }()
+
+    /// Set only while `followNewestSemesterIfUnpicked()` moves the selection,
+    /// so that assignment doesn't get recorded as a user pick.
+    private var isFollowingNewestSemester = false
+
+    /// Re-read once `SemesterCatalog.refresh()` lands, so a term the school
+    /// publishes ahead of the month heuristic (115-1 opened weeks before the
+    /// heuristic rolled off 114-2) becomes selectable in the same session.
+    private(set) var availableSemesters: [String] = ClassTableViewModel.semesterOptions(
+        including: SemesterCatalog.selectedSemester(
+            storedPick: Defaults[.classTableSelectedSemester]
+        )
+    )
+
+    /// Keeps the persisted selection selectable even after it ages out of the
+    /// catalogue window — a `Picker` whose tag matches no option renders blank.
+    private static func semesterOptions(including selected: String) -> [String] {
+        let options = SemesterCatalog.availableSemesters()
+        return options.contains(selected) ? options : options + [selected]
+    }
+
+    /// The catalogue can land after `init` on a cold launch, so re-apply the
+    /// "never picked → newest term" rule once it does.
+    private func followNewestSemesterIfUnpicked() {
+        guard Defaults[.classTableSelectedSemester] == nil,
+              let newest = SemesterCatalog.availableSemesters().first,
+              newest != currentSemester else { return }
+        isFollowingNewestSemester = true
+        currentSemester = newest
+        isFollowingNewestSemester = false
+    }
 
     /// Format semester code for display: "1142" → "114-2"
     func displayLabel(for code: String) -> String {
@@ -68,7 +81,10 @@ final class ClassTableViewModel {
         hasWarmedCaches = true
         await AppServiceBridge.warmAllSemesterCaches(authService: authService)
         await MainActor.run { [weak self] in
-            self?.reloadCurrentSemesterCourses()
+            guard let self else { return }
+            self.followNewestSemesterIfUnpicked()
+            self.availableSemesters = Self.semesterOptions(including: self.currentSemester)
+            self.reloadCurrentSemesterCourses()
         }
     }
 

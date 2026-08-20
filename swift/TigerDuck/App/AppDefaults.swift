@@ -93,9 +93,13 @@ nonisolated extension Defaults.Keys {
         "moodleTokenMigrationDone",
         default: false
     )
-    static let classTableSelectedSemester = Key<String>(
-        AppConstants.UserDefaultsKeys.classTableSelectedSemester,
-        default: CourseSelectionService.currentSemesterCode()
+    /// Optional on purpose: `nil` means "never picked a semester", which
+    /// `SemesterCatalog.selectedSemester(storedPick:)` resolves to the newest
+    /// published term. A non-optional key with a computed default cannot tell
+    /// the two apart, so an untouched picker would freeze on whichever term
+    /// was newest at first launch.
+    static let classTableSelectedSemester = Key<String?>(
+        AppConstants.UserDefaultsKeys.classTableSelectedSemester
     )
     static let homeAssignmentFilter = Key<String>(
         AppConstants.UserDefaultsKeys.homeAssignmentFilter,
