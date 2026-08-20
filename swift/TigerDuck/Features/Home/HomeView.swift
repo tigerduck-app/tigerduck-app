@@ -13,11 +13,22 @@ struct HomeView: View {
     @State private var activeSectionDrag: ReorderDragPayload?
     @State private var didReorderSection = false
 
+    /// Slow pulse so the term gate below flips on its own when wall-clock
+    /// time crosses `CurrentTerm.start` / `.end` while Home stays mounted.
+    /// `content` already reads `AppClockState.version`, which covers debug
+    /// clock overrides, but ordinary time passing invalidates nothing —
+    /// `AppClock.now()` is an untracked side-effect as far as Observation is
+    /// concerned. Both boundaries land at midnight, so a minute of latency is
+    /// ample and 60s keeps this far cheaper than the 5s default the today
+    /// carousel needs.
+    @State private var termTicker = MinuteTicker(interval: 60)
+
     /// ponytail: Home's time slider is a "today" surface, so it is dropped
     /// outside the term rather than left to scrub a day with no classes.
     /// Reorder and drag are unaffected — everything downstream keys off
     /// `section.id`, never this array's indices.
     private var visibleSections: [HomeSection] {
+        _ = termTicker.tick
         guard !AppConstants.CurrentTerm.isInSession else { return viewModel.sections }
         return viewModel.sections.filter { $0.type != .todayCourses }
     }
