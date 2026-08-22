@@ -92,7 +92,9 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
-| **`v2.0.0`** | 2026-06-20 | 🚀 **Cloud sync GA** — real-time course & assignment upload, macOS push & account sync, 401 auto-recovery, server push channel settings |
+| **`v2.0.0`** | 2026-08-23 | 🚀 **Cloud sync GA** — real-time course & assignment upload, macOS push & account sync, 401 auto-recovery, server push channel settings |
+| **`v1.8.1`** | 2026-08-21 | The library QR leans on HDR local highlighting again instead of overriding whole-device brightness — the EDR check read "is HDR content on screen right now", which is always false before the QR has drawn, so EDR devices still ended up pinned at full brightness |
+| **`v1.8.0`** | 2026-08-20 | 🔔 **Bulletin push notifications** — device registration, push preferences and bulletin deep links end to end; update prompts plus a What's New sheet after installing; flip the phone face-down to open the library QR; passwords and the library QR masked in screenshots and recordings; TLS SPKI pinning on NTUST and Library traffic; course-name font-size slider, Settings reordered to match Android, macOS surfaces and colour-blind-friendly conflict marking |
 | **`v1.7.3`** | 2026-08-20 | Manually added courses stay in the semester they were added to — they previously showed up in every semester's timetable, Home and widgets |
 | **`v1.7.2`** | 2026-08-20 | 📋 **Term-window gating** — Home's time slider and the class table's today carousel appear only while classes are in session (2026-09-07 – 2026-12-25), so neither shows a blank or wrong-term day outside it; the current term is pinned to 115-1 |
 | **`v1.7.1`** | 2026-08-20 | 📋 **Class-table semester fixes** — the semester list now comes from the university's course-query API, so a term released early (115-1) is selectable right away; 選課 enrolments are filed under the term that system actually has open, so 114-2 and 115-1 no longer render into one grid; the picker reopens on your last pick, or the newest term if you never picked one; one-shot clear of course caches written under the wrong term |
