@@ -117,17 +117,30 @@ struct LibraryView: View {
     // MARK: - Brightness boost (scanner readability)
 
     #if os(iOS)
-    /// `true` when EDR is *actually* delivering extra luminance to the QR
-    /// right now, so the Metal renderer's local highlight is enough and we
-    /// can leave global brightness alone.
+    /// `true` when this display can drive EDR at all, so the Metal renderer's
+    /// local highlight carries the QR and global brightness is left alone.
     ///
-    /// Neither `HDRQRCodeImage.isSupported` (only proves a Metal device
-    /// exists) nor `potentialEDRHeadroom` (the display's *theoretical* max,
-    /// still > 1 while EDR is thermally throttled) is a reliable signal.
-    /// `currentEDRHeadroom` reflects the headroom usable at this moment and
-    /// collapses to `1.0` on SDR panels or when EDR is unavailable.
-    private var edrIsActive: Bool {
-        HDRQRCodeImage.isSupported && UIScreen.main.currentEDRHeadroom > 1.0
+    /// The question has to be answerable *before* any EDR content exists,
+    /// which is precisely what rules out `currentEDRHeadroom`. Apple
+    /// documents that one as changing "depending on its configuration and
+    /// whether it's displaying extended dynamic range content" — so at
+    /// `onAppear`, before `EDRMetalQRView`'s `CAMetalLayer` has drawn a
+    /// single frame, it always reads `1.0`. The guard then lets the global
+    /// boost through on every device, and nothing re-evaluates it, which is
+    /// how an EDR iPhone still ended up pinned at full system brightness.
+    ///
+    /// `potentialEDRHeadroom` is the property Apple documents as queryable
+    /// "even when the screen isn't displaying extended dynamic range
+    /// content", and it collapses to `1.0` on SDR panels — exactly the case
+    /// that still needs the Wallet-style fallback.
+    ///
+    /// Tradeoff: a thermally throttled EDR display reports potential > 1
+    /// while delivering less, so the QR renders at ordinary SDR white rather
+    /// than boosted. The SDR `Image` stacked under the Metal layer in
+    /// `LibraryQRCodeView` keeps it scannable, and overriding system
+    /// brightness is the behaviour this view exists to avoid.
+    private var edrIsAvailable: Bool {
+        HDRQRCodeImage.isSupported && UIScreen.main.potentialEDRHeadroom > 1.0
     }
 
     /// Pin the screen at full brightness while the QR is on-screen — the
@@ -136,7 +149,7 @@ struct LibraryView: View {
     /// the QR pop locally, so the global brightness override is skipped to
     /// preserve the local-highlight behaviour this view is built around.
     private func boostBrightnessForQR() {
-        guard !edrIsActive else { return }
+        guard !edrIsAvailable else { return }
         if savedBrightness == nil {
             savedBrightness = UIScreen.main.brightness
         }
