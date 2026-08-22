@@ -695,7 +695,6 @@ private struct LibraryWarningOverlay: View {
                 .foregroundStyle(.red)
                 .opacity(isFlashing ? 0.15 : 1.0)
 
-                // Warning message
                 Text(String(localized: "settings_library_warning_message"))
                     .font(.subheadline)
                     .foregroundStyle(.primary)

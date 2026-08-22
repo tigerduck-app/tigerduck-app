@@ -83,7 +83,6 @@ struct TimetableGridView: View {
             // Grid rows
             ForEach(Array(viewModel.activePeriods.enumerated()), id: \.element.id) { periodIndex, period in
                 HStack(spacing: colSpacing) {
-                    // Period label
                     Text(period.displayLabel)
                         .font(.caption2)
                         .foregroundStyle(Color.textSecondary)
