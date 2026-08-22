@@ -350,7 +350,8 @@ final class AppState {
                         .filter { ($0["semester"] as? String) == semester }
                         .compactMap { $0["course_no"] as? String })
                     let allCachedNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
-                    let userAddedNos = Set(DataCache.shared.loadUserAddedCourses().map(\.courseNo))
+                    let userAddedNos = Set(DataCache.shared
+                        .loadUserAddedCourses(semester: semester).map(\.courseNo))
                     let deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
                     let localNos = allCachedNos.union(userAddedNos).subtracting(deletedNos)
                     AppLogger.sync.info("[reenable] courses: cached=\(allCachedNos.count, privacy: .public) deleted=\(deletedNos.count, privacy: .public) effective=\(localNos.count, privacy: .public) server=\(serverNos.count, privacy: .public)")
@@ -499,8 +500,7 @@ final class AppState {
                     // from the backend, and the next reconcile then deletes them
                     // locally too — permanent loss on the path meant to preserve
                     // local state. forceKeys re-asserts them past any tombstone.
-                    let userAdded = DataCache.shared.loadUserAddedCourses()
-                        .filter { $0.semester == semester || $0.semester.isEmpty }
+                    let userAdded = DataCache.shared.loadUserAddedCourses(semester: semester)
                     let courses = DataCache.shared.loadCourses(semester: semester) + userAdded
                     let forceKeys = userAdded.map { "client:\(semester):\($0.courseNo)" }
                     // Wipe the server list first, THEN upload. uploadCourses
