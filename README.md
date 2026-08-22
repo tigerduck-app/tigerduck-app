@@ -178,7 +178,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 ### iOS App
 ```bash
-# clone 專案（含子模組：localization、name-abbr）
+# clone 專案（含子模組：app-translation、name-abbr）
 git clone --recurse-submodules https://github.com/tigerduck-app/tigerduck-app.git
 cd tigerduck-app
 
@@ -191,7 +191,7 @@ open swift/TigerDuck.xcodeproj
 # 開啟後，中間上方選擇模擬器或實體裝置，按 `⌘R` 執行
 ```
 
-> 💡 名稱簡稱（`name-abbr/`）與多語系字串（`localization/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
+> 💡 名稱簡稱（`name-abbr/`）與多語系字串（`app-translation/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
 
 ### 推播後端
 正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類、雲端同步）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v3/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
@@ -255,7 +255,7 @@ tigerduck-app/
 ├── api-poc/                            # 第三方 API 驗證腳本（NTUST / Moodle / Calendar）
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
 ├── docs/                               # 規劃文件、移轉計畫（iOS 端）
-├── localization/                       # ⤴ git submodule：67+ 語系翻譯
+├── app-translation/                    # ⤴ git submodule：67+ 語系翻譯
 └── name-abbr/                          # ⤴ git submodule：課程 / 教室簡稱字典
 
 > 推播 / 公告後端（FastAPI + Postgres + APNs + LLM）已分拆至 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend)。
@@ -272,7 +272,7 @@ tigerduck-app/
 - macOS 15 / 26 (/ 27 如果可以的話)
 3. 以 `feature/your-feature` 或 `fix/your-fix` 命名分支
 4. 發布 PR 時，目標分支為 `dev`，且必須勾選 Copilot 做 Revise
-5. 翻譯字串請改 `localization/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink
+5. 翻譯字串請改 `app-translation/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink
 
 ## 授權
 本專案採用 [GNU Affero General Public License v3.0](LICENSE) 授權。

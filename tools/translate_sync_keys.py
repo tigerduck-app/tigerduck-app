@@ -15,7 +15,7 @@ import os
 import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SOURCE_DIR = os.path.join(SCRIPT_DIR, "..", "localization", "source")
+SOURCE_DIR = os.path.join(SCRIPT_DIR, "..", "app-translation", "source")
 
 # English reference values — only update if current value matches these
 EN_SHARED = {

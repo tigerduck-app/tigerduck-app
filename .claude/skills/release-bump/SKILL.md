@@ -106,7 +106,7 @@ If the version unlocks new product capability, also tick the matching item in th
 
 ### 5. Commit
 
-Stage exactly the files we touched — never `git add .` (the repo often has untracked `docs/website-spec.md`, dirty `localization` submodule pointer, `firebase-debug.log`, etc. that must NOT be in a release commit).
+Stage exactly the files we touched — never `git add .` (the repo often has untracked `docs/website-spec.md`, dirty `app-translation` submodule pointer, `firebase-debug.log`, etc. that must NOT be in a release commit).
 
 ```bash
 git add swift/TigerDuck.xcodeproj/project.pbxproj README.md README_en.md
@@ -144,7 +144,7 @@ git status      # should be clean of release files; submodule/untracked unrelate
 - **No `Co-Authored-By`** trailer.
 - **Body language:** Chinese, bullet list with `-` and nested `*`.
 - **Stage explicitly** — never `git add -A` / `git add .` in this skill.
-- **Don't include the `localization` submodule pointer** in the release commit unless the user explicitly asks. Submodule bumps are their own commit (`chore(localization): bump submodule to <sha>`).
+- **Don't include the `app-translation` submodule pointer** in the release commit unless the user explicitly asks. Submodule bumps are their own commit (`chore(app-translation): bump submodule to <sha>`).
 - **Don't touch the 4 `MARKETING_VERSION = 1.0;` placeholder lines** in pbxproj — those are the test targets.
 
 ## Verification before commit
@@ -160,7 +160,7 @@ git status      # should be clean of release files; submodule/untracked unrelate
 
 - ❌ Updating only the Chinese README — the English one drifts and stops matching.
 - ❌ Bumping `MARKETING_VERSION = 1.0;` placeholders — these are test targets, not shippable.
-- ❌ Squashing the localization submodule bump into the release commit — keep them separate so reverting a release doesn't unwind translations.
+- ❌ Squashing the app-translation submodule bump into the release commit — keep them separate so reverting a release doesn't unwind translations.
 - ❌ Inventing roadmap items to mark as done. Only tick rows that already exist.
 - ❌ Using `git add .` — too greedy for this repo's working tree.
 - ❌ Leaving the badge URL pointing at the old release tag.

@@ -11,7 +11,7 @@ import os
 import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SOURCE_DIR = os.path.join(SCRIPT_DIR, "..", "localization", "source")
+SOURCE_DIR = os.path.join(SCRIPT_DIR, "..", "app-translation", "source")
 
 # Keys that are expected to be identical to English in most languages.
 SKIP_KEYS = {

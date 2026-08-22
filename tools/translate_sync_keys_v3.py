@@ -5,7 +5,7 @@ import os
 import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SOURCE_DIR = os.path.join(SCRIPT_DIR, "..", "localization", "source")
+SOURCE_DIR = os.path.join(SCRIPT_DIR, "..", "app-translation", "source")
 
 APPLE_KEYS = {"settings_sync_off_notifications_warning"}
 

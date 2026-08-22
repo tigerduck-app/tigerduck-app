@@ -42,7 +42,7 @@ struct WidgetLocalizationKeysTests {
 
     @Test func everyKeyResolvesInMainBundle() {
         // We can't load the widget extension's bundle from the test target
-        // directly, but the keys live in the same shared `localization/`
+        // directly, but the keys live in the same shared `app-translation/`
         // submodule that symlinks into both the app and widget targets'
         // Localizable.strings. If they resolve in the main app's bundle
         // they resolve in the widget bundle too.

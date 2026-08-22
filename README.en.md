@@ -177,7 +177,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 ### iOS App
 ```bash
-# Clone the repository (with submodules: localization, name-abbr)
+# Clone the repository (with submodules: app-translation, name-abbr)
 git clone --recurse-submodules https://github.com/tigerduck-app/tigerduck-app.git
 cd tigerduck-app
 
@@ -190,7 +190,7 @@ open swift/TigerDuck.xcodeproj
 # Select a simulator or device from the top center, then press ⌘R to run
 ```
 
-> 💡 Name abbreviations (`name-abbr/`) and localization strings (`localization/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
+> 💡 Name abbreviations (`name-abbr/`) and localization strings (`app-translation/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
 
 ### Push Backend
 The production FastAPI service (APNs Push-to-Start, schedule sync, bulletin scraping, LLM classification, and cloud sync) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v3/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
@@ -254,7 +254,7 @@ tigerduck-app/
 ├── api-poc/                            # Third-party API validation scripts (NTUST / Moodle / Calendar)
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
 ├── docs/                               # Planning docs, migration notes (iOS side)
-├── localization/                       # ⤴ git submodule: 67+ locale translations
+├── app-translation/                    # ⤴ git submodule: 67+ locale translations
 └── name-abbr/                          # ⤴ git submodule: course / classroom abbreviation dictionaries
 
 > The push / bulletin backend (FastAPI + Postgres + APNs + LLM) has been split out into [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend).
@@ -271,7 +271,7 @@ Before submitting, please make sure to:
 - macOS 15 / 26 (/ 27 if possible)
 3. Name your branch using `feature/your-feature` or `fix/your-fix`
 4. Target the `dev` branch when opening a PR, and enable Copilot review
-5. For translation strings, open a separate PR against the `localization/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
+5. For translation strings, open a separate PR against the `app-translation/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
 
 ## License
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).

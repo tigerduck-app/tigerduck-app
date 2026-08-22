@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh Apple localization artifacts.
 
-Runs the canonical generator in the localization submodule, then surfaces
+Runs the canonical generator in the app-translation submodule, then surfaces
 each generated `<lang>.lproj` directory into every Apple bundle target as
 an individual symlink at `<target-dir>/<lang>.lproj`.
 
@@ -18,8 +18,8 @@ Targets handled here:
   - `swift/TigerDuckWatch Watch App/`  — watchOS companion app
   - `swift/TigerDuckWatchWidget/`      — watchOS complication / widget
 
-Run this whenever `localization/source/*.json` changes (typically right
-after a `git submodule update --remote localization`). It's also wired
+Run this whenever `app-translation/source/*.json` changes (typically right
+after a `git submodule update --remote app-translation`). It's also wired
 into each target as a "Run Script" build phase so a normal build keeps
 `.lproj` content in sync without manual intervention.
 
@@ -37,12 +37,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-LOCALIZATION_DIR = ROOT / "localization"
-GENERATED_APPLE_DIR = LOCALIZATION_DIR / "generated" / "apple"
+APP_TRANSLATION_DIR = ROOT / "app-translation"
+GENERATED_APPLE_DIR = APP_TRANSLATION_DIR / "generated" / "apple"
 
 # Apple bundle targets that need their own per-language `.lproj` symlinks at
 # the root of their filesystem-synchronized group. Each entry is two levels
-# below ROOT, so the relative symlink target stays `../../localization/...`.
+# below ROOT, so the relative symlink target stays `../../app-translation/...`.
 TARGET_DIRS = [
     ROOT / "swift" / "TigerDuck",
     ROOT / "swift" / "TigerDuckWatch Watch App",
@@ -54,8 +54,8 @@ TARGET_DIRS = [
 # prefix and its own helpers below.
 TIGERDUCK_WIDGETS_DIR = ROOT / "swift" / "TigerDuckWidgets" / "Resources"
 
-LPROJ_TARGET_PREFIX = Path("..") / ".." / "localization" / "generated" / "apple"
-WIDGETS_LPROJ_TARGET_PREFIX = Path("..") / ".." / ".." / "localization" / "generated" / "apple"
+LPROJ_TARGET_PREFIX = Path("..") / ".." / "app-translation" / "generated" / "apple"
+WIDGETS_LPROJ_TARGET_PREFIX = Path("..") / ".." / ".." / "app-translation" / "generated" / "apple"
 
 
 def is_xcode_build() -> bool:
@@ -177,7 +177,7 @@ def sync_lproj_symlinks() -> None:
 
 
 def run_canonical_generator() -> None:
-    script = LOCALIZATION_DIR / "tools" / "localization" / "generate_localizations.py"
+    script = APP_TRANSLATION_DIR / "tools" / "localization" / "generate_localizations.py"
     if not script.exists():
         raise SystemExit(
             f"Canonical generator not found at {script}. "
