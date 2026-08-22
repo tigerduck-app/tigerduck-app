@@ -326,13 +326,56 @@ final class AppState {
     }
 
     func checkPendingConflicts(retriesLeft: Int = 2) {
+        checkPendingConflicts(retriesLeft: retriesLeft, isRetry: false)
+    }
+
+    /// - Parameter isRetry: `true` only for the controlled re-entry from our
+    ///   own 401 handler, which reuses the in-flight flag the outer call holds.
+    private func checkPendingConflicts(retriesLeft: Int, isRetry: Bool) {
         let pending = Defaults[.pendingConflictCategories]
         guard !pending.isEmpty, Defaults[.cloudSyncEnabled] else {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
             return
         }
+        // Serialize the check. It is a network round-trip whose verdict is only
+        // valid for the `pending` snapshot it started with, and it is driven by
+        // `onAppear`, `onDisappear` and every sync-category toggle — so two can
+        // easily overlap. The slower one then lands after the user has already
+        // resolved the faster one's dialog and re-presents it from a stale
+        // snapshot; dismissing that dialog re-runs the keep-local upload
+        // against categories the user never agreed to.
+        //
+        // Callers are views, so this guard-and-set pair runs on the main actor
+        // and cannot interleave; the flag is cleared back on the main actor.
+        if !isRetry {
+            guard !isCheckingConflicts else {
+                AppLogger.sync.info("[reenable] checkPendingConflicts skipped — already in flight")
+                return
+            }
+            isCheckingConflicts = true
+        }
         AppLogger.sync.info("[reenable] checkPendingConflicts start: pending=\(pending.sorted(), privacy: .public)")
         Task {
+            // Set when we hand the flag to a 401 retry, which owns it from
+            // there. The retry runs in its own Task, so releasing the flag here
+            // would let an unrelated caller start while it is still in flight.
+            var handedOffToRetry = false
+            defer {
+                if !isRetry && !handedOffToRetry {
+                    Task { @MainActor in
+                        self.isCheckingConflicts = false
+                        // A category marked while this check was in flight was
+                        // turned away by the guard above. Pick it up now rather
+                        // than stranding it until the user next enters or
+                        // leaves Settings. This terminates: the re-run snapshots
+                        // the grown set, so its own completion sees no growth.
+                        let current = Defaults[.pendingConflictCategories]
+                        if self.reenableConflict == nil, !current.subtracting(pending).isEmpty {
+                            self.checkPendingConflicts()
+                        }
+                    }
+                }
+            }
             do {
                 let json = try await pushCoordinator.fetchFullSync()
                 var diffs: [String] = []
@@ -462,13 +505,26 @@ final class AppState {
 
                 AppLogger.sync.info("[reenable] result: \(diffs.count, privacy: .public) diffs → \(diffs.isEmpty ? "no conflict" : "SHOW POPUP", privacy: .public)")
                 await MainActor.run {
+                    // Only report on categories that are still pending. A
+                    // resolve that landed while this check was in flight
+                    // already cleared its own categories and changed the
+                    // server state the diffs above were computed from —
+                    // re-presenting them would show the user a dialog they
+                    // just dismissed, and dismissing it again would re-run
+                    // the keep-local upload.
+                    let stillPending = Defaults[.pendingConflictCategories]
+                    let checked = pending.intersection(stillPending)
+                    guard !checked.isEmpty else {
+                        AppLogger.sync.info("[reenable] result discarded — resolved while in flight")
+                        return
+                    }
                     if !diffs.isEmpty {
                         reenableConflict = ReenableConflict(
-                            categories: Array(pending),
+                            categories: Array(checked),
                             description: diffs.joined(separator: "\n")
                         )
                     } else {
-                        Defaults[.pendingConflictCategories] = []
+                        Defaults[.pendingConflictCategories].subtract(checked)
                     }
                 }
             } catch {
@@ -478,7 +534,10 @@ final class AppState {
                     if reloginOk {
                         AppLogger.sync.info("[reenable] relogin succeeded, retrying conflict check")
                         try? await Task.sleep(for: .milliseconds(500))
-                        checkPendingConflicts(retriesLeft: retriesLeft - 1)
+                        handedOffToRetry = !isRetry
+                        await MainActor.run {
+                            self.checkPendingConflicts(retriesLeft: retriesLeft - 1, isRetry: true)
+                        }
                     }
                 }
             }
@@ -489,7 +548,11 @@ final class AppState {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
-        Defaults[.pendingConflictCategories] = []
+        // Subtract rather than clear. A category re-enabled after this check
+        // started was never part of this dialog, so clearing it would record a
+        // decision the user was never asked to make; leaving it pending lets
+        // the next check present it on its own.
+        Defaults[.pendingConflictCategories].subtract(conflict.categories)
         let coordinator = pushCoordinator
         Task {
             if keepLocal {
@@ -508,11 +571,26 @@ final class AppState {
                     // not upload — that would layer local courses onto the stale
                     // server state and resurrect the very courses the user
                     // deleted locally, contradicting "keep local".
+                    //
+                    // Await the upload instead of firing it detached. Between
+                    // the delete and the upload the server holds no courses at
+                    // all, so a silently-dropped upload leaves "keep local"
+                    // having wiped the user's cloud copy — the exact opposite
+                    // of what they chose. Other devices do not mass-delete off
+                    // an empty server (the reconcile in `syncOverridesFromBackend`
+                    // is gated on `!coursesArray.isEmpty`, and the branch below
+                    // it re-uploads instead), but this device's user-added
+                    // courses are not covered by that auto-upload and would
+                    // stay missing. On failure put the category back so the
+                    // next check re-detects the divergence and re-prompts.
                     do {
                         try await coordinator.deleteAllCourses()
-                        uploadCourses(courses, semester: semester, forceKeys: forceKeys)
+                        try await uploadCoursesAwaitingResult(
+                            courses, semester: semester, forceKeys: forceKeys
+                        )
                     } catch {
-                        AppLogger.sync.error("[reenable] deleteAllCourses failed — skipping course upload to avoid resurrecting deleted courses: \(error, privacy: .public)")
+                        AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .public)")
+                        await MainActor.run { markCategoryReenabled("courses") }
                     }
                 }
                 if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
@@ -586,6 +664,9 @@ final class AppState {
     /// without this they clobber each other's cache read-modify-writes and can
     /// resurrect a just-dismissed conflict alert.
     private var isSyncingOverrides = false
+
+    /// In-flight guard for ``checkPendingConflicts``. See the comment there.
+    private var isCheckingConflicts = false
 
     /// courseNo → local delete timestamp. The sync reconcile skips
     /// "un-deleting" a course still listed by the server if the user deleted it
@@ -2005,6 +2086,38 @@ final class AppState {
 
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = []) {
         guard Defaults[.cloudSyncEnabled] else { return }
+        let request = courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
+        let coordinator = pushCoordinator
+        Task.detached {
+            do {
+                try await coordinator.uploadCourses(request)
+                AppLogger.sync.info("uploadCourses: \(request.courses.count, privacy: .public) courses sent")
+            } catch {
+                AppLogger.sync.error("uploadCourses failed: \(error, privacy: .public)")
+            }
+        }
+    }
+
+    /// Same payload as ``uploadCourses`` but awaits the POST and rethrows.
+    /// Use where the caller has to know whether the upload landed — notably
+    /// the keep-local conflict resolution, which wipes the server first and so
+    /// cannot treat a failed upload as fire-and-forget.
+    func uploadCoursesAwaitingResult(
+        _ courses: [SDCourse],
+        semester: String,
+        forceKeys: [String] = []
+    ) async throws {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        let request = courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
+        try await pushCoordinator.uploadCourses(request)
+        AppLogger.sync.info("uploadCourses: \(request.courses.count, privacy: .public) courses sent")
+    }
+
+    private func courseUploadRequest(
+        _ courses: [SDCourse],
+        semester: String,
+        forceKeys: [String]
+    ) -> PushAPI.CourseUploadRequest {
         let entries = courses.map { c in
             PushAPI.CourseUploadEntry(
                 semester: semester,
@@ -2033,17 +2146,9 @@ final class AppState {
                 colorHex: String(format: "#%06X", hex)
             )
         }
-        let coordinator = pushCoordinator
-        Task.detached {
-            do {
-                try await coordinator.uploadCourses(
-                    PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides, forceKeys: forceKeys)
-                )
-                AppLogger.sync.info("uploadCourses: \(entries.count, privacy: .public) courses sent")
-            } catch {
-                AppLogger.sync.error("uploadCourses failed: \(error, privacy: .public)")
-            }
-        }
+        return PushAPI.CourseUploadRequest(
+            courses: entries, courseOverrides: overrides, forceKeys: forceKeys
+        )
     }
 
     /// Disable server push (tells server to drop the device, stops relay).
