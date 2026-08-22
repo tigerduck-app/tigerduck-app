@@ -165,7 +165,20 @@ final class AppState {
             }
         }
 
-        pushCoordinator.enable()
+        // Auto-enable the push stack on every launch so the device row
+        // exists in the backend regardless of subscription state — that's
+        // what lets operator-issued custom pushes target the device. The
+        // coordinator is idempotent. Notification *permission* is still
+        // requested through onboarding, not here; users can opt out of
+        // server pushes via `serverPushUserOptOut`.
+        //
+        // Gated on onboarding for the same reason `backgroundSync()` is:
+        // enabling POSTs a device id and an Apple push token to our server,
+        // and on a fresh install `init` runs before the user has seen a
+        // single screen. `completeOnboarding()` enables it once they have.
+        if hasCompletedOnboarding {
+            pushCoordinator.enable()
+        }
 
         authService.authTokenManager = atm
         authService.onV3SignedIn = { [weak self] in
@@ -186,15 +199,27 @@ final class AppState {
     // MARK: - Migrations
 
     /// Trigger all pending one-time compatibility migrations.
-    /// Called once per app launch from init(). Runs in a detached background
-    /// task so it never blocks the main thread or app startup.
+    /// Called once per app launch from init(). Everything that can wait runs
+    /// in a detached background task so it never blocks the main thread or app
+    /// startup.
     func runPendingMigrations() {
+        // Every migration that *deletes* course caches runs synchronously,
+        // ahead of the task below. `backgroundSync()` fires from the scene as
+        // soon as init() returns, so it can have written fresh caches by the
+        // time a migration queued behind an awaited one resumes — clearing
+        // them then blanks the very grids these exist to repair, with the warm
+        // pass that would refill them already spent. Each is a doneKey-guarded
+        // one-shot over a handful of files, and init() runs on the main actor
+        // with nothing awaited ahead of it, so they always land before the
+        // first sync starts.
+        ClassroomAbbrCacheMigration.runIfNeeded()
+        CustomNameCacheMigration.runIfNeeded()
+        SemesterAttributionCacheMigration.runIfNeeded()
         Task(priority: .utility) { @MainActor in
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
-            ClassroomAbbrCacheMigration.runIfNeeded()
-            CustomNameCacheMigration.runIfNeeded()
-            // Add future migrations here in sequence.
+            // Add future migrations here in sequence. Anything that deletes
+            // cached data belongs above the task, not in it.
         }
     }
 
@@ -1168,6 +1193,13 @@ final class AppState {
     func completeOnboarding() {
         hasCompletedOnboarding = true
         Defaults[.hasCompletedOnboarding] = true
+        // A fresh install registers its device here rather than in `init`,
+        // so nothing reaches the push server before this point. Not
+        // iOS-gated: `pushCoordinator` is cross-platform since the v3
+        // backend work, and macOS reaches this through `MacLoginView`, so
+        // gating here would leave a fresh Mac install unregistered until
+        // its second launch.
+        pushCoordinator.enable()
         backgroundSync()
     }
 

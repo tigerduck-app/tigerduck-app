@@ -1,0 +1,11 @@
+# Localization keys referenced by Swift that have no translation in
+# localization/. Every key here renders as its own raw name on screen.
+#
+# The 37 entries this file opened with came from the i18n commits that
+# replaced hardcoded Chinese (9fe9e5f, 60a14ee, d6a1a50) without the strings
+# ever landing in tigerduck-app/app-translation. The i18n-unify work on dev
+# repointed all of them to keys that exist, so only the one below is left.
+# Add the string to app-translation, bump the submodule, and delete this file.
+#
+# Do not add to this list. A new entry means shipping a visible placeholder.
+error_browser_unsupported_url

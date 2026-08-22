@@ -112,9 +112,13 @@ nonisolated extension Defaults.Keys {
         "moodleTokenMigrationDone",
         default: false
     )
-    static let classTableSelectedSemester = Key<String>(
-        AppConstants.UserDefaultsKeys.classTableSelectedSemester,
-        default: CourseSelectionService.currentSemesterCode()
+    /// Optional on purpose: `nil` means "never picked a semester", which
+    /// `SemesterCatalog.selectedSemester(storedPick:)` resolves to the newest
+    /// published term. A non-optional key with a computed default cannot tell
+    /// the two apart, so an untouched picker would freeze on whichever term
+    /// was newest at first launch.
+    static let classTableSelectedSemester = Key<String?>(
+        AppConstants.UserDefaultsKeys.classTableSelectedSemester
     )
     static let homeAssignmentFilter = Key<String>(
         AppConstants.UserDefaultsKeys.homeAssignmentFilter,
@@ -133,10 +137,12 @@ nonisolated extension Defaults.Keys {
     static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
 
     // MARK: Push server
-    /// Default on as of the custom-push feature: every device registers on
-    /// launch so operator-issued pushes can target it. Notification
-    /// *permission* is still requested only via onboarding; the device row
-    /// just exists either way. Users can opt out via `serverPushUserOptOut`.
+    /// Default on as of the custom-push feature: every device registers
+    /// once onboarding is complete, so operator-issued pushes can target it.
+    /// Notification *permission* is still requested only via onboarding; the
+    /// device row just exists either way. Users can opt out via
+    /// `serverPushUserOptOut`. `AppState` gates the launch-time enable on
+    /// `hasCompletedOnboarding` so no device identity is sent pre-consent.
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
         default: true

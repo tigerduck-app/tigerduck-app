@@ -42,10 +42,14 @@ enum AppServiceBridge {
     }
 
     static func warmAllSemesterCaches(authService: AuthService) async {
+        // Before anything else, so a newly-published term (and the term the
+        // 選課 system is serving) is known for both the warm list below and
+        // the enrolment attribution inside `fetchCourses`.
+        await SemesterCatalog.refreshIfStale()
         let moodleEnrolledCourses = (try? await MoodleEnrolledCoursesService.fetchEnrolled()) ?? []
 
         await withTaskGroup(of: Void.self) { group in
-            for semester in computeAvailableSemesters() {
+            for semester in SemesterCatalog.availableSemesters() {
                 guard DataCache.shared.loadCourses(semester: semester).isEmpty else { continue }
                 group.addTask {
                     _ = await fetchCourses(
@@ -71,8 +75,17 @@ enum AppServiceBridge {
         // previous user's data does not land in DataCache after
         // `clearUserScopedData()` has already run.
         let startGeneration = authService.loginGeneration
-        let currentSemester = CourseSelectionService.currentSemesterCode()
-        let isCurrentSemester = semester == currentSemester
+        // Background sync fetches courses without going through
+        // `warmAllSemesterCaches`, so resolve the catalogue here too — it is
+        // TTL-throttled, so the concurrent warm fan-out costs one request.
+        await SemesterCatalog.refreshIfStale()
+        // The 選課 system serves exactly one term and its 選課清單 page has no
+        // term marker, so its course numbers belong to whichever term the
+        // catalogue reports as open — not to whatever term is in session.
+        // Keying this off `currentSemesterCode()` mis-filed 115-1 enrolments
+        // into 114-2 for the weeks between 選課 opening and the month
+        // heuristic rolling over.
+        let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
         let courseApiLanguage = LanguageManager.resolvedCourseApiLanguage(
             appLanguage: Defaults[.appLanguage]
         )
@@ -99,7 +112,7 @@ enum AppServiceBridge {
             // fetch would throw, the catch below would return an empty cache,
             // and Home / Class Table / Time Machine would stay blank.
             var courseSelectionNos: [String] = []
-            if isCurrentSemester {
+            if servesSelectionSemester {
                 do {
                     courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
                         session: session,
@@ -441,18 +454,6 @@ enum AppServiceBridge {
             semester: semester,
             classroomMap: classroomMap
         )
-    }
-
-    private static func computeAvailableSemesters() -> [String] {
-        var semesters: [String] = []
-        var code = CourseSelectionService.currentSemesterCode()
-
-        for _ in 0..<4 {
-            semesters.append(code)
-            code = CourseSelectionService.previousSemesterCode(code)
-        }
-
-        return semesters
     }
 
     static func fetchAssignments(authService: AuthService) async -> [SDAssignment] {

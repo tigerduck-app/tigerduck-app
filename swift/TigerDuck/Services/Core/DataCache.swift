@@ -82,6 +82,26 @@ final class DataCache {
         save(dtos, to: "user_added_courses.json", in: persistentDir)
     }
 
+    /// Whether a manually-added course belongs to `semester`.
+    ///
+    /// An empty semester predates per-semester stamping. Those are surfaced
+    /// in every semester rather than dropped — losing a course the user
+    /// typed in by hand is worse than showing it twice — and
+    /// `ClassTableViewModel.persistUserAddedCourses` stamps them on the next
+    /// write so they settle into one term.
+    static func userAddedCourse(_ course: SDCourse, belongsTo semester: String) -> Bool {
+        course.semester == semester || course.semester.isEmpty
+    }
+
+    /// User-added courses scoped to one semester.
+    ///
+    /// A manually-added course lives in the semester it was added to. The
+    /// unscoped overload returns every semester's rows and is only correct
+    /// for maintenance sweeps that walk them all (relabel, rename).
+    func loadUserAddedCourses(semester: String) -> [SDCourse] {
+        loadUserAddedCourses().filter { Self.userAddedCourse($0, belongsTo: semester) }
+    }
+
     func loadUserAddedCourses() -> [SDCourse] {
         let dtos: [CachedCourse] = load(from: "user_added_courses.json", in: persistentDir) ?? []
         let customNames = loadCourseCustomNames()

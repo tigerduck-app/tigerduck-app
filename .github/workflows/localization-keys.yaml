@@ -1,0 +1,22 @@
+name: Localization keys
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+          # No `ref:` override on purpose. The default for a pull_request
+          # event is the merge ref, which is what we actually want to check:
+          # whether the *merged* result would ship a raw key. Pinning to
+          # head.sha also breaks whenever the checker itself only exists on
+          # the base branch.
+
+      - name: Check every referenced localization key is translated
+        run: python3 tools/localization/check_keys.py

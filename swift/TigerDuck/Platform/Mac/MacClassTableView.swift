@@ -15,7 +15,12 @@ import Defaults
 struct MacClassTableView: View {
     @Environment(AppState.self) private var appState
 
-    @State private var selectedSemester: String = Defaults[.classTableSelectedSemester]
+    @State private var selectedSemester: String = SemesterCatalog.selectedSemester(
+        storedPick: Defaults[.classTableSelectedSemester]
+    )
+    /// Set only while `warmCachesIfNeeded` moves the selection to the newest
+    /// term, so that assignment doesn't get recorded as a user pick.
+    @State private var isFollowingNewestSemester = false
     @State private var selectedSlot: SelectedSlot?
     @State private var showAddCourse: Bool = false
     /// Non-nil while the macOS color picker sheet is presented. Set from the
@@ -74,24 +79,14 @@ struct MacClassTableView: View {
     private let rowSpacing: CGFloat = 4
     private let periodLabelWidth: CGFloat = 56
 
-    private let availableSemesters: [String] = {
-        let code = CourseSelectionService.currentSemesterCode()
-        let yearStr = String(code.dropLast())
-        guard let year = Int(yearStr),
-              let lastChar = code.last,
-              let s0 = Int(String(lastChar)) else {
-            return [code]
-        }
-        var semesters: [String] = []
-        var y = year
-        var s = s0
-        for _ in 0..<4 {
-            semesters.append("\(y)\(s)")
-            s -= 1
-            if s < 1 { s = 2; y -= 1 }
-        }
-        return semesters
-    }()
+    /// Computed, not stored: `SemesterCatalog.refresh()` runs inside the
+    /// cache warm below, so a term published mid-session has to be able to
+    /// appear without rebuilding the view. `selectedSemester` is folded in so
+    /// a persisted selection that aged out of the window still renders its label.
+    private var availableSemesters: [String] {
+        let options = SemesterCatalog.availableSemesters()
+        return options.contains(selectedSemester) ? options : options + [selectedSemester]
+    }
 
     private var courses: [SDCourse] {
         _ = cacheRevision
@@ -102,8 +97,7 @@ struct MacClassTableView: View {
         // the live `CourseSelectionService` semester) — feed the static
         // `merge` directly with per-semester inputs instead.
         let cached = DataCache.shared.loadCourses(semester: selectedSemester)
-        let userAdded = DataCache.shared.loadUserAddedCourses()
-            .filter { $0.semester == selectedSemester || $0.semester.isEmpty }
+        let userAdded = DataCache.shared.loadUserAddedCourses(semester: selectedSemester)
         return CanonicalCourseProvider.merge(
             primary: cached,
             userAdded: userAdded,
@@ -237,7 +231,11 @@ struct MacClassTableView: View {
             await ensureCurrentSemesterFetched()
         }
         .onChange(of: selectedSemester) { _, newValue in
-            Defaults[.classTableSelectedSemester] = newValue
+            if isFollowingNewestSemester {
+                isFollowingNewestSemester = false
+            } else {
+                Defaults[.classTableSelectedSemester] = newValue
+            }
             Task { await ensureCurrentSemesterFetched() }
         }
         .onReceive(NotificationCenter.default.publisher(for: AppConstants.dataDidUpdate)) { _ in
@@ -304,7 +302,20 @@ struct MacClassTableView: View {
         guard !hasWarmedCaches else { return }
         hasWarmedCaches = true
         await AppServiceBridge.warmAllSemesterCaches(authService: appState.authService)
-        await MainActor.run { cacheRevision &+= 1 }
+        await MainActor.run {
+            cacheRevision &+= 1
+            followNewestSemesterIfUnpicked()
+        }
+    }
+
+    /// The catalogue can land after the view is built on a cold launch, so
+    /// re-apply the "never picked → newest term" rule once it does.
+    private func followNewestSemesterIfUnpicked() {
+        guard Defaults[.classTableSelectedSemester] == nil,
+              let newest = SemesterCatalog.availableSemesters().first,
+              newest != selectedSemester else { return }
+        isFollowingNewestSemester = true
+        selectedSemester = newest
     }
 
     /// Fetch the currently-selected semester if its cache is empty.
