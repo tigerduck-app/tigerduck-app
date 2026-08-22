@@ -189,3 +189,10 @@ TaipeiCalendar.swift
 # extension. Listed here rather than allowlisted so that adding a
 # cross-platform member to it is a decision someone has to make.
 AppState+LiveActivity.swift
+
+# AppState+PushRouting.swift — custom-push tap routing (DeepLink,
+# ServerPopupPayload, popup shown/seen bookkeeping). The paired stored
+# properties (pendingDeepLink, pendingServerPopup) are iOS-gated on
+# AppState itself, and this file's whole body sits inside #if os(iOS)
+# for the same reason: there is nothing to route to on macOS.
+AppState+PushRouting.swift

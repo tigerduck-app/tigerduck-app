@@ -196,39 +196,6 @@ final class AppState {
         }
     }
 
-    // MARK: - Migrations
-
-    /// Trigger all pending one-time compatibility migrations.
-    /// Called once per app launch from init(). Everything that can wait runs
-    /// in a detached background task so it never blocks the main thread or app
-    /// startup.
-    func runPendingMigrations() {
-        // Every migration that *deletes* course caches runs synchronously,
-        // ahead of the task below. `backgroundSync()` fires from the scene as
-        // soon as init() returns, so it can have written fresh caches by the
-        // time a migration queued behind an awaited one resumes — clearing
-        // them then blanks the very grids these exist to repair, with the warm
-        // pass that would refill them already spent. Each is a doneKey-guarded
-        // one-shot over a handful of files, and init() runs on the main actor
-        // with nothing awaited ahead of it, so they always land before the
-        // first sync starts.
-        ClassroomAbbrCacheMigration.runIfNeeded()
-        CustomNameCacheMigration.runIfNeeded()
-        SemesterAttributionCacheMigration.runIfNeeded()
-        Task(priority: .utility) { @MainActor in
-            await MoodleTokenMigration.runIfNeeded()
-            HomeSectionTitleMigration.runIfNeeded()
-            // Add future migrations here in sequence. Anything that deletes
-            // cached data belongs above the task, not in it.
-        }
-    }
-
-    func startCloudSyncIfEnabled() {
-        if cloudSyncCoordinator.state == .active {
-            cloudSyncCoordinator.start()
-        }
-    }
-
     deinit {
         revisionPollTimer?.invalidate()
         #if os(iOS)
@@ -251,25 +218,6 @@ final class AppState {
         #endif
     }
 
-    struct SyncConflictItem: Identifiable {
-        let id: String
-        let kind: String
-        let label: String
-        let localStatus: String
-        let serverStatus: String
-
-        var localLabel: String { Self.statusLabel(localStatus) }
-        var serverLabel: String { Self.statusLabel(serverStatus) }
-
-        private static func statusLabel(_ status: String) -> String {
-            switch status {
-            case "ignored", "archived": return String(localized: "sync_conflict_status_ignored")
-            case "locally_completed": return String(localized: "sync_conflict_status_completed")
-            default: return String(localized: "sync_conflict_status_none")
-            }
-        }
-    }
-
     var syncConflicts: [SyncConflictItem] = []
 
     var pendingSyncServerArchived: Set<String> = []
@@ -280,8 +228,6 @@ final class AppState {
     /// that reads it live in that file.
     var reenableConflict: ReenableConflict?
 
-    enum SyncSource { case none, backend, local }
-
     /// Which side won the last override pull. `private(set)` on purpose —
     /// roughly a hundred view files read this to decide whether to show the
     /// "local only" badge, and none of them should be able to assign it.
@@ -291,7 +237,6 @@ final class AppState {
     func recordSyncSource(_ source: SyncSource) {
         lastSyncSource = source
     }
-    var isSyncLocalOnly: Bool { Defaults[.cloudSyncEnabled] && lastSyncSource == .local }
     var pendingOverrides: Set<String> = []
     /// Bumped on every local assignment-override edit. A pull whose fetch
     /// window contains a bump skips conflict detection for that round —
@@ -317,7 +262,7 @@ final class AppState {
 
     var _libraryRevision = 0
     var syncTask: Task<Void, Never>?
-    private var relabelTask: Task<Void, Never>?
+    var relabelTask: Task<Void, Never>?
 
     // MARK: - Revision polling
 
@@ -359,23 +304,6 @@ final class AppState {
     #if os(iOS)
     // MARK: - Custom-push tap routing
 
-    /// In-process deep-link targets resolved from a custom-push tap. The
-    /// `NotificationDelegate` writes here; the destination view observes
-    /// and clears the value once it has acted on it.
-    enum DeepLink: Equatable {
-        case bulletin(Int)
-    }
-
-    /// Payload for an operator-issued popup push. `id` is the server-side
-    /// notification id and is also used by SwiftUI's `.alert(_:isPresented:
-    /// presenting:)` for view identity, so re-tapping the same notification
-    /// while the previous alert is still on screen does not double-present.
-    struct ServerPopupPayload: Equatable, Identifiable {
-        let id: String   // notification_id
-        let title: String
-        let body: String
-    }
-
     /// Set by the notification delegate when the user taps a
     /// `custom_push_bulletin` push. Bulletins UI observes this and clears
     /// it after navigating into the detail view.
@@ -394,32 +322,6 @@ final class AppState {
     /// `@ObservationIgnored` because it isn't UI state.
     @ObservationIgnored
     var pendingServerPopupSwapTask: Task<Void, Never>?
-
-    /// Has the user already been shown the popup for this notification id?
-    /// Persisted via `Defaults[.shownServerPopupIds]` as a FIFO list
-    /// capped at 100 entries. Read-only — call `markServerPopupShown`
-    /// from the alert's dismiss action so an alert that was suppressed
-    /// (e.g. by a competing onboarding sheet) isn't permanently deduped.
-    @MainActor
-    func isServerPopupShown(_ id: String) -> Bool {
-        Defaults[.shownServerPopupIds].contains(id)
-    }
-
-    /// Record that the user has actually seen the popup for `id`. Only
-    /// call this from the alert dismiss path — calling it at routing
-    /// time risks marking a popup as seen when its alert never rendered
-    /// (mid-onboarding, modal collision, etc.), permanently suppressing
-    /// it on future taps.
-    @MainActor
-    func markServerPopupShown(_ id: String) {
-        var seen = Defaults[.shownServerPopupIds]
-        if seen.contains(id) { return }
-        seen.append(id)
-        if seen.count > 100 {
-            seen.removeFirst(seen.count - 100)
-        }
-        Defaults[.shownServerPopupIds] = seen
-    }
     #endif
 
     // MARK: - Widget deep linking
@@ -460,12 +362,6 @@ final class AppState {
         }
     }
 
-    var accentColor: Color {
-        // Use bitPattern to avoid trapping on a corrupted-defaults negative
-        // accentColorHex (Int → UInt conversion crashes on negative values).
-        Color(hex: UInt(bitPattern: Int(accentColorHex)))
-    }
-
     static let themeColors: [(nameKey: String, hex: Int)] = [
         ("color_name_blue", 0x007AFF),
         ("color_name_purple", 0xAF52DE),
@@ -482,23 +378,6 @@ final class AppState {
     /// Whether to persist announcement filter selection across sessions
     var rememberAnnouncementFilter: Bool = Defaults[.rememberAnnouncementFilter] {
         didSet { Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter }
-    }
-
-    /// Saved announcement filter departments (JSON array)
-    var savedAnnouncementDepartments: Set<String> {
-        get {
-            guard let data = Defaults[.savedAnnouncementDepartmentsData],
-                  let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
-            return Set(arr)
-        }
-        set {
-            do {
-                let data = try JSONEncoder().encode(Array(newValue))
-                Defaults[.savedAnnouncementDepartmentsData] = data
-            } catch {
-                AppLogger.captureError(error, context: ["phase": "savedAnnouncementDepartments.encode"])
-            }
-        }
     }
 
     /// Cross-device sync toggle. When OFF, all backend sync calls
@@ -597,13 +476,6 @@ final class AppState {
         didSet { Defaults[.visualPreset] = visualPreset }
     }
 
-    /// Resolved presentation policy for the current preset. Views read
-    /// from this instead of switching on ``visualPreset`` directly, so
-    /// adding new presets stays contained to ``VisualStylePolicy``.
-    var visualStylePolicy: VisualStylePolicy {
-        VisualStylePolicy(preset: visualPreset)
-    }
-
     // MARK: - Language & Abbreviations
 
     /// BCP-47 language tag, or "system" to follow device locale.
@@ -659,103 +531,6 @@ final class AppState {
         }
     }
 
-    /// Re-derive course/classroom labels for every cached semester using the
-    /// current toggle settings, then post `dataDidUpdate` so visible views
-    /// reload from the freshly relabeled cache. Lives on `AppState` so the
-    /// relabel still runs when no `ClassTableViewModel` is alive (e.g., the
-    /// user toggled in Settings without ever opening the Class Table tab).
-    ///
-    /// Runs on a detached task so disk I/O (up to four cached semesters plus
-    /// user-added courses, plus a first-call JSON parse inside
-    /// ``NameAbbrService``) does not block the UI thread when the toggle is
-    /// flipped from a Settings view. Rapid toggling cancels the previous task
-    /// so the latest settings always win the save race.
-    private func relabelAllCachedCourses() {
-        relabelTask?.cancel()
-        // `Task.detached` lets the loop body yield to the runtime between
-        // iterations, so a long relabel sweep doesn't pin the MainActor.
-        // The actual disk/SwiftData work hops to MainActor per iteration
-        // because `DataCache` and `NameAbbrService.relabelInPlace` touch
-        // SwiftData-managed types that are themselves MainActor-isolated.
-        relabelTask = Task.detached(priority: .userInitiated) {
-            let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
-            let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
-            let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
-
-            var anyChanged = false
-            var code = CourseSelectionService.currentSemesterCode()
-            var consecutiveEmpty = 0
-            for _ in 0..<AppConstants.cachedSemesterRelabelDepth {
-                if Task.isCancelled { return }
-                // Snapshot `code` into a `let` so the Sendable closure passed
-                // to `MainActor.run` captures an immutable value — Swift 6
-                // rejects capturing the mutating outer `var` from a
-                // concurrently-executing context.
-                let semesterCode = code
-                let iter = await MainActor.run { () -> (changed: Bool, wasEmpty: Bool) in
-                    let courses = DataCache.shared.loadCourses(semester: semesterCode)
-                    if courses.isEmpty { return (false, true) }
-                    let changed = NameAbbrService.shared.relabelInPlace(
-                        courses,
-                        courseAbbrEnabled: courseAbbrEnabled,
-                        classroomAbbrEnabled: classroomAbbrEnabled,
-                        classroomMandarinDisplay: classroomMandarinDisplay
-                    )
-                    // Re-check cancellation inside the MainActor body: a
-                    // newer toggle can have cancelled this task while it
-                    // was queued for the main actor, and persisting now
-                    // would clobber the newer task's save with stale
-                    // toggle values captured at the top of this closure.
-                    if changed && !Task.isCancelled {
-                        DataCache.shared.saveCourses(courses, semester: semesterCode)
-                    }
-                    return (changed, false)
-                }
-                if iter.wasEmpty {
-                    consecutiveEmpty += 1
-                    // Two empty semesters in a row means we've walked past any
-                    // data the user has fetched; further iterations just hit
-                    // disk for nothing.
-                    if consecutiveEmpty >= 2 { break }
-                } else {
-                    consecutiveEmpty = 0
-                }
-                if iter.changed { anyChanged = true }
-                code = CourseSelectionService.previousSemesterCode(code)
-            }
-
-            // User-added courses live in their own file, outside the per-semester
-            // fetch cache, so the loop above never sees them. Relabel separately
-            // so manually-added Mandarin classrooms also honor the display toggle.
-            if Task.isCancelled { return }
-            let userChanged = await MainActor.run { () -> Bool in
-                let userAdded = DataCache.shared.loadUserAddedCourses()
-                guard !userAdded.isEmpty else { return false }
-                let changed = NameAbbrService.shared.relabelInPlace(
-                    userAdded,
-                    courseAbbrEnabled: courseAbbrEnabled,
-                    classroomAbbrEnabled: classroomAbbrEnabled,
-                    classroomMandarinDisplay: classroomMandarinDisplay
-                )
-                // Same rationale as the per-semester save above: skip the
-                // write if a newer relabel has already superseded this one.
-                if changed && !Task.isCancelled {
-                    DataCache.shared.saveUserAddedCourses(userAdded)
-                }
-                return changed
-            }
-            if userChanged { anyChanged = true }
-
-            if anyChanged && !Task.isCancelled {
-                await MainActor.run {
-                    NotificationCenter.default.post(
-                        name: AppConstants.dataDidUpdate, object: nil
-                    )
-                }
-            }
-        }
-    }
-
     // MARK: - Tab Configuration
 
     var configuredTabs: [AppFeature] = {
@@ -802,18 +577,5 @@ final class AppState {
         }
     }
     #endif
-
-    func completeOnboarding() {
-        hasCompletedOnboarding = true
-        Defaults[.hasCompletedOnboarding] = true
-        // A fresh install registers its device here rather than in `init`,
-        // so nothing reaches the push server before this point. Not
-        // iOS-gated: `pushCoordinator` is cross-platform since the v3
-        // backend work, and macOS reaches this through `MacLoginView`, so
-        // gating here would leave a fresh Mac install unregistered until
-        // its second launch.
-        pushCoordinator.enable()
-        backgroundSync()
-    }
 
 }
