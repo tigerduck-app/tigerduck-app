@@ -8,9 +8,7 @@
 // which is registration and preference plumbing, not tap handling.
 
 import SwiftUI
-import SwiftData
 import Defaults
-import os
 
 extension AppState {
 

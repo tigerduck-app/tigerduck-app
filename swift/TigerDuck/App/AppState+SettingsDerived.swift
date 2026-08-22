@@ -8,7 +8,6 @@
 // set, and the resolved visual-preset policy.
 
 import SwiftUI
-import SwiftData
 import Defaults
 import os
 

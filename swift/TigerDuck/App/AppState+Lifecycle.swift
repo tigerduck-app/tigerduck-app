@@ -8,9 +8,7 @@
 // once-per-toggle logic living in the other AppState+ files.
 
 import SwiftUI
-import SwiftData
 import Defaults
-import os
 
 extension AppState {
 

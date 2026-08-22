@@ -7,10 +7,8 @@
 // `isSyncLocalOnly` derivation over them. Conflict *resolution* logic
 // lives in AppState+Conflicts.swift.
 
-import SwiftUI
-import SwiftData
+import Foundation
 import Defaults
-import os
 
 extension AppState {
 
