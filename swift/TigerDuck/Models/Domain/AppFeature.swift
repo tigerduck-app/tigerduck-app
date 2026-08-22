@@ -124,24 +124,29 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     }
 
     /// Features that can be pinned to tab bar (positions 1-4)
+    ///
+    /// Listed in display order including features that have not shipped;
+    /// `isImplemented` is what excludes them. Keeping the unshipped names
+    /// here rather than commented out means `isImplemented` stays the single
+    /// place that decides, and a feature appears in the right position the
+    /// moment it flips there.
     static let pinnableFeatures: [AppFeature] = [
-        /// Temporary comments until feature is implemented.
         .home,
         .classTable,
         .calendar,
         .announcements,
         .library,
         .gpa,
-//        .courseSelection,
-//        .graduationRequirements,
-//        .discussionRoom,
-//        .libraryLecture,
-//        .freeLunch,
-//        .clubs,
-//        .emptyClassroom,
-//        .scholarship,
-//        .englishVocab,
-    ]
+        .courseSelection,
+        .graduationRequirements,
+        .discussionRoom,
+        .libraryLecture,
+        .freeLunch,
+        .clubs,
+        .emptyClassroom,
+        .scholarship,
+        .englishVocab,
+    ].filter(\.isImplemented)
 
     /// Library-related features gated behind the library opt-in toggle
     static let libraryRelatedFeatures: Set<AppFeature> = [.library, .discussionRoom, .libraryLecture]
@@ -150,37 +155,37 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .home, .classTable, .calendar,
     ]
 
-    /// Features displayed in the "More" page, grouped by category
+    /// Features displayed in the "More" page, grouped by category.
+    /// Same convention as ``pinnableFeatures``.
     static let moreFeatures: [AppFeature] = [
-        /// Temporary comments until feature is implemented.
         .home,
         .classTable,
         .calendar,
         .announcements,
         .gpa,
-//        .courseSelection,
-//        .graduationRequirements,
+        .courseSelection,
+        .graduationRequirements,
         .library,
-//        .discussionRoom,
-//        .libraryLecture,
-//        .freeLunch,
-//        .clubs,
-//        .emptyClassroom,
-//        .scholarship,
-//        .englishVocab,
-    ]
+        .discussionRoom,
+        .libraryLecture,
+        .freeLunch,
+        .clubs,
+        .emptyClassroom,
+        .scholarship,
+        .englishVocab,
+    ].filter(\.isImplemented)
 
-    /// Features available as home screen widgets
+    /// Features available as home screen widgets. A deliberate subset — the
+    /// core pages are reachable from the tab bar and are not offered here.
     static let widgetFeatures: [AppFeature] = [
-        /// Temporary comments until feature is implemented.
         .announcements,
-//        .freeLunch,
-//        .clubs,
-//        .emptyClassroom,
+        .freeLunch,
+        .clubs,
+        .emptyClassroom,
         .gpa,
-//        .scholarship,
-//        .englishVocab,
-    ]
+        .scholarship,
+        .englishVocab,
+    ].filter(\.isImplemented)
 }
 
 enum FeatureCategory: String, CaseIterable, Identifiable {
