@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 import CoreHaptics
 import UserNotifications
@@ -145,11 +146,36 @@ struct SettingsView: View {
                 }
             }
 
+            // MARK: - Cloud Sync
+            Section(String(localized: "cloud_sync_title")) {
+                NavigationLink {
+                    CloudSyncSettingsView()
+                } label: {
+                    HStack {
+                        Text(String(localized: "cloud_sync_title"))
+                        Spacer()
+                        Text(Defaults[.cloudSyncEnabled]
+                             ? String(localized: "settings_sync_status_on")
+                             : String(localized: "settings_sync_status_off"))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
+                if !Defaults[.cloudSyncEnabled] {
+                    Link(destination: AppURLs.learnMoreBackend) {
+                        Label(
+                            String(localized: "settings_sync_off_notifications_warning"),
+                            systemImage: "icloud.slash"
+                        )
+                        .foregroundStyle(.orange)
+                        .font(.callout)
+                    }
+                }
+
                 #if os(iOS)
-                // The "denied -> open System Settings" deeplink is iOS-only;
-                // macOS has its own MacSettingsScene and no openSettingsURLString.
                 if !notificationsAuthorized {
                     Button {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -164,14 +190,17 @@ struct SettingsView: View {
                     }
                 }
                 #endif
-                NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
-                    AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
-                }
-                NavigationLink(String(localized: "live_activity_settings_nav_title")) {
-                    LiveActivitySettingsView(store: appState.liveActivityPreferences)
-                }
-                NavigationLink(String(localized: "settings_push_server_nav_label")) {
-                    PushServerSettingsView()
+
+                Group {
+                    NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
+                        AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
+                    }
+                    NavigationLink(String(localized: "live_activity_settings_nav_title")) {
+                        LiveActivitySettingsView(store: appState.liveActivityPreferences)
+                    }
+                    NavigationLink(String(localized: "settings_push_server_nav_label")) {
+                        PushServerSettingsView()
+                    }
                 }
             }
 
@@ -247,6 +276,9 @@ struct SettingsView: View {
                 NavigationLink("API endpoint") {
                     DebugEndpointView()
                 }
+                NavigationLink("Server failure simulation") {
+                    DebugServerFailureView()
+                }
                 #if os(iOS)
                 NavigationLink("Triggers") {
                     TriggersDebugView()
@@ -257,6 +289,35 @@ struct SettingsView: View {
                 // `@AppStorage` so toggling immediately re-evaluates
                 // every protected view. Compiled out of release builds.
                 Toggle("Disable screen-capture protection", isOn: $disableScreenCaptureProtection)
+
+                Button {} label: {
+                    VStack(alignment: .leading) {
+                        Text("Long press to erase everything and restart")
+                            .foregroundStyle(.red)
+                        Text("Wipes all data, accounts, and preferences")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onLongPressGesture(minimumDuration: 1) {
+                    #if os(iOS)
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    #endif
+
+                    appState.logoutNTUST()
+                    appState.logoutLibrary()
+
+                    UserDefaults.standard.removePersistentDomain(
+                        forName: Bundle.main.bundleIdentifier!
+                    )
+                    Defaults.removeAll()
+
+                    // Removes outbox.json and any legacy id_map.json.
+                    try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
+
+                    appState.hasCompletedOnboarding = false
+                    Defaults[.hasCompletedOnboarding] = false
+                }
             }
             #endif
         }

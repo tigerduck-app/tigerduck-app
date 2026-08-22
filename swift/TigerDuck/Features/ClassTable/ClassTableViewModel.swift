@@ -115,6 +115,7 @@ final class ClassTableViewModel {
     }
 
     var showAddCourse = false
+    var showResetConfirm = false
     var courseToRename: SDCourse? = nil
     var renameText: String = ""
     var showRenameAlert = false
@@ -125,7 +126,14 @@ final class ClassTableViewModel {
     var courseToRecolor: SDCourse? = nil
 
     private var deletedCourseNos: Set<String> = []
-    private var courseCustomNames: [String: String] = [:]
+    private var courseCustomNames: [String: [String: String]] = [:]
+
+    /// The course API language tag ("zh" or "en") derived from the
+    /// current app language setting. Used as the locale key when
+    /// reading/writing per-locale custom course names.
+    private var currentLocale: String {
+        LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
+    }
 
     /// weekday → period ID → [SDCourse]. A list (not single) so the grid can
     /// surface 衝堂 (conflict) instead of the previous behaviour where the
@@ -647,6 +655,10 @@ final class ClassTableViewModel {
 
         if deletedCourseNos.remove(course.courseNo) != nil {
             DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+            if let idnumber = course.moodleIdNumber,
+               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
+                onSyncCourseOverride?(String(numericId), nil, nil, nil)
+            }
         }
 
         // Cache the freshly-fetched API values BEFORE any local mutation so
@@ -675,11 +687,16 @@ final class ClassTableViewModel {
         // (e.g. user removed and re-added). Stored separately from the
         // canonical courseName so abbreviation toggles and refreshes still
         // round-trip the API value through `NameAbbrService`.
-        course.customName = courseCustomNames[course.courseNo]
+        course.customName = courseCustomNames[course.courseNo]?[currentLocale]
 
         courses.append(course)
         persistUserAddedCourses()
         broadcastLocalChange()
+        if onCourseAdded != nil {
+            onCourseAdded?(courses, currentSemester, course.courseNo)
+        } else {
+            onCoursesChanged?(courses, currentSemester)
+        }
         return true
     }
 
@@ -715,17 +732,41 @@ final class ClassTableViewModel {
 
     private func applyCustomizations(_ courses: inout [SDCourse]) {
         courses.removeAll { deletedCourseNos.contains($0.courseNo) }
+        let locale = currentLocale
         for course in courses {
-            course.customName = courseCustomNames[course.courseNo]
+            course.customName = courseCustomNames[course.courseNo]?[locale]
         }
     }
 
     func deleteCourse(_ course: SDCourse) {
-        courses.removeAll { $0.courseNo == course.courseNo }
-        deletedCourseNos.insert(course.courseNo)
+        let courseNo = course.courseNo
+        courses.removeAll { $0.courseNo == courseNo }
+        deletedCourseNos.insert(courseNo)
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         persistUserAddedCourses()
         broadcastLocalChange()
+        onCourseDeleted?(courseNo, currentSemester)
+        onCoursesChanged?(courses, currentSemester)
+    }
+
+    func resetCourses(authService: AuthService) {
+        let semester = CourseSelectionService.currentSemesterCode()
+        for courseNo in deletedCourseNos {
+            let idnumber = "\(semester)\(courseNo)"
+            if let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
+                onSyncCourseOverride?(String(numericId), nil, nil, nil)
+            }
+        }
+        deletedCourseNos.removeAll()
+        DataCache.shared.saveDeletedCourseNos([])
+        DataCache.shared.saveUserAddedCourses([])
+        courseCustomNames.removeAll()
+        DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        reloadFromCache()
+        if let resetBackend = onResetBackendCourses {
+            Task { await resetBackend() }
+        }
+        triggerRefresh(authService: authService)
     }
 
     /// Undo a not-yet-committed user-added course without tombstoning the
@@ -767,23 +808,31 @@ final class ClassTableViewModel {
             revertRename(course)
             return
         }
-        courseCustomNames[course.courseNo] = trimmed
+        let locale = currentLocale
+        courseCustomNames[course.courseNo, default: [:]][locale] = trimmed
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
         course.customName = trimmed
         rebuildLookup()
         persistUserAddedCourses()
         courseToRename = nil
         broadcastLocalChange()
+        syncNameOverride(course: course, customName: trimmed, locale: locale)
     }
 
     func revertRename(_ course: SDCourse) {
-        courseCustomNames.removeValue(forKey: course.courseNo)
+        let locale = currentLocale
+        courseCustomNames[course.courseNo]?[locale] = nil
+        // Remove the outer entry entirely when no locale overrides remain
+        if courseCustomNames[course.courseNo]?.isEmpty == true {
+            courseCustomNames.removeValue(forKey: course.courseNo)
+        }
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
         course.customName = nil
         rebuildLookup()
         persistUserAddedCourses()
         courseToRename = nil
         broadcastLocalChange()
+        syncNameOverride(course: course, customName: "", locale: locale)
     }
 
     func startRecolor(_ course: SDCourse) {
@@ -805,7 +854,25 @@ final class ClassTableViewModel {
     func setColor(hex: UInt32, for course: SDCourse) {
         TigerDuckTheme.setColor(hex: hex, for: course.courseNo)
         broadcastLocalChange()
+        syncColorOverride(course: course, hex: hex)
     }
+
+    private func syncColorOverride(course: SDCourse, hex: UInt32) {
+        guard let moodleId = course.moodleIdNumber else { return }
+        let hexStr = String(format: "#%06X", hex)
+        onSyncCourseOverride?(moodleId, hexStr, nil, nil)
+    }
+
+    private func syncNameOverride(course: SDCourse, customName: String, locale: String) {
+        guard let moodleId = course.moodleIdNumber else { return }
+        onSyncCourseOverride?(moodleId, nil, customName, locale)
+    }
+
+    var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
+    var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
+    var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
+    var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
+    var onResetBackendCourses: (() async -> Void)?
 
     /// Wakes Home, the Live Activity coordinator, and any other observer
     /// that subscribes to `dataDidUpdate`. Local Class Table edits used to

@@ -58,10 +58,8 @@ final class ScheduleSyncService {
     func sync(inputs: Inputs, now: Date = AppClock.now()) {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
-        let request = PushAPI.ScheduleSyncRequest(
-            deviceId: identity.deviceId,
-            events: events
-        )
+        // v3: device identity is inferred from the JWT; no deviceId in the body.
+        let request = PushAPI.ScheduleSyncRequest(events: events)
         logger.info("sync start events=\(events.count, privacy: .public)")
 
         inflight?.cancel()
@@ -69,7 +67,7 @@ final class ScheduleSyncService {
             do {
                 let response = try await apiClient.syncSchedule(request)
                 logger.info(
-                    "sync ok scheduled=\(response.scheduled, privacy: .public) cancelled=\(response.cancelled, privacy: .public) pending=\(response.totalPending, privacy: .public)"
+                    "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
                 )
                 if Task.isCancelled { return }
                 self?.markSuccess()

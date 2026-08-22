@@ -101,6 +101,9 @@ enum AppServiceBridge {
         }
 
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.courseSelection)
+            #endif
             let session = NTUSTSessionManager.shared.session
             // NTUST SSO is the "nice to have" source here — Moodle's long-lived
             // OIDC token is the primary. If SSO is unreachable (cookies cleared,
@@ -120,8 +123,10 @@ enum AppServiceBridge {
                             authService?.loginGeneration == startGeneration
                         }
                     )
+                    await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .courseSelection) }
                 } catch {
                     await MainActor.run {
+                        ServerStatusTracker.shared.set(.failed, for: .courseSelection)
                         AppLogger.captureError(error, context: [
                             "service": "fetchEnrolledCourseNos",
                             "semester": semester,
@@ -315,10 +320,44 @@ enum AppServiceBridge {
                !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveCourses(courses, semester: semester)
+
+                if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
+                    let entries = courses.map { c in
+                        PushAPI.CourseUploadEntry(
+                            semester: semester,
+                            courseNo: c.courseNo,
+                            courseName: c.courseName,
+                            courseNameEn: nil,
+                            moodleId: c.moodleIdNumber,
+                            credits: c.credits > 0 ? Double(c.credits) : nil,
+                            classroom: c.classroom.isEmpty ? nil : c.classroom,
+                            instructors: c.instructor.isEmpty ? nil : [c.instructor],
+                            scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),
+                            classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
+                        )
+                    }
+                    let colorMap = TigerDuckTheme.courseColorMap
+                    let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
+                        guard let hex = colorMap[c.courseNo] else { return nil }
+                        return PushAPI.CourseOverrideUploadEntry(
+                            courseKey: "client:\(semester):\(c.courseNo)",
+                            colorHex: String(format: "#%06X", hex)
+                        )
+                    }
+                    let client = PushAPIClient(
+                        authHeaderProvider: { await atm.authorizationHeader() }
+                    )
+                    Task.detached {
+                        try? await client.uploadCourses(
+                            PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides)
+                        )
+                    }
+                }
             }
             return courses
         } catch {
             await MainActor.run {
+                ServerStatusTracker.shared.set(.failed, for: .courseSelection)
                 AppLogger.captureError(error, context: ["bridge": "fetchCourses", "semester": semester])
             }
             return DataCache.shared.loadCourses(semester: semester)
@@ -425,6 +464,9 @@ enum AppServiceBridge {
         }
 
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.moodle)
+            #endif
             let currentSemester = CourseSelectionService.currentSemesterCode()
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
 
@@ -457,9 +499,12 @@ enum AppServiceBridge {
             // stay blank until a second launch. Prefer filtering to the
             // current course roster when it exists (handles drops), else
             // use the semester prefix on Moodle's idnumber.
-            let currentCourseNos = Set(currentCourses.map(\.courseNo))
+            var currentCourseNos = Set(currentCourses.map(\.courseNo))
+            for mc in moodleEnrolled where mc.semester == currentSemester && !mc.courseNo.isEmpty {
+                currentCourseNos.insert(mc.courseNo)
+            }
             let relevantCourses: [MoodleEnrolledCourse]
-            if currentCourses.isEmpty {
+            if currentCourseNos.isEmpty {
                 relevantCourses = moodleEnrolled.filter { $0.semester == currentSemester }
             } else {
                 relevantCourses = moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) }
@@ -538,10 +583,43 @@ enum AppServiceBridge {
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignmentsToPersist)
+
+                // Fire-and-forget: upload the assignment list to the backend
+                // so it can populate its assignments table for cross-device
+                // sync and notification scheduling.
+                #if os(iOS)
+                if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
+                    let iso = ISO8601DateFormatter()
+                    iso.formatOptions = [.withInternetDateTime]
+                    let entries = assignmentsToPersist.compactMap { a -> PushAPI.AssignmentUploadEntry? in
+                        guard let id = Int(a.assignmentId) else { return nil }
+                        return PushAPI.AssignmentUploadEntry(
+                            moodleAssignmentId: id,
+                            courseNo: a.courseNo,
+                            courseName: a.courseName,
+                            title: a.title,
+                            dueAt: iso.string(from: a.dueDate),
+                            moodleUrl: a.moodleUrl,
+                            isSubmitted: a.isCompleted,
+                            grade: nil
+                        )
+                    }
+                    let client = PushAPIClient(
+                        authHeaderProvider: { await atm.authorizationHeader() }
+                    )
+                    Task.detached {
+                        try? await client.uploadAssignments(
+                            PushAPI.AssignmentUploadRequest(assignments: entries)
+                        )
+                    }
+                }
+                #endif
             }
+            await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .moodle) }
             return assignmentsToPersist
         } catch {
             await MainActor.run {
+                ServerStatusTracker.shared.set(.failed, for: .moodle)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()

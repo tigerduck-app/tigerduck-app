@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 struct ClassTableView: View {
@@ -11,6 +12,11 @@ struct ClassTableView: View {
             content
                 .onAppear {
                     viewModel.load(authService: appState.authService)
+                    viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
+                    viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
+                    viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
+                    viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
+                    viewModel.onResetBackendCourses = { await appState.deleteAllBackendCourses() }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
@@ -20,6 +26,11 @@ struct ClassTableView: View {
             NavigationStack { content }
                 .onAppear {
                     viewModel.load(authService: appState.authService)
+                    viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
+                    viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
+                    viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
+                    viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
+                    viewModel.onResetBackendCourses = { await appState.deleteAllBackendCourses() }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
@@ -76,12 +87,10 @@ struct ClassTableView: View {
             }
             .scrollIndicators(.hidden)
             .refreshable {
-                // Fire-and-forget: the pull gesture should dismiss the
-                // UIRefreshControl spinner immediately once released.
-                // `triggerRefresh` coalesces rapid repeated pulls into a
-                // single in-flight fetch; status lives in the top-right
-                // NetworkStatusOverlay.
                 viewModel.triggerRefresh(authService: appState.authService)
+                if Defaults[.cloudSyncEnabled] {
+                    Task { await appState.syncOverridesFromBackend() }
+                }
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -154,6 +163,17 @@ struct ClassTableView: View {
                     Text(String(format: String(localized: "class_table_rename_default_label"), course.courseName))
                 }
             }
+            .alert(
+                String(localized: "class_table_reset_title"),
+                isPresented: $viewModel.showResetConfirm
+            ) {
+                Button(String(localized: "action_confirm"), role: .destructive) {
+                    viewModel.resetCourses(authService: appState.authService)
+                }
+                Button(String(localized: "action_cancel"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "class_table_reset_message"))
+            }
             .sheet(item: $viewModel.courseToRecolor) { course in
                 CourseColorPickerSheet(
                     course: course,
@@ -185,15 +205,23 @@ struct ClassTableView: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
             if pageAccessState != .loginRequired {
-                Button {
-                    viewModel.showAddCourse = true
-                } label: {
-                    Image(systemName: "plus")
-                        .foregroundStyle(Color.textSecondary)
+                HStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState, isLocalOnly: appState.isSyncLocalOnly)
+                    ServerStatusIcons(servers: [.moodle, .courseSelection, .backend])
+                    Button {
+                        viewModel.showResetConfirm = true
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                    .accessibilityLabel(Text("class_table_reset_title"))
+                    Button {
+                        viewModel.showAddCourse = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel(Text("add_course_title"))
                 }
-                .accessibilityLabel(Text("add_course_title"))
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)

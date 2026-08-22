@@ -127,11 +127,13 @@ struct MacAssignmentsList: View {
         case .pending, .overdueAcceptable, .overdueRejected:
             Button {
                 AssignmentStore.shared.markComplete(assignment)
+                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "locally_completed")
             } label: {
                 Label(String(localized: "desktop_assignment_mark_complete"), systemImage: "checkmark.circle.fill")
             }
             Button {
                 AssignmentStore.shared.archive(assignment)
+                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "archived")
             } label: {
                 Label(String(localized: "assignment_ignore"), systemImage: "archivebox.fill")
             }
@@ -139,6 +141,7 @@ struct MacAssignmentsList: View {
         case .locallyCompleted:
             Button {
                 AssignmentStore.shared.undoComplete(assignment)
+                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
             } label: {
                 Label(String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward")
             }
@@ -146,6 +149,7 @@ struct MacAssignmentsList: View {
         case .archived:
             Button {
                 AssignmentStore.shared.unarchive(assignment)
+                appState.syncAssignmentOverride(moodleId: assignment.assignmentId, status: "none")
             } label: {
                 Label(String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward")
             }

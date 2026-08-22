@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 import UserNotifications
 
@@ -9,6 +10,7 @@ struct OnboardingView: View {
     @State private var password = ""
     @State private var agreedPrivacy = false
     @State private var agreedDeletion = false
+    @State private var syncEnabled = true
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @State private var notificationRequestInFlight = false
     @Environment(\.scenePhase) private var scenePhase
@@ -16,11 +18,10 @@ struct OnboardingView: View {
 
     private enum Field { case studentId, password }
 
-    /// Page order matches the Android flow at
-    /// `OnboardingScreen.kt:85-87`: Welcome → Privacy → Apple Watch →
+    /// Page order: Welcome → Privacy → Cloud Sync → Apple Watch →
     /// Login → Notifications → Ready.
     private enum Page: Int, CaseIterable {
-        case welcome, privacy, watchOS, login, notifications, ready
+        case welcome, privacy, cloudSync, watchOS, login, notifications, ready
     }
 
     /// iPad has no Apple Watch pairing affordance — there's no Watch app to
@@ -38,6 +39,7 @@ struct OnboardingView: View {
         TabView(selection: $currentPage) {
             welcomePage.tag(Page.welcome.rawValue)
             privacyPage.tag(Page.privacy.rawValue)
+            cloudSyncPage.tag(Page.cloudSync.rawValue)
             if showsWatchPage {
                 watchOSPage.tag(Page.watchOS.rawValue)
             }
@@ -57,10 +59,6 @@ struct OnboardingView: View {
         // give the user a way to clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
-        // Simultaneous (not `.onTapGesture`) so this keyboard-dismiss tap on the
-        // TabView root doesn't swallow taps on interactive children — see
-        // View+ScrollSafeGesture for the iOS 18 gesture-arbitration details.
-        .dismissTapGesture { focusedField = nil }
         .onChange(of: currentPage) { _, _ in focusedField = nil }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, newPhase in
@@ -159,8 +157,7 @@ struct OnboardingView: View {
                         .opacity(agreedPrivacy && agreedDeletion ? 0 : 1)
 
                     Button(String(localized: "action_next")) {
-                        let nextPage = showsWatchPage ? Page.watchOS.rawValue : Page.login.rawValue
-                        withAnimation(reduceMotion ? nil : .default) { currentPage = nextPage }
+                        withAnimation(reduceMotion ? nil : .default) { currentPage = Page.cloudSync.rawValue }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
@@ -197,7 +194,114 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Page 2: Apple Watch support
+    // MARK: - Page 2: Cross-Device Sync
+
+    private var cloudSyncPage: some View {
+        OnboardingPageView(
+            icon: "arrow.triangle.2.circlepath.icloud.fill",
+            title: String(localized: "onboarding_sync_title"),
+            subtitle: String(localized: "onboarding_sync_subtitle"),
+            accentColor: .cyan,
+            content: {
+                VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    cloudSyncInfoRows
+
+                    Toggle(isOn: $syncEnabled) {
+                        Text(String(localized: "onboarding_sync_toggle_label"))
+                            .font(.callout.weight(.semibold))
+                    }
+                    .toggleStyle(.switch)
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+
+                    if !syncEnabled {
+                        Label(
+                            String(localized: "onboarding_sync_disabled_note"),
+                            systemImage: "info.circle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.leading)
+                        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+                    }
+
+                    VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                        Link(destination: AppURLs.learnMoreBackend) {
+                            Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
+                                .font(.caption)
+                        }
+                        Link(destination: AppURLs.privacyPolicy) {
+                            Label(String(localized: "onboarding_privacy_policy_label"), systemImage: "hand.raised.fill")
+                                .font(.caption)
+                        }
+                        Link(destination: AppURLs.deleteAccount) {
+                            Label(String(localized: "onboarding_privacy_delete_account_label"), systemImage: "trash")
+                                .font(.caption)
+                        }
+                    }
+                    .padding(.top, TigerDuckTheme.Spacing.sm)
+                }
+            },
+            actions: {
+                Button(String(localized: "action_next")) {
+                    Defaults[.cloudSyncEnabled] = syncEnabled
+                    let nextPage = showsWatchPage ? Page.watchOS.rawValue : Page.login.rawValue
+                    withAnimation(reduceMotion ? nil : .default) { currentPage = nextPage }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var cloudSyncInfoRows: some View {
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
+            cloudSyncInfoRow(
+                icon: "checkmark.circle.fill",
+                color: .green,
+                text: String(localized: "onboarding_sync_shared_student_id")
+            )
+            cloudSyncInfoRow(
+                icon: "checkmark.circle.fill",
+                color: .green,
+                text: String(localized: "onboarding_sync_shared_moodle_token")
+            )
+            cloudSyncInfoRow(
+                icon: "checkmark.circle.fill",
+                color: .green,
+                text: String(localized: "onboarding_sync_shared_device_id")
+            )
+            cloudSyncInfoRow(
+                icon: "checkmark.circle.fill",
+                color: .green,
+                text: String(localized: "onboarding_sync_shared_courses")
+            )
+            cloudSyncInfoRow(
+                icon: "checkmark.circle.fill",
+                color: .green,
+                text: String(localized: "onboarding_sync_shared_assignments")
+            )
+            cloudSyncInfoRow(
+                icon: "xmark.circle.fill",
+                color: .red,
+                text: String(localized: "onboarding_sync_not_shared_password")
+            )
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    private func cloudSyncInfoRow(icon: String, color: Color, text: String) -> some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.callout)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(Color.textSecondary)
+        }
+    }
+
+    // MARK: - Page 3: Apple Watch support (iPhone only)
 
     private var watchOSPage: some View {
         OnboardingPageView(
@@ -214,7 +318,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Page 3: Login
+    // MARK: - Page 4: Login
 
     private var loginPage: some View {
         let isSignedIn = appState.authService.hasStoredCredentials
@@ -323,7 +427,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Page 4: Notifications
+    // MARK: - Page 5: Notifications
 
     private var notificationsPage: some View {
         OnboardingPageView(
@@ -424,7 +528,7 @@ struct OnboardingView: View {
         await MainActor.run { notificationStatus = settings.authorizationStatus }
     }
 
-    // MARK: - Page 5: Done
+    // MARK: - Page 6: Done
 
     private var readyPage: some View {
         OnboardingPageView(

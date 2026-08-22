@@ -125,6 +125,17 @@ nonisolated extension Defaults.Keys {
         default: AssignmentFilter.incomplete.rawValue
     )
 
+    // MARK: Cloud sync
+    static let cloudSyncEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.cloudSyncEnabled,
+        default: true
+    )
+    static let syncCourses = Key<Bool>("syncCourses", default: true)
+    static let syncCourseColors = Key<Bool>("syncCourseColors", default: true)
+    static let syncCourseNames = Key<Bool>("syncCourseNames", default: true)
+    static let syncAssignments = Key<Bool>("syncAssignments", default: true)
+    static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
+
     // MARK: Push server
     /// Default on as of the custom-push feature: every device registers
     /// once onboarding is complete, so operator-issued pushes can target it.

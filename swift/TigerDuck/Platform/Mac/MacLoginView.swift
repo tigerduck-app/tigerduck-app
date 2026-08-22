@@ -112,6 +112,22 @@ struct MacLoginView: View {
             .keyboardShortcut(.defaultAction)
             .disabled(!canSubmit)
 
+            // Cross-device sync toggle
+            VStack(spacing: 4) {
+                Toggle(
+                    String(localized: "settings_sync_toggle_label"),
+                    isOn: Bindable(appState).cloudSyncEnabled
+                )
+                .toggleStyle(.switch)
+                .frame(maxWidth: 280)
+                Text(String(localized: "settings_sync_brief_description"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 280)
+            }
+            .padding(.top, 8)
+
             // Secondary, less-prominent escape hatch so users without
             // NTUST credentials can still explore the public surfaces
             // (e.g. bulletin board). The flag is intentionally in-memory

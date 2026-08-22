@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 @Observable
 final class AuthService {
@@ -45,6 +48,9 @@ final class AuthService {
 
     var isLoggingIn = false
     var loginError: String?
+
+    var authTokenManager: AuthTokenManager?
+    var onV3SignedIn: (() -> Void)?
 
     var storedStudentId: String? {
         _ = _revision
@@ -98,6 +104,8 @@ final class AuthService {
                 } catch {
                     AppLogger.captureError(error, context: ["flow": "moodleTokenObtain"])
                 }
+
+                await performV3Login(studentId: normalizedId, password: password)
             }
 
             isLoggingIn = false
@@ -112,6 +120,30 @@ final class AuthService {
             loginError = error.localizedDescription
             isLoggingIn = false
             return false
+        }
+    }
+
+    private func performV3Login(studentId: String, password: String) async {
+        guard let authTokenManager else { return }
+        guard let moodleToken = await MoodleTokenService.shared.currentToken(),
+              !moodleToken.isEmpty else {
+            return
+        }
+        let moodlePrivateToken = KeychainManager.loadString(
+            key: AppConstants.KeychainKeys.moodlePrivateToken
+        )
+        let platform = PushDeviceClass.platform(for: PushDeviceClass.resolvedForBuild)
+        do {
+            _ = try await authTokenManager.login(
+                studentId: studentId,
+                password: password,
+                moodleToken: moodleToken,
+                moodlePrivateToken: moodlePrivateToken,
+                platform: platform
+            )
+            onV3SignedIn?()
+        } catch {
+            AppLogger.captureError(error, context: ["flow": "v3Login"])
         }
     }
 
@@ -133,6 +165,9 @@ final class AuthService {
         if await NTUSTSessionManager.shared.probeCookiesValid() {
             NTUSTSessionManager.shared.markLoginSuccess()
             reauthErrorMessage = nil
+            if let atm = authTokenManager, !(await atm.isLoggedIn) {
+                await performV3Login(studentId: studentId, password: password)
+            }
             return true
         }
 

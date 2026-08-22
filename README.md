@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.7.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.3)
+[![Version](https://img.shields.io/badge/Version-v2.0.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
@@ -93,6 +93,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v2.0.0`** | 2026-06-20 | 🚀 **雲端同步正式上線** — 課程/作業即時上傳、macOS 推播與帳號同步、401 自動恢復、伺服器推播頻道設定 |
 | **`v1.7.3`** | 2026-08-20 | 手動加入的課程只留在加入時所選的學期 — 先前會同時出現在每個學期的課表、首頁與小工具中 |
 | **`v1.7.2`** | 2026-08-20 | 📋 **學期期間限定顯示** — 首頁「時光機」與課表「今日課程」只在學期內（2026-09-07 ~ 2026-12-25）出現，開學前後不再顯示空白或錯期的當日課表；當前學期一律標示為 115-1 |
 | **`v1.7.1`** | 2026-08-20 | 📋 **課表學期修正** — 學期清單改由學校課程查詢 API 供應，學校提前釋出的 115-1 立刻可選；選課系統的選課清單改依「實際開放中的學期」歸戶，114-2 與 115-1 不再疊進同一張課表；學期選單預設沿用上次選取，從未選過則落在最新學期；一次性清掉舊版寫錯學期的課程快取 |
@@ -193,7 +194,7 @@ open swift/TigerDuck.xcodeproj
 > 💡 名稱簡稱（`name-abbr/`）與多語系字串（`localization/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
 
 ### 推播後端
-正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v2/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
+正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類、雲端同步）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v3/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
 
 ### 網路請求方法驗證（`api-poc/`）
 

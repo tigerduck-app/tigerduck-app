@@ -93,6 +93,10 @@ final class CalendarViewModel {
         }
     }
 
+    func triggerRefresh(authService: AuthService) {
+        Task { await refresh(authService: authService) }
+    }
+
     func refresh(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
         let startGeneration = authService.loginGeneration

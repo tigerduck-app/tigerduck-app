@@ -143,7 +143,7 @@ private struct NextClassWidgetCard: View {
                         // a gap-spanning time that doesn't match the timer.
                         Text("\(primary.start.timeString) - \(primary.end.timeString)")
                             .font(.title3.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(color)
+                            .foregroundStyle(.primary)
                         Spacer()
                         // Only show a badge when the class is actively in
                         // session — the "next up" caption used to duplicate

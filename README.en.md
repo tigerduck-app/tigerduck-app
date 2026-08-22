@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.7.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.7.3)
+[![Version](https://img.shields.io/badge/Version-v2.0.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 
 [![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
@@ -92,6 +92,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v2.0.0`** | 2026-06-20 | 🚀 **Cloud sync GA** — real-time course & assignment upload, macOS push & account sync, 401 auto-recovery, server push channel settings |
 | **`v1.7.3`** | 2026-08-20 | Manually added courses stay in the semester they were added to — they previously showed up in every semester's timetable, Home and widgets |
 | **`v1.7.2`** | 2026-08-20 | 📋 **Term-window gating** — Home's time slider and the class table's today carousel appear only while classes are in session (2026-09-07 – 2026-12-25), so neither shows a blank or wrong-term day outside it; the current term is pinned to 115-1 |
 | **`v1.7.1`** | 2026-08-20 | 📋 **Class-table semester fixes** — the semester list now comes from the university's course-query API, so a term released early (115-1) is selectable right away; 選課 enrolments are filed under the term that system actually has open, so 114-2 and 115-1 no longer render into one grid; the picker reopens on your last pick, or the newest term if you never picked one; one-shot clear of course caches written under the wrong term |
@@ -192,7 +193,7 @@ open swift/TigerDuck.xcodeproj
 > 💡 Name abbreviations (`name-abbr/`) and localization strings (`localization/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
 
 ### Push Backend
-The production FastAPI push service (APNs Push-to-Start, schedule sync, bulletin scraping, and LLM classification) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v2/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
+The production FastAPI service (APNs Push-to-Start, schedule sync, bulletin scraping, LLM classification, and cloud sync) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v3/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
 
 ### Network Request Verification (`api-poc/`)
 

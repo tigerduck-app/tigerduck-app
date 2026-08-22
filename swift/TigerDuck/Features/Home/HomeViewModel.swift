@@ -226,6 +226,10 @@ final class HomeViewModel {
         withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isArchived = true
             DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
+            if allAssignmentsCache[idx].isLocallyCompleted {
+                allAssignmentsCache[idx].isLocallyCompleted = false
+                DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
+            }
             recomputeUpcomingAssignments()
         }
     }
@@ -244,6 +248,10 @@ final class HomeViewModel {
         withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isLocallyCompleted = true
             DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
+            if allAssignmentsCache[idx].isArchived {
+                allAssignmentsCache[idx].isArchived = false
+                DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
+            }
             recomputeUpcomingAssignments()
         }
     }

@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 #if os(iOS)
 import UIKit
@@ -165,8 +166,20 @@ struct OtherSettingsView: View {
     /// unique-color algorithm, then broadcast so Home, Class Table, widgets,
     /// and the Live Activity all pick up the new palette.
     private func reassignAllCourseColors() {
-        let courseNos = CanonicalCourseProvider().currentCourses().map(\.courseNo)
-        TigerDuckTheme.reassignAll(courseNos: courseNos)
+        let courses = CanonicalCourseProvider().currentCourses()
+        TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo))
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        if Defaults[.cloudSyncEnabled] {
+            let colorMap = TigerDuckTheme.snapshot()
+            for course in courses {
+                guard let moodleId = course.moodleIdNumber,
+                      let hex = colorMap[course.courseNo]
+                else { continue }
+                appState.syncCourseOverride(
+                    moodleCourseId: moodleId,
+                    colorHex: String(format: "#%06X", hex)
+                )
+            }
+        }
     }
 }

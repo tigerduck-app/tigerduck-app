@@ -130,6 +130,9 @@ final class ScoreViewModel {
         let auth = authService
         let capturedGeneration = auth.loginGeneration
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.courseSelection)
+            #endif
             let fresh = try await NTUSTScoreService.fetchScoreReport(
                 session: manager.session,
                 studentId: studentId,
@@ -142,8 +145,10 @@ final class ScoreViewModel {
             report = fresh
             cachedAt = Date()
             applyDefaultCollapseRule()
+            ServerStatusTracker.shared.set(.ok, for: .courseSelection)
             manager.loadingState = .loaded
         } catch {
+            ServerStatusTracker.shared.set(.failed, for: .courseSelection)
             errorMessage = error.localizedDescription
             manager.loadingState = .error(error.localizedDescription)
         }

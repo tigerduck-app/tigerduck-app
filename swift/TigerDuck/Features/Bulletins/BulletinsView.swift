@@ -192,6 +192,9 @@ struct BulletinsView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
+                ServerStatusIcons(servers: [.backend])
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     unreadOnly.toggle()
                 } label: {

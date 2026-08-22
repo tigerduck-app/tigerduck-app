@@ -61,7 +61,7 @@ final class WidgetSnapshotWriter {
     /// force a fresh snapshot. Observer paths call this internally.
     func regenerate() {
         let courses = courseProvider.currentCourses()
-        let customNames = cache.loadCourseCustomNames()
+        let customNames = cache.loadCourseCustomNamesFlat()
         let colorMap = cache.loadCourseColorMap()
         let snapshot = WidgetSnapshotBuilder.build(
             .init(

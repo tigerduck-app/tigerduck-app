@@ -60,6 +60,10 @@ struct BulletinNotificationSettingsView: View {
         .navigationTitle(String(localized: "bulletin_notifications_title"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            // Give the store the app's v3 auth before any GET/PUT so the
+            // Bearer-protected subscription endpoints don't 401. Cheap and
+            // idempotent, so run it on every appear (before onDisappear save).
+            store.configure(authTokenManager: appState.authTokenManager)
             // Taxonomy + auth status refresh every time; only the
             // subscription GET is gated so it doesn't re-fire on
             // re-appearance.

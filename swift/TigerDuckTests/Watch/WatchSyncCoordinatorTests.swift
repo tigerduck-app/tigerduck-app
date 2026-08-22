@@ -1,3 +1,4 @@
+import WatchConnectivity
 import XCTest
 @testable import TigerDuck
 
@@ -7,9 +8,20 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         var pushedContexts: [[String: Any]] = []
         var isPaired = true
         var isWatchAppInstalled = true
+        var isReachable = true
         func updateApplicationContext(_ context: [String: Any]) throws {
             pushedContexts.append(context)
         }
+        // The coordinator's application-context path is what these tests
+        // exercise; the message/user-info members exist only to satisfy the
+        // protocol and are never called here (WCSessionUserInfoTransfer has no
+        // constructible stub value).
+        func transferUserInfo(_ userInfo: [String: Any]) -> WCSessionUserInfoTransfer {
+            fatalError("transferUserInfo is not exercised by WatchSyncCoordinatorTests")
+        }
+        func sendMessage(_ message: [String: Any],
+                         replyHandler: (([String: Any]) -> Void)?,
+                         errorHandler: ((Error) -> Void)?) {}
     }
 
     @MainActor

@@ -6,8 +6,10 @@ import os
 ///
 /// Rules live in memory as drafts (`pending`) until the user hits save.
 /// That gives the editor a clean undo (just re-load) and avoids hitting
-/// the server on every keystroke. The snapshot-replacement PUT means
-/// even a mid-edit crash leaves the server consistent.
+/// the server on every keystroke. The v3 backend exposes individual CRUD
+/// endpoints, but this store retains the snapshot-replacement model for
+/// simplicity: load all → edit locally → PUT all. Migrating to per-rule
+/// CRUD is tracked separately.
 @MainActor
 @Observable
 final class BulletinSubscriptionsStore {
@@ -35,16 +37,26 @@ final class BulletinSubscriptionsStore {
     /// nag the user when there's actual unsaved work.
     private(set) var isDirty: Bool = false
 
-    private let apiClient: BulletinAPIClient
-    private let deviceId: String
+    private var apiClient: BulletinAPIClient
+    private let usesInjectedClient: Bool
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.Subs")
 
-    init(
-        apiClient: BulletinAPIClient? = nil,
-        identity: PushIdentity = .loadOrCreate()
-    ) {
+    init(apiClient: BulletinAPIClient? = nil) {
         self.apiClient = apiClient ?? BulletinAPIClient()
-        self.deviceId = identity.deviceId
+        self.usesInjectedClient = apiClient != nil
+    }
+
+    /// Inject the app's v3 auth so subscription requests carry the Bearer
+    /// token. The `/bulletin-subscriptions` endpoints are identity-scoped
+    /// and Bearer-protected; without this the GET/PUT go out with no
+    /// Authorization header and 401. A `@State` store can't read the SwiftUI
+    /// environment at init, so the editor page calls this from `.task`
+    /// before the first `load()`. No-op when a client was injected (tests).
+    func configure(authTokenManager: AuthTokenManager) {
+        guard !usesInjectedClient else { return }
+        apiClient = BulletinAPIClient(
+            authHeaderProvider: { await authTokenManager.authorizationHeader() }
+        )
     }
 
     // MARK: - Lifecycle
@@ -69,11 +81,11 @@ final class BulletinSubscriptionsStore {
         }
         loadState = .loading
         do {
-            let response = try await apiClient.getSubscriptions(deviceId: deviceId)
-            pending = response.rules
+            let response = try await apiClient.getSubscriptions()
+            pending = response.items
             isDirty = false
             loadState = .loaded
-            logger.info("subscriptions loaded device=\(self.deviceId, privacy: .public) count=\(response.rules.count, privacy: .public)")
+            logger.info("subscriptions loaded count=\(response.items.count, privacy: .public)")
         } catch {
             logger.error("subscription load failed: \(error.localizedDescription, privacy: .public)")
             loadState = .failed(error.localizedDescription)
@@ -89,7 +101,7 @@ final class BulletinSubscriptionsStore {
     /// simulator is sub-second.
     func save() async {
         saveState = .saving
-        logger.info("subscription save starting device=\(self.deviceId, privacy: .public) ruleCount=\(self.pending.count, privacy: .public)")
+        logger.info("subscription save starting ruleCount=\(self.pending.count, privacy: .public)")
         // Snapshot the pre-save clientIds in their current order. The server
         // PUT does delete + insert preserving order, so the response rules
         // line up with the request rules positionally. We re-attach the
@@ -102,18 +114,15 @@ final class BulletinSubscriptionsStore {
         let maxAttempts = 4
         for attempt in 1...maxAttempts {
             do {
-                let response = try await apiClient.putSubscriptions(
-                    deviceId: deviceId,
-                    rules: pending
-                )
-                var preserved = response.rules
+                let response = try await apiClient.putSubscriptions(rules: pending)
+                var preserved = response.items
                 for (i, oldId) in snapshotClientIds.enumerated() where i < preserved.count {
                     preserved[i].clientId = oldId
                 }
                 pending = preserved
                 isDirty = false
                 saveState = .saved
-                logger.info("subscription save success device=\(self.deviceId, privacy: .public) serverCount=\(response.rules.count, privacy: .public)")
+                logger.info("subscription save success serverCount=\(response.items.count, privacy: .public)")
                 return
             } catch BulletinAPIError.httpStatus(let code, _) where code == 404 {
                 if attempt == maxAttempts {

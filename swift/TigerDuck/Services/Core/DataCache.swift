@@ -134,10 +134,11 @@ final class DataCache {
     /// alias-as-canonical, which is the most truthful recovery available.
     private func applyCustomNameOverlay(
         _ course: SDCourse,
-        customNames: [String: String],
+        customNames: [String: [String: String]],
         clearPollutedCanonical: Bool
     ) -> SDCourse {
-        if let alias = customNames[course.courseNo] {
+        let locale = currentCourseApiLanguage()
+        if let alias = customNames[course.courseNo]?[locale] {
             if clearPollutedCanonical, alias == course.courseName {
                 course.courseName = ""
             }
@@ -184,6 +185,10 @@ final class DataCache {
         return Set(ids)
     }
 
+    func replaceArchivedAssignmentIds(_ ids: Set<String>) {
+        save(Array(ids), to: "archived_assignments.json", in: persistentDir)
+    }
+
     // MARK: - Locally Completed Assignment IDs (local, persistent, survives Moodle refresh)
 
     func addLocallyCompletedAssignmentId(_ id: String) {
@@ -201,6 +206,10 @@ final class DataCache {
     func loadLocallyCompletedAssignmentIds() -> Set<String> {
         let ids: [String] = load(from: "locally_completed_assignments.json", in: persistentDir) ?? []
         return Set(ids)
+    }
+
+    func replaceLocallyCompletedAssignmentIds(_ ids: Set<String>) {
+        save(Array(ids), to: "locally_completed_assignments.json", in: persistentDir)
     }
 
     // MARK: - Bulletins
@@ -262,12 +271,48 @@ final class DataCache {
 
     // MARK: - Course Custom Names
 
-    func saveCourseCustomNames(_ names: [String: String]) {
+    func saveCourseCustomNames(_ names: [String: [String: String]]) {
         save(names, to: "course_custom_names.json", in: persistentDir)
     }
 
-    func loadCourseCustomNames() -> [String: String] {
-        load(from: "course_custom_names.json", in: persistentDir) ?? [:]
+    func loadCourseCustomNames() -> [String: [String: String]] {
+        let url = persistentDir.appendingPathComponent("course_custom_names.json")
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        // Current per-locale shape.
+        if let perLocale = try? decoder.decode([String: [String: String]].self, from: data) {
+            return perLocale
+        }
+        // Migrate the legacy flat `courseNo → name` shape (same filename, from
+        // before per-locale custom names) by nesting each value under the
+        // current course API locale, then persist so this fallback runs once.
+        // Read directly (rather than via `load`) so the legacy shape doesn't
+        // trip `load`'s decode-error reporting.
+        guard let legacy = try? decoder.decode([String: String].self, from: data),
+              !legacy.isEmpty
+        else {
+            return [:]
+        }
+        let locale = currentCourseApiLanguage()
+        let migrated = legacy.mapValues { [locale: $0] }
+        saveCourseCustomNames(migrated)
+        return migrated
+    }
+
+    /// Flattened view of custom names for the current course API locale.
+    /// Returns `courseNo → name` resolved against `currentCourseApiLanguage()`.
+    /// Callers that only need the display name in the active locale (Watch
+    /// sync, widgets, push payloads) use this instead of the full per-locale
+    /// dict.
+    func loadCourseCustomNamesFlat() -> [String: String] {
+        let locale = currentCourseApiLanguage()
+        let perLocale = loadCourseCustomNames()
+        var flat: [String: String] = [:]
+        for (courseNo, locales) in perLocale {
+            if let name = locales[locale] {
+                flat[courseNo] = name
+            }
+        }
+        return flat
     }
 
     // MARK: - Course Color Map

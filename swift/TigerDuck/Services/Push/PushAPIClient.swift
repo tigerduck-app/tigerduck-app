@@ -10,25 +10,30 @@ import os
 final class PushAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    private let sharedSecretProvider: @Sendable (URL) -> String?
+    /// Returns a `Bearer <token>` string for the v3 JWT auth flow, or `nil`
+    /// when the user is not logged in (unauthenticated requests are still
+    /// attempted so the server can respond with 401 rather than silently
+    /// dropping calls before auth is wired up end-to-end).
+    private let authHeaderProvider: @Sendable () async -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
-    /// `baseURLProvider` is re-evaluated on every request, and the
-    /// resolved URL is then fed to `sharedSecretProvider` so the secret
-    /// is selected as a pair with the host actually being hit. A Debug
-    /// build that switches the API endpoint at runtime (via
-    /// `DebugEndpointView`) takes effect on the next push call without
-    /// an app relaunch — and if the override points at the public host,
-    /// the request carries the production `APIToken` instead of the
-    /// local `DebugAPIToken` that pairs with `DebugServerURL`.
+    /// `baseURLProvider` is re-evaluated on every request so a Debug build
+    /// that switches the API endpoint at runtime (via `DebugEndpointView`)
+    /// takes effect on the next push call without an app relaunch.
+    ///
+    /// `authHeaderProvider` is an async closure so callers can supply the
+    /// `AuthTokenManager.authorizationHeader()` actor method directly. The
+    /// default closure returns `nil` (no auth header), matching the
+    /// pre-v3 behaviour for existing tests and Debug builds that have not
+    /// yet wired up an `AuthTokenManager`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        sharedSecretProvider: @escaping @Sendable (URL) -> String? = { PushServerConfig.resolveSharedSecret(for: $0) }
+        authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
     ) {
         self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
-        self.sharedSecretProvider = sharedSecretProvider
+        self.authHeaderProvider = authHeaderProvider
     }
 
     // MARK: - Public surface
@@ -38,8 +43,8 @@ final class PushAPIClient: Sendable {
     }
 
     func unregisterDevice(deviceId: String) async throws {
-        let body = PushAPI.DeviceUnregisterRequest(deviceId: deviceId)
-        _ = try await postExpectingNoBody(path: "/devices/unregister", body: body)
+        let safeDevice = Self.percentEncoded(deviceId)
+        try await delete(path: "/devices/\(safeDevice)")
     }
 
     /// PATCH the user-facing server-push opt-out. Called from the Settings
@@ -47,9 +52,21 @@ final class PushAPIClient: Sendable {
     /// `/devices/register` call.
     func updateDevicePreferences(
         deviceId: String,
-        serverPushEnabled: Bool
+        serverPushEnabled: Bool? = nil,
+        syncCourses: Bool? = nil,
+        syncCourseColors: Bool? = nil,
+        syncCourseNames: Bool? = nil,
+        syncAssignments: Bool? = nil,
+        cloudSyncEnabled: Bool? = nil
     ) async throws -> PushAPI.DevicePreferencesResponse {
-        let body = PushAPI.DevicePreferencesRequest(serverPushEnabled: serverPushEnabled)
+        let body = PushAPI.DevicePreferencesRequest(
+            serverPushEnabled: serverPushEnabled,
+            syncCourses: syncCourses,
+            syncCourseColors: syncCourseColors,
+            syncCourseNames: syncCourseNames,
+            syncAssignments: syncAssignments,
+            cloudSyncEnabled: cloudSyncEnabled
+        )
         let safeDevice = Self.percentEncoded(deviceId)
         return try await patch(
             path: "/devices/\(safeDevice)/preferences",
@@ -62,8 +79,9 @@ final class PushAPIClient: Sendable {
         try await post(path: "/schedule/sync", body: request, returning: PushAPI.ScheduleSyncResponse.self)
     }
 
+    #if os(iOS)
     func registerLiveActivityToken(
-        _ request: PushAPI.LiveActivityTokenRegisterRequest
+        _ request: PushAPI.LiveActivityRegisterV3Request
     ) async throws -> PushAPI.LiveActivityTokenRegisterResponse {
         try await post(
             path: "/live-activities/register",
@@ -71,16 +89,123 @@ final class PushAPIClient: Sendable {
             returning: PushAPI.LiveActivityTokenRegisterResponse.self
         )
     }
+    #endif
 
-    func cancelSchedule(deviceId: String, sourceId: String) async throws {
-        let safeDevice = Self.percentEncoded(deviceId)
+    /// v3: device identity comes from the JWT; only `sourceId` is needed in the path.
+    func cancelSchedule(sourceId: String) async throws {
         let safeSource = Self.percentEncoded(sourceId)
+        try await delete(path: "/schedule/\(safeSource)")
+    }
+
+    // MARK: - Credential refresh
+
+    func updateCredentials(
+        moodleToken: String,
+        moodlePrivateToken: String?
+    ) async throws -> PushAPI.UpdateCredentialsResponse {
+        let body = PushAPI.UpdateCredentialsRequest(
+            moodleToken: moodleToken,
+            moodlePrivateToken: moodlePrivateToken
+        )
+        return try await patch(
+            path: "/auth/credentials",
+            body: body,
+            returning: PushAPI.UpdateCredentialsResponse.self
+        )
+    }
+
+    // MARK: - Override sync
+
+    func patchAssignmentOverride(
+        moodleAssignmentId: String,
+        localStatus: String
+    ) async throws -> PushAPI.AssignmentOverrideResponse {
+        let body = PushAPI.AssignmentOverrideRequest(localStatus: localStatus)
+        return try await patch(
+            path: "/sync/assignments/\(moodleAssignmentId)/override",
+            body: body,
+            returning: PushAPI.AssignmentOverrideResponse.self
+        )
+    }
+
+    func patchCourseOverride(
+        moodleCourseId: String,
+        colorHex: String? = nil,
+        customName: String? = nil,
+        locale: String? = nil
+    ) async throws -> PushAPI.CourseOverrideResponse {
+        let body = PushAPI.CourseOverrideRequest(
+            colorHex: colorHex,
+            customName: customName,
+            locale: locale
+        )
+        return try await patch(
+            path: "/sync/courses/\(moodleCourseId)/override",
+            body: body,
+            returning: PushAPI.CourseOverrideResponse.self
+        )
+    }
+
+    // MARK: - Course upload
+
+    /// Fire-and-forget upload of the user's enrolled course list so the
+    /// backend can populate its `courses` table for cross-device sync,
+    /// analytics, and course-search indexing.
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
+        _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
+    }
+
+    func deleteAllCourses() async throws {
+        try await delete(path: "/sync/courses")
+    }
+
+    func deleteCourse(courseKey: String) async throws {
+        try await delete(path: "/sync/courses/\(courseKey)")
+    }
+
+    // MARK: - Assignment upload
+
+    /// Fire-and-forget upload of the user's current assignment list so the
+    /// backend can populate its `assignments` table for cross-device sync
+    /// and notification scheduling.
+    func uploadAssignments(_ request: PushAPI.AssignmentUploadRequest) async throws {
+        _ = try await postExpectingNoBody(path: "/sync/assignments/upload", body: request)
+    }
+
+    // MARK: - Sync
+
+    /// Lightweight revision check. Returns the current server-side revision
+    /// number so the caller can decide whether a full sync is needed.
+    func fetchRevision() async throws -> Int {
         let baseURL = baseURLProvider()
-        let url = baseURL.appendingPathComponent("schedule/\(safeDevice)/\(safeSource)")
+        let url = baseURL.appendingPathComponent("sync/revision")
         var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        applyAuth(to: &request, baseURL: baseURL)
-        _ = try await execute(request)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        await applyAuth(to: &request)
+        let data = try await execute(request)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let revision = json["revision"] as? Int else {
+            throw PushAPIError.decodingFailed(
+                NSError(domain: "PushAPI", code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Missing 'revision' in response"])
+            )
+        }
+        return revision
+    }
+
+    func fetchFullSync() async throws -> [String: Any] {
+        let baseURL = baseURLProvider()
+        let url = baseURL.appendingPathComponent("sync/full")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        await applyAuth(to: &request)
+        let data = try await execute(request)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw PushAPIError.decodingFailed(NSError(domain: "PushAPI", code: -1))
+        }
+        return json
     }
 
     /// Health check. Intentionally unauthenticated — the push server's
@@ -98,7 +223,7 @@ final class PushAPIClient: Sendable {
         body: Request,
         returning: Response.Type
     ) async throws -> Response {
-        var request = try makePostRequest(path: path, body: body)
+        var request = try await makePostRequest(path: path, body: body)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data = try await execute(request)
         do {
@@ -113,7 +238,7 @@ final class PushAPIClient: Sendable {
         path: String,
         body: Request
     ) async throws -> Data {
-        let request = try makePostRequest(path: path, body: body)
+        let request = try await makePostRequest(path: path, body: body)
         return try await execute(request)
     }
 
@@ -122,7 +247,7 @@ final class PushAPIClient: Sendable {
         body: Request,
         returning: Response.Type
     ) async throws -> Response {
-        var request = try makePostRequest(path: path, body: body)
+        var request = try await makePostRequest(path: path, body: body)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data = try await execute(request)
@@ -134,16 +259,22 @@ final class PushAPIClient: Sendable {
         }
     }
 
-    private func makePostRequest<Request: Encodable>(path: String, body: Request) throws -> URLRequest {
-        // Resolve baseURL once so the secret provider sees the same host
-        // the request is going to — no window for an override flip
-        // between URL and secret lookups.
+    private func delete(path: String) async throws {
+        let baseURL = baseURLProvider()
+        let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        await applyAuth(to: &request)
+        _ = try await execute(request)
+    }
+
+    private func makePostRequest<Request: Encodable>(path: String, body: Request) async throws -> URLRequest {
         let baseURL = baseURLProvider()
         let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -152,15 +283,12 @@ final class PushAPIClient: Sendable {
         return request
     }
 
-    /// Attach the `X-Push-Token` shared-secret header when one is
-    /// configured. No-op for dev builds that leave the secret unset;
-    /// mirrors the server's behaviour when `TIGERDUCK_API_SHARED_SECRET`
-    /// is empty. The secret is chosen from `baseURL`'s host so a Debug
-    /// override pointed at the public apex carries `APIToken` instead of
-    /// the local-backend `DebugAPIToken`.
-    private func applyAuth(to request: inout URLRequest, baseURL: URL) {
-        guard let secret = sharedSecretProvider(baseURL), !secret.isEmpty else { return }
-        request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
+    /// Attach the `Authorization: Bearer <token>` header when the
+    /// `authHeaderProvider` returns a non-nil value. No-op when the user
+    /// is not logged in or the provider is not wired (e.g. unit tests).
+    private func applyAuth(to request: inout URLRequest) async {
+        guard let header = await authHeaderProvider(), !header.isEmpty else { return }
+        request.setValue(header, forHTTPHeaderField: "Authorization")
     }
 
     private func execute(_ request: URLRequest) async throws -> Data {
@@ -170,7 +298,7 @@ final class PushAPIClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .public)")
+            logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
             throw PushAPIError.httpStatus(http.statusCode, body: snippet)
         }
         return data

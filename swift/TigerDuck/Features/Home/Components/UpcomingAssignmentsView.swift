@@ -130,22 +130,26 @@ struct UpcomingAssignmentsView: View {
 
         let trailing: SwipeActionDescriptor?
         switch status {
-        case .pending, .overdueAcceptable, .overdueRejected:
-            trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore"), systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
         case .archived:
             trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
         default:
-            trailing = nil
+            if assignment.isArchived {
+                trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUnarchive?(assignment) }
+            } else {
+                trailing = SwipeActionDescriptor(label: String(localized: "assignment_ignore"), systemImage: "archivebox.fill", tint: gray) { onArchive?(assignment) }
+            }
         }
 
         let leading: SwipeActionDescriptor?
         switch status {
-        case .pending, .overdueAcceptable, .overdueRejected:
-            leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete"), systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
         case .locallyCompleted:
             leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
         default:
-            leading = nil
+            if assignment.isLocallyCompleted {
+                leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete_undo"), systemImage: "arrow.uturn.backward", tint: gray) { onUndoComplete?(assignment) }
+            } else {
+                leading = SwipeActionDescriptor(label: String(localized: "assignment_mark_complete"), systemImage: "checkmark.circle.fill", tint: .green) { onMarkComplete?(assignment) }
+            }
         }
 
         return (trailing, leading)
@@ -198,6 +202,12 @@ struct UpcomingAssignmentsView: View {
         policy: VisualStylePolicy
     ) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
+            if let extra = secondaryBadge(for: assignment, status: status, now: now) {
+                Text(extra.label)
+                    .font(statusFont(status: status))
+                    .foregroundStyle(extra.tint)
+                    .lineLimit(1)
+            }
             if let label = status.badgeLabel {
                 Text(label)
                     .font(statusFont(status: status))
@@ -209,6 +219,28 @@ struct UpcomingAssignmentsView: View {
                 .foregroundStyle(timeColor(status: status, policy: policy))
                 .lineLimit(1)
         }
+    }
+
+    private func secondaryBadge(
+        for assignment: SDAssignment,
+        status: AssignmentStatus,
+        now: Date
+    ) -> (label: String, tint: Color)? {
+        if (status == .submitted || status == .submittedLate) && assignment.isLocallyCompleted {
+            return (AssignmentStatus.locallyCompleted.badgeLabel!, AssignmentStatus.locallyCompleted.tint)
+        }
+        if (status == .submitted || status == .submittedLate) && assignment.isArchived {
+            return (AssignmentStatus.archived.badgeLabel!, AssignmentStatus.archived.tint)
+        }
+        // Overdue + locally completed/archived: show overdue badge
+        if status == .locallyCompleted || status == .archived {
+            guard assignment.dueDate < now else { return nil }
+            if let cutoff = assignment.cutoffDate, now > cutoff {
+                return (AssignmentStatus.overdueRejected.badgeLabel!, AssignmentStatus.overdueRejected.tint)
+            }
+            return (AssignmentStatus.overdueAcceptable.badgeLabel!, AssignmentStatus.overdueAcceptable.tint)
+        }
+        return nil
     }
 
     private func statusFont(status: AssignmentStatus) -> Font {
@@ -242,10 +274,9 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    /// Past rows always render the absolute deadline so an overdue row reads
-    /// `已逾期 / 4/1 23:50` instead of duplicating the "Overdue" badge with
-    /// `relativeTimeString`'s own "Overdue" return. Matches macOS.
     private func timeLabel(for assignment: SDAssignment, now: Date) -> String {
+        // Past-due rows render the absolute deadline rather than the relative
+        // "Overdue" string, which would duplicate the status badge. Matches macOS.
         if showAbsoluteTime || assignment.dueDate < now {
             return assignment.dueDate.absoluteTimeString
         }
@@ -286,10 +317,9 @@ private struct SwipeableRow<Content: View>: View {
     let content: Content
 
     @State private var offset: CGFloat = 0
-    /// Set the instant the drag moves the row; cleared on the next Button
-    /// press-down (touch-down of the following interaction). Owned by
-    /// `dragGesture` + the tap's `onPressChanged` hook; the tap action only
-    /// reads it. See `tappableContent` for why this exists.
+    /// Set on ANY drag movement (>16pt, any direction); cleared on the
+    /// next press-down via `SwipeableButtonStyle`. Prevents swipe and
+    /// scroll from accidentally opening Moodle.
     @State private var didSwipe = false
 
     private let triggerThreshold: CGFloat = 96
@@ -318,48 +348,18 @@ private struct SwipeableRow<Content: View>: View {
 
     @ViewBuilder
     private var tappableContent: some View {
-        if let tapHint {
-            // A real `Button` (not `.onTapGesture`) so the first tap wins iOS 18
-            // gesture arbitration against Home's ScrollView instead of needing a
-            // second press; the swipe-to-reveal drag rides alongside via
-            // `.simultaneousGesture` so it isn't blocked. `Button` supplies the
-            // `.isButton` trait automatically.
+        Button {
+            guard !didSwipe, tapHint != nil else { return }
+            onTap()
+        } label: {
             content
-                .offset(x: offset)
-                .scrollSafeTapAction(
-                    onPressChanged: { isPressed in
-                        // Touch-down of a fresh interaction clears the swipe
-                        // latch. The Button reports `isPressed == true` before
-                        // it ever delivers its tap action on release, and
-                        // `dragGesture` only sets `didSwipe` once the row moves,
-                        // so the latch always reflects the current interaction
-                        // — no ordering or timer assumptions about when the
-                        // simultaneous tap/drag callbacks fire.
-                        if isPressed { didSwipe = false }
-                    }
-                ) {
-                    // A swipe-release also delivers a Button tap because the
-                    // drag rides alongside via `.simultaneousGesture`. `didSwipe`
-                    // is set the moment the drag moves the row and stays set
-                    // until the next press-down, so this tap reliably bows out
-                    // and lets `dragGesture.onEnded` solely own the swipe action
-                    // + snap-back. Reading shared `offset` here instead raced:
-                    // `onEnded` always resets it to 0, so the tap and the
-                    // drag-end could each see the other's reset and the row would
-                    // either skip its swipe action or navigate right after it.
-                    guard !didSwipe else { return }
-                    onTap()
-                }
-                .simultaneousGesture(dragGesture)
-                .accessibilityHint(Text(tapHint))
-        } else {
-            // No tap destination: keep the row non-interactive (no button trait)
-            // while still swipeable.
-            content
-                .contentShape(Rectangle())
-                .offset(x: offset)
-                .gesture(dragGesture)
         }
+        .buttonStyle(SwipeableButtonStyle(didSwipe: $didSwipe))
+        .contentShape(Rectangle())
+        .offset(x: offset)
+        .simultaneousGesture(dragGesture)
+        .accessibilityAddTraits(tapHint != nil ? .isButton : [])
+        .accessibilityHint(tapHint.map { Text($0) } ?? Text(""))
     }
 
     @ViewBuilder
@@ -393,34 +393,20 @@ private struct SwipeableRow<Content: View>: View {
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 16)
             .onChanged { value in
+                didSwipe = true
                 let dx = value.translation.width
                 let dy = value.translation.height
-                // Defer to the parent ScrollView for primarily-vertical drags
-                // so the home page can still scroll while a finger is over a row.
                 guard abs(dx) > abs(dy) * 1.3 else { return }
                 if dx > 0 && leadingAction == nil { return }
                 if dx < 0 && trailingAction == nil { return }
                 offset = dx
-                // Mark the gesture a swipe the moment it moves the row, so the
-                // simultaneous Button tap on release bows out of `onTap()`.
-                didSwipe = true
             }
             .onEnded { _ in
-                // `offset` is only ever mutated by horizontal-intent updates
-                // in `onChanged`, so reading it here (instead of the raw
-                // translation) is what gates the trigger on the same
-                // dx-vs-dy rule. A mostly-vertical scroll that happens to
-                // accumulate >threshold horizontal drift never moves the
-                // row, so `offset` stays 0 and no action fires.
                 let triggered = abs(offset) > triggerThreshold
                 if triggered, let action = (offset > 0 ? leadingAction : trailingAction) {
                     action.action()
                 }
                 snapBack()
-                // `didSwipe` is intentionally NOT cleared here: it must outlive
-                // the simultaneous Button tap this release also delivers, whose
-                // ordering relative to `onEnded` is undefined. The next
-                // interaction's press-down clears it (see `tappableContent`).
             }
     }
 
@@ -428,5 +414,16 @@ private struct SwipeableRow<Content: View>: View {
         withAnimation(snapAnimation) {
             offset = 0
         }
+    }
+}
+
+private struct SwipeableButtonStyle: ButtonStyle {
+    @Binding var didSwipe: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed { didSwipe = false }
+            }
     }
 }

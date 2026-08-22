@@ -1040,6 +1040,7 @@
 					SDCalendarEvent.swift,
 					SDCourse.swift,
 					AuthService.swift,
+					AuthTokenManager.swift,
 					KeychainManager.swift,
 					SecureStore.swift,
 					SSOWebAuthSession.swift,
@@ -1056,6 +1057,21 @@
 					MoodleTokenMigration.swift,
 					SemesterAttributionCacheMigration.swift,
 					PushServerConfig.swift,
+					PushCoordinator.swift,
+					PushRegistrationService.swift,
+					PushIdentity.swift,
+					PushAPIClient.swift,
+					PushAPIDTO.swift,
+					PushTokenRelay.swift,
+					ScheduleSyncService.swift,
+					CloudSyncCoordinator.swift,
+					SyncOutbox.swift,
+					NotificationDelegate.swift,
+					AppURLs.swift,
+					LiveActivity/Models/LiveActivitySnapshot.swift,
+					LiveActivity/Models/LiveActivityScenarioKind.swift,
+					LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
+					LiveActivity/Resolvers/CourseTimelineResolver.swift,
 					BulletinAPIClient.swift,
 					BulletinAPIDTO.swift,
 					CalendarService.swift,
@@ -1113,6 +1129,7 @@
 					MacScoreView.swift,
 					ScoreViewModel.swift,
 					MacClassTableView.swift,
+					MacPushAppDelegate.swift,
 					MacSettingsScene.swift,
 					MacContentLayout.swift,
 					MacAssignmentsList.swift,
@@ -1138,6 +1155,8 @@
 					MinuteTicker.swift,
 					EqualHeightCards.swift,
 					BadgeOverlay.swift,
+					ServerStatusTracker.swift,
+					ServerStatusIcons.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1159,7 +1178,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1221,6 +1240,7 @@
 					SDCalendarEvent.swift,
 					SDCourse.swift,
 					AuthService.swift,
+					AuthTokenManager.swift,
 					KeychainManager.swift,
 					SecureStore.swift,
 					SSOWebAuthSession.swift,
@@ -1237,6 +1257,21 @@
 					MoodleTokenMigration.swift,
 					SemesterAttributionCacheMigration.swift,
 					PushServerConfig.swift,
+					PushCoordinator.swift,
+					PushRegistrationService.swift,
+					PushIdentity.swift,
+					PushAPIClient.swift,
+					PushAPIDTO.swift,
+					PushTokenRelay.swift,
+					ScheduleSyncService.swift,
+					CloudSyncCoordinator.swift,
+					SyncOutbox.swift,
+					NotificationDelegate.swift,
+					AppURLs.swift,
+					LiveActivity/Models/LiveActivitySnapshot.swift,
+					LiveActivity/Models/LiveActivityScenarioKind.swift,
+					LiveActivity/Resolvers/LiveActivityScenarioResolver.swift,
+					LiveActivity/Resolvers/CourseTimelineResolver.swift,
 					BulletinAPIClient.swift,
 					BulletinAPIDTO.swift,
 					CalendarService.swift,
@@ -1294,6 +1329,7 @@
 					MacScoreView.swift,
 					ScoreViewModel.swift,
 					MacClassTableView.swift,
+					MacPushAppDelegate.swift,
 					MacSettingsScene.swift,
 					MacContentLayout.swift,
 					MacAssignmentsList.swift,
@@ -1319,6 +1355,8 @@
 					MinuteTicker.swift,
 					EqualHeightCards.swift,
 					BadgeOverlay.swift,
+					ServerStatusTracker.swift,
+					ServerStatusIcons.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1340,7 +1378,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1484,7 +1522,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1521,7 +1559,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1559,7 +1597,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1596,7 +1634,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1739,7 +1777,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1785,7 +1823,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

@@ -54,10 +54,13 @@ extension AssignmentStatus {
         self == .overdueRejected
     }
 
-    /// Whether the row should show swipe actions (ignore / mark complete).
-    /// Any not-yet-submitted row can be acted upon locally; submitted rows are
-    /// Moodle-authoritative and remain non-swipeable.
+    /// Whether the row should show swipe actions (ignore / mark complete / undo).
+    /// Only Moodle-submitted rows are non-swipeable (authoritative from Moodle).
+    /// Archived and locally-completed rows are swipeable so users can undo.
     var isSwipeActionEligible: Bool {
-        self == .pending || self == .overdueAcceptable || self == .overdueRejected
+        switch self {
+        case .submitted, .submittedLate: return false
+        default: return true
+        }
     }
 }
