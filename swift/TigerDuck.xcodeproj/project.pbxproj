@@ -175,6 +175,8 @@
 		B244D7912FB87B590040D6FA /* Exceptions for "TigerDuckWidgets" folder in "TigerDuck" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Logic/WidgetTaipei.swift,
+				Logic/WidgetTimelineDerivation.swift,
 				Snapshot/WidgetSnapshotStore.swift,
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
@@ -1021,6 +1023,11 @@
 					AppConstants.swift,
 					AppDefaults.swift,
 					AppState.swift,
+					"AppState+Conflicts.swift",
+					"AppState+Account.swift",
+					"AppState+PushServer.swift",
+					"AppState+BackendSync.swift",
+					"AppState+RevisionPolling.swift",
 					CourseCardFontScale.swift,
 					BrowserPreference.swift,
 					MoodleOpenTarget.swift,
@@ -1141,6 +1148,8 @@
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
+					WidgetTimelineDerivation.swift,
+					WidgetTaipei.swift,
 					WidgetSnapshotWriter.swift,
 					WidgetReloadCoordinator.swift,
 					CanonicalCourseProvider.swift,
@@ -1221,6 +1230,11 @@
 					AppConstants.swift,
 					AppDefaults.swift,
 					AppState.swift,
+					"AppState+Conflicts.swift",
+					"AppState+Account.swift",
+					"AppState+PushServer.swift",
+					"AppState+BackendSync.swift",
+					"AppState+RevisionPolling.swift",
 					CourseCardFontScale.swift,
 					BrowserPreference.swift,
 					MoodleOpenTarget.swift,
@@ -1341,6 +1355,8 @@
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
+					WidgetTimelineDerivation.swift,
+					WidgetTaipei.swift,
 					WidgetSnapshotWriter.swift,
 					WidgetReloadCoordinator.swift,
 					CanonicalCourseProvider.swift,

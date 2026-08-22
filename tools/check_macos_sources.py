@@ -46,7 +46,17 @@ EXCLUDED_LIST = ROOT / "tools" / "macos-excluded-sources.txt"
 # (widget/watch extensions, test bundles) build for a single SDK and are not
 # split this way.
 TARGET_ROOTS = ("swift/TigerDuck/", "swift/Shared/")
-TARGET_EXTRA_FILES = ("swift/TigerDuckWidgets/Snapshot/WidgetSnapshotStore.swift",)
+TARGET_ROOT_FOLDERS = {r.split("/")[1] for r in TARGET_ROOTS}
+
+# Files pulled into the app target from *another* synchronized group by a
+# membership exception. Parsed rather than hardcoded: a hardcoded list goes
+# stale exactly the way the allowlist does, which is the bug this whole
+# script exists to catch.
+EXCEPTION_RE = re.compile(
+    r'/\* Exceptions for "([^"]+)" folder in "TigerDuck" target \*/ = \{'
+    r".*?membershipExceptions = \((.*?)\n\s*\);",
+    re.S,
+)
 
 ALLOWLIST_RE = re.compile(
     r'"INCLUDED_SOURCE_FILE_NAMES\[sdk=macosx\*\]" = \(\n(.*?)\n\s*\);',
@@ -80,19 +90,38 @@ def parse_allowlists() -> list[set[str]]:
     return out
 
 
+def target_extra_files(text: str) -> list[str]:
+    """Swift files the app target picks up from a non-root synchronized group.
+
+    An exception set on a group's *own* target lists files to leave OUT; on
+    any other group it lists files to pull IN. Only the latter add sources,
+    so groups that are already target roots are skipped.
+    """
+    extra = []
+    for folder, block in EXCEPTION_RE.findall(text):
+        if folder in TARGET_ROOT_FOLDERS:
+            continue
+        for line in block.strip().split("\n"):
+            entry = line.strip().rstrip(",").strip('"')
+            if entry.endswith(".swift"):
+                extra.append(f"swift/{folder}/{entry}")
+    return sorted(extra)
+
+
 def tracked_target_sources() -> list[str]:
+    extras = target_extra_files(PBXPROJ.read_text(encoding="utf-8"))
     patterns = [f"{root}*.swift" for root in TARGET_ROOTS]
     listing = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files", *patterns, *TARGET_EXTRA_FILES],
+        ["git", "-C", str(ROOT), "ls-files", *patterns, *extras],
         capture_output=True,
         text=True,
         check=True,
     ).stdout.split()
-    missing = [f for f in TARGET_EXTRA_FILES if f not in listing]
+    missing = [f for f in extras if f not in listing]
     if missing:
         sys.exit(
-            "error: TARGET_EXTRA_FILES lists files that are not tracked; the "
-            "exception set in project.pbxproj has probably changed:\n"
+            "error: project.pbxproj pulls these files into the app target "
+            "via a membership exception, but git does not track them:\n"
             + "".join(f"    {f}\n" for f in missing)
         )
     return sorted(listing)
