@@ -71,7 +71,7 @@ struct SettingsView: View {
                     showingTabEditor = true
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(String(localized: "settings_color_theme"))
+                    Text(String(localized: "settings_accent_color"))
                     HStack(spacing: 12) {
                         ForEach(AppState.themeColors, id: \.hex) { theme in
                             Button {
