@@ -1,13 +1,13 @@
 import Foundation
 
-enum WidgetDerivedState: Equatable, Sendable {
+enum WidgetDerivedState: nonisolated Equatable, Sendable {
     case signInRequired
     case ongoing([OngoingInfo])
     case nextToday(NextInfo)
     case tomorrowFirst(NextInfo)
     case noMoreClasses
 
-    struct OngoingInfo: Equatable, Sendable {
+    struct OngoingInfo: nonisolated Equatable, Sendable {
         let course: SnapshotCourse
         let startTime: String              // "HH:mm"
         let endTime: String
@@ -15,7 +15,7 @@ enum WidgetDerivedState: Equatable, Sendable {
         let progress: Double               // 0.0…1.0
     }
 
-    struct NextInfo: Equatable, Sendable {
+    struct NextInfo: nonisolated Equatable, Sendable {
         let course: SnapshotCourse
         let startTime: String
         let periodRange: String

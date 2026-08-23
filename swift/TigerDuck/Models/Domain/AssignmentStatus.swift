@@ -4,7 +4,7 @@ import SwiftUI
 /// state, due date, and cutoff date. One enum per row-visible condition
 /// so the view layer just switches on this value instead of re-deriving
 /// rules from dates.
-enum AssignmentStatus: Sendable, Equatable {
+enum AssignmentStatus: Sendable, nonisolated Equatable {
     /// Not submitted, before the due date.
     case pending
     /// Submitted on or before the due date.
