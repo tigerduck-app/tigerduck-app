@@ -1,13 +1,13 @@
 import Foundation
 
-enum WidgetDerivedState: Equatable, Sendable {
+enum WidgetDerivedState: nonisolated Equatable, Sendable {
     case signInRequired
     case ongoing([OngoingInfo])
     case nextToday(NextInfo)
     case tomorrowFirst(NextInfo)
     case noMoreClasses
 
-    struct OngoingInfo: Equatable, Sendable {
+    struct OngoingInfo: nonisolated Equatable, Sendable {
         let course: SnapshotCourse
         let startTime: String              // "HH:mm"
         let endTime: String
@@ -15,10 +15,27 @@ enum WidgetDerivedState: Equatable, Sendable {
         let progress: Double               // 0.0…1.0
     }
 
-    struct NextInfo: Equatable, Sendable {
+    struct NextInfo: nonisolated Equatable, Sendable {
         let course: SnapshotCourse
         let startTime: String
         let periodRange: String
+        let day: Day
+    }
+
+    /// Which day a ``NextInfo`` falls on, relative to the instant the state
+    /// was derived for.
+    ///
+    /// `tomorrowFirst` scans up to seven days ahead, so it is routinely *not*
+    /// tomorrow: a Friday-evening viewer with no weekend classes is looking at
+    /// Monday, and a viewer whose only class today was cancelled is looking at
+    /// the same weekday next week. The view layer needs to tell those apart to
+    /// avoid captioning them "Tomorrow" — Android draws the same distinction
+    /// in `NextClassContent.futureDayLabel`.
+    enum Day: nonisolated Equatable, Sendable {
+        case today
+        case tomorrow
+        /// Further out than tomorrow. 1 = Monday … 7 = Sunday.
+        case later(weekday: Int)
     }
 }
 
@@ -79,11 +96,16 @@ enum WidgetTimelineDerivation {
             return .nextToday(.init(
                 course: pick.0,
                 startTime: snapshot.periodTimes[pick.2]?.start ?? "",
-                periodRange: pick.2
+                periodRange: pick.2,
+                day: .today
             ))
         }
 
-        // 3. Tomorrow first: scan ahead up to 7 weekdays
+        // 3. First class on the next day that has one, scanning up to a full
+        // week ahead. `offset == 7` lands back on today's weekday, which is
+        // what keeps a one-class-a-week timetable from collapsing to
+        // "no more classes" the moment that class is cancelled. Each result
+        // carries its `Day` so the view can caption it honestly.
         let calendar = WidgetTaipei.calendar
         for offset in 1...7 {
             let target = ((weekday - 1 + offset) % 7) + 1
@@ -104,7 +126,8 @@ enum WidgetTimelineDerivation {
                 return .tomorrowFirst(.init(
                     course: pick.0,
                     startTime: snapshot.periodTimes[pick.1]?.start ?? "",
-                    periodRange: pick.1
+                    periodRange: pick.1,
+                    day: offset == 1 ? .tomorrow : .later(weekday: target)
                 ))
             }
         }

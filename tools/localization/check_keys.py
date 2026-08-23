@@ -2,7 +2,7 @@
 """Fail when Swift references a localization key the translation repo lacks.
 
 `String(localized: "x")` returns `"x"` verbatim when the key is missing, so an
-app that has drifted from `localization/` still compiles, still archives, and
+app that has drifted from `app-translation/` still compiles, still archives, and
 still uploads — the raw key only surfaces on a device. TestFlight builds 89-91
 shipped that way. This check turns the drift into a build failure.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SWIFT_DIR = ROOT / "swift"
 # Every locale carries an identical key set, so one reference file is enough.
-REFERENCE = ROOT / "localization" / "generated" / "apple" / "en.lproj" / "Localizable.strings"
+REFERENCE = ROOT / "app-translation" / "generated" / "apple" / "en.lproj" / "Localizable.strings"
 BASELINE = Path(__file__).with_name("known-missing-keys.txt")
 
 PATTERNS = [
@@ -96,7 +96,7 @@ def main() -> int:
     for key in sorted(new):
         for site in new[key]:
             print(f"::error file={site.split(':')[0]},line={site.split(':')[1]}::"
-                  f"Localization key '{key}' has no translation in localization/. "
+                  f"Localization key '{key}' has no translation in app-translation/. "
                   f"It will render as the raw key.")
     print(f"\nerror: {len(new)} localization key(s) missing from the translation "
           f"repo. Add them to tigerduck-app/app-translation and bump the "

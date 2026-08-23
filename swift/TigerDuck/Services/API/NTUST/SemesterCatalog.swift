@@ -23,8 +23,8 @@ enum SemesterCatalog {
         "https://querycourse.ntust.edu.tw/QueryCourse/api/semestersinfo"
     )
 
-    private static let listKey = "semesterCatalog.semesters"
-    private static let selectionKey = "semesterCatalog.selectionSemester"
+    private nonisolated static let listKey = "semesterCatalog.semesters"
+    private nonisolated static let selectionKey = "semesterCatalog.selectionSemester"
     private static let refreshedAtKey = "semesterCatalog.refreshedAt"
 
     /// Term boundaries move on the scale of weeks, so this only has to beat
@@ -35,7 +35,7 @@ enum SemesterCatalog {
     /// Terms offered by the semester picker. Six rather than the previous
     /// four because the catalogue interleaves 暑期 terms (`114H`) between the
     /// regular ones, so four slots would no longer reach back two full years.
-    private static let pickerDepth = 6
+    private nonisolated static let pickerDepth = 6
 
     // Capitalised to match the wire format, same as `CourseSearchResult`.
     // swiftlint:disable identifier_name

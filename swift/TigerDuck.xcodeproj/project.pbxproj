@@ -175,6 +175,8 @@
 		B244D7912FB87B590040D6FA /* Exceptions for "TigerDuckWidgets" folder in "TigerDuck" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Logic/WidgetTaipei.swift,
+				Logic/WidgetTimelineDerivation.swift,
 				Snapshot/WidgetSnapshotStore.swift,
 			);
 			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
@@ -1021,6 +1023,15 @@
 					AppConstants.swift,
 					AppDefaults.swift,
 					AppState.swift,
+					"AppState+Conflicts.swift",
+					"AppState+Account.swift",
+					"AppState+PushServer.swift",
+					"AppState+BackendSync.swift",
+					"AppState+RevisionPolling.swift",
+					"AppState+Lifecycle.swift",
+					"AppState+SyncPresentation.swift",
+					"AppState+SettingsDerived.swift",
+					"AppState+CourseRelabeling.swift",
 					CourseCardFontScale.swift,
 					BrowserPreference.swift,
 					MoodleOpenTarget.swift,
@@ -1129,8 +1140,16 @@
 					MacScoreView.swift,
 					ScoreViewModel.swift,
 					MacClassTableView.swift,
+					"MacClassTableView+Grid.swift",
+					"MacClassTableView+Editing.swift",
 					MacPushAppDelegate.swift,
 					MacSettingsScene.swift,
+					MacGeneralSettingsView.swift,
+					MacAppearanceSettingsView.swift,
+					MacSidebarSettingsView.swift,
+					MacAccountSettingsView.swift,
+					MacDeveloperSettingsView.swift,
+					MacAboutSettingsView.swift,
 					MacContentLayout.swift,
 					MacAssignmentsList.swift,
 					MacWidgetCards.swift,
@@ -1141,6 +1160,8 @@
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
+					WidgetTimelineDerivation.swift,
+					WidgetTaipei.swift,
 					WidgetSnapshotWriter.swift,
 					WidgetReloadCoordinator.swift,
 					CanonicalCourseProvider.swift,
@@ -1221,6 +1242,15 @@
 					AppConstants.swift,
 					AppDefaults.swift,
 					AppState.swift,
+					"AppState+Conflicts.swift",
+					"AppState+Account.swift",
+					"AppState+PushServer.swift",
+					"AppState+BackendSync.swift",
+					"AppState+RevisionPolling.swift",
+					"AppState+Lifecycle.swift",
+					"AppState+SyncPresentation.swift",
+					"AppState+SettingsDerived.swift",
+					"AppState+CourseRelabeling.swift",
 					CourseCardFontScale.swift,
 					BrowserPreference.swift,
 					MoodleOpenTarget.swift,
@@ -1329,8 +1359,16 @@
 					MacScoreView.swift,
 					ScoreViewModel.swift,
 					MacClassTableView.swift,
+					"MacClassTableView+Grid.swift",
+					"MacClassTableView+Editing.swift",
 					MacPushAppDelegate.swift,
 					MacSettingsScene.swift,
+					MacGeneralSettingsView.swift,
+					MacAppearanceSettingsView.swift,
+					MacSidebarSettingsView.swift,
+					MacAccountSettingsView.swift,
+					MacDeveloperSettingsView.swift,
+					MacAboutSettingsView.swift,
 					MacContentLayout.swift,
 					MacAssignmentsList.swift,
 					MacWidgetCards.swift,
@@ -1341,6 +1379,8 @@
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
+					WidgetTimelineDerivation.swift,
+					WidgetTaipei.swift,
 					WidgetSnapshotWriter.swift,
 					WidgetReloadCoordinator.swift,
 					CanonicalCourseProvider.swift,
@@ -1404,6 +1444,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "WatchSyncCoordinatorTests.swift WatchPayloadEncoderTests.swift TimeSliderViewModelTests.swift";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
@@ -1412,7 +1453,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1431,6 +1472,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "WatchSyncCoordinatorTests.swift WatchPayloadEncoderTests.swift TimeSliderViewModelTests.swift";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
@@ -1439,7 +1481,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1660,12 +1702,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.ntust.app.TigerDuckWatch-Watch-AppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator watchos watchsimulator";
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1684,12 +1727,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.ntust.app.TigerDuckWatch-Watch-AppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator watchos watchsimulator";
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1708,12 +1752,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.ntust.app.TigerDuckWatch-Watch-AppUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator watchos watchsimulator";
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1731,12 +1776,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.ntust.app.TigerDuckWatch-Watch-AppUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator watchos watchsimulator";
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1941,7 +1987,7 @@
 			repositoryURL = "https://github.com/scinfu/SwiftSoup";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.13.4;
+				minimumVersion = 2.13.7;
 			};
 		};
 		60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
@@ -1957,7 +2003,7 @@
 			repositoryURL = "https://github.com/sindresorhus/Defaults";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 9.0.8;
+				minimumVersion = 9.0.9;
 			};
 		};
 		60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {

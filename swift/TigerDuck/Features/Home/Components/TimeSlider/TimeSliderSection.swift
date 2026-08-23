@@ -77,7 +77,6 @@ struct TimeSliderSection: View {
         let policy = appState.visualStylePolicy
         return TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(spacing: 12) {
-                // Course card
                 CourseTimeCard(
                     state: viewModel.currentCourseState,
                     onSelect: onSelectCourse,

@@ -1,5 +1,5 @@
-[submodule "localization"]
-	path = localization
+[submodule "app-translation"]
+	path = app-translation
 	url = https://github.com/tigerduck-app/app-translation.git
 [submodule "name-abbr"]
 	path = name-abbr

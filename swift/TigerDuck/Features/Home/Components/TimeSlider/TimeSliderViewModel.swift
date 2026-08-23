@@ -73,14 +73,12 @@ final class TimeSliderViewModel {
         x += paddingBefore
 
         for (i, slot) in timeSlots.enumerated() {
-            // Slot start
             result.append((time: slot.start, x: x))
 
             // Slot duration (linear)
             let durationMin = slot.end.timeIntervalSince(slot.start) / 60
             x += CGFloat(durationMin) * ppm
 
-            // Slot end
             result.append((time: slot.end, x: x))
 
             // Gap to next slot

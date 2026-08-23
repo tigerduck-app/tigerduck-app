@@ -228,14 +228,40 @@ struct MoodleHomeworkRegressionTests {
         #expect(assignment.status(now: Date()) == .submittedLate)
     }
 
+    /// Pins which localization key each case reaches for, plus the two
+    /// structural rules the view layer relies on: `.pending` is the only case
+    /// without a badge, and no two cases share a label.
+    ///
+    /// Deliberately does not assert display copy. These were Chinese literals
+    /// until `badgeLabel` moved to `String(localized:)`, after which they
+    /// asserted whatever language the test process happened to resolve — `en`
+    /// here, so every one of them failed. Three had also drifted from the
+    /// current zh-Hant wording, so even running under zh-Hant would not have
+    /// saved them. Copy belongs to the translation submodule, not to a test.
     @Test func assignmentStatus_badgeMetadataMatchesCase() {
         #expect(AssignmentStatus.pending.badgeLabel == nil)
-        #expect(AssignmentStatus.submitted.badgeLabel == "已繳交")
-        #expect(AssignmentStatus.submittedLate.badgeLabel == "已遲交")
-        #expect(AssignmentStatus.overdueAcceptable.badgeLabel == "逾期")
-        #expect(AssignmentStatus.overdueRejected.badgeLabel == "逾期拒收")
-        #expect(AssignmentStatus.archived.badgeLabel == "已忽略")
-        #expect(AssignmentStatus.locallyCompleted.badgeLabel == "標示為完成")
+        #expect(AssignmentStatus.submitted.badgeLabel
+                == String(localized: "assignment_status_submitted"))
+        #expect(AssignmentStatus.submittedLate.badgeLabel
+                == String(localized: "assignment_status_submitted_late"))
+        #expect(AssignmentStatus.overdueAcceptable.badgeLabel
+                == String(localized: "assignment_status_overdue"))
+        #expect(AssignmentStatus.overdueRejected.badgeLabel
+                == String(localized: "assignment_status_overdue_rejected"))
+        #expect(AssignmentStatus.archived.badgeLabel
+                == String(localized: "assignment_filter_ignored"))
+        #expect(AssignmentStatus.locallyCompleted.badgeLabel
+                == String(localized: "assignment_mark_complete"))
+
+        // `UpcomingAssignmentsView` force-unwraps `badgeLabel` for the
+        // archived / locally-completed / overdue rows, so a new case landing
+        // in the `nil` branch would crash the row rather than render blank.
+        let labelled: [AssignmentStatus] = [
+            .submitted, .submittedLate, .overdueAcceptable,
+            .overdueRejected, .archived, .locallyCompleted,
+        ]
+        #expect(labelled.allSatisfy { $0.badgeLabel?.isEmpty == false })
+        #expect(Set(labelled.compactMap(\.badgeLabel)).count == labelled.count)
 
         #expect(!AssignmentStatus.overdueAcceptable.usesEmphasis)
         #expect(AssignmentStatus.overdueRejected.usesEmphasis)
@@ -340,14 +366,20 @@ struct MoodleHomeworkRegressionTests {
         let all = [ignoredOnly, ignoredThenSubmitted].allCandidates()
         #expect(all.map(\.assignmentId) == ["ignored+submitted"])
 
-        // 已忽略 requires !isCompleted, so it only contains the pure-ignored
-        // row. Together with the assertion above this guarantees the
-        // submitted-archived row is reachable from at least one filter.
+        // 已忽略 keys purely off the local archive flag, so the submitted row
+        // stays in it too — the row is reachable from both filters, which is
+        // what `12a8687` aligned iOS to Android's ignored tab for. Ordered by
+        // due date ascending, so the older row comes first.
         let ignored = [ignoredOnly, ignoredThenSubmitted].ignoredSorted()
-        #expect(ignored.map(\.assignmentId) == ["ignored"])
+        #expect(ignored.map(\.assignmentId) == ["ignored+submitted", "ignored"])
     }
 
-    @Test func arrayIgnoredSorted_onlyIncludesIgnoredUnsubmittedAssignments() {
+    /// `ignoredSorted` filters on the local archive flag alone. It used to
+    /// also require `!isCompleted`; `12a8687` dropped that to match Android,
+    /// whose 已忽略 tab is `all.filter { it.assignmentId in ignoredIds }`.
+    /// Ignoring is the user saying "stop showing me this", and Moodle later
+    /// recording a submission is not them taking it back.
+    @Test func arrayIgnoredSorted_includesEveryArchivedRowByDueDate() {
         let now = Date()
         let ignoredLater = SDAssignment(
             assignmentId: "1", courseNo: "C", courseName: "C", title: "IgnoredLater",
@@ -367,9 +399,14 @@ struct MoodleHomeworkRegressionTests {
         )
 
         let result = [ignoredLater, ignoredEarlier, normal, completedIgnored].ignoredSorted()
-        #expect(result.map(\.assignmentId) == ["2", "1"])
+        // "3" is the only row without the archive flag, so it is the only one
+        // left out; the rest come back oldest-due first.
+        #expect(result.map(\.assignmentId) == ["2", "4", "1"])
         #expect([ignoredLater, ignoredEarlier, normal, completedIgnored].hasIgnored())
-        #expect(![normal, completedIgnored].hasIgnored())
+        // `hasIgnored` reads the same flag, so an archived-then-submitted row
+        // on its own still lights up the 已忽略 tab.
+        #expect([normal, completedIgnored].hasIgnored())
+        #expect(![normal].hasIgnored())
     }
 
     @Test func partitionedByDueDate_putsFutureAscendingBeforePastDescending() {
@@ -425,6 +462,11 @@ struct MoodleHomeworkRegressionTests {
         #expect(after.map(\.assignmentId) == ["y", "x"])
     }
 
+    // ClassTableViewModel is not part of the macOS slice of the app target
+    // (the Mac build draws its timetable from MacClassTableView instead), so
+    // this one case is iOS-only while the rest of the file is platform-neutral.
+    // Same shape as the guard at the top of FlipDetectorTests.
+#if os(iOS)
     @MainActor
     @Test func classTableViewModel_displayLabel_formatsSemesterCode() {
         let vm = ClassTableViewModel()
@@ -432,6 +474,7 @@ struct MoodleHomeworkRegressionTests {
         #expect(vm.displayLabel(for: "1131") == "113-1")
         #expect(vm.displayLabel(for: "X") == "X")
     }
+#endif
 
     @Test func assignmentFilter_rawValuesArePersistableStrings() {
         #expect(AssignmentFilter.incomplete.rawValue == "未完成")

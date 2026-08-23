@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// Three-card bento showing earned / enrolled / total credits. Each card
-/// expands an "in-person + distance" breakdown underneath the headline
-/// number so the layered totals are legible without a legend.
+/// Two-card bento showing earned and enrolled credits.
+///
+/// Only `CreditBreakdown.total` is surfaced. The `inPerson` / `distance`
+/// split the model also carries was written alongside this view in dbcad1d
+/// but committed already commented out, with its labels as bare English
+/// literals rather than `String(localized:)` — which is what it would need
+/// before it could ship in a 67-locale app.
 struct CreditSummaryBento: View {
     @Environment(AppState.self) private var appState
 
@@ -48,28 +52,10 @@ struct CreditSummaryBento: View {
                     .font(TigerDuckTheme.Typography.caption2)
                     .foregroundStyle(Color.textSecondary)
             }
-
-//            HStack(spacing: TigerDuckTheme.Spacing.xs) {
-//                breakdownPill(icon: "person.fill", value: breakdown.inPerson, suffix: "in-person")
-//                breakdownPill(icon: "dot.radiowaves.left.and.right", value: breakdown.distance, suffix: "distance")
-//            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(TigerDuckTheme.Spacing.md)
         .presetCard(policy: appState.visualStylePolicy)
         .frame(maxWidth: wide ? .infinity : nil)
-    }
-
-    private func breakdownPill(icon: String, value: Int, suffix: String) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.caption2)
-            Text("\(value) \(suffix)")
-                .font(.caption2)
-        }
-        .foregroundStyle(Color.textSecondary)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color.white.opacity(0.06), in: Capsule())
     }
 }

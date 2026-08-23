@@ -34,7 +34,7 @@ final class FlipDetector {
     /// without an event means something paused the stream.
     static let maxEventGap: TimeInterval = 1.0
 
-    enum Phase { case unknown, upright, faceDown }
+    enum Phase: nonisolated Equatable { case unknown, upright, faceDown }
 
     /// Immutable state for the debounce machine.
     struct State: Equatable {

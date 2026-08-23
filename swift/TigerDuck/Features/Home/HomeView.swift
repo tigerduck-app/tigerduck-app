@@ -81,7 +81,6 @@ struct HomeView: View {
                     )
                 }
 
-                // Sections
                 ForEach(visibleSections) { section in
                     sectionCell(section)
                 }

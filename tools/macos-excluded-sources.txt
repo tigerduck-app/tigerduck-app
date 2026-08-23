@@ -1,0 +1,198 @@
+# Sources the TigerDuck app target deliberately does NOT compile for macOS.
+#
+# Checked by tools/check_macos_sources.py. This is not the mechanism that
+# excludes them — project.pbxproj does that, by listing everything macOS *does*
+# get in INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]. This file records that each
+# absence was a decision rather than an oversight, so a newly added file that
+# is in neither list fails CI instead of silently vanishing from the Mac build.
+#
+# Adding a file here means: macOS genuinely must not compile it. If macOS needs
+# it, add it to BOTH INCLUDED_SOURCE_FILE_NAMES arrays in project.pbxproj
+# (Debug and Release) instead.
+#
+# One filename per line; comments after '#'. Grouped by origin, and the group
+# headings are the justification — keep new entries under a heading that
+# honestly applies, or write a new one.
+
+
+# App — iOS app-delegate, push registration and CoreMotion flip handling
+FlipToLibraryCoordinator.swift
+NTUSTLoginSheetHost.swift
+PushAppDelegate.swift
+
+# ContentView.swift — iOS-only
+ContentView.swift
+
+# Debug — iOS-only debug surfaces
+DebugServerFailureView.swift
+DebugSettingsView.swift
+DebugSettingsViewModel.swift
+TriggersDebugView.swift
+
+# Extensions — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
+UIApplication+Keyboard.swift
+UINavigationController+Swipeback.swift
+View+ScrollSafeGesture.swift
+
+# Features/Bulletins — iOS bulletin surfaces
+BulletinNotificationSettingsView.swift
+BulletinSubscriptionsStore.swift
+BulletinsView.swift
+BulletinCardView.swift
+BulletinDetailView.swift
+BulletinFilterBar.swift
+BulletinTaxonomyPickerView.swift
+SubscriptionRuleEditorView.swift
+
+# Features/Calendar — iOS calendar surfaces
+CalendarTabView.swift
+CalendarViewModel.swift
+DayEventListView.swift
+EventRowView.swift
+MonthCalendarView.swift
+
+# Features/ClassTable — UIKit-dependent timetable interactions; macOS uses Platform/Mac/MacClassTableView
+ClassTableView.swift
+ClassTableViewModel.swift
+ClassTableViewModel+Grid.swift
+ClassTableViewModel+Editing.swift
+ClassTableViewModel+Loading.swift
+AssignmentBadge.swift
+ConflictCoursePickerSheet.swift
+ConflictLShape.swift
+TimetableGridView.swift
+
+# Features/Home — iOS home surfaces; macOS has its own dashboard under Platform/Mac
+AddSectionSheet.swift
+ReorderDropSupport.swift
+CourseTimeCard.swift
+FluidGlassTrackView.swift
+TimeSliderMetrics.swift
+TimeSliderSection.swift
+TimeSliderViewModel.swift
+TodayCourseCarousel.swift
+UpcomingAssignmentsView.swift
+WidgetGridEditMode.swift
+WidgetGridView.swift
+HomeView.swift
+HomeViewModel.swift
+
+# Features/Library — iOS library QR + brightness control (UIScreen)
+HDRQRCodeImage.swift
+LibraryQRCodeView.swift
+LibraryView.swift
+LibraryViewModel.swift
+
+# Features/More — iOS 'More' tab; macOS uses MacMoreView
+FeatureCardView.swift
+FeatureCategorySection.swift
+MoreEditModeView.swift
+MoreView.swift
+MoreViewModel.swift
+
+# Features/Onboarding — iOS onboarding flow; macOS enters through MacLoginView
+OnboardingPageView.swift
+OnboardingView.swift
+
+# Features/Score — iOS score surfaces
+CreditSummaryBento.swift
+CreditTypeBadge.swift
+RankingsTrendCard.swift
+ScoreCourseDetailSheet.swift
+ScoreCourseRow.swift
+SemesterSection.swift
+StudentHeaderCard.swift
+ScoreView.swift
+
+# Features/Settings — iOS settings screens; macOS uses MacSettingsScene
+AssignmentReminderSettingsView.swift
+CloudSyncSettingsView.swift
+FontSizeSettingsView.swift
+LiveActivitySettingsView.swift
+LoginSheet.swift
+OtherSettingsView.swift
+PushServerSettingsView.swift
+SourceCodePickerView.swift
+TabEditorView.swift
+SettingsView.swift
+
+# Features/Updates — in-app update prompts; the Mac build updates out of band
+UpdateNotifyCoordinator.swift
+UpdateNotifySheetHost.swift
+UpdatePromptView.swift
+WhatsNewModels.swift
+WhatsNewRepository.swift
+WhatsNewSheetView.swift
+
+# LiveActivity/Models — ActivityKit — iOS only
+AssignmentReminderOffset.swift
+ReminderPayload.swift
+
+# LiveActivity/Preferences — ActivityKit — iOS only
+LiveActivityPreferencesStore.swift
+
+# LiveActivity/Runtime — ActivityKit — iOS only
+LiveActivityCoordinator.swift
+SharedSnapshotStore.swift
+TigerDuckActivityAttributes.swift
+
+# LiveActivity/Scheduling — ActivityKit — iOS only
+AssignmentReminderScheduler.swift
+
+# Services/API — App Store update check, iOS distribution only
+AppStoreUpdateService.swift
+
+# Services/Watch — WatchConnectivity — a paired Apple Watch is an iOS-only relationship
+WatchLibraryCredentialBroadcaster.swift
+WatchPayloadEncoder.swift
+WatchSyncBridge.swift
+WatchSyncCoordinator.swift
+
+# Shared — iOS-only shared UI and helpers
+AppVersion.swift
+FirstTriggerPrompt.swift
+
+# Shared/Components — iOS-only shared UI and helpers
+PasswordField.swift
+
+# SharedUI — iOS-only shared components
+EmptyStateView.swift
+GlassTextButtonModifier.swift
+InAppBrowserView.swift
+LoadingShimmer.swift
+LoginRequiredView.swift
+NTUSTReauthErrorBanner.swift
+NetworkStatusOverlay.swift
+SectionHeader.swift
+View+Alerts.swift
+WidgetContainer.swift
+
+# Shared/Watch — the Wire format and resolvers for a paired Apple Watch.
+# WatchConnectivity has no macOS counterpart, so none of this is reachable
+# there even though it lives under Shared/.
+NextClassResolver.swift
+WatchCourse.swift
+WatchLibraryPayload.swift
+WatchPayloadCodec.swift
+WatchSnapshot.swift
+WatchWireFormat.swift
+
+# Shared/Sensors — CoreMotion face-down detection, iOS hardware only
+FlipDetector.swift
+
+# Shared — used only by the iOS-side surfaces above
+TaipeiCalendar.swift
+
+# App — AppState extensions that are entirely iOS-only
+# ActivityKit has no macOS counterpart; the whole file body sits inside
+# #if os(iOS), so compiling it on the Mac would only produce an empty
+# extension. Listed here rather than allowlisted so that adding a
+# cross-platform member to it is a decision someone has to make.
+AppState+LiveActivity.swift
+
+# AppState+PushRouting.swift — custom-push tap routing (DeepLink,
+# ServerPopupPayload, popup shown/seen bookkeeping). The paired stored
+# properties (pendingDeepLink, pendingServerPopup) are iOS-gated on
+# AppState itself, and this file's whole body sits inside #if os(iOS)
+# for the same reason: there is nothing to route to on macOS.
+AppState+PushRouting.swift
