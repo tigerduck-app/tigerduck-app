@@ -159,7 +159,11 @@ final class AppState {
         // Install the refresh-failure relogin handler BEFORE enabling the push
         // stack, so a token refresh triggered by the first registration has a
         // relogin path instead of falling through to logout() on a nil handler.
-        Task {
+        // `[weak self]` on the Task as well as the handler: the handler is
+        // stored on the long-lived AuthTokenManager, so a strong capture
+        // there would be an AppState <-> ATM cycle — but an implicit strong
+        // capture in the enclosing Task defeats the weak one inside it.
+        Task { [weak self] in
             await atm.setRefreshFailedHandler { [weak self] in
                 await self?.attemptBackendRelogin() ?? false
             }
