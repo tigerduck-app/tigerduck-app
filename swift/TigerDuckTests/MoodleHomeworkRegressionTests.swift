@@ -425,6 +425,11 @@ struct MoodleHomeworkRegressionTests {
         #expect(after.map(\.assignmentId) == ["y", "x"])
     }
 
+    // ClassTableViewModel is not part of the macOS slice of the app target
+    // (the Mac build draws its timetable from MacClassTableView instead), so
+    // this one case is iOS-only while the rest of the file is platform-neutral.
+    // Same shape as the guard at the top of FlipDetectorTests.
+#if os(iOS)
     @MainActor
     @Test func classTableViewModel_displayLabel_formatsSemesterCode() {
         let vm = ClassTableViewModel()
@@ -432,6 +437,7 @@ struct MoodleHomeworkRegressionTests {
         #expect(vm.displayLabel(for: "1131") == "113-1")
         #expect(vm.displayLabel(for: "X") == "X")
     }
+#endif
 
     @Test func assignmentFilter_rawValuesArePersistableStrings() {
         #expect(AssignmentFilter.incomplete.rawValue == "未完成")
