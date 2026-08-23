@@ -1,6 +1,8 @@
 import Foundation
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 @Observable
@@ -17,6 +19,64 @@ final class AuthService {
     /// background sync; Home / Class Table / Calendar `refresh` paths run
     /// on their own Tasks that this generation check protects.
     private(set) var loginGeneration: Int = 0
+
+    /// What the keychain answered the last time credentials demonstrably
+    /// changed. Only used to keep ``revalidateStoredCredentials()`` from
+    /// bumping ``_revision`` when nothing actually moved.
+    private var lastKnownHasCredentials: Bool?
+
+    private var credentialObservers: [any NSObjectProtocol] = []
+
+    /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``),
+    /// so every keychain read taken while the device is locked comes back
+    /// nil. A process started behind a locked screen — push, background
+    /// refresh, widget timeline reload — therefore comes up with
+    /// ``hasStoredCredentials`` false, and protected surfaces render their
+    /// "not signed in" prompt for a user who is signed in perfectly well.
+    ///
+    /// Nothing corrected that afterwards. ``_revision`` moved only on login
+    /// and logout, so once the device was unlocked SwiftUI had no reason to
+    /// re-read the keychain: the Class Table sat on the login prompt until
+    /// some unrelated state change forced a redraw, which in practice meant
+    /// pull-to-refresh. Re-check when protected data comes back and when the
+    /// app activates.
+    init() {
+        lastKnownHasCredentials = storedStudentId != nil && storedPassword != nil
+
+        #if os(iOS)
+        let names: [Notification.Name] = [
+            UIApplication.protectedDataDidBecomeAvailableNotification,
+            UIApplication.didBecomeActiveNotification,
+        ]
+        #elseif os(macOS)
+        let names: [Notification.Name] = [NSApplication.didBecomeActiveNotification]
+        #else
+        let names: [Notification.Name] = []
+        #endif
+
+        let center = NotificationCenter.default
+        credentialObservers = names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.revalidateStoredCredentials() }
+            }
+        }
+    }
+
+    /// Re-read the keychain and invalidate only if its answer changed, so a
+    /// routine foreground doesn't redraw every view that reads credentials.
+    private func revalidateStoredCredentials() {
+        let current = storedStudentId != nil && storedPassword != nil
+        guard current != lastKnownHasCredentials else { return }
+        lastKnownHasCredentials = current
+        _revision &+= 1
+    }
+
+    /// Invalidate after a login or logout has moved the keychain, and
+    /// re-snapshot so the next activation doesn't bump a second time.
+    private func markCredentialsChanged() {
+        lastKnownHasCredentials = storedStudentId != nil && storedPassword != nil
+        _revision &+= 1
+    }
 
     var isNTUSTAuthenticated: Bool {
         _ = _revision
@@ -87,7 +147,7 @@ final class AuthService {
                 // semester crossover.
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
                 reauthErrorMessage = nil
-                _revision &+= 1
+                markCredentialsChanged()
 
                 // Auto-attempt library login with same credentials (best-effort)
                 if !LibraryService.isTokenValid {
@@ -199,7 +259,7 @@ final class AuthService {
         reauthErrorMessage = nil
         isReauthenticating = false
         loginGeneration &+= 1
-        _revision &+= 1
+        markCredentialsChanged()
     }
 
     func clearReauthError() {
