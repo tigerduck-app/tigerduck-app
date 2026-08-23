@@ -78,6 +78,7 @@ struct WidgetTimelineDerivationTests {
         let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: monday(9, 30))
         if case .nextToday(let info) = derived {
             #expect(info.course.displayName == "Later")
+            #expect(info.day == .today)
         } else {
             Issue.record("Expected .nextToday, got \(derived)")
         }
@@ -92,6 +93,8 @@ struct WidgetTimelineDerivationTests {
         if case .tomorrowFirst(let info) = derived {
             #expect(info.course.displayName == "TuesClass")
             #expect(info.startTime == "09:10")
+            // Monday 18:00 → Tuesday really is tomorrow.
+            #expect(info.day == .tomorrow)
         } else {
             Issue.record("Expected .tomorrowFirst, got \(derived)")
         }
@@ -103,8 +106,15 @@ struct WidgetTimelineDerivationTests {
         #expect(derived == .noMoreClasses)
     }
 
-    /// Marking today's in-progress class as skipped must drop it out of `.ongoing`
-    /// so the widget no longer shows the strikethrough class as the active slot.
+    /// Marking today's in-progress class as skipped must drop it out of
+    /// `.ongoing` so the widget stops showing the cancelled class as the
+    /// active slot.
+    ///
+    /// It does *not* fall through to `.noMoreClasses`, which this asserted
+    /// until now: the course still meets next Monday and the seven-day scan
+    /// finds it, deliberately, so a one-class-a-week timetable does not read
+    /// as empty for six days. What the scan must not do is caption that
+    /// "Tomorrow" — hence the `day` assertion.
     @Test func skippedToday_removesFromOngoing() {
         let now = monday(9, 30)
         let key = WidgetTimelineDerivation.dateKey(for: now)
@@ -112,7 +122,12 @@ struct WidgetTimelineDerivationTests {
             course(courseNo: "A", displayName: "DS", weekday: 1, periods: ["B"], skippedDates: [key]),
         ])
         let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
-        #expect(derived == .noMoreClasses)
+        if case .tomorrowFirst(let info) = derived {
+            #expect(info.course.displayName == "DS")
+            #expect(info.day == .later(weekday: 1))
+        } else {
+            Issue.record("Expected next Monday's slot, got \(derived)")
+        }
     }
 
     /// When today's *upcoming* class is skipped but a later non-skipped class
@@ -178,6 +193,9 @@ struct WidgetTimelineDerivationTests {
         let derived = WidgetTimelineDerivation.derive(snapshot: snap, at: now)
         if case .tomorrowFirst(let info) = derived {
             #expect(info.course.displayName == "WedKeep")
+            // Two days out, so the widget must name the weekday instead of
+            // saying "Tomorrow".
+            #expect(info.day == .later(weekday: 3))
         } else {
             Issue.record("Expected .tomorrowFirst with Wednesday's course, got \(derived)")
         }

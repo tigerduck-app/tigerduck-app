@@ -13,10 +13,7 @@ struct AccessoryInlineView: View {
         case .nextToday(let info):
             Text("\(String(localized: "widget_next_class_short")): \(info.course.displayName) · \(info.startTime)")
         case .tomorrowFirst(let info):
-            Text(String.localizedStringWithFormat(
-                String(localized: "widget_tomorrow_time"),
-                "\(info.course.displayName) \(info.startTime)"
-            ))
+            Text(info.day.inlineCaption("\(info.course.displayName) \(info.startTime)"))
         case .noMoreClasses:
             Text(String(localized: "widget_no_more_classes"))
         }
@@ -91,7 +88,7 @@ struct AccessoryRectangularView: View {
             }
         case .tomorrowFirst(let info):
             VStack(alignment: .leading, spacing: 1) {
-                Text(String(localized: "widget_tomorrow"))
+                Text(info.day.headline)
                     .font(.caption2.weight(.bold))
                 Text(info.course.displayName)
                     .font(.caption.weight(.semibold))

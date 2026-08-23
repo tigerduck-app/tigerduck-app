@@ -30,9 +30,9 @@ struct NextClassView: View {
         case .ongoing(let infos):
             ongoingBody(infos: infos)
         case .nextToday(let info):
-            nextBody(info: info, kind: .nextToday)
+            nextBody(info: info)
         case .tomorrowFirst(let info):
-            nextBody(info: info, kind: .tomorrow)
+            nextBody(info: info)
         case .noMoreClasses:
             emptyBody
         }
@@ -121,14 +121,10 @@ struct NextClassView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private enum NextKind { case nextToday, tomorrow }
-
-    private func nextBody(info: WidgetDerivedState.NextInfo, kind: NextKind) -> some View {
+    private func nextBody(info: WidgetDerivedState.NextInfo) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             if !isCompact {
-                Text(kind == .nextToday
-                     ? String(localized: "widget_next_class")
-                     : String(localized: "widget_tomorrow"))
+                Text(info.day.headline)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(palette.onSurfaceVariant)
             }
@@ -157,5 +153,44 @@ struct NextClassView: View {
             .font(.subheadline.weight(.bold))
             .foregroundStyle(palette.onSurface)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+extension WidgetDerivedState.Day {
+    /// The caption above a next-class card. Mirrors Android's
+    /// `NextClassContent.futureDayLabel`: "Tomorrow" only when the class
+    /// literally is tomorrow, otherwise the weekday's own name, because the
+    /// derivation scans up to a week ahead.
+    var headline: String {
+        switch self {
+        case .today: return String(localized: "widget_next_class")
+        case .tomorrow: return String(localized: "widget_tomorrow")
+        case .later(let weekday): return Self.shortName(of: weekday)
+        }
+    }
+
+    /// One-line form for the accessory families, which have no room for a
+    /// separate caption row: "Tomorrow 09:10" against "Wed 09:10".
+    func inlineCaption(_ trailing: String) -> String {
+        switch self {
+        case .later(let weekday):
+            return "\(Self.shortName(of: weekday)) \(trailing)"
+        case .today, .tomorrow:
+            return String.localizedStringWithFormat(
+                String(localized: "widget_tomorrow_time"), trailing)
+        }
+    }
+
+    /// 1 = Monday … 7 = Sunday, matching `WidgetTimelineDerivation.weekdayFor`.
+    private static func shortName(of weekday: Int) -> String {
+        switch weekday {
+        case 1: return String(localized: "weekday_mon_short")
+        case 2: return String(localized: "weekday_tue_short")
+        case 3: return String(localized: "weekday_wed_short")
+        case 4: return String(localized: "weekday_thu_short")
+        case 5: return String(localized: "weekday_fri_short")
+        case 6: return String(localized: "weekday_sat_short")
+        default: return String(localized: "weekday_sun_short")
+        }
     }
 }

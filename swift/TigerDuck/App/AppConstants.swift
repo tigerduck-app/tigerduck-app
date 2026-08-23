@@ -93,6 +93,29 @@ nonisolated enum AppConstants {
     static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
+    /// Wraps a site-relative Moodle path in the `moodlemobile://` envelope the
+    /// Moodle Mobile app expects: `moodlemobile://<site-url>?redirect=<path>`.
+    ///
+    /// Built by string rather than through `URLComponents` on purpose. The site
+    /// URL sits where the authority belongs, and `URLComponents` cannot express
+    /// that: setting `host = "https"` + `path = "//<host>"` serialises to
+    /// `moodlemobile://https//<host>` — the colon after the inner scheme is
+    /// dropped and the app can no longer parse a site out of it. Setting
+    /// `host = "https:"` makes `url` return nil outright.
+    ///
+    /// `=`, `&` and `+` are escaped out of the redirect so a multi-parameter
+    /// target stays inside the single `redirect` value instead of leaking into
+    /// the envelope's own query. Matches Android's `Assignment.moodleDeepLink`.
+    static func moodleDeepLink(redirectingTo path: String) -> URL? {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "=&+")
+        guard let escaped = path.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            return nil
+        }
+        let host = moodleBaseURL.host ?? "moodle2.ntust.edu.tw"
+        return URL(string: "moodlemobile://https://\(host)?redirect=\(escaped)")
+    }
+
     nonisolated enum KeychainKeys {
         static let studentId = "ntust_student_id"
         static let password = "ntust_password"
