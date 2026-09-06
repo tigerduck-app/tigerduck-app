@@ -29,10 +29,12 @@ import SwiftUI
 /// and `WidgetReloadCoordinator`) so widgets pick it up on their next
 /// render.
 ///
-/// The scale is intentionally narrow (0.8…1.6×): below 0.8 the names
-/// become unreadable inside the timetable cells, above 1.6× they overflow
-/// the cell before `minimumScaleFactor` rescues them — at which point the
-/// user is fighting the layout, not customizing it.
+/// The user-facing scale is intentionally narrow (0.6…1.2×). It rides on
+/// top of ``baselineMultiplier``, so the rendered range is 0.84…1.68× of
+/// the original cell font: below that the names become unreadable inside
+/// the timetable cells, above it they overflow the cell before
+/// `minimumScaleFactor` rescues them — at which point the user is
+/// fighting the layout, not customizing it.
 // `nonisolated` because every member is a pure constant or pure function
 // (no actor state). Without it, the project's `SWIFT_DEFAULT_ACTOR_ISOLATION
 // = MainActor` makes the enum MainActor-isolated, which then can't be read
@@ -42,14 +44,24 @@ nonisolated enum CourseCardFontScale {
     /// Inclusive bounds the slider operates over. Out-of-range stored
     /// values are clamped on read so a manually-edited UserDefaults value
     /// can never escape this range.
-    static let minimum: Double = 0.8
-    static let maximum: Double = 1.6
+    static let minimum: Double = 0.6
+    static let maximum: Double = 1.2
     /// Slider snaps to 0.05× ticks so the displayed `1.20×` value is
     /// reproducible — a continuous CGFloat would let the user land on
     /// 1.196… which reads as 1.20× but compares unequal across launches.
     static let step: Double = 0.05
-    /// Baseline: no scaling, matches the pre-feature rendering exactly.
+    /// Baseline the slider shows as 1.00×.
     static let `default`: Double = 1.0
+    /// The pre-feature 1.00× rendered too small, so what used to be the
+    /// 1.40× setting is now the 1.00× default. Every render site multiplies
+    /// this in via ``renderScale(_:)``; the stored/user-facing value stays
+    /// in slider units.
+    static let baselineMultiplier: Double = 1.4
+
+    /// Multiplier to apply to a base font size for a stored slider value.
+    static func renderScale(_ scale: Double) -> Double {
+        normalize(scale) * baselineMultiplier
+    }
 
     /// Clamp + snap to the nearest `step` so the slider can persist its
     /// continuous CGFloat as a clean stepped value.
@@ -75,7 +87,10 @@ nonisolated enum CourseCardFontScale {
 /// invisible (main app vs. widget extension would otherwise persist to
 /// different process-local stores).
 nonisolated final class CourseCardFontScaleStore {
-    static let storageKey = "courseCardFontScale"
+    static let storageKey = "courseCardFontScaleV2"
+    /// Pre-rebase key. Its values were in the old units (1.4 = today's
+    /// 1.0), so `read()` converts once and moves the value to `storageKey`.
+    static let legacyStorageKey = "courseCardFontScale"
 
     private let defaults: UserDefaults
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "FontScale")
@@ -100,12 +115,24 @@ nonisolated final class CourseCardFontScaleStore {
         // is a valid storage value but indistinguishable from "unset".
         // Use `object(forKey:)` first to detect the unset case explicitly
         // so a never-set user gets the actual default (1.0) instead of a
-        // clamped 0.8.
+        // clamped minimum.
         guard defaults.object(forKey: Self.storageKey) != nil else {
-            return CourseCardFontScale.default
+            return migrateLegacyValue() ?? CourseCardFontScale.default
         }
         let raw = defaults.double(forKey: Self.storageKey)
         return CourseCardFontScale.normalize(raw)
+    }
+
+    /// One-shot: a value stored before the baseline rebase is divided by
+    /// `baselineMultiplier` so the user keeps the size they had chosen.
+    private func migrateLegacyValue() -> Double? {
+        guard defaults.object(forKey: Self.legacyStorageKey) != nil else { return nil }
+        let migrated = CourseCardFontScale.normalize(
+            defaults.double(forKey: Self.legacyStorageKey) / CourseCardFontScale.baselineMultiplier
+        )
+        defaults.set(migrated, forKey: Self.storageKey)
+        defaults.removeObject(forKey: Self.legacyStorageKey)
+        return migrated
     }
 
     func write(_ scale: Double) {

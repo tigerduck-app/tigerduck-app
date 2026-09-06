@@ -54,7 +54,7 @@ struct TimetableGridView: View {
     /// non-stepped raw value — normalizing at the read site keeps all
     /// three surfaces (timetable / Settings readout / widget) in sync.
     private var courseNameSize: CGFloat {
-        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
+        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
     }
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
@@ -210,7 +210,7 @@ private struct ConflictClusterView: View {
     /// rather than `CourseCardFontScaleStore` directly, and why we
     /// normalize at the read site.
     private var courseNameSize: CGFloat {
-        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
+        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
     }
 
     private var courseA: SDCourse { segments[0].course }

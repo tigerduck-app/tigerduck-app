@@ -169,7 +169,7 @@ nonisolated enum AppConstants {
         /// Group `UserDefaults` suite (NOT `.standard`) so the widget
         /// extension reads the same value — see `CourseCardFontScaleStore`.
         /// Listed here for discoverability; the literal lives on the store.
-        static let courseCardFontScale = "courseCardFontScale"
+        static let courseCardFontScale = "courseCardFontScaleV2"
         static let homeSectionLayout = "homeSectionLayout"
         static let visualPreset = "visualPreset"
 

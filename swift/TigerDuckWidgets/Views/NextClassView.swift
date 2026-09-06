@@ -10,7 +10,7 @@ struct NextClassView: View {
     /// Group at struct init. The main app reloads widget timelines after
     /// changing the value, so the next render picks up a fresh struct
     /// with the new scale.
-    private let userScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
+    private let userScale: CGFloat = CGFloat(CourseCardFontScale.renderScale(CourseCardFontScaleStore().read()))
 
     /// Dynamic-Type-anchored baselines for the system fonts we replaced
     /// to multiply in `userScale`. `@ScaledMetric(relativeTo:)` makes
