@@ -59,7 +59,11 @@ enum NTUSTScoreService {
         }
 
         let html = try await fetchHTML(session: session, studentId: studentId, password: password)
-        let report = NTUSTScoreParser.parse(html: html)
+        // Parse off the main actor — SwiftSoup over a full transcript is
+        // tens of milliseconds on an older phone.
+        let report = await Task.detached(priority: .userInitiated) {
+            NTUSTScoreParser.parse(html: html)
+        }.value
 
         // Defensive: a successful fetch that parses to a fully empty report
         // usually means the HTML was actually the SSO page disguised as a

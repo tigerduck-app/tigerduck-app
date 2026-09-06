@@ -7,7 +7,12 @@ import SwiftSoup
 /// and regex patterns are kept 1:1 with the Python reference so both stay
 /// drop-in replacements for each other — any schema drift fixed in one side
 /// must be mirrored in the other.
-enum NTUSTScoreParser {
+///
+/// `nonisolated` so the parse can run off the main actor: under the
+/// module's MainActor default isolation a multi-year transcript was being
+/// parsed on the UI thread, which is what stuttered the score page on
+/// older phones during a refresh.
+nonisolated enum NTUSTScoreParser {
 
     // MARK: - Credit pattern registry
     //

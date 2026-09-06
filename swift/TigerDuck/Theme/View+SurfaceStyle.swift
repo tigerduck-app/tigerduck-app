@@ -51,6 +51,11 @@ extension View {
 
 // MARK: - Implementation
 
+// Shadows go on the background shape, not on `content`: SwiftUI applies
+// `.shadow` to every leaf it can reach, so a card of thirty labels was
+// paying for thirty blurred halos (each an offscreen pass) on top of the
+// material. One shadow per card is visually the same and far cheaper.
+
 private struct PresetCardModifier: ViewModifier {
     let policy: VisualStylePolicy
     let cornerRadius: CGFloat
@@ -59,8 +64,11 @@ private struct PresetCardModifier: ViewModifier {
         switch policy.cardSurface {
         case .glass:
             content
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                )
         case .grouped:
             content
                 .background(
@@ -115,8 +123,11 @@ private struct PresetRowModifier: ViewModifier {
         case .card:
             content
                 .cardPadding()
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg))
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                .background(
+                    RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg)
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                )
         case .groupedList:
             content
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -154,8 +165,11 @@ private struct PresetSearchBarModifier: ViewModifier {
         case .glass:
             content
                 .padding(TigerDuckTheme.Spacing.sm)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm))
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                .background(
+                    RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.sm)
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+                )
         case .grouped:
             content
                 .padding(.horizontal, TigerDuckTheme.Spacing.md)

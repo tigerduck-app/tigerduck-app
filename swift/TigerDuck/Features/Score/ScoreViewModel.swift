@@ -23,6 +23,10 @@ final class ScoreViewModel {
 
     private(set) var report: ScoreReport = .empty
     private(set) var cachedAt: Date?
+    /// Derived once per report change instead of on every body pass —
+    /// each semester header used to rebuild the whole GPA trend.
+    private(set) var groupedCourses: [(term: String, courses: [CourseGrade])] = []
+    private(set) var gpaTrend: [GPATrendPoint] = []
     private(set) var isRefreshing = false
     private(set) var errorMessage: String?
 
@@ -36,12 +40,15 @@ final class ScoreViewModel {
 
     // MARK: - Derived state
 
-    /// Courses grouped by term, sorted newest-first.
-    var groupedCourses: [(term: String, courses: [CourseGrade])] {
-        let groups = Dictionary(grouping: report.courses, by: \.term)
-        return groups
+    /// Replace the report and refresh everything derived from it.
+    private func apply(_ newReport: ScoreReport, cachedAt date: Date) {
+        report = newReport
+        cachedAt = date
+        groupedCourses = Dictionary(grouping: newReport.courses, by: \.term)
             .map { (term: $0.key, courses: $0.value.sorted { ($0.index ?? 0) < ($1.index ?? 0) }) }
             .sorted { $0.term > $1.term }
+        gpaTrend = GPATrendPoint.trend(for: newReport)
+        applyDefaultCollapseRule()
     }
 
     /// Ranking row matching a given term, if present. Used to annotate
@@ -53,13 +60,6 @@ final class ScoreViewModel {
     /// Rankings sorted chronologically for the trend chart.
     var rankingTrend: [SemesterRanking] {
         report.rankings.sorted { $0.term < $1.term }
-    }
-
-    /// GPA points for the trend chart and semester headers: published
-    /// rankings, plus a live estimate for terms whose grades are in but
-    /// whose ranking is not (see `GPATrendPoint.trend(for:)`).
-    var gpaTrend: [GPATrendPoint] {
-        GPATrendPoint.trend(for: report)
     }
 
     func gpaPoint(for term: String) -> GPATrendPoint? {
@@ -80,11 +80,11 @@ final class ScoreViewModel {
         guard let studentId = authService.storedStudentId else { return }
 
         // Instant cache paint — avoids a blank flash while the background
-        // refresh resolves.
-        if let cached = NTUSTScoreService.cachedScoreReport(studentId: studentId) {
-            report = cached.report
-            cachedAt = cached.cachedAt
-            applyDefaultCollapseRule()
+        // refresh resolves. Skipped once a report is in: `load` runs on
+        // every tab appearance and re-decoding the cache each time is
+        // wasted main-thread work.
+        if report == .empty, let cached = NTUSTScoreService.cachedScoreReport(studentId: studentId) {
+            apply(cached.report, cachedAt: cached.cachedAt)
         }
 
         Task { await self.refresh(authService: authService, force: false) }
@@ -153,9 +153,7 @@ final class ScoreViewModel {
                     auth?.loginGeneration == capturedGeneration
                 }
             )
-            report = fresh
-            cachedAt = Date()
-            applyDefaultCollapseRule()
+            apply(fresh, cachedAt: Date())
             ServerStatusTracker.shared.set(.ok, for: .courseSelection)
             manager.loadingState = .loaded
         } catch {
