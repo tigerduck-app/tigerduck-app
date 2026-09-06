@@ -126,34 +126,32 @@ extension AppState {
                 let coursesArray = json["courses"] as? [[String: Any]] ?? []
 
                 if pending.contains("courses") {
-                    let semester = CourseSelectionService.currentSemesterCode()
-                    // Scope both sides to the current semester and include
-                    // user-added courses (they're uploaded, so the server lists
-                    // them). Comparing a current-semester local set against an
-                    // all-semester server set — or omitting user-added courses —
-                    // produced phantom re-enable conflicts.
-                    let serverNos = Set(coursesArray
-                        .filter { ($0["semester"] as? String) == semester }
-                        .compactMap { $0["course_no"] as? String })
-                    let allCachedNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
-                    let userAddedNos = Set(DataCache.shared
-                        .loadUserAddedCourses(semester: semester).map(\.courseNo))
+                    // Compare term by term, including user-added courses (they
+                    // are uploaded, so the server lists them). A term one side
+                    // has never seen is not a conflict — the reconcile uploads
+                    // or merges it — so only terms both sides know count.
                     let deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
-                    let localNos = allCachedNos.union(userAddedNos).subtracting(deletedNos)
-                    AppLogger.sync.info("[reenable] courses: cached=\(allCachedNos.count, privacy: .public) deleted=\(deletedNos.count, privacy: .public) effective=\(localNos.count, privacy: .public) server=\(serverNos.count, privacy: .public)")
-                    AppLogger.sync.info("[reenable] courses local=\(localNos.sorted(), privacy: .public)")
-                    AppLogger.sync.info("[reenable] courses server=\(serverNos.sorted(), privacy: .public)")
-                    if localNos != serverNos {
-                        let localOnly = localNos.subtracting(serverNos).count
-                        let serverOnly = serverNos.subtracting(localNos).count
-                        AppLogger.sync.info("[reenable] courses DIFFER: localOnly=\(localOnly, privacy: .public) serverOnly=\(serverOnly, privacy: .public)")
-                        if localOnly > 0 && serverOnly > 0 {
-                            diffs.append(String(localized: "sync_conflict_reenable_courses \(localOnly) \(serverOnly)"))
-                        } else if localOnly > 0 {
-                            diffs.append(String(localized: "sync_conflict_reenable_courses_local_only \(localOnly)"))
-                        } else {
-                            diffs.append(String(localized: "sync_conflict_reenable_courses_server_only \(serverOnly)"))
-                        }
+                    let serverSemesters = coursesArray.compactMap { $0["semester"] as? String }.filter { !$0.isEmpty }
+                    var localOnly = 0
+                    var serverOnly = 0
+                    for semester in Set(serverSemesters).union(SemesterCatalog.availableSemesters()) {
+                        let serverNos = Set(coursesArray
+                            .filter { ($0["semester"] as? String) == semester }
+                            .compactMap { $0["course_no"] as? String })
+                        let localNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
+                            .union(DataCache.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))
+                            .filter { !CourseTombstone.isHidden($0, semester: semester, in: deletedNos) }
+                        guard !serverNos.isEmpty, !localNos.isEmpty else { continue }
+                        localOnly += localNos.subtracting(serverNos).count
+                        serverOnly += serverNos.subtracting(localNos).count
+                        AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .public) server=\(serverNos.sorted(), privacy: .public)")
+                    }
+                    if localOnly > 0 && serverOnly > 0 {
+                        diffs.append(String(localized: "sync_conflict_reenable_courses \(localOnly) \(serverOnly)"))
+                    } else if localOnly > 0 {
+                        diffs.append(String(localized: "sync_conflict_reenable_courses_local_only \(localOnly)"))
+                    } else if serverOnly > 0 {
+                        diffs.append(String(localized: "sync_conflict_reenable_courses_server_only \(serverOnly)"))
                     } else {
                         AppLogger.sync.info("[reenable] courses MATCH — no conflict")
                     }
@@ -300,15 +298,13 @@ extension AppState {
         Task {
             if keepLocal {
                 if conflict.categories.contains("courses") {
-                    let semester = CourseSelectionService.currentSemesterCode()
-                    // Include user-added courses (stored separately from the
-                    // portal cache). Uploading only the portal cache drops them
-                    // from the backend, and the next reconcile then deletes them
-                    // locally too — permanent loss on the path meant to preserve
-                    // local state. forceKeys re-asserts them past any tombstone.
-                    let userAdded = DataCache.shared.loadUserAddedCourses(semester: semester)
-                    let courses = DataCache.shared.loadCourses(semester: semester) + userAdded
-                    let forceKeys = userAdded.map { "client:\(semester):\($0.courseNo)" }
+                    // Every term goes up, and each includes its user-added
+                    // courses (stored separately from the portal cache).
+                    // Uploading only the portal cache drops them from the
+                    // backend, and the next reconcile then deletes them
+                    // locally too — permanent loss on the path meant to
+                    // preserve local state. forceKeys re-asserts them past
+                    // any tombstone.
                     // Wipe the server list first, THEN upload. uploadCourses
                     // upserts (never replaces), so if the delete fails we must
                     // not upload — that would layer local courses onto the stale
@@ -328,9 +324,15 @@ extension AppState {
                     // next check re-detects the divergence and re-prompts.
                     do {
                         try await coordinator.deleteAllCourses()
-                        try await uploadCoursesAwaitingResult(
-                            courses, semester: semester, forceKeys: forceKeys
-                        )
+                        for semester in SemesterCatalog.availableSemesters() {
+                            let userAdded = DataCache.shared.loadUserAddedCourses(semester: semester)
+                            let courses = DataCache.shared.loadCourses(semester: semester) + userAdded
+                            guard !courses.isEmpty else { continue }
+                            try await uploadCoursesAwaitingResult(
+                                courses, semester: semester,
+                                forceKeys: userAdded.map { "client:\(semester):\($0.courseNo)" }
+                            )
+                        }
                     } catch {
                         AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .public)")
                         await MainActor.run { markCategoryReenabled("courses") }
@@ -341,11 +343,10 @@ extension AppState {
                     // override endpoint resolves moodle_id — map through the
                     // cached course list (and skip courses without one, same
                     // as the live edit paths).
-                    let semester = CourseSelectionService.currentSemesterCode()
                     let moodleIdByCourseNo = Dictionary(
-                        DataCache.shared.loadCourses(semester: semester).compactMap { c in
-                            c.moodleIdNumber.map { (c.courseNo, $0) }
-                        },
+                        SemesterCatalog.availableSemesters()
+                            .flatMap { DataCache.shared.loadCourses(semester: $0) }
+                            .compactMap { c in c.moodleIdNumber.map { (c.courseNo, $0) } },
                         uniquingKeysWith: { first, _ in first })
                     if conflict.categories.contains("course_colors") {
                         let colorMap = TigerDuckTheme.courseColorMap
