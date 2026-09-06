@@ -198,7 +198,7 @@ struct MacFeatureDetail: View {
                 if feature != .gpa {
                     ToolbarItem(placement: .primaryAction) {
                         HStack(spacing: 8) {
-                            ServerStatusIcons(servers: serversForFeature)
+                            SyncStatusDot(servers: serversForFeature)
                             MacGlobalRefreshButton()
                         }
                     }

@@ -1177,7 +1177,8 @@
 					EqualHeightCards.swift,
 					BadgeOverlay.swift,
 					ServerStatusTracker.swift,
-					ServerStatusIcons.swift,
+					SyncStatusDot.swift,
+					CourseTombstone.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
@@ -1396,7 +1397,8 @@
 					EqualHeightCards.swift,
 					BadgeOverlay.swift,
 					ServerStatusTracker.swift,
-					ServerStatusIcons.swift,
+					SyncStatusDot.swift,
+					CourseTombstone.swift,
 				);
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;

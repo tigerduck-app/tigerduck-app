@@ -3,9 +3,8 @@
 // `SyncConflictItem` and `SyncSource` back the stored `syncConflicts` /
 // `lastSyncSource` properties that have to stay on the class itself
 // (Observation tracking, and extensions can't hold stored properties);
-// this file only holds the type declarations and the read-only
-// `isSyncLocalOnly` derivation over them. Conflict *resolution* logic
-// lives in AppState+Conflicts.swift.
+// this file only holds the type declarations. Conflict *resolution*
+// logic lives in AppState+Conflicts.swift.
 
 import Foundation
 import Defaults
@@ -32,7 +31,5 @@ extension AppState {
     }
 
     enum SyncSource { case none, backend, local }
-
-    var isSyncLocalOnly: Bool { Defaults[.cloudSyncEnabled] && lastSyncSource == .local }
 
 }

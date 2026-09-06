@@ -192,7 +192,7 @@ struct BulletinsView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                ServerStatusIcons(servers: [.backend])
+                SyncStatusDot(servers: [.backend])
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

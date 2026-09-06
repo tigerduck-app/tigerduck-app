@@ -61,11 +61,7 @@ struct HomeView: View {
                         .font(TigerDuckTheme.Typography.title)
                         .foregroundStyle(Color.textPrimary)
                     Spacer()
-                    NetworkStatusOverlay(
-                        loadingState: appState.sessionManager.loadingState,
-                        isLocalOnly: appState.isSyncLocalOnly
-                    )
-                    ServerStatusIcons(servers: [.moodle, .backend])
+                    SyncStatusDot(servers: [.moodle, .backend])
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                 .padding(.top, TigerDuckTheme.Spacing.md)
@@ -111,7 +107,7 @@ struct HomeView: View {
             // UIRefreshControl spinner immediately once released.
             // `triggerRefresh` coalesces rapid repeated pulls into a
             // single in-flight fetch; status lives in the top-right
-            // NetworkStatusOverlay.
+            // SyncStatusDot.
             viewModel.triggerRefresh(authService: appState.authService)
             if Defaults[.cloudSyncEnabled] {
                 Task { await appState.syncOverridesFromBackend() }

@@ -82,7 +82,7 @@ final class ScoreViewModel {
     /// Coalesced fire-and-forget refresh. Designed for pull-to-refresh
     /// where the caller returns immediately (so UIRefreshControl dismisses
     /// its spinner) and the actual fetch continues on a detached Task;
-    /// live progress lives in the top-right ``NetworkStatusOverlay`` instead.
+    /// live progress lives in the top-right ``SyncStatusDot`` instead.
     func triggerRefresh(authService: AuthService, force: Bool = true) {
         guard !isRefreshing else { return }
         // `Task { ... }` without an explicit actor inherits the
@@ -112,7 +112,7 @@ final class ScoreViewModel {
         // as a confusing TLS error. Reset state and bail clean.
         // Mirror the manager.loadingState write the other migrated bail
         // paths do (Home / ClassTable / Calendar / AppState) so the
-        // NetworkStatusOverlay in ScoreView reflects the same offline
+        // SyncStatusDot in ScoreView reflects the same offline
         // state as every other tab.
         guard await NetworkMonitor.shared.isReachable() else {
             isRefreshing = false
