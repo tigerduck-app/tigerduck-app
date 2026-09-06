@@ -205,7 +205,7 @@ extension AppState {
                         }
                         AppLogger.sync.info("[reenable] names: \(nameMismatches.isEmpty ? "MATCH" : "DIFFER (\(nameMismatches.count))", privacy: .public)")
                         if !nameMismatches.isEmpty {
-                            for m in nameMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .public)") }
+                            for m in nameMismatches.prefix(5) { AppLogger.sync.debug("[reenable]   \(m, privacy: .private)") }
                             diffs.append(String(localized: "sync_conflict_reenable_names_differ"))
                         }
                     }

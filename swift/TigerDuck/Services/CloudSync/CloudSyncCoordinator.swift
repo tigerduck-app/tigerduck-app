@@ -148,8 +148,12 @@ final class CloudSyncCoordinator {
     private func performDisable() async {
         stop()
 
+        // Leave the push stack up: the device stays registered with
+        // cloud_sync_enabled=false so bulletins and Live Activities keep
+        // working, and the Push Server toggle keeps telling the truth.
+        // (Relaunch re-enabled push anyway, so tearing it down here only
+        // ever produced a temporary mismatch.)
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
-        await pushCoordinator.disable()
 
         await outbox.clearAll()
 

@@ -68,7 +68,7 @@ extension MacClassTableView {
         cacheRevision &+= 1
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         let forceKey = "client:\(selectedSemester):\(course.courseNo)"
-        appState.uploadCourses(courses + [course], semester: selectedSemester, forceKeys: [forceKey])
+        appState.uploadCourses(courses, semester: selectedSemester, forceKeys: [forceKey])
         return true
     }
 

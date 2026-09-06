@@ -82,10 +82,7 @@ final class AppState {
         }
 
         let identity = PushIdentity.loadOrCreate()
-        let atm = AuthTokenManager(
-            baseURL: PushServerConfig.resolveServerURL().absoluteString,
-            deviceUUID: identity.uuid
-        )
+        let atm = AuthTokenManager(deviceUUID: identity.uuid)
         self.authTokenManager = atm
         self.pushCoordinator = PushCoordinator(
             identity: identity,

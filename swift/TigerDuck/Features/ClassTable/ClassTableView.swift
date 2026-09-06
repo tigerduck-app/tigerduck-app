@@ -179,6 +179,17 @@ struct ClassTableView: View {
             } message: {
                 Text(String(localized: "class_table_reset_message"))
             }
+            .alert(
+                String(
+                    format: String(localized: "class_table_reset_title_with_semester"),
+                    viewModel.displayLabel(for: viewModel.currentSemester)
+                ),
+                isPresented: $viewModel.showResetFailedAlert
+            ) {
+                Button(String(localized: "action_confirm"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "error_network_unavailable"))
+            }
             .sheet(item: $viewModel.courseToRecolor) { course in
                 CourseColorPickerSheet(
                     course: course,

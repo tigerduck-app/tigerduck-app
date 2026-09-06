@@ -16,7 +16,10 @@ actor AuthTokenManager {
     /// send an already-invalidated token and fail.
     private var refreshTask: Task<String?, Never>?
 
-    private let baseURL: String
+    /// Re-evaluated on every request, like ``PushAPIClient``, so an endpoint
+    /// override applied at runtime moves login/refresh together with the
+    /// data calls instead of leaving auth pinned to the launch-time host.
+    private let baseURLProvider: @Sendable () -> URL
     private let deviceUUID: String
     private var onRefreshFailed: (() async -> Bool)?
 
@@ -28,8 +31,11 @@ actor AuthTokenManager {
     static let refreshTokenKey = "v3_refresh_token"
     static let expiresAtKey = "v3_token_expires_at"
 
-    init(baseURL: String, deviceUUID: String) {
-        self.baseURL = baseURL
+    init(
+        baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
+        deviceUUID: String
+    ) {
+        self.baseURLProvider = baseURLProvider
         self.deviceUUID = deviceUUID
         self.accessToken = KeychainManager.loadString(key: Self.accessTokenKey)
         self.refreshToken = KeychainManager.loadString(key: Self.refreshTokenKey)
@@ -119,7 +125,7 @@ actor AuthTokenManager {
             )
         )
 
-        var request = URLRequest(url: URL(string: "\(baseURL)/auth/login")!)
+        var request = URLRequest(url: baseURLProvider().appendingPathComponent("auth/login"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
@@ -156,7 +162,7 @@ actor AuthTokenManager {
             let refresh_token: String
             let expires_in: Int
         }
-        var request = URLRequest(url: URL(string: "\(baseURL)/auth/refresh")!)
+        var request = URLRequest(url: baseURLProvider().appendingPathComponent("auth/refresh"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(RefreshRequest(refresh_token: refreshToken))

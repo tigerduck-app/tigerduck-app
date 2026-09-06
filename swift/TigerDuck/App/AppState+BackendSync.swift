@@ -330,7 +330,7 @@ extension AppState {
         // from the cached course; fall back to the client key for purely manual
         // courses that have no moodle_id.
         let moodleId = (DataCache.shared.loadCourses(semester: semester)
-            + DataCache.shared.loadUserAddedCourses())
+            + DataCache.shared.loadUserAddedCourses().filter { DataCache.userAddedCourse($0, belongsTo: semester) })
             .first { $0.courseNo == courseNo }?.moodleIdNumber
             .flatMap { $0.isEmpty ? nil : $0 }
         let courseKey = moodleId ?? "client:\(semester):\(courseNo)"
@@ -346,14 +346,19 @@ extension AppState {
     }
 
     /// `semester` nil wipes every term; the class-table reset passes the
-    /// term it is on so the others survive.
-    func deleteBackendCourses(semester: String? = nil) async {
-        guard Defaults[.cloudSyncEnabled] else { return }
+    /// term it is on so the others survive. Returns false when the wipe did
+    /// not land, so the caller can hold off on a reset that the next sync
+    /// would otherwise undo by merging the stale server rows back.
+    @discardableResult
+    func deleteBackendCourses(semester: String? = nil) async -> Bool {
+        guard Defaults[.cloudSyncEnabled] else { return true }
         do {
             try await pushCoordinator.deleteAllCourses(semester: semester)
             AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
+            return true
         } catch {
             AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .public)")
+            return false
         }
     }
 

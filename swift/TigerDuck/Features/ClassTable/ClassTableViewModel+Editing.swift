@@ -141,6 +141,23 @@ extension ClassTableViewModel {
     /// untouched.
     func resetCourses(authService: AuthService) {
         let semester = currentSemester
+        Task { [weak self] in
+            guard let self else { return }
+            // Wipe the backend BEFORE touching local state or refetching: the
+            // refetch auto-uploads the fresh roster, so a delete landing after
+            // it would erase it again — and a delete that never landed would
+            // let the next sync merge the stale server rows straight back.
+            // Offline or unauthorised, nothing is reset and the user is told.
+            guard await self.onResetBackendCourses?(semester) ?? true else {
+                self.showResetFailedAlert = true
+                return
+            }
+            self.resetLocalCourses(semester: semester)
+            self.triggerRefresh(authService: authService)
+        }
+    }
+
+    private func resetLocalCourses(semester: String) {
         deletedCourseNos.subtract(CourseTombstone.entries(resetting: semester, in: deletedCourseNos))
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         DataCache.shared.saveUserAddedCourses(
@@ -153,13 +170,6 @@ extension ClassTableViewModel {
         }
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
         reloadFromCache()
-        // Wipe the backend BEFORE refetching: the refetch auto-uploads the
-        // fresh roster, and a delete landing after it would erase it again.
-        Task { [weak self] in
-            guard let self else { return }
-            await self.onResetBackendCourses?(semester)
-            self.triggerRefresh(authService: authService)
-        }
     }
 
     /// Undo a not-yet-committed user-added course without tombstoning the
@@ -180,6 +190,11 @@ extension ClassTableViewModel {
         courses.removeAll { $0.courseNo == courseNo }
         persistUserAddedCourses()
         broadcastLocalChange()
+        // The add already uploaded the row; drop it server-side too or the
+        // next full sync brings the course back. ponytail: the add's POST and
+        // this DELETE are independent tasks, so a tap-tap faster than one
+        // round trip can still leave the row; a reset clears it.
+        onCourseDeleted?(courseNo, currentSemester)
     }
 
     func startRename(_ course: SDCourse) {

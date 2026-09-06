@@ -116,6 +116,7 @@ final class ClassTableViewModel {
 
     var showAddCourse = false
     var showResetConfirm = false
+    var showResetFailedAlert = false
     var courseToRename: SDCourse? = nil
     var renameText: String = ""
     var showRenameAlert = false
@@ -384,5 +385,5 @@ final class ClassTableViewModel {
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
     var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
     var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
-    var onResetBackendCourses: ((_ semester: String) async -> Void)?
+    var onResetBackendCourses: ((_ semester: String) async -> Bool)?
 }
