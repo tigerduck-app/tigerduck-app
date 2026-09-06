@@ -155,8 +155,15 @@ final class PushAPIClient: Sendable {
         _ = try await postExpectingNoBody(path: "/sync/courses/upload", body: request)
     }
 
-    func deleteAllCourses() async throws {
-        try await delete(path: "/sync/courses")
+    /// `semester` nil wipes every term (full reset); otherwise only that
+    /// term's rows and tombstones go.
+    func deleteAllCourses(semester: String? = nil) async throws {
+        var components = URLComponents()
+        components.path = "/sync/courses"
+        if let semester {
+            components.queryItems = [URLQueryItem(name: "semester", value: semester)]
+        }
+        try await delete(path: components.string ?? "/sync/courses")
     }
 
     func deleteCourse(courseKey: String) async throws {
@@ -261,7 +268,13 @@ final class PushAPIClient: Sendable {
 
     private func delete(path: String) async throws {
         let baseURL = baseURLProvider()
-        let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        // `path` may carry a query string; appendingPathComponent would
+        // percent-escape the `?`, so splice it back on after the join.
+        let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
+        var url = baseURL.appendingPathComponent(parts[0].trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        if parts.count == 2, let withQuery = URL(string: url.absoluteString + "?" + parts[1]) {
+            url = withQuery
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         await applyAuth(to: &request)

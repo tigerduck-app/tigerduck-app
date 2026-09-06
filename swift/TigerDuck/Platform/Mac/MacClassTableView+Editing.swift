@@ -51,7 +51,7 @@ extension MacClassTableView {
         }
 
         var deleted = Set(DataCache.shared.loadDeletedCourseNos())
-        if deleted.remove(course.courseNo) != nil {
+        if CourseTombstone.unhide(course.courseNo, semester: selectedSemester, from: &deleted) {
             DataCache.shared.saveDeletedCourseNos(Array(deleted))
         }
 
@@ -172,7 +172,7 @@ extension MacClassTableView {
     /// immediately whether the source was an enrolled course or a manual add.
     func deleteCourse(_ course: SDCourse) {
         var deleted = Set(DataCache.shared.loadDeletedCourseNos())
-        deleted.insert(course.courseNo)
+        deleted.insert(CourseTombstone.key(semester: selectedSemester, courseNo: course.courseNo))
         DataCache.shared.saveDeletedCourseNos(Array(deleted))
 
         let existing = DataCache.shared.loadUserAddedCourses()

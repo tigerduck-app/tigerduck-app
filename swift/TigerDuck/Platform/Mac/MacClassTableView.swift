@@ -108,6 +108,7 @@ struct MacClassTableView: View {
         return CanonicalCourseProvider.merge(
             primary: cached,
             userAdded: userAdded,
+            semester: selectedSemester,
             deletedCourseNos: Set(DataCache.shared.loadDeletedCourseNos()),
             customNames: DataCache.shared.loadCourseCustomNamesFlat()
         )
@@ -408,11 +409,11 @@ struct MacClassTableView: View {
     }
 
     /// True when the Mac picker is on the currently-enrolled semester.
-    /// Rename and Delete are gated on this because their on-disk stores
-    /// (`courseCustomNames`, `deletedCourseNos`) are keyed by `courseNo`
-    /// only — a write made while viewing a past term would leak into the
-    /// current schedule, widgets, and Live Activity for any course that
-    /// reuses the same code.
+    /// Rename is gated on this because `courseCustomNames` is keyed by
+    /// `courseNo` only — a rename made while viewing a past term would
+    /// leak into the current schedule, widgets, and Live Activity for any
+    /// course that reuses the same code. Delete tombstones are semester-
+    /// scoped (`CourseTombstone`) and keep the gate only for symmetry.
     var isViewingCurrentSemester: Bool {
         selectedSemester == CourseSelectionService.currentSemesterCode()
     }

@@ -18,9 +18,11 @@ struct CanonicalCourseProvider {
 
     /// Returns the canonical course list from the current cache.
     func currentCourses() -> [SDCourse] {
-        Self.merge(
-            primary: cache.loadCourses(semester: CourseSelectionService.currentSemesterCode()),
-            userAdded: cache.loadUserAddedCourses(semester: CourseSelectionService.currentSemesterCode()),
+        let semester = CourseSelectionService.currentSemesterCode()
+        return Self.merge(
+            primary: cache.loadCourses(semester: semester),
+            userAdded: cache.loadUserAddedCourses(semester: semester),
+            semester: semester,
             deletedCourseNos: Set(cache.loadDeletedCourseNos()),
             customNames: cache.loadCourseCustomNamesFlat()
         )
@@ -32,9 +34,13 @@ struct CanonicalCourseProvider {
     /// custom-name overlay sets `customName` (a `@Transient` SwiftData
     /// property) so the canonical `courseName` is never mutated and no
     /// override leaks into persistence. Render `displayName` downstream.
+    ///
+    /// `deletedCourseNos` is the raw tombstone set (see `CourseTombstone`);
+    /// `semester` scopes which entries apply.
     static func merge(
         primary: [SDCourse],
         userAdded: [SDCourse],
+        semester: String,
         deletedCourseNos: Set<String>,
         customNames: [String: String]
     ) -> [SDCourse] {
@@ -42,7 +48,7 @@ struct CanonicalCourseProvider {
         for course in userAdded where !merged.contains(where: { $0.courseNo == course.courseNo }) {
             merged.append(course)
         }
-        merged.removeAll { deletedCourseNos.contains($0.courseNo) }
+        merged.removeAll { CourseTombstone.isHidden($0.courseNo, semester: semester, in: deletedCourseNos) }
         for course in merged {
             course.customName = customNames[course.courseNo]
         }

@@ -384,5 +384,5 @@ final class ClassTableViewModel {
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
     var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
     var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
-    var onResetBackendCourses: (() async -> Void)?
+    var onResetBackendCourses: ((_ semester: String) async -> Void)?
 }

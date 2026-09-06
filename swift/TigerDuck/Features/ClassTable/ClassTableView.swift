@@ -16,7 +16,7 @@ struct ClassTableView: View {
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
-                    viewModel.onResetBackendCourses = { await appState.deleteAllBackendCourses() }
+                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
@@ -30,7 +30,7 @@ struct ClassTableView: View {
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
-                    viewModel.onResetBackendCourses = { await appState.deleteAllBackendCourses() }
+                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
@@ -164,7 +164,10 @@ struct ClassTableView: View {
                 }
             }
             .alert(
-                String(localized: "class_table_reset_title"),
+                String(
+                    format: String(localized: "class_table_reset_title_with_semester"),
+                    viewModel.displayLabel(for: viewModel.currentSemester)
+                ),
                 isPresented: $viewModel.showResetConfirm
             ) {
                 Button(String(localized: "action_confirm"), role: .destructive) {

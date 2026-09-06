@@ -21,7 +21,7 @@ extension ClassTableViewModel {
         // future reloads stop filtering it. Reports `false` since nothing
         // was newly appended — the row was already in the timetable.
         if courses.contains(where: { $0.courseNo == course.courseNo }) {
-            if deletedCourseNos.remove(course.courseNo) != nil {
+            if CourseTombstone.unhide(course.courseNo, semester: currentSemester, from: &deletedCourseNos) {
                 DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
             }
             return false
@@ -37,7 +37,7 @@ extension ClassTableViewModel {
             return false
         }
 
-        if deletedCourseNos.remove(course.courseNo) != nil {
+        if CourseTombstone.unhide(course.courseNo, semester: currentSemester, from: &deletedCourseNos) {
             DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
             if let idnumber = course.moodleIdNumber,
                let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
@@ -115,7 +115,8 @@ extension ClassTableViewModel {
     }
 
     func applyCustomizations(_ courses: inout [SDCourse]) {
-        courses.removeAll { deletedCourseNos.contains($0.courseNo) }
+        let semester = currentSemester
+        courses.removeAll { CourseTombstone.isHidden($0.courseNo, semester: semester, in: deletedCourseNos) }
         let locale = currentLocale
         for course in courses {
             course.customName = courseCustomNames[course.courseNo]?[locale]
@@ -125,7 +126,7 @@ extension ClassTableViewModel {
     func deleteCourse(_ course: SDCourse) {
         let courseNo = course.courseNo
         courses.removeAll { $0.courseNo == courseNo }
-        deletedCourseNos.insert(courseNo)
+        deletedCourseNos.insert(CourseTombstone.key(semester: currentSemester, courseNo: courseNo))
         DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
         persistUserAddedCourses()
         broadcastLocalChange()
@@ -133,24 +134,32 @@ extension ClassTableViewModel {
         onCoursesChanged?(courses, currentSemester)
     }
 
+    /// Rebuilds only the term the picker is on: its hidden courses
+    /// resurface, its manual additions and custom names go, the backend
+    /// drops that term, and a forced refetch repopulates it from Moodle,
+    /// the course-selection system and the grade report. Other terms are
+    /// untouched.
     func resetCourses(authService: AuthService) {
-        let semester = CourseSelectionService.currentSemesterCode()
-        for courseNo in deletedCourseNos {
-            let idnumber = "\(semester)\(courseNo)"
-            if let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) {
-                onSyncCourseOverride?(String(numericId), nil, nil, nil)
-            }
+        let semester = currentSemester
+        deletedCourseNos.subtract(CourseTombstone.entries(resetting: semester, in: deletedCourseNos))
+        DataCache.shared.saveDeletedCourseNos(Array(deletedCourseNos))
+        DataCache.shared.saveUserAddedCourses(
+            DataCache.shared.loadUserAddedCourses().filter { !DataCache.userAddedCourse($0, belongsTo: semester) }
+        )
+        // ponytail: custom names are keyed by course number only, so a
+        // retaken course loses its alias in the other term as well.
+        for courseNo in DataCache.shared.loadCourses(semester: semester).map(\.courseNo) {
+            courseCustomNames.removeValue(forKey: courseNo)
         }
-        deletedCourseNos.removeAll()
-        DataCache.shared.saveDeletedCourseNos([])
-        DataCache.shared.saveUserAddedCourses([])
-        courseCustomNames.removeAll()
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
         reloadFromCache()
-        if let resetBackend = onResetBackendCourses {
-            Task { await resetBackend() }
+        // Wipe the backend BEFORE refetching: the refetch auto-uploads the
+        // fresh roster, and a delete landing after it would erase it again.
+        Task { [weak self] in
+            guard let self else { return }
+            await self.onResetBackendCourses?(semester)
+            self.triggerRefresh(authService: authService)
         }
-        triggerRefresh(authService: authService)
     }
 
     /// Undo a not-yet-committed user-added course without tombstoning the

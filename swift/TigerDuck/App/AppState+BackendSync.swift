@@ -575,13 +575,15 @@ extension AppState {
         }
     }
 
-    func deleteAllBackendCourses() async {
+    /// `semester` nil wipes every term; the class-table reset passes the
+    /// term it is on so the others survive.
+    func deleteBackendCourses(semester: String? = nil) async {
         guard Defaults[.cloudSyncEnabled] else { return }
         do {
-            try await pushCoordinator.deleteAllCourses()
-            AppLogger.sync.info("deleteAllBackendCourses ok")
+            try await pushCoordinator.deleteAllCourses(semester: semester)
+            AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
         } catch {
-            AppLogger.sync.error("deleteAllBackendCourses failed: \(error, privacy: .public)")
+            AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .public)")
         }
     }
 
