@@ -266,7 +266,21 @@ final class DataCache {
     }
 
     func loadDeletedCourseNos() -> [String] {
-        load(from: "deleted_courses.json", in: persistentDir) ?? []
+        let stored: [String] = load(from: "deleted_courses.json", in: persistentDir) ?? []
+        // Entries written before tombstones carried a semester are bare
+        // course numbers. Pin them to the terms whose cached roster has the
+        // course (see `CourseTombstone.migratingLegacyEntries`); this is a
+        // no-op once nothing bare is left.
+        guard stored.contains(where: { !$0.contains(":") }) else { return stored }
+        let rosters = Dictionary(
+            SemesterCatalog.availableSemesters().map { ($0, Set(loadCourses(semester: $0).map(\.courseNo))) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let migrated = CourseTombstone.migratingLegacyEntries(stored, rosters: rosters)
+        if Set(migrated) != Set(stored) {
+            saveDeletedCourseNos(migrated)
+        }
+        return migrated
     }
 
     // MARK: - Course Custom Names

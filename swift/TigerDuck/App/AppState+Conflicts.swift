@@ -136,7 +136,7 @@ extension AppState {
                     var serverOnly = 0
                     for semester in Set(serverSemesters).union(SemesterCatalog.availableSemesters()) {
                         let serverNos = Set(coursesArray
-                            .filter { ($0["semester"] as? String) == semester }
+                            .filter { ($0["semester"] as? String) == semester && Self.isFiled($0, under: semester) }
                             .compactMap { $0["course_no"] as? String })
                         let localNos = Set(DataCache.shared.loadCourses(semester: semester).map(\.courseNo))
                             .union(DataCache.shared.loadUserAddedCourses(semester: semester).map(\.courseNo))

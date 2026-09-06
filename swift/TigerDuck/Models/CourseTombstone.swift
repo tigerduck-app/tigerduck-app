@@ -34,4 +34,22 @@ nonisolated enum CourseTombstone {
     static func entries(resetting semester: String, in tombstones: Set<String>) -> Set<String> {
         tombstones.filter { $0.hasPrefix("\(semester):") || !$0.contains(":") }
     }
+
+    /// Upgrade path for stores written before the semester scope: a bare
+    /// entry is pinned to every term whose roster carries the course, so
+    /// the per-semester sync sees one scoped key per term instead of a
+    /// global wildcard. An entry no roster knows stays bare (still hidden
+    /// everywhere) until a roster turns up. Order is not significant.
+    static func migratingLegacyEntries(_ entries: [String], rosters: [String: Set<String>]) -> [String] {
+        var result = Set(entries)
+        for courseNo in entries where !courseNo.contains(":") {
+            let terms = rosters.filter { $0.value.contains(courseNo) }.keys
+            guard !terms.isEmpty else { continue }
+            result.remove(courseNo)
+            for semester in terms {
+                result.insert(key(semester: semester, courseNo: courseNo))
+            }
+        }
+        return Array(result)
+    }
 }

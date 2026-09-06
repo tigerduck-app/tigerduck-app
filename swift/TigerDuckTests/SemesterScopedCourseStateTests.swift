@@ -52,3 +52,25 @@ struct SyncStatusDotTests {
         #expect(SyncStatusDot.summary(loadingState: .error("x"), statuses: [.ok]) == .failed)
     }
 }
+
+struct CourseTombstoneMigrationTests {
+    @Test func legacyEntriesArePinnedToRostersThatCarryThem() {
+        let rosters: [String: Set<String>] = ["1151": ["CS1", "CS2"], "1142": ["CS1"]]
+        let migrated = Set(CourseTombstone.migratingLegacyEntries(["CS1", "CS9", "1142:CS3"], rosters: rosters))
+        // CS1 is retaken, so it stays hidden in both terms; CS9 is unknown
+        // and keeps its global form; scoped keys pass through untouched.
+        #expect(migrated == ["1151:CS1", "1142:CS1", "CS9", "1142:CS3"])
+    }
+}
+
+struct MisfiledServerRowTests {
+    @MainActor
+    @Test func rowWhoseMoodleIdNamesAnotherTermIsNotFiledHere() {
+        #expect(!AppState.isFiled(["moodle_id": "1151CS1"], under: "1142"))
+        #expect(AppState.isFiled(["moodle_id": "1142CS1"], under: "1142"))
+        #expect(AppState.isFiled(["moodle_id": "114HCS1"], under: "114H"))
+        // No semester-shaped Moodle id → nothing to contradict the filing.
+        #expect(AppState.isFiled(["moodle_id": "moodle:42"], under: "1142"))
+        #expect(AppState.isFiled([:], under: "1142"))
+    }
+}

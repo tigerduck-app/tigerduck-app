@@ -35,7 +35,7 @@ extension AppState {
         }
 
         for semester in semesters.sorted() {
-            let rows = rowsBySemester[semester] ?? []
+            let rows = (rowsBySemester[semester] ?? []).filter { Self.isFiled($0, under: semester) }
             let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
             let localCourses = DataCache.shared.loadCourses(semester: semester)
 
@@ -119,6 +119,19 @@ extension AppState {
             }
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
+    }
+
+    /// Whether a server row really belongs to `semester`. Rows whose Moodle
+    /// id names another term ("1151CS…" filed under 1142) are leftovers of
+    /// the 2026-08 選課 attribution bug, when next-term enrolments were
+    /// uploaded under the heuristic current term; they are not a roster
+    /// and must neither be merged nor count as "on the server".
+    static func isFiled(_ row: [String: Any], under semester: String) -> Bool {
+        guard semester.count == 4,
+              let moodleId = row["moodle_id"] as? String,
+              moodleId.count > 4,
+              moodleId.prefix(3).allSatisfy(\.isNumber) else { return true }
+        return moodleId.prefix(4) == semester
     }
 
     private static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?) -> SDCourse {
