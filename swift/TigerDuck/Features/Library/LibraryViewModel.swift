@@ -122,8 +122,13 @@ final class LibraryViewModel {
             errorMessage = nil
             do {
                 let payload = try await LibraryService.generateQRCode()
+                // Rasterise off the main actor: a cold CIContext plus the
+                // CGImage render was a visible hitch on older phones.
+                let image = await Task.detached(priority: .userInitiated) {
+                    Self.generateQRImage(from: payload)
+                }.value
                 qrPayload = payload
-                qrCodeImage = Self.generateQRImage(from: payload)
+                qrCodeImage = image
                 countdown = 30
                 isLoadingQR = false
                 consecutiveErrors = 0
@@ -157,13 +162,17 @@ final class LibraryViewModel {
         }
     }
 
-    private static func generateQRImage(from string: String) -> UIImage? {
+    /// One context for the app's lifetime — creating one per QR compiles
+    /// Core Image's Metal pipeline every 30 s.
+    nonisolated(unsafe) private static let ciContext = CIContext()  // CIContext is thread-safe
+
+    nonisolated private static func generateQRImage(from string: String) -> UIImage? {
         // Plain SDR black/white render. HDR brightness is applied at draw
         // time by `HDRQRCodeImage` via a Metal shader against an EDR-enabled
         // CAMetalLayer — doing it here through CoreImage's filter chain
         // proved unreliable (false-color clamping + SwiftUI not tagging
         // synthetic UIImages as HDR).
-        let context = CIContext()
+        let context = ciContext
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(string.utf8)
         filter.correctionLevel = "M"

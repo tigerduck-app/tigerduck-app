@@ -62,9 +62,16 @@ final class EDRMetalQRView: UIView {
     /// changed — re-uploading the same texture each second would waste
     /// IOSurface allocations and burn battery.
     private var lastUploadedImage: UIImage?
+    /// Coalesces every `redraw()` request made in one run-loop turn into a
+    /// single draw. `updateUIView` + `setImage` + `layoutSubviews` used to
+    /// each grab a drawable synchronously; the layer only has three and
+    /// none is returned until the frame is presented, so the fourth
+    /// `nextDrawable()` blocked the main thread for its 1 s timeout —
+    /// the "whole app freezes when the QR refreshes" report.
+    private var redrawScheduled = false
 
     var brightness: Float = 5.0 {
-        didSet { redraw() }
+        didSet { if oldValue != brightness { setNeedsRedraw() } }
     }
 
     override init(frame: CGRect) {
@@ -161,7 +168,7 @@ final class EDRMetalQRView: UIView {
         if let tex = try? loader.newTexture(cgImage: cgImage, options: options) {
             self.texture = tex
             self.lastUploadedImage = image
-            redraw()
+            setNeedsRedraw()
         }
     }
 
@@ -174,12 +181,30 @@ final class EDRMetalQRView: UIView {
         )
         if metalLayer.drawableSize != size {
             metalLayer.drawableSize = size
+            setNeedsRedraw()
         }
-        redraw()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { setNeedsRedraw() }
+    }
+
+    private func setNeedsRedraw() {
+        guard !redrawScheduled else { return }
+        redrawScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.redrawScheduled = false
+            self.redraw()
+        }
     }
 
     private func redraw() {
+        // Off-window layers never present, so their drawables never come
+        // back — asking for one would just burn the timeout.
         guard
+            window != nil,
             let pipeline,
             let commandQueue,
             let texture,
