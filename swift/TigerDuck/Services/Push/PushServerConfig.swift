@@ -59,24 +59,25 @@ nonisolated enum PushServerConfig {
 
     /// Resolves the backend URL for this build.
     ///
-    /// Release builds always return ``AppConstants/productionPushServerURL``.
+    /// Every build honours ``DebugEndpointStore/currentOverride()`` first
+    /// (Keychain — set via Settings → Other settings → API endpoint;
+    /// persists across reinstall, gated by ``isOverrideAllowed(_:)``).
     ///
-    /// Debug builds resolve in priority order:
-    ///   1. ``DebugEndpointStore/currentOverride()`` (Keychain — set via
-    ///      the in-app Developer settings; persists across reinstall)
-    ///   2. `Defaults[.pushServerURLOverride]` (UserDefaults escape hatch,
+    /// Without one, Release returns ``AppConstants/productionPushServerURL``
+    /// and Debug resolves in priority order:
+    ///   1. `Defaults[.pushServerURLOverride]` (UserDefaults escape hatch,
     ///      gated by ``isOverrideAllowed(_:)``)
-    ///   3. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
+    ///   2. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
     ///      file is gitignored so each contributor sets their own Mac's IP)
-    ///   4. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
+    ///   3. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
     ///      `http://localhost:40000/v3`)
     static func resolveServerURL() -> URL {
-        #if DEBUG
         if let raw = DebugEndpointStore.currentOverride(),
            let url = URL(string: raw),
            isOverrideAllowed(url) {
             return normalize(url)
         }
+        #if DEBUG
         if let override = Defaults[.pushServerURLOverride],
            !override.isEmpty,
            let url = URL(string: override),

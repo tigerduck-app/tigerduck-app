@@ -88,6 +88,11 @@ struct OtherSettingsView: View {
                 }
             }
             Section {
+                NavigationLink(String(localized: "settings_api_endpoint")) {
+                    DebugEndpointView()
+                }
+            }
+            Section {
                 Button {
                     if appState.browserPreference == .inApp {
                         showFeedback = true

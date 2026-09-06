@@ -273,9 +273,6 @@ struct SettingsView: View {
                 NavigationLink("Notifications") {
                     DebugNotificationsView()
                 }
-                NavigationLink("API endpoint") {
-                    DebugEndpointView()
-                }
                 NavigationLink("Server failure simulation") {
                     DebugServerFailureView()
                 }
@@ -714,6 +711,9 @@ private struct LibraryWarningOverlay: View {
             }
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                 confirmEnabled = true
+            }
+        }
+    }
 
     /// Liquid Glass buttons on iOS 26; the hand-rolled red / grey pills
     /// stay for iOS 18–25 where `.glass` does not exist.
@@ -776,9 +776,6 @@ private struct GlassDialogSurface: ViewModifier {
             content.glassEffect(.regular, in: .rect(cornerRadius: 28))
         } else {
             content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
-        }
-    }
-            }
         }
     }
 }

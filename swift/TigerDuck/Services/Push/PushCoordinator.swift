@@ -318,23 +318,22 @@ final class PushCoordinator {
     nonisolated static func assertEnvConsistency() {
         let resolved = PushServerConfig.resolveServerURL()
         let host = resolved.host?.lowercased() ?? ""
-        #if DEBUG
-        let expectedEnv = "development"
         // Mirror the runtime override gate: any host `isOverrideAllowed`
-        // accepts must also pass this assert, otherwise a Debug build
-        // that saved an `api.tigerduck.app` apex or `*.api.tigerduck.app`
+        // accepts must also pass this assert, otherwise a build that
+        // saved an `api.tigerduck.app` apex or `*.api.tigerduck.app`
         // subdomain override would crash on next launch with a Keychain
         // value the user can't reach to clear. The apns_env mismatch when
-        // pointing at prod is still real, but it surfaces as push failing
-        // at registration time — not as a hard launch crash before any
-        // UI renders.
+        // pointing a Debug build at prod is still real, but it surfaces
+        // as push failing at registration time — not as a hard launch
+        // crash before any UI renders.
         let hostOK = host == "localhost"
             || host == "127.0.0.1"
             || PushServerConfig.isPrivateIPv4(host)
             || PushServerConfig.isAllowedPublicHost(host)
+        #if DEBUG
+        let expectedEnv = "development"
         #else
         let expectedEnv = "production"
-        let hostOK = host == "api.tigerduck.app"
         #endif
         assert(
             hostOK,
