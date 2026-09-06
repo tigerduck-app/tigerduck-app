@@ -38,6 +38,27 @@ struct SemesterCatalogTests {
         #expect(SemesterCatalog.selectedSemester(storedPick: "1132") == "1132")
     }
 
+    @Test("Picker reaches back to the admission term, summer terms included")
+    func reachesAdmissionTerm() {
+        let catalogue = ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H", "1122"]
+        #expect(SemesterCatalog.terms(from: catalogue, admissionYear: 113)
+            == ["1151", "114H", "1142", "1141", "113H", "1132", "1131"])
+    }
+
+    @Test("Unknown student id keeps the fixed depth")
+    func fixedDepthWithoutId() {
+        let catalogue = ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H"]
+        #expect(SemesterCatalog.terms(from: catalogue, admissionYear: nil).count == 6)
+    }
+
+    @Test("Admission year is the three digits after the degree letter")
+    func parsesAdmissionYear() {
+        #expect(SemesterCatalog.admissionYear(studentId: "B11315000") == 113)
+        #expect(SemesterCatalog.admissionYear(studentId: "M11000001") == 110)
+        #expect(SemesterCatalog.admissionYear(studentId: "abc") == nil)
+        #expect(SemesterCatalog.admissionYear(studentId: nil) == nil)
+    }
+
     @Test("No open term yields nil so the last known value is kept")
     func toleratesNoOpenTerm() throws {
         let closed = Data("""
