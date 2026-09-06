@@ -86,12 +86,8 @@ enum AppServiceBridge {
         // into 114-2 for the weeks between 選課 opening and the month
         // heuristic rolling over.
         let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
-        let courseApiLanguage = LanguageManager.resolvedCourseApiLanguage(
-            appLanguage: Defaults[.appLanguage]
-        )
-        let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
-        let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
-        let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
+        let display = CourseDisplayPreferences.current()
+        let courseApiLanguage = display.language
 
         guard !Task.isCancelled else { return [] }
 
@@ -229,48 +225,12 @@ enum AppServiceBridge {
                                 )
                             }
 
-                            let course = buildSDCourse(
+                            return enrichedCourseData(
                                 from: results,
                                 semester: semester,
-                                fallbackMoodleIdNumber: moodleByNo[courseNo]?.idnumber
+                                fallbackMoodleIdNumber: moodleByNo[courseNo]?.idnumber,
+                                display: display
                             )
-                            var data = CourseData(
-                                courseNo: course.courseNo,
-                                courseName: course.courseName,
-                                instructor: course.instructor,
-                                credits: course.credits,
-                                classroom: course.classroom,
-                                enrolledCount: course.enrolledCount,
-                                maxCount: course.maxCount,
-                                schedule: course.schedule,
-                                moodleIdNumber: course.moodleIdNumber,
-                                classroomMap: course.classroomMap
-                            )
-                            // Cache the raw API name so abbreviation toggles can re-derive
-                            // without a network round-trip.
-                            NameAbbrService.shared.storeRawName(
-                                courseNo: data.courseNo, name: data.courseName
-                            )
-                            NameAbbrService.shared.storeRawClassroom(
-                                courseNo: data.courseNo,
-                                classroom: data.classroom,
-                                map: data.classroomMap
-                            )
-                            let isEnglish = courseApiLanguage == "en"
-                            if isEnglish && courseAbbrEnabled {
-                                data.courseName = NameAbbrService.shared.abbreviateName(data.courseName)
-                            }
-                            if classroomAbbrEnabled || classroomMandarinDisplay != "original" {
-                                data.classroom = NameAbbrService.shared.abbreviateClassroom(
-                                    data.classroom, display: classroomMandarinDisplay
-                                )
-                                data.classroomMap = data.classroomMap.mapValues { val in
-                                    NameAbbrService.shared.abbreviateClassroom(
-                                        val, display: classroomMandarinDisplay
-                                    )
-                                }
-                            }
-                            return data
                         } catch {
                             await MainActor.run {
                                 AppLogger.captureError(error, context: [
@@ -362,6 +322,126 @@ enum AppServiceBridge {
             }
             return DataCache.shared.loadCourses(semester: semester)
         }
+    }
+
+    /// The per-user display toggles a course lookup has to honour, read once
+    /// per fetch so a concurrent fan-out sees one consistent set.
+    private struct CourseDisplayPreferences: Sendable {
+        let language: String
+        let courseAbbrEnabled: Bool
+        let classroomAbbrEnabled: Bool
+        let classroomMandarinDisplay: String
+
+        static func current() -> CourseDisplayPreferences {
+            CourseDisplayPreferences(
+                language: LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage]),
+                courseAbbrEnabled: Defaults[.useEnglishCourseAbbreviation],
+                classroomAbbrEnabled: Defaults[.useEnglishClassroomAbbreviation],
+                classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
+            )
+        }
+    }
+
+    /// QueryCourse rows → the display-ready course data the class table
+    /// stores: merged schedule and per-slot rooms, raw names cached for the
+    /// abbreviation toggles, and the current abbreviation / Mandarin-display
+    /// preferences applied.
+    private static func enrichedCourseData(
+        from results: [CourseSearchResult],
+        semester: String,
+        fallbackMoodleIdNumber: String?,
+        display: CourseDisplayPreferences
+    ) -> CourseData {
+        let course = buildSDCourse(
+            from: results,
+            semester: semester,
+            fallbackMoodleIdNumber: fallbackMoodleIdNumber
+        )
+        var data = CourseData(
+            courseNo: course.courseNo,
+            courseName: course.courseName,
+            instructor: course.instructor,
+            credits: course.credits,
+            classroom: course.classroom,
+            enrolledCount: course.enrolledCount,
+            maxCount: course.maxCount,
+            schedule: course.schedule,
+            moodleIdNumber: course.moodleIdNumber,
+            classroomMap: course.classroomMap
+        )
+        // Cache the raw API name so abbreviation toggles can re-derive
+        // without a network round-trip.
+        NameAbbrService.shared.storeRawName(courseNo: data.courseNo, name: data.courseName)
+        NameAbbrService.shared.storeRawClassroom(
+            courseNo: data.courseNo, classroom: data.classroom, map: data.classroomMap
+        )
+        if display.language == "en" && display.courseAbbrEnabled {
+            data.courseName = NameAbbrService.shared.abbreviateName(data.courseName)
+        }
+        if display.classroomAbbrEnabled || display.classroomMandarinDisplay != "original" {
+            data.classroom = NameAbbrService.shared.abbreviateClassroom(
+                data.classroom, display: display.classroomMandarinDisplay
+            )
+            data.classroomMap = data.classroomMap.mapValues {
+                NameAbbrService.shared.abbreviateClassroom($0, display: display.classroomMandarinDisplay)
+            }
+        }
+        return data
+    }
+
+    /// Re-queries every manually-added (or cross-device merged) course of
+    /// `semester` so its headcount, credits, instructor, rooms and periods
+    /// are as fresh as the portal courses. Those rows otherwise keep the
+    /// snapshot taken when they were added. Rows the lookup cannot find
+    /// keep that snapshot. Persists and returns the semester's user-added
+    /// list.
+    static func refreshUserAddedCourses(semester: String) async -> [SDCourse] {
+        let stored = DataCache.shared.loadUserAddedCourses()
+        let targets = stored.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+        guard !targets.isEmpty else { return [] }
+        let display = CourseDisplayPreferences.current()
+        // Snapshot the MainActor-bound model fields before fanning out.
+        let seeds = targets.map { ($0.courseNo, $0.moodleIdNumber, $0.semester.isEmpty ? semester : $0.semester) }
+
+        var refreshed: [String: CourseData] = [:]
+        await withTaskGroup(of: (String, CourseData?).self) { group in
+            for (courseNo, moodleId, rowSemester) in seeds {
+                group.addTask { @MainActor in
+                    guard let results = try? await CourseLookupService.lookupCourse(
+                        semester: rowSemester, courseNo: courseNo, language: display.language
+                    ), !results.isEmpty else { return (courseNo, nil) }
+                    return (courseNo, enrichedCourseData(
+                        from: results, semester: rowSemester,
+                        fallbackMoodleIdNumber: moodleId, display: display
+                    ))
+                }
+            }
+            for await (courseNo, data) in group {
+                if let data { refreshed[courseNo] = data }
+            }
+        }
+        guard !refreshed.isEmpty else { return targets }
+
+        let updated = stored.map { course -> SDCourse in
+            guard DataCache.userAddedCourse(course, belongsTo: semester),
+                  let data = refreshed[course.courseNo] else { return course }
+            return SDCourse(
+                courseNo: course.courseNo,
+                courseName: data.courseName,
+                instructor: data.instructor,
+                credits: data.credits,
+                classroom: data.classroom,
+                enrolledCount: data.enrolledCount,
+                maxCount: data.maxCount,
+                schedule: data.schedule,
+                // A nil moodle id is what marks a row as manual; keep it.
+                moodleIdNumber: course.moodleIdNumber,
+                semester: course.semester,
+                classroomMap: data.classroomMap
+            )
+        }
+        DataCache.shared.saveUserAddedCourses(updated)
+        return updated.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
     }
 
     /// Build a minimal `CourseData` when the QueryCourse API returns empty

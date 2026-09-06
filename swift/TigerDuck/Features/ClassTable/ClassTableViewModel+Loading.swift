@@ -110,11 +110,14 @@ extension ClassTableViewModel {
             forceRefresh: true,
         )
         async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService)
+        // Manual and cross-device courses only ever held the snapshot
+        // taken when they were added; the pull is the "latest of
+        // everything" gesture, so re-query them too.
+        async let userAddedTask = AppServiceBridge.refreshUserAddedCourses(semester: targetSemester)
 
         let fetchedCourses = await coursesTask
         let fetchedAssignments = await assignmentsTask
-
-        let userAdded = DataCache.shared.loadUserAddedCourses(semester: targetSemester)
+        let userAdded = await userAddedTask
 
         await MainActor.run {
             isUpdatingFromNetwork = true
