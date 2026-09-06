@@ -6,8 +6,10 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.8.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.8.1)
+[![Version](https://img.shields.io/badge/Version-v2.0.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
+[![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
 
 [![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
@@ -32,6 +34,10 @@ TigerDuck 是由一群學生共同開發的校園助手
 - 從選課系統同步，不用再**等 Moodle 延遲**
 - 動態島與即時動態告訴你下一節課在哪！
 
+### 🗓️ **行事曆**
+- 整合校方行程與 Moodle 作業截止日
+- 月曆檢視、切換日期、下拉同步
+
 ### 📣 **公告**
 - 由後端 **LLM 自動分類、整理、去重複**，不用再被處室公告洗版
 - 可篩選未讀、訂閱類別，有重要公告馬上通知你
@@ -44,11 +50,24 @@ TigerDuck 是由一群學生共同開發的校園助手
 - 秒開入館 QR-Code，無任何延遲
 
 ### ⌚ **Apple Watch**
+- **Now & Next** 主畫面：當下 / 下一節課，以及進行中課程的進度
+- **Today** 列表與課程詳情頁
 - 抬腕即見**入館 QR-Code**，全螢幕顯示、閒置自動淡出頁碼
-- 透過 WatchConnectivity 自動同步登入憑證，無需在 Watch 上重新登入
+- **Complication** 把下一節課放到錶面（圓形 / 矩形 / 單行 / 邊角四種）
+- 透過 WatchConnectivity 自動同步課表與登入憑證，無需在 Watch 上重新登入
+
+### 🧩 **小工具**
+- **下一節課**（小 / 中）、**今日課表**與**本週課表**（大 / 特大）
+- 鎖定畫面 Accessory（單行 / 圓形 / 矩形）與圖書證 QR 捷徑
+- iOS 與 macOS 共用同一組 Widget
+
+### 💻 **macOS**
+- 原生 Mac App（非 Catalyst），側邊欄導覽、各頁面皆有 Mac 版版面
+- 側邊欄釘選項目與 iOS 的 Tab 設定分開保存
+- 支援推播與雲端同步，與 iPhone 共用同一個帳號
 
 ### 🌏 **外觀**
-- 內建 **67+ 種語系**，自行設定或跟著系統語言切換
+- 內建 **67 種語系**，自行設定或跟著系統語言切換
 - 名字過長？課程 / 教室名稱**自動簡寫**
 
 ### 🎨 **客製化**
@@ -93,6 +112,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v2.0.0`** | 2026-08-23 | 🚀 **雲端同步正式上線** — 課程/作業即時上傳、macOS 推播與帳號同步、401 自動恢復、伺服器推播頻道設定 |
 | **`v1.8.1`** | 2026-08-21 | 圖書證 QR 改回只靠 HDR 局部高亮，不再調整整台裝置的螢幕亮度 — EDR 判斷誤用了「當下是否正在顯示 HDR 內容」的數值，而 QR 還沒畫出來時它必然為否，於是 EDR 機型仍舊被鎖在最大亮度 |
 | **`v1.8.0`** | 2026-08-20 | 🔔 **公告推播上線** — 裝置註冊、推播偏好與公告深層連結全鏈路；有新版本時主動提醒，更新後顯示「這一版有什麼」；手機翻面朝下叫出圖書證 QR；密碼與圖書證 QR 在截圖與螢幕錄影中自動遮蔽；NTUST 與圖書館連線加上 TLS SPKI pinning；課名字級滑桿、設定頁依 Android 順序重整、macOS 各頁面與色盲友善的衝堂標示 |
 | **`v1.7.3`** | 2026-08-20 | 手動加入的課程只留在加入時所選的學期 — 先前會同時出現在每個學期的課表、首頁與小工具中 |
@@ -147,14 +167,33 @@ TigerDuck 是由一群學生共同開發的校園助手
 - [ ] **免費便當通知** – 任何人可實名登記，並整合台科大、台大相關資訊，主動推播通知
 
 ### 🌏 在地化與無障礙
-- [x] **多語言（67+ 語系）** – 跟著系統或在 App 內單獨切換 `v1.6.0`
+- [x] **多語言（67 語系）** – 跟著系統或在 App 內單獨切換 `v1.6.0`
 - [x] **課程 / 教室名稱簡稱** – 一鍵切換、可還原 `v1.6.0`
 - [x] **RTL 版面修正** – 阿拉伯語 / 希伯來語等右至左語系排版 `v1.6.0`
+
+### 🔔 通知與隱私
+- [x] **推播後端** – APNs Push-to-Start、排程同步 `v1.4.0`
+- [x] **公告推播** – 裝置註冊、推播偏好與公告深層連結 `v1.8.0`
+- [x] **新版本提示 +「這一版有什麼」** – 更新後顯示本次變更 `v1.8.0`
+- [x] **敏感畫面遮蔽** – 密碼與圖書證 QR 在截圖 / 螢幕錄影中自動遮蔽 `v1.8.0`
+- [x] **TLS SPKI pinning** – NTUST 與圖書館連線 `v1.8.0`
+
+### ☁️ 雲端同步
+- [x] **帳號與多裝置同步** – 課表 / 作業即時上傳、401 自動恢復 `v2.0.0`
+- [x] **伺服器推播頻道設定** `v2.0.0`
+
+### ⌚ Apple Watch / 🧩 小工具 / 💻 macOS
+- [x] **Apple Watch App** – 圖書證 QR、WatchConnectivity 憑證同步 `v1.7.0`
+- [x] **Watch Now & Next / Today / 課程詳情** `v1.7.0`
+- [x] **Watch Complication** – 下一節課直接顯示在錶面 `v1.7.0`
+- [x] **iOS / macOS 小工具** – 下一節課、今日 / 本週課表、鎖定畫面 Accessory、圖書證 QR 捷徑 `v1.7.0`
+- [x] **macOS App** – 原生側邊欄版面 `v1.7.0`、推播與帳號同步 `v2.0.0`
 
 ## 系統需求
 | 項目 | 需求 |
 |------|------|
 | 作業系統 | iOS 18 以上 |
+| macOS（選用） | macOS 14 以上（原生 Mac App，非 Catalyst）|
 | Apple Watch（選用） | watchOS 11 以上，需配對 iPhone |
 | SSO 帳號 | 學生帳號（部分功能需要）|
 | 圖書館 | 圖書館帳號（部分功能需要）|
@@ -179,7 +218,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 ### iOS App
 ```bash
-# clone 專案（含子模組：localization、name-abbr）
+# clone 專案（含子模組：app-translation、name-abbr）
 git clone --recurse-submodules https://github.com/tigerduck-app/tigerduck-app.git
 cd tigerduck-app
 
@@ -192,10 +231,10 @@ open swift/TigerDuck.xcodeproj
 # 開啟後，中間上方選擇模擬器或實體裝置，按 `⌘R` 執行
 ```
 
-> 💡 名稱簡稱（`name-abbr/`）與多語系字串（`localization/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
+> 💡 名稱簡稱（`name-abbr/`）與多語系字串（`app-translation/generated/apple/`）皆透過 symlink 綁進 Xcode synchronized group，clone 後**務必**先抓子模組再開 Xcode，否則 build 會找不到資源檔。
 
 ### 推播後端
-正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v2/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
+正式環境的 FastAPI 推播服務（APNs Push-to-Start、排程同步、公告抓取與 LLM 分類、雲端同步）已獨立成 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend) 專案；iOS App 透過 `https://api.tigerduck.app/v3/*` HTTP 契約溝通，本地端開發 iOS 時不需要把它跑起來。
 
 ### 網路請求方法驗證（`api-poc/`）
 
@@ -240,6 +279,7 @@ tigerduck-app/
 │   │   ├── Models/
 │   │   │   ├── Domain/                 # 業務邏輯模型
 │   │   │   └── SwiftData/              # 本地持久化模型
+│   │   ├── Platform/Mac/               # macOS 專屬版面（側邊欄、各頁 Mac 版、推播代理）
 │   │   ├── Services/
 │   │   │   ├── Auth/                   # NTUST SSO 認證
 │   │   │   ├── Network/                # 網路請求
@@ -249,18 +289,21 @@ tigerduck-app/
 │   │   ├── SharedUI/                   # 共用 UI 元件
 │   │   └── Theme/                      # 主題、配色、視覺預設
 │   ├── TigerDuckLiveActivity/          # Live Activity / 動態島 Widget Extension
-│   ├── TigerDuckWidgets/               # iOS 主畫面 / 鎖定畫面 Widget
-│   ├── TigerDuckWatch Watch App/       # Apple Watch App（Library QR）
+│   ├── TigerDuckWidgets/               # iOS / macOS 主畫面、鎖定畫面與 Accessory Widget
+│   ├── TigerDuckWatch Watch App/       # Apple Watch App（Now & Next / Today / 課程詳情 / 圖書證 QR）
 │   ├── TigerDuckWatchWidget/           # Apple Watch 複雜功能 (Complication)
+│   ├── TigerDuckTests/                 # 單元測試（Swift Testing + XCTest，含 Widget / Watch 邏輯）
+│   ├── ci_scripts/                     # Xcode Cloud post-clone（抓子模組）
 │   └── Shared/                         # 跨 target 共用程式碼（感測器、Watch 通訊、Theme）
 ├── api-poc/                            # 第三方 API 驗證腳本（NTUST / Moodle / Calendar）
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
+├── tools/localization/                 # 翻譯同步與 key 檢查腳本
 ├── docs/                               # 規劃文件、移轉計畫（iOS 端）
-├── localization/                       # ⤴ git submodule：67+ 語系翻譯
+├── app-translation/                    # ⤴ git submodule：67 語系翻譯
 └── name-abbr/                          # ⤴ git submodule：課程 / 教室簡稱字典
+```
 
 > 推播 / 公告後端（FastAPI + Postgres + APNs + LLM）已分拆至 [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend)。
-```
 
 ## 貢獻
 歡迎 PR 與 Issue！
@@ -273,7 +316,7 @@ tigerduck-app/
 - macOS 15 / 26 (/ 27 如果可以的話)
 3. 以 `feature/your-feature` 或 `fix/your-fix` 命名分支
 4. 發布 PR 時，目標分支為 `dev`，且必須勾選 Copilot 做 Revise
-5. 翻譯字串請改 `localization/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink
+5. 翻譯字串請改 `app-translation/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink
 
 ## 授權
 本專案採用 [GNU Affero General Public License v3.0](LICENSE) 授權。

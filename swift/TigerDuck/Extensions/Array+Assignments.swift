@@ -16,25 +16,26 @@ extension Array where Element == SDAssignment {
             .sorted { $0.dueDate < $1.dueDate }
     }
 
-    /// Returns ignored-but-still-unsubmitted assignments sorted by due date
-    /// ascending. If Moodle later marks an assignment completed, it no longer
-    /// belongs in the ignored bucket even if a stale local flag still exists.
     func ignoredSorted() -> [SDAssignment] {
-        filter { !$0.isCompleted && $0.isArchived }
+        filter { $0.isArchived }
             .sorted { $0.dueDate < $1.dueDate }
     }
 
     func hasIgnored() -> Bool {
-        contains { !$0.isCompleted && $0.isArchived }
+        contains { $0.isArchived }
     }
 
-    /// Time-agnostic candidate set for the 全部 tab. Excludes
-    /// locally-archived rows (they belong to the 已忽略 filter) *except*
-    /// when Moodle has since marked the row submitted — that
-    /// archived-and-completed state is reachable because the local
-    /// archive flag persists separately from Moodle completion, and the
-    /// 已忽略 bucket itself requires `!isCompleted`, so without this
-    /// exception the row would vanish from every filter.
+    /// Time-agnostic candidate set for the 全部 tab. Excludes locally-archived
+    /// rows (they belong to the 已忽略 filter) *except* when Moodle has since
+    /// marked the row submitted: the archive flag persists separately from
+    /// Moodle completion, and a row the school now considers handed in has
+    /// stopped being work the user chose to hide.
+    ///
+    /// The exception used to be justified by 已忽略 requiring `!isCompleted`,
+    /// so that the row would not vanish from every filter. That stopped being
+    /// true in `12a8687` — ``ignoredSorted()`` keys off the archive flag alone
+    /// now, so the row is reachable either way and this only decides whether
+    /// 全部 also shows it.
     /// Intentionally unsorted — the past/future partition depends on the
     /// live clock and must be applied at render time via
     /// `partitionedByDueDate(now:)`, not cached against a frozen `Date()`.

@@ -10,7 +10,7 @@ struct TodayListView: View {
     /// User-chosen multiplier for course-name font, read from the App
     /// Group at struct init. The main app reloads widget timelines after
     /// changing the value, so the next render picks up the new scale.
-    private let userScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
+    private let userScale: CGFloat = CGFloat(CourseCardFontScale.renderScale(CourseCardFontScaleStore().read()))
 
     /// Dynamic-Type-anchored baseline for the system `.caption` font.
     /// `@ScaledMetric(relativeTo:)` keeps the course-name label moving

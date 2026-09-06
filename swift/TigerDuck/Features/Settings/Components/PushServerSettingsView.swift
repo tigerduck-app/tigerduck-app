@@ -39,7 +39,7 @@ struct PushServerSettingsView: View {
     /// timer instead of letting it wake mid-feedback for the second tap.
     @State private var copyResetTasks: [IdKind: Task<Void, Never>] = [:]
 
-    private enum IdKind: Hashable { case user, device }
+    private enum IdKind: Hashable { case device }
     private enum CopyResult { case copied, blocked }
     #endif
 
@@ -65,6 +65,19 @@ struct PushServerSettingsView: View {
                         Text("Server didn't accept the change — try again later.")
                             .foregroundStyle(.orange)
                     }
+                }
+            }
+
+            // Always surface the latest registration/sync error (matches
+            // Android, which shows it unconditionally) — and make it
+            // selectable so it can be copied for support. Shown even when the
+            // status section below is hidden by the enable toggle.
+            if let err = snapshot?.registration.lastError {
+                Section(String(localized: "push_server_latest_error")) {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
                 }
             }
 
@@ -96,18 +109,16 @@ struct PushServerSettingsView: View {
                             Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
                         }
                     }
-                    if let err = s.registration.lastError {
-                        LabeledContent(String(localized: "push_server_latest_error")) {
-                            Text(err).font(.caption).foregroundStyle(.red)
-                        }
+                    Button {
+                        appState.requestPushScheduleSync()
+                    } label: {
+                        Label(String(localized: "cloud_sync_sync_now"), systemImage: "arrow.triangle.2.circlepath")
                     }
-                    Button(String(localized: "push_server_sync_now_action")) { appState.requestPushScheduleSync() }
                 }
 
                 #if os(iOS)
                 Section {
-                    idRow(kind: .user, label: "User ID", value: s.userId)
-                    idRow(kind: .device, label: "Device ID", value: s.deviceId)
+                    idRow(kind: .device, label: "Device ID", value: s.uuid)
                 } header: {
                     Text(String(localized: "push_server_ids_section"))
                 } footer: {

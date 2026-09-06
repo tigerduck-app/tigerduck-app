@@ -197,10 +197,23 @@ struct MacFeatureDetail: View {
             .toolbar {
                 if feature != .gpa {
                     ToolbarItem(placement: .primaryAction) {
-                        MacGlobalRefreshButton()
+                        HStack(spacing: 8) {
+                            SyncStatusDot(servers: serversForFeature)
+                            MacGlobalRefreshButton()
+                        }
                     }
                 }
             }
+    }
+
+    private var serversForFeature: [ServerKind] {
+        switch feature {
+        case .home: [.moodle, .backend]
+        case .classTable: [.moodle, .courseSelection, .backend]
+        case .calendar: [.moodle, .courseSelection]
+        case .announcements: [.backend]
+        default: ServerKind.allCases
+        }
     }
 
     @ViewBuilder

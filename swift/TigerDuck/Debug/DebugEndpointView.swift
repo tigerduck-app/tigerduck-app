@@ -1,17 +1,15 @@
-#if DEBUG
 import Observation
 import SwiftUI
 
-/// Developer-only screen for picking which backend the app talks to.
-/// Survives uninstall because the value lives in Keychain
-/// (`DebugEndpointStore`). All writes go through
-/// `PushServerConfig.isOverrideAllowed`, so values that fail the gate
-/// (non-allowlisted public hosts, non-RFC1918 IPs, etc.) get rejected
-/// with an inline error instead of silently saved.
+/// Screen for picking which backend the app talks to. Survives uninstall
+/// because the value lives in Keychain (`DebugEndpointStore`). All writes
+/// go through `PushServerConfig.isOverrideAllowed`, so values that fail
+/// the gate (non-allowlisted public hosts, non-RFC1918 IPs, etc.) get
+/// rejected with an inline error instead of silently saved.
 ///
-/// Shared between the iPhone Settings → Developer screen and the macOS
-/// Settings → Developer tab, so it lives in its own file — the rest of
-/// `DebugSettingsView.swift` stays iPhone-only.
+/// Reached from Settings → Other settings on iPhone (every build) and the
+/// macOS Settings → Developer tab, so it lives in its own file — the rest
+/// of `DebugSettingsView.swift` stays iPhone-only and DEBUG-only.
 struct DebugEndpointView: View {
     @State private var viewModel = DebugEndpointViewModel()
     #if os(iOS)
@@ -72,10 +70,10 @@ struct DebugEndpointView: View {
             } header: {
                 Text("Override (Keychain — survives reinstall)")
             } footer: {
-                Text("Allowed: `https://api.tigerduck.app/...` (apex or any subdomain), loopback, or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x). LAN dev backend speaks plain HTTP — `https://192.168.X.X:…` is auto-rewritten to `http://` at save time. Pointing a Debug build at the prod apex breaks push (apns_env mismatch — sandbox tokens get rejected at registration), but read-only API surfaces (bulletin, etc.) work for testing.")
+                Text("Allowed: `https://api.tigerduck.app/...` (apex or any subdomain). Debug builds also accept loopback or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x); a LAN dev backend speaks plain HTTP, so `https://192.168.X.X:…` is auto-rewritten to `http://` at save time. Pointing a Debug build at the prod apex breaks push (apns_env mismatch — sandbox tokens get rejected at registration), but read-only API surfaces (bulletin, etc.) work for testing.")
             }
         }
-        .navigationTitle("API endpoint")
+        .navigationTitle(String(localized: "settings_api_endpoint"))
         #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
         #endif
@@ -128,7 +126,7 @@ final class DebugEndpointViewModel {
         case .malformed:
             validationError = "URL is malformed — expected something like `http://192.168.X.X:40000/v2` or `https://staging.api.tigerduck.app/v2`."
         case .rejected:
-            validationError = "Rejected by allowlist. Only loopback, RFC1918 (10.x / 172.16–31.x / 192.168.x), or `*.api.tigerduck.app` (apex + subdomains) are accepted."
+            validationError = "Rejected by allowlist. Only `*.api.tigerduck.app` (apex + subdomains) over HTTPS is accepted; Debug builds also take loopback and RFC1918 (10.x / 172.16–31.x / 192.168.x)."
         case .keychainWriteFailed:
             validationError = "Keychain write failed — the URL passed validation but couldn't be persisted. Try again; if it keeps failing, the device may be locked or out of secure storage."
         }
@@ -143,4 +141,3 @@ final class DebugEndpointViewModel {
         effectiveURL = PushServerConfig.resolveServerURL().absoluteString
     }
 }
-#endif

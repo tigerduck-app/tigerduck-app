@@ -195,12 +195,6 @@ enum BulletinAPI {
     }
 
     struct SubscriptionsResponse: Codable, Sendable {
-        let deviceId: String
-        let rules: [SubscriptionRule]
-
-        enum CodingKeys: String, CodingKey {
-            case deviceId = "device_id"
-            case rules
-        }
+        let items: [SubscriptionRule]
     }
 }

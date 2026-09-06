@@ -1,34 +1,26 @@
 import Foundation
 import os
 
-/// URLSession-based client for the bulletin HTTP API.
+/// URLSession-based client for the bulletin HTTP API (v3).
 ///
-/// Public GET endpoints (`/taxonomy`, list, detail) do not require the
-/// shared secret. Device-scoped subscription endpoints do, so we always
-/// attach `X-Push-Token` when one is configured — the server ignores it
-/// on the public routes.
+/// Public GET endpoints (`/taxonomy`, list, detail) do not require auth.
+/// Subscription CRUD endpoints use Bearer auth via `authHeaderProvider`.
 final class BulletinAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
-    private let sharedSecretProvider: @Sendable (URL) -> String?
+    /// Returns a `Bearer <token>` string for v3 JWT auth, or `nil` when the
+    /// user is not logged in.
+    private let authHeaderProvider: @Sendable () async -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Bulletin.API")
 
-    /// `baseURLProvider` is re-evaluated on every request, and the
-    /// resolved URL is then fed to `sharedSecretProvider` so the secret
-    /// is selected as a pair with the host actually being hit. A Debug
-    /// build that switches the endpoint at runtime (via
-    /// `DebugEndpointView`) takes effect on the next bulletin call —
-    /// and if the override points at the public host, the request
-    /// carries the production `APIToken` instead of replaying the local
-    /// `DebugAPIToken` that pairs with `DebugServerURL`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
-        sharedSecretProvider: @escaping @Sendable (URL) -> String? = { PushServerConfig.resolveSharedSecret(for: $0) }
+        authHeaderProvider: @escaping @Sendable () async -> String? = { nil }
     ) {
         self.baseURLProvider = baseURLProvider
         self.session = session ?? Self.defaultSession()
-        self.sharedSecretProvider = sharedSecretProvider
+        self.authHeaderProvider = authHeaderProvider
     }
 
     // MARK: - Public surface
@@ -62,22 +54,54 @@ final class BulletinAPIClient: Sendable {
         try await get(path: "/bulletins/\(id)", returning: BulletinAPI.BulletinDetail.self)
     }
 
-    func getSubscriptions(deviceId: String) async throws -> BulletinAPI.SubscriptionsResponse {
-        let safe = Self.percentEncoded(deviceId)
+    // MARK: - Subscription CRUD (v3)
+
+    /// GET /bulletin-subscriptions — list all rules for the authenticated device.
+    func getSubscriptions() async throws -> BulletinAPI.SubscriptionsResponse {
         return try await get(
-            path: "/devices/\(safe)/subscriptions",
+            path: "/bulletin-subscriptions",
             returning: BulletinAPI.SubscriptionsResponse.self
         )
     }
 
+    /// POST /bulletin-subscriptions — create a single rule.
+    func createSubscription(
+        rule: BulletinAPI.SubscriptionRule
+    ) async throws -> BulletinAPI.SubscriptionRule {
+        return try await post(
+            path: "/bulletin-subscriptions",
+            body: rule,
+            returning: BulletinAPI.SubscriptionRule.self
+        )
+    }
+
+    /// PATCH /bulletin-subscriptions/{id} — update a rule.
+    func updateSubscription(
+        id: Int,
+        rule: BulletinAPI.SubscriptionRule
+    ) async throws -> BulletinAPI.SubscriptionRule {
+        return try await patch(
+            path: "/bulletin-subscriptions/\(id)",
+            body: rule,
+            returning: BulletinAPI.SubscriptionRule.self
+        )
+    }
+
+    /// DELETE /bulletin-subscriptions/{id} — delete a rule.
+    func deleteSubscription(id: Int) async throws {
+        try await deleteRequest(path: "/bulletin-subscriptions/\(id)")
+    }
+
+    // MARK: - Legacy snapshot PUT (kept for backward compatibility)
+
+    /// PUT snapshot-style replacement. Retained because `BulletinSubscriptionsStore`
+    /// still uses the snapshot model. Prefer CRUD methods for new code.
     func putSubscriptions(
-        deviceId: String,
         rules: [BulletinAPI.SubscriptionRule]
     ) async throws -> BulletinAPI.SubscriptionsResponse {
-        let safe = Self.percentEncoded(deviceId)
         let body = BulletinAPI.SubscriptionsPutRequest(rules: rules)
         return try await put(
-            path: "/devices/\(safe)/subscriptions",
+            path: "/bulletin-subscriptions",
             body: body,
             returning: BulletinAPI.SubscriptionsResponse.self
         )
@@ -90,15 +114,33 @@ final class BulletinAPIClient: Sendable {
         query: [URLQueryItem] = [],
         returning _: Response.Type
     ) async throws -> Response {
-        // Resolve baseURL once so the secret provider sees the same host
-        // the request is actually going to — avoids any window where the
-        // override could flip between URL and secret lookups.
         let baseURL = baseURLProvider()
         let url = try Self.resolveURL(baseURL: baseURL, path: path, query: query)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
+        let data = try await execute(request)
+        return try decode(data, path: path)
+    }
+
+    private func post<Request: Encodable, Response: Decodable>(
+        path: String,
+        body: Request,
+        returning _: Response.Type
+    ) async throws -> Response {
+        let baseURL = baseURLProvider()
+        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        await applyAuth(to: &request)
+        do {
+            request.httpBody = try Self.encoder.encode(body)
+        } catch {
+            throw BulletinAPIError.encodingFailed(error)
+        }
         let data = try await execute(request)
         return try decode(data, path: path)
     }
@@ -114,7 +156,7 @@ final class BulletinAPIClient: Sendable {
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request, baseURL: baseURL)
+        await applyAuth(to: &request)
         do {
             request.httpBody = try Self.encoder.encode(body)
         } catch {
@@ -124,9 +166,44 @@ final class BulletinAPIClient: Sendable {
         return try decode(data, path: path)
     }
 
-    private func applyAuth(to request: inout URLRequest, baseURL: URL) {
-        guard let secret = sharedSecretProvider(baseURL), !secret.isEmpty else { return }
-        request.setValue(secret, forHTTPHeaderField: "X-Push-Token")
+    private func patch<Request: Encodable, Response: Decodable>(
+        path: String,
+        body: Request,
+        returning _: Response.Type
+    ) async throws -> Response {
+        let baseURL = baseURLProvider()
+        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        await applyAuth(to: &request)
+        do {
+            request.httpBody = try Self.encoder.encode(body)
+        } catch {
+            throw BulletinAPIError.encodingFailed(error)
+        }
+        let data = try await execute(request)
+        return try decode(data, path: path)
+    }
+
+    private func deleteRequest(path: String) async throws {
+        let baseURL = baseURLProvider()
+        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        await applyAuth(to: &request)
+        _ = try await execute(request)
+    }
+
+    /// Apply `Authorization: Bearer <token>` header when the user is logged in.
+    /// No-op when `authHeaderProvider` returns nil (unauthenticated requests
+    /// are still attempted so the server can respond with 401 rather than
+    /// silently dropping calls).
+    private func applyAuth(to request: inout URLRequest) async {
+        if let bearer = await authHeaderProvider(), !bearer.isEmpty {
+            request.setValue(bearer, forHTTPHeaderField: "Authorization")
+        }
     }
 
     private func execute(_ request: URLRequest) async throws -> Data {
@@ -150,9 +227,9 @@ final class BulletinAPIClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
-            // Body snippet stays .private — error responses occasionally
-            // echo headers (incl. X-Push-Token) or correlation tokens that
-            // must not be retained in the system log indefinitely.
+            // Body snippet stays .private — error responses may echo auth
+            // headers or correlation tokens that must not be retained in
+            // the system log indefinitely.
             logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(path, privacy: .public): \(snippet, privacy: .private)")
             throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
         }

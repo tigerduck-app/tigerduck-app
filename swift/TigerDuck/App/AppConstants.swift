@@ -93,6 +93,29 @@ nonisolated enum AppConstants {
     static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
+    /// Wraps a site-relative Moodle path in the `moodlemobile://` envelope the
+    /// Moodle Mobile app expects: `moodlemobile://<site-url>?redirect=<path>`.
+    ///
+    /// Built by string rather than through `URLComponents` on purpose. The site
+    /// URL sits where the authority belongs, and `URLComponents` cannot express
+    /// that: setting `host = "https"` + `path = "//<host>"` serialises to
+    /// `moodlemobile://https//<host>` — the colon after the inner scheme is
+    /// dropped and the app can no longer parse a site out of it. Setting
+    /// `host = "https:"` makes `url` return nil outright.
+    ///
+    /// `=`, `&` and `+` are escaped out of the redirect so a multi-parameter
+    /// target stays inside the single `redirect` value instead of leaking into
+    /// the envelope's own query. Matches Android's `Assignment.moodleDeepLink`.
+    static func moodleDeepLink(redirectingTo path: String) -> URL? {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "=&+")
+        guard let escaped = path.addingPercentEncoding(withAllowedCharacters: allowed) else {
+            return nil
+        }
+        let host = moodleBaseURL.host ?? "moodle2.ntust.edu.tw"
+        return URL(string: "moodlemobile://https://\(host)?redirect=\(escaped)")
+    }
+
     nonisolated enum KeychainKeys {
         static let studentId = "ntust_student_id"
         static let password = "ntust_password"
@@ -102,7 +125,6 @@ nonisolated enum AppConstants {
         static let libraryTokenExpiry = "library_token_expiry"
         static let moodleToken = "moodle_token"
         static let moodlePrivateToken = "moodle_private_token"
-        static let pushUserId = "push_user_id"
         static let pushDeviceId = "push_device_id"
     }
 
@@ -110,13 +132,13 @@ nonisolated enum AppConstants {
     /// Debug builds resolve through ``PushCoordinator/resolveServerURL()``,
     /// which reads per-developer `Secrets.plist["DebugServerURL"]` (gitignored)
     /// or falls back to ``fallbackDebugPushServerURL`` for Simulator setups.
-    static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v2")
+    static let productionPushServerURL = URL.knownGood("https://api.tigerduck.app/v3")
 
     /// Default Debug-build endpoint when `Secrets.plist` has no `DebugServerURL`.
     /// Works on Simulator (localhost = host Mac); on a physical device this
     /// resolves to the device itself and will fail to connect — physical-device
     /// contributors must set `DebugServerURL` to their Mac's LAN IP.
-    static let fallbackDebugPushServerURL = URL.knownGood("http://localhost:40000/v2")
+    static let fallbackDebugPushServerURL = URL.knownGood("http://localhost:40000/v3")
 
     /// How many semesters back the relabel sweep walks when display-toggle
     /// settings change. NTUST keeps ~2 active semesters in flight; 4 covers
@@ -147,7 +169,7 @@ nonisolated enum AppConstants {
         /// Group `UserDefaults` suite (NOT `.standard`) so the widget
         /// extension reads the same value — see `CourseCardFontScaleStore`.
         /// Listed here for discoverability; the literal lives on the store.
-        static let courseCardFontScale = "courseCardFontScale"
+        static let courseCardFontScale = "courseCardFontScaleV2"
         static let homeSectionLayout = "homeSectionLayout"
         static let visualPreset = "visualPreset"
 
@@ -163,6 +185,9 @@ nonisolated enum AppConstants {
         static let ssoLoginTimestamp = "ssoLoginTimestamp"
         static let classTableSelectedSemester = "classTableSelectedSemester"
         static let homeAssignmentFilter = "homeAssignmentFilter"
+
+        // MARK: Cloud sync
+        static let cloudSyncEnabled = "cloudSyncEnabled"
 
         // MARK: Push server
         static let pushServerEnabled = "pushServerEnabled"

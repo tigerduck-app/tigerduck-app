@@ -15,7 +15,8 @@ struct TigerDuckApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    private let watchSyncCoordinator = WatchSyncCoordinator()
+    @State private var watchSyncCoordinator = WatchSyncCoordinator()
+    @State private var watchSyncActivated = false
 
     init() {
         AppLogger.start()
@@ -26,7 +27,6 @@ struct TigerDuckApp: App {
         DebugClockController.shared.bootstrap()
         #endif
         PushCoordinator.assertEnvConsistency()
-        watchSyncCoordinator.activate()
     }
 
     var sharedModelContainer: ModelContainer = {
@@ -83,6 +83,10 @@ struct TigerDuckApp: App {
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
                 .environment(appState)
                 .onAppear {
+                    if !watchSyncActivated {
+                        watchSyncActivated = true
+                        watchSyncCoordinator.activate()
+                    }
                     appState.bindPushDelegate(pushAppDelegate)
                     // Route custom-push taps into AppState. Capture the
                     // class instance weakly to avoid a retain cycle
@@ -99,6 +103,7 @@ struct TigerDuckApp: App {
                         }
                     }
                     appState.backgroundSync()
+                    appState.startCloudSyncIfEnabled()
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
@@ -137,7 +142,9 @@ struct TigerDuckApp: App {
                             guard !Task.isCancelled else { return }
                             await appState.rescheduleReminders()
                             appState.requestPushScheduleSync()
+                            await appState.refreshMoodleCredentials()
                         }
+                        appState.startRevisionPolling()
                         widgetSnapshotWriter?.regenerate()
                         // Background "is there a newer build on the App
                         // Store?" check. Internally throttled to once
@@ -145,6 +152,8 @@ struct TigerDuckApp: App {
                         // rapid scene toggles don't generate iTunes
                         // Lookup traffic.
                         appState.updateNotifyCoordinator.checkInBackground()
+                    } else if newPhase == .background {
+                        appState.stopRevisionPolling()
                     }
                 }
         }
@@ -237,6 +246,9 @@ struct TigerDuckApp: App {
     @State private var appState = AppState()
     @State private var rootLanguageId = UUID()
     @State private var widgetSnapshotWriter: WidgetSnapshotWriter?
+    @State private var sceneRefreshTask: Task<Void, Never>?
+    @NSApplicationDelegateAdaptor(MacPushAppDelegate.self) private var pushAppDelegate
+    @Environment(\.scenePhase) private var scenePhase
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -283,6 +295,7 @@ struct TigerDuckApp: App {
 
     init() {
         AppLogger.start()
+        PushCoordinator.assertEnvConsistency()
     }
 
     var body: some Scene {
@@ -291,21 +304,14 @@ struct TigerDuckApp: App {
                 .id(rootLanguageId)
                 .environment(appState)
                 .onAppear {
-                    // Mirror the iOS launch path: kick off the first
-                    // sync so Home/Class Table/Calendar don't sit on
-                    // stale cache until the user hits Refresh.
+                    appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
-                    // Widget extension reads its snapshot from the App
-                    // Group. Without this regenerate the Mac widget
-                    // would render the "Please sign in" placeholder
-                    // even when credentials exist — the writer pipeline
-                    // is what fills the snapshot store on iPhone and
-                    // we mirror it here.
+                    appState.startCloudSyncIfEnabled()
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
                     }
-                }
+}
                 .onOpenURL { url in
                     guard let destination = WidgetURLRouter.route(url) else { return }
                     appState.openFromWidget(destination)
@@ -314,6 +320,19 @@ struct TigerDuckApp: App {
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
                 ) { _ in
                     rootLanguageId = UUID()
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    if newPhase == .active {
+                        sceneRefreshTask?.cancel()
+                        sceneRefreshTask = Task {
+                            appState.requestPushScheduleSync()
+                            await appState.refreshMoodleCredentials()
+                        }
+                        appState.startRevisionPolling()
+                        widgetSnapshotWriter?.regenerate()
+                    } else if newPhase == .background {
+                        appState.stopRevisionPolling()
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)

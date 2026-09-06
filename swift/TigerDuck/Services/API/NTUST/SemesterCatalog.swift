@@ -23,8 +23,8 @@ enum SemesterCatalog {
         "https://querycourse.ntust.edu.tw/QueryCourse/api/semestersinfo"
     )
 
-    private static let listKey = "semesterCatalog.semesters"
-    private static let selectionKey = "semesterCatalog.selectionSemester"
+    private nonisolated static let listKey = "semesterCatalog.semesters"
+    private nonisolated static let selectionKey = "semesterCatalog.selectionSemester"
     private static let refreshedAtKey = "semesterCatalog.refreshedAt"
 
     /// Term boundaries move on the scale of weeks, so this only has to beat
@@ -32,10 +32,11 @@ enum SemesterCatalog {
     /// hot path when several semesters warm at once.
     private static let refreshTTL: TimeInterval = 3600
 
-    /// Terms offered by the semester picker. Six rather than the previous
-    /// four because the catalogue interleaves 暑期 terms (`114H`) between the
-    /// regular ones, so four slots would no longer reach back two full years.
-    private static let pickerDepth = 6
+    /// Picker depth when the student id is unknown. Six rather than the
+    /// previous four because the catalogue interleaves 暑期 terms (`114H`)
+    /// between the regular ones. With a known id the picker instead reaches
+    /// back to the admission term — see `terms(from:admissionYear:)`.
+    private nonisolated static let pickerDepth = 6
 
     // Capitalised to match the wire format, same as `CourseSearchResult`.
     // swiftlint:disable identifier_name
@@ -56,12 +57,33 @@ enum SemesterCatalog {
         list.first(where: \.LoginEnable)?.Semester
     }
 
-    /// Terms the picker offers, newest first. Falls back to walking back from
-    /// the month heuristic until the first successful `refresh()`.
+    /// Terms the picker offers, newest first: every catalogue term back to
+    /// the student's first one. A fixed depth of six stopped at 113-2 for a
+    /// student admitted in 113 once 114H and 113H took two of the slots.
+    /// Falls back to walking back from the month heuristic until the first
+    /// successful `refresh()`.
     nonisolated static func availableSemesters() -> [String] {
         let cached = UserDefaults.standard.stringArray(forKey: listKey) ?? []
         guard !cached.isEmpty else { return heuristicSemesters() }
-        return Array(cached.prefix(pickerDepth))
+        let studentId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId)
+        return terms(from: cached, admissionYear: admissionYear(studentId: studentId))
+    }
+
+    /// Catalogue terms from the fall of the admission year onwards; the
+    /// fixed depth when the id is unknown. Codes are `YYYS` with S in
+    /// 1 / 2 / H, so plain string order is chronological within a year
+    /// (`113H` sorts after `1131`).
+    nonisolated static func terms(from catalogue: [String], admissionYear: Int?) -> [String] {
+        guard let admissionYear else { return Array(catalogue.prefix(pickerDepth)) }
+        let firstTerm = "\(admissionYear)1"
+        return catalogue.filter { $0 >= firstTerm }
+    }
+
+    /// NTUST ids are one degree letter plus the three-digit admission year
+    /// (`B113…` → 113).
+    nonisolated static func admissionYear(studentId: String?) -> Int? {
+        guard let studentId, studentId.count >= 4 else { return nil }
+        return Int(studentId.dropFirst().prefix(3))
     }
 
     /// The term the picker should open on: the user's last pick, or the newest

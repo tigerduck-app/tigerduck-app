@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 import CoreHaptics
 import UserNotifications
@@ -70,7 +71,7 @@ struct SettingsView: View {
                     showingTabEditor = true
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(String(localized: "settings_color_theme"))
+                    Text(String(localized: "settings_accent_color"))
                     HStack(spacing: 12) {
                         ForEach(AppState.themeColors, id: \.hex) { theme in
                             Button {
@@ -145,11 +146,36 @@ struct SettingsView: View {
                 }
             }
 
+            // MARK: - Cloud Sync
+            Section(String(localized: "cloud_sync_title")) {
+                NavigationLink {
+                    CloudSyncSettingsView()
+                } label: {
+                    HStack {
+                        Text(String(localized: "cloud_sync_title"))
+                        Spacer()
+                        Text(Defaults[.cloudSyncEnabled]
+                             ? String(localized: "settings_sync_status_on")
+                             : String(localized: "settings_sync_status_off"))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
+                if !Defaults[.cloudSyncEnabled] {
+                    Link(destination: AppURLs.learnMoreBackend) {
+                        Label(
+                            String(localized: "settings_sync_off_notifications_warning"),
+                            systemImage: "icloud.slash"
+                        )
+                        .foregroundStyle(.orange)
+                        .font(.callout)
+                    }
+                }
+
                 #if os(iOS)
-                // The "denied -> open System Settings" deeplink is iOS-only;
-                // macOS has its own MacSettingsScene and no openSettingsURLString.
                 if !notificationsAuthorized {
                     Button {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -164,14 +190,17 @@ struct SettingsView: View {
                     }
                 }
                 #endif
-                NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
-                    AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
-                }
-                NavigationLink(String(localized: "live_activity_settings_nav_title")) {
-                    LiveActivitySettingsView(store: appState.liveActivityPreferences)
-                }
-                NavigationLink(String(localized: "settings_push_server_nav_label")) {
-                    PushServerSettingsView()
+
+                Group {
+                    NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
+                        AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
+                    }
+                    NavigationLink(String(localized: "live_activity_settings_nav_title")) {
+                        LiveActivitySettingsView(store: appState.liveActivityPreferences)
+                    }
+                    NavigationLink(String(localized: "settings_push_server_nav_label")) {
+                        PushServerSettingsView()
+                    }
                 }
             }
 
@@ -244,8 +273,8 @@ struct SettingsView: View {
                 NavigationLink("Notifications") {
                     DebugNotificationsView()
                 }
-                NavigationLink("API endpoint") {
-                    DebugEndpointView()
+                NavigationLink("Server failure simulation") {
+                    DebugServerFailureView()
                 }
                 #if os(iOS)
                 NavigationLink("Triggers") {
@@ -257,6 +286,35 @@ struct SettingsView: View {
                 // `@AppStorage` so toggling immediately re-evaluates
                 // every protected view. Compiled out of release builds.
                 Toggle("Disable screen-capture protection", isOn: $disableScreenCaptureProtection)
+
+                Button {} label: {
+                    VStack(alignment: .leading) {
+                        Text("Long press to erase everything and restart")
+                            .foregroundStyle(.red)
+                        Text("Wipes all data, accounts, and preferences")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onLongPressGesture(minimumDuration: 1) {
+                    #if os(iOS)
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    #endif
+
+                    appState.logoutNTUST()
+                    appState.logoutLibrary()
+
+                    UserDefaults.standard.removePersistentDomain(
+                        forName: Bundle.main.bundleIdentifier!
+                    )
+                    Defaults.removeAll()
+
+                    // Removes outbox.json and any legacy id_map.json.
+                    try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
+
+                    appState.hasCompletedOnboarding = false
+                    Defaults[.hasCompletedOnboarding] = false
+                }
             }
             #endif
         }
@@ -634,42 +692,15 @@ private struct LibraryWarningOverlay: View {
                 .foregroundStyle(.red)
                 .opacity(isFlashing ? 0.15 : 1.0)
 
-                // Warning message
-                Text(String(localized: "settings_library_warning_message"))
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                JustifiedText(
+                    String(localized: "settings_library_warning_message"),
+                    textStyle: .subheadline
+                )
 
-                // Buttons
-                VStack(spacing: 10) {
-                    Button(action: onConfirm) {
-                        Text(confirmLabel)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                confirmEnabled ? Color.red : Color.red.opacity(0.35),
-                                in: RoundedRectangle(cornerRadius: 10)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!confirmEnabled)
-
-                    Button(action: onCancel) {
-                        Text(String(localized: "settings_library_warning_dismiss"))
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(.plain)
-                }
+                buttons
             }
             .padding(24)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .modifier(GlassDialogSurface())
             .padding(.horizontal, 32)
         }
         .transition(.opacity)
@@ -681,6 +712,70 @@ private struct LibraryWarningOverlay: View {
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                 confirmEnabled = true
             }
+        }
+    }
+
+    /// Liquid Glass buttons on iOS 26; the hand-rolled red / grey pills
+    /// stay for iOS 18–25 where `.glass` does not exist.
+    @ViewBuilder
+    private var buttons: some View {
+        if #available(iOS 26, *) {
+            VStack(spacing: 10) {
+                Button(action: onConfirm) {
+                    Text(confirmLabel)
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.red)
+                .controlSize(.large)
+                .disabled(!confirmEnabled)
+
+                Button(action: onCancel) {
+                    Text(String(localized: "settings_library_warning_dismiss"))
+                        .font(.body.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .controlSize(.large)
+            }
+        } else {
+            VStack(spacing: 10) {
+                Button(action: onConfirm) {
+                    Text(confirmLabel)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            confirmEnabled ? Color.red : Color.red.opacity(0.35),
+                            in: RoundedRectangle(cornerRadius: 10)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!confirmEnabled)
+
+                Button(action: onCancel) {
+                    Text(String(localized: "settings_library_warning_dismiss"))
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+/// Dialog surface: Liquid Glass on iOS 26, regular material before it.
+private struct GlassDialogSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.glassEffect(.regular, in: .rect(cornerRadius: 28))
+        } else {
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
         }
     }
 }

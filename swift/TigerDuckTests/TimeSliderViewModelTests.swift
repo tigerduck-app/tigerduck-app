@@ -129,6 +129,45 @@ struct TimeSliderViewModelTests {
         }
     }
 
+    /// Two courses in the same period (a clash the class table allows) must
+    /// not pin the drag at the first slot's end: the time → X mapping stays
+    /// monotonic and dragging forward keeps advancing past the clash.
+    @Test func drag_advancesPastOverlappingCourses() {
+        let vm = TimeSliderViewModel()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        let periods34 = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let periods45 = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["4", "5"]) })
+        vm.configure(courses: [
+            SDCourse(courseNo: "CLASH1", courseName: "A", schedule: periods34),
+            SDCourse(courseNo: "CLASH2", courseName: "B", schedule: periods34),
+            SDCourse(courseNo: "CLASH3", courseName: "C", schedule: periods45),
+        ])
+        vm.selectedTime = calendar.date(byAdding: DateComponents(hour: 11), to: today)!
+
+        // Monotonic across the merged 10:20–13:10 block and beyond it.
+        var previousX = vm.xOffset(for: vm.selectedTime)
+        for minutes in stride(from: 5, through: 240, by: 5) {
+            let t = calendar.date(byAdding: .minute, value: minutes, to: vm.selectedTime)!
+            let x = vm.xOffset(for: t)
+            #expect(x > previousX, "x must keep growing at +\(minutes) min")
+            previousX = x
+        }
+
+        // Dragging forward (content moves left, so negative dx) keeps
+        // advancing and clears the whole clash.
+        var previous = vm.selectedTime
+        for _ in 0..<60 {
+            vm.onDragChanged(dx: -20, invertDirection: false)
+            #expect(vm.selectedTime > previous)
+            previous = vm.selectedTime
+        }
+        let blockEnd = calendar.date(byAdding: DateComponents(hour: 13, minute: 10), to: today)!
+        #expect(vm.selectedTime > blockEnd)
+        vm.isUserDragging = false
+    }
+
     private func makeMockSlot(courseNo: String, start: Date, end: Date) -> CourseTimeSlot {
         let course = SDCourse(
             courseNo: courseNo,

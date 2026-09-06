@@ -6,9 +6,13 @@ enum WatchLibraryServiceError: LocalizedError {
     case loginFailed(String)
     case qrGenerationFailed(String)
     case networkError(Error)
+    /// No phone in range and the watch's own link failed the pre-flight.
+    case offline
 
     var errorDescription: String? {
         switch self {
+        case .offline:
+            return String(localized: "error_network_unavailable")
         case .credentialsNotFound:
             return String(localized: "library_sign_in_qr_prompt")
         case .loginFailed(let m):

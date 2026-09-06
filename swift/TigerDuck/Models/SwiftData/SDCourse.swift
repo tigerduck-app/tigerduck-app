@@ -273,7 +273,7 @@ extension SDCourse {
 
 extension SDCourse {
     /// Deep link into the Moodle Mobile app for this course. Mirrors
-    /// ``SDAssignment/moodleDeepLink`` — same `moodlemobile://https//<host>?redirect=…`
+    /// ``SDAssignment/moodleDeepLink`` — same `moodlemobile://https://<host>?redirect=…`
     /// envelope pointing at `/course/view.php?id=<N>`. The numeric id is
     /// looked up from ``DataCache/lookupMoodleCourseId(idnumber:)``, which
     /// ``AppServiceBridge`` keeps fresh off the enrolled-courses fetch.
@@ -288,18 +288,7 @@ extension SDCourse {
             return nil
         }
 
-        var inner = URLComponents()
-        inner.path = "/course/view.php"
-        inner.queryItems = [URLQueryItem(name: "id", value: String(numericId))]
-        guard let redirectTarget = inner.string else { return nil }
-
-        let host = AppConstants.moodleBaseURL.host ?? "moodle2.ntust.edu.tw"
-        var components = URLComponents()
-        components.scheme = "moodlemobile"
-        components.host = "https"
-        components.path = "//\(host)"
-        components.queryItems = [URLQueryItem(name: "redirect", value: redirectTarget)]
-        return components.url
+        return AppConstants.moodleDeepLink(redirectingTo: "/course/view.php?id=\(numericId)")
     }
 
     /// HTTPS equivalent of ``moodleDeepLink``. No Moodle Mac app exists, so

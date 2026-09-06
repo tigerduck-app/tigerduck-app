@@ -1,7 +1,8 @@
-#if DEBUG
 import Foundation
 
-/// Keychain-backed storage for the Debug API endpoint override.
+/// Keychain-backed storage for the user-set API endpoint override
+/// (Settings → Other settings → API endpoint). Honoured by every build;
+/// the name predates the row leaving the Developer section.
 ///
 /// Lives in Keychain (not UserDefaults) so the override survives an app
 /// uninstall + reinstall — useful for repeatedly wiping the app to retest
@@ -72,4 +73,3 @@ nonisolated enum DebugEndpointStore {
         KeychainManager.delete(key: keychainKey)
     }
 }
-#endif

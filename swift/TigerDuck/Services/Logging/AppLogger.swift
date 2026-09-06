@@ -14,6 +14,7 @@ nonisolated enum AppLogger {
     static let network = Logger(subsystem: subsystem, category: "Network")
     static let moodle = Logger(subsystem: subsystem, category: "Moodle")
     static let persistence = Logger(subsystem: subsystem, category: "Persistence")
+    static let sync = Logger(subsystem: subsystem, category: "Sync")
 
     static func start() {
         let dsn = (Bundle.main.object(forInfoDictionaryKey: "SENTRY_DSN") as? String)?
@@ -90,6 +91,5 @@ nonisolated enum AppLogger {
         ScrubPattern(pattern: #"/wstoken/[A-Za-z0-9+/=_-]+"#, replacement: "/wstoken/***"),
         ScrubPattern(pattern: #"(password|passwd|pwd)=[^&\s"']+"#, replacement: "$1=***"),
         ScrubPattern(pattern: #"Bearer\s+[A-Za-z0-9._\-+/=]+"#, replacement: "Bearer ***"),
-        ScrubPattern(pattern: #"X-Push-Token:\s*\S+"#, replacement: "X-Push-Token: ***"),
     ]
 }

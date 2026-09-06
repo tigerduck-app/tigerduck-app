@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 struct HomeView: View {
@@ -60,7 +61,7 @@ struct HomeView: View {
                         .font(TigerDuckTheme.Typography.title)
                         .foregroundStyle(Color.textPrimary)
                     Spacer()
-                    NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
+                    SyncStatusDot(servers: [.moodle, .backend])
                 }
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                 .padding(.top, TigerDuckTheme.Spacing.md)
@@ -76,7 +77,6 @@ struct HomeView: View {
                     )
                 }
 
-                // Sections
                 ForEach(visibleSections) { section in
                     sectionCell(section)
                 }
@@ -107,8 +107,11 @@ struct HomeView: View {
             // UIRefreshControl spinner immediately once released.
             // `triggerRefresh` coalesces rapid repeated pulls into a
             // single in-flight fetch; status lives in the top-right
-            // NetworkStatusOverlay.
+            // SyncStatusDot.
             viewModel.triggerRefresh(authService: appState.authService)
+            if Defaults[.cloudSyncEnabled] {
+                Task { await appState.syncOverridesFromBackend() }
+            }
         }
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -144,6 +147,15 @@ struct HomeView: View {
                 .presentationDetents([.medium])
         }
         .notImplementedAlert(isPresented: $showNotImplementedAlert)
+        .alert(String(localized: "sync_conflict_title"), isPresented: Binding(
+            get: { !appState.syncConflicts.isEmpty },
+            set: { if !$0 { appState.resolveSyncConflicts(keepLocal: true) } }
+        )) {
+            Button(String(localized: "sync_conflict_use_server")) { appState.resolveSyncConflicts(keepLocal: false) }
+            Button(String(localized: "sync_conflict_use_local"), role: .cancel) { appState.resolveSyncConflicts(keepLocal: true) }
+        } message: {
+            Text(appState.syncConflictAlertMessage)
+        }
         .navigationDestination(item: $selectedFeature) { feature in
             homeDestination(for: feature)
         }
@@ -353,10 +365,22 @@ private struct HomeSectionView: View {
                     courses: viewModel.allCourses,
                     filter: viewModel.assignmentFilter,
                     showAbsoluteTime: appState.showAbsoluteAssignmentTime,
-                    onArchive: { viewModel.archiveAssignment($0) },
-                    onMarkComplete: { viewModel.markAssignmentAsLocallyCompleted($0) },
-                    onUnarchive: { viewModel.unarchiveAssignment($0) },
-                    onUndoComplete: { viewModel.undoLocallyCompleted($0) }
+                    onArchive: {
+                        viewModel.archiveAssignment($0)
+                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "archived")
+                    },
+                    onMarkComplete: {
+                        viewModel.markAssignmentAsLocallyCompleted($0)
+                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "locally_completed")
+                    },
+                    onUnarchive: {
+                        viewModel.unarchiveAssignment($0)
+                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+                    },
+                    onUndoComplete: {
+                        viewModel.undoLocallyCompleted($0)
+                        appState.syncAssignmentOverride(moodleId: $0.assignmentId, status: "none")
+                    }
                 )
                 .allowsHitTesting(!viewModel.isEditingHome)
             }

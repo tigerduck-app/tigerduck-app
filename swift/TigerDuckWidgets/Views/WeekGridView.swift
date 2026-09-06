@@ -24,7 +24,7 @@ struct WeekGridView: View {
     /// own size adaptation (small iPhone widget vs. iPad systemExtraLarge).
     /// Only the course-name labels in `courseBlock` / `conflictHalf`
     /// consume this; period/weekday rails stay un-scaled.
-    private let userCourseNameScale: CGFloat = CGFloat(CourseCardFontScaleStore().read())
+    private let userCourseNameScale: CGFloat = CGFloat(CourseCardFontScale.renderScale(CourseCardFontScaleStore().read()))
 
     /// Dynamic-Type-anchored baselines for the course-name labels in
     /// `courseBlock` (solo) and `conflictHalf` (衝堂). Anchoring to

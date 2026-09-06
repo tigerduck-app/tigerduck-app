@@ -1,9 +1,21 @@
+#if canImport(ActivityKit)
 import ActivityKit
+#endif
 import Defaults
 import Foundation
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 import UserNotifications
 import os
+
+protocol PushTokenSource: AnyObject {
+    var forwardToken: ((Data) -> Void)? { get set }
+    var forwardError: ((Error) -> Void)? { get set }
+    var onSyncTrigger: (() async -> Void)? { get set }
+}
 
 struct PushDiagnostic: Sendable {
     let enabled: Bool
@@ -12,8 +24,7 @@ struct PushDiagnostic: Sendable {
     let notificationAuthStatus: UNAuthorizationStatus
     let registration: PushRegistrationSnapshot
     let resolvedServerURL: URL
-    let userId: String
-    let deviceId: String
+    let uuid: String
 }
 
 /// Owns the push-server lifecycle for the app.
@@ -36,7 +47,9 @@ final class PushCoordinator {
     /// every layer. The actor still owns its own state — callers only see
     /// its async methods.
     let registration: PushRegistrationService
+    #if os(iOS)
     private let relay: PushTokenRelay
+    #endif
     let scheduleSync: ScheduleSyncService
 
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.Coord")
@@ -46,16 +59,28 @@ final class PushCoordinator {
 
     init(
         identity: PushIdentity = .loadOrCreate(),
-        apiClient: PushAPIClient? = nil
+        apiClient: PushAPIClient? = nil,
+        authTokenManager: AuthTokenManager? = nil
     ) {
         self.identity = identity
-        // No `baseURL:` argument — `PushAPIClient` defaults to providers
-        // that re-resolve the URL *and* shared secret through
-        // `PushServerConfig` on every request, so a Debug build's runtime
-        // endpoint override (Settings → Developer → API endpoint) takes
-        // effect without an app relaunch and the auth header tracks
-        // whichever backend the override points at.
-        let resolvedClient = apiClient ?? PushAPIClient()
+        // Build an `authHeaderProvider` closure from the supplied
+        // `AuthTokenManager`. When `authTokenManager` is nil (e.g. unit
+        // tests) the closure returns nil and no `Authorization` header is
+        // added — matching the pre-v3 no-auth path.
+        let resolvedClient: PushAPIClient
+        if let apiClient {
+            resolvedClient = apiClient
+        } else if let atm = authTokenManager {
+            resolvedClient = PushAPIClient(
+                authHeaderProvider: { await atm.authorizationHeader() }
+            )
+        } else {
+            // No `baseURL:` argument — `PushAPIClient` defaults to providers
+            // that re-resolve the URL through `PushServerConfig` on every
+            // request, so a Debug build's runtime endpoint override (Settings
+            // → Developer → API endpoint) takes effect without an app relaunch.
+            resolvedClient = PushAPIClient()
+        }
         self.apiClient = resolvedClient
         self.registration = PushRegistrationService(
             identity: identity,
@@ -65,7 +90,9 @@ final class PushCoordinator {
             // reached from the main actor.
             deviceClass: PushDeviceClass.resolvedForBuild
         )
+        #if os(iOS)
         self.relay = PushTokenRelay(registration: registration)
+        #endif
         self.scheduleSync = ScheduleSyncService(
             identity: identity,
             apiClient: resolvedClient
@@ -76,7 +103,7 @@ final class PushCoordinator {
 
     /// Must be called from `TigerDuckApp.init` or `onAppear` so the
     /// `PushAppDelegate` can forward APNs tokens before they arrive.
-    func bindTokenForwarding(_ appDelegate: PushAppDelegate) {
+    func bindTokenForwarding(_ appDelegate: some PushTokenSource) {
         appDelegate.forwardToken = { [weak self] data in
             guard let self else { return }
             Task { await self.registration.update(deviceToken: data) }
@@ -114,7 +141,9 @@ final class PushCoordinator {
         let firstStart = !isStarted
         if firstStart {
             isStarted = true
+            #if os(iOS)
             relay.start()
+            #endif
         }
         logger.info("enabling push stack (firstStart=\(firstStart, privacy: .public), requestPermission=\(requestPermission, privacy: .public))")
 
@@ -130,14 +159,90 @@ final class PushCoordinator {
             // a later permission grant (via onboarding or iOS Settings)
             // flow into the existing token-forwarding pipeline without
             // another explicit hook.
+            #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
+            #elseif os(macOS)
+            // macOS is passive — no APNs push. Register the device UUID
+            // with the backend (no push token) so it appears in the sync
+            // log. The Mac client syncs on foreground only.
+            await registration.registerPassiveDevice()
+            #endif
         }
+    }
+
+    /// Forward credential refresh to the API client. Called from AppState
+    /// on every foreground so the server-side sync job has a fresh Moodle token.
+    func updateCredentials(
+        moodleToken: String,
+        moodlePrivateToken: String?
+    ) async throws -> PushAPI.UpdateCredentialsResponse {
+        try await apiClient.updateCredentials(
+            moodleToken: moodleToken,
+            moodlePrivateToken: moodlePrivateToken
+        )
+    }
+
+    func fetchRevision() async throws -> Int {
+        try await apiClient.fetchRevision()
+    }
+
+    func fetchFullSync() async throws -> [String: Any] {
+        try await apiClient.fetchFullSync()
+    }
+
+    func patchAssignmentOverride(
+        moodleAssignmentId: String,
+        localStatus: String
+    ) async throws -> PushAPI.AssignmentOverrideResponse {
+        try await apiClient.patchAssignmentOverride(
+            moodleAssignmentId: moodleAssignmentId,
+            localStatus: localStatus
+        )
+    }
+
+    func patchCourseOverride(
+        moodleCourseId: String,
+        colorHex: String? = nil,
+        customName: String? = nil,
+        locale: String? = nil
+    ) async throws -> PushAPI.CourseOverrideResponse {
+        try await apiClient.patchCourseOverride(
+            moodleCourseId: moodleCourseId,
+            colorHex: colorHex,
+            customName: customName,
+            locale: locale
+        )
+    }
+
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
+        try await apiClient.uploadCourses(request)
+    }
+
+    func deleteAllCourses(semester: String? = nil) async throws {
+        try await apiClient.deleteAllCourses(semester: semester)
+    }
+
+    func deleteCourse(courseKey: String) async throws {
+        try await apiClient.deleteCourse(courseKey: courseKey)
+    }
+
+    /// Re-attempt device registration after a sign-in. The launch-time
+    /// registration runs before the v3 JWT exists and 401s; calling this once
+    /// a Bearer is available gives it a fresh attempt — and resets the give-up
+    /// counter — instead of waiting on exponential backoff (or never retrying
+    /// if it already exhausted its attempts while unauthenticated).
+    func refreshRegistrationAfterAuth() {
+        Task { await registration.retryAfterAuthChange() }
     }
 
     /// Returns the latest diagnostic snapshot for the settings view.
     func currentSnapshot() async -> PushDiagnostic {
         let reg = await registration.snapshot()
+        #if os(iOS)
         let liveActivitiesEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
+        #else
+        let liveActivitiesEnabled = false
+        #endif
         let notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         return PushDiagnostic(
             enabled: Defaults[.pushServerEnabled],
@@ -146,8 +251,7 @@ final class PushCoordinator {
             notificationAuthStatus: notificationStatus,
             registration: reg,
             resolvedServerURL: PushServerConfig.resolveServerURL(),
-            userId: identity.userId,
-            deviceId: identity.deviceId
+            uuid: identity.uuid
         )
     }
 
@@ -157,7 +261,9 @@ final class PushCoordinator {
         isStarted = false
         logger.info("disabling push stack")
 
+        #if os(iOS)
         relay.stop()
+        #endif
         pendingSyncTask?.cancel()
         // Wait for any already-running debounced sync to finish before we
         // unregister, so a stale POST can't recreate state we just deleted.
@@ -169,12 +275,14 @@ final class PushCoordinator {
         await registration.unregister()
     }
 
+    #if os(iOS)
     func registerLiveActivityUpdateToken(
         _ registrationPayload: LiveActivityUpdateTokenRegistration
     ) async {
         guard Defaults[.pushServerEnabled] else { return }
         await registration.registerLiveActivityUpdateToken(registrationPayload)
     }
+    #endif
 
     // MARK: - Sync driver
 
@@ -189,9 +297,9 @@ final class PushCoordinator {
         pendingSyncTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(debounceMs))
             guard !Task.isCancelled else { return }
-            // Don't run the inputs builder (which touches SwiftData / models)
-            // while backgrounded — the system can suspend us mid-build.
+            #if os(iOS)
             guard UIApplication.shared.applicationState != .background else { return }
+            #endif
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
         }
@@ -210,23 +318,22 @@ final class PushCoordinator {
     nonisolated static func assertEnvConsistency() {
         let resolved = PushServerConfig.resolveServerURL()
         let host = resolved.host?.lowercased() ?? ""
-        #if DEBUG
-        let expectedEnv = "development"
         // Mirror the runtime override gate: any host `isOverrideAllowed`
-        // accepts must also pass this assert, otherwise a Debug build
-        // that saved an `api.tigerduck.app` apex or `*.api.tigerduck.app`
+        // accepts must also pass this assert, otherwise a build that
+        // saved an `api.tigerduck.app` apex or `*.api.tigerduck.app`
         // subdomain override would crash on next launch with a Keychain
         // value the user can't reach to clear. The apns_env mismatch when
-        // pointing at prod is still real, but it surfaces as push failing
-        // at registration time — not as a hard launch crash before any
-        // UI renders.
+        // pointing a Debug build at prod is still real, but it surfaces
+        // as push failing at registration time — not as a hard launch
+        // crash before any UI renders.
         let hostOK = host == "localhost"
             || host == "127.0.0.1"
             || PushServerConfig.isPrivateIPv4(host)
             || PushServerConfig.isAllowedPublicHost(host)
+        #if DEBUG
+        let expectedEnv = "development"
         #else
         let expectedEnv = "production"
-        let hostOK = host == "api.tigerduck.app"
         #endif
         assert(
             hostOK,

@@ -1,6 +1,6 @@
 import Foundation
 
-enum WidgetDestination: Equatable, Hashable, Sendable {
+enum WidgetDestination: nonisolated Equatable, nonisolated Hashable, Sendable {
     case library
     case classTable
 }

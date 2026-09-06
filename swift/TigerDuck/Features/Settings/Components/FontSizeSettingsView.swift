@@ -147,7 +147,7 @@ private struct ClassCardPreview: View {
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
 
     private var courseFontSize: CGFloat {
-        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(scale))
+        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(scale))
     }
 
     var body: some View {

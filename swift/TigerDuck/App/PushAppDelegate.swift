@@ -9,7 +9,7 @@ import os
 /// `@UIApplicationDelegateAdaptor`. The single responsibility is to forward
 /// the token to a `forwardTo` closure, which `TigerDuckApp` wires to the
 /// shared `PushRegistrationService`.
-final class PushAppDelegate: NSObject, UIApplicationDelegate {
+final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
     /// Set by `TigerDuckApp` before the first token arrives. Called on the
     /// main thread with the raw token data.
     ///
@@ -93,6 +93,24 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate {
             forward(error)
         } else {
             bufferedError = error
+        }
+    }
+
+    var onSyncTrigger: (() async -> Void)?
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        if userInfo["kind"] as? String == "sync_trigger" {
+            logger.info("Silent sync trigger received")
+            Task {
+                await onSyncTrigger?()
+                completionHandler(.newData)
+            }
+        } else {
+            completionHandler(.noData)
         }
     }
 }

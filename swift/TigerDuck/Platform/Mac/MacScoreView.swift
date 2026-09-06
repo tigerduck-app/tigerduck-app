@@ -42,18 +42,21 @@ struct MacScoreView: View {
                 .help(String(localized: "desktop_score_ranking_scope_help"))
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await viewModel.refresh(authService: appState.authService, force: true) }
-                } label: {
-                    if viewModel.isRefreshing {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
+                HStack(spacing: 8) {
+                    SyncStatusDot(servers: [.courseSelection])
+                    Button {
+                        Task { await viewModel.refresh(authService: appState.authService, force: true) }
+                    } label: {
+                        if viewModel.isRefreshing {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
+                        }
                     }
+                    .keyboardShortcut("r", modifiers: .command)
+                    .disabled(viewModel.isRefreshing)
+                    .help(String(localized: "desktop_score_refresh_help"))
                 }
-                .keyboardShortcut("r", modifiers: .command)
-                .disabled(viewModel.isRefreshing)
-                .help(String(localized: "desktop_score_refresh_help"))
             }
         }
         .task {

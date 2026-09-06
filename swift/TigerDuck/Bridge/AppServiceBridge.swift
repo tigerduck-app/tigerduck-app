@@ -86,12 +86,8 @@ enum AppServiceBridge {
         // into 114-2 for the weeks between 選課 opening and the month
         // heuristic rolling over.
         let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
-        let courseApiLanguage = LanguageManager.resolvedCourseApiLanguage(
-            appLanguage: Defaults[.appLanguage]
-        )
-        let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
-        let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
-        let classroomMandarinDisplay = Defaults[.classroomMandarinDisplay]
+        let display = CourseDisplayPreferences.current()
+        let courseApiLanguage = display.language
 
         guard !Task.isCancelled else { return [] }
 
@@ -101,6 +97,9 @@ enum AppServiceBridge {
         }
 
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.courseSelection)
+            #endif
             let session = NTUSTSessionManager.shared.session
             // NTUST SSO is the "nice to have" source here — Moodle's long-lived
             // OIDC token is the primary. If SSO is unreachable (cookies cleared,
@@ -120,8 +119,10 @@ enum AppServiceBridge {
                             authService?.loginGeneration == startGeneration
                         }
                     )
+                    await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .courseSelection) }
                 } catch {
                     await MainActor.run {
+                        ServerStatusTracker.shared.set(.failed, for: .courseSelection)
                         AppLogger.captureError(error, context: [
                             "service": "fetchEnrolledCourseNos",
                             "semester": semester,
@@ -224,48 +225,12 @@ enum AppServiceBridge {
                                 )
                             }
 
-                            let course = buildSDCourse(
+                            return enrichedCourseData(
                                 from: results,
                                 semester: semester,
-                                fallbackMoodleIdNumber: moodleByNo[courseNo]?.idnumber
+                                fallbackMoodleIdNumber: moodleByNo[courseNo]?.idnumber,
+                                display: display
                             )
-                            var data = CourseData(
-                                courseNo: course.courseNo,
-                                courseName: course.courseName,
-                                instructor: course.instructor,
-                                credits: course.credits,
-                                classroom: course.classroom,
-                                enrolledCount: course.enrolledCount,
-                                maxCount: course.maxCount,
-                                schedule: course.schedule,
-                                moodleIdNumber: course.moodleIdNumber,
-                                classroomMap: course.classroomMap
-                            )
-                            // Cache the raw API name so abbreviation toggles can re-derive
-                            // without a network round-trip.
-                            NameAbbrService.shared.storeRawName(
-                                courseNo: data.courseNo, name: data.courseName
-                            )
-                            NameAbbrService.shared.storeRawClassroom(
-                                courseNo: data.courseNo,
-                                classroom: data.classroom,
-                                map: data.classroomMap
-                            )
-                            let isEnglish = courseApiLanguage == "en"
-                            if isEnglish && courseAbbrEnabled {
-                                data.courseName = NameAbbrService.shared.abbreviateName(data.courseName)
-                            }
-                            if classroomAbbrEnabled || classroomMandarinDisplay != "original" {
-                                data.classroom = NameAbbrService.shared.abbreviateClassroom(
-                                    data.classroom, display: classroomMandarinDisplay
-                                )
-                                data.classroomMap = data.classroomMap.mapValues { val in
-                                    NameAbbrService.shared.abbreviateClassroom(
-                                        val, display: classroomMandarinDisplay
-                                    )
-                                }
-                            }
-                            return data
                         } catch {
                             await MainActor.run {
                                 AppLogger.captureError(error, context: [
@@ -315,14 +280,204 @@ enum AppServiceBridge {
                !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveCourses(courses, semester: semester)
+
+                if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
+                    let entries = courses.map { c in
+                        PushAPI.CourseUploadEntry(
+                            semester: semester,
+                            courseNo: c.courseNo,
+                            courseName: c.courseName,
+                            courseNameEn: nil,
+                            moodleId: c.moodleIdNumber,
+                            credits: c.credits > 0 ? Double(c.credits) : nil,
+                            classroom: c.classroom.isEmpty ? nil : c.classroom,
+                            instructors: c.instructor.isEmpty ? nil : [c.instructor],
+                            scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),
+                            classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
+                        )
+                    }
+                    let colorMap = TigerDuckTheme.courseColorMap
+                    let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
+                        guard let hex = colorMap[c.courseNo] else { return nil }
+                        return PushAPI.CourseOverrideUploadEntry(
+                            courseKey: "client:\(semester):\(c.courseNo)",
+                            colorHex: String(format: "#%06X", hex)
+                        )
+                    }
+                    let client = PushAPIClient(
+                        authHeaderProvider: { await atm.authorizationHeader() }
+                    )
+                    Task.detached {
+                        try? await client.uploadCourses(
+                            PushAPI.CourseUploadRequest(courses: entries, courseOverrides: overrides)
+                        )
+                    }
+                }
             }
             return courses
         } catch {
             await MainActor.run {
+                ServerStatusTracker.shared.set(.failed, for: .courseSelection)
                 AppLogger.captureError(error, context: ["bridge": "fetchCourses", "semester": semester])
             }
             return DataCache.shared.loadCourses(semester: semester)
         }
+    }
+
+    /// The per-user display toggles a course lookup has to honour, read once
+    /// per fetch so a concurrent fan-out sees one consistent set.
+    private struct CourseDisplayPreferences: Sendable {
+        let language: String
+        let courseAbbrEnabled: Bool
+        let classroomAbbrEnabled: Bool
+        let classroomMandarinDisplay: String
+
+        static func current() -> CourseDisplayPreferences {
+            CourseDisplayPreferences(
+                language: LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage]),
+                courseAbbrEnabled: Defaults[.useEnglishCourseAbbreviation],
+                classroomAbbrEnabled: Defaults[.useEnglishClassroomAbbreviation],
+                classroomMandarinDisplay: Defaults[.classroomMandarinDisplay]
+            )
+        }
+    }
+
+    /// QueryCourse rows → the display-ready course data the class table
+    /// stores: merged schedule and per-slot rooms, raw names cached for the
+    /// abbreviation toggles, and the current abbreviation / Mandarin-display
+    /// preferences applied.
+    private static func enrichedCourseData(
+        from results: [CourseSearchResult],
+        semester: String,
+        fallbackMoodleIdNumber: String?,
+        display: CourseDisplayPreferences
+    ) -> CourseData {
+        let course = buildSDCourse(
+            from: results,
+            semester: semester,
+            fallbackMoodleIdNumber: fallbackMoodleIdNumber
+        )
+        var data = CourseData(
+            courseNo: course.courseNo,
+            courseName: course.courseName,
+            instructor: course.instructor,
+            credits: course.credits,
+            classroom: course.classroom,
+            enrolledCount: course.enrolledCount,
+            maxCount: course.maxCount,
+            schedule: course.schedule,
+            moodleIdNumber: course.moodleIdNumber,
+            classroomMap: course.classroomMap
+        )
+        // Cache the raw API name so abbreviation toggles can re-derive
+        // without a network round-trip.
+        NameAbbrService.shared.storeRawName(courseNo: data.courseNo, name: data.courseName)
+        NameAbbrService.shared.storeRawClassroom(
+            courseNo: data.courseNo, classroom: data.classroom, map: data.classroomMap
+        )
+        if display.language == "en" && display.courseAbbrEnabled {
+            data.courseName = NameAbbrService.shared.abbreviateName(data.courseName)
+        }
+        if display.classroomAbbrEnabled || display.classroomMandarinDisplay != "original" {
+            data.classroom = NameAbbrService.shared.abbreviateClassroom(
+                data.classroom, display: display.classroomMandarinDisplay
+            )
+            data.classroomMap = data.classroomMap.mapValues {
+                NameAbbrService.shared.abbreviateClassroom($0, display: display.classroomMandarinDisplay)
+            }
+        }
+        return data
+    }
+
+    /// Re-queries every manually-added (or cross-device merged) course of
+    /// `semester` so its headcount, credits, instructor, rooms and periods
+    /// are as fresh as the portal courses. Those rows otherwise keep the
+    /// snapshot taken when they were added. Rows the lookup cannot find
+    /// keep that snapshot. Persists and returns the semester's user-added
+    /// list.
+    static func refreshUserAddedCourses(semester: String) async -> [SDCourse] {
+        let stored = DataCache.shared.loadUserAddedCourses()
+        let targets = stored.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+        guard !targets.isEmpty else { return [] }
+        let display = CourseDisplayPreferences.current()
+        // Snapshot the MainActor-bound model fields before fanning out.
+        let seeds = targets.map { ($0.courseNo, $0.moodleIdNumber, $0.semester.isEmpty ? semester : $0.semester) }
+
+        var refreshed: [String: CourseData] = [:]
+        await withTaskGroup(of: (String, CourseData?).self) { group in
+            for (courseNo, moodleId, rowSemester) in seeds {
+                group.addTask { @MainActor in
+                    guard let results = try? await CourseLookupService.lookupCourse(
+                        semester: rowSemester, courseNo: courseNo, language: display.language
+                    ), !results.isEmpty else { return (courseNo, nil) }
+                    return (courseNo, enrichedCourseData(
+                        from: results, semester: rowSemester,
+                        fallbackMoodleIdNumber: moodleId, display: display
+                    ))
+                }
+            }
+            for await (courseNo, data) in group {
+                if let data { refreshed[courseNo] = data }
+            }
+        }
+        guard !refreshed.isEmpty else { return targets }
+
+        let updated = stored.map { course -> SDCourse in
+            guard DataCache.userAddedCourse(course, belongsTo: semester),
+                  let data = refreshed[course.courseNo] else { return course }
+            return course.updated(with: data)
+        }
+        DataCache.shared.saveUserAddedCourses(updated)
+        return updated.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+    }
+
+    /// Looks up every course of `semester` that still has no classroom —
+    /// rooms are announced late, and a lookup that failed once used to
+    /// leave the cell blank until the next pull-to-refresh. Persists the
+    /// rows that now carry one and returns whether anything changed.
+    static func refreshCoursesMissingClassroom(semester: String) async -> Bool {
+        let enrolled = DataCache.shared.loadCourses(semester: semester)
+        let userAdded = DataCache.shared.loadUserAddedCourses()
+        let isUserAddedHere: (SDCourse) -> Bool = { DataCache.userAddedCourse($0, belongsTo: semester) }
+        let seeds = (enrolled + userAdded.filter(isUserAddedHere))
+            .filter { $0.classroom.isEmpty }
+            .map { ($0.courseNo, $0.moodleIdNumber) }
+        guard !seeds.isEmpty else { return false }
+        let display = CourseDisplayPreferences.current()
+
+        var found: [String: CourseData] = [:]
+        await withTaskGroup(of: (String, CourseData?).self) { group in
+            for (courseNo, moodleId) in seeds {
+                group.addTask { @MainActor in
+                    guard let results = try? await CourseLookupService.lookupCourse(
+                        semester: semester, courseNo: courseNo, language: display.language
+                    ), !results.isEmpty else { return (courseNo, nil) }
+                    let data = enrichedCourseData(
+                        from: results, semester: semester,
+                        fallbackMoodleIdNumber: moodleId, display: display
+                    )
+                    return (courseNo, data.classroom.isEmpty ? nil : data)
+                }
+            }
+            for await (courseNo, data) in group {
+                if let data { found[courseNo] = data }
+            }
+        }
+        guard !found.isEmpty else { return false }
+
+        if enrolled.contains(where: { found[$0.courseNo] != nil }) {
+            DataCache.shared.saveCourses(
+                enrolled.map { course in found[course.courseNo].map(course.updated) ?? course },
+                semester: semester
+            )
+        }
+        if userAdded.contains(where: { isUserAddedHere($0) && found[$0.courseNo] != nil }) {
+            DataCache.shared.saveUserAddedCourses(userAdded.map { course in
+                guard isUserAddedHere(course), let data = found[course.courseNo] else { return course }
+                return course.updated(with: data)
+            })
+        }
+        return true
     }
 
     /// Build a minimal `CourseData` when the QueryCourse API returns empty
@@ -425,6 +580,9 @@ enum AppServiceBridge {
         }
 
         do {
+            #if DEBUG
+            try await ServerFailureSimulator.shared.check(.moodle)
+            #endif
             let currentSemester = CourseSelectionService.currentSemesterCode()
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
 
@@ -457,9 +615,12 @@ enum AppServiceBridge {
             // stay blank until a second launch. Prefer filtering to the
             // current course roster when it exists (handles drops), else
             // use the semester prefix on Moodle's idnumber.
-            let currentCourseNos = Set(currentCourses.map(\.courseNo))
+            var currentCourseNos = Set(currentCourses.map(\.courseNo))
+            for mc in moodleEnrolled where mc.semester == currentSemester && !mc.courseNo.isEmpty {
+                currentCourseNos.insert(mc.courseNo)
+            }
             let relevantCourses: [MoodleEnrolledCourse]
-            if currentCourses.isEmpty {
+            if currentCourseNos.isEmpty {
                 relevantCourses = moodleEnrolled.filter { $0.semester == currentSemester }
             } else {
                 relevantCourses = moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) }
@@ -538,10 +699,43 @@ enum AppServiceBridge {
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignmentsToPersist)
+
+                // Fire-and-forget: upload the assignment list to the backend
+                // so it can populate its assignments table for cross-device
+                // sync and notification scheduling.
+                #if os(iOS)
+                if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
+                    let iso = ISO8601DateFormatter()
+                    iso.formatOptions = [.withInternetDateTime]
+                    let entries = assignmentsToPersist.compactMap { a -> PushAPI.AssignmentUploadEntry? in
+                        guard let id = Int(a.assignmentId) else { return nil }
+                        return PushAPI.AssignmentUploadEntry(
+                            moodleAssignmentId: id,
+                            courseNo: a.courseNo,
+                            courseName: a.courseName,
+                            title: a.title,
+                            dueAt: iso.string(from: a.dueDate),
+                            moodleUrl: a.moodleUrl,
+                            isSubmitted: a.isCompleted,
+                            grade: nil
+                        )
+                    }
+                    let client = PushAPIClient(
+                        authHeaderProvider: { await atm.authorizationHeader() }
+                    )
+                    Task.detached {
+                        try? await client.uploadAssignments(
+                            PushAPI.AssignmentUploadRequest(assignments: entries)
+                        )
+                    }
+                }
+                #endif
             }
+            await MainActor.run { ServerStatusTracker.shared.set(.ok, for: .moodle) }
             return assignmentsToPersist
         } catch {
             await MainActor.run {
+                ServerStatusTracker.shared.set(.failed, for: .moodle)
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()
@@ -595,4 +789,26 @@ enum AppServiceBridge {
         return fullname
     }
 
+}
+
+
+private extension SDCourse {
+    /// The same row with a fresh lookup applied. Identity fields stay: a
+    /// nil moodle id is what marks a row as manual, and `semester` is how
+    /// legacy rows without one are told apart.
+    func updated(with data: CourseData) -> SDCourse {
+        SDCourse(
+            courseNo: courseNo,
+            courseName: data.courseName,
+            instructor: data.instructor,
+            credits: data.credits,
+            classroom: data.classroom,
+            enrolledCount: data.enrolledCount,
+            maxCount: data.maxCount,
+            schedule: data.schedule,
+            moodleIdNumber: moodleIdNumber,
+            semester: semester,
+            classroomMap: data.classroomMap
+        )
+    }
 }

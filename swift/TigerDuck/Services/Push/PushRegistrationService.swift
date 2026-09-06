@@ -57,6 +57,18 @@ nonisolated enum PushDeviceClass {
         }
         #endif
     }
+
+    /// v3 `platform` value (server `UserDevicePlatform` enum) for a device
+    /// class. The backend distinguishes iPhone from iPad via `ios`/`ipados`
+    /// — operator targeting (and the portal's device tabs) rely on it, so we
+    /// send the precise value rather than a flat "apple".
+    static func platform(for deviceClass: String) -> String {
+        switch deviceClass {
+        case "ipad": return "ipados"
+        case "mac":  return "macos"
+        default:     return "ios"
+        }
+    }
 }
 
 actor PushRegistrationService {
@@ -79,17 +91,14 @@ actor PushRegistrationService {
     /// at the boundary would let a server-accepted change desync from the
     /// stored value.
     private var optOutPatchChain: Task<Void, Error>?
+    #if os(iOS)
     private var pendingActivityRegistrations: [String: LiveActivityUpdateTokenRegistration] = [:]
-    // Retry scheduling for activity-token registration. A transient network
-    // or 5xx failure against `/live-activities/register` would otherwise drop
-    // the update-token on the floor — the server would never learn it, and
-    // the end-push path would be permanently broken for that Live Activity.
+    private var activity404Attempts: [String: Int] = [:]
+    private let maxActivity404Attempts = 2
     private var activityRegistrationRetryTasks: [String: Task<Void, Never>] = [:]
     private var activityRegistrationAttempts: [String: Int] = [:]
-    // Exponential backoff: 30s, 90s, 270s. Caps the total wait at ~7 minutes,
-    // long enough to ride out a server deploy or brief offline period without
-    // holding memory for a dead registration indefinitely.
     private let maxActivityRegistrationAttempts = 4
+    #endif
     private let activityRegistrationBaseDelaySeconds: Double = 30
     private let activityRegistrationMaxDelaySeconds: Double = 600
 
@@ -136,6 +145,7 @@ actor PushRegistrationService {
         await registerIfReady()
     }
 
+    #if os(iOS)
     func registerLiveActivityUpdateToken(
         _ registration: LiveActivityUpdateTokenRegistration
     ) async {
@@ -146,6 +156,29 @@ actor PushRegistrationService {
         }
         await performActivityRegistration(registration, logger: logger)
     }
+    #endif
+
+    #if os(macOS)
+    func registerPassiveDevice() async {
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let request = PushAPI.DeviceRegisterRequest(
+            client_device_id: identity.uuid,
+            platform: PushDeviceClass.platform(for: deviceClass),
+            app_version: appVersion,
+            os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+            push_token: nil,
+            cloud_sync_enabled: Defaults[.cloudSyncEnabled]
+        )
+        do {
+            let response = try await apiClient.registerDevice(request)
+            logger.info("registered passive macOS device device_id=\(response.device_id, privacy: .public)")
+            noteSuccessfulRegistration()
+        } catch {
+            logger.error("passive device register failed: \(error.localizedDescription, privacy: .public)")
+            noteRegistrationError(error)
+        }
+    }
+    #endif
 
     func registrationFailed(_ error: Error) {
         lastError = "APNs register failed: \(error.localizedDescription)"
@@ -171,7 +204,7 @@ actor PushRegistrationService {
     /// order is preserved because each task awaits its predecessor.
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         let predecessor = optOutPatchChain
-        let deviceId = identity.deviceId
+        let uuid = identity.uuid
         let apiClient = self.apiClient
         let logger = self.logger
         let task = Task<Void, Error> {
@@ -181,7 +214,7 @@ actor PushRegistrationService {
             _ = try? await predecessor?.value
             do {
                 _ = try await apiClient.updateDevicePreferences(
-                    deviceId: deviceId, serverPushEnabled: !optOut
+                    deviceId: uuid, serverPushEnabled: !optOut
                 )
                 await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
                 logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
@@ -201,6 +234,33 @@ actor PushRegistrationService {
         try await task.value
     }
 
+    func updateCloudSyncEnabled(_ enabled: Bool) async {
+        do {
+            _ = try await apiClient.updateDevicePreferences(
+                deviceId: identity.uuid,
+                cloudSyncEnabled: enabled
+            )
+            logger.info("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH succeeded")
+        } catch {
+            logger.error("[sync] cloud_sync_enabled=\(enabled, privacy: .public) PATCH failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func updateSyncPreferences(
+        syncCourses: Bool,
+        syncCourseColors: Bool,
+        syncCourseNames: Bool,
+        syncAssignments: Bool
+    ) async {
+        _ = try? await apiClient.updateDevicePreferences(
+            deviceId: identity.uuid,
+            syncCourses: syncCourses,
+            syncCourseColors: syncCourseColors,
+            syncCourseNames: syncCourseNames,
+            syncAssignments: syncAssignments
+        )
+    }
+
     /// Snapshot of internal state for UI display. Safe to call from any isolation.
     func snapshot() -> PushRegistrationSnapshot {
         PushRegistrationSnapshot(
@@ -216,25 +276,44 @@ actor PushRegistrationService {
     /// Called when the user turns off server push or logs out.
     func unregister() async {
         do {
-            try await apiClient.unregisterDevice(deviceId: identity.deviceId)
+            try await apiClient.unregisterDevice(deviceId: identity.uuid)
             logger.info("unregistered device on server")
         } catch {
             logger.error("unregister failed: \(error.localizedDescription, privacy: .public)")
         }
         deviceTokenHex = nil
         ptsTokenHex = nil
+        #if os(iOS)
         pendingActivityRegistrations.removeAll()
         for task in activityRegistrationRetryTasks.values {
             task.cancel()
         }
         activityRegistrationRetryTasks.removeAll()
         activityRegistrationAttempts.removeAll()
+        activity404Attempts.removeAll()
+        #endif
         deviceRegisterRetryTask?.cancel()
         deviceRegisterRetryTask = nil
         deviceRegisterAttempts = 0
     }
 
     // MARK: - Internals
+
+    /// Re-attempt registration after the auth state changes — the user just
+    /// signed in and a v3 JWT is now available. Resets the give-up counter so
+    /// a registration that exhausted its retries while unauthenticated gets a
+    /// fresh chance, then fires immediately (subject to the PTS-token gate in
+    /// `registerIfReady`).
+    func retryAfterAuthChange() async {
+        deviceRegisterAttempts = 0
+        deviceRegisterRetryTask?.cancel()
+        deviceRegisterRetryTask = nil
+        #if os(iOS)
+        await registerIfReady()
+        #elseif os(macOS)
+        await registerPassiveDevice()
+        #endif
+    }
 
     /// We upload as soon as the PTS token exists. Device token alone is not
     /// enough to start a Live Activity, and PTS is the Checkpoint-2/3 focus.
@@ -249,7 +328,9 @@ actor PushRegistrationService {
     /// one POST, and `CancellationError`s are silenced since they're
     /// the expected side-effect of a newer request winning.
     private func registerIfReady() async {
+        #if os(iOS)
         guard ptsTokenHex != nil else { return }
+        #endif
 
         lastAttempt?.cancel()
         let logger = self.logger
@@ -267,27 +348,55 @@ actor PushRegistrationService {
     /// stale `let`s from the enqueue site.
     private func performRegister(logger: Logger) async {
         guard let pts = ptsTokenHex else { return }
-        let optOut = await MainActor.run { Defaults[.serverPushUserOptOut] }
-        let request = PushAPI.DeviceRegisterRequest(
-            userId: identity.userId,
-            deviceId: identity.deviceId,
-            platform: "apple",
-            ptsTokenHex: pts,
-            deviceTokenHex: deviceTokenHex,
-            bundleId: bundleId,
-            attrsType: attrsType,
-            apnsEnv: apnsEnv,
-            deviceClass: deviceClass,
-            serverPushEnabled: !optOut
-        )
+        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         do {
-            let response = try await apiClient.registerDevice(request)
-            logger.info("registered device=\(response.deviceId, privacy: .public) user=\(response.userId, privacy: .public)")
+            let cloudSync = Defaults[.cloudSyncEnabled]
+            logger.info("[register] cloud_sync_enabled=\(cloudSync, privacy: .public)")
+            let ptsRequest = PushAPI.DeviceRegisterRequest(
+                client_device_id: identity.uuid,
+                platform: PushDeviceClass.platform(for: deviceClass),
+                app_version: appVersion,
+                os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+                push_token: PushAPI.PushTokenIn(
+                    provider: "apns",
+                    token_kind: "push_to_start",
+                    token_value: pts,
+                    bundle_id: bundleId,
+                    environment: apnsEnv,
+                    scope_key: attrsType
+                ),
+                cloud_sync_enabled: cloudSync
+            )
+            let ptsResponse = try await apiClient.registerDevice(ptsRequest)
+            logger.info("registered device (PTS) device_id=\(ptsResponse.device_id, privacy: .public)")
+
+            if let deviceToken = deviceTokenHex {
+                let deviceTokenRequest = PushAPI.DeviceRegisterRequest(
+                    client_device_id: identity.uuid,
+                    platform: PushDeviceClass.platform(for: deviceClass),
+                    app_version: appVersion,
+                    os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+                    push_token: PushAPI.PushTokenIn(
+                        provider: "apns",
+                        token_kind: "standard",
+                        token_value: deviceToken,
+                        bundle_id: bundleId,
+                        environment: apnsEnv,
+                        scope_key: ""
+                    ),
+                    cloud_sync_enabled: cloudSync
+                )
+                let tokenResponse = try await apiClient.registerDevice(deviceTokenRequest)
+                logger.info("registered device (standard APNs) device_id=\(tokenResponse.device_id, privacy: .public)")
+            }
+
             deviceRegisterRetryTask?.cancel()
             deviceRegisterRetryTask = nil
             deviceRegisterAttempts = 0
             noteSuccessfulRegistration()
+            #if os(iOS)
             await flushPendingActivityRegistrations(logger: logger)
+            #endif
         } catch is CancellationError {
             // Expected side-effect of debounce preempting an in-flight
             // request. Swallow silently so the logs stay clean.
@@ -330,6 +439,7 @@ actor PushRegistrationService {
         lastError = "register: \(error.localizedDescription)"
     }
 
+    #if os(iOS)
     private func flushPendingActivityRegistrations(logger: Logger) async {
         for registration in Array(pendingActivityRegistrations.values) {
             await performActivityRegistration(registration, logger: logger)
@@ -341,19 +451,29 @@ actor PushRegistrationService {
         logger: Logger
     ) async {
         let snapshot = registration.snapshot
-        let request = PushAPI.LiveActivityTokenRegisterRequest(
-            deviceId: identity.deviceId,
-            activityId: registration.activityId,
-            sourceId: snapshot.sourceId,
-            scenario: snapshot.scenario,
-            updateTokenHex: registration.updateTokenHex,
-            countdownTarget: snapshot.countdownTarget,
-            snapshot: snapshot
+        // v3: encode `countdown_target` as ISO 8601 string (the server expects a
+        // string field, not a nested object). Device identity comes from the JWT.
+        let countdownISO: String?
+        if let target = snapshot.countdownTarget {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            countdownISO = formatter.string(from: target)
+        } else {
+            countdownISO = nil
+        }
+        let request = PushAPI.LiveActivityRegisterV3Request(
+            activity_id: registration.activityId,
+            source_id: snapshot.sourceId,
+            update_token_hex: registration.updateTokenHex,
+            countdown_target: countdownISO,
+            snapshot: snapshot,
+            bundle_id: bundleId,
+            environment: apnsEnv
         )
         do {
             let response = try await apiClient.registerLiveActivityToken(request)
             logger.info(
-                "registered live activity token id=\(response.activityId, privacy: .public)"
+                "registered live activity token id=\(response.tokenId, privacy: .public)"
             )
             if pendingActivityRegistrations[registration.activityId]?.updateTokenHex == registration.updateTokenHex {
                 pendingActivityRegistrations[registration.activityId] = nil
@@ -361,14 +481,23 @@ actor PushRegistrationService {
             activityRegistrationRetryTasks[registration.activityId]?.cancel()
             activityRegistrationRetryTasks[registration.activityId] = nil
             activityRegistrationAttempts[registration.activityId] = nil
+            activity404Attempts[registration.activityId] = nil
         } catch let error as PushAPIError {
             if case .httpStatus(404, _) = error {
-                // Device row is missing server-side — re-register it; the
-                // success path will flush `pendingActivityRegistrations`
-                // immediately, no standalone retry needed.
-                await registerIfReady()
-                logger.error("live activity token register failed (device missing): \(error.localizedDescription, privacy: .public)")
-                return
+                let activityId = registration.activityId
+                let attempts = (activity404Attempts[activityId] ?? 0) + 1
+                activity404Attempts[activityId] = attempts
+                if attempts <= maxActivity404Attempts {
+                    // Device row is missing server-side — re-register it; the
+                    // success path will flush `pendingActivityRegistrations`
+                    // immediately, no standalone retry needed.
+                    await registerIfReady()
+                    logger.error("live activity token register 404 attempt=\(attempts, privacy: .public) id=\(activityId, privacy: .public) — re-registering device")
+                    return
+                }
+                // Exhausted 404 retries — fall through to exponential-backoff
+                // so we don't spin unbounded.
+                logger.error("live activity token register 404 exhausted attempts=\(attempts, privacy: .public) id=\(activityId, privacy: .public) — falling back to backoff retry")
             }
             logger.error("live activity token register failed: \(error.localizedDescription, privacy: .public)")
             scheduleActivityRegistrationRetry(registration, logger: logger)
@@ -425,4 +554,5 @@ actor PushRegistrationService {
         }
         await performActivityRegistration(registration, logger: logger)
     }
+    #endif
 }

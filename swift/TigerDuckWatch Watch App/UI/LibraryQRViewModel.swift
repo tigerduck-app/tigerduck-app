@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreGraphics
 import Combine
+import WatchConnectivity
 
 @MainActor
 @Observable
@@ -43,7 +44,9 @@ final class LibraryQRViewModel {
                 } else {
                     self.stopTimers()
                     self.qrImage = nil
+                    self.renderedPayload = nil
                     self.errorMessage = nil
+                    LibraryQRCache.shared.clear()
                 }
             }
     }
@@ -56,15 +59,15 @@ final class LibraryQRViewModel {
 
     // MARK: - Lifecycle
 
+    /// The payload `qrImage` was rendered from, so a cached code is not
+    /// re-rasterised on every page switch.
+    private var renderedPayload: String?
+
     func onAppear() {
-        // Refresh immediately if we have no QR or it's clearly stale.
-        if hasCredentials {
-            if qrImage == nil || countdown <= 5 {
-                fetchAndRender()
-            }
-            if refreshTimer == nil {
-                startRefreshCycle()
-            }
+        // `startRefreshCycle` reuses the cached code when it still has
+        // enough life left, so page switches don't burn a fetch.
+        if hasCredentials, refreshTimer == nil {
+            startRefreshCycle()
         }
     }
 
@@ -76,9 +79,27 @@ final class LibraryQRViewModel {
 
     // MARK: - Fetch + render
 
+    /// A cached code with at least `LibraryQRCache.reuseThreshold` seconds
+    /// left is shown again with its countdown resumed and the next fetch
+    /// scheduled for when it runs out; otherwise fetch now and every 30 s.
     private func startRefreshCycle() {
-        fetchAndRender()
         refreshTimer?.invalidate()
+        let cache = LibraryQRCache.shared
+        if let payload = cache.reusable() {
+            let remaining = cache.remaining()
+            if renderedPayload != payload || qrImage == nil, let image = Self.makeQRImage(from: payload) {
+                qrImage = image
+                renderedPayload = payload
+                isLoading = false
+            }
+            restartCountdown(from: remaining)
+            refreshTimer = Self.scheduleCommonModeTimer(interval: TimeInterval(remaining), repeats: false) { [weak self] in
+                self?.startRefreshCycle()
+            }
+            return
+        }
+
+        fetchAndRender()
         refreshTimer = Self.scheduleCommonModeTimer(interval: 30, repeats: true) { [weak self] in
             self?.fetchAndRender()
         }
@@ -88,35 +109,24 @@ final class LibraryQRViewModel {
         Task { @MainActor in
             isLoading = qrImage == nil
             errorMessage = nil
-            // Captive-portal pre-flight: api.lib.ntust.edu.tw is now
-            // SPKI-pinned, so a watch on a hotel/airport Wi-Fi (the
-            // common case once it's out of phone BT range) would
-            // otherwise surface an opaque TLS pin error instead of the
-            // "log into Wi-Fi" hint the iOS side gets. Treat captive
-            // the same way as the generic network error.
-            guard await NetworkMonitor.shared.isReachable() else {
-                errorMessage = String(localized: "error_network_unavailable")
-                isLoading = false
-                consecutiveErrors += 1
-                rescheduleAfterError()
-                return
-            }
             do {
-                let payload = try await WatchLibraryService.generateQRCode()
+                let (payload, remaining) = try await fetchPayload()
                 guard let image = Self.makeQRImage(from: payload) else {
                     throw WatchLibraryServiceError.qrGenerationFailed("QR payload is too large")
                 }
+                LibraryQRCache.shared.store(payload, remaining: remaining)
                 qrImage = image
+                renderedPayload = payload
                 username = store.currentUsername()
-                countdown = 30
                 isLoading = false
                 consecutiveErrors = 0
-                restartCountdown()
+                restartCountdown(from: remaining)
             } catch WatchLibraryServiceError.credentialsNotFound {
                 // TTL purge or no credentials — mirror store state.
                 isLoading = false
                 hasCredentials = false
                 qrImage = nil
+                renderedPayload = nil
                 stopTimers()
             } catch {
                 errorMessage = error.localizedDescription
@@ -124,6 +134,48 @@ final class LibraryQRViewModel {
                 consecutiveErrors += 1
                 rescheduleAfterError()
             }
+        }
+    }
+
+    /// Phone first while it is in Bluetooth range: no watch-side internet
+    /// needed, and the two screens show the same code. Then the watch's
+    /// own link — skipping the captive-portal pre-flight when the phone is
+    /// reachable, since the watch's traffic rides the phone's connection
+    /// then, and running it otherwise so a hotel Wi-Fi surfaces the
+    /// "log into Wi-Fi" hint instead of an opaque TLS-pin error.
+    private func fetchPayload() async throws -> (payload: String, remaining: Int) {
+        let phoneReachable = WCSession.isSupported() && WCSession.default.isReachable
+        var phoneError: Error?
+        if phoneReachable {
+            do { return try await Self.requestFromPhone() } catch { phoneError = error }
+        }
+        if !phoneReachable, !(await NetworkMonitor.shared.isReachable()) {
+            throw WatchLibraryServiceError.offline
+        }
+        do {
+            return (try await WatchLibraryService.generateQRCode(), LibraryQRCache.lifetime)
+        } catch WatchLibraryServiceError.credentialsNotFound {
+            throw WatchLibraryServiceError.credentialsNotFound
+        } catch {
+            throw phoneError ?? error
+        }
+    }
+
+    private static func requestFromPhone() async throws -> (payload: String, remaining: Int) {
+        try await withCheckedThrowingContinuation { continuation in
+            WCSession.default.sendMessage(
+                [WatchWireFormat.MessageKey.kind: WatchWireFormat.MessageKind.libraryQRRequest],
+                replyHandler: { reply in
+                    if let payload = reply[WatchWireFormat.LibraryQRKey.payload] as? String, !payload.isEmpty {
+                        let remaining = reply[WatchWireFormat.LibraryQRKey.remaining] as? Int ?? LibraryQRCache.lifetime
+                        continuation.resume(returning: (payload, remaining))
+                    } else {
+                        let message = reply[WatchWireFormat.LibraryQRKey.error] as? String ?? "no payload"
+                        continuation.resume(throwing: WatchLibraryServiceError.qrGenerationFailed(message))
+                    }
+                },
+                errorHandler: { continuation.resume(throwing: $0) }
+            )
         }
     }
 
@@ -136,8 +188,8 @@ final class LibraryQRViewModel {
         }
     }
 
-    private func restartCountdown() {
-        countdown = 30
+    private func restartCountdown(from seconds: Int = LibraryQRCache.lifetime) {
+        countdown = seconds
         countdownTimer?.invalidate()
         countdownTimer = Self.scheduleCommonModeTimer(interval: 1, repeats: true) { [weak self] in
             guard let self else { return }

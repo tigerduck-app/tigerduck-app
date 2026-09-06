@@ -24,14 +24,14 @@ struct CalendarTabView: View {
                             .font(TigerDuckTheme.Typography.title)
                             .foregroundStyle(Color.textPrimary)
                         Spacer()
-                        NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
+                        SyncStatusDot(servers: [.moodle])
                         Button {
                             viewModel.goToToday()
                         } label: {
                             Text(String(localized: "calendar_today"))
-                                .font(TigerDuckTheme.Typography.caption)
-                                .foregroundStyle(Color.textSecondary)
+                                .font(.caption.weight(.semibold))
                         }
+                        .modifier(GlassTextButtonModifier())
                     }
                     .padding(.horizontal, TigerDuckTheme.Spacing.lg)
                     .padding(.top, TigerDuckTheme.Spacing.md)
@@ -49,7 +49,7 @@ struct CalendarTabView: View {
                 .padding(.bottom, TigerDuckTheme.Spacing.xxl)
             }
             .refreshable {
-                await viewModel.refresh(authService: appState.authService)
+                viewModel.triggerRefresh(authService: appState.authService)
             }
             .background(Color.backgroundPrimary)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)

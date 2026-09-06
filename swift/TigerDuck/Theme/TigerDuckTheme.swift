@@ -116,6 +116,10 @@ enum TigerDuckTheme {
         state.setColor(hex: hex & 0xFFFFFF, for: courseNo, palette: coursePaletteHexes)
     }
 
+    static func snapshot() -> [String: UInt32] {
+        state.snapshot()
+    }
+
     /// Refresh the in-memory map from disk. Called when the underlying
     /// user-scoped data is swapped (e.g. logout/login).
     static func reload() {
@@ -138,7 +142,13 @@ private final class ColorState: @unchecked Sendable {
     private nonisolated(unsafe) var map: [String: UInt32]
     private let lock = OSAllocatedUnfairLock()
 
+    private static let hashMigrationKey = "color_hash_v2_migrated"
+
     init() {
+        if !UserDefaults.standard.bool(forKey: Self.hashMigrationKey) {
+            DataCache.shared.saveCourseColorMap([:])
+            UserDefaults.standard.set(true, forKey: Self.hashMigrationKey)
+        }
         self.map = DataCache.shared.loadCourseColorMap()
     }
 
@@ -223,9 +233,10 @@ private final class ColorState: @unchecked Sendable {
     func reassignAll(courseNos: [String], palette: [UInt32]) {
         lock.withLock {
             map.removeAll(keepingCapacity: true)
+            let shuffled = palette.shuffled()
             var used: Set<UInt32> = []
             for courseNo in courseNos.sorted() {
-                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: palette)
+                let assigned = Self.pickUnusedHex(seed: courseNo, used: used, palette: shuffled)
                 map[courseNo] = assigned
                 used.insert(assigned)
             }
@@ -266,7 +277,10 @@ private final class ColorState: @unchecked Sendable {
     }
 
     private nonisolated static func hashIndex(for courseNo: String, paletteCount: Int) -> Int {
-        let hash = courseNo.utf8.reduce(0) { ($0 &* 31) &+ Int($1) }
-        return abs(hash) % paletteCount
+        var h = 0
+        for c in courseNo.unicodeScalars {
+            h = (h &* 31 &+ Int(c.value)) & 0x7FFFFFFF
+        }
+        return h % paletteCount
     }
 }

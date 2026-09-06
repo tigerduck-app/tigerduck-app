@@ -60,7 +60,7 @@ struct ScoreView: View {
         .refreshable {
             // Fire-and-forget: pull gesture dismisses UIRefreshControl
             // immediately; live progress moves to the top-right
-            // NetworkStatusOverlay like other pages in the app.
+            // SyncStatusDot like other pages in the app.
             viewModel.triggerRefresh(authService: appState.authService)
         }
         .sheet(item: $selectedCourse) { course in
@@ -79,7 +79,7 @@ struct ScoreView: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            NetworkStatusOverlay(loadingState: appState.sessionManager.loadingState)
+            SyncStatusDot(servers: [.courseSelection])
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)
@@ -95,7 +95,7 @@ struct ScoreView: View {
         CreditSummaryBento(summary: viewModel.report.creditSummary)
 
         RankingsTrendCard(
-            rankings: viewModel.rankingTrend,
+            points: viewModel.gpaTrend,
             scope: Binding(
                 get: { viewModel.rankingScope },
                 set: { viewModel.rankingScope = $0 }
@@ -107,7 +107,7 @@ struct ScoreView: View {
                 SemesterSection(
                     term: group.term,
                     courses: group.courses,
-                    ranking: viewModel.ranking(for: group.term),
+                    gpaPoint: viewModel.gpaPoint(for: group.term),
                     isCollapsed: viewModel.isCollapsed(term: group.term),
                     onToggle: {
                         withAnimation(.smoothSpring) {

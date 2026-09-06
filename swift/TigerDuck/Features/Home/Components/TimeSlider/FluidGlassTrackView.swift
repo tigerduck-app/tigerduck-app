@@ -31,7 +31,6 @@ struct FluidGlassTrackView: View {
                         .fill(.ultraThinMaterial)
                 }
 
-                // Tick marks
                 tickMarks(centerX: centerX, visibleWidth: width, rtlFactor: rtlFactor)
 
                 // Course segments positioned relative to center

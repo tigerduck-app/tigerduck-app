@@ -214,16 +214,15 @@ struct LibraryView: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            HStack(spacing: TigerDuckTheme.Spacing.xs) {
-                Circle()
-                    .fill(viewModel.isLoggedIn ? Color.green : Color.textSecondary.opacity(0.5))
-                    .frame(width: 8, height: 8)
-                Text(viewModel.isLoggedIn
+            SyncStatusDot(
+                status: viewModel.errorMessage != nil ? .failed : (viewModel.isLoggedIn ? .ok : .unknown),
+                label: String(localized: "feature_library"),
+                icon: "books.vertical.fill",
+                text: viewModel.isLoggedIn
                     ? String(localized: "library_status_signed_in")
-                    : String(localized: "common_not_signed_in"))
-                    .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.textSecondary)
-            }
+                    : String(localized: "common_not_signed_in"),
+                isLoading: viewModel.isLoadingQR
+            )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)

@@ -4,7 +4,7 @@ import SwiftUI
 /// state, due date, and cutoff date. One enum per row-visible condition
 /// so the view layer just switches on this value instead of re-deriving
 /// rules from dates.
-enum AssignmentStatus: Sendable, Equatable {
+enum AssignmentStatus: Sendable, nonisolated Equatable {
     /// Not submitted, before the due date.
     case pending
     /// Submitted on or before the due date.
@@ -54,10 +54,13 @@ extension AssignmentStatus {
         self == .overdueRejected
     }
 
-    /// Whether the row should show swipe actions (ignore / mark complete).
-    /// Any not-yet-submitted row can be acted upon locally; submitted rows are
-    /// Moodle-authoritative and remain non-swipeable.
+    /// Whether the row should show swipe actions (ignore / mark complete / undo).
+    /// Only Moodle-submitted rows are non-swipeable (authoritative from Moodle).
+    /// Archived and locally-completed rows are swipeable so users can undo.
     var isSwipeActionEligible: Bool {
-        self == .pending || self == .overdueAcceptable || self == .overdueRejected
+        switch self {
+        case .submitted, .submittedLate: return false
+        default: return true
+        }
     }
 }

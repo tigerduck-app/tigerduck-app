@@ -4,10 +4,17 @@ import SwiftUI
 /// localized short weekday name. DateFormatter's symbol arrays use a
 /// 1=Sunday convention, so we remap before indexing. The fallback to the
 /// raw int keeps VoiceOver labels usable even if symbol lookup fails.
+///
+/// The formatter is cached as a `private static let` so we don't allocate
+/// one on every call (the grid calls this once per cell per layout pass).
+private let _weekdayFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.locale = Locale.current
+    return f
+}()
+
 private func weekdayDisplayName(_ weekday: Int) -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale.current
-    let symbols = formatter.shortStandaloneWeekdaySymbols ?? formatter.shortWeekdaySymbols ?? []
+    let symbols = _weekdayFormatter.shortStandaloneWeekdaySymbols ?? _weekdayFormatter.shortWeekdaySymbols ?? []
     // Codebase: 1=Mon...6=Sat,7=Sun → DateFormatter index: 2=Mon...7=Sat,1=Sun
     let dfIndex: Int
     switch weekday {
@@ -47,7 +54,7 @@ struct TimetableGridView: View {
     /// non-stepped raw value — normalizing at the read site keeps all
     /// three surfaces (timetable / Settings readout / widget) in sync.
     private var courseNameSize: CGFloat {
-        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
+        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
     }
 
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
@@ -76,7 +83,6 @@ struct TimetableGridView: View {
             // Grid rows
             ForEach(Array(viewModel.activePeriods.enumerated()), id: \.element.id) { periodIndex, period in
                 HStack(spacing: colSpacing) {
-                    // Period label
                     Text(period.displayLabel)
                         .font(.caption2)
                         .foregroundStyle(Color.textSecondary)
@@ -204,7 +210,7 @@ private struct ConflictClusterView: View {
     /// rather than `CourseCardFontScaleStore` directly, and why we
     /// normalize at the read site.
     private var courseNameSize: CGFloat {
-        courseNameBaseSize * CGFloat(CourseCardFontScale.normalize(appState.courseCardFontScale))
+        courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
     }
 
     private var courseA: SDCourse { segments[0].course }

@@ -37,6 +37,52 @@ struct RankingStats: Codable, Equatable, Sendable {
     var gpa: Double?
 }
 
+/// One term on the GPA trend: the school's published ranking, or — while
+/// the ranking is not out yet — a GPA computed from the grades that have
+/// arrived so far. Grades land course by course, so a provisional point
+/// moves until the ranking replaces it.
+struct GPATrendPoint: Equatable, Sendable, Identifiable {
+    var term: String
+    var semester: RankingStats
+    var cumulative: RankingStats
+    var isProvisional: Bool
+
+    var id: String { term }
+
+    init(ranking: SemesterRanking) {
+        term = ranking.term
+        semester = ranking.semester
+        cumulative = ranking.cumulative
+        isProvisional = false
+    }
+
+    init(term: String, semesterGPA: Double, cumulativeGPA: Double?) {
+        self.term = term
+        semester = RankingStats(classRank: nil, deptRank: nil, gpa: semesterGPA)
+        cumulative = RankingStats(classRank: nil, deptRank: nil, gpa: cumulativeGPA)
+        isProvisional = true
+    }
+
+    /// Chronological trend for `report`: every published ranking, plus a
+    /// provisional point for each term that has graded courses but no
+    /// ranking (or a ranking without a GPA) yet.
+    static func trend(for report: ScoreReport) -> [GPATrendPoint] {
+        let coursesByTerm = Dictionary(grouping: report.courses, by: \.term)
+        let rankings = Dictionary(report.rankings.map { ($0.term, $0) }, uniquingKeysWith: { first, _ in first })
+        return Set(coursesByTerm.keys).union(rankings.keys).sorted().compactMap { term in
+            if let ranking = rankings[term], ranking.semester.gpa != nil {
+                return GPATrendPoint(ranking: ranking)
+            }
+            guard let semesterGPA = NTUSTGradePoints.gpa(of: coursesByTerm[term] ?? []) else { return nil }
+            return GPATrendPoint(
+                term: term,
+                semesterGPA: semesterGPA,
+                cumulativeGPA: NTUSTGradePoints.gpa(of: report.courses.filter { $0.term <= term })
+            )
+        }
+    }
+}
+
 // MARK: - Courses
 
 struct CourseGrade: Codable, Equatable, Sendable, Identifiable {

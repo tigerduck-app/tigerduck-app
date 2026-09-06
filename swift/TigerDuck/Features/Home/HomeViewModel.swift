@@ -226,8 +226,13 @@ final class HomeViewModel {
         withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isArchived = true
             DataCache.shared.addArchivedAssignmentId(assignment.assignmentId)
+            if allAssignmentsCache[idx].isLocallyCompleted {
+                allAssignmentsCache[idx].isLocallyCompleted = false
+                DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
+            }
             recomputeUpcomingAssignments()
         }
+        broadcastAssignmentChange()
     }
 
     func unarchiveAssignment(_ assignment: SDAssignment) {
@@ -237,6 +242,7 @@ final class HomeViewModel {
             DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()
         }
+        broadcastAssignmentChange()
     }
 
     func markAssignmentAsLocallyCompleted(_ assignment: SDAssignment) {
@@ -244,8 +250,13 @@ final class HomeViewModel {
         withAnimation(prefersReducedMotion ? nil : Self.assignmentMutationAnimation) {
             allAssignmentsCache[idx].isLocallyCompleted = true
             DataCache.shared.addLocallyCompletedAssignmentId(assignment.assignmentId)
+            if allAssignmentsCache[idx].isArchived {
+                allAssignmentsCache[idx].isArchived = false
+                DataCache.shared.removeArchivedAssignmentId(assignment.assignmentId)
+            }
             recomputeUpcomingAssignments()
         }
+        broadcastAssignmentChange()
     }
 
     func undoLocallyCompleted(_ assignment: SDAssignment) {
@@ -255,6 +266,16 @@ final class HomeViewModel {
             DataCache.shared.removeLocallyCompletedAssignmentId(assignment.assignmentId)
             recomputeUpcomingAssignments()
         }
+        broadcastAssignmentChange()
+    }
+
+    /// The class table's per-course assignment badge reads the same
+    /// assignment cache, so a tick here has to reach it too. The guard
+    /// flag keeps our own observer from re-reading what we just wrote.
+    private func broadcastAssignmentChange() {
+        isUpdatingFromNetwork = true
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+        isUpdatingFromNetwork = false
     }
 
     func hasUnfinishedAssignment(for courseNo: String) -> Bool {

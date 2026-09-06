@@ -1,0 +1,21 @@
+name: macOS source membership
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          fetch-depth: 1
+          # No submodules: this only reads project.pbxproj and the git index.
+          #
+          # No `ref:` override, matching localization-keys.yaml — the default
+          # for a pull_request event is the merge ref, and the merged result is
+          # what would ship a file nobody assigned to a platform.
+
+      - name: Check every app-target source is assigned to a platform
+        run: python3 tools/check_macos_sources.py

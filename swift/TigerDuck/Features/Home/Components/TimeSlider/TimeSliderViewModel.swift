@@ -54,7 +54,8 @@ final class TimeSliderViewModel {
     /// Build a compressed mapping: real time → visual X position.
     /// Course blocks use linear density; gaps between courses are logarithmically compressed.
     private func rebuildAnchors() {
-        guard !timeSlots.isEmpty else { anchors = []; return }
+        let intervals = busyIntervals
+        guard !intervals.isEmpty else { anchors = []; return }
 
         let ppm = TimeSliderMetrics.pointsPerMinute
         let refMin = TimeSliderMetrics.logarithmicReferenceMinutes
@@ -69,23 +70,21 @@ final class TimeSliderViewModel {
         let paddingBefore = compressedGapWidth(
             minutes: 60, refMin: refMin, ppm: ppm, minGap: minGap, maxGap: maxGap
         )
-        result.append((time: timeSlots[0].start.addingTimeInterval(-3600), x: x))
+        result.append((time: intervals[0].start.addingTimeInterval(-3600), x: x))
         x += paddingBefore
 
-        for (i, slot) in timeSlots.enumerated() {
-            // Slot start
+        for (i, slot) in intervals.enumerated() {
             result.append((time: slot.start, x: x))
 
             // Slot duration (linear)
             let durationMin = slot.end.timeIntervalSince(slot.start) / 60
             x += CGFloat(durationMin) * ppm
 
-            // Slot end
             result.append((time: slot.end, x: x))
 
             // Gap to next slot
-            if i + 1 < timeSlots.count {
-                let next = timeSlots[i + 1]
+            if i + 1 < intervals.count {
+                let next = intervals[i + 1]
                 let gapMin = next.start.timeIntervalSince(slot.end) / 60
 
                 let calendar = AppConstants.taipeiCalendar
@@ -106,11 +105,29 @@ final class TimeSliderViewModel {
             minutes: 60, refMin: refMin, ppm: ppm, minGap: minGap, maxGap: maxGap
         )
         x += paddingAfter
-        if let last = timeSlots.last {
+        if let last = intervals.last {
             result.append((time: last.end.addingTimeInterval(3600), x: x))
         }
 
         anchors = result
+    }
+
+    /// `timeSlots` merged into non-overlapping busy intervals. The class
+    /// table allows two courses in one period; laying both out as separate
+    /// slots gave the anchor table two X ranges for the same minute, so
+    /// `interpolateTime` walked backwards after the first slot's end and the
+    /// drag pinned there. One interval per clash keeps time → X monotonic;
+    /// the track still draws each course's segment on top of the other.
+    private var busyIntervals: [(start: Date, end: Date, date: Date)] {
+        var result: [(start: Date, end: Date, date: Date)] = []
+        for slot in timeSlots {
+            if let last = result.last, slot.start < last.end {
+                result[result.count - 1].end = max(last.end, slot.end)
+            } else {
+                result.append((start: slot.start, end: slot.end, date: slot.date))
+            }
+        }
+        return result
     }
 
     /// Compress a gap of `minutes` into a visual width.

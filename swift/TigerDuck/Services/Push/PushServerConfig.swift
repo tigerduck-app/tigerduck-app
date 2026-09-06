@@ -1,8 +1,10 @@
 import Defaults
 import Foundation
 
-/// Cross-platform resolver for the push backend URL + shared secret +
-/// `Secrets.plist` helper.
+/// Cross-platform resolver for the push backend URL.
+///
+/// Also provides the `Secrets.plist` helper used to read the optional
+/// `DebugServerURL` LAN-backend override.
 ///
 /// Extracted from `PushCoordinator` so non-push HTTP clients
 /// (e.g. `BulletinAPIClient`, which talks to the same backend for the
@@ -57,24 +59,25 @@ nonisolated enum PushServerConfig {
 
     /// Resolves the backend URL for this build.
     ///
-    /// Release builds always return ``AppConstants/productionPushServerURL``.
+    /// Every build honours ``DebugEndpointStore/currentOverride()`` first
+    /// (Keychain — set via Settings → Other settings → API endpoint;
+    /// persists across reinstall, gated by ``isOverrideAllowed(_:)``).
     ///
-    /// Debug builds resolve in priority order:
-    ///   1. ``DebugEndpointStore/currentOverride()`` (Keychain — set via
-    ///      the in-app Developer settings; persists across reinstall)
-    ///   2. `Defaults[.pushServerURLOverride]` (UserDefaults escape hatch,
+    /// Without one, Release returns ``AppConstants/productionPushServerURL``
+    /// and Debug resolves in priority order:
+    ///   1. `Defaults[.pushServerURLOverride]` (UserDefaults escape hatch,
     ///      gated by ``isOverrideAllowed(_:)``)
-    ///   3. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
+    ///   2. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
     ///      file is gitignored so each contributor sets their own Mac's IP)
-    ///   4. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
-    ///      `http://localhost:40000/v2`)
+    ///   3. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
+    ///      `http://localhost:40000/v3`)
     static func resolveServerURL() -> URL {
-        #if DEBUG
         if let raw = DebugEndpointStore.currentOverride(),
            let url = URL(string: raw),
            isOverrideAllowed(url) {
             return normalize(url)
         }
+        #if DEBUG
         if let override = Defaults[.pushServerURLOverride],
            !override.isEmpty,
            let url = URL(string: override),
@@ -93,22 +96,27 @@ nonisolated enum PushServerConfig {
     /// Whether `url` may be used as a runtime override.
     ///
     /// Public hosts are matched against ``isAllowedPublicHost(_:)`` (apex
-    /// + `*.api.tigerduck.app`); everything else must be loopback or an
-    /// RFC1918 private IPv4 literal. `http://` is allowed only for
-    /// private/loopback targets — public hosts must speak HTTPS.
+    /// + `*.api.tigerduck.app`) and must speak HTTPS. Debug builds also
+    /// accept loopback and RFC1918 private IPv4 literals over `http://`
+    /// for LAN backends. Release builds do not: the override lives in the
+    /// Keychain, which survives swapping a Debug build for the App Store
+    /// one on the same device, and a developer's `192.168.x.x` must not
+    /// follow them into production.
     static func isOverrideAllowed(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         if isAllowedPublicHost(host) {
             return url.scheme == "https"
         }
+        #if DEBUG
         if host == "localhost" || host == "127.0.0.1" || isPrivateIPv4(host) {
             return url.scheme == "http" || url.scheme == "https"
         }
+        #endif
         return false
     }
 
     /// Normalizes a candidate override URL so the most common typo —
-    /// pasting `https://192.168.X.X:40000/v2` for a LAN dev backend that
+    /// pasting `https://192.168.X.X:40000/v3` for a LAN dev backend that
     /// doesn't terminate TLS — resolves to a working `http://` URL instead
     /// of failing at handshake time with `WRONG_VERSION_NUMBER`.
     ///
@@ -157,7 +165,7 @@ nonisolated enum PushServerConfig {
     #if DEBUG
     /// Reads `Secrets.plist["DebugServerURL"]` and runs it through the same
     /// gate as the UserDefaults override path. Mis-filled or template values
-    /// (e.g. the literal `http://192.168.X.X:40000/v2` from
+    /// (e.g. the literal `http://192.168.X.X:40000/v3` from
     /// `Secrets.example.plist`) return nil so the resolver falls back to
     /// `localhost:40000` instead of returning an unreachable URL that would
     /// either trip `PushCoordinator.assertEnvConsistency()` at launch or, with
@@ -172,49 +180,6 @@ nonisolated enum PushServerConfig {
         return url
     }
     #endif
-
-    /// Read the shared secret from `Secrets.plist` (gitignored) bundled
-    /// with the app. Must match the corresponding backend's
-    /// `TIGERDUCK_API_SHARED_SECRET` or every write request 401s.
-    ///
-    /// The secret is selected by the *resolved* destination URL so a
-    /// Debug build whose Keychain/UserDefaults override points at the
-    /// public staging/prod apex does not send the local `DebugAPIToken`
-    /// to a backend that expects `APIToken`. Resolution order, applied
-    /// against `url.host`:
-    ///   1. Debug builds + non-public host (loopback / RFC1918):
-    ///      `DebugAPIToken` — paired with a local `DebugServerURL`, so
-    ///      each contributor's local backend can have its own secret.
-    ///   2. `APIToken` — production secret; used for the public allowlist
-    ///      apex/subdomains in every build, and the Debug fallback for
-    ///      local hosts when `DebugAPIToken` is blank.
-    ///   3. Legacy Info.plist `TigerDuckAPIToken` — kept so any CI
-    ///      pipeline that still injects there continues to work.
-    ///   4. nil — preserves the dev-friendly no-auth path.
-    static func resolveSharedSecret(for url: URL) -> String? {
-        let targetsPublicHost = url.host.map { isAllowedPublicHost($0.lowercased()) } ?? false
-        if let dict = secretsPlistDict() {
-            #if DEBUG
-            // `DebugAPIToken` only pairs with `DebugServerURL` (local
-            // dev backend). When a runtime override has sent us at the
-            // public host, fall through to `APIToken` so we don't 401
-            // against a backend that doesn't know the local secret.
-            if !targetsPublicHost,
-               let value = dict["DebugAPIToken"] as? String,
-               !value.isEmpty {
-                return value
-            }
-            #endif
-            if let value = dict["APIToken"] as? String, !value.isEmpty {
-                return value
-            }
-        }
-        if let value = Bundle.main.object(forInfoDictionaryKey: "TigerDuckAPIToken") as? String,
-           !value.isEmpty {
-            return value
-        }
-        return nil
-    }
 
     static func secretsPlistDict() -> NSDictionary? {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist") else {

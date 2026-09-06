@@ -6,8 +6,10 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v1.8.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v1.8.1)
+[![Version](https://img.shields.io/badge/Version-v2.0.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
+[![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
 
 [![App Store](https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6761084888)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Join-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://testflight.apple.com/join/eVt9Gjkw)
@@ -32,6 +34,10 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 - Synced directly from the course enrollment system — no more **Moodle delay**
 - Dynamic Island and Live Activity show you where your next class is!
 
+### 🗓️ **Calendar**
+- School events and Moodle assignment deadlines in one place
+- Month view, date switching, pull to sync
+
 ### 📣 **Bulletins**
 - Server-side **LLM classification and de-duplication** — no more spam from every department
 - Subscribe to categories, filter unread, and receive **push notifications** for what matters
@@ -44,11 +50,24 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 - Instant library entry QR code with zero delay
 
 ### ⌚ **Apple Watch**
+- **Now & Next** home screen: the current and next class, with progress for the one in session
+- **Today** list and per-course detail
 - Raise your wrist for the **library entry QR code** — fullscreen, with idle-fade page dots
-- Credentials sync over WatchConnectivity — no separate sign-in on the Watch
+- **Complication** puts the next class on the watch face (circular / rectangular / inline / corner)
+- Schedule and credentials sync over WatchConnectivity — no separate sign-in on the Watch
+
+### 🧩 **Widgets**
+- **Next class** (small / medium), **today's** and **this week's** timetable (large / extra large)
+- Lock Screen accessories (inline / circular / rectangular) and a library QR shortcut
+- The same widget bundle serves iOS and macOS
+
+### 💻 **macOS**
+- A native Mac app (not Catalyst) with sidebar navigation and Mac-specific layouts throughout
+- Sidebar pins are stored separately from the iOS tab configuration
+- Push notifications and cloud sync, sharing one account with the iPhone
 
 ### 🌏 **Multilingual**
-- Built-in support for **67+ locales** — follows the system language or set per-app
+- Built-in support for **67 locales** — follows the system language or set per-app
 - Course / classroom names are **automatically abbreviated**
 
 ### 🎨 **Customization**
@@ -92,6 +111,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v2.0.0`** | 2026-08-23 | 🚀 **Cloud sync GA** — real-time course & assignment upload, macOS push & account sync, 401 auto-recovery, server push channel settings |
 | **`v1.8.1`** | 2026-08-21 | The library QR leans on HDR local highlighting again instead of overriding whole-device brightness — the EDR check read "is HDR content on screen right now", which is always false before the QR has drawn, so EDR devices still ended up pinned at full brightness |
 | **`v1.8.0`** | 2026-08-20 | 🔔 **Bulletin push notifications** — device registration, push preferences and bulletin deep links end to end; update prompts plus a What's New sheet after installing; flip the phone face-down to open the library QR; passwords and the library QR masked in screenshots and recordings; TLS SPKI pinning on NTUST and Library traffic; course-name font-size slider, Settings reordered to match Android, macOS surfaces and colour-blind-friendly conflict marking |
 | **`v1.7.3`** | 2026-08-20 | Manually added courses stay in the semester they were added to — they previously showed up in every semester's timetable, Home and widgets |
@@ -146,14 +166,33 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 - [ ] **Free Lunch Notifications** — Anyone can register (real-name); aggregates info from NTUST and NTU with push notifications
 
 ### 🌏 Localization & Accessibility
-- [x] **Multilingual (67+ locales)** — Follows system language or per-app override `v1.6.0`
+- [x] **Multilingual (67 locales)** — Follows system language or per-app override `v1.6.0`
 - [x] **Course / Classroom name abbreviations** — One-tap toggle, fully reversible `v1.6.0`
 - [x] **RTL layout fixes** — Arabic / Hebrew and other right-to-left scripts `v1.6.0`
+
+### 🔔 Notifications & Privacy
+- [x] **Push backend** — APNs Push-to-Start, schedule sync `v1.4.0`
+- [x] **Bulletin push** — Device registration, push preferences, bulletin deep links `v1.8.0`
+- [x] **Update prompt + What's New sheet** — Shows what changed after installing `v1.8.0`
+- [x] **Sensitive-screen masking** — Passwords and the library QR hidden from screenshots and recordings `v1.8.0`
+- [x] **TLS SPKI pinning** — NTUST and Library traffic `v1.8.0`
+
+### ☁️ Cloud Sync
+- [x] **Account and multi-device sync** — Live course / assignment upload, 401 auto-recovery `v2.0.0`
+- [x] **Server push channel settings** `v2.0.0`
+
+### ⌚ Apple Watch / 🧩 Widgets / 💻 macOS
+- [x] **Apple Watch app** — Library QR, WatchConnectivity credential sync `v1.7.0`
+- [x] **Watch Now & Next / Today / course detail** `v1.7.0`
+- [x] **Watch complication** — Next class straight on the watch face `v1.7.0`
+- [x] **iOS / macOS widgets** — Next class, today's and this week's timetable, Lock Screen accessories, library QR shortcut `v1.7.0`
+- [x] **macOS app** — Native sidebar layout `v1.7.0`, push and account sync `v2.0.0`
 
 ## System Requirements
 | Item | Requirement |
 |------|-------------|
 | OS | iOS 18 or later |
+| macOS (optional) | macOS 14 or later (native Mac app, not Catalyst) |
 | Apple Watch (optional) | watchOS 11+, paired iPhone required |
 | SSO Account | Student account (required for some features) |
 | Library | Library account (required for some features) |
@@ -178,7 +217,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 ### iOS App
 ```bash
-# Clone the repository (with submodules: localization, name-abbr)
+# Clone the repository (with submodules: app-translation, name-abbr)
 git clone --recurse-submodules https://github.com/tigerduck-app/tigerduck-app.git
 cd tigerduck-app
 
@@ -191,10 +230,10 @@ open swift/TigerDuck.xcodeproj
 # Select a simulator or device from the top center, then press ⌘R to run
 ```
 
-> 💡 Name abbreviations (`name-abbr/`) and localization strings (`localization/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
+> 💡 Name abbreviations (`name-abbr/`) and localization strings (`app-translation/generated/apple/`) are wired into the Xcode synchronized group via symlinks. **Always** initialize submodules before opening Xcode, otherwise the build will fail to locate resource files.
 
 ### Push Backend
-The production FastAPI push service (APNs Push-to-Start, schedule sync, bulletin scraping, and LLM classification) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v2/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
+The production FastAPI service (APNs Push-to-Start, schedule sync, bulletin scraping, LLM classification, and cloud sync) lives in its own repository: [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend). The iOS app talks to it over the `https://api.tigerduck.app/v3/*` HTTP contract, so you do **not** need to run it locally to develop the iOS client.
 
 ### Network Request Verification (`api-poc/`)
 
@@ -239,6 +278,7 @@ tigerduck-app/
 │   │   ├── Models/
 │   │   │   ├── Domain/                 # Business logic models
 │   │   │   └── SwiftData/              # Local persistence models
+│   │   ├── Platform/Mac/               # macOS-only surfaces (sidebar, Mac page layouts, push delegate)
 │   │   ├── Services/
 │   │   │   ├── Auth/                   # NTUST SSO authentication
 │   │   │   ├── Network/                # Networking layer
@@ -248,18 +288,21 @@ tigerduck-app/
 │   │   ├── SharedUI/                   # Reusable cross-feature views
 │   │   └── Theme/                      # Tokens, palette, visual presets
 │   ├── TigerDuckLiveActivity/          # Live Activity / Dynamic Island widget extension
-│   ├── TigerDuckWidgets/               # iOS Home / Lock Screen widgets
-│   ├── TigerDuckWatch Watch App/       # Apple Watch app (Library QR)
+│   ├── TigerDuckWidgets/               # iOS / macOS Home, Lock Screen and accessory widgets
+│   ├── TigerDuckWatch Watch App/       # Apple Watch app (Now & Next / Today / detail / Library QR)
 │   ├── TigerDuckWatchWidget/           # Apple Watch complication
+│   ├── TigerDuckTests/                 # Unit tests (Swift Testing + XCTest, incl. widget / watch logic)
+│   ├── ci_scripts/                     # Xcode Cloud post-clone hook (fetches submodules)
 │   └── Shared/                         # Cross-target shared code (sensors, Watch comms, theme)
 ├── api-poc/                            # Third-party API validation scripts (NTUST / Moodle / Calendar)
 │   └── api/                            # ntust_sso / course_lookup / moodle / calendar
+├── tools/localization/                 # Localization sync and key-check scripts
 ├── docs/                               # Planning docs, migration notes (iOS side)
-├── localization/                       # ⤴ git submodule: 67+ locale translations
+├── app-translation/                    # ⤴ git submodule: 67 locale translations
 └── name-abbr/                          # ⤴ git submodule: course / classroom abbreviation dictionaries
+```
 
 > The push / bulletin backend (FastAPI + Postgres + APNs + LLM) has been split out into [tigerduck-backend](https://github.com/tigerduck-app/tigerduck-backend).
-```
 
 ## Contributing
 Pull requests and issues are welcome!
@@ -272,7 +315,7 @@ Before submitting, please make sure to:
 - macOS 15 / 26 (/ 27 if possible)
 3. Name your branch using `feature/your-feature` or `fix/your-fix`
 4. Target the `dev` branch when opening a PR, and enable Copilot review
-5. For translation strings, open a separate PR against the `localization/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
+5. For translation strings, open a separate PR against the `app-translation/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
 
 ## License
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).

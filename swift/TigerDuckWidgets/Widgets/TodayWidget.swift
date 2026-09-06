@@ -43,7 +43,21 @@ struct TodayProvider: TimelineProvider {
                 snapshot: snap
             )
         }
-        completion(Timeline(entries: entries, policy: .atEnd))
+        // When the snapshot has no courses or the user isn't logged in,
+        // `.atEnd` would spin WidgetKit in an immediate-reload loop on
+        // the single placeholder entry. Refresh at midnight instead so
+        // we retry once per day.
+        let hasCourses = snap.isLoggedIn && !snap.courses.isEmpty
+        let policy: TimelineReloadPolicy
+        if hasCourses {
+            policy = .atEnd
+        } else {
+            let startOfToday = Calendar.current.startOfDay(for: Date())
+            let midnight = Calendar.current.date(byAdding: .day, value: 1, to: startOfToday)
+                ?? startOfToday.addingTimeInterval(86400)
+            policy = .after(midnight)
+        }
+        completion(Timeline(entries: entries, policy: policy))
     }
 
     private static let emptySnapshot = WidgetSnapshot(
