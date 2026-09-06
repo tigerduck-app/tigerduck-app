@@ -285,10 +285,18 @@ struct ClassTableView: View {
 
             Spacer()
 
-            Text(String(format: String(localized: "class_table_total_credits_value"), viewModel.totalCredits))
+            Text(creditsLabel)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
         }
         .padding(.horizontal)
+    }
+
+    /// "B11315000 · 20 credits": the student id leads so a shared screen
+    /// shows whose timetable this is; both halves keep the secondary tint.
+    private var creditsLabel: String {
+        let credits = String(format: String(localized: "class_table_total_credits_value"), viewModel.totalCredits)
+        guard let studentId = appState.authService.storedStudentId, !studentId.isEmpty else { return credits }
+        return "\(studentId) · \(credits)"
     }
 }
