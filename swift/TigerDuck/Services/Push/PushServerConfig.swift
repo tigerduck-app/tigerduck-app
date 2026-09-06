@@ -96,17 +96,22 @@ nonisolated enum PushServerConfig {
     /// Whether `url` may be used as a runtime override.
     ///
     /// Public hosts are matched against ``isAllowedPublicHost(_:)`` (apex
-    /// + `*.api.tigerduck.app`); everything else must be loopback or an
-    /// RFC1918 private IPv4 literal. `http://` is allowed only for
-    /// private/loopback targets — public hosts must speak HTTPS.
+    /// + `*.api.tigerduck.app`) and must speak HTTPS. Debug builds also
+    /// accept loopback and RFC1918 private IPv4 literals over `http://`
+    /// for LAN backends. Release builds do not: the override lives in the
+    /// Keychain, which survives swapping a Debug build for the App Store
+    /// one on the same device, and a developer's `192.168.x.x` must not
+    /// follow them into production.
     static func isOverrideAllowed(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         if isAllowedPublicHost(host) {
             return url.scheme == "https"
         }
+        #if DEBUG
         if host == "localhost" || host == "127.0.0.1" || isPrivateIPv4(host) {
             return url.scheme == "http" || url.scheme == "https"
         }
+        #endif
         return false
     }
 
