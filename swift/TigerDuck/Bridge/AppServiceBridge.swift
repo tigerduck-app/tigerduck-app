@@ -425,23 +425,59 @@ enum AppServiceBridge {
         let updated = stored.map { course -> SDCourse in
             guard DataCache.userAddedCourse(course, belongsTo: semester),
                   let data = refreshed[course.courseNo] else { return course }
-            return SDCourse(
-                courseNo: course.courseNo,
-                courseName: data.courseName,
-                instructor: data.instructor,
-                credits: data.credits,
-                classroom: data.classroom,
-                enrolledCount: data.enrolledCount,
-                maxCount: data.maxCount,
-                schedule: data.schedule,
-                // A nil moodle id is what marks a row as manual; keep it.
-                moodleIdNumber: course.moodleIdNumber,
-                semester: course.semester,
-                classroomMap: data.classroomMap
-            )
+            return course.updated(with: data)
         }
         DataCache.shared.saveUserAddedCourses(updated)
         return updated.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
+    }
+
+    /// Looks up every course of `semester` that still has no classroom —
+    /// rooms are announced late, and a lookup that failed once used to
+    /// leave the cell blank until the next pull-to-refresh. Persists the
+    /// rows that now carry one and returns whether anything changed.
+    static func refreshCoursesMissingClassroom(semester: String) async -> Bool {
+        let enrolled = DataCache.shared.loadCourses(semester: semester)
+        let userAdded = DataCache.shared.loadUserAddedCourses()
+        let isUserAddedHere: (SDCourse) -> Bool = { DataCache.userAddedCourse($0, belongsTo: semester) }
+        let seeds = (enrolled + userAdded.filter(isUserAddedHere))
+            .filter { $0.classroom.isEmpty }
+            .map { ($0.courseNo, $0.moodleIdNumber) }
+        guard !seeds.isEmpty else { return false }
+        let display = CourseDisplayPreferences.current()
+
+        var found: [String: CourseData] = [:]
+        await withTaskGroup(of: (String, CourseData?).self) { group in
+            for (courseNo, moodleId) in seeds {
+                group.addTask { @MainActor in
+                    guard let results = try? await CourseLookupService.lookupCourse(
+                        semester: semester, courseNo: courseNo, language: display.language
+                    ), !results.isEmpty else { return (courseNo, nil) }
+                    let data = enrichedCourseData(
+                        from: results, semester: semester,
+                        fallbackMoodleIdNumber: moodleId, display: display
+                    )
+                    return (courseNo, data.classroom.isEmpty ? nil : data)
+                }
+            }
+            for await (courseNo, data) in group {
+                if let data { found[courseNo] = data }
+            }
+        }
+        guard !found.isEmpty else { return false }
+
+        if enrolled.contains(where: { found[$0.courseNo] != nil }) {
+            DataCache.shared.saveCourses(
+                enrolled.map { course in found[course.courseNo].map(course.updated) ?? course },
+                semester: semester
+            )
+        }
+        if userAdded.contains(where: { isUserAddedHere($0) && found[$0.courseNo] != nil }) {
+            DataCache.shared.saveUserAddedCourses(userAdded.map { course in
+                guard isUserAddedHere(course), let data = found[course.courseNo] else { return course }
+                return course.updated(with: data)
+            })
+        }
+        return true
     }
 
     /// Build a minimal `CourseData` when the QueryCourse API returns empty
@@ -753,4 +789,26 @@ enum AppServiceBridge {
         return fullname
     }
 
+}
+
+
+private extension SDCourse {
+    /// The same row with a fresh lookup applied. Identity fields stay: a
+    /// nil moodle id is what marks a row as manual, and `semester` is how
+    /// legacy rows without one are told apart.
+    func updated(with data: CourseData) -> SDCourse {
+        SDCourse(
+            courseNo: courseNo,
+            courseName: data.courseName,
+            instructor: data.instructor,
+            credits: data.credits,
+            classroom: data.classroom,
+            enrolledCount: data.enrolledCount,
+            maxCount: data.maxCount,
+            schedule: data.schedule,
+            moodleIdNumber: moodleIdNumber,
+            semester: semester,
+            classroomMap: data.classroomMap
+        )
+    }
 }

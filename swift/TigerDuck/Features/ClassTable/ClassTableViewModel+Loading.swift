@@ -44,6 +44,19 @@ extension ClassTableViewModel {
         await fetchData(authService: authService)
     }
 
+    /// Runs on every appearance, not just the first load: any course of the
+    /// shown semester that still has no classroom gets looked up again, and
+    /// a hit is broadcast so Home and the Live Activity pick it up too.
+    func refreshMissingClassrooms() {
+        let semester = currentSemester
+        Task { [weak self] in
+            guard await NetworkMonitor.shared.isReachable(),
+                  await AppServiceBridge.refreshCoursesMissingClassroom(semester: semester)
+            else { return }
+            self?.broadcastLocalChange()
+        }
+    }
+
     /// Coalesced fire-and-forget refresh. Designed for pull-to-refresh
     /// where the caller returns immediately (so UIRefreshControl dismisses
     /// its spinner) and the actual fetch continues on a detached Task.

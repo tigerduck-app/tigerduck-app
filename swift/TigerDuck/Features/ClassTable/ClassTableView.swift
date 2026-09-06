@@ -12,6 +12,7 @@ struct ClassTableView: View {
             content
                 .onAppear {
                     viewModel.load(authService: appState.authService)
+                    viewModel.refreshMissingClassrooms()
                     viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
@@ -26,6 +27,7 @@ struct ClassTableView: View {
             NavigationStack { content }
                 .onAppear {
                     viewModel.load(authService: appState.authService)
+                    viewModel.refreshMissingClassrooms()
                     viewModel.onSyncCourseOverride = { appState.syncCourseOverride(moodleCourseId: $0, colorHex: $1, customName: $2, locale: $3) }
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
