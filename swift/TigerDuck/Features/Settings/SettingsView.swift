@@ -695,41 +695,15 @@ private struct LibraryWarningOverlay: View {
                 .foregroundStyle(.red)
                 .opacity(isFlashing ? 0.15 : 1.0)
 
-                Text(String(localized: "settings_library_warning_message"))
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                JustifiedText(
+                    String(localized: "settings_library_warning_message"),
+                    textStyle: .subheadline
+                )
 
-                // Buttons
-                VStack(spacing: 10) {
-                    Button(action: onConfirm) {
-                        Text(confirmLabel)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                confirmEnabled ? Color.red : Color.red.opacity(0.35),
-                                in: RoundedRectangle(cornerRadius: 10)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!confirmEnabled)
-
-                    Button(action: onCancel) {
-                        Text(String(localized: "settings_library_warning_dismiss"))
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(.plain)
-                }
+                buttons
             }
             .padding(24)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .modifier(GlassDialogSurface())
             .padding(.horizontal, 32)
         }
         .transition(.opacity)
@@ -740,6 +714,70 @@ private struct LibraryWarningOverlay: View {
             }
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                 confirmEnabled = true
+
+    /// Liquid Glass buttons on iOS 26; the hand-rolled red / grey pills
+    /// stay for iOS 18–25 where `.glass` does not exist.
+    @ViewBuilder
+    private var buttons: some View {
+        if #available(iOS 26, *) {
+            VStack(spacing: 10) {
+                Button(action: onConfirm) {
+                    Text(confirmLabel)
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.red)
+                .controlSize(.large)
+                .disabled(!confirmEnabled)
+
+                Button(action: onCancel) {
+                    Text(String(localized: "settings_library_warning_dismiss"))
+                        .font(.body.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .controlSize(.large)
+            }
+        } else {
+            VStack(spacing: 10) {
+                Button(action: onConfirm) {
+                    Text(confirmLabel)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            confirmEnabled ? Color.red : Color.red.opacity(0.35),
+                            in: RoundedRectangle(cornerRadius: 10)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!confirmEnabled)
+
+                Button(action: onCancel) {
+                    Text(String(localized: "settings_library_warning_dismiss"))
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+/// Dialog surface: Liquid Glass on iOS 26, regular material before it.
+private struct GlassDialogSurface: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.glassEffect(.regular, in: .rect(cornerRadius: 28))
+        } else {
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+        }
+    }
             }
         }
     }
