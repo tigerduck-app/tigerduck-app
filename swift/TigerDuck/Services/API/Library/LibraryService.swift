@@ -90,6 +90,7 @@ enum LibraryService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
         clearToken()
+        LibraryQRCache.shared.clear()
         #if os(iOS)
         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
         #endif

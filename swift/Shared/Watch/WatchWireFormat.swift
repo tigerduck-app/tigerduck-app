@@ -29,6 +29,19 @@ nonisolated public enum WatchWireFormat {
 
     public enum MessageKind {
         public static let syncRequest = "syncRequest"
+        /// Watch → phone, reply expected: "give me a library QR payload".
+        /// Lets a watch without its own internet show a code while the
+        /// phone is in Bluetooth range. Older phones never reply, which
+        /// the watch treats as a failure and falls back to its own radio.
+        public static let libraryQRRequest = "libraryQRRequest"
+    }
+
+    /// Keys inside the reply to a `MessageKind.libraryQRRequest`.
+    public enum LibraryQRKey {
+        public static let payload = "payload"
+        /// Seconds the code has left, so both screens count down together.
+        public static let remaining = "remaining"
+        public static let error = "error"
     }
 
     public enum MessageKey {

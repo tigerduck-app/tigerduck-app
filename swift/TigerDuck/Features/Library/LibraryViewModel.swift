@@ -64,6 +64,7 @@ final class LibraryViewModel {
             isLoggedIn = false
             qrCodeImage = nil
             qrPayload = nil
+            LibraryQRCache.shared.clear()
             stopTimers()
             return
         }
@@ -127,9 +128,9 @@ final class LibraryViewModel {
                 let image = await Task.detached(priority: .userInitiated) {
                     Self.generateQRImage(from: payload)
                 }.value
+                LibraryQRCache.shared.store(payload)
                 qrPayload = payload
                 qrCodeImage = image
-                countdown = 30
                 isLoadingQR = false
                 consecutiveErrors = 0
                 restartCountdown()
@@ -139,6 +140,7 @@ final class LibraryViewModel {
                 if !LibraryService.isTokenValid {
                     isLoggedIn = false
                     consecutiveErrors = 0
+                    LibraryQRCache.shared.clear()
                     stopTimers()
                 } else {
                     // Transient (5xx etc.) — back off so a flapping
@@ -189,17 +191,39 @@ final class LibraryViewModel {
 
     // MARK: - Timers
 
+    /// Coming back to the page while the last code still has at least
+    /// `LibraryQRCache.reuseThreshold` seconds left shows that same code
+    /// and resumes its countdown; the next fetch is scheduled for when it
+    /// runs out. Otherwise fetch now and every 30 s after.
     private func startQRRefreshCycle() {
-        fetchAndDisplayQR()
-
         refreshTimer?.invalidate()
+        let cache = LibraryQRCache.shared
+        if let payload = cache.reusable() {
+            let remaining = cache.remaining()
+            if qrPayload != payload || qrCodeImage == nil {
+                qrPayload = payload
+                Task { @MainActor in
+                    qrCodeImage = await Task.detached(priority: .userInitiated) {
+                        Self.generateQRImage(from: payload)
+                    }.value
+                    isLoadingQR = false
+                }
+            }
+            restartCountdown(from: remaining)
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(remaining), repeats: false) { [weak self] _ in
+                self?.startQRRefreshCycle()
+            }
+            return
+        }
+
+        fetchAndDisplayQR()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.fetchAndDisplayQR()
         }
     }
 
-    private func restartCountdown() {
-        countdown = 30
+    private func restartCountdown(from seconds: Int = LibraryQRCache.lifetime) {
+        countdown = seconds
         countdownTimer?.invalidate()
         countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }

@@ -148,6 +148,44 @@ extension WatchSyncCoordinator: WCSessionDelegate {
             NotificationCenter.default.post(name: .watchSyncRequested, object: nil)
         }
     }
+
+    /// Reply-expecting messages. The watch asks for a library QR here so it
+    /// can show one without internet of its own while the phone is in
+    /// Bluetooth range. Answered from `LibraryQRCache` while that code has
+    /// `reuseThreshold` seconds left (both screens then show the same
+    /// code), otherwise fetched with the phone's own library token. Needs
+    /// the phone unlocked for the Keychain read; a locked phone replies
+    /// with an error and the watch falls back to its own radio.
+    nonisolated func session(_ session: WCSession,
+                             didReceiveMessage message: [String: Any],
+                             replyHandler: @escaping ([String: Any]) -> Void) {
+        guard message[WatchWireFormat.MessageKey.kind] as? String
+                == WatchWireFormat.MessageKind.libraryQRRequest else {
+            self.session(session, didReceiveMessage: message)
+            replyHandler([:])
+            return
+        }
+        Task { @MainActor in
+            let cache = LibraryQRCache.shared
+            if let payload = cache.reusable() {
+                replyHandler([
+                    WatchWireFormat.LibraryQRKey.payload: payload,
+                    WatchWireFormat.LibraryQRKey.remaining: cache.remaining(),
+                ])
+                return
+            }
+            do {
+                let payload = try await LibraryService.generateQRCode()
+                cache.store(payload)
+                replyHandler([
+                    WatchWireFormat.LibraryQRKey.payload: payload,
+                    WatchWireFormat.LibraryQRKey.remaining: LibraryQRCache.lifetime,
+                ])
+            } catch {
+                replyHandler([WatchWireFormat.LibraryQRKey.error: error.localizedDescription])
+            }
+        }
+    }
 }
 
 extension Notification.Name {
