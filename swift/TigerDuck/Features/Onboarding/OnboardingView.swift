@@ -59,7 +59,14 @@ struct OnboardingView: View {
         // give the user a way to clear the keyboard.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
-        .onChange(of: currentPage) { _, _ in focusedField = nil }
+        .onChange(of: currentPage) { _, page in
+            focusedField = nil
+            // Belt and braces for `PagingScrollLock`: nothing past the
+            // terms page is reachable until both boxes are ticked.
+            if page > Page.privacy.rawValue, !hasAgreedToTerms {
+                currentPage = Page.privacy.rawValue
+            }
+        }
         .task { await refreshNotificationStatus() }
         .onChange(of: scenePhase) { _, newPhase in
             // Catch a System Settings round-trip — if the user enabled
@@ -125,6 +132,8 @@ struct OnboardingView: View {
 
     // MARK: - Page 1: Privacy & terms
 
+    private var hasAgreedToTerms: Bool { agreedPrivacy && agreedDeletion }
+
     private var privacyPage: some View {
         OnboardingPageView(
             icon: "lock.shield.fill",
@@ -132,6 +141,7 @@ struct OnboardingView: View {
             subtitle: String(localized: "onboarding_privacy_subtitle"),
             accentColor: .blue,
             iconAnimation: .layerFlash,
+            justifiesSubtitle: true,
             content: {
                 Grid(alignment: .leading, horizontalSpacing: TigerDuckTheme.Spacing.md, verticalSpacing: TigerDuckTheme.Spacing.md) {
                     privacyCheckboxRow(
@@ -154,16 +164,24 @@ struct OnboardingView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
-                        .opacity(agreedPrivacy && agreedDeletion ? 0 : 1)
+                        .opacity(hasAgreedToTerms ? 0 : 1)
 
                     Button(String(localized: "action_next")) {
                         withAnimation(reduceMotion ? nil : .default) { currentPage = Page.cloudSync.rawValue }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(!(agreedPrivacy && agreedDeletion))
+                    .disabled(!hasAgreedToTerms)
                 }
             }
+        )
+        // The Next button is gated on the two boxes, but a swipe went
+        // straight past it. Freeze the pager while this page is showing
+        // and the boxes are not both ticked; `currentPage` is part of the
+        // condition because the pager pre-builds the neighbouring page.
+        .background(
+            PagingScrollLock(isLocked: currentPage == Page.privacy.rawValue && !hasAgreedToTerms)
+                .allowsHitTesting(false)
         )
     }
 
@@ -546,3 +564,47 @@ struct OnboardingView: View {
         }
     }
 }
+
+#if canImport(UIKit)
+/// Toggles `isScrollEnabled` on the nearest enclosing `UIScrollView` —
+/// for a page-style `TabView` that is the pager itself. `scrollDisabled`
+/// does not reach the page-style pager, hence the UIKit walk.
+struct PagingScrollLock: UIViewRepresentable {
+    let isLocked: Bool
+
+    func makeUIView(context: Context) -> LockView {
+        let view = LockView()
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ view: LockView, context: Context) {
+        view.isLocked = isLocked
+    }
+
+    final class LockView: UIView {
+        var isLocked = false { didSet { apply() } }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            apply()
+        }
+
+        private func apply() {
+            var candidate = superview
+            while let view = candidate {
+                if let scrollView = view as? UIScrollView {
+                    scrollView.isScrollEnabled = !isLocked
+                    return
+                }
+                candidate = view.superview
+            }
+        }
+    }
+}
+#else
+private struct PagingScrollLock: View {
+    let isLocked: Bool
+    var body: some View { EmptyView() }
+}
+#endif

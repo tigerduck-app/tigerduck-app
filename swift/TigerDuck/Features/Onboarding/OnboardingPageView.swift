@@ -14,6 +14,9 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     let subtitle: String
     var accentColor: Color = .accentPrimary
     var iconAnimation: IconAnimation = .pulse
+    /// Fill both margins instead of centring — for the pages whose
+    /// subtitle is a paragraph of terms rather than a one-line tagline.
+    var justifiesSubtitle = false
     @ViewBuilder let content: () -> Content
     @ViewBuilder let actions: () -> Actions
 
@@ -30,12 +33,17 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(subtitle)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textSecondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            if justifiesSubtitle {
+                JustifiedText(subtitle, textStyle: .body, color: UIColor(Color.textSecondary))
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            } else {
+                Text(subtitle)
+                    .font(TigerDuckTheme.Typography.body)
+                    .foregroundStyle(Color.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            }
 
             ScrollView {
                 VStack(spacing: TigerDuckTheme.Spacing.lg) {
