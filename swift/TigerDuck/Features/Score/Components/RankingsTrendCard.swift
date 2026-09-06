@@ -5,6 +5,11 @@ import Charts
 /// toggles between the per-semester and cumulative views since they answer
 /// different questions ("how did I do last term" vs. "how am I trending").
 ///
+/// Terms whose ranking the school has not posted yet still get a point —
+/// the GPA computed from the grades in so far — drawn hollow at the end of
+/// a dashed stretch so it reads as an estimate. Ranks for those terms are
+/// simply absent.
+///
 /// Selection is sticky — tapping or dragging picks the nearest term and the
 /// highlight survives after the finger lifts, so users can freely compare
 /// the chart with other cards on the page. The summary row below the plot
@@ -12,16 +17,18 @@ import Charts
 struct RankingsTrendCard: View {
     @Environment(AppState.self) private var appState
 
-    let rankings: [SemesterRanking]
+    let points: [GPATrendPoint]
     @Binding var scope: ScoreViewModel.RankingScope
 
     @State private var selectedTerm: String?
+
+    private let lineColor = Color(hex: 0x4ECDC4)
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             header
 
-            if rankings.isEmpty {
+            if points.isEmpty {
                 Text(String(localized: "score_no_ranking_data"))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
@@ -37,7 +44,7 @@ struct RankingsTrendCard: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         // Reset selection if the term it pointed to is gone after a refresh,
         // so the indicator/RuleMark doesn't silently point at a missing entry.
-        .onChange(of: rankings.map(\.term)) { _, newTerms in
+        .onChange(of: points.map(\.term)) { _, newTerms in
             if let term = selectedTerm, !newTerms.contains(term) {
                 selectedTerm = nil
             }
@@ -60,47 +67,74 @@ struct RankingsTrendCard: View {
         }
     }
 
+    // MARK: - Chart
+
+    /// Consecutive published terms, split wherever a provisional term
+    /// sits, so the solid line never bridges an estimate.
+    private var publishedRuns: [[GPATrendPoint]] {
+        var runs: [[GPATrendPoint]] = [[]]
+        for point in points {
+            if point.isProvisional {
+                if !runs[runs.count - 1].isEmpty { runs.append([]) }
+            } else {
+                runs[runs.count - 1].append(point)
+            }
+        }
+        return runs.filter { !$0.isEmpty }
+    }
+
+    /// Each provisional term paired with the point before it, so the dashed
+    /// stretch continues the line into the estimate.
+    private var provisionalSegments: [[GPATrendPoint]] {
+        points.indices.compactMap { index in
+            guard points[index].isProvisional else { return nil }
+            return index > 0 ? [points[index - 1], points[index]] : [points[index]]
+        }
+    }
+
     private var chart: some View {
         Chart {
-            ForEach(rankings) { ranking in
-                if let value = gpa(for: ranking) {
-                    LineMark(
-                        x: .value(String(localized: "class_table_semester_picker_label"),ranking.term),
-                        y: .value("GPA", value)
-                    )
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(Color(hex: 0x4ECDC4))
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
+            ForEach(Array(publishedRuns.enumerated()), id: \.offset) { run, segment in
+                ForEach(segment) { point in
+                    if let value = gpa(for: point) {
+                        LineMark(x: xValue(point.term), y: yValue(value), series: .value("Series", "published-\(run)"))
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(lineColor)
+                            .lineStyle(StrokeStyle(lineWidth: 2.5))
+                    }
+                }
+            }
 
-                    PointMark(
-                        x: .value(String(localized: "class_table_semester_picker_label"),ranking.term),
-                        y: .value("GPA", value)
-                    )
-                    .foregroundStyle(Color(hex: 0x4ECDC4))
-                    .symbolSize(isSelected(ranking.term) ? 160 : 64)
-                    .accessibilityLabel(
-                        Text(String(
-                            format: String(localized: "a11y_rankings_trend_point"),
-                            ranking.term as CVarArg,
-                            value.formatted(.number.precision(.fractionLength(2))) as CVarArg
-                        ))
-                    )
+            ForEach(Array(provisionalSegments.enumerated()), id: \.offset) { run, segment in
+                ForEach(segment) { point in
+                    if let value = gpa(for: point) {
+                        LineMark(x: xValue(point.term), y: yValue(value), series: .value("Series", "provisional-\(run)"))
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(lineColor)
+                            .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [5, 4]))
+                    }
+                }
+            }
+
+            ForEach(points) { point in
+                if let value = gpa(for: point) {
+                    PointMark(x: xValue(point.term), y: yValue(value))
+                        .foregroundStyle(lineColor)
+                        .symbol { symbol(for: point) }
+                        .accessibilityLabel(Text(description(of: point, value: value)))
                 }
             }
 
             if let selected = resolvedSelection,
                let value = gpa(for: selected) {
-                RuleMark(x: .value(String(localized: "class_table_semester_picker_label"),selected.term))
+                RuleMark(x: xValue(selected.term))
                     .foregroundStyle(Color.textSecondary.opacity(0.35))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
 
-                PointMark(
-                    x: .value(String(localized: "class_table_semester_picker_label"),selected.term),
-                    y: .value("GPA", value)
-                )
-                .foregroundStyle(Color.white)
-                .symbolSize(60)
-                .zIndex(10)
+                PointMark(x: xValue(selected.term), y: yValue(value))
+                    .foregroundStyle(Color.white)
+                    .symbolSize(60)
+                    .zIndex(10)
             }
         }
         .chartYScale(domain: yDomain)
@@ -136,14 +170,39 @@ struct RankingsTrendCard: View {
         .accessibilityValue(Text(currentSelectionDescription))
     }
 
+    private func xValue(_ term: String) -> PlottableValue<String> {
+        .value(String(localized: "class_table_semester_picker_label"), term)
+    }
+
+    private func yValue(_ gpa: Double) -> PlottableValue<Double> {
+        .value("GPA", gpa)
+    }
+
+    /// Filled dot for a published term, hollow ring for an estimate; the
+    /// pinned term grows either way.
     @ViewBuilder
-    private func summaryRow(for ranking: SemesterRanking?) -> some View {
-        let source = ranking ?? rankings.last
+    private func symbol(for point: GPATrendPoint) -> some View {
+        let size: CGFloat = isSelected(point.term) ? 14 : 9
+        if point.isProvisional {
+            Circle()
+                .strokeBorder(lineColor, lineWidth: 2)
+                .background(Circle().fill(Color.backgroundPrimary))
+                .frame(width: size, height: size)
+        } else {
+            Circle()
+                .fill(lineColor)
+                .frame(width: size, height: size)
+        }
+    }
+
+    // MARK: - Summary
+
+    @ViewBuilder
+    private func summaryRow(for point: GPATrendPoint?) -> some View {
+        let source = point ?? points.last
         HStack(spacing: TigerDuckTheme.Spacing.lg) {
             summaryCell(
-                title: selectedTerm != nil
-                    ? String(format: String(localized: "score_gpa_term_label"), displayTerm(source?.term ?? ""))
-                    : String(localized: "score_gpa_latest"),
+                title: gpaTitle(for: source),
                 value: formatGPA(source.flatMap(gpa))
             )
             summaryCell(
@@ -161,6 +220,14 @@ struct RankingsTrendCard: View {
         .animation(.smoothSpring, value: scope)
     }
 
+    private func gpaTitle(for point: GPATrendPoint?) -> String {
+        let base = selectedTerm != nil
+            ? String(format: String(localized: "score_gpa_term_label"), displayTerm(point?.term ?? ""))
+            : String(localized: "score_gpa_latest")
+        guard point?.isProvisional == true else { return base }
+        return base + " · " + String(localized: "score_gpa_provisional")
+    }
+
     private func summaryCell(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
@@ -174,31 +241,31 @@ struct RankingsTrendCard: View {
 
     // MARK: - Selection resolution
 
-    /// Map a tap/drag location to the closest ranking term by plot-area
+    /// Map a tap/drag location to the closest term by plot-area
     /// proportion. Using index math instead of `proxy.value(atX:)` keeps this
     /// robust against Swift Charts' categorical-axis quirks (which return
     /// nil at the padding edges and the zero-midpoint between points).
-    private func selectTerm(at point: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
-        guard !rankings.isEmpty else { return }
+    private func selectTerm(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
+        guard !points.isEmpty else { return }
         guard let plotFrame = proxy.plotFrame else { return }
 
         let plotRect = geometry[plotFrame]
-        let relativeX = point.x - plotRect.origin.x
+        let relativeX = location.x - plotRect.origin.x
         let clampedX = max(0, min(plotRect.width, relativeX))
         let ratio = plotRect.width > 0 ? clampedX / plotRect.width : 0
-        let index = Int((ratio * CGFloat(rankings.count - 1)).rounded())
-        let clampedIndex = max(0, min(rankings.count - 1, index))
-        selectedTerm = rankings[clampedIndex].term
+        let index = Int((ratio * CGFloat(points.count - 1)).rounded())
+        let clampedIndex = max(0, min(points.count - 1, index))
+        selectedTerm = points[clampedIndex].term
     }
 
-    /// Ranking row matching the selected term, falling back to the most
-    /// recent entry so the summary row is never blank before first tap.
-    private var resolvedSelection: SemesterRanking? {
+    /// Point matching the selected term, falling back to the most recent
+    /// entry so the summary row is never blank before first tap.
+    private var resolvedSelection: GPATrendPoint? {
         if let term = selectedTerm,
-           let match = rankings.first(where: { $0.term == term }) {
+           let match = points.first(where: { $0.term == term }) {
             return match
         }
-        return rankings.last
+        return points.last
     }
 
     private func isSelected(_ term: String) -> Bool {
@@ -210,28 +277,34 @@ struct RankingsTrendCard: View {
               let value = gpa(for: selected) else {
             return String(localized: "a11y_rankings_trend_no_selection")
         }
-        return String(
+        return description(of: selected, value: value)
+    }
+
+    private func description(of point: GPATrendPoint, value: Double) -> String {
+        let base = String(
             format: String(localized: "a11y_rankings_trend_point"),
-            selected.term as CVarArg,
+            point.term as CVarArg,
             value.formatted(.number.precision(.fractionLength(2))) as CVarArg
         )
+        guard point.isProvisional else { return base }
+        return base + " · " + String(localized: "score_gpa_provisional")
     }
 
     // MARK: - Helpers
 
-    private func gpa(for ranking: SemesterRanking) -> Double? {
-        rank(ranking).gpa
+    private func gpa(for point: GPATrendPoint) -> Double? {
+        rank(point).gpa
     }
 
-    private func rank(_ ranking: SemesterRanking) -> RankingStats {
+    private func rank(_ point: GPATrendPoint) -> RankingStats {
         switch scope {
-        case .semester:   return ranking.semester
-        case .cumulative: return ranking.cumulative
+        case .semester:   return point.semester
+        case .cumulative: return point.cumulative
         }
     }
 
     private var yDomain: ClosedRange<Double> {
-        let values = rankings.compactMap { gpa(for: $0) }
+        let values = points.compactMap { gpa(for: $0) }
         guard let minV = values.min(), let maxV = values.max() else {
             return 0...4.3
         }

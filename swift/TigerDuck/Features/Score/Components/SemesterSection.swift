@@ -1,15 +1,17 @@
 import SwiftUI
 
 /// Collapsible group of all courses from a single semester. The header shows
-/// the term's GPA + class/dept rank pulled from `SemesterRanking` — keeping
-/// the derived stat line here (instead of a separate tab) ties academic
-/// context to the course list that produced it.
+/// the term's GPA + class/dept rank from `GPATrendPoint` — keeping the
+/// derived stat line here (instead of a separate tab) ties academic
+/// context to the course list that produced it. Before the school posts
+/// the ranking the GPA is the live estimate from the grades so far, and
+/// says so.
 struct SemesterSection: View {
     @Environment(AppState.self) private var appState
 
     let term: String
     let courses: [CourseGrade]
-    let ranking: SemesterRanking?
+    let gpaPoint: GPATrendPoint?
     let isCollapsed: Bool
     let onToggle: () -> Void
     let onCourseTap: (CourseGrade) -> Void
@@ -48,10 +50,12 @@ struct SemesterSection: View {
                             icon: "number",
                             text: String(format: String(localized: "score_course_credits"), totalCredits)
                         )
-                        if let gpa = ranking?.semester.gpa {
-                            statPill(icon: "chart.bar", text: String(format: "GPA %.2f", gpa))
+                        if let gpa = gpaPoint?.semester.gpa {
+                            let provisional = gpaPoint?.isProvisional == true
+                                ? " · " + String(localized: "score_gpa_provisional") : ""
+                            statPill(icon: "chart.bar", text: String(format: "GPA %.2f", gpa) + provisional)
                         }
-                        if let classRank = ranking?.semester.classRank, let deptRank = ranking?.semester.deptRank {
+                        if let classRank = gpaPoint?.semester.classRank, let deptRank = gpaPoint?.semester.deptRank {
                             statPill(
                                 icon: "person.2",
                                 text: String(format: String(localized: "score_semester_ranking"), "\(deptRank)", "\(classRank)")

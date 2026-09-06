@@ -55,6 +55,17 @@ final class ScoreViewModel {
         report.rankings.sorted { $0.term < $1.term }
     }
 
+    /// GPA points for the trend chart and semester headers: published
+    /// rankings, plus a live estimate for terms whose grades are in but
+    /// whose ranking is not (see `GPATrendPoint.trend(for:)`).
+    var gpaTrend: [GPATrendPoint] {
+        GPATrendPoint.trend(for: report)
+    }
+
+    func gpaPoint(for term: String) -> GPATrendPoint? {
+        gpaTrend.first { $0.term == term }
+    }
+
     var latestRanking: SemesterRanking? {
         rankingTrend.last
     }
