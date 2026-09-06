@@ -36,5 +36,27 @@
         "密碼與圖書證 QR 在截圖和螢幕錄影中會自動遮蔽。"
       ]
     }
+  },
+  "2.0.0": {
+    "zh-TW": {
+      "title": "2.0.0 更新內容",
+      "highlights": [
+        "雲端同步正式上線：課表、作業、課程顏色與自訂課名會在 iPhone 與 Mac 之間即時同步。",
+        "重設課表可只重設目前學期；仍缺教室的課程會在重新整理時補查。",
+        "歷年成績頁載入更快，尚未有排名的學期會先顯示預估 GPA。",
+        "首頁勾選完成作業後課表標記立即更新；時光機在衝堂時也能正常拖曳。",
+        "Apple Watch 的圖書證 QR Code 改由 iPhone 取得，不再容易過期。"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.0.0",
+      "highlights": [
+        "Cloud sync is live: your class table, assignments, course colours and custom names stay in step across iPhone and Mac.",
+        "Reset the class table for just the current semester, and courses still missing a room get looked up again on refresh.",
+        "The grades page loads faster, and terms without a ranking yet show an estimated GPA.",
+        "Ticking off an assignment on Home updates the class table badge right away, and the time slider drags fine on clashing courses.",
+        "The Apple Watch library QR code now comes through your iPhone, so it stays fresh."
+      ]
+    }
   }
 }

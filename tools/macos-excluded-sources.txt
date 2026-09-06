@@ -159,10 +159,10 @@ PasswordField.swift
 EmptyStateView.swift
 GlassTextButtonModifier.swift
 InAppBrowserView.swift
+JustifiedText.swift
 LoadingShimmer.swift
 LoginRequiredView.swift
 NTUSTReauthErrorBanner.swift
-NetworkStatusOverlay.swift
 SectionHeader.swift
 View+Alerts.swift
 WidgetContainer.swift
