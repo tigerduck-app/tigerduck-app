@@ -306,7 +306,7 @@ private struct SectionDragPreview: View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
             Image(systemName: section.type.iconName)
                 .font(.title3)
-                .foregroundStyle(Color.accentPrimary)
+                .foregroundStyle(.tint)
             Text(section.title)
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)

@@ -85,7 +85,7 @@ struct OnboardingView: View {
             icon: "graduationcap.fill",
             title: String(localized: "onboarding_welcome_title"),
             subtitle: String(localized: "onboarding_welcome_subtitle"),
-            accentColor: .accentPrimary,
+            accentColor: .blue,
             content: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     Text(String(localized: "onboarding_welcome_description"))
@@ -195,7 +195,7 @@ struct OnboardingView: View {
                 Image(systemName: isOn.wrappedValue ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(isOn.wrappedValue ? Color.accentPrimary : Color.textSecondary)
+                    .foregroundStyle(isOn.wrappedValue ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textSecondary))
                     .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
             }
             .buttonStyle(.plain)
@@ -553,7 +553,7 @@ struct OnboardingView: View {
             icon: "checkmark.circle.fill",
             title: String(localized: "onboarding_ready_title"),
             subtitle: String(localized: "onboarding_ready_subtitle"),
-            accentColor: .accentPrimary
+            accentColor: .blue
         ) {
             Button(String(localized: "onboarding_start_button")) {
                 appState.completeOnboarding()

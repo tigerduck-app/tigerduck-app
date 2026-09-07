@@ -96,7 +96,7 @@ struct TabEditorView: View {
                                             .font(.caption2)
                                             .lineLimit(1)
                                     }
-                                    .foregroundStyle(Color.accentPrimary)
+                                    .foregroundStyle(.tint)
                                     .frame(width: 56)
                                     .scaleEffect(1.1)
                                     .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
@@ -132,7 +132,7 @@ struct TabEditorView: View {
                                     } label: {
                                         HStack {
                                             Image(systemName: feature.iconName)
-                                                .foregroundStyle(Color.accentPrimary)
+                                                .foregroundStyle(.tint)
                                                 .frame(width: 24)
                                             Text(feature.displayName)
                                                 .font(TigerDuckTheme.Typography.body)
@@ -140,7 +140,7 @@ struct TabEditorView: View {
                                                 .lineLimit(1)
                                             Spacer()
                                             Image(systemName: "plus.circle.fill")
-                                                .foregroundStyle(Color.accentPrimary)
+                                                .foregroundStyle(.tint)
                                         }
                                         .cardPadding()
                                         .glassCard()
@@ -157,7 +157,7 @@ struct TabEditorView: View {
                             tabs = AppFeature.defaultTabs
                         }
                     }
-                    .foregroundStyle(Color.accentPrimary)
+                    .foregroundStyle(.tint)
                     .padding(.bottom)
                 }
                 .padding(.top, TigerDuckTheme.Spacing.lg)
@@ -230,7 +230,7 @@ private struct TabPreviewItem: View {
                 .font(.caption2)
                 .lineLimit(1)
         }
-        .foregroundStyle(Color.accentPrimary)
+        .foregroundStyle(.tint)
         .frame(width: 56)
         .overlay(alignment: .topTrailing) {
             Button(action: onRemove) {

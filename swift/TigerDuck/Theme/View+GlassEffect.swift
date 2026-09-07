@@ -18,7 +18,7 @@ extension View {
             .padding(.vertical, TigerDuckTheme.Spacing.sm)
             .background {
                 if isSelected {
-                    Capsule().fill(Color.accentColor)
+                    Capsule().fill(.tint)
                 } else {
                     Capsule().fill(.ultraThinMaterial)
                 }

@@ -127,7 +127,7 @@ struct MacSidebarSettingsView: View {
                 pin(feature)
             } label: {
                 Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.tint)
             }
             .buttonStyle(.borderless)
             .help(String(localized: "desktop_settings_sidebar_pin"))

@@ -45,7 +45,6 @@ extension Color {
     static let cardSurface = Color(hex: 0x1E1E1E, alpha: 0.8)
     static let textPrimary = Color.white
     static let textSecondary = Color(hex: 0xFFFFFF, alpha: 0.6)
-    static let accentPrimary = Color(hex: 0x007AFF)
     static let badgeRed = Color(hex: 0xFF3B30)
 
     // MARK: - Calendar Event Colors

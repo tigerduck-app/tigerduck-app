@@ -36,7 +36,7 @@ struct AddSectionSheet: View {
                             dismiss()
                         } label: {
                             Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(Color.accentPrimary)
+                                .foregroundStyle(.tint)
                         }
                         .disabled(customTitle.isEmpty)
                     }

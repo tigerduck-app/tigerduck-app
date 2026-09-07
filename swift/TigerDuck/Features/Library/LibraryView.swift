@@ -265,7 +265,7 @@ struct LibraryView: View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             Image(systemName: "qrcode")
                 .font(.system(size: heroIconSize))
-                .foregroundStyle(Color.accentPrimary)
+                .foregroundStyle(.tint)
 
             Text(String(localized: "library_sign_in_qr_prompt"))
                 .font(TigerDuckTheme.Typography.title)
@@ -331,7 +331,7 @@ struct LibraryView: View {
                     .frame(maxWidth: .infinity)
                     .padding(TigerDuckTheme.Spacing.md)
                     .background(
-                        Color.accentPrimary.opacity(disabled ? 0.5 : 1),
+                        .tint.opacity(disabled ? 0.5 : 1),
                         in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md)
                     )
             }
@@ -378,7 +378,7 @@ struct LibraryView: View {
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
                 Image(systemName: icon)
                     .font(.title2)
-                    .foregroundStyle(Color.accentPrimary)
+                    .foregroundStyle(.tint)
 
                 Text(title)
                     .font(TigerDuckTheme.Typography.headline)
