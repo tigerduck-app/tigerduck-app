@@ -23,8 +23,8 @@ struct EnrolledCourseNosTests {
         #expect(nos == ["CS2", "CS3", "PE9"])
     }
 
-    @Test("An empty 選課 answer is still authoritative")
-    func emptySelectionHidesMoodle() {
-        #expect(AppServiceBridge.enrolledCourseNos(selection: [], moodle: ["CS2"], transcript: []).isEmpty)
+    @Test("An empty 選課 answer falls back to Moodle: parser drift is indistinguishable from no enrolments")
+    func emptySelectionFallsBackToMoodle() {
+        #expect(AppServiceBridge.enrolledCourseNos(selection: [], moodle: ["CS2"], transcript: ["PE9"]) == ["CS2", "PE9"])
     }
 }

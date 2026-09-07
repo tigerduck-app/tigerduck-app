@@ -322,6 +322,10 @@ enum AppServiceBridge {
     /// keeps an enrolment after the student drops the class, so unioning
     /// the two re-added dropped courses. Pass `selection` as nil for every
     /// other term, and when 選課 was unreachable, to make Moodle the source.
+    /// An *empty* list is treated the same way: the D01 scrape is a regex
+    /// over HTML that yields zero matches, not an error, when the page
+    /// layout drifts, and that result is cached for a day — so it cannot be
+    /// told apart from "no enrolments" and must not blank the term.
     /// The transcript always tops up — it is the only source that covers
     /// non-Moodle classes in past terms.
     static func enrolledCourseNos(
@@ -329,9 +333,10 @@ enum AppServiceBridge {
         moodle: [String],
         transcript: [String]
     ) -> [String] {
+        let selectionOwnsTerm = !(selection ?? []).isEmpty
         var ordered: [String] = []
         var seen = Set<String>()
-        for courseNo in (selection ?? []) + (selection == nil ? moodle : []) + transcript
+        for courseNo in (selection ?? []) + (selectionOwnsTerm ? [] : moodle) + transcript
         where !courseNo.isEmpty && seen.insert(courseNo).inserted {
             ordered.append(courseNo)
         }
