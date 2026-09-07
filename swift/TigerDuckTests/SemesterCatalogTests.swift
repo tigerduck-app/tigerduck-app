@@ -45,10 +45,29 @@ struct SemesterCatalogTests {
             == ["1151", "114H", "1142", "1141", "113H", "1132", "1131"])
     }
 
-    @Test("Unknown student id keeps the fixed depth")
+    @Test("Space-padded pre-100 terms never leak past the admission year")
+    func dropsPaddedLegacyTerms() {
+        let catalogue = ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H", "1001", "99 H", "99 2", "99 1", "95 1"]
+        #expect(SemesterCatalog.terms(from: catalogue, admissionYear: 113)
+            == ["1151", "114H", "1142", "1141", "113H", "1132", "1131"])
+        #expect(SemesterCatalog.terms(from: catalogue, admissionYear: 99)
+            == ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H", "1001", "99 H", "99 2", "99 1"])
+    }
+
+    @Test("Academic year is everything before the term character, whitespace tolerant")
+    func parsesAcademicYear() {
+        #expect(SemesterCatalog.academicYear(of: "1151") == 115)
+        #expect(SemesterCatalog.academicYear(of: "114H") == 114)
+        #expect(SemesterCatalog.academicYear(of: "99 1") == 99)
+        #expect(SemesterCatalog.academicYear(of: "") == nil)
+        #expect(SemesterCatalog.academicYear(of: "H") == nil)
+    }
+
+    @Test("Unknown or implausible admission year keeps the fixed depth")
     func fixedDepthWithoutId() {
         let catalogue = ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H"]
         #expect(SemesterCatalog.terms(from: catalogue, admissionYear: nil).count == 6)
+        #expect(SemesterCatalog.terms(from: catalogue, admissionYear: 131).count == 6)
     }
 
     @Test("Admission year is the three digits after the degree letter")

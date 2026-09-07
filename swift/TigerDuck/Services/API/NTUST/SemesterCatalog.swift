@@ -69,14 +69,23 @@ enum SemesterCatalog {
         return terms(from: cached, admissionYear: admissionYear(studentId: studentId))
     }
 
-    /// Catalogue terms from the fall of the admission year onwards; the
-    /// fixed depth when the id is unknown. Codes are `YYYS` with S in
-    /// 1 / 2 / H, so plain string order is chronological within a year
-    /// (`113H` sorts after `1131`).
+    /// Catalogue terms from the admission year onwards; the fixed depth
+    /// when the id is unknown. Compared numerically: the catalogue pads
+    /// pre-100 years as `99 1`, and those sort *after* `1131` as strings,
+    /// which is how every term back to 95-1 leaked into the picker.
     nonisolated static func terms(from catalogue: [String], admissionYear: Int?) -> [String] {
-        guard let admissionYear else { return Array(catalogue.prefix(pickerDepth)) }
-        let firstTerm = "\(admissionYear)1"
-        return catalogue.filter { $0 >= firstTerm }
+        let fallback = Array(catalogue.prefix(pickerDepth))
+        guard let admissionYear else { return fallback }
+        let fromAdmission = catalogue.filter { (academicYear(of: $0) ?? -1) >= admissionYear }
+        // An id whose parsed "year" is nonsense (a non-letter prefix yields
+        // e.g. 131) would otherwise empty the picker.
+        return fromAdmission.isEmpty ? fallback : fromAdmission
+    }
+
+    /// `1151` → 115, `114H` → 114, `99 1` → 99. The last character is the
+    /// term (1 / 2 / H); everything before it is the ROC academic year.
+    nonisolated static func academicYear(of code: String) -> Int? {
+        Int(code.dropLast().trimmingCharacters(in: .whitespaces))
     }
 
     /// NTUST ids are one degree letter plus the three-digit admission year
