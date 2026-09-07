@@ -80,7 +80,7 @@ struct BulletinDetailView: View {
             if let org = bulletin.canonicalOrg {
                 Text(taxonomy.orgLabel(for: org))
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.tint)
             }
             if let importance = bulletin.importance, importance == .high {
                 importanceBadge
@@ -117,10 +117,10 @@ struct BulletinDetailView: View {
             WrappingHStack(items: bulletin.contentTags, spacing: 6, lineSpacing: 6) { tag in
                 Text("#\(taxonomy.tagLabel(for: tag))")
                     .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.tint)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+                    .background(.tint.opacity(0.12), in: Capsule())
             }
         }
         .padding(.top, TigerDuckTheme.Spacing.md)
@@ -177,7 +177,7 @@ struct BulletinDetailView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .background(Color.accentColor, in: Capsule())
+                    .background(.tint, in: Capsule())
                     .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
             }
             .buttonStyle(.plain)
@@ -202,7 +202,7 @@ struct BulletinDetailView: View {
                 ForegroundColor(Color.textPrimary)
             }
             .link {
-                ForegroundColor(Color.accentColor)
+                ForegroundColor(appState.accentColor)
                 UnderlineStyle(.single)
             }
             .strong {

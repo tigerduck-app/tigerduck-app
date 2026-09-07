@@ -97,7 +97,7 @@ private struct PresetChipModifier: ViewModifier {
             padded
                 .background {
                     if isSelected {
-                        Capsule().fill(Color.accentColor)
+                        Capsule().fill(.tint)
                     } else {
                         Capsule().fill(.ultraThinMaterial)
                     }
@@ -106,7 +106,7 @@ private struct PresetChipModifier: ViewModifier {
             padded
                 .background {
                     if isSelected {
-                        Capsule().fill(Color.accentColor)
+                        Capsule().fill(.tint)
                     } else {
                         Capsule().fill(Color.white.opacity(0.08))
                     }

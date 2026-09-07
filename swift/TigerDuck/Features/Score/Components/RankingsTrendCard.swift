@@ -22,7 +22,8 @@ struct RankingsTrendCard: View {
 
     @State private var selectedTerm: String?
 
-    private let lineColor = Color(hex: 0x4ECDC4)
+    /// The theme tint; `Color.accentColor` ignores `.tint(...)`, this doesn't.
+    private let lineColor = TintShapeStyle()
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {

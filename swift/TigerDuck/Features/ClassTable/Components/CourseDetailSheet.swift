@@ -54,7 +54,7 @@ struct CourseDetailSheet: View {
                     Button(action: openMoodleCourse) {
                         Image(systemName: "arrow.up.right.square.fill")
                             .font(.title2)
-                            .foregroundStyle(Color.accentPrimary)
+                            .foregroundStyle(.tint)
                     }
                     .accessibilityLabel(String(localized: "a11y_course_detail_open_moodle"))
                 }
@@ -149,7 +149,7 @@ struct CourseDetailSheet: View {
                 } label: {
                     HStack {
                         Image(systemName: "doc.text")
-                            .foregroundStyle(Color.accentPrimary)
+                            .foregroundStyle(.tint)
                         VStack(alignment: .leading) {
                             Text(assignment.displayTitle)
                                 .font(TigerDuckTheme.Typography.body)

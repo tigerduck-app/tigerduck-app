@@ -107,7 +107,11 @@ enum AppServiceBridge {
             // still fall through to the Moodle path; otherwise the whole
             // fetch would throw, the catch below would return an empty cache,
             // and Home / Class Table / Time Machine would stay blank.
-            var courseSelectionNos: [String] = []
+            // nil = the 選課 system was not consulted (another term) or was
+            // unreachable; Moodle is the enrolment source then. When it
+            // answers, it is the authority for its term and Moodle only
+            // enriches — see `enrolledCourseNos`.
+            var courseSelectionNos: [String]?
             if servesSelectionSemester {
                 do {
                     courseSelectionNos = try await CourseSelectionService.fetchEnrolledCourseNos(
@@ -185,23 +189,11 @@ enum AppServiceBridge {
                 uniquingKeysWith: { first, _ in first }
             )
 
-            var orderedCourseNos: [String] = []
-            var seenCourseNos = Set<String>()
-
-            for courseNo in courseSelectionNos where seenCourseNos.insert(courseNo).inserted {
-                orderedCourseNos.append(courseNo)
-            }
-
-            for moodleCourse in moodleForSemester {
-                let courseNo = moodleCourse.courseNo
-                guard !courseNo.isEmpty, seenCourseNos.insert(courseNo).inserted else { continue }
-                orderedCourseNos.append(courseNo)
-            }
-
-            for grade in scoreCoursesForSemester
-                where seenCourseNos.insert(grade.code).inserted {
-                orderedCourseNos.append(grade.code)
-            }
+            let orderedCourseNos = enrolledCourseNos(
+                selection: courseSelectionNos,
+                moodle: moodleForSemester.map(\.courseNo),
+                transcript: scoreCoursesForSemester.map(\.code)
+            )
 
             let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
                 for courseNo in orderedCourseNos {
@@ -322,6 +314,33 @@ enum AppServiceBridge {
             }
             return DataCache.shared.loadCourses(semester: semester)
         }
+    }
+
+    /// The course numbers a term renders, in source priority order, deduped.
+    ///
+    /// A non-empty 選課 answer owns its term outright. Moodle keeps an
+    /// enrolment after the student drops the class, and the cached
+    /// transcript can predate the drop, so either top-up would put the
+    /// course back. Pass `selection` as nil for every other term and when
+    /// 選課 was unreachable: Moodle is the source then, and the transcript
+    /// tops up the non-Moodle classes it alone covers. An *empty* list is
+    /// treated the same way — the D01 scrape is a regex over HTML that
+    /// yields zero matches, not an error, when the layout drifts, and that
+    /// result is cached for a day, so it cannot be told apart from "no
+    /// enrolments" and must not blank the term.
+    static func enrolledCourseNos(
+        selection: [String]?,
+        moodle: [String],
+        transcript: [String]
+    ) -> [String] {
+        let candidates: [String]
+        if let selection, !selection.isEmpty {
+            candidates = selection
+        } else {
+            candidates = moodle + transcript
+        }
+        var seen = Set<String>()
+        return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     /// The per-user display toggles a course lookup has to honour, read once

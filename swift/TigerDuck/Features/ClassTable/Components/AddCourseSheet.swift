@@ -316,7 +316,7 @@ struct AddCourseSheet: View {
                             .foregroundStyle(.green)
                     } else {
                         Image(systemName: "plus.circle")
-                            .foregroundStyle(Color.accentPrimary)
+                            .foregroundStyle(.tint)
                     }
                 }
                 .contentShape(Rectangle())

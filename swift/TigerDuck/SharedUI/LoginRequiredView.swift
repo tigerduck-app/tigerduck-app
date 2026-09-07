@@ -36,7 +36,7 @@ struct LoginRequiredView: View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             Image(systemName: "lock.shield")
                 .font(.system(size: heroIconSize))
-                .foregroundStyle(Color.accentPrimary)
+                .foregroundStyle(.tint)
             Text(title)
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
@@ -78,7 +78,7 @@ struct LoginRequiredView: View {
             HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.md) {
                 Image(systemName: "lock.shield")
                     .font(.title3)
-                    .foregroundStyle(Color.accentPrimary)
+                    .foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(TigerDuckTheme.Typography.headline)

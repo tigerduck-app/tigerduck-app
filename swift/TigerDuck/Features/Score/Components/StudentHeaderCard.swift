@@ -14,9 +14,9 @@ struct StudentHeaderCard: View {
         HStack(alignment: .center, spacing: TigerDuckTheme.Spacing.md) {
             Image(systemName: "graduationcap.fill")
                 .font(.title2)
-                .foregroundStyle(Color(hex: 0x4ECDC4))
+                .foregroundStyle(.tint)
                 .frame(width: 44, height: 44)
-                .background(Color(hex: 0x4ECDC4).opacity(0.15), in: Circle())
+                .background(.tint.opacity(0.15), in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(student.isEmpty ? String(localized: "feature_score") : student)

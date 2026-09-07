@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.0.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.0)
+[![Version](https://img.shields.io/badge/Version-v2.0.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.1)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -111,6 +111,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v2.0.1`** | 2026-09-07 | Semester picker lists only terms from the admission year on, so space-padded legacy codes no longer leak in; theme colour reaches icons, the library QR countdown ring, the GPA trend line and the Mac Settings window; the course-selection term is owned by its enrolment list, so dropped courses stop coming back from Moodle |
 | **`v2.0.0`** | 2026-08-23 | 🚀 **Cloud sync GA** — real-time course & assignment upload, macOS push & account sync, 401 auto-recovery, server push channel settings |
 | **`v1.8.1`** | 2026-08-21 | The library QR leans on HDR local highlighting again instead of overriding whole-device brightness — the EDR check read "is HDR content on screen right now", which is always false before the QR has drawn, so EDR devices still ended up pinned at full brightness |
 | **`v1.8.0`** | 2026-08-20 | 🔔 **Bulletin push notifications** — device registration, push preferences and bulletin deep links end to end; update prompts plus a What's New sheet after installing; flip the phone face-down to open the library QR; passwords and the library QR masked in screenshots and recordings; TLS SPKI pinning on NTUST and Library traffic; course-name font-size slider, Settings reordered to match Android, macOS surfaces and colour-blind-friendly conflict marking |

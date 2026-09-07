@@ -78,7 +78,7 @@ struct LibraryQRCodeView: View {
                     Circle()
                         .trim(from: 0, to: ringFraction)
                         .stroke(
-                            Color.accentPrimary,
+                            .tint,
                             style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
                         )
                         .rotationEffect(.degrees(-90))

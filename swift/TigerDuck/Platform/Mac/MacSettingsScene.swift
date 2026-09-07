@@ -14,6 +14,8 @@ import SwiftUI
 /// override controls so QA can scrub fake time on the Mac the same way
 /// they can on iPhone.
 struct MacSettingsScene: View {
+    @Environment(AppState.self) private var appState
+
     var body: some View {
         TabView {
             MacGeneralSettingsView()
@@ -32,6 +34,9 @@ struct MacSettingsScene: View {
                 .tabItem { Label(String(localized: "settings_section_about"), systemImage: "info.circle") }
         }
         .frame(width: 580, height: 480)
+        // Separate scene from MacRootView, so the theme tint has to be
+        // applied here too or `.tint`-styled icons fall back to the system accent.
+        .tint(appState.accentColor)
     }
 }
 #endif

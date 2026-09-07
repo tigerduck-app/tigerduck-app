@@ -8,7 +8,7 @@ struct FeatureCardView: View {
             HStack {
                 Image(systemName: feature.iconName)
                     .font(.title2)
-                    .foregroundStyle(Color.accentPrimary)
+                    .foregroundStyle(.tint)
                     .frame(width: 28, height: 28)
                 Spacer()
             }

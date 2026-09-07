@@ -165,7 +165,7 @@ private struct ClassCardPreview: View {
 
     private var soloCell: some View {
         RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(Color.accentColor.opacity(0.35))
+            .fill(.tint.opacity(0.35))
             .overlay {
                 Text(String(localized: "settings_font_size_preview_course_name"))
                     .font(.system(size: courseFontSize, weight: .medium))

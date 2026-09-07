@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.0.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.0)
+[![Version](https://img.shields.io/badge/Version-v2.0.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.1)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -112,6 +112,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v2.0.1`** | 2026-09-07 | 課表學期選單只列入學年以後的學期，舊制空格補位的學期代碼不再混入；主題色擴及圖示、圖書證倒數圈、歷年成績趨勢線與 Mac 設定視窗；選課系統所服務的學期以選課清單為準，已退選的課不再從 Moodle 被加回 |
 | **`v2.0.0`** | 2026-08-23 | 🚀 **雲端同步正式上線** — 課程/作業即時上傳、macOS 推播與帳號同步、401 自動恢復、伺服器推播頻道設定 |
 | **`v1.8.1`** | 2026-08-21 | 圖書證 QR 改回只靠 HDR 局部高亮，不再調整整台裝置的螢幕亮度 — EDR 判斷誤用了「當下是否正在顯示 HDR 內容」的數值，而 QR 還沒畫出來時它必然為否，於是 EDR 機型仍舊被鎖在最大亮度 |
 | **`v1.8.0`** | 2026-08-20 | 🔔 **公告推播上線** — 裝置註冊、推播偏好與公告深層連結全鏈路；有新版本時主動提醒，更新後顯示「這一版有什麼」；手機翻面朝下叫出圖書證 QR；密碼與圖書證 QR 在截圖與螢幕錄影中自動遮蔽；NTUST 與圖書館連線加上 TLS SPKI pinning；課名字級滑桿、設定頁依 Android 順序重整、macOS 各頁面與色盲友善的衝堂標示 |
