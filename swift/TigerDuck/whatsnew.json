@@ -58,5 +58,23 @@
         "The Apple Watch library QR code now comes through your iPhone, so it stays fresh."
       ]
     }
+  },
+  "2.0.1": {
+    "zh-TW": {
+      "title": "2.0.1 更新內容",
+      "highlights": [
+        "課表的學期選單只會列出入學年以後的學期。",
+        "設定中的主題色現在也套用到圖示、圖書證倒數圈與歷年成績趨勢線。",
+        "選課系統目前開放的學期以選課清單為準，已退選的課不會再從 Moodle 被加回課表。"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.0.1",
+      "highlights": [
+        "The class table's semester menu only lists terms from your admission year onward.",
+        "Your theme colour now reaches icons, the library QR countdown ring and the GPA trend line.",
+        "The term the course-selection system is serving follows its enrolment list, so dropped courses no longer come back from Moodle."
+      ]
+    }
   }
 }
