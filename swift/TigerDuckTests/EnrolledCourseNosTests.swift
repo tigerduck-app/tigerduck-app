@@ -3,14 +3,14 @@ import Testing
 @testable import TigerDuck
 
 struct EnrolledCourseNosTests {
-    @Test("選課 answered: Moodle extras are dropped, transcript still tops up")
+    @Test("選課 answered: it owns the term, so neither Moodle nor a stale transcript adds courses")
     func selectionIsAuthoritative() {
         let nos = AppServiceBridge.enrolledCourseNos(
-            selection: ["CS1", "CS2"],
+            selection: ["CS1", "CS2", "CS1"],
             moodle: ["CS2", "DROPPED"],
-            transcript: ["CS1", "PE9"]
+            transcript: ["CS1", "DROPPED"]
         )
-        #expect(nos == ["CS1", "CS2", "PE9"])
+        #expect(nos == ["CS1", "CS2"])
     }
 
     @Test("選課 not consulted or unreachable: Moodle is the source")

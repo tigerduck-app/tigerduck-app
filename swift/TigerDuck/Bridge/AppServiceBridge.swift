@@ -318,29 +318,29 @@ enum AppServiceBridge {
 
     /// The course numbers a term renders, in source priority order, deduped.
     ///
-    /// The 選課 system is the authority for the one term it serves: Moodle
-    /// keeps an enrolment after the student drops the class, so unioning
-    /// the two re-added dropped courses. Pass `selection` as nil for every
-    /// other term, and when 選課 was unreachable, to make Moodle the source.
-    /// An *empty* list is treated the same way: the D01 scrape is a regex
-    /// over HTML that yields zero matches, not an error, when the page
-    /// layout drifts, and that result is cached for a day — so it cannot be
-    /// told apart from "no enrolments" and must not blank the term.
-    /// The transcript always tops up — it is the only source that covers
-    /// non-Moodle classes in past terms.
+    /// A non-empty 選課 answer owns its term outright. Moodle keeps an
+    /// enrolment after the student drops the class, and the cached
+    /// transcript can predate the drop, so either top-up would put the
+    /// course back. Pass `selection` as nil for every other term and when
+    /// 選課 was unreachable: Moodle is the source then, and the transcript
+    /// tops up the non-Moodle classes it alone covers. An *empty* list is
+    /// treated the same way — the D01 scrape is a regex over HTML that
+    /// yields zero matches, not an error, when the layout drifts, and that
+    /// result is cached for a day, so it cannot be told apart from "no
+    /// enrolments" and must not blank the term.
     static func enrolledCourseNos(
         selection: [String]?,
         moodle: [String],
         transcript: [String]
     ) -> [String] {
-        let selectionOwnsTerm = !(selection ?? []).isEmpty
-        var ordered: [String] = []
-        var seen = Set<String>()
-        for courseNo in (selection ?? []) + (selectionOwnsTerm ? [] : moodle) + transcript
-        where !courseNo.isEmpty && seen.insert(courseNo).inserted {
-            ordered.append(courseNo)
+        let candidates: [String]
+        if let selection, !selection.isEmpty {
+            candidates = selection
+        } else {
+            candidates = moodle + transcript
         }
-        return ordered
+        var seen = Set<String>()
+        return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     /// The per-user display toggles a course lookup has to honour, read once
