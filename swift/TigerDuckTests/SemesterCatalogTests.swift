@@ -63,11 +63,16 @@ struct SemesterCatalogTests {
         #expect(SemesterCatalog.academicYear(of: "H") == nil)
     }
 
-    @Test("Unknown or implausible admission year keeps the fixed depth")
+    @Test("Unknown student id keeps the fixed depth")
     func fixedDepthWithoutId() {
         let catalogue = ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H"]
         #expect(SemesterCatalog.terms(from: catalogue, admissionYear: nil).count == 6)
-        #expect(SemesterCatalog.terms(from: catalogue, admissionYear: 131).count == 6)
+    }
+
+    @Test("Admission after the newest published term offers nothing, not older terms")
+    func futureAdmissionIsEmpty() {
+        let catalogue = ["1151", "114H", "1142", "1141", "113H", "1132", "1131", "112H"]
+        #expect(SemesterCatalog.terms(from: catalogue, admissionYear: 116).isEmpty)
     }
 
     @Test("Admission year is the three digits after the degree letter")

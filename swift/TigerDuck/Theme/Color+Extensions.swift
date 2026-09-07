@@ -45,6 +45,9 @@ extension Color {
     static let cardSurface = Color(hex: 0x1E1E1E, alpha: 0.8)
     static let textPrimary = Color.white
     static let textSecondary = Color(hex: 0xFFFFFF, alpha: 0.6)
+    /// Fixed on purpose: onboarding runs before a theme is chosen, and its
+    /// pages carry their own per-page colours rather than the app tint.
+    static let onboardingAccent = Color(hex: 0x007AFF)
     static let badgeRed = Color(hex: 0xFF3B30)
 
     // MARK: - Calendar Event Colors

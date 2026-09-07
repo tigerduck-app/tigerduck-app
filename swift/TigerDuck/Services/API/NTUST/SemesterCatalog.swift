@@ -73,13 +73,14 @@ enum SemesterCatalog {
     /// when the id is unknown. Compared numerically: the catalogue pads
     /// pre-100 years as `99 1`, and those sort *after* `1131` as strings,
     /// which is how every term back to 95-1 leaked into the picker.
+    ///
+    /// Deliberately empty for a student admitted after the newest published
+    /// term: every catalogue term predates them, so offering (and warming)
+    /// any of it is wrong. `ClassTableViewModel.semesterOptions` keeps the
+    /// heuristic term selectable until NTUST publishes theirs.
     nonisolated static func terms(from catalogue: [String], admissionYear: Int?) -> [String] {
-        let fallback = Array(catalogue.prefix(pickerDepth))
-        guard let admissionYear else { return fallback }
-        let fromAdmission = catalogue.filter { (academicYear(of: $0) ?? -1) >= admissionYear }
-        // An id whose parsed "year" is nonsense (a non-letter prefix yields
-        // e.g. 131) would otherwise empty the picker.
-        return fromAdmission.isEmpty ? fallback : fromAdmission
+        guard let admissionYear else { return Array(catalogue.prefix(pickerDepth)) }
+        return catalogue.filter { (academicYear(of: $0) ?? -1) >= admissionYear }
     }
 
     /// `1151` → 115, `114H` → 114, `99 1` → 99. The last character is the
