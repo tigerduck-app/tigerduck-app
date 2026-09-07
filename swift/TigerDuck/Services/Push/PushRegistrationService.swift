@@ -349,6 +349,33 @@ actor PushRegistrationService {
     private func performRegister(logger: Logger) async {
         guard let pts = ptsTokenHex else { return }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+
+        // Announce the hardware first, on every launch, signed in or not.
+        // `/devices/register` needs a session and writes `user_devices`, which
+        // operator push targeting never reads — it resolves its audience only
+        // from `device_registrations`. Without this a device is invisible to
+        // custom push whether or not anyone ever signed in on it, and while
+        // signed out the authed call just 401s into the retry ladder.
+        //
+        // Best effort and deliberately outside the do/catch below: a failure
+        // here must not mark the real registration as failed or trigger its
+        // backoff. The server links the two rows on sign-in and unlinks them
+        // on sign-out, so neither state double-pushes.
+        do {
+            try await apiClient.registerAnonymousDevice(
+                PushAPI.AnonymousDeviceRequest(
+                    device_id: identity.uuid,
+                    platform: "apple",
+                    device_class: deviceClass,
+                    push_token: deviceTokenHex,
+                    bundle_id: bundleId
+                )
+            )
+        } catch is CancellationError {
+        } catch {
+            logger.error("device announce failed: \(error.localizedDescription, privacy: .public)")
+        }
+
         do {
             let cloudSync = Defaults[.cloudSyncEnabled]
             logger.info("[register] cloud_sync_enabled=\(cloudSync, privacy: .public)")

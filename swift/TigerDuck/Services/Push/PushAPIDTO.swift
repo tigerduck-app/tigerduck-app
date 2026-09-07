@@ -30,6 +30,22 @@ enum PushAPI {
         let scope_key: String
     }
 
+    /// Device-only registration, for an app with no account on it.
+    ///
+    /// Deliberately carries no student id, no account and no preferences —
+    /// just enough for an operator to see that a device is running the app
+    /// and send it a custom push. `platform` is the flat apple/android value
+    /// the legacy `device_registrations` table uses, not the precise
+    /// ios/ipados/macos of `DeviceRegisterRequest`; the iPhone/iPad/Mac
+    /// distinction rides in `device_class`.
+    struct AnonymousDeviceRequest: Encodable, Sendable {
+        let device_id: String
+        let platform: String
+        let device_class: String
+        let push_token: String?
+        let bundle_id: String
+    }
+
     struct DeviceRegisterResponse: Decodable, Sendable {
         let device_id: String
         let push_token_id: Int?

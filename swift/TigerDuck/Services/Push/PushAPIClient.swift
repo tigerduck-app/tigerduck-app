@@ -42,6 +42,17 @@ final class PushAPIClient: Sendable {
         try await post(path: "/devices/register", body: request, returning: PushAPI.DeviceRegisterResponse.self)
     }
 
+    /// Register the device itself, with no account attached.
+    ///
+    /// Unauthenticated by design — there is no session to authenticate with
+    /// when this matters. It still goes through the usual `post`, so a Bearer
+    /// header is attached when one happens to exist; the server ignores it
+    /// and keys purely on `device_id`, which is what lets the same call be
+    /// made on every launch regardless of sign-in state.
+    func registerAnonymousDevice(_ request: PushAPI.AnonymousDeviceRequest) async throws {
+        _ = try await postExpectingNoBody(path: "/devices/anonymous", body: request)
+    }
+
     func unregisterDevice(deviceId: String) async throws {
         let safeDevice = Self.percentEncoded(deviceId)
         try await delete(path: "/devices/\(safeDevice)")
