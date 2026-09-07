@@ -308,9 +308,9 @@ private struct DayCell: View {
                     .frame(width: 28, height: 28)
                     .background {
                         if isSelected {
-                            Circle().fill(Color.accentColor)
+                            Circle().fill(.tint)
                         } else if isToday {
-                            Circle().stroke(Color.accentColor, lineWidth: 1.5)
+                            Circle().stroke(.tint, lineWidth: 1.5)
                         }
                     }
                     .padding(.top, 4)
@@ -336,17 +336,17 @@ private struct DayCell: View {
                 // in #135 was that the today/selected ring touched the
                 // outer rounded fill with zero breathing room.
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.08) : Color.clear)
+                    .fill(.tint.opacity(isSelected ? 0.08 : 0))
                     .padding(3)
             )
         }
         .buttonStyle(.plain)
     }
 
-    private var textColor: Color {
-        if isSelected { return .white }
-        if isToday { return .accentColor }
-        return .primary
+    private var textColor: AnyShapeStyle {
+        if isSelected { return AnyShapeStyle(.white) }
+        if isToday { return AnyShapeStyle(.tint) }
+        return AnyShapeStyle(.primary)
     }
 
     private func dedupedSources() -> [EventSource] {

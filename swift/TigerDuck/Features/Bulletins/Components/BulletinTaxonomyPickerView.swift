@@ -30,7 +30,7 @@ struct BulletinTaxonomyPickerView: View {
                             Spacer()
                             if selected.contains(option.id) {
                                 Image(systemName: "checkmark")
-                                    .foregroundStyle(Color.accentColor)
+                                    .foregroundStyle(.tint)
                             }
                         }
                         // Without contentShape, taps in the Spacer / trailing

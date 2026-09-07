@@ -53,13 +53,13 @@ struct WidgetGridEditMode: View {
                             } label: {
                                 HStack {
                                     Image(systemName: feature.iconName)
-                                        .foregroundStyle(Color.accentPrimary)
+                                        .foregroundStyle(.tint)
                                     Text(feature.displayName)
                                         .font(TigerDuckTheme.Typography.body)
                                         .foregroundStyle(Color.textPrimary)
                                     Spacer()
                                     Image(systemName: "plus.circle.fill")
-                                        .foregroundStyle(Color.accentPrimary)
+                                        .foregroundStyle(.tint)
                                 }
                                 .cardPadding()
                                 .glassCard()

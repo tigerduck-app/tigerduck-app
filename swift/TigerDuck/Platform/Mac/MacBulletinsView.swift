@@ -110,7 +110,7 @@ struct MacBulletinsView: View {
     private func bulletinRow(_ b: BulletinAPI.BulletinSummary) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Circle()
-                .fill(readStore.isRead(b.id) ? Color.clear : Color.accentColor)
+                .fill(.tint.opacity(readStore.isRead(b.id) ? 0 : 1))
                 .frame(width: 8, height: 8)
                 .padding(.top, 6)
             VStack(alignment: .leading, spacing: 4) {

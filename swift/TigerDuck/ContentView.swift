@@ -251,7 +251,7 @@ struct PlaceholderFeatureView: View {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 Image(systemName: feature.iconName)
                     .font(.system(size: heroIconSize))
-                    .foregroundStyle(Color.accentPrimary)
+                    .foregroundStyle(.tint)
                 Text(feature.displayName)
                     .font(TigerDuckTheme.Typography.title)
                     .foregroundStyle(Color.textPrimary)

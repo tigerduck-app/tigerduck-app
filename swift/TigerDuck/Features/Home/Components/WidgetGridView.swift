@@ -128,7 +128,7 @@ private struct WidgetDragPreview: View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
             Image(systemName: widget.feature.iconName)
                 .font(.title3)
-                .foregroundStyle(Color.accentPrimary)
+                .foregroundStyle(.tint)
                 .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 2) {

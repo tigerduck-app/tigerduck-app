@@ -36,7 +36,7 @@ struct BulletinCardView: View {
         HStack(alignment: .center, spacing: TigerDuckTheme.Spacing.sm) {
             if !isRead {
                 Circle()
-                    .fill(Color.accentColor)
+                    .fill(.tint)
                     .frame(width: 7, height: 7)
                     .accessibilityLabel(String(localized: "bulletin_unread_dot_label"))
             }
@@ -92,7 +92,7 @@ struct BulletinCardView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .background(Color.accentColor, in: Capsule())
+            .background(.tint, in: Capsule())
     }
 
     /// Hashtag-style inline strip. Pairs intentionally with the filled org

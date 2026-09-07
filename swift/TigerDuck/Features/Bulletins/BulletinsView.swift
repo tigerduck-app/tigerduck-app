@@ -334,7 +334,7 @@ struct BulletinsView: View {
                         )
                         .labelStyle(.iconOnly)
                     }
-                    .tint(.accentColor)
+                    .tint(appState.accentColor)
                 }
                 .task {
                     await viewModel.loadMoreIfNeeded(triggeredBy: bulletin)

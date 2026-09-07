@@ -14,7 +14,7 @@ struct SectionHeader: View {
             if let trailing, let action {
                 Button(trailing, action: action)
                     .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.accentPrimary)
+                    .foregroundStyle(.tint)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)

@@ -28,7 +28,7 @@ struct MonthCalendarView: View {
             HStack {
                 Button(action: viewModel.previousMonth) {
                     Image(systemName: "chevron.left")
-                        .foregroundStyle(Color.accentPrimary)
+                        .foregroundStyle(.tint)
                 }
                 .accessibilityLabel(String(localized: "a11y_calendar_nav_prev"))
                 Spacer()
@@ -38,7 +38,7 @@ struct MonthCalendarView: View {
                 Spacer()
                 Button(action: viewModel.nextMonth) {
                     Image(systemName: "chevron.right")
-                        .foregroundStyle(Color.accentPrimary)
+                        .foregroundStyle(.tint)
                 }
                 .accessibilityLabel(String(localized: "a11y_calendar_nav_next"))
             }
@@ -103,13 +103,13 @@ private struct DayCellView: View {
             VStack(spacing: 2) {
                 Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
                     .font(TigerDuckTheme.Typography.body)
-                    .foregroundStyle(isSelected ? .white : (isToday ? .accentPrimary : .textPrimary))
+                    .foregroundStyle(isSelected ? AnyShapeStyle(.white) : isToday ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textPrimary))
                     .frame(width: 32, height: 32)
                     .background {
                         if isSelected {
-                            Circle().fill(Color.accentPrimary)
+                            Circle().fill(.tint)
                         } else if isToday {
-                            Circle().stroke(Color.accentPrimary, lineWidth: 1.5)
+                            Circle().stroke(.tint, lineWidth: 1.5)
                         }
                     }
 

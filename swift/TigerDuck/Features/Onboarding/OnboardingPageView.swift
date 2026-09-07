@@ -12,7 +12,7 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     let icon: String
     let title: String
     let subtitle: String
-    var accentColor: Color = .accentPrimary
+    var accentColor: Color = .onboardingAccent
     var iconAnimation: IconAnimation = .pulse
     /// Fill both margins instead of centring — for the pages whose
     /// subtitle is a paragraph of terms rather than a one-line tagline.
@@ -113,7 +113,7 @@ extension OnboardingPageView where Content == EmptyView {
         icon: String,
         title: String,
         subtitle: String,
-        accentColor: Color = .accentPrimary,
+        accentColor: Color = .onboardingAccent,
         iconAnimation: IconAnimation = .pulse,
         @ViewBuilder actions: @escaping () -> Actions
     ) {
