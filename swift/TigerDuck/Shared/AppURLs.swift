@@ -10,5 +10,10 @@ enum AppURLs {
     static let deleteAccount    = URL(string: "https://tigerduck.app/delete-account")!
     static let learnMoreBackend = URL(string: "https://tigerduck.app/learn-more-about-backend")!
     static let issues         = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
+    /// Public uptime page for every TigerDuck-facing service. Currently
+    /// 302s to `status.ntust.org`; opened through ``InAppBrowserView``
+    /// (SFSafariViewController), which follows a cross-origin redirect in
+    /// place rather than handing off to Safari.
+    static let serverStatus   = URL(string: "https://status.tigerduck.app/")!
     static let license        = URL(string: "https://github.com/tigerduck-app/tigerduck-app/blob/main/LICENSE")!
 }

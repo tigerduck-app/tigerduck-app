@@ -23,6 +23,7 @@ struct SettingsView: View {
     @State private var hapticPlayer: CHHapticPatternPlayer?
     @State private var notificationsAuthorized: Bool = true
     @State private var showOfficialWebsite = false
+    @State private var showServerStatus = false
     #if os(iOS)
     /// Drives the "you're up to date" / "couldn't reach the App Store"
     /// feedback alert that fires after the manual Check for Updates row.
@@ -243,6 +244,7 @@ struct SettingsView: View {
                 LabeledContent(String(localized: "settings_version"), value: appVersion)
                 #if os(iOS)
                 checkForUpdatesRow
+                serverStatusRow
                 whatsNewRow
                 #endif
                 Button {
@@ -300,7 +302,6 @@ struct SettingsView: View {
                     #if os(iOS)
                     UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                     #endif
-
                     appState.logoutNTUST()
                     appState.logoutLibrary()
 
@@ -333,6 +334,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showOfficialWebsite) {
             InAppBrowserView(url: Self.websiteURL)
+                .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showServerStatus) {
+            InAppBrowserView(url: AppURLs.serverStatus)
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showLibraryLogin) {
@@ -547,6 +552,36 @@ struct SettingsView: View {
         .disabled(appState.updateNotifyCoordinator.isCheckingForUpdate)
     }
 
+    /// "Check Server Status" entry, sitting under Check for Updates
+    /// because the two answer the same question from opposite ends: the
+    /// update row asks whether *this app* is current, this one asks
+    /// whether the services behind it are up.
+    ///
+    /// Honours the in-app / external browser preference like every other
+    /// link in Settings. The in-app path matters here: the status URL
+    /// currently 302s to another origin, and `SFSafariViewController`
+    /// follows that in place — a `WKWebView` with a host allowlist, or an
+    /// `openURL` hand-off, would either dead-end or eject the user into
+    /// Safari mid-redirect.
+    private var serverStatusRow: some View {
+        Button {
+            if appState.browserPreference == .inApp {
+                showServerStatus = true
+            } else {
+                openURL(AppURLs.serverStatus)
+            }
+        } label: {
+            HStack {
+                Text(String(localized: "settings_check_server_status"))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "arrow.up.right.square")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     /// "What's New" entry — always opens the latest entry registered
     /// in `whatsnew.json`, independent of the
     /// `lastShownWhatsNewVersion` gate. Hidden when the asset has no
@@ -644,6 +679,22 @@ struct SettingsView: View {
             .controlSize(.small)
         }
     }
+
+    #if DEBUG
+    /// Factory-reset the app in place, without an uninstall.
+    ///
+    /// Ordered deliberately. The two logouts run first because they are the
+    /// only paths that unwind *live* state — in-flight sync tasks, the Live
+    /// Activity, scheduled reminders, the push registration, and the watch's
+    /// copy of the library credentials. Blowing the stores away underneath
+    /// them would leave a Live Activity on the Lock Screen and a paired
+    /// watch still holding a library login that this device no longer has.
+    ///
+    /// Then the stores, each of which the logouts intentionally leave alone
+    /// because a logout is an account change rather than a factory reset:
+    /// the whole cache tree (not just the user-scoped files), every Keychain
+    /// secret, the SwiftData store, both defaults domains, and the outbox.
+    #endif
 
     /// Read the current system-level notification authorization so the
     /// warning row appears whenever the user has revoked permission
