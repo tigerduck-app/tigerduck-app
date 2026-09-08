@@ -224,18 +224,7 @@ struct ClassTableView: View {
             if pageAccessState != .loginRequired {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
                     SyncStatusDot(servers: [.moodle, .courseSelection, .backend])
-                    Button {
-                        viewModel.showResetConfirm = true
-                    } label: {
-                        glassIcon("arrow.triangle.2.circlepath")
-                    }
-                    .accessibilityLabel(Text("class_table_reset_title"))
-                    Button {
-                        viewModel.showAddCourse = true
-                    } label: {
-                        glassIcon("plus")
-                    }
-                    .accessibilityLabel(Text("add_course_title"))
+                    headerActions
                 }
             }
         }
@@ -243,32 +232,62 @@ struct ClassTableView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    /// Reset and add, on Liquid Glass. Both sit in the page's own header
-    /// row rather than a toolbar, so nothing gives them a backing unless we
-    /// do — and a bare glyph over a dense timetable reads as part of the
-    /// grid instead of a control that acts on it.
-    ///
-    /// 44pt is the HIG minimum touch target, which these were under at the
-    /// 28pt Home's add button uses. Home gets away with it because its
-    /// button only exists in edit mode, with nothing but empty header
-    /// beside it; here the two controls sit next to each other and next to
-    /// the status dot, so an undersized target is one a thumb actually
-    /// misses. The glyph stays at `.body` — the extra size becomes glass
-    /// around it rather than a bigger icon.
-    private static let glassIconSize: CGFloat = 44
+    /// Matches `SyncStatusDot`'s own 28pt mark, so the three controls in
+    /// this row sit on one line instead of stepping up in size toward the
+    /// edge of the screen.
+    private static let headerActionHeight: CGFloat = 28
+    /// Wider than it is tall: the extra width is what turns two adjacent
+    /// cells into a capsule rather than a circle, and it is where the glyphs
+    /// get their breathing room now that the height is pinned.
+    private static let headerActionWidth: CGFloat = 40
 
+    /// Reset and add, sharing one Liquid Glass capsule.
+    ///
+    /// One backing rather than two circles: they are a set — both act on the
+    /// timetable directly below — and two separate circles read as two
+    /// unrelated controls that happen to be adjacent. This is also what the
+    /// system does with a toolbar item group on iOS 26, which is the shape
+    /// users are learning to read as "these belong together".
+    ///
+    /// The status dot stays outside it deliberately. It reports on the
+    /// servers, it does not act on the timetable, and folding it in would
+    /// claim a relationship that isn't there.
+    ///
+    /// Sits in the page's own header row rather than a toolbar, so nothing
+    /// supplies a backing unless we do — and a bare glyph over a dense
+    /// timetable reads as part of the grid instead of a control acting on it.
     @ViewBuilder
-    private func glassIcon(_ systemName: String) -> some View {
-        let icon = Image(systemName: systemName)
-        if #available(iOS 26, *) {
-            icon
-                .font(.body.weight(.medium))
-                .foregroundStyle(.primary)
-                .frame(width: Self.glassIconSize, height: Self.glassIconSize)
-                .glassEffect(.regular.interactive(), in: .circle)
-        } else {
-            icon
+    private var headerActions: some View {
+        let row = HStack(spacing: 0) {
+            Button {
+                viewModel.showResetConfirm = true
+            } label: {
+                headerIcon("arrow.triangle.2.circlepath")
+            }
+            .accessibilityLabel(Text("class_table_reset_title"))
+            Button {
+                viewModel.showAddCourse = true
+            } label: {
+                headerIcon("plus")
+            }
+            .accessibilityLabel(Text("add_course_title"))
         }
+        if #available(iOS 26, *) {
+            row.glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            row
+        }
+    }
+
+    /// `contentShape` is explicit because the glyph is smaller than its
+    /// cell: without it the tappable area is the symbol's own bounds, and
+    /// the padding that makes the capsule look right would not be tappable.
+    private func headerIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.body.weight(.medium))
+            .foregroundStyle(.primary)
+            .frame(width: Self.headerActionWidth, height: Self.headerActionHeight)
+            .contentShape(.rect)
     }
 
     private var authenticatedContent: some View {
