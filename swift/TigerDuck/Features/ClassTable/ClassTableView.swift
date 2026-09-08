@@ -246,9 +246,17 @@ struct ClassTableView: View {
     /// Reset and add, on Liquid Glass. Both sit in the page's own header
     /// row rather than a toolbar, so nothing gives them a backing unless we
     /// do — and a bare glyph over a dense timetable reads as part of the
-    /// grid instead of a control that acts on it. Same treatment as Home's
-    /// add button, deliberately: it is the same action, and the two pages
-    /// sit one tab apart.
+    /// grid instead of a control that acts on it.
+    ///
+    /// 44pt is the HIG minimum touch target, which these were under at the
+    /// 28pt Home's add button uses. Home gets away with it because its
+    /// button only exists in edit mode, with nothing but empty header
+    /// beside it; here the two controls sit next to each other and next to
+    /// the status dot, so an undersized target is one a thumb actually
+    /// misses. The glyph stays at `.body` — the extra size becomes glass
+    /// around it rather than a bigger icon.
+    private static let glassIconSize: CGFloat = 44
+
     @ViewBuilder
     private func glassIcon(_ systemName: String) -> some View {
         let icon = Image(systemName: systemName)
@@ -256,7 +264,7 @@ struct ClassTableView: View {
             icon
                 .font(.body.weight(.medium))
                 .foregroundStyle(.primary)
-                .frame(width: 28, height: 28)
+                .frame(width: Self.glassIconSize, height: Self.glassIconSize)
                 .glassEffect(.regular.interactive(), in: .circle)
         } else {
             icon
