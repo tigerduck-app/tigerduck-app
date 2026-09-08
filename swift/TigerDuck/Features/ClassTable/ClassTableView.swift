@@ -232,9 +232,10 @@ struct ClassTableView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    /// Matches `SyncStatusDot`'s own 28pt mark, so the three controls in
+    /// Matches `SyncStatusDot`'s own 28pt mark, and the Calendar "Today"
+    /// button, which measures 28.33pt on iOS 26 — so the three controls in
     /// this row sit on one line instead of stepping up in size toward the
-    /// edge of the screen.
+    /// edge of the screen. Pinned by `HeaderControlMetricsTests`.
     private static let headerActionHeight: CGFloat = 28
     /// Wider than it is tall: the extra width is what turns two adjacent
     /// cells into a capsule rather than a circle, and it is where the glyphs
@@ -282,9 +283,16 @@ struct ClassTableView: View {
     /// `contentShape` is explicit because the glyph is smaller than its
     /// cell: without it the tappable area is the symbol's own bounds, and
     /// the padding that makes the capsule look right would not be tappable.
+    /// `.subheadline` rather than `.body`: Today's caption label renders
+    /// 14.33pt tall inside its 28.33pt pill, where a `.body` symbol is a
+    /// full 17pt. Matching the outer height alone still left these icons
+    /// visibly heavier than the button they sit next to a tab away —
+    /// `.subheadline` puts the glyph at 15.33pt, the same optical weight.
+    /// A semantic font, not a fixed size, so it scales with Dynamic Type
+    /// the way Today's label does.
     private func headerIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
-            .font(.body.weight(.medium))
+            .font(.subheadline.weight(.medium))
             .foregroundStyle(.primary)
             .frame(width: Self.headerActionWidth, height: Self.headerActionHeight)
             .contentShape(.rect)
