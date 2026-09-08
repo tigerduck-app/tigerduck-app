@@ -227,13 +227,13 @@ struct ClassTableView: View {
                     Button {
                         viewModel.showResetConfirm = true
                     } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
+                        glassIcon("arrow.triangle.2.circlepath")
                     }
                     .accessibilityLabel(Text("class_table_reset_title"))
                     Button {
                         viewModel.showAddCourse = true
                     } label: {
-                        Image(systemName: "plus")
+                        glassIcon("plus")
                     }
                     .accessibilityLabel(Text("add_course_title"))
                 }
@@ -241,6 +241,26 @@ struct ClassTableView: View {
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)
+    }
+
+    /// Reset and add, on Liquid Glass. Both sit in the page's own header
+    /// row rather than a toolbar, so nothing gives them a backing unless we
+    /// do — and a bare glyph over a dense timetable reads as part of the
+    /// grid instead of a control that acts on it. Same treatment as Home's
+    /// add button, deliberately: it is the same action, and the two pages
+    /// sit one tab apart.
+    @ViewBuilder
+    private func glassIcon(_ systemName: String) -> some View {
+        let icon = Image(systemName: systemName)
+        if #available(iOS 26, *) {
+            icon
+                .font(.body.weight(.medium))
+                .foregroundStyle(.primary)
+                .frame(width: 28, height: 28)
+                .glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            icon
+        }
     }
 
     private var authenticatedContent: some View {
