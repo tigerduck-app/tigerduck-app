@@ -164,6 +164,7 @@ actor PushRegistrationService {
         let request = PushAPI.DeviceRegisterRequest(
             client_device_id: identity.uuid,
             platform: PushDeviceClass.platform(for: deviceClass),
+            device_class: deviceClass,
             app_version: appVersion,
             os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
             push_token: nil,
@@ -212,19 +213,41 @@ actor PushRegistrationService {
         let uuid = identity.uuid
         let apiClient = self.apiClient
         let logger = self.logger
+        let deviceClass = self.deviceClass
+        let bundleId = self.bundleId
+        let tokenHex = self.deviceTokenHex
         let task = Task<Void, Error> {
             // Tolerate predecessor failure — each tap's success is
             // independent of whether the previous one succeeded; we just
             // need its work to be done before ours starts.
             _ = try? await predecessor?.value
             do {
-                _ = try await apiClient.updateDevicePreferences(
-                    deviceId: uuid, serverPushEnabled: !optOut
+                // Two rows hold this flag and which one decides depends on
+                // whether there is an account: operator targeting reads
+                // `user_devices` while signed in and `device_registrations`
+                // while not. Announce unconditionally so the signed-out row
+                // is right both now and after a later sign-out, and PATCH
+                // only when there is a session to authenticate it — signed
+                // out that call is a guaranteed 401.
+                try await apiClient.registerAnonymousDevice(
+                    PushAPI.AnonymousDeviceRequest(
+                        device_id: uuid,
+                        platform: "apple",
+                        device_class: deviceClass,
+                        push_token: tokenHex,
+                        bundle_id: bundleId,
+                        server_push_enabled: !optOut
+                    )
                 )
+                if await apiClient.hasAuthSession() {
+                    _ = try await apiClient.updateDevicePreferences(
+                        deviceId: uuid, serverPushEnabled: !optOut
+                    )
+                }
                 await MainActor.run { Defaults[.serverPushUserOptOut] = optOut }
                 logger.info("server push opt-out=\(optOut, privacy: .public) propagated")
             } catch {
-                logger.error("server push opt-out PATCH failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("server push opt-out did not propagate: \(error.localizedDescription, privacy: .public)")
                 throw error
             }
         }
@@ -373,7 +396,13 @@ actor PushRegistrationService {
                     platform: "apple",
                     device_class: deviceClass,
                     push_token: deviceTokenHex,
-                    bundle_id: bundleId
+                    bundle_id: bundleId,
+                    // Carried on every announce, not just when it changes.
+                    // This row is what operator targeting filters on, and
+                    // while signed out the preferences PATCH has no session
+                    // to authenticate with — so the announce is the only
+                    // path the opt-out has to the server.
+                    server_push_enabled: !Defaults[.serverPushUserOptOut]
                 )
             )
         } catch is CancellationError {
@@ -387,6 +416,7 @@ actor PushRegistrationService {
             let ptsRequest = PushAPI.DeviceRegisterRequest(
                 client_device_id: identity.uuid,
                 platform: PushDeviceClass.platform(for: deviceClass),
+                device_class: deviceClass,
                 app_version: appVersion,
                 os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
                 push_token: PushAPI.PushTokenIn(
@@ -406,6 +436,7 @@ actor PushRegistrationService {
                 let deviceTokenRequest = PushAPI.DeviceRegisterRequest(
                     client_device_id: identity.uuid,
                     platform: PushDeviceClass.platform(for: deviceClass),
+                    device_class: deviceClass,
                     app_version: appVersion,
                     os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
                     push_token: PushAPI.PushTokenIn(

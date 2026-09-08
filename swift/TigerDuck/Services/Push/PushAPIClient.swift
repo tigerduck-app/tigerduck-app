@@ -72,6 +72,17 @@ final class PushAPIClient: Sendable {
         _ = try await execute(request)
     }
 
+    /// Whether there is a session to authenticate a request with.
+    ///
+    /// Callers that have both an authenticated and an unauthenticated way
+    /// to do the same thing need to pick one up front rather than firing
+    /// the authenticated call and reading a 401 as the answer — a 401 is
+    /// also what a revoked or expired session looks like, and those two
+    /// deserve different handling.
+    func hasAuthSession() async -> Bool {
+        await authHeaderProvider() != nil
+    }
+
     /// PATCH the user-facing server-push opt-out. Called from the Settings
     /// toggle so the change propagates without waiting for the next
     /// `/devices/register` call.

@@ -10,6 +10,12 @@ enum PushAPI {
     struct DeviceRegisterRequest: Encodable, Sendable {
         let client_device_id: String
         let platform: String
+        /// Form factor, for operator targeting. Redundant with `platform` on
+        /// Apple, where ios / ipados / macos already separate the three — but
+        /// Android reports one value for phones and tablets, so targeting
+        /// filters on this column and falls back to `platform` only for rows
+        /// that predate it. Sending it keeps Apple devices off that fallback.
+        let device_class: String?
         let app_version: String?
         let os_version: String?
         let push_token: PushTokenIn?
@@ -44,6 +50,14 @@ enum PushAPI {
         let device_class: String
         let push_token: String?
         let bundle_id: String
+        /// The signed-out half of the server-push opt-out.
+        ///
+        /// `PATCH /devices/{id}/preferences` needs a session and writes
+        /// `user_devices`, but operator targeting resolves signed-out
+        /// devices from `device_registrations` — so without this the
+        /// toggle had no way to reach the row that actually decides, and
+        /// a device that opted out kept receiving custom push.
+        let server_push_enabled: Bool?
     }
 
     struct DeviceRegisterResponse: Decodable, Sendable {
