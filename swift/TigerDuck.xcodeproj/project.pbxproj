@@ -1458,7 +1458,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
-				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "WatchSyncCoordinatorTests.swift WatchPayloadEncoderTests.swift TimeSliderViewModelTests.swift";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
+					WatchSyncCoordinatorTests.swift,
+					WatchPayloadEncoderTests.swift,
+					TimeSliderViewModelTests.swift,
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
@@ -1486,7 +1490,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
-				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "WatchSyncCoordinatorTests.swift WatchPayloadEncoderTests.swift TimeSliderViewModelTests.swift";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
+					WatchSyncCoordinatorTests.swift,
+					WatchPayloadEncoderTests.swift,
+					TimeSliderViewModelTests.swift,
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
