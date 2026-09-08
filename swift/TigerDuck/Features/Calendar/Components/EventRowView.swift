@@ -93,6 +93,6 @@ struct EventRowView: View {
     }
 
     private var holidayID: Int? {
-        CalendarViewModel.holidayID(for: event)
+        AcademicCalendar.holidayID(for: event)
     }
 }

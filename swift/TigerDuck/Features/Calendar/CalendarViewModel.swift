@@ -208,63 +208,6 @@ final class CalendarViewModel {
         return days
     }
 
-    /// Semester boundaries and school holidays, from the published academic
-    /// calendar.
-    ///
-    /// Rebuilt on every merge rather than cached: the holiday name is
-    /// locale-dependent and the app language can change under us. Cheap —
-    /// a few dozen rows off an in-memory value.
-    ///
-    /// One row per holiday and one at each end of a term, never one per day:
-    /// a week-long 寒假 is a single thing that happened, and eight identical
-    /// rows would bury the Moodle deadlines this screen exists to show.
-    /// `calendar` is passed rather than defaulted from the store because a
-    /// default argument is evaluated in a nonisolated context, and the store
-    /// is `@MainActor`. Callers on the main actor hand it in.
-    static func academicEvents(
-        calendar: AcademicCalendar,
-        locale: Locale = .current
-    ) -> [SDCalendarEvent] {
-        let holidays = calendar.holidays.map { holiday in
-            SDCalendarEvent(
-                eventId: "\(holidayEventPrefix)\(holiday.id)",
-                title: holiday.name(for: locale),
-                date: holiday.start,
-                source: .holiday
-            )
-        }
-        let boundaries = calendar.terms.flatMap { term -> [SDCalendarEvent] in
-            let label = term.code.count == 4
-                ? "\(term.code.prefix(3))-\(term.code.suffix(1))"
-                : term.code
-            return [
-                SDCalendarEvent(
-                    eventId: "term-start:\(term.code)",
-                    title: String(format: String(localized: "calendar_semester_start"), label),
-                    date: term.start,
-                    source: .semester
-                ),
-                SDCalendarEvent(
-                    eventId: "term-end:\(term.code)",
-                    title: String(format: String(localized: "calendar_semester_end"), label),
-                    date: term.end,
-                    source: .semester
-                ),
-            ]
-        }
-        return holidays + boundaries
-    }
-
-    static let holidayEventPrefix = "holiday:"
-
-    /// The holiday a row belongs to, or nil for a term boundary or an
-    /// ordinary event. Boundaries return nil deliberately: they are
-    /// announcements, not days off, so there is nothing to opt back into.
-    static func holidayID(for event: SDCalendarEvent) -> Int? {
-        guard event.eventId.hasPrefix(holidayEventPrefix) else { return nil }
-        return Int(event.eventId.dropFirst(holidayEventPrefix.count))
-    }
-
     private func setEvents(_ newEvents: [SDCalendarEvent]) {
         // Merged here rather than at each call site because this is the one
         // funnel every load path goes through, including the sign-out reset.
@@ -272,7 +215,7 @@ final class CalendarViewModel {
         // boundary left over from the build that still filed them under
         // `.holiday` is not kept forever from the cache.
         let newEvents = newEvents.filter { $0.source != .holiday && $0.source != .semester }
-            + Self.academicEvents(calendar: AcademicCalendarStore.shared.calendar)
+            + AcademicCalendarStore.shared.calendar.calendarEvents()
         events = newEvents
         let cal = AppConstants.taipeiCalendar
         eventsByDay = Dictionary(grouping: newEvents) { event in
