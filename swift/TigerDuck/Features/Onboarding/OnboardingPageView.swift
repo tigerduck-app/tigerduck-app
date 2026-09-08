@@ -9,7 +9,25 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         case layerFlash
     }
 
-    let icon: String
+    /// What sits at the top of the page.
+    ///
+    /// `ExpressibleByStringLiteral` so the symbol pages keep reading as
+    /// `icon: "lock.shield.fill"` — only the welcome page, which shows the
+    /// app's own artwork rather than a stand-in glyph, has to spell out a
+    /// case.
+    enum Hero: ExpressibleByStringLiteral {
+        /// An SF Symbol name, tinted with `accentColor` and animated per
+        /// `iconAnimation`.
+        case symbol(String)
+        /// An asset-catalog image name. Rendered at its own colours —
+        /// tinting the logo would flatten it to a silhouette — and so
+        /// `accentColor` and `iconAnimation` don't apply.
+        case image(String)
+
+        init(stringLiteral value: String) { self = .symbol(value) }
+    }
+
+    let icon: Hero
     let title: String
     let subtitle: String
     var accentColor: Color = .onboardingAccent
@@ -84,9 +102,27 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
 
     @ViewBuilder
     private var iconView: some View {
+        switch icon {
+        case .image(let name):
+            // Sized larger than the symbol hero: the artwork fills its
+            // square edge to edge, where an SF Symbol carries its own
+            // optical padding, so matching point sizes would render the
+            // logo visibly smaller than the glyph it replaced.
+            Image(name)
+                .resizable()
+                .scaledToFit()
+                .frame(width: heroIconSize * 1.5, height: heroIconSize * 1.5)
+                .accessibilityHidden(true)
+        case .symbol(let name):
+            symbolIconView(name)
+        }
+    }
+
+    @ViewBuilder
+    private func symbolIconView(_ name: String) -> some View {
         switch iconAnimation {
         case .pulse:
-            Image(systemName: icon)
+            Image(systemName: name)
                 .font(.system(size: heroIconSize))
                 .foregroundStyle(accentColor)
                 .symbolEffect(.pulse, isActive: !reduceMotion)
@@ -110,7 +146,7 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
 
 extension OnboardingPageView where Content == EmptyView {
     init(
-        icon: String,
+        icon: Hero,
         title: String,
         subtitle: String,
         accentColor: Color = .onboardingAccent,

@@ -85,7 +85,7 @@ struct OnboardingView: View {
 
     private var welcomePage: some View {
         OnboardingPageView(
-            icon: "graduationcap.fill",
+            icon: .image("AppLogo"),
             title: String(localized: "onboarding_welcome_title"),
             subtitle: String(localized: "onboarding_welcome_subtitle"),
             accentColor: .onboardingAccent,
