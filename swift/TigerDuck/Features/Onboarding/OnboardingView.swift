@@ -415,8 +415,7 @@ struct OnboardingView: View {
                     Button(String(localized: "onboarding_custom_endpoint_button")) {
                         showEndpointSheet = true
                     }
-                    .font(.callout)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(Color.textSecondary)
 
                     Button(String(localized: "onboarding_skip_for_now")) {
                         withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue }
