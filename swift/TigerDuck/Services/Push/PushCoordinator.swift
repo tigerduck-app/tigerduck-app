@@ -300,6 +300,14 @@ final class PushCoordinator {
             #if os(iOS)
             guard UIApplication.shared.applicationState != .background else { return }
             #endif
+            // `/schedule/sync` is an authenticated endpoint, and this was the
+            // one sync path with no auth check at all — every scene
+            // activation and data change fired it while signed out, and each
+            // one could only come back 401 missing_bearer_token. Ask for a
+            // usable token rather than `isLoggedIn`, which only means "a
+            // refresh token exists" and is true for a stale one that no
+            // longer refreshes.
+            guard await self?.apiClient.hasAuthSession() == true else { return }
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
         }
