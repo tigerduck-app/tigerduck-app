@@ -19,6 +19,10 @@ enum WidgetSnapshotBuilder {
         let isLoggedIn: Bool
         let accentColorHex: UInt32
         let now: Date
+        /// School holidays the user has not opted back into, as
+        /// `yyyy-MM-dd` keys. Defaults to empty so a caller that has no
+        /// calendar behaves as the widget did before holidays existed.
+        var quietDayKeys: Set<String> = []
     }
 
     static func build(_ input: Input) -> WidgetSnapshot {
@@ -42,7 +46,8 @@ enum WidgetSnapshotBuilder {
             periodTimes: buildPeriodTimes(),
             periodOrder: AppConstants.Periods.chronologicalOrder,
             activeWeekdays: computeActiveWeekdays(input.courses),
-            activePeriodIds: computeActivePeriodIds(input.courses)
+            activePeriodIds: computeActivePeriodIds(input.courses),
+            quietDayKeys: Array(input.quietDayKeys).sorted()
         )
     }
 

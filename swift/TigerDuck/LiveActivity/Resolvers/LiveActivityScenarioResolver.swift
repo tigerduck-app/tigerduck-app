@@ -30,9 +30,19 @@ struct LiveActivityScenarioResolver {
         assignments: [SDAssignment],
         preferences: LiveActivityPreferencesStore,
         accentHex: Int,
-        now: Date = AppClock.now()
+        now: Date = AppClock.now(),
+        /// Days classes do not meet. Passed in rather than read from the
+        /// store so this stays a pure function of its inputs and can be
+        /// tested without a `@MainActor` singleton.
+        calendar: AcademicCalendar = .empty,
+        optedInHolidayIDs: Set<Int> = []
     ) -> LiveActivitySnapshot? {
         guard preferences.isLiveActivityEnabled else { return nil }
+
+        // The class scenarios go quiet on a school holiday. The assignment
+        // scenario deliberately does not: a deadline on a day off is still
+        // a deadline, and holidays are about classes not meeting.
+        let classesQuiet = calendar.suppressesClasses(on: now, optedIn: optedInHolidayIDs)
 
         let timeline = timelineResolver.timeline(for: courses, around: now)
 
@@ -50,12 +60,14 @@ struct LiveActivityScenarioResolver {
             )
         }
 
-        if preferences.showInClassScenario,
+        if !classesQuiet,
+           preferences.showInClassScenario,
            case .inClass(let slot) = timelineResolver.nonSkippedState(at: now, in: timeline) {
             return Self.inClassSnapshot(slot: slot, now: now, accentHex: accentHex)
         }
 
-        if preferences.showClassPreparingScenario,
+        if !classesQuiet,
+           preferences.showClassPreparingScenario,
            let nextSlot = Self.nextNonSkippedSlot(in: timeline, after: now),
            nextSlot.start.timeIntervalSince(now) <= preferences.classPreparingLeadTime {
             return Self.classPreparingSnapshot(slot: nextSlot, accentHex: accentHex)

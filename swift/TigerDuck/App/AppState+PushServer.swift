@@ -111,6 +111,39 @@ extension AppState {
     /// PATCHes the backend and only then persists the local pref so a
     /// transient failure doesn't leave the UI claiming agreement with
     /// the server. Throws on failure so the caller can roll back.
+    /// Record whether the user wants class reminders on one holiday.
+    ///
+    /// The local write is what makes the guard behave — it happens whether
+    /// or not cloud sync is on, and whether or not the upload succeeds. The
+    /// upload only makes the user's other devices agree, so a failure there
+    /// is logged rather than rolled back: the setting the user just made on
+    /// this device should stand either way.
+    func setHolidayNotify(_ notify: Bool, holidayID: Int) {
+        guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID) else {
+            return
+        }
+        // The Live Activity and widgets read the same set, so they have to
+        // be told: today may have just become loud, or quiet. iOS only —
+        // `AppState+LiveActivity.swift` is not compiled for macOS, and the
+        // Mac has no class reminders for the toggle to affect anyway.
+        #if os(iOS)
+        Task { await refreshLiveActivity() }
+        #endif
+        guard Defaults[.cloudSyncEnabled] else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.pushCoordinator.registration.uploadHolidayOverride(
+                    holidayID: holidayID, notify: notify
+                )
+            } catch {
+                AppLogger.sync.error(
+                    "holiday override upload failed: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }

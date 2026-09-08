@@ -7,7 +7,7 @@ final class SDCalendarEvent {
     @Attribute(.unique) var eventId: String
     var title: String
     var date: Date
-    var sourceRaw: String // "moodle", "school", "exam"
+    var sourceRaw: String // "moodle", "school", "exam", "holiday"
 
     init(
         eventId: String,
@@ -39,6 +39,18 @@ enum EventSource: String, Codable {
     case school
     case exam
     case system  // iOS Calendar events
+    /// A school holiday, from the published academic calendar. Distinct from
+    /// `.school` because these are the only rows the user can act on — a
+    /// holiday offers the "still remind me" toggle — and because they are the
+    /// ones that silence class reminders.
+    case holiday
+
+    /// The first or last day of a term, from the same feed.
+    ///
+    /// Deliberately not `.holiday`: a term boundary is an announcement,
+    /// there is still class that day, and nothing is silenced. Folding the
+    /// two together made these rows read "假日", which was simply wrong.
+    case semester
 
     var color: Color {
         switch self {
@@ -46,6 +58,12 @@ enum EventSource: String, Codable {
         case .school: .schoolOrange
         case .exam: .examRed
         case .system: .gray
+        // Green reads as "no class" against school orange and exam red, and
+        // is the one colour not already spoken for.
+        case .holiday: .green
+        // Neither a day off nor a deadline, so it borrows neither holiday
+        // green nor exam red.
+        case .semester: .indigo
         }
     }
 
@@ -55,6 +73,8 @@ enum EventSource: String, Codable {
         case .school: String(localized: "calendar_source_school")
         case .exam: String(localized: "calendar_source_exam")
         case .system: String(localized: "feature_calendar")
+        case .holiday: String(localized: "calendar_source_holiday")
+        case .semester: String(localized: "calendar_source_semester")
         }
     }
 }

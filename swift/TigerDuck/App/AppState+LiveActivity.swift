@@ -28,7 +28,9 @@ extension AppState {
             assignments: assignments,
             preferences: liveActivityPreferences,
             accentHex: accentColorHex,
-            now: now
+            now: now,
+            calendar: AcademicCalendarStore.shared.calendar,
+            optedInHolidayIDs: AcademicCalendarStore.shared.optedInHolidayIDs
         )
         await liveActivityCoordinator.apply(snapshot: snapshot)
         scheduleBoundaryRefresh(

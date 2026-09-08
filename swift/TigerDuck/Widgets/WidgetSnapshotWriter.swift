@@ -57,6 +57,28 @@ final class WidgetSnapshotWriter {
         }
     }
 
+    /// School holidays inside the widget's own horizon, as `yyyy-MM-dd`
+    /// keys.
+    ///
+    /// Only the next fortnight: the widget derives "now" and "next", and a
+    /// snapshot carrying every holiday in the academic year would grow the
+    /// App Group payload for days no timeline entry can reach.
+    private static func quietDayKeys() -> Set<String> {
+        let store = AcademicCalendarStore.shared
+        let optedIn = store.optedInHolidayIDs
+        let today = AcademicCalendar.startOfDay(AppClock.now())
+        var keys: Set<String> = []
+        for offset in 0..<14 {
+            guard let day = AcademicCalendar.calendar.date(
+                byAdding: .day, value: offset, to: today
+            ) else { continue }
+            if store.calendar.suppressesClasses(on: day, optedIn: optedIn) {
+                keys.insert(WidgetTimelineDerivation.dateKey(for: day))
+            }
+        }
+        return keys
+    }
+
     /// Idempotent — call at app cold-start and again whenever you want to
     /// force a fresh snapshot. Observer paths call this internally.
     func regenerate() {
@@ -75,7 +97,8 @@ final class WidgetSnapshotWriter {
                 // silently re-authenticate. Matches `ntustProtectedAccessState`.
                 isLoggedIn: appState.authService.hasStoredCredentials,
                 accentColorHex: UInt32(bitPattern: Int32(truncatingIfNeeded: appState.accentColorHex)),
-                now: AppClock.now()
+                now: AppClock.now(),
+                quietDayKeys: Self.quietDayKeys()
             )
         )
         store.writeSnapshot(snapshot)

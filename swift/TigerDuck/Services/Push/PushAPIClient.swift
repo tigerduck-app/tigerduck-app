@@ -58,6 +58,20 @@ final class PushAPIClient: Sendable {
         try await delete(path: "/devices/\(safeDevice)")
     }
 
+    /// PUT the user's "notify me anyway" exception for one holiday.
+    ///
+    /// Authenticated: the holiday itself is public and comes from
+    /// `/v3/calendar/semesters`, but the exception belongs to an account.
+    func putHolidayOverride(holidayID: Int, notify: Bool) async throws {
+        var request = try await makePostRequest(
+            path: "/sync/holiday-overrides/\(holidayID)",
+            body: PushAPI.HolidayOverrideRequest(notify: notify)
+        )
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        _ = try await execute(request)
+    }
+
     /// PATCH the user-facing server-push opt-out. Called from the Settings
     /// toggle so the change propagates without waiting for the next
     /// `/devices/register` call.

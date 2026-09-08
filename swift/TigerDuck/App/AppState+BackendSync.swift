@@ -155,6 +155,24 @@ extension AppState {
                 applyCourseOverrides(courseOverrides, coursesArray: coursesArray)
             }
 
+            // Holiday exceptions. Not gated on any of the per-category sync
+            // toggles: this is a notification setting, not course or
+            // assignment data, and none of the categories the user can turn
+            // off covers it. An absent key means an older backend that does
+            // not send the section, so the local set stands.
+            if let holidayRows = json["holiday_overrides"] as? [[String: Any]] {
+                // `notify: false` rows exist server-side so a device can tell
+                // "turned it off" from "never set it"; only the true ones
+                // belong in the opted-in set.
+                let optedIn = Set(
+                    holidayRows.compactMap { row -> Int? in
+                        guard row["notify"] as? Bool == true else { return nil }
+                        return row["holiday_id"] as? Int
+                    }
+                )
+                AcademicCalendarStore.shared.applySyncedOverrides(optedIn)
+            }
+
             // Conflict resolution: detect reset + process tombstones
             let coursesResetAtStr = json["courses_reset_at"] as? String
             let coursesResetAt = coursesResetAtStr.flatMap { ISO8601DateFormatter().date(from: $0) }

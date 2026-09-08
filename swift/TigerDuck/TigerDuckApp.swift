@@ -136,6 +136,19 @@ struct TigerDuckApp: App {
                         // .active transition so rapid scene toggles do not
                         // interleave through cancelAllOwnedRequests()'s
                         // await suspension point and double the reschedule.
+                        // The school calendar, unconditionally: it is the
+                        // one backend call not gated on sign-in or cloud
+                        // sync, because suppressing class reminders on a
+                        // public holiday should not depend on either. A
+                        // change re-runs the surfaces that read it, since
+                        // the Live Activity and widgets may now be for a
+                        // day classes do not meet.
+                        Task {
+                            if await AcademicCalendarStore.shared.refresh() {
+                                await appState.refreshLiveActivity()
+                                widgetSnapshotWriter?.regenerate()
+                            }
+                        }
                         sceneRefreshTask?.cancel()
                         sceneRefreshTask = Task {
                             await appState.refreshLiveActivity()
@@ -323,6 +336,22 @@ struct TigerDuckApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
+                        // The school calendar, unconditionally: it is the
+                        // one backend call not gated on sign-in or cloud
+                        // sync, because suppressing class reminders on a
+                        // public holiday should not depend on either. A
+                        // change re-runs the surfaces that read it, since
+                        // the Live Activity and widgets may now be for a
+                        // day classes do not meet.
+                        // No Live Activity call here: the Mac has none —
+                        // `AppState+LiveActivity.swift` is not compiled for
+                        // macOS — so the widgets are the only surface a
+                        // calendar change can move.
+                        Task {
+                            if await AcademicCalendarStore.shared.refresh() {
+                                widgetSnapshotWriter?.regenerate()
+                            }
+                        }
                         sceneRefreshTask?.cancel()
                         sceneRefreshTask = Task {
                             appState.requestPushScheduleSync()

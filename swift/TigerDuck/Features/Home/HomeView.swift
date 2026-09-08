@@ -31,7 +31,7 @@ struct HomeView: View {
     /// `section.id`, never this array's indices.
     private var visibleSections: [HomeSection] {
         _ = termTicker.tick
-        guard !AppConstants.CurrentTerm.isInSession else { return viewModel.sections }
+        guard !AcademicCalendarStore.shared.calendar.isInSession() else { return viewModel.sections }
         return viewModel.sections.filter { $0.type != .todayCourses }
     }
 

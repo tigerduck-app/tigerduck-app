@@ -49,6 +49,15 @@ enum WidgetTimelineDerivation {
         let order = snapshot.periodOrder
         let todayKey = dateKey(for: date)
 
+        // Classes do not meet on a school holiday, so there is no "now" or
+        // "next" to show. The Today and Week grids render `snapshot.courses`
+        // directly and are untouched — the timetable itself stays useful on
+        // a day off.
+        //
+        // nil means a snapshot from a build that predates holidays; treat it
+        // as "no quiet days" rather than assuming silence.
+        if snapshot.quietDayKeys?.contains(todayKey) == true { return .noMoreClasses }
+
         // 1. Ongoing courses — only when `nowMin` falls inside a contiguous run
         // of scheduled periods. A course with non-adjacent slots (e.g. A and C
         // with B unscheduled) splits into two singleton runs, so the gap

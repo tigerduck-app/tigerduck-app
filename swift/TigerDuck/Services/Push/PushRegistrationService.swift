@@ -202,6 +202,11 @@ actor PushRegistrationService {
     /// reads enabled, and vice versa). Chaining instead lets every
     /// successfully-applied server change reach `Defaults`, and tap
     /// order is preserved because each task awaits its predecessor.
+    /// PUT one holiday exception so the user's other devices agree.
+    func uploadHolidayOverride(holidayID: Int, notify: Bool) async throws {
+        try await apiClient.putHolidayOverride(holidayID: holidayID, notify: notify)
+    }
+
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         let predecessor = optOutPatchChain
         let uuid = identity.uuid

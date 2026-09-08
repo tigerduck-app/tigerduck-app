@@ -136,6 +136,23 @@ nonisolated extension Defaults.Keys {
     static let syncAssignments = Key<Bool>("syncAssignments", default: true)
     static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
 
+    // MARK: Academic calendar
+    /// Decoded `AcademicCalendar` from the last successful fetch. Cached so
+    /// a cold launch with no network, and the widget extension, can still
+    /// answer "is today a holiday".
+    static let academicCalendarCache = Key<Data>("academicCalendarCache", default: Data())
+    /// ETag of that payload, so the launch-time refresh costs a 304 rather
+    /// than a full body when nothing changed.
+    static let academicCalendarETag = Key<String>("academicCalendarETag", default: "")
+    /// Holidays the user asked to keep receiving class reminders on.
+    ///
+    /// Written whether or not cloud sync is on — the holiday guard is not a
+    /// sync feature — and additionally uploaded when sync is enabled so a
+    /// user's devices agree. Ids rather than dates because an operator can
+    /// edit a holiday's range after the user opted in, and the opt-in should
+    /// follow the holiday.
+    static let holidayNotifyOverrides = Key<[Int]>("holidayNotifyOverrides", default: [])
+
     // MARK: Push server
     /// Default on as of the custom-push feature: every device registers
     /// once onboarding is complete, so operator-issued pushes can target it.

@@ -456,6 +456,27 @@ final class DataCache {
         try? FileManager.default.removeItem(at: bulletinDetails)
     }
 
+    /// Remove **every** file in both cache directories, user-scoped or not.
+    ///
+    /// `clearUserScopedData` deliberately keeps device-wide caches (name
+    /// abbreviations, the academic calendar, bulletin indexes) because a
+    /// logout is an account change, not a factory reset. The erase-everything
+    /// action is the opposite: whatever is left behind is exactly what makes
+    /// the "fresh install" it promises not actually fresh, so this takes the
+    /// directories wholesale rather than naming files — a named list silently
+    /// stops being complete the next time someone adds a cache.
+    func clearEverything() {
+        for dir in [cacheDir, persistentDir] {
+            let contents = (try? FileManager.default.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: nil
+            )) ?? []
+            for url in contents {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+
     /// Remove every `courses_<semester>.json` file. Used by the abbreviation
     /// pipeline migration to drop pre-fix entries whose `classroomMapJSON`
     /// may already be abbreviated and would no longer round-trip through the

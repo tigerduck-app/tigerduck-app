@@ -53,6 +53,11 @@ enum PushAPI {
 
     // MARK: - Device unregister (v3 uses DELETE /devices/{id}, no request body needed)
 
+    /// "Keep reminding me about classes on this holiday."
+    struct HolidayOverrideRequest: Encodable, Sendable {
+        let notify: Bool
+    }
+
     // MARK: - Device preferences (unchanged shape)
 
     struct DevicePreferencesRequest: Codable, Sendable {

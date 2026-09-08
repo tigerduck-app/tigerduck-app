@@ -252,6 +252,11 @@ struct MacCalendarView: View {
         case .school: return .orange
         case .exam: return .red
         case .system: return .gray
+        // Listed on the Mac, not actionable: macOS delivers no class
+        // reminders, so there is nothing for a "still remind me" toggle to
+        // turn on. The row still says the day is a holiday.
+        case .holiday: return .green
+        case .semester: return .indigo
         }
     }
 
@@ -264,6 +269,8 @@ struct MacCalendarView: View {
         // for now — fall back to school so we don't crash if a future
         // ingest path adds them.
         case .system: String(localized: "calendar_source_school")
+        case .holiday: String(localized: "calendar_source_holiday")
+        case .semester: String(localized: "calendar_source_semester")
         }
     }
 
@@ -366,6 +373,11 @@ private struct DayCell: View {
         case .school: return .orange
         case .exam: return .red
         case .system: return .gray
+        // Listed on the Mac, not actionable: macOS delivers no class
+        // reminders, so there is nothing for a "still remind me" toggle to
+        // turn on. The row still says the day is a holiday.
+        case .holiday: return .green
+        case .semester: return .indigo
         }
     }
 }
