@@ -232,19 +232,25 @@ struct ClassTableView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    /// Tracks the Calendar "Today" button, which is the same kind of
-    /// control one tab across and so the thing this should agree with.
+    /// Runtime-dependent, because the reference differs per OS.
     ///
-    /// Runtime-dependent because Today's height is not ours: it comes from
-    /// `GlassTextButtonModifier`, which is `.buttonStyle(.glass)` on iOS 26
-    /// and a padded `.bordered` below it. Those measure 28.33pt and 40.33pt
-    /// respectively, so a single constant matches one OS and visibly misses
-    /// the other — which is exactly what a hardcoded 28 did on iOS 18.
+    /// Below 26 this tracks the Calendar "Today" button, which renders
+    /// 40.33pt there — a padded `.bordered` from `GlassTextButtonModifier`.
+    /// Matching it is what keeps the two pages' header controls the same
+    /// size on that OS.
     ///
-    /// `HeaderControlMetricsTests` measures the real Today button at
-    /// runtime and compares, so it catches this on whichever OS it runs.
+    /// On 26 Today is only 28.33pt, because `.buttonStyle(.glass)` is a much
+    /// tighter control. Deliberately not matched: this capsule holds two icon
+    /// targets rather than one short word, and at Today's height the glass
+    /// read as a thin sliver behind the glyphs. 36pt is ~1.3x that, which
+    /// gives the pair enough glass to read as a control in its own right —
+    /// and lands close to the 40pt the pre-26 path already uses, so the two
+    /// OSes end up more alike than the underlying button styles are.
+    ///
+    /// `HeaderControlMetricsTests` measures both against the live Today
+    /// button, so it still catches Apple moving those metrics underneath us.
     private static var headerActionHeight: CGFloat {
-        if #available(iOS 26, *) { 28 } else { 40 }
+        if #available(iOS 26, *) { 36 } else { 40 }
     }
     /// Wider than it is tall: the extra width is what turns two adjacent
     /// cells into a capsule rather than a circle, and it is where the glyphs
