@@ -78,6 +78,7 @@ final class AcademicCalendarStore {
             if http.statusCode == 304 { return false }
             guard (200..<300).contains(http.statusCode) else {
                 logger.error("academic calendar HTTP \(http.statusCode, privacy: .public)")
+                APIVersionGate.shared.note(statusCode: http.statusCode)
                 return false
             }
             let dto = try JSONDecoder().decode(AcademicCalendarDTO.self, from: data)

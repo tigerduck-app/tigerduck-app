@@ -78,6 +78,7 @@ struct TigerDuckApp: App {
         WindowGroup {
             ContentView()
                 .id(rootLanguageId)
+                .updateRequiredAlert()
                 .tint(appState.accentColor)
                 .preferredColorScheme(.dark)
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
@@ -315,6 +316,7 @@ struct TigerDuckApp: App {
         Window("TigerDuck", id: "main") {
             MacRootView()
                 .id(rootLanguageId)
+                .updateRequiredAlert()
                 .environment(appState)
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
