@@ -424,6 +424,11 @@ final class AppState {
         didSet { Defaults[.showAbsoluteAssignmentTime] = showAbsoluteAssignmentTime }
     }
 
+    /// Keep periods A, B and C on the timetable even when empty.
+    var alwaysShowPeriodsABC: Bool = Defaults[.alwaysShowPeriodsABC] {
+        didSet { Defaults[.alwaysShowPeriodsABC] = alwaysShowPeriodsABC }
+    }
+
     /// Whether library-related features are enabled (requires explicit user consent)
     var libraryFeatureEnabled: Bool = Defaults[.libraryFeatureEnabled] {
         didSet { Defaults[.libraryFeatureEnabled] = libraryFeatureEnabled }

@@ -116,8 +116,13 @@ struct MacClassTableView: View {
 
     var visiblePeriods: [String] {
         let occupied = Set(courses.flatMap { $0.schedule.values.flatMap { $0 } })
+        let pinned = Defaults[.alwaysShowPeriodsABC]
+            ? Set(AppConstants.Periods.eveningOptional)
+            : []
         return AppConstants.Periods.chronologicalOrder.filter {
-            AppConstants.Periods.defaultVisible.contains($0) || occupied.contains($0)
+            AppConstants.Periods.defaultVisible.contains($0)
+                || pinned.contains($0)
+                || occupied.contains($0)
         }
     }
 

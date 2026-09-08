@@ -118,6 +118,7 @@ nonisolated enum AppConstants {
         static let browserPreference = "browserPreference"
         static let macMoodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
+        static let alwaysShowPeriodsABC = "alwaysShowPeriodsABC"
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"
@@ -215,6 +216,10 @@ nonisolated enum AppConstants {
     enum Periods {
         static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9"]
         static let extended = ["5", "10", "A", "B", "C", "D"]
+        /// The evening periods the Display toggle pins on. D is left out
+        /// deliberately: it ends at 22:00 and is rare enough that pinning
+        /// it would cost a row almost nobody needs.
+        static let eveningOptional = ["A", "B", "C"]
         /// Chronological order of all periods (for sorting)
         static let chronologicalOrder = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "B", "C", "D"]
         static var weekdays: [String] {
