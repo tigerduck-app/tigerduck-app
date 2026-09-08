@@ -1,4 +1,3 @@
-import Defaults
 import SwiftUI
 #if os(iOS)
 import UIKit
@@ -159,32 +158,11 @@ struct OtherSettingsView: View {
             isPresented: $showReassignColorsConfirm
         ) {
             Button(String(localized: "action_confirm"), role: .destructive) {
-                reassignAllCourseColors()
+                appState.reassignAllCourseColors()
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
             Text(String(localized: "settings_reset_course_colors_confirm_message"))
-        }
-    }
-
-    /// Rebuild every course's color assignment from scratch using the
-    /// unique-color algorithm, then broadcast so Home, Class Table, widgets,
-    /// and the Live Activity all pick up the new palette.
-    private func reassignAllCourseColors() {
-        let courses = CanonicalCourseProvider().currentCourses()
-        TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo))
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        if Defaults[.cloudSyncEnabled] {
-            let colorMap = TigerDuckTheme.snapshot()
-            for course in courses {
-                guard let moodleId = course.moodleIdNumber,
-                      let hex = colorMap[course.courseNo]
-                else { continue }
-                appState.syncCourseOverride(
-                    moodleCourseId: moodleId,
-                    colorHex: String(format: "#%06X", hex)
-                )
-            }
         }
     }
 }

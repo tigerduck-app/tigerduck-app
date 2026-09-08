@@ -1,13 +1,13 @@
 #if os(macOS)
 import SwiftUI
 
-/// Appearance tab — accent colour swatches and the light/dark preset.
-/// One of the six tabs assembled by `MacSettingsScene`.
+/// Appearance tab — accent colour swatches and the course palette.
+/// One of the tabs assembled by `MacSettingsScene`.
 struct MacAppearanceSettingsView: View {
     @Environment(AppState.self) private var appState
+    @State private var isConfirmingReassign = false
 
     var body: some View {
-        @Bindable var state = appState
         Form {
             Section(String(localized: "settings_accent_color")) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
@@ -18,13 +18,30 @@ struct MacAppearanceSettingsView: View {
                 .padding(.vertical, 4)
             }
 
-            Section(String(localized: "desktop_settings_section_schedule")) {
-                Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
+            // Course colours are assigned automatically and can drift into
+            // near-neighbours as courses come and go across semesters;
+            // this is the way back to a clean spread. Confirmed first —
+            // it discards every colour the user picked by hand.
+            Section {
+                Button(String(localized: "settings_reset_course_colors")) {
+                    isConfirmingReassign = true
+                }
             }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .alert(
+            String(localized: "settings_reset_course_colors_confirm_title"),
+            isPresented: $isConfirmingReassign
+        ) {
+            Button(String(localized: "action_confirm"), role: .destructive) {
+                appState.reassignAllCourseColors()
+            }
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "settings_reset_course_colors_confirm_message"))
+        }
     }
 
     private func accentSwatch(hex: Int) -> some View {
