@@ -9,53 +9,8 @@ import Foundation
 /// Extracted from `PushCoordinator` so non-push HTTP clients
 /// (e.g. `BulletinAPIClient`, which talks to the same backend for the
 /// bulletin board) can resolve the same URL/credentials without
-/// importing the iOS-only ActivityKit-coupled coordinator. The
-/// behaviour is identical to the previous `PushCoordinator.resolveXxx`
-/// surface — this is a pure move.
+/// importing the iOS-only ActivityKit-coupled coordinator.
 nonisolated enum PushServerConfig {
-    /// Public hosts a Debug override is allowed to target. Apex
-    /// (`api.tigerduck.app`) plus any `*.api.tigerduck.app` subdomain.
-    ///
-    /// WARNING: pointing a Debug build at the prod apex still creates an
-    /// apns_env mismatch — Debug binaries bake in
-    /// `PushAPNsEnv.resolvedForBuild = "development"`, and the production
-    /// APNs server rejects sandbox tokens. The bulletin / read-only API
-    /// clients don't care about apns_env, so the allowlist is widened
-    /// here for read-side testing; push registration on a prod-pointed
-    /// Debug build will fail at the server, but the app still launches
-    /// (see `PushCoordinator.assertEnvConsistency()`, which now accepts
-    /// any host this allowlist accepts so a saved Keychain override
-    /// can't brick the next launch).
-    ///
-    /// Everything else must resolve to loopback or an RFC1918 private
-    /// IPv4 (see ``isOverrideAllowed(_:)``). An attacker-supplied override
-    /// (via UserDefaults seeding from a compromised backup, MDM, or a
-    /// future dev panel) cannot point the app at an arbitrary public
-    /// server outside this list. Release builds bypass this gate entirely.
-    private static let publicHostExactAllowlist: Set<String> = [
-        "api.tigerduck.app",
-    ]
-    private static let publicHostSuffixAllowlist: [String] = [
-        ".api.tigerduck.app",
-    ]
-
-    /// Internal so `PushCoordinator.assertEnvConsistency()` can use the
-    /// same gate as the runtime override path — keeping the two in sync
-    /// avoids the trap where a host the resolver accepts at runtime then
-    /// crashes the next launch's assert.
-    static func isAllowedPublicHost(_ host: String) -> Bool {
-        // DNS is case-insensitive; `URL.host` preserves whatever case the
-        // user typed, so normalize before matching to avoid rejecting
-        // legitimate input like `API.tigerduck.app`.
-        let normalized = host.lowercased()
-        if publicHostExactAllowlist.contains(normalized) { return true }
-        return publicHostSuffixAllowlist.contains { suffix in
-            // host must be longer than the suffix so we don't double-count
-            // the apex (e.g. ".api.tigerduck.app" as suffix shouldn't match
-            // "api.tigerduck.app" on its own — exact list handles that).
-            normalized.count > suffix.count && normalized.hasSuffix(suffix)
-        }
-    }
 
     /// Resolves the backend URL for this build.
     ///
@@ -95,24 +50,37 @@ nonisolated enum PushServerConfig {
 
     /// Whether `url` may be used as a runtime override.
     ///
-    /// Public hosts are matched against ``isAllowedPublicHost(_:)`` (apex
-    /// + `*.api.tigerduck.app`) and must speak HTTPS. Debug builds also
-    /// accept loopback and RFC1918 private IPv4 literals over `http://`
-    /// for LAN backends. Release builds do not: the override lives in the
-    /// Keychain, which survives swapping a Debug build for the App Store
-    /// one on the same device, and a developer's `192.168.x.x` must not
-    /// follow them into production.
+    /// TigerDuck's backend is open source and self-hostable, so the host is
+    /// deliberately **not** restricted to an allowlist — anyone may point
+    /// the app at their own deployment. What is enforced is transport:
+    ///
+    /// - **Private / loopback / link-local addresses** (see
+    ///   ``isPrivateOrLoopbackHost(_:)``) accept `http://` as well as
+    ///   `https://`. A backend on your own LAN or in the Simulator
+    ///   typically terminates no TLS, and the traffic never leaves the
+    ///   local link, so requiring a certificate there would block the
+    ///   common self-hosting case for no real gain.
+    /// - **Everything else** — public IP literals *and* hostnames — must
+    ///   speak `https://`. These requests carry a Bearer token
+    ///   (`AuthTokenManager`), and cleartext to a routable address puts it
+    ///   on the wire for anyone on the path.
+    ///
+    /// Note the deliberate tradeoff this replaced: the previous
+    /// `*.api.tigerduck.app` allowlist also meant a Keychain value seeded
+    /// by a restored backup or MDM could not redirect the app anywhere
+    /// interesting. That mitigation is gone by design — self-hosting
+    /// requires it — and the remaining defence is the HTTPS floor plus the
+    /// fact that ``DebugEndpointStore/setOverride(_:)`` only writes an
+    /// endpoint that answered a TigerDuck health probe.
     static func isOverrideAllowed(_ url: URL) -> Bool {
-        guard let host = url.host?.lowercased() else { return false }
-        if isAllowedPublicHost(host) {
-            return url.scheme == "https"
-        }
-        #if DEBUG
-        if host == "localhost" || host == "127.0.0.1" || isPrivateIPv4(host) {
-            return url.scheme == "http" || url.scheme == "https"
-        }
-        #endif
-        return false
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host?.lowercased(),
+              !host.isEmpty
+        else { return false }
+        if let port = url.port, !(1...65535).contains(port) { return false }
+        if isPrivateOrLoopbackHost(host) { return true }
+        return scheme == "https"
     }
 
     /// Normalizes a candidate override URL so the most common typo —
@@ -120,13 +88,13 @@ nonisolated enum PushServerConfig {
     /// doesn't terminate TLS — resolves to a working `http://` URL instead
     /// of failing at handshake time with `WRONG_VERSION_NUMBER`.
     ///
-    /// Only loopback and RFC1918 private IPv4 hosts are rewritten. Public
-    /// hosts (e.g. `staging.api.tigerduck.app`) are returned unchanged so
-    /// the allowlist's HTTPS requirement still bites.
+    /// Only private / loopback / link-local hosts are rewritten. Public
+    /// hosts are returned unchanged so ``isOverrideAllowed(_:)``'s HTTPS
+    /// requirement still bites.
     static func normalize(_ url: URL) -> URL {
-        guard url.scheme == "https",
+        guard url.scheme?.lowercased() == "https",
               let host = url.host?.lowercased(),
-              host == "localhost" || host == "127.0.0.1" || isPrivateIPv4(host),
+              isPrivateOrLoopbackHost(host),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         else { return url }
         components.scheme = "http"
@@ -146,30 +114,116 @@ nonisolated enum PushServerConfig {
         return url
     }
 
-    /// True if `host` parses as an RFC1918 private IPv4 literal
-    /// (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16). Hostnames, IPv6
-    /// literals, and malformed input return false.
+    // MARK: - Host classification
+
+    /// True when `host` is an address that cannot be routed off the local
+    /// network, and so may be talked to over plain HTTP.
+    ///
+    /// Covers `localhost` (and RFC 6761's `*.localhost`), IPv4 loopback /
+    /// RFC1918 / link-local, and the IPv6 equivalents — loopback `::1`,
+    /// unique-local `fc00::/7`, link-local `fe80::/10`, plus IPv4-mapped
+    /// forms like `::ffff:192.168.1.5`, which resolve to an IPv4 address
+    /// and must be classified by that address rather than waved through.
+    ///
+    /// Deliberately excluded: `100.64.0.0/10` (CGNAT) is routable by the
+    /// carrier, and `*.local` mDNS names, which are link-local in practice
+    /// but are names rather than the IP ranges this gate is specified in
+    /// terms of. A backend reached by an mDNS name therefore needs HTTPS.
+    static func isPrivateOrLoopbackHost(_ host: String) -> Bool {
+        let normalized = host.lowercased()
+        if normalized == "localhost" || normalized.hasSuffix(".localhost") { return true }
+        // `URL.host` strips the brackets from `[::1]`, but callers that
+        // hand us a raw authority string may not have.
+        let bare = normalized.hasPrefix("[") && normalized.hasSuffix("]")
+            ? String(normalized.dropFirst().dropLast())
+            : normalized
+        if let octets = parseIPv4(bare) { return isPrivateIPv4(octets: octets) }
+        if bare.contains(":") { return isPrivateIPv6(bare) }
+        return false
+    }
+
+    /// True if `host` parses as a private IPv4 literal — RFC1918
+    /// (10/8, 172.16/12, 192.168/16), loopback (127/8), or link-local
+    /// (169.254/16). Hostnames, IPv6 literals, and malformed input
+    /// return false.
     static func isPrivateIPv4(_ host: String) -> Bool {
-        let parts = host.split(separator: ".")
-        guard parts.count == 4 else { return false }
-        let octets = parts.compactMap { Int($0) }
-        guard octets.count == 4, octets.allSatisfy({ (0...255).contains($0) }) else { return false }
+        guard let octets = parseIPv4(host) else { return false }
+        return isPrivateIPv4(octets: octets)
+    }
+
+    private static func isPrivateIPv4(octets: [Int]) -> Bool {
         switch (octets[0], octets[1]) {
         case (10, _): return true
+        case (127, _): return true
         case (172, 16...31): return true
         case (192, 168): return true
+        case (169, 254): return true
         default: return false
         }
     }
+
+    /// Strict dotted-quad parse: exactly four decimal octets in 0...255
+    /// with no leading zeros. Leading zeros are rejected because some
+    /// resolvers read `0192.168.1.5` as octal, which would let a crafted
+    /// literal read as private here and resolve somewhere else entirely.
+    private static func parseIPv4(_ host: String) -> [Int]? {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return nil }
+        var octets: [Int] = []
+        for part in parts {
+            guard let value = Int(part), String(value) == part, (0...255).contains(value) else {
+                return nil
+            }
+            octets.append(value)
+        }
+        return octets
+    }
+
+    /// Classifies an IPv6 literal. Handles the `::` compressed form and
+    /// the IPv4-mapped/`::ffff:` tail by delegating the embedded dotted
+    /// quad to the IPv4 rules.
+    private static func isPrivateIPv6(_ host: String) -> Bool {
+        // Drop any zone id (`fe80::1%en0`) before parsing.
+        let withoutZone = host.split(separator: "%", maxSplits: 1).first.map(String.init) ?? host
+        guard let bytes = parseIPv6(withoutZone), bytes.count == 16 else { return false }
+
+        // ::1 — loopback.
+        if bytes.dropLast().allSatisfy({ $0 == 0 }) && bytes[15] == 1 { return true }
+        // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d):
+        // judge by the embedded IPv4 address, not by the v6 wrapper.
+        let firstTen = bytes.prefix(10)
+        if firstTen.allSatisfy({ $0 == 0 }) {
+            let isMapped = bytes[10] == 0xff && bytes[11] == 0xff
+            let isCompatible = bytes[10] == 0 && bytes[11] == 0
+            if isMapped || isCompatible {
+                return isPrivateIPv4(octets: [Int(bytes[12]), Int(bytes[13]), Int(bytes[14]), Int(bytes[15])])
+            }
+        }
+        // fc00::/7 — unique local.
+        if bytes[0] & 0xfe == 0xfc { return true }
+        // fe80::/10 — link local.
+        if bytes[0] == 0xfe && bytes[1] & 0xc0 == 0x80 { return true }
+        return false
+    }
+
+    /// Parses an IPv6 literal into 16 bytes via the system resolver, which
+    /// is the same parser URLSession will use — hand-rolling the `::`
+    /// expansion risks classifying an address differently from the stack
+    /// that actually dials it.
+    private static func parseIPv6(_ host: String) -> [UInt8]? {
+        var address = in6_addr()
+        guard host.withCString({ inet_pton(AF_INET6, $0, &address) }) == 1 else { return nil }
+        return withUnsafeBytes(of: &address) { Array($0) }
+    }
+
+    // MARK: - Secrets.plist
 
     #if DEBUG
     /// Reads `Secrets.plist["DebugServerURL"]` and runs it through the same
     /// gate as the UserDefaults override path. Mis-filled or template values
     /// (e.g. the literal `http://192.168.X.X:40000/v3` from
     /// `Secrets.example.plist`) return nil so the resolver falls back to
-    /// `localhost:40000` instead of returning an unreachable URL that would
-    /// either trip `PushCoordinator.assertEnvConsistency()` at launch or, with
-    /// assertions disabled, silently let the app talk to an arbitrary host.
+    /// `localhost:40000` instead of returning an unreachable URL.
     private static func readDebugServerURL() -> URL? {
         guard let dict = secretsPlistDict(),
               let raw = dict["DebugServerURL"] as? String,

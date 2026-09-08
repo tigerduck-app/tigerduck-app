@@ -13,6 +13,9 @@ struct OnboardingView: View {
     @State private var syncEnabled = true
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @State private var notificationRequestInFlight = false
+    /// Presents the API-endpoint editor from the sign-in page, for
+    /// users pointing the app at their own backend deployment.
+    @State private var showEndpointSheet = false
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focusedField: Field?
 
@@ -405,6 +408,16 @@ struct OnboardingView: View {
             },
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    // Above "Skip" on purpose: someone running their own
+                    // backend has to point the app at it *before* signing
+                    // in, because the sign-in round-trip is one of the
+                    // calls that goes to it.
+                    Button(String(localized: "onboarding_custom_endpoint_button")) {
+                        showEndpointSheet = true
+                    }
+                    .font(.callout)
+                    .foregroundStyle(.tint)
+
                     Button(String(localized: "onboarding_skip_for_now")) {
                         withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue }
                     }
@@ -427,6 +440,16 @@ struct OnboardingView: View {
                 }
             }
         )
+        .sheet(isPresented: $showEndpointSheet) {
+            NavigationStack {
+                DebugEndpointView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(String(localized: "action_done")) { showEndpointSheet = false }
+                        }
+                    }
+            }
+        }
     }
 
     private func submitLogin() {

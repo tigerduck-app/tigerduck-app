@@ -85,9 +85,7 @@ struct MacDeveloperSettingsView: View {
                     .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
             } header: {
-                Text("Effective endpoint")
-            } footer: {
-                Text("Resolved by PushServerConfig — Keychain override → UserDefaults override → Secrets.plist → localhost fallback.")
+                Text(String(localized: "settings_api_endpoint_effective_title"))
             }
 
             // Surface a previously-saved override that no longer passes
@@ -103,9 +101,9 @@ struct MacDeveloperSettingsView: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 } header: {
-                    Text("Stored override no longer accepted")
+                    Text(String(localized: "settings_api_endpoint_stale_title"))
                 } footer: {
-                    Text("The allowlist tightened since this value was saved, so it's being ignored and the resolver is using the next priority. Save a new value or clear the override.")
+                    Text(String(localized: "settings_api_endpoint_stale_description"))
                         .foregroundStyle(.orange)
                 }
             }
@@ -117,32 +115,51 @@ struct MacDeveloperSettingsView: View {
                 // label that eats horizontal space and pushes the input
                 // into a sliver. Putting the hint on its own row keeps
                 // the input field full-width and easier to paste into.
-                Text(verbatim: "http://192.168.X.X:40000/v2")
+                Text(verbatim: String(localized: "settings_api_endpoint_placeholder"))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
-                TextField("", text: $endpointVM.draft, prompt: Text(verbatim: "http://192.168.X.X:40000/v2"))
+                TextField(
+                    "",
+                    text: $endpointVM.draft,
+                    prompt: Text(verbatim: String(localized: "settings_api_endpoint_placeholder"))
+                )
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.body, design: .monospaced))
                     .autocorrectionDisabled()
                     .labelsHidden()
+                    .disabled(endpointVM.isChecking)
 
                 if let error = endpointVM.validationError {
                     Text(error)
                         .font(.footnote)
                         .foregroundStyle(.red)
+                } else if let note = endpointVM.statusNote {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 HStack {
-                    Button("Save") { endpointVM.save() }
-                        .disabled(endpointVM.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button {
+                        Task { await endpointVM.save() }
+                    } label: {
+                        if endpointVM.isChecking {
+                            Text(String(localized: "settings_api_endpoint_checking"))
+                        } else {
+                            Text(String(localized: "action_save"))
+                        }
+                    }
+                    .disabled(endpointVM.isChecking || endpointVM.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Spacer()
-                    Button("Clear override", role: .destructive) { endpointVM.clear() }
-                        .disabled(endpointVM.storedOverride == nil)
+                    Button(String(localized: "settings_api_endpoint_reset_action"), role: .destructive) {
+                        endpointVM.resetToDefault()
+                    }
+                    .disabled(endpointVM.isChecking || endpointVM.storedOverride == nil)
                 }
             } header: {
-                Text("Override (Keychain — survives reinstall)")
+                Text(String(localized: "settings_api_endpoint_change_title"))
             } footer: {
-                Text("Allowed: api.tigerduck.app (apex + any subdomain) over HTTPS, loopback, or any RFC1918 IPv4. Pointing a Debug build at the prod apex breaks push (apns_env mismatch — sandbox tokens get rejected at registration), but read-side API surfaces still work for testing.")
+                Text(String(localized: "settings_api_endpoint_https_note"))
             }
         }
         .formStyle(.grouped)

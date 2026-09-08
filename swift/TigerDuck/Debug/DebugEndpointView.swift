@@ -1,15 +1,18 @@
 import Observation
 import SwiftUI
 
-/// Screen for picking which backend the app talks to. Survives uninstall
-/// because the value lives in Keychain (`DebugEndpointStore`). All writes
-/// go through `PushServerConfig.isOverrideAllowed`, so values that fail
-/// the gate (non-allowlisted public hosts, non-RFC1918 IPs, etc.) get
-/// rejected with an inline error instead of silently saved.
+/// Screen for picking which backend the app talks to.
 ///
-/// Reached from Settings → Other settings on iPhone (every build) and the
-/// macOS Settings → Developer tab, so it lives in its own file — the rest
-/// of `DebugSettingsView.swift` stays iPhone-only and DEBUG-only.
+/// The backend is open source and self-hostable, so this is a supported
+/// user-facing setting rather than a developer hatch: any host is accepted,
+/// subject to ``PushServerConfig/isOverrideAllowed(_:)``'s transport rule
+/// (HTTPS unless the address is private/loopback) and to
+/// ``EndpointHealthCheck`` finding a TigerDuck backend actually answering.
+///
+/// Reached from Settings → Other settings on iPhone (every build), from
+/// onboarding's sign-in page, and from the macOS Settings → Developer tab,
+/// so it lives in its own file — the rest of `DebugSettingsView.swift`
+/// stays iPhone-only and DEBUG-only.
 struct DebugEndpointView: View {
     @State private var viewModel = DebugEndpointViewModel()
     #if os(iOS)
@@ -23,9 +26,7 @@ struct DebugEndpointView: View {
                     .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
             } header: {
-                Text("Effective endpoint")
-            } footer: {
-                Text("Resolved by PushServerConfig — Keychain override → UserDefaults override → Secrets.plist → localhost fallback.")
+                Text(String(localized: "settings_api_endpoint_effective_title"))
             }
 
             if let stale = viewModel.staleOverride {
@@ -34,9 +35,9 @@ struct DebugEndpointView: View {
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                 } header: {
-                    Text("Stored override no longer accepted")
+                    Text(String(localized: "settings_api_endpoint_stale_title"))
                 } footer: {
-                    Text("The allowlist tightened since this value was saved, so it's being ignored and the resolver is using the next priority. Save a new value or clear the override.")
+                    Text(String(localized: "settings_api_endpoint_stale_description"))
                         .foregroundStyle(.orange)
                 }
             }
@@ -48,29 +49,49 @@ struct DebugEndpointView: View {
                     Text(error)
                         .font(.footnote)
                         .foregroundStyle(.red)
+                } else if let note = viewModel.statusNote {
+                    Text(note)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 HStack {
-                    Button("Save") {
+                    Button {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        viewModel.save()
+                        Task { await viewModel.save() }
+                    } label: {
+                        if viewModel.isChecking {
+                            // The label swap keeps the row from resizing
+                            // mid-probe, and names what the wait is for —
+                            // a bare spinner on "Save" reads as a hang
+                            // when the address is simply unreachable and
+                            // we are sitting out the 10 s timeout.
+                            HStack(spacing: TigerDuckTheme.Spacing.sm) {
+                                ProgressView()
+                                Text(String(localized: "settings_api_endpoint_checking"))
+                            }
+                        } else {
+                            Text(String(localized: "action_save"))
+                        }
                     }
-                    .disabled(viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(viewModel.isChecking || viewModel.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
                     Spacer()
-                    Button("Clear override", role: .destructive) {
+
+                    Button(String(localized: "settings_api_endpoint_reset_action"), role: .destructive) {
                         #if os(iOS)
                         fieldFocused = false
                         #endif
-                        viewModel.clear()
+                        viewModel.resetToDefault()
                     }
-                    .disabled(viewModel.storedOverride == nil)
+                    .disabled(viewModel.isChecking || viewModel.storedOverride == nil)
                 }
             } header: {
-                Text("Override (Keychain — survives reinstall)")
+                Text(String(localized: "settings_api_endpoint_change_title"))
             } footer: {
-                Text("Allowed: `https://api.tigerduck.app/...` (apex or any subdomain). Debug builds also accept loopback or any RFC1918 private IPv4 (10.x, 172.16–31.x, 192.168.x); a LAN dev backend speaks plain HTTP, so `https://192.168.X.X:…` is auto-rewritten to `http://` at save time. Pointing a Debug build at the prod apex breaks push (apns_env mismatch — sandbox tokens get rejected at registration), but read-only API surfaces (bulletin, etc.) work for testing.")
+                Text(String(localized: "settings_api_endpoint_https_note"))
             }
         }
         .navigationTitle(String(localized: "settings_api_endpoint"))
@@ -81,18 +102,21 @@ struct DebugEndpointView: View {
 
     @ViewBuilder
     private var textField: some View {
+        let placeholder = String(localized: "settings_api_endpoint_placeholder")
         #if os(iOS)
-        TextField("http://192.168.X.X:40000/v2", text: $viewModel.draft)
+        TextField(placeholder, text: $viewModel.draft)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .keyboardType(.URL)
             .font(.system(.body, design: .monospaced))
             .focused($fieldFocused)
+            .disabled(viewModel.isChecking)
         #else
-        TextField("http://192.168.X.X:40000/v2", text: $viewModel.draft)
+        TextField(placeholder, text: $viewModel.draft)
             .textFieldStyle(.roundedBorder)
             .autocorrectionDisabled()
             .font(.system(.body, design: .monospaced))
+            .disabled(viewModel.isChecking)
         #endif
     }
 }
@@ -104,7 +128,12 @@ final class DebugEndpointViewModel {
     private(set) var storedOverride: String?
     private(set) var staleOverride: String?
     private(set) var validationError: String?
+    private(set) var statusNote: String?
     private(set) var effectiveURL: String
+    /// True while the health probe is in flight. Disables both buttons —
+    /// a second Save landing mid-probe would race two writes to the same
+    /// Keychain key with no ordering guarantee.
+    private(set) var isChecking = false
 
     init() {
         let current = DebugEndpointStore.currentOverride()
@@ -115,29 +144,50 @@ final class DebugEndpointViewModel {
         self.effectiveURL = PushServerConfig.resolveServerURL().absoluteString
     }
 
-    func save() {
-        switch DebugEndpointStore.setOverride(draft) {
+    func save() async {
+        guard !isChecking else { return }
+        isChecking = true
+        validationError = nil
+        statusNote = nil
+        defer { isChecking = false }
+
+        let submitted = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch await DebugEndpointStore.setOverride(submitted) {
         case .success:
-            validationError = nil
             storedOverride = DebugEndpointStore.currentOverride()
             staleOverride = DebugEndpointStore.storedButRejectedOverride()
             if let stored = storedOverride { draft = stored }
             effectiveURL = PushServerConfig.resolveServerURL().absoluteString
+            // Say so when we quietly downgraded the scheme, rather than
+            // letting the field silently disagree with what was typed.
+            let rewritten = submitted.lowercased().hasPrefix("https://")
+                && (storedOverride?.lowercased().hasPrefix("http://") ?? false)
+            statusNote = rewritten
+                ? String(localized: "settings_api_endpoint_saved_rewritten")
+                : String(localized: "settings_api_endpoint_saved")
         case .malformed:
-            validationError = "URL is malformed — expected something like `http://192.168.X.X:40000/v2` or `https://staging.api.tigerduck.app/v2`."
-        case .rejected:
-            validationError = "Rejected by allowlist. Only `*.api.tigerduck.app` (apex + subdomains) over HTTPS is accepted; Debug builds also take loopback and RFC1918 (10.x / 172.16–31.x / 192.168.x)."
+            validationError = String(localized: "settings_api_endpoint_error_malformed")
+        case .insecure:
+            validationError = String(localized: "settings_api_endpoint_error_insecure")
+        case .unreachable(let detail):
+            validationError = String(
+                format: String(localized: "settings_api_endpoint_error_unreachable"),
+                detail
+            )
+        case .notTigerDuck:
+            validationError = String(localized: "settings_api_endpoint_error_not_backend")
         case .keychainWriteFailed:
-            validationError = "Keychain write failed — the URL passed validation but couldn't be persisted. Try again; if it keeps failing, the device may be locked or out of secure storage."
+            validationError = String(localized: "settings_api_endpoint_error_save_failed")
         }
     }
 
-    func clear() {
+    func resetToDefault() {
         DebugEndpointStore.clearOverride()
         storedOverride = nil
         staleOverride = nil
         draft = ""
         validationError = nil
         effectiveURL = PushServerConfig.resolveServerURL().absoluteString
+        statusNote = String(localized: "settings_api_endpoint_reset_done")
     }
 }
