@@ -143,7 +143,9 @@ struct FluidGlassTrackView: View {
         guard policy.timeSliderUsesCourseColoredThumb else {
             return .white
         }
-        if case .inClass(let slot) = viewModel.currentCourseState {
+        // 衝堂 leaves the thumb one colour to glow: the first concurrent
+        // course, the same one the leftmost card shows.
+        if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first {
             return slot.course.color
         }
         return .white

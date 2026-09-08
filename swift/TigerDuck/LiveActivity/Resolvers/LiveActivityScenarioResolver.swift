@@ -15,8 +15,10 @@ import Foundation
 /// Tie-breakers:
 /// - assignmentUrgent: earliest due date
 /// - classPreparing:   soonest start
-/// - inClass:          earliest start (handled implicitly since we keep the
-///                     first matching slot in the sorted timeline)
+/// - inClass:          earliest start — the resolver hands back every
+///                     concurrent (衝堂) slot in timeline order, and one
+///                     activity can only show one class, so we take the
+///                     first
 struct LiveActivityScenarioResolver {
     let timelineResolver: CourseTimelineResolver
 
@@ -62,7 +64,8 @@ struct LiveActivityScenarioResolver {
 
         if !classesQuiet,
            preferences.showInClassScenario,
-           case .inClass(let slot) = timelineResolver.nonSkippedState(at: now, in: timeline) {
+           case .inClass(let slots) = timelineResolver.nonSkippedState(at: now, in: timeline),
+           let slot = slots.first {
             return Self.inClassSnapshot(slot: slot, now: now, accentHex: accentHex)
         }
 

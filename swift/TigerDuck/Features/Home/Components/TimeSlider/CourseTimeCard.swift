@@ -15,8 +15,16 @@ struct CourseTimeCard: View {
         // the slider between states with mildly different content heights.
         EqualHeightHStack(alignment: .top, spacing: 8) {
             switch state {
-            case .inClass(let slot):
-                cardContent(slot: slot, opacity: 1.0)
+            case .inClass(let slots):
+                // 衝堂: one card per concurrent slot, sharing the width the
+                // way `.between`'s pair does, so both courses are visible
+                // and each opens its own room and assignments. A single
+                // slot keeps its natural width — the common case must not
+                // start laying itself out like the overlap.
+                ForEach(slots) { slot in
+                    cardContent(slot: slot, opacity: 1.0)
+                        .frame(maxWidth: slots.count > 1 ? .infinity : nil)
+                }
             case .between(let prev, let next):
                 if let prev {
                     cardContent(slot: prev, opacity: 0.5)

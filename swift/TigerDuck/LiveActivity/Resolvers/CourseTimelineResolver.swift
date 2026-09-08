@@ -30,8 +30,9 @@ struct CourseTimelineResolver {
     /// `endIfStillExpired`'s +1s slack briefly hand the previous
     /// activity to the resolver after the next class had already begun.
     func state(at time: Date, in timeline: [CourseTimeSlot]) -> CourseState {
-        for slot in timeline where time >= slot.start && time < slot.end {
-            return .inClass(slot)
+        let active = timeline.filter { time >= $0.start && time < $0.end }
+        if !active.isEmpty {
+            return .inClass(active)
         }
         let previous = timeline.last { $0.end <= time }
         let next = timeline.first { $0.start > time }

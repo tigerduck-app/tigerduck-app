@@ -163,10 +163,13 @@ final class TimeSliderViewModel {
     // MARK: - Course State Resolution
 
     func courseState(at time: Date) -> CourseState {
-        for slot in timeSlots {
-            if time >= slot.start && time <= slot.end {
-                return .inClass(slot)
-            }
+        // Every slot containing `time`, not just the first to match: 衝堂
+        // puts two courses on one period and both belong on screen, each
+        // tappable for its own room and assignments. `timeSlots` is sorted
+        // by start, so the cards come out in timeline order.
+        let active = timeSlots.filter { time >= $0.start && time <= $0.end }
+        if !active.isEmpty {
+            return .inClass(active)
         }
         let previous = timeSlots.last { $0.end <= time }
         let next = timeSlots.first { $0.start > time }
