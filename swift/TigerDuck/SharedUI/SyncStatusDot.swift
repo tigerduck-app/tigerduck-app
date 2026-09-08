@@ -75,22 +75,15 @@ struct SyncStatusDot: View {
 
     private var isSignedIn: Bool { appState?.authService.hasStoredCredentials ?? false }
 
-    /// A source that cannot run — no NTUST account, or cloud sync switched
-    /// off — reports grey / "Off" rather than whatever the tracker happens
-    /// to be holding.
+    /// Cloud sync switched off: the row reads grey / "Off" rather than
+    /// whatever the tracker happens to be holding.
     ///
-    /// Signed out, this used to read green two different ways. The tracker
-    /// is process-wide and nothing ever reset it, so a status set before
-    /// logout simply stayed put; and the backend sync gates on a refresh
-    /// token, which outlives an uninstall in the keychain, so a fresh
-    /// install could genuinely sync and light up with no account on screen.
-    /// Both claim a sync that, from where the user is standing, has not
-    /// happened — hence reading the precondition rather than the tracker.
+    /// Reading the setting rather than the tracker is what keeps the row
+    /// honest — the tracker is process-wide, so the OK from the last sync
+    /// before the switch went off would otherwise sit there green. The
+    /// signed-out case never reaches here; `body` draws nothing at all.
     private func isOff(_ server: ServerKind) -> Bool {
-        switch server {
-        case .moodle, .courseSelection: !isSignedIn
-        case .backend: !isSignedIn || !Defaults[.cloudSyncEnabled]
-        }
+        server == .backend && !Defaults[.cloudSyncEnabled]
     }
 
     private var sources: [Source] {
@@ -140,7 +133,24 @@ struct SyncStatusDot: View {
         return nil
     }
 
+    /// Signed out there is nothing syncing and nothing to report, so the
+    /// header carries no mark at all rather than a grey one that has to
+    /// explain itself. On the pages that need an account the content
+    /// already says so in full, and the one page that works signed out
+    /// (bulletins are public) never had a status worth reading there.
+    ///
+    /// Only `.servers` is account-gated. A `.single` source is page-local
+    /// and tracks something the page signed into itself, like the library.
+    @ViewBuilder
     var body: some View {
+        if case .servers = mode, !isSignedIn {
+            EmptyView()
+        } else {
+            dot
+        }
+    }
+
+    private var dot: some View {
         Button {
             showDetails = true
         } label: {
