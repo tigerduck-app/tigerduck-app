@@ -232,11 +232,20 @@ struct ClassTableView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    /// Matches `SyncStatusDot`'s own 28pt mark, and the Calendar "Today"
-    /// button, which measures 28.33pt on iOS 26 — so the three controls in
-    /// this row sit on one line instead of stepping up in size toward the
-    /// edge of the screen. Pinned by `HeaderControlMetricsTests`.
-    private static let headerActionHeight: CGFloat = 28
+    /// Tracks the Calendar "Today" button, which is the same kind of
+    /// control one tab across and so the thing this should agree with.
+    ///
+    /// Runtime-dependent because Today's height is not ours: it comes from
+    /// `GlassTextButtonModifier`, which is `.buttonStyle(.glass)` on iOS 26
+    /// and a padded `.bordered` below it. Those measure 28.33pt and 40.33pt
+    /// respectively, so a single constant matches one OS and visibly misses
+    /// the other — which is exactly what a hardcoded 28 did on iOS 18.
+    ///
+    /// `HeaderControlMetricsTests` measures the real Today button at
+    /// runtime and compares, so it catches this on whichever OS it runs.
+    private static var headerActionHeight: CGFloat {
+        if #available(iOS 26, *) { 28 } else { 40 }
+    }
     /// Wider than it is tall: the extra width is what turns two adjacent
     /// cells into a capsule rather than a circle, and it is where the glyphs
     /// get their breathing room now that the height is pinned.
@@ -276,7 +285,11 @@ struct ClassTableView: View {
         if #available(iOS 26, *) {
             row.glassEffect(.regular.interactive(), in: .capsule)
         } else {
-            row
+            // Below 26 there is no glass to supply a backing, and a bare
+            // pair of glyphs beside Today's filled pill reads as unfinished
+            // rather than as the same class of control. `.secondarySystemFill`
+            // is what `.bordered` — Today's own pre-26 style — fills with.
+            row.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
         }
     }
 
