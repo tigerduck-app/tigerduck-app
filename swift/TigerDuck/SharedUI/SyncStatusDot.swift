@@ -227,7 +227,7 @@ struct SyncStatusDot: View {
     }
 }
 
-/// The dot's own Liquid Glass circle.
+/// The dot's own Liquid Glass circle, on iOS.
 ///
 /// It is a real button — it opens the per-source popover — so on iOS 26 it
 /// should look like one. Giving it a circle of its own rather than letting a
@@ -237,18 +237,25 @@ struct SyncStatusDot: View {
 /// spans neighbouring items and stays put while the dot fades on idle,
 /// leaving an empty pill behind.
 ///
+/// macOS is excluded: there the dot sits in a control group alongside the
+/// reload button, which already supplies a backing.
+///
 /// The glass is inside the button's `opacity`, so the whole affordance
 /// recedes together on idle instead of a solid circle outliving the mark
 /// inside it.
 private struct GlassDotCircleModifier: ViewModifier {
     func body(content: Content) -> some View {
-        // macOS is named explicitly rather than left to `*`: this file is
-        // shared, and the Mac target still deploys below 26, so the wildcard
-        // would let a macOS 15 build reach an API it does not have.
-        if #available(iOS 26, macOS 26, *) {
+        // iOS only. On macOS the dot already sits inside a control group
+        // with the reload button, which supplies its own backing — adding a
+        // circle here would draw glass on top of glass.
+        #if os(iOS)
+        if #available(iOS 26, *) {
             content.glassEffect(.regular.interactive(), in: .circle)
         } else {
             content
         }
+        #else
+        content
+        #endif
     }
 }
