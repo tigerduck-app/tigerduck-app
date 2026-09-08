@@ -41,6 +41,9 @@ struct SyncStatusDot: View {
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Optional so the dot still renders in a preview with no `AppState`
+    /// injected, where "signed out" is the conservative read.
+    @Environment(AppState.self) private var appState: AppState?
     @State private var showDetails = false
     @State private var spinning = false
     @State private var dimmed = false
@@ -70,14 +73,38 @@ struct SyncStatusDot: View {
         }
     }
 
+    private var isSignedIn: Bool { appState?.authService.hasStoredCredentials ?? false }
+
+    /// A source that cannot run — no NTUST account, or cloud sync switched
+    /// off — reports grey / "Off" rather than whatever the tracker happens
+    /// to be holding.
+    ///
+    /// Signed out, this used to read green two different ways. The tracker
+    /// is process-wide and nothing ever reset it, so a status set before
+    /// logout simply stayed put; and the backend sync gates on a refresh
+    /// token, which outlives an uninstall in the keychain, so a fresh
+    /// install could genuinely sync and light up with no account on screen.
+    /// Both claim a sync that, from where the user is standing, has not
+    /// happened — hence reading the precondition rather than the tracker.
+    private func isOff(_ server: ServerKind) -> Bool {
+        switch server {
+        case .moodle, .courseSelection: !isSignedIn
+        case .backend: !isSignedIn || !Defaults[.cloudSyncEnabled]
+        }
+    }
+
     private var sources: [Source] {
         switch mode {
         case .servers(let servers):
             servers.map { server in
-                let status = tracker.status(for: server)
+                let off = isOff(server)
+                let status = off ? ServerStatus.unknown : tracker.status(for: server)
                 return Source(
                     id: server.id, icon: server.icon, name: Self.serverName(server),
-                    status: status, text: Self.statusText(server: server, status: status)
+                    status: status,
+                    text: off
+                        ? String(localized: "settings_sync_status_off")
+                        : Self.statusText(status)
                 )
             }
         case .single(let source, _):
@@ -87,9 +114,25 @@ struct SyncStatusDot: View {
 
     private var summary: ServerStatus {
         switch mode {
-        case .servers: Self.summary(loadingState: session.loadingState, statuses: sources.map(\.status))
-        case .single(let source, _): source.status
+        case .servers(let servers):
+            // Nothing was asked to sync, so the NTUST session's own state is
+            // not this dot's business either — grey, not red.
+            servers.allSatisfy(isOff)
+                ? .unknown
+                : Self.summary(loadingState: session.loadingState, statuses: sources.map(\.status))
+        case .single(let source, _):
+            source.status
         }
+    }
+
+    /// "Off" rather than "Unknown" when every source is switched off — the
+    /// aggregate grey has a reason, and VoiceOver should give it.
+    private var accessibilityStatusText: String {
+        if isLoading { return String(localized: "sync_status_syncing") }
+        if case .servers(let servers) = mode, servers.allSatisfy(isOff) {
+            return String(localized: "settings_sync_status_off")
+        }
+        return Self.statusText(summary)
     }
 
     private var errorMessage: String? {
@@ -119,7 +162,7 @@ struct SyncStatusDot: View {
         .buttonStyle(.plain)
         .opacity(dimmed ? Self.idleOpacity : 1)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: dimmed)
-        .accessibilityLabel(Text(isLoading ? String(localized: "sync_status_syncing") : Self.statusText(summary)))
+        .accessibilityLabel(Text(accessibilityStatusText))
         .popover(isPresented: $showDetails, arrowEdge: .top) {
             details.presentationCompactAdaptation(.popover)
         }
@@ -209,13 +252,6 @@ struct SyncStatusDot: View {
         case .courseSelection: String(localized: "feature_course_selection")
         case .backend: String(localized: "cloud_sync_title")
         }
-    }
-
-    private static func statusText(server: ServerKind, status: ServerStatus) -> String {
-        if server == .backend, !Defaults[.cloudSyncEnabled] {
-            return String(localized: "settings_sync_status_off")
-        }
-        return statusText(status)
     }
 
     private static func statusText(_ status: ServerStatus) -> String {

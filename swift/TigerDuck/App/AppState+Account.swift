@@ -100,6 +100,10 @@ extension AppState {
 
         authService.logout()
         Task { await authTokenManager.logout() }
+        // The tracker is process-wide and outlives the account. Left alone
+        // it kept reporting the departing user's last good sync, so the
+        // header dot stayed green on a signed-out app.
+        ServerStatusTracker.shared.reset()
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.
