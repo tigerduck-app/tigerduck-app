@@ -1,10 +1,12 @@
 import Defaults
 import SwiftUI
+import SwiftData
 import CoreHaptics
 import UserNotifications
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var notifyAssignments = true
@@ -293,7 +295,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading) {
                         Text("Long press to erase everything and restart")
                             .foregroundStyle(.red)
-                        Text("Wipes all data, accounts, and preferences")
+                        Text("Wipes all data, accounts (NTUST, Moodle, library), caches, and preferences. Keeps only the API endpoint override.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -302,19 +304,7 @@ struct SettingsView: View {
                     #if os(iOS)
                     UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                     #endif
-                    appState.logoutNTUST()
-                    appState.logoutLibrary()
-
-                    UserDefaults.standard.removePersistentDomain(
-                        forName: Bundle.main.bundleIdentifier!
-                    )
-                    Defaults.removeAll()
-
-                    // Removes outbox.json and any legacy id_map.json.
-                    try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
-
-                    appState.hasCompletedOnboarding = false
-                    Defaults[.hasCompletedOnboarding] = false
+                    eraseEverything()
                 }
             }
             #endif
@@ -694,6 +684,37 @@ struct SettingsView: View {
     /// because a logout is an account change rather than a factory reset:
     /// the whole cache tree (not just the user-scoped files), every Keychain
     /// secret, the SwiftData store, both defaults domains, and the outbox.
+    private func eraseEverything() {
+        appState.logoutNTUST()
+        appState.logoutLibrary()
+
+        DataCache.shared.clearEverything()
+
+        // Everything except the endpoint: that override lives in the
+        // Keychain precisely so it outlives a wipe, and a developer
+        // resetting the app still wants to point at the same backend.
+        SecureStore.removeAll(preserving: [DebugEndpointStore.keychainKey])
+
+        // Batch-delete through the live container rather than removing the
+        // store file — the container is still mounted and every view is
+        // holding queries against it.
+        try? modelContext.delete(model: SDCourse.self)
+        try? modelContext.delete(model: SDAssignment.self)
+        try? modelContext.delete(model: SDAnnouncement.self)
+        try? modelContext.delete(model: SDCalendarEvent.self)
+        try? modelContext.save()
+
+        UserDefaults.standard.removePersistentDomain(
+            forName: Bundle.main.bundleIdentifier!
+        )
+        Defaults.removeAll()
+
+        // Removes outbox.json and any legacy id_map.json.
+        try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
+
+        appState.hasCompletedOnboarding = false
+        Defaults[.hasCompletedOnboarding] = false
+    }
     #endif
 
     /// Read the current system-level notification authorization so the

@@ -108,6 +108,30 @@ nonisolated enum SecureStore {
         return ok
     }
 
+    /// Wipe every secret this app holds, across the current valet and both
+    /// legacy ones, keeping only the keys named in `preserving`.
+    ///
+    /// Backs the erase-everything action. Enumerating
+    /// `AppConstants.KeychainKeys` instead would quietly miss whatever key
+    /// gets added next — and a leftover credential is precisely what makes
+    /// a "fresh install" not one.
+    ///
+    /// `preserving` exists for device configuration that is not user data:
+    /// the API endpoint override is stored here specifically so it outlives
+    /// a wipe, which is the whole reason it is in the Keychain rather than
+    /// `UserDefaults`.
+    static func removeAll(preserving preservedKeys: Set<String> = []) {
+        let preserved: [String: Data] = preservedKeys.reduce(into: [:]) { acc, key in
+            if let value = load(key: key) { acc[key] = value }
+        }
+        for store in [shared, legacyShared, legacySharedGroup] {
+            try? store.removeAllObjects()
+        }
+        for (key, value) in preserved {
+            try? save(value, forKey: key)
+        }
+    }
+
     private static func legacyLoad(key: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
