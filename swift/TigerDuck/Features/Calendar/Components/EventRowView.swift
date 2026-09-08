@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 struct EventRowView: View {
@@ -15,7 +16,15 @@ struct EventRowView: View {
     /// iOS only: macOS delivers no class reminders, so a switch there would
     /// promise something the platform cannot do. The Mac still lists the
     /// holiday — it just has nothing to turn on.
-    @State private var notifyOnHoliday = false
+    ///
+    /// Read straight from `Defaults` rather than mirrored into `@State`.
+    /// This is the same key a cloud-sync merge writes through
+    /// `AcademicCalendarStore.applySyncedOverrides`, so a change made on
+    /// another device moves the switch while the row is on screen. Seeding
+    /// a local copy in `onAppear` left it showing the value from whenever
+    /// the row first appeared, which is the stalest possible answer for a
+    /// setting whose whole point is that it follows the account.
+    @Default(.holidayNotifyOverrides) private var holidayOverrides
     #endif
 
     var body: some View {
@@ -51,18 +60,21 @@ struct EventRowView: View {
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
-                Toggle("", isOn: $notifyOnHoliday)
-                    .labelsHidden()
-                    .accessibilityLabel(
-                        Text(String(localized: "calendar_holiday_notify_title"))
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { holidayOverrides.contains(holidayID) },
+                        // Writes through AppState rather than to Defaults
+                        // directly, so the local write, the Live Activity
+                        // refresh and the upload all still happen in one
+                        // place.
+                        set: { appState.setHolidayNotify($0, holidayID: holidayID) }
                     )
-                    .onChange(of: notifyOnHoliday) { _, on in
-                        appState.setHolidayNotify(on, holidayID: holidayID)
-                    }
-                    .onAppear {
-                        notifyOnHoliday = AcademicCalendarStore.shared
-                            .optedInHolidayIDs.contains(holidayID)
-                    }
+                )
+                .labelsHidden()
+                .accessibilityLabel(
+                    Text(String(localized: "calendar_holiday_notify_title"))
+                )
             } else {
                 sourceLabel
             }
