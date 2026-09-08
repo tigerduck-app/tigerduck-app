@@ -1,7 +1,9 @@
 import Defaults
 import SwiftUI
 
-/// The one status mark in a page header. Colour is the worst known state
+/// The one status mark in a page header, on its own Liquid Glass circle.
+///
+/// Colour is the worst known state
 /// of the sources the page depends on (red > green); grey means nothing
 /// has reported yet or the source is switched off, and never wins. While
 /// a fetch is running the dot becomes a spinning ring. Tapping it lists
@@ -110,7 +112,8 @@ struct SyncStatusDot: View {
                 }
             }
             .frame(width: 28, height: 28)
-            .contentShape(Rectangle())
+            .modifier(GlassDotCircleModifier())
+            .contentShape(Circle())
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isLoading)
         }
         .buttonStyle(.plain)
@@ -220,6 +223,32 @@ struct SyncStatusDot: View {
         case .ok: String(localized: "sync_status_ok")
         case .failed: String(localized: "sync_status_failed")
         case .unknown: String(localized: "bulletin_push_status_unknown")
+        }
+    }
+}
+
+/// The dot's own Liquid Glass circle.
+///
+/// It is a real button — it opens the per-source popover — so on iOS 26 it
+/// should look like one. Giving it a circle of its own rather than letting a
+/// container supply the backing is what keeps it consistent across the six
+/// places it appears: five draw it in a plain header row where nothing would
+/// back it at all, and the sixth is a toolbar, where the shared capsule
+/// spans neighbouring items and stays put while the dot fades on idle,
+/// leaving an empty pill behind.
+///
+/// The glass is inside the button's `opacity`, so the whole affordance
+/// recedes together on idle instead of a solid circle outliving the mark
+/// inside it.
+private struct GlassDotCircleModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        // macOS is named explicitly rather than left to `*`: this file is
+        // shared, and the Mac target still deploys below 26, so the wildcard
+        // would let a macOS 15 build reach an API it does not have.
+        if #available(iOS 26, macOS 26, *) {
+            content.glassEffect(.regular.interactive(), in: .circle)
+        } else {
+            content
         }
     }
 }

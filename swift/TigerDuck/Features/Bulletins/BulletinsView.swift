@@ -191,14 +191,12 @@ struct BulletinsView: View {
                     }
                 }
             }
-            // The dot reports state; it is not a control the way its
-            // neighbours are. On iOS 26 a toolbar item is drawn on the
-            // shared Liquid Glass, which reads as a button — and worse,
-            // the capsule stays put while the dot itself fades out after
-            // a second of quiet, leaving an empty pill in the bar. Opting
-            // out of the shared background lets the dot recede as designed
-            // and matches every other page, where it sits bare in the
-            // header row.
+            // The dot carries its own Liquid Glass circle, so it opts
+            // out of the toolbar's shared background rather than sitting
+            // on both. The shared capsule also spans neighbouring items
+            // and would not fade with the dot when it dims on idle,
+            // leaving an empty pill in the bar; its own circle recedes
+            // with it. Same mark, same backing, as every other page.
             if #available(iOS 26, *) {
                 ToolbarItem(placement: .topBarTrailing) {
                     SyncStatusDot(servers: [.backend])
