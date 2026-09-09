@@ -23,6 +23,7 @@ extension AppState {
         let tombstonesBySemester = Dictionary(grouping: tombstones) { ($0["semester"] as? String) ?? "" }
         let semesters = Set(rowsBySemester.keys).union(SemesterCatalog.availableSemesters())
 
+        let selectionDropped = DataCache.shared.loadSelectionDroppedNos()
         var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
         var userAdded = DataCache.shared.loadUserAddedCourses()
         var deletedChanged = false
@@ -35,7 +36,17 @@ extension AppState {
         }
 
         for semester in semesters.sorted() {
-            let rows = (rowsBySemester[semester] ?? []).filter { Self.isFiled($0, under: semester) }
+            // A misfiled row is neither a roster nor evidence of presence,
+            // and neither is a course 選課 has dropped: the backend still
+            // carries it because an upload only upserts, and merging it back
+            // would land it in `userAdded`, the one shape a portal refresh is
+            // required to preserve. Dropping it here also keeps it from
+            // un-hiding a course the user deleted by hand further down.
+            let droppedHere = Set(selectionDropped[semester] ?? [])
+            let rows = (rowsBySemester[semester] ?? []).filter {
+                Self.isFiled($0, under: semester)
+                    && !droppedHere.contains(($0["course_no"] as? String) ?? "")
+            }
             let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
             let localCourses = DataCache.shared.loadCourses(semester: semester)
 

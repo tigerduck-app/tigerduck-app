@@ -259,6 +259,51 @@ final class DataCache {
         return dtos.map { $0.toSDCalendarEvent() }
     }
 
+    // MARK: - Courses 選課 Stopped Listing
+
+    /// Course numbers 選課 has stopped naming, per semester.
+    ///
+    /// Written when a successful, non-empty answer no longer names a course
+    /// this device holds — a 加退選 drop. Read by the sync reconcile, which
+    /// would otherwise merge the row the backend still carries straight back
+    /// onto the timetable: `/sync/courses/upload` only ever upserts, so a
+    /// dropped course survives there until an explicit DELETE tombstones it.
+    ///
+    /// Deliberately not the `deleted_courses.json` tombstone set. That one is
+    /// driven by the server — absent there means hide, present there means
+    /// un-hide — so a 選課-driven entry would be un-hidden by the next sync.
+    /// Only 選課 may add to or clear this one.
+    func saveSelectionDroppedNos(_ dropped: [String: [String]]) {
+        save(dropped, to: "selection_dropped.json", in: persistentDir)
+    }
+
+    func loadSelectionDroppedNos() -> [String: [String]] {
+        load(from: "selection_dropped.json", in: persistentDir) ?? [:]
+    }
+
+    /// Folds one successful 選課 answer for `semester` into that set.
+    ///
+    /// Must run *before* the fetch overwrites the course cache: the courses on
+    /// disk right now are what the answer is diffed against, and once they are
+    /// replaced the drop is invisible to everyone.
+    func recordSelectionRoster(semester: String, roster: [String]) {
+        guard !roster.isEmpty else { return }
+        var stored = loadSelectionDroppedNos()
+        let previous = Set(stored[semester] ?? [])
+        let updated = AppServiceBridge.selectionDrops(
+            previous: previous,
+            localPortalNos: loadCourses(semester: semester).map(\.courseNo),
+            roster: roster
+        )
+        guard updated != previous else { return }
+        if updated.isEmpty {
+            stored.removeValue(forKey: semester)
+        } else {
+            stored[semester] = Array(updated).sorted()
+        }
+        saveSelectionDroppedNos(stored)
+    }
+
     // MARK: - Deleted Courses
 
     func saveDeletedCourseNos(_ courseNos: [String]) {
@@ -417,6 +462,7 @@ final class DataCache {
             ("calendar_events.json", cacheDir),
             ("user_added_courses.json", persistentDir),
             ("deleted_courses.json", persistentDir),
+            ("selection_dropped.json", persistentDir),
             ("course_custom_names.json", persistentDir),
             ("course_custom_colors.json", persistentDir),
             ("course_color_map.json", persistentDir),

@@ -136,6 +136,15 @@ enum AppServiceBridge {
                 }
             }
 
+            // Before anything overwrites the cache: a course that was in the
+            // portal roster and is not in this answer was dropped in 加退選,
+            // and the backend keeps serving it until someone deletes it by
+            // hand. See `DataCache.recordSelectionRoster`.
+            if let courseSelectionNos {
+                DataCache.shared.recordSelectionRoster(
+                    semester: semester, roster: courseSelectionNos)
+            }
+
             let moodleAll = if let moodleEnrolledCourses {
                 moodleEnrolledCourses
             } else {
@@ -341,6 +350,30 @@ enum AppServiceBridge {
         }
         var seen = Set<String>()
         return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    /// The courses 選課 has stopped listing for one term, updated from one
+    /// successful, non-empty answer.
+    ///
+    /// Only a drop this device actually witnessed goes in: `localPortalNos`
+    /// are the portal courses it holds right now, so the difference against
+    /// `roster` is exactly what 加退選 just removed. That temporal check is
+    /// the point — a snapshot cannot tell a dropped course from one another
+    /// device added by hand, since neither is in 選課 and the uploaded rows
+    /// are identical. A manual course from elsewhere was never in this
+    /// device's roster, so it never appears in the difference.
+    ///
+    /// Anything 選課 names again is cleared, so a re-add in 加退選 brings the
+    /// course straight back. An empty `roster` changes nothing: it means the
+    /// scrape was not consulted or drifted, never "everything was dropped".
+    static func selectionDrops(
+        previous: Set<String>,
+        localPortalNos: [String],
+        roster: [String]
+    ) -> Set<String> {
+        guard !roster.isEmpty else { return previous }
+        let enrolled = Set(roster)
+        return previous.union(localPortalNos).subtracting(enrolled)
     }
 
     /// The per-user display toggles a course lookup has to honour, read once

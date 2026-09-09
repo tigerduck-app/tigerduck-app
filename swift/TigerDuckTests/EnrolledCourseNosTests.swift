@@ -28,3 +28,35 @@ struct EnrolledCourseNosTests {
         #expect(AppServiceBridge.enrolledCourseNos(selection: [], moodle: ["CS2"], transcript: ["PE9"]) == ["CS2", "PE9"])
     }
 }
+
+/// The 加退選 half of the same rule: 選課 owning its term is only half the
+/// fix, because the backend keeps serving a course nobody deleted explicitly.
+struct SelectionDropsTests {
+    @Test("A course the answer no longer names is recorded as dropped")
+    func dropIsWitnessed() {
+        #expect(AppServiceBridge.selectionDrops(
+            previous: [], localPortalNos: ["A", "B", "C"], roster: ["A", "B"]
+        ) == ["C"])
+    }
+
+    @Test("A course this device never held is not a drop — that is how a manual course from another device survives")
+    func unknownCourseIsNotADrop() {
+        #expect(AppServiceBridge.selectionDrops(
+            previous: [], localPortalNos: ["A"], roster: ["A"]
+        ).isEmpty)
+    }
+
+    @Test("A course the answer names again is cleared, so a re-add comes straight back")
+    func readdClears() {
+        #expect(AppServiceBridge.selectionDrops(
+            previous: ["C", "D"], localPortalNos: ["A"], roster: ["A", "C"]
+        ) == ["D"])
+    }
+
+    @Test("An empty answer records nothing and clears nothing: parser drift is not a mass drop")
+    func emptyAnswerIsInert() {
+        #expect(AppServiceBridge.selectionDrops(
+            previous: ["C"], localPortalNos: ["A", "B"], roster: []
+        ) == ["C"])
+    }
+}
