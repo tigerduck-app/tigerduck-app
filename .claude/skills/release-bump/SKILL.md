@@ -1,6 +1,6 @@
 ---
 name: release-bump
-description: Use when bumping TigerDuck's marketing version (vX.Y.Z) — bumps project.pbxproj, refreshes README.md + README.en.md (badge + version-history row), and creates a single chore(release) commit. Trigger on phrases like "bump version", "升版", "release X.Y.Z", "更新 README 標版本", or whenever pbxproj's MARKETING_VERSION changes are staged.
+description: Use when bumping TigerDuck's marketing version (vX.Y.Z) — bumps project.pbxproj, adds the in-app whatsnew.json entry, refreshes README.md + README.en.md (badge + version-history row), and creates a single chore(release) commit. Trigger on phrases like "bump version", "升版", "release X.Y.Z", "更新 README 標版本", or whenever pbxproj's MARKETING_VERSION changes are staged.
 ---
 
 # TigerDuck Release Bump
@@ -116,12 +116,45 @@ Date is the bump date in `YYYY-MM-DD` (today, unless user specifies). Always use
 
 If the version unlocks new product capability, also tick the matching item in the **Roadmap / 開發規劃** section and append `` `vX.Y.Z` `` after the description. Don't invent roadmap entries; only check off ones that already exist.
 
-### 5. Commit
+### 5. Add the in-app "What's new" entry
+
+`swift/TigerDuck/whatsnew.json` drives the sheet the app shows on first launch
+after an update, and the Settings → About "What's new" row. **A version with no
+entry here silently shows nothing** — the decoder is defensive on purpose, so a
+missing entry is not an error you will see. Add it every marketing bump.
+
+Top-level keys are `CFBundleShortVersionString` values, in ascending order.
+Each needs both locales — `zh-TW` and `en`; the repository falls back to `en`
+for every other language, so those two are the whole surface.
+
+```json
+  "<NEW>": {
+    "zh-TW": {
+      "title": "<NEW> 更新內容",
+      "highlights": ["...", "..."]
+    },
+    "en": {
+      "title": "What's new in <NEW>",
+      "highlights": ["...", "..."]
+    }
+  }
+```
+
+- 3–5 highlights, **user-facing outcomes only** — no internal refactors, no
+  bug-fix plumbing the user never saw. This is App Store copy, not a changelog.
+- Full sentences ending in `。` / `.`, same voice as the neighbouring entries.
+- The zh and en lists are translations of each other: same count, same order.
+- Append the block at the end, keep 2-space indent, and re-validate:
+  `python3 -c "import json;json.load(open('swift/TigerDuck/whatsnew.json'))"`
+- Reuse the README highlights as the source, then trim them to what a user
+  would actually notice.
+
+### 6. Commit
 
 Stage exactly the files we touched — never `git add .` (the repo often has untracked `docs/website-spec.md`, dirty `app-translation` submodule pointer, `firebase-debug.log`, etc. that must NOT be in a release commit).
 
 ```bash
-git add swift/TigerDuck.xcodeproj/project.pbxproj README.md README.en.md
+git add swift/TigerDuck.xcodeproj/project.pbxproj swift/TigerDuck/whatsnew.json README.md README.en.md
 ```
 
 Commit message — Chinese body, no `Co-Authored-By` (per global preference):
@@ -129,7 +162,8 @@ Commit message — Chinese body, no `Co-Authored-By` (per global preference):
 ```text
 chore(release): bump marketing version to <NEW>
 
-- pbxproj 4 個 shipping target 的 MARKETING_VERSION 從 <PREV> → <NEW>
+- pbxproj 8 條 shipping MARKETING_VERSION（4 個 target × Debug/Release）從 <PREV> → <NEW>
+- whatsnew.json 補上 <NEW> 的中英「新功能」內容
 - README 中英版徽章升級到 v<NEW>
 - 版本歷程補上 v<NEW> 重點：
   * <bullet 1>
@@ -175,6 +209,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 ## Conventions cheat sheet
 
 - **Two READMEs always move together.** Never update one without the other.
+- **`whatsnew.json` moves with them.** Every marketing bump gets an entry, both locales.
 - **Badge color is `00BB00`** (green). Don't switch palette.
 - **Version cell format:** `` **`vX.Y.Z`** ``
 - **Date:** `YYYY-MM-DD` in the table.
@@ -188,6 +223,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 ## Verification before commit
 
 - [ ] `grep -c "MARKETING_VERSION = <NEW>;" swift/TigerDuck.xcodeproj/project.pbxproj` → exactly **8**
+- [ ] `whatsnew.json` has a `<NEW>` key with both `zh-TW` and `en`, and still parses
 - [ ] Both READMEs have the new badge URL and link target
 - [ ] Both version-history tables have the new row at the **top** (right under the header divider)
 - [ ] Date is `YYYY-MM-DD`, version cell is `` **`vX.Y.Z`** ``
@@ -197,6 +233,8 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 ## Anti-patterns
 
 - ❌ Updating only the Chinese README — the English one drifts and stops matching.
+- ❌ Shipping a marketing bump with no `whatsnew.json` entry — the update sheet just doesn't appear, and nothing warns you.
+- ❌ Pasting the README highlight verbatim into `whatsnew.json` — the README row is a changelog, the JSON is App Store copy.
 - ❌ Bumping `MARKETING_VERSION = 1.0;` placeholders — these are test targets, not shippable.
 - ❌ Squashing the app-translation submodule bump into the release commit — keep them separate so reverting a release doesn't unwind translations.
 - ❌ Inventing roadmap items to mark as done. Only tick rows that already exist.
