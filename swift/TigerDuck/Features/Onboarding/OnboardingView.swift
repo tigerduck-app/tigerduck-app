@@ -15,6 +15,7 @@ struct OnboardingView: View {
     @State private var notificationRequestInFlight = false
     /// Presents the API-endpoint editor from the sign-in page, for
     /// users pointing the app at their own backend deployment.
+    @Environment(\.openURL) private var openURL
     @State private var showEndpointSheet = false
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focusedField: Field?
@@ -409,6 +410,22 @@ struct OnboardingView: View {
             },
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    // Ordered least-committal first: look at the server,
+                    // then repoint the app at a different one, then give
+                    // up and skip. A sign-in that fails here has no other
+                    // way to tell the user whether the backend is why.
+                    //
+                    // A Button rather than the Link the rest of onboarding
+                    // uses for external URLs, so it is the same control as
+                    // the two below it and picks up textSecondary without
+                    // fighting the link tint. It does not honour the browser
+                    // preference because the user has not been offered that
+                    // choice yet at this point in the flow.
+                    Button(String(localized: "settings_check_server_status")) {
+                        openURL(AppURLs.serverStatus)
+                    }
+                    .foregroundStyle(Color.textSecondary)
+
                     // Above "Skip" on purpose: someone running their own
                     // backend has to point the app at it *before* signing
                     // in, because the sign-in round-trip is one of the
