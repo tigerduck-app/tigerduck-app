@@ -138,6 +138,26 @@ struct AcademicCalendarStoreTests {
         }
     }
 
+    @Test("logging out leaves no holiday state for the next account")
+    func forgetHolidayOverridesClearsBothSets() {
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            store.setNotify(true, forHoliday: 9)
+            store.setHolidayAcknowledged(false, holidayID: 9)
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [9])
+            #expect(store.unacknowledgedHolidayIDs == [9])
+
+            store.forgetHolidayOverrides()
+
+            #expect(Defaults[.holidayNotifyOverrides].isEmpty)
+            #expect(store.unacknowledgedHolidayIDs.isEmpty)
+            // The edit clock resets too, so the new account's first snapshot
+            // is not judged stale against the previous user's last tap.
+            store.applySyncedOverrides([2], fetchedAt: Date.distantPast.addingTimeInterval(1))
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [2])
+        }
+    }
+
     @Test("the pending count never goes negative")
     func pendingCountFloors() {
         Self.withCleanHolidayDefaults {

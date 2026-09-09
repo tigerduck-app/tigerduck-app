@@ -110,6 +110,12 @@ extension AppState {
         // `MacContentView` instead of returning to `MacLoginView`.
         didSkipMacLogin = false
         DataCache.shared.clearUserScopedData()
+        // Holiday choices are account-scoped and live in UserDefaults rather
+        // than the cache, so `clearUserScopedData` does not reach them. The
+        // queue goes first: a link still waiting to run would otherwise send
+        // the departing user's toggle over the next account's session.
+        cancelHolidayUploads()
+        AcademicCalendarStore.shared.forgetHolidayOverrides()
         Task { @MainActor in
             await cloudSyncCoordinator.disable()
             await pushCoordinator.disable()

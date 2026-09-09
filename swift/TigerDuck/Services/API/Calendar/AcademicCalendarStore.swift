@@ -49,6 +49,19 @@ final class AcademicCalendarStore {
         Set(Defaults[.holidayOverridesAwaitingUpload])
     }
 
+    /// Drop the departing account's holiday choices.
+    ///
+    /// Both sets are account-scoped and neither key says so. Left behind,
+    /// the next person to sign in on this device inherits the previous
+    /// user's quiet days — and the awaiting-upload set is worse than
+    /// inherited, because the retry would push those choices into the new
+    /// account over its own session.
+    func forgetHolidayOverrides() {
+        Defaults[.holidayNotifyOverrides] = []
+        Defaults[.holidayOverridesAwaitingUpload] = []
+        lastHolidayEditAt = .distantPast
+    }
+
     /// Record that `holidayID` is waiting on the server, or has reached it.
     func setHolidayAcknowledged(_ acknowledged: Bool, holidayID: Int) {
         var ids = unacknowledgedHolidayIDs
