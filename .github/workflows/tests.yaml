@@ -12,6 +12,13 @@ name: Tests
 # TigerDuckUITests (simulator UI automation is the usual source of CI flake,
 # and its runner already fails to launch on some local simulators), and no
 # second pass on the macOS destination.
+#
+# Note there is no `CODE_SIGNING_ALLOWED=NO` here, the usual CI shorthand for
+# "this machine has no certificates". A simulator build signs ad-hoc and needs
+# none, and turning signing off drops the app's entitlements with it — which
+# takes the App Group container away, which makes the DEBUG guard in
+# `WidgetSnapshotStore` and friends trap during launch, which crashes the test
+# host before a single test runs.
 
 on:
   pull_request:
@@ -87,7 +94,6 @@ jobs:
           -destination "id=${{ steps.sim.outputs.iphone }}"
           -only-testing:TigerDuckTests
           -resultBundlePath PhoneTests.xcresult
-          CODE_SIGNING_ALLOWED=NO
           -quiet
 
       # The watch app is a companion app, so this needs its own scheme and its
@@ -100,7 +106,6 @@ jobs:
           -scheme "TigerDuckWatch Watch App"
           -destination "id=${{ steps.sim.outputs.watch }}"
           -resultBundlePath WatchTests.xcresult
-          CODE_SIGNING_ALLOWED=NO
           -quiet
 
       # `-quiet` keeps the log readable but also hides the test count, and a
