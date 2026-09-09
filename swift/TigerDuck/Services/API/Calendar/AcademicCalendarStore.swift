@@ -21,6 +21,9 @@ final class AcademicCalendarStore {
         subsystem: "org.ntust.app.TigerDuck", category: "AcademicCalendar"
     )
     private var refreshTask: Task<Bool, Never>?
+    /// Holiday toggles this device has made but not yet uploaded. See
+    /// ``applySyncedOverrides(_:)``.
+    private var pendingHolidayUploads = 0
 
     /// The calendar as of the last successful fetch.
     private(set) var calendar: AcademicCalendar
@@ -155,9 +158,26 @@ final class AcademicCalendarStore {
     }
 
     /// Replace the local set from a cloud-sync snapshot.
+    ///
+    /// Skipped while this device has a toggle in flight. A sync response is
+    /// a snapshot of the server as it was when the request left, so one that
+    /// crosses a tap on the wire carries the state from *before* that tap —
+    /// applying it would flip the switch back under the user's finger, and
+    /// the upload landing a moment later would leave the server right and
+    /// this device wrong until the next sync. The upload is the newer fact;
+    /// let it win, and take the server's word at the next sync.
     func applySyncedOverrides(_ ids: Set<Int>) {
+        guard pendingHolidayUploads == 0 else {
+            logger.info("holiday overrides from sync ignored — a local toggle is still uploading")
+            return
+        }
         Defaults[.holidayNotifyOverrides] = Array(ids).sorted()
     }
+
+    /// Brackets an in-flight holiday upload, so ``applySyncedOverrides(_:)``
+    /// knows not to overwrite a choice the server has not heard yet.
+    func beginHolidayUpload() { pendingHolidayUploads += 1 }
+    func endHolidayUpload() { pendingHolidayUploads = max(0, pendingHolidayUploads - 1) }
 
     /// A payload this build cannot read is worse than none — it would pin a
     /// stale calendar forever — so `AcademicCalendar.cached` falls back to

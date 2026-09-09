@@ -4,8 +4,8 @@ import Testing
 
 @testable import TigerDuck
 
-/// Ways the calendar could end up describing a school the app is not talking
-/// to any more.
+/// Two ways the calendar could end up describing a school it is not talking
+/// to any more, or a holiday preference the user did not choose.
 @MainActor
 @Suite("Academic calendar store")
 struct AcademicCalendarStoreTests {
@@ -51,6 +51,44 @@ struct AcademicCalendarStoreTests {
         #expect(store.calendar == .empty)
         #expect(Defaults[.academicCalendarETag].isEmpty)
         #expect(Defaults[.academicCalendarCache].isEmpty)
+    }
+
+    // MARK: - Holiday overrides
+
+    @Test("a sync snapshot arriving mid-upload does not overwrite the local set")
+    func syncedOverridesDeferToPendingUpload() {
+        let saved = Defaults[.holidayNotifyOverrides]
+        defer { Defaults[.holidayNotifyOverrides] = saved }
+
+        let store = AcademicCalendarStore()
+        store.applySyncedOverrides([1, 2])
+        #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2])
+
+        // The user taps holiday 9 on. Its upload is in flight when a sync
+        // response fetched *before* the tap arrives carrying the old set.
+        store.setNotify(true, forHoliday: 9)
+        store.beginHolidayUpload()
+        store.applySyncedOverrides([1, 2])
+        #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2, 9])
+
+        // Once it lands, the server is the authority again.
+        store.endHolidayUpload()
+        store.applySyncedOverrides([1, 2, 9])
+        #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2, 9])
+    }
+
+    @Test("the pending count never goes negative")
+    func pendingCountFloors() {
+        let saved = Defaults[.holidayNotifyOverrides]
+        defer { Defaults[.holidayNotifyOverrides] = saved }
+
+        let store = AcademicCalendarStore()
+        store.endHolidayUpload()
+        store.endHolidayUpload()
+        // Still applying: an unbalanced end must not latch the guard on and
+        // leave the device ignoring the server forever.
+        store.applySyncedOverrides([4])
+        #expect(Set(Defaults[.holidayNotifyOverrides]) == [4])
     }
 
     // MARK: - Multi-day holidays

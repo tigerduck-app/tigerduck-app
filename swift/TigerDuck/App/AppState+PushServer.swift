@@ -130,11 +130,25 @@ extension AppState {
         Task { await refreshLiveActivity() }
         #endif
         guard Defaults[.cloudSyncEnabled] else { return }
-        Task { [weak self] in
+        // Chained rather than fired independently: two taps inside one
+        // round trip would otherwise be two unordered Tasks racing to PATCH
+        // the same row, and the server would keep whichever landed last
+        // rather than whichever the user meant last. Each link also re-reads
+        // the flag at the moment it runs, so a tap that arrived while an
+        // earlier upload was in flight is the one that gets sent.
+        let previous = HolidayUploadQueue.tail
+        // Held across the whole chained task, not just the request, so a
+        // sync response cannot overwrite the local set between the tap and
+        // the upload either.
+        AcademicCalendarStore.shared.beginHolidayUpload()
+        HolidayUploadQueue.tail = Task { [weak self] in
+            _ = await previous?.value
+            defer { AcademicCalendarStore.shared.endHolidayUpload() }
             guard let self else { return }
+            let current = AcademicCalendarStore.shared.optedInHolidayIDs.contains(holidayID)
             do {
                 try await self.pushCoordinator.registration.uploadHolidayOverride(
-                    holidayID: holidayID, notify: notify
+                    holidayID: holidayID, notify: current
                 )
             } catch {
                 AppLogger.sync.error(
@@ -159,4 +173,16 @@ extension AppState {
             )
         }
     }
+}
+
+/// Serialises holiday-override uploads so they reach the backend in the
+/// order the user tapped them.
+///
+/// A stored property on `AppState` would be the obvious home, but this is an
+/// extension and Swift does not allow one there. Static is fine regardless:
+/// there is a single `AppState` per process, and the queue's whole job is to
+/// order writes to one shared backend row.
+@MainActor
+private enum HolidayUploadQueue {
+    static var tail: Task<Void, Never>?
 }
