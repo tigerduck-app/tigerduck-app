@@ -214,8 +214,14 @@ nonisolated enum AppConstants {
     static let appStoreLookupStorefront = "tw"
 
     enum Periods {
-        static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9"]
-        static let extended = ["5", "10", "A", "B", "C", "D"]
+        /// Rows the timetable shows before any course asks for more. Ends at
+        /// 10 (17:30-18:20), which is an ordinary teaching slot — leaving it
+        /// out meant a 5th-period-free student saw their day stop at 17:20 and
+        /// had to take on faith that nothing followed. 5 stays out because it
+        /// is the lunch break: a course scheduled there widens the grid on its
+        /// own, via `ClassTableViewModel.activePeriods`.
+        static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9", "10"]
+        static let extended = ["5", "A", "B", "C", "D"]
         /// The evening periods the Display toggle pins on. D is left out
         /// deliberately: it ends at 22:00 and is rare enough that pinning
         /// it would cost a row almost nobody needs.
