@@ -1,0 +1,122 @@
+name: Tests
+
+# Unit-test gate for PRs. Until this existed no workflow in the repo ever
+# invoked xcodebuild, so the ~200 tests in `swift/TigerDuckTests/` only ran when
+# someone remembered to press Cmd-U, and a break could sit there for weeks with
+# nothing saying so. The watch tests were worse off still: they were in no
+# shared scheme, so `xcodebuild -scheme TigerDuck` never even compiled them.
+# The Android repo has had the equivalent gate (.github/workflows/ci.yaml) for
+# a while; this is its counterpart.
+#
+# Deliberately unit tests only, matching that workflow's stance: no
+# TigerDuckUITests (simulator UI automation is the usual source of CI flake,
+# and its runner already fails to launch on some local simulators), and no
+# second pass on the macOS destination.
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    # macOS is the only image that can run xcodebuild, and the sources need an
+    # Xcode 26 SDK — `glassEffect` and friends sit behind `if #available(iOS
+    # 26)`, which still has to *compile*. If a future image defaults to
+    # something older, select one explicitly with `sudo xcode-select -s`; the
+    # version is printed below so a failure says which one it got.
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+        with:
+          # app-translation carries the .xcstrings the app target compiles.
+          # Without it the build fails on missing resources rather than on
+          # anything this workflow is meant to catch.
+          submodules: true
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      # Naming a simulator is how this breaks six months from now: images add
+      # and drop devices, and `OS=latest` resolves to a runtime the named
+      # device may not exist on. (That exact mismatch — iPhone 17 Pro Max
+      # present on 26.5 while `latest` meant 27.0 — is what it does locally.)
+      # Take whichever devices the image actually has.
+      - name: Pick simulators
+        id: sim
+        run: |
+          set -euo pipefail
+          # Newest runtime wins. A runner image ships one matched set of
+          # runtimes per Xcode, so the newest iOS and the newest watchOS pair
+          # with each other; a dev machine that has accumulated several may
+          # not, and that is the case to notice if this ever fails to pair.
+          pick() {
+            xcrun simctl list devices available --json | jq -r --arg os "$1" --arg name "$2" '
+              [ .devices
+                | to_entries[]
+                | select(.key | test("SimRuntime\\." + $os + "-"))
+                | (.key | capture("-(?<a>[0-9]+)-(?<b>[0-9]+)$")) as $v
+                | .value[]
+                | select(.name | startswith($name))
+                | {ver: [($v.a | tonumber), ($v.b | tonumber)], udid}
+              ] | sort_by(.ver) | last.udid // empty'
+          }
+          iphone=$(pick iOS iPhone)
+          watch=$(pick watchOS "Apple Watch")
+          if [ -z "$iphone" ] || [ -z "$watch" ]; then
+            echo "::error::missing a simulator (iPhone='$iphone' watch='$watch')"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          xcrun simctl list devices available | grep -E "$iphone|$watch"
+          echo "iphone=$iphone" >> "$GITHUB_OUTPUT"
+          echo "watch=$watch" >> "$GITHUB_OUTPUT"
+
+      - name: Phone unit tests
+        run: >
+          xcodebuild test
+          -project swift/TigerDuck.xcodeproj
+          -scheme TigerDuck
+          -destination "id=${{ steps.sim.outputs.iphone }}"
+          -only-testing:TigerDuckTests
+          -resultBundlePath PhoneTests.xcresult
+          CODE_SIGNING_ALLOWED=NO
+          -quiet
+
+      # The watch app is a companion app, so this needs its own scheme and its
+      # own destination; the phone scheme's test action does not reach it.
+      # Xcode pairs the watch simulator with a phone one on its own.
+      - name: Watch unit tests
+        run: >
+          xcodebuild test
+          -project swift/TigerDuck.xcodeproj
+          -scheme "TigerDuckWatch Watch App"
+          -destination "id=${{ steps.sim.outputs.watch }}"
+          -resultBundlePath WatchTests.xcresult
+          CODE_SIGNING_ALLOWED=NO
+          -quiet
+
+      # `-quiet` keeps the log readable but also hides the test count, and a
+      # run that silently executed nothing exits 0 exactly like a real pass.
+      # Read the counts back out so the log says what actually ran. `always()`
+      # so a failing run still reports which tests failed.
+      - name: Test summary
+        if: always()
+        run: |
+          set -uo pipefail
+          for bundle in PhoneTests.xcresult WatchTests.xcresult; do
+            echo "== $bundle"
+            if [ -d "$bundle" ]; then
+              xcrun xcresulttool get test-results summary --path "$bundle" \
+                | jq '{result, totalTestCount, passedTests, failedTests, skippedTests}'
+            else
+              echo "not produced (the step before it did not get that far)"
+            fi
+          done
