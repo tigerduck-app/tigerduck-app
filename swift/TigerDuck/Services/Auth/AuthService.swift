@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 #if os(iOS)
 import UIKit
@@ -41,7 +42,11 @@ final class AuthService {
     /// pull-to-refresh. Re-check when protected data comes back and when the
     /// app activates.
     init() {
-        lastKnownHasCredentials = storedStudentId != nil && storedPassword != nil
+        let present = storedStudentId != nil && storedPassword != nil
+        lastKnownHasCredentials = present
+        // Only ever raised here. A false read at this point may just mean the
+        // keychain was not readable yet, which is not something to record.
+        if present { Defaults[.ntustCredentialsPresent] = true }
 
         #if os(iOS)
         let names: [Notification.Name] = [
@@ -66,6 +71,7 @@ final class AuthService {
     /// routine foreground doesn't redraw every view that reads credentials.
     private func revalidateStoredCredentials() {
         let current = storedStudentId != nil && storedPassword != nil
+        if current { Defaults[.ntustCredentialsPresent] = true }
         guard current != lastKnownHasCredentials else { return }
         lastKnownHasCredentials = current
         _revision &+= 1
@@ -74,7 +80,12 @@ final class AuthService {
     /// Invalidate after a login or logout has moved the keychain, and
     /// re-snapshot so the next activation doesn't bump a second time.
     private func markCredentialsChanged() {
-        lastKnownHasCredentials = storedStudentId != nil && storedPassword != nil
+        let present = storedStudentId != nil && storedPassword != nil
+        // The only authoritative read there is: we just wrote or cleared the
+        // keychain ourselves, so a nil here really does mean absent. This is
+        // the one path allowed to lower the mirror.
+        Defaults[.ntustCredentialsPresent] = present
+        lastKnownHasCredentials = present
         _revision &+= 1
     }
 
@@ -88,9 +99,31 @@ final class AuthService {
     /// returning user whose cookies have simply TTL'd does NOT see the
     /// interactive login prompt — ``ensureAuthenticated()`` will silently
     /// re-authenticate on the next fetch.
+    /// The rule behind ``hasStoredCredentials``, split out so it can be
+    /// tested without a keychain — and so the direction is pinned. It is an
+    /// OR, deliberately: the keychain wins when it has an answer, and the
+    /// mirror covers it when it does not.
+    static func resolveHasCredentials(keychainSaysPresent: Bool, mirrorSaysPresent: Bool) -> Bool {
+        keychainSaysPresent || mirrorSaysPresent
+    }
+
     var hasStoredCredentials: Bool {
         _ = _revision
-        return storedStudentId != nil && storedPassword != nil
+        if storedStudentId != nil && storedPassword != nil { return true }
+        // A nil read is ambiguous — absent, or unreadable right now — so it
+        // is not allowed to be the answer on its own. `ntustCredentialsPresent`
+        // is readable when the keychain is not and is lowered only by an
+        // actual logout, so it is what a nil read falls back to.
+        //
+        // This is what stops a launch that could not reach the keychain from
+        // parking a signed-in user on the login prompt with no re-check
+        // scheduled: `revalidateStoredCredentials` bumps `_revision` only
+        // when its answer *changes*, so two nil reads in a row left nothing
+        // to correct it short of the re-auth a pull-to-refresh triggers.
+        return Self.resolveHasCredentials(
+            keychainSaysPresent: false,
+            mirrorSaysPresent: Defaults[.ntustCredentialsPresent]
+        )
     }
 
     /// True while a silent re-authentication (triggered by

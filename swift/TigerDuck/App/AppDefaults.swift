@@ -137,6 +137,26 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.cloudSyncEnabled,
         default: true
     )
+    /// Mirrors "an NTUST account exists" outside the Keychain.
+    ///
+    /// The Keychain answers nil for two unrelated reasons — the item is
+    /// absent, and the item cannot be read right now — and `SecureStore`
+    /// cannot tell them apart, because Valet reports both as a thrown error
+    /// that `try?` flattens. So a nil read is not evidence of being signed
+    /// out, and treating it as such is what put a signed-in user on the
+    /// login prompt until they pulled to refresh.
+    ///
+    /// UserDefaults is readable when the Keychain is not, which makes it the
+    /// right place to answer "is there an account" for UI gating. The
+    /// Keychain is still the only home of the secret itself.
+    ///
+    /// Raised by any successful credential read and by login; lowered only
+    /// by logout, the one moment a nil read is authoritative because we just
+    /// caused it.
+    static let ntustCredentialsPresent = Key<Bool>(
+        "ntustCredentialsPresent",
+        default: false
+    )
     static let syncCourses = Key<Bool>("syncCourses", default: true)
     static let syncCourseColors = Key<Bool>("syncCourseColors", default: true)
     static let syncCourseNames = Key<Bool>("syncCourseNames", default: true)
