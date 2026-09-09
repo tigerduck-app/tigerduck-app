@@ -191,12 +191,11 @@ struct BulletinsView: View {
                     }
                 }
             }
-            // The dot carries its own Liquid Glass circle, so it opts
-            // out of the toolbar's shared background rather than sitting
-            // on both. The shared capsule also spans neighbouring items
-            // and would not fade with the dot when it dims on idle,
-            // leaving an empty pill in the bar; its own circle recedes
-            // with it. Same mark, same backing, as every other page.
+            // The dot opts out of the toolbar's shared background: the
+            // capsule spans neighbouring items and stays put while the dot
+            // fades on idle, which would leave an empty pill in the bar.
+            // Opting out also leaves it bare, which is what it is on the
+            // five pages that draw it in a plain header row.
             if #available(iOS 26, *) {
                 ToolbarItem(placement: .topBarTrailing) {
                     SyncStatusDot(servers: [.backend])

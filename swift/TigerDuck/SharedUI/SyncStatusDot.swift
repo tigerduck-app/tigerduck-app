@@ -1,7 +1,7 @@
 import Defaults
 import SwiftUI
 
-/// The one status mark in a page header, on its own Liquid Glass circle.
+/// The one status mark in a page header — a bare dot, with no backing.
 ///
 /// Colour is the worst known state
 /// of the sources the page depends on (red > green); grey means nothing
@@ -164,8 +164,10 @@ struct SyncStatusDot: View {
                         .transition(.scale.combined(with: .opacity))
                 }
             }
+            // The 28pt frame is the tap target, not a backing: the mark
+            // itself stays 10pt. Without it the dot would be a 10pt hit
+            // area, well under the 44pt minimum.
             .frame(width: 28, height: 28)
-            .modifier(GlassDotCircleModifier())
             .contentShape(Circle())
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isLoading)
         }
@@ -270,38 +272,5 @@ struct SyncStatusDot: View {
         case .failed: String(localized: "sync_status_failed")
         case .unknown: String(localized: "bulletin_push_status_unknown")
         }
-    }
-}
-
-/// The dot's own Liquid Glass circle, on iOS.
-///
-/// It is a real button — it opens the per-source popover — so on iOS 26 it
-/// should look like one. Giving it a circle of its own rather than letting a
-/// container supply the backing is what keeps it consistent across the six
-/// places it appears: five draw it in a plain header row where nothing would
-/// back it at all, and the sixth is a toolbar, where the shared capsule
-/// spans neighbouring items and stays put while the dot fades on idle,
-/// leaving an empty pill behind.
-///
-/// macOS is excluded: there the dot sits in a control group alongside the
-/// reload button, which already supplies a backing.
-///
-/// The glass is inside the button's `opacity`, so the whole affordance
-/// recedes together on idle instead of a solid circle outliving the mark
-/// inside it.
-private struct GlassDotCircleModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        // iOS only. On macOS the dot already sits inside a control group
-        // with the reload button, which supplies its own backing — adding a
-        // circle here would draw glass on top of glass.
-        #if os(iOS)
-        if #available(iOS 26, *) {
-            content.glassEffect(.regular.interactive(), in: .circle)
-        } else {
-            content
-        }
-        #else
-        content
-        #endif
     }
 }
