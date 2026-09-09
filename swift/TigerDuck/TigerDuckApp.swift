@@ -21,6 +21,10 @@ struct TigerDuckApp: App {
     init() {
         AppLogger.start()
         #if DEBUG
+        // Scaffolding for the Library freeze: tells a blocked main thread
+        // apart from swallowed touches, which a spinning ProgressView
+        // cannot. See MainThreadWatchdog.
+        MainThreadWatchdog.start()
         // Apply any persisted clock override before any UI reads the clock,
         // so view models constructed during the first render see the right
         // "now". Entire branch compiles out in Release.
