@@ -57,23 +57,35 @@ final class WidgetSnapshotWriter {
         }
     }
 
-    /// School holidays inside the widget's own horizon, as `yyyy-MM-dd`
-    /// keys.
+    /// Every published school holiday, as `yyyy-MM-dd` keys.
     ///
-    /// Only the next fortnight: the widget derives "now" and "next", and a
-    /// snapshot carrying every holiday in the academic year would grow the
-    /// App Group payload for days no timeline entry can reach.
+    /// Deliberately not windowed to the widget's own horizon. Only the app
+    /// writes this snapshot, and a widget keeps reloading the last one it
+    /// was given for as long as the app stays closed — so a horizon measured
+    /// from write time expires while the snapshot it lives in does not, and
+    /// the first holiday past the edge renders as an ordinary class day.
+    /// Failing that way round is the bad one: the widget claims a class that
+    /// is not happening. A term's holidays are a few dozen dates, so the
+    /// whole published set is cheaper than the bug.
     private static func quietDayKeys() -> Set<String> {
         let store = AcademicCalendarStore.shared
         let optedIn = store.optedInHolidayIDs
-        let today = AcademicCalendar.startOfDay(AppClock.now())
+        let calendar = store.calendar
         var keys: Set<String> = []
-        for offset in 0..<14 {
-            guard let day = AcademicCalendar.calendar.date(
-                byAdding: .day, value: offset, to: today
-            ) else { continue }
-            if store.calendar.suppressesClasses(on: day, optedIn: optedIn) {
-                keys.insert(WidgetTimelineDerivation.dateKey(for: day))
+        for holiday in calendar.holidays {
+            var day = AcademicCalendar.startOfDay(holiday.start)
+            let last = AcademicCalendar.startOfDay(holiday.end)
+            while day <= last {
+                // Re-asked per day rather than trusting this holiday alone:
+                // an overlapping holiday the user opted into un-suppresses
+                // the day, which is `suppressesClasses`'s rule, not ours.
+                if calendar.suppressesClasses(on: day, optedIn: optedIn) {
+                    keys.insert(WidgetTimelineDerivation.dateKey(for: day))
+                }
+                guard let next = AcademicCalendar.calendar.date(
+                    byAdding: .day, value: 1, to: day
+                ) else { break }
+                day = next
             }
         }
         return keys
