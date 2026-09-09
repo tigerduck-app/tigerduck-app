@@ -62,7 +62,9 @@ extension ClassTableViewModel {
     /// its spinner) and the actual fetch continues on a detached Task.
     /// Repeated pulls while a refresh is already in flight are dropped to
     /// prevent two fetches racing on the same caches.
-    func triggerRefresh(authService: AuthService) {
+    /// `semester` defaults to the picker's; a reset passes the term it
+    /// captured, since the picker can move while its DELETE is in flight.
+    func triggerRefresh(authService: AuthService, semester: String? = nil) {
         guard !isRefreshing else { return }
         isRefreshing = true
         Task { [weak self] in
@@ -80,7 +82,7 @@ extension ClassTableViewModel {
                 }
                 return
             }
-            await self.fetchData(authService: authService)
+            await self.fetchData(authService: authService, semester: semester)
             let latestSemester = CourseSelectionService.currentSemesterCode()
             if latestSemester != self.currentSemester {
                 let latestCourses = await AppServiceBridge.fetchCourses(
@@ -100,9 +102,9 @@ extension ClassTableViewModel {
         }
     }
 
-    private func fetchData(authService: AuthService) async {
+    private func fetchData(authService: AuthService, semester: String? = nil) async {
         let manager = NTUSTSessionManager.shared
-        let targetSemester = currentSemester
+        let targetSemester = semester ?? currentSemester
         // Pre-flight here too so the `refresh(authService:)` entry
         // point (used outside triggerRefresh) is also gated. The probe
         // is memoised inside NetworkMonitor so paying for it twice on

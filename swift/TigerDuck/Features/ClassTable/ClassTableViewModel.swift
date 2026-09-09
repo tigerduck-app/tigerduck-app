@@ -170,6 +170,8 @@ final class ClassTableViewModel {
     /// into a no-op instead of stacking concurrent Tasks that would race
     /// on DataCache writes and `dataDidUpdate` notifications.
     var isRefreshing = false
+    /// Terms with a reset in progress — see `resetCourses`.
+    var resettingSemesters: Set<String> = []
     var currentSemesterCourses: [SDCourse] = []
     private let courseProvider = CanonicalCourseProvider()
 
@@ -391,5 +393,7 @@ final class ClassTableViewModel {
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
     var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
     var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
-    var onResetBackendCourses: ((_ semester: String) async -> Bool)?
+    /// Wipes the backend for the term and, on success only, runs the local
+    /// wipe it is handed — see `AppState.deleteBackendCourses`.
+    var onResetBackendCourses: ((_ semester: String, _ resetLocally: @MainActor () -> Void) async -> Bool)?
 }

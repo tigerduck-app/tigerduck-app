@@ -13,15 +13,21 @@ extension AppState {
 
     /// Applies the server's course list to the local caches, one semester
     /// at a time. `serverRows` is the `courses` array of `/sync/full`,
-    /// `tombstones` its `course_tombstones`.
-    func reconcileCourses(serverRows: [[String: Any]], tombstones: [[String: Any]]) {
+    /// `tombstones` its `course_tombstones`, `fetchedAt` when the request
+    /// went out — what the snapshot is as of.
+    func reconcileCourses(serverRows: [[String: Any]], tombstones: [[String: Any]], fetchedAt: Date) {
         // Client-uploaded rows carry the term they belong to. The server's
         // own Moodle mirror rows ("moodle:" keys) carry "" and are not a
         // roster, so they drop out here.
         let rowsBySemester = Dictionary(grouping: serverRows) { ($0["semester"] as? String) ?? "" }
             .filter { !$0.key.isEmpty }
         let tombstonesBySemester = Dictionary(grouping: tombstones) { ($0["semester"] as? String) ?? "" }
-        let semesters = Set(rowsBySemester.keys).union(SemesterCatalog.availableSemesters())
+            .filter { !$0.key.isEmpty }
+        // After a reset the rows are exactly what is gone, so a term may be
+        // known only by its tombstones.
+        let semesters = Set(rowsBySemester.keys)
+            .union(tombstonesBySemester.keys)
+            .union(SemesterCatalog.availableSemesters())
 
         let selectionDropped = DataCache.shared.loadSelectionDroppedNos()
         var deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
@@ -34,8 +40,15 @@ extension AppState {
         recentCourseDeletions = recentCourseDeletions.filter {
             graceNow.timeIntervalSince($0.value) < Self.courseDeleteGraceInterval
         }
+        // A term mid-reset, or one this device reset after this snapshot
+        // was fetched — the snapshot still carries the pre-reset roster.
+        // See `resettingSemesters` and `DataCache.loadSemesterResetAt`.
+        let resetAt = DataCache.shared.loadSemesterResetAt()
+        DataCache.shared.clearSemesterResets(outlivedBy: fetchedAt)
 
         for semester in semesters.sorted() {
+            if resettingSemesters.contains(semester) { continue }
+            if let reset = resetAt[semester], reset > fetchedAt { continue }
             // A misfiled row is neither a roster nor evidence of presence,
             // and neither is a course 選課 has dropped: the backend still
             // carries it because an upload only upserts, and merging it back
@@ -50,17 +63,6 @@ extension AppState {
             let serverNos = Set(rows.compactMap { $0["course_no"] as? String })
             let localCourses = DataCache.shared.loadCourses(semester: semester)
 
-            // Nothing uploaded for this term yet (first sync, or another
-            // device is mid-reset): push what we have instead of treating
-            // every local course as deleted elsewhere.
-            guard !serverNos.isEmpty else {
-                if !localCourses.isEmpty {
-                    uploadCourses(localCourses, semester: semester)
-                    AppLogger.sync.info("[sync] \(semester, privacy: .public): server empty, uploaded \(localCourses.count, privacy: .public) local courses")
-                }
-                continue
-            }
-
             func isHidden(_ courseNo: String) -> Bool {
                 CourseTombstone.isHidden(courseNo, semester: semester, in: deletedNos)
             }
@@ -69,15 +71,56 @@ extension AppState {
                 deletedChanged = true
             }
 
-            // Portal course absent from the server → deleted on another device.
-            for course in localCourses where !serverNos.contains(course.courseNo) && !isHidden(course.courseNo) {
-                hide(course.courseNo)
-            }
-            // Explicit tombstones from other devices.
+            // Explicit tombstones from other devices, applied before anything
+            // reads this term's emptiness. A semester reset is exactly the
+            // case where the server has no rows for the term and a tombstone
+            // for every course it used to hold. Reading the silence first
+            // kept the pre-reset roster on this device and re-uploaded it on
+            // every refresh — the backend refuses that upload, silently —
+            // which is how a reset on one device never reached the other.
+            //
+            // A reset tombstone does not bind the device that wrote it — the
+            // backend's own rule, whose next upload from that device releases
+            // the tombstones for the keys it names. Between the reset's
+            // DELETE and that upload, the server has an empty term and a
+            // tombstone per course, and a poll landing in the gap must not
+            // read them as "hide everything here": the refetch filters by
+            // the tombstone store, so it would upload nothing and never
+            // release them. A single delete binds its author like everyone.
             for tombstone in tombstonesBySemester[semester] ?? [] {
                 guard let courseNo = tombstone["course_no"] as? String,
                       !serverNos.contains(courseNo), !isHidden(courseNo) else { continue }
+                let ownReset = (tombstone["deleted_by_reset"] as? Bool ?? false)
+                    && (tombstone["deleted_by_this_device"] as? Bool ?? false)
+                if ownReset { continue }
                 hide(courseNo)
+            }
+
+            // Nothing uploaded for this term yet (first sync, or another
+            // device is mid-reset): push what we have instead of treating
+            // every local course as deleted elsewhere. Only what the
+            // tombstones leave visible counts — after a reset the whole
+            // roster is tombstoned, and then there is nothing to push. A
+            // manual course the tombstones name goes the same way as in the
+            // populated branch below.
+            guard !serverNos.isEmpty else {
+                let uploadable = localCourses.filter { !isHidden($0.courseNo) }
+                if !uploadable.isEmpty {
+                    uploadCourses(uploadable, semester: semester)
+                    AppLogger.sync.info("[sync] \(semester, privacy: .public): server empty, uploaded \(uploadable.count, privacy: .public) local courses")
+                }
+                // Only rows stamped with this term: an unstamped legacy row
+                // reads as belonging to every term, and a tombstone here
+                // says nothing about it.
+                let manualBefore = userAdded.count
+                userAdded.removeAll { $0.semester == semester && isHidden($0.courseNo) }
+                if userAdded.count != manualBefore { mergedSemesters.insert(semester) }
+                continue
+            }
+
+            // Portal course absent from the server → deleted on another device.
+            for course in localCourses where !serverNos.contains(course.courseNo) && !isHidden(course.courseNo) {
+                hide(course.courseNo)
             }
             // Manual additions the server no longer lists.
             let manualBefore = userAdded.count

@@ -41,6 +41,7 @@ extension AppState {
             let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
             let editGenerationAtFetch = overrideEditGeneration
+            let fetchedAt = Date()
             let json = try await pushCoordinator.fetchFullSync()
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
 
@@ -188,7 +189,7 @@ extension AppState {
             if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             } else if Defaults[.syncCourses] {
-                reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray)
+                reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray, fetchedAt: fetchedAt)
             }
 
             // Update the revision watermark so the poller doesn't
@@ -374,12 +375,28 @@ extension AppState {
     /// term it is on so the others survive. Returns false when the wipe did
     /// not land, so the caller can hold off on a reset that the next sync
     /// would otherwise undo by merging the stale server rows back.
+    /// Wipes the backend, then runs `resetLocally` — only then. Wiping
+    /// locally first and then failing the DELETE would leave an empty grid
+    /// with the server still full, to be merged back as hand-added rows.
+    /// The term stays in `resettingSemesters` across both steps, and the
+    /// reset is stamped once the DELETE has landed, so a snapshot fetched
+    /// before that instant is never reconciled into the term.
     @discardableResult
-    func deleteBackendCourses(semester: String? = nil) async -> Bool {
-        guard Defaults[.cloudSyncEnabled] else { return true }
+    func deleteBackendCourses(
+        semester: String? = nil,
+        thenLocally resetLocally: @MainActor () -> Void = {}
+    ) async -> Bool {
+        guard Defaults[.cloudSyncEnabled] else {
+            resetLocally()
+            return true
+        }
+        if let semester { resettingSemesters.insert(semester) }
+        defer { if let semester { resettingSemesters.remove(semester) } }
         do {
             try await pushCoordinator.deleteAllCourses(semester: semester)
             AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
+            if let semester { DataCache.shared.recordSemesterReset(semester) }
+            resetLocally()
             return true
         } catch {
             AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .public)")

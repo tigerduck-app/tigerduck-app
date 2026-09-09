@@ -141,19 +141,39 @@ extension ClassTableViewModel {
     /// untouched.
     func resetCourses(authService: AuthService) {
         let semester = currentSemester
+        // One at a time per term: two refetches racing each other's
+        // uploads is nothing anyone needs.
+        guard !resettingSemesters.contains(semester) else { return }
+        resettingSemesters.insert(semester)
         Task { [weak self] in
             guard let self else { return }
-            // Wipe the backend BEFORE touching local state or refetching: the
-            // refetch auto-uploads the fresh roster, so a delete landing after
-            // it would erase it again — and a delete that never landed would
-            // let the next sync merge the stale server rows straight back.
-            // Offline or unauthorised, nothing is reset and the user is told.
-            guard await self.onResetBackendCourses?(semester) ?? true else {
+            defer { self.resettingSemesters.remove(semester) }
+            // The backend first, and the local wipe only once it has
+            // forgotten the term — `AppState.deleteBackendCourses` runs the
+            // closure on success, keeps the term latched against the
+            // revision poll across both, and stamps the reset. Offline or
+            // unauthorised, nothing is touched and the user is told.
+            let resetLocally: @MainActor () -> Void = { self.resetLocalCourses(semester: semester) }
+            let backendOk: Bool
+            if let onResetBackendCourses {
+                backendOk = await onResetBackendCourses(semester, resetLocally)
+            } else {
+                resetLocally()
+                backendOk = true
+            }
+            guard backendOk else {
                 self.showResetFailedAlert = true
                 return
             }
-            self.resetLocalCourses(semester: semester)
-            self.triggerRefresh(authService: authService)
+            // Then the refetch, whose upload is what releases this
+            // device's reset tombstones: for the captured term, not
+            // whatever the picker shows by now, and after any
+            // pull-to-refresh still running rather than beside it — the
+            // two would race each other's cache writes.
+            while self.isRefreshing {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            self.triggerRefresh(authService: authService, semester: semester)
         }
     }
 
@@ -169,6 +189,13 @@ extension ClassTableViewModel {
             courseCustomNames.removeValue(forKey: courseNo)
         }
         DataCache.shared.saveCourseCustomNames(courseCustomNames)
+        // The portal cache goes too, in every language. A reset means
+        // "start this term over", and the roster the refetch returns is
+        // the whole of it. Also load-bearing for sync: with the old roster
+        // still on disk next to an empty server term, a poll would push it
+        // back up, and this device's upload releases its own reset
+        // tombstones — the reset would undo itself.
+        DataCache.shared.clearCourses(semester: semester)
         reloadFromCache()
     }
 

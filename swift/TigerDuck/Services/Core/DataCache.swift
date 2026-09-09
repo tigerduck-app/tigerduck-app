@@ -67,9 +67,66 @@ final class DataCache {
         }
     }
 
+    /// Drops the term's portal cache in every language. `saveCourses([],
+    /// semester:)` clears only the current language's file, and a reset
+    /// that left the other one holding the pre-reset roster came back the
+    /// moment the language changed — and was uploaded, undoing the reset.
+    func clearCourses(semester: String) {
+        let prefix = "courses_\(semester)_"
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir, includingPropertiesForKeys: nil
+        )) ?? []
+        for url in contents
+        where url.lastPathComponent.hasPrefix(prefix) && url.pathExtension == "json" {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     private func coursesFilename(_ semester: String, _ language: String) -> String {
         "courses_\(semester)_\(language).json"
     }
+
+    // MARK: - Semester reset time
+
+    /// When this device last reset each term.
+    ///
+    /// A `/sync/full` snapshot is fetched, then reconciled after the
+    /// assignment overrides and their PATCHes. One fetched before a reset
+    /// still carries the pre-reset roster; merged into the freshly cleared
+    /// cache it put the whole roster back, for the reset's own refetch to
+    /// upload — from the resetting device, whose upload releases its own
+    /// reset tombstones. The reconcile leaves a term alone when the
+    /// snapshot predates its reset, and drops the stamp once a snapshot
+    /// clearly newer has been reconciled.
+    func loadSemesterResetAt() -> [String: Date] {
+        (UserDefaults.standard.dictionary(forKey: Self.semesterResetAtKey) as? [String: Date]) ?? [:]
+    }
+
+    func recordSemesterReset(_ semester: String, at date: Date = Date()) {
+        var all = loadSemesterResetAt()
+        all[semester] = date
+        UserDefaults.standard.set(all, forKey: Self.semesterResetAtKey)
+    }
+
+    /// Drops the stamps a snapshot fetched at `fetchedAt` has outlived:
+    /// those more than `semesterResetGrace` older than it.
+    ///
+    /// A stamp has done its job once a snapshot clearly newer than the
+    /// reset has been reconciled — an overlapping sync's older snapshot is
+    /// at most seconds behind, never a minute. Dropping it then is what
+    /// keeps a wall clock that later steps backwards from muting the term
+    /// for good: the stamp would otherwise sit ahead of every fetch time
+    /// until the clock caught up with it.
+    func clearSemesterResets(outlivedBy fetchedAt: Date) {
+        let all = loadSemesterResetAt()
+        let kept = all.filter { fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }
+        if kept.count != all.count {
+            UserDefaults.standard.set(kept, forKey: Self.semesterResetAtKey)
+        }
+    }
+
+    private static let semesterResetAtKey = "semesterResetAt"
+    private static let semesterResetGrace: TimeInterval = 60
 
     private func currentCourseApiLanguage() -> String {
         LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])

@@ -17,7 +17,7 @@ struct ClassTableView: View {
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
-                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0) }
+                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0, thenLocally: $1) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
@@ -32,7 +32,7 @@ struct ClassTableView: View {
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
-                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0) }
+                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0, thenLocally: $1) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in

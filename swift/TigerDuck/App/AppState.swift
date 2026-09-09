@@ -261,6 +261,16 @@ final class AppState {
     var recentCourseDeletions: [String: Date] = [:]
     static let courseDeleteGraceInterval: TimeInterval = 120
 
+    /// Terms whose reset DELETE is in flight or whose local wipe is still
+    /// running. A snapshot reconciled inside that window sees the server
+    /// either still full or just emptied and the caches either still full
+    /// or just emptied, and every combination but the right one puts the
+    /// old roster somewhere it gets uploaded from; the reconcile skips the
+    /// term. In memory: it only has to outlive one round trip. What is
+    /// fetched before the DELETE but reconciled after the latch is gone is
+    /// `DataCache.loadSemesterResetAt`'s job.
+    var resettingSemesters: Set<String> = []
+
     var _libraryRevision = 0
     var syncTask: Task<Void, Never>?
     var relabelTask: Task<Void, Never>?
