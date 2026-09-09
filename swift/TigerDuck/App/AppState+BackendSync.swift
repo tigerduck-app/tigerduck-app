@@ -171,7 +171,7 @@ extension AppState {
                         return row["holiday_id"] as? Int
                     }
                 )
-                AcademicCalendarStore.shared.applySyncedOverrides(optedIn)
+                AcademicCalendarStore.shared.applySyncedOverrides(optedIn, fetchedAt: fetchedAt)
             }
 
             // Conflict resolution: detect reset + process tombstones

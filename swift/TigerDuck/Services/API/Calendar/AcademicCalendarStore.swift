@@ -22,8 +22,15 @@ final class AcademicCalendarStore {
     )
     private var refreshTask: Task<Bool, Never>?
     /// Holiday toggles this device has made but not yet uploaded. See
-    /// ``applySyncedOverrides(_:)``.
+    /// ``applySyncedOverrides(_:fetchedAt:)``.
     private var pendingHolidayUploads = 0
+    /// When this device last changed a holiday override. See
+    /// ``applySyncedOverrides(_:fetchedAt:)``.
+    private var lastHolidayEditAt = Date.distantPast
+    /// Bumped whenever the app changes which backend it talks to, so a
+    /// response already on its way back from the previous one can be told
+    /// apart from a current one. See ``forgetCachedCalendar()``.
+    private var endpointGeneration = 0
 
     /// The calendar as of the last successful fetch.
     private(set) var calendar: AcademicCalendar
@@ -65,6 +72,11 @@ final class AcademicCalendarStore {
     }
 
     private func performRefresh() async -> Bool {
+        // Which backend this request belongs to. Checked again before the
+        // response is committed: `Task.cancel()` cannot unsend a request, and
+        // a response that has already arrived is decoded and stored without
+        // ever asking whether it is still wanted.
+        let generation = endpointGeneration
         let url = PushServerConfig.resolveServerURL()
             .appendingPathComponent("calendar")
             .appendingPathComponent("semesters")
@@ -86,6 +98,10 @@ final class AcademicCalendarStore {
             }
             let dto = try JSONDecoder().decode(AcademicCalendarDTO.self, from: data)
             let parsed = AcademicCalendar(dto: dto)
+            guard generation == endpointGeneration else {
+                logger.info("dropped a calendar answered by a previous endpoint")
+                return false
+            }
             let changed = parsed != calendar
             calendar = parsed
             Defaults[.academicCalendarETag] = http.value(forHTTPHeaderField: "ETag") ?? ""
@@ -123,6 +139,10 @@ final class AcademicCalendarStore {
         if notify { ids.insert(holidayID) } else { ids.remove(holidayID) }
         guard ids != before else { return false }
         Defaults[.holidayNotifyOverrides] = Array(ids).sorted()
+        // Wall clock, not `AppClock`: this is compared against the sync
+        // path's own `Date()`, and a DEBUG clock override would put the two
+        // in different eras.
+        lastHolidayEditAt = Date()
         return true
     }
 
@@ -150,6 +170,7 @@ final class AcademicCalendarStore {
     /// The clearing half of ``endpointDidChange()``, without the refetch, so
     /// a test can pin it without reaching the network.
     func forgetCachedCalendar() {
+        endpointGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
         Defaults[.academicCalendarETag] = ""
@@ -157,18 +178,25 @@ final class AcademicCalendarStore {
         calendar = .empty
     }
 
-    /// Replace the local set from a cloud-sync snapshot.
+    /// Replace the local set from a cloud-sync snapshot taken at `fetchedAt`.
     ///
-    /// Skipped while this device has a toggle in flight. A sync response is
-    /// a snapshot of the server as it was when the request left, so one that
-    /// crosses a tap on the wire carries the state from *before* that tap —
-    /// applying it would flip the switch back under the user's finger, and
-    /// the upload landing a moment later would leave the server right and
-    /// this device wrong until the next sync. The upload is the newer fact;
-    /// let it win, and take the server's word at the next sync.
-    func applySyncedOverrides(_ ids: Set<Int>) {
-        guard pendingHolidayUploads == 0 else {
-            logger.info("holiday overrides from sync ignored — a local toggle is still uploading")
+    /// A sync response describes the server as it was when the request left,
+    /// so one that crosses a tap on the wire carries the state from *before*
+    /// that tap. Applying it flips the switch back under the user's finger
+    /// and leaves this device disagreeing with the server it has just told.
+    ///
+    /// Two conditions, because neither covers the other's gap:
+    ///
+    /// - `fetchedAt` older than the last local edit means the snapshot cannot
+    ///   possibly know about that edit, whether or not its upload has landed.
+    /// - A snapshot fetched *after* the tap can still predate the upload
+    ///   arriving, so it reports the old value with a newer timestamp; the
+    ///   pending count covers that window.
+    ///
+    /// Either way the local edit is the newer fact. The next sync settles it.
+    func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date) {
+        guard pendingHolidayUploads == 0, fetchedAt > lastHolidayEditAt else {
+            logger.info("holiday overrides from sync ignored — a local toggle is newer")
             return
         }
         Defaults[.holidayNotifyOverrides] = Array(ids).sorted()
