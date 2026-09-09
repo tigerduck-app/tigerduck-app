@@ -17,6 +17,11 @@ import Foundation
 /// ``PushServerConfig/isOverrideAllowed(_:)`` and
 /// ``EndpointHealthCheck/probe(_:)``, so a value that no longer meets the
 /// transport rules — or that nothing is serving — cannot be stored.
+///
+/// Both write paths also call ``AcademicCalendarStore/endpointDidChange()``:
+/// the academic calendar is cached with an opaque ETag that says nothing
+/// about which backend issued it, so without this the next server's
+/// conditional GET can be answered 304 against the previous server's dates.
 nonisolated enum DebugEndpointStore {
     /// Internal (not private) so the erase-everything action can name the
     /// one key it deliberately preserves.
@@ -94,10 +99,15 @@ nonisolated enum DebugEndpointStore {
         let written = KeychainManager.saveStringReportingSuccess(
             key: keychainKey, value: url.absoluteString
         )
+        if written { await AcademicCalendarStore.shared.endpointDidChange() }
         return written ? .success : .keychainWriteFailed
     }
 
+    /// `@MainActor` for the calendar invalidation below. The only caller is
+    /// the Settings screen's reset button, which is already there.
+    @MainActor
     static func clearOverride() {
         KeychainManager.delete(key: keychainKey)
+        AcademicCalendarStore.shared.endpointDidChange()
     }
 }

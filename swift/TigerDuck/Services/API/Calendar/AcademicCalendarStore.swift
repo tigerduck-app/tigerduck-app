@@ -123,6 +123,37 @@ final class AcademicCalendarStore {
         return true
     }
 
+    /// Drop everything the previous backend told us, and refetch.
+    ///
+    /// The cache and the ETag are both endpoint-scoped, and neither says so.
+    /// An ETag is opaque, so a different deployment can hand back one that
+    /// matches by coincidence — or the same one, if both are running the
+    /// upstream backend — and the 304 that follows would pin the old
+    /// server's dates. A refresh that simply fails leaves them in place for
+    /// the same reason: `performRefresh` keeps the cache on error on
+    /// purpose, so that an unreachable backend cannot switch suppression
+    /// off. Both behaviours are right while the endpoint is fixed and wrong
+    /// the moment it moves, which is what this exists for.
+    ///
+    /// The refresh is not awaited: the caller is a Save button, and an empty
+    /// calendar is the honest state until the new backend answers. Empty
+    /// fails open — no terms reads as in-session, no holidays suppresses
+    /// nothing — so the gap shows classes rather than hiding them.
+    func endpointDidChange() {
+        forgetCachedCalendar()
+        Task { await refresh() }
+    }
+
+    /// The clearing half of ``endpointDidChange()``, without the refetch, so
+    /// a test can pin it without reaching the network.
+    func forgetCachedCalendar() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        Defaults[.academicCalendarETag] = ""
+        Defaults[.academicCalendarCache] = Data()
+        calendar = .empty
+    }
+
     /// Replace the local set from a cloud-sync snapshot.
     func applySyncedOverrides(_ ids: Set<Int>) {
         Defaults[.holidayNotifyOverrides] = Array(ids).sorted()
