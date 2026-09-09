@@ -44,6 +44,12 @@ struct SyncStatusDot: View {
     /// Optional so the dot still renders in a preview with no `AppState`
     /// injected, where "signed out" is the conservative read.
     @Environment(AppState.self) private var appState: AppState?
+    /// Observed rather than read through `Defaults[...]`. `isOff` feeds
+    /// `sources` and `summary`, which the body reads, and a bare subscript
+    /// is a read SwiftUI never subscribes to -- so switching sync off left
+    /// the mark on whatever colour it already had until something unrelated
+    /// forced a redraw, which is the opposite of what `isOff` is for.
+    @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @State private var showDetails = false
     @State private var spinning = false
     @State private var dimmed = false
@@ -83,7 +89,7 @@ struct SyncStatusDot: View {
     /// before the switch went off would otherwise sit there green. The
     /// signed-out case never reaches here; `body` draws nothing at all.
     private func isOff(_ server: ServerKind) -> Bool {
-        server == .backend && !Defaults[.cloudSyncEnabled]
+        server == .backend && !cloudSyncEnabled
     }
 
     private var sources: [Source] {

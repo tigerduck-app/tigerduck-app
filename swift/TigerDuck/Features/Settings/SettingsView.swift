@@ -6,6 +6,17 @@ import UserNotifications
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    /// Observed, not read through `Defaults[...]`: a bare subscript is a
+    /// plain read that SwiftUI never subscribes to, so this screen kept
+    /// rendering "On" after the switch inside `CloudSyncSettingsView` had
+    /// already turned it off -- popping back does not re-evaluate a parent
+    /// body on its own.
+    ///
+    /// It watches the preference rather than `appState.cloudSyncEnabled`
+    /// because three writers -- onboarding and both ends of
+    /// `CloudSyncCoordinator` -- set the preference directly, so the
+    /// AppState mirror is not guaranteed to agree with it.
+    @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -158,7 +169,7 @@ struct SettingsView: View {
                     HStack {
                         Text(String(localized: "cloud_sync_title"))
                         Spacer()
-                        Text(Defaults[.cloudSyncEnabled]
+                        Text(cloudSyncEnabled
                              ? String(localized: "settings_sync_status_on")
                              : String(localized: "settings_sync_status_off"))
                             .foregroundStyle(.secondary)
@@ -168,7 +179,7 @@ struct SettingsView: View {
 
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
-                if !Defaults[.cloudSyncEnabled] {
+                if !cloudSyncEnabled {
                     Link(destination: AppURLs.learnMoreBackend) {
                         Label(
                             String(localized: "settings_sync_off_notifications_warning"),
