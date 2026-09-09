@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Maps the codebase weekday convention (1=Mon, 2=Tue, ..., 7=Sun) to a
 /// localized short weekday name. DateFormatter's symbol arrays use a
@@ -471,14 +474,13 @@ private struct ConflictClusterView: View {
     @ViewBuilder
     private func conflictContextMenu() -> some View {
         ForEach(segments, id: \.course.courseNo) { segment in
-            // Header carries the course's own colour as well as its name.
-            // Two courses in a conflict can share a name -- a timetable
-            // full of "Calculus" sections is the normal case, not the odd
-            // one -- and then the names alone give the user two identical
-            // groups to choose between. The dot is the one thing that
-            // differs, and it is the same colour the cell behind the menu
-            // is already drawn in.
-            Section {
+            // One section per course. The name alone does not always
+            // separate them -- two sections of the same course colliding is
+            // the ordinary reason to open this menu -- so the course's own
+            // colour, the fill the cell behind the menu is drawn in, rides
+            // on the "Pick color" row. See `colorDot` for why it lives
+            // there and not beside the name.
+            Section(segment.course.displayName) {
                 Button {
                     viewModel.startRename(segment.course)
                 } label: {
@@ -487,22 +489,42 @@ private struct ConflictClusterView: View {
                 Button {
                     viewModel.startRecolor(segment.course)
                 } label: {
-                    Label(String(localized: "class_table_pick_color"), systemImage: "paintpalette")
+                    Label {
+                        Text(String(localized: "class_table_pick_color"))
+                    } icon: {
+                        Self.colorDot(segment.course.color)
+                    }
                 }
                 Button(role: .destructive) {
                     viewModel.deleteCourse(segment.course)
                 } label: {
                     Label(String(localized: "class_table_delete"), systemImage: "trash")
                 }
-            } header: {
-                Label {
-                    Text(segment.course.displayName)
-                } icon: {
-                    Image(systemName: "circle.fill")
-                        .foregroundStyle(segment.course.color)
-                }
             }
         }
+    }
+
+    /// A filled dot in the course's own colour, for use as a menu icon.
+    ///
+    /// Drawn into a bitmap and marked `.alwaysOriginal` because UIKit
+    /// retints template images -- SF Symbols included -- to the menu's own
+    /// tint. An `Image(systemName: "circle.fill").foregroundStyle(...)`
+    /// therefore arrives grey, which is what the first attempt at this did.
+    ///
+    /// It rides on the "Pick color" row rather than beside the name in the
+    /// section header, because UIKit renders an inline menu's header from
+    /// its title alone and drops any image the header carries.
+    private static func colorDot(_ color: Color) -> Image {
+        #if canImport(UIKit)
+        let side: CGFloat = 16
+        let rendered = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
+            UIColor(color).setFill()
+            ctx.cgContext.fillEllipse(in: CGRect(x: 0, y: 0, width: side, height: side))
+        }
+        return Image(uiImage: rendered.withRenderingMode(.alwaysOriginal))
+        #else
+        return Image(systemName: "circle.fill")
+        #endif
     }
 
     private func courseRegion(
