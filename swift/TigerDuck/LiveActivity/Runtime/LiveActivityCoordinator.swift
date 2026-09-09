@@ -30,6 +30,12 @@ final class LiveActivityCoordinator {
     private var automaticEndTasks: [String: Task<Void, Never>] = [:]
     private var activityObserverTask: Task<Void, Never>?
     private var activityUpdateTokenTasks: [String: Task<Void, Never>] = [:]
+    /// `Activity.id`s this coordinator has ended. ActivityKit does not
+    /// promise that an ended activity has left `Activity.activities` by the
+    /// time `end` returns, so a survivor search that trusted
+    /// `activityState` alone could pick a copy that is already on its way
+    /// out. Pruned of ids ActivityKit no longer lists.
+    private var endedActivityIds: Set<String> = []
     private var updateTokenRegistrationHandler: (@Sendable (LiveActivityUpdateTokenRegistration) async -> Void)?
 
     init(store: SharedSnapshotStore = SharedSnapshotStore()) {
@@ -93,7 +99,13 @@ final class LiveActivityCoordinator {
         let realStaleDate = snapshot.countdownTarget.map(AppClock.realTime(forApp:))
         let content = ActivityContent(state: state, staleDate: realStaleDate)
 
-        if let matching = runningActivities.first(where: { $0.attributes.activityId == targetId }) {
+        // A copy this coordinator has just ended can still be listed; it
+        // is not the one to update. One the system or the user ended is:
+        // updating it is a no-op, and that is the point — the person got
+        // rid of it, and the app must not put it back.
+        if let matching = runningActivities.first(where: {
+            $0.attributes.activityId == targetId && !endedActivityIds.contains($0.id)
+        }) {
             if matching.content.state.snapshot != snapshot {
                 await matching.update(content)
             }
@@ -140,6 +152,9 @@ final class LiveActivityCoordinator {
                 guard let self else { return }
                 let now = AppClock.now()
                 await pruneRunningActivities(keeping: nil, now: now, expiredOnly: true)
+                // A push-to-start twin of an activity this app already
+                // started is ended inside the prune; nothing below is for it.
+                if endedActivityIds.contains(activity.id) { continue }
                 let snapshot = activity.content.state.snapshot
                 if snapshot.countdownTarget.map({ $0 <= now }) == true {
                     await end(activity, reason: "observed expired activity")
@@ -160,8 +175,12 @@ final class LiveActivityCoordinator {
         now: Date,
         expiredOnly: Bool = false
     ) async {
+        await endDuplicateActivities(now: now)
         var retainedTaskIds: Set<String> = []
         for activity in Activity<TigerDuckActivityAttributes>.activities {
+            // Ended above and still listed: `end(_:reason:)` on it would
+            // drop the keeper's observer, which shares its activityId.
+            if endedActivityIds.contains(activity.id) { continue }
             let activityId = activity.attributes.activityId
             let isExpired = activity.content.state.snapshot.countdownTarget.map { $0 <= now } ?? false
             let isCurrentTarget = targetId.map { $0 == activityId } ?? false
@@ -182,6 +201,52 @@ final class LiveActivityCoordinator {
         }
         cancelAutomaticEndTasks(except: retainedTaskIds)
         cancelUpdateTokenTasks(except: retainedTaskIds)
+    }
+
+    /// Keeps one copy of every `activityId` and ends the rest.
+    ///
+    /// A push-to-start can land for an activity this app already started
+    /// itself: it was in the foreground at fire time, so `apply` got there
+    /// first. The server skips the push while the activity is registered,
+    /// but registration is a round trip and the two can cross. `apply` and
+    /// the activity observer both run through here, so a pair is resolved on
+    /// whichever comes first.
+    ///
+    /// The copy whose update token APNs has already minted is kept — it is
+    /// the one the server can reach — and the token observer and end timer
+    /// are re-pointed at it, because both are keyed by `activityId` and may
+    /// still describe a copy that just went away. An observer left on a
+    /// dead activity means the survivor's token is never registered, so the
+    /// server can neither end it nor see it running. Extras are ended
+    /// directly rather than through `end(_:reason:)`, which would drop those
+    /// keys instead of re-pointing them.
+    private func endDuplicateActivities(now: Date) async {
+        let listed = Activity<TigerDuckActivityAttributes>.activities
+        endedActivityIds = endedActivityIds.intersection(listed.map(\.id))
+        let live = listed.filter {
+            ($0.activityState == .active || $0.activityState == .stale)
+                && !endedActivityIds.contains($0.id)
+        }
+        for (activityId, copies) in Dictionary(grouping: live, by: { $0.attributes.activityId })
+        where copies.count > 1 {
+            let keeper = copies.first { $0.pushToken != nil }
+                ?? copies.min { $0.id < $1.id }!
+            for copy in copies where copy.id != keeper.id {
+                logger.info(
+                    "Ending duplicate Live Activity id=\(activityId, privacy: .public) reason=already running"
+                )
+                endedActivityIds.insert(copy.id)
+                await copy.end(nil, dismissalPolicy: .immediate)
+            }
+            activityUpdateTokenTasks[activityId]?.cancel()
+            activityUpdateTokenTasks[activityId] = nil
+            observeUpdateToken(for: keeper)
+            scheduleAutomaticEnd(
+                for: activityId,
+                snapshot: keeper.content.state.snapshot,
+                now: now
+            )
+        }
     }
 
     private func scheduleAutomaticEnd(
@@ -212,9 +277,12 @@ final class LiveActivityCoordinator {
 
     private func endIfStillExpired(activityId: String, target: Date) async {
         automaticEndTasks[activityId] = nil
+        // Not a copy already ended: `end(_:reason:)` on it would drop the
+        // keeper's observer, which shares its activityId.
         guard AppClock.now() >= target,
-              let activity = Activity<TigerDuckActivityAttributes>.activities
-              .first(where: { $0.attributes.activityId == activityId }) else {
+              let activity = Activity<TigerDuckActivityAttributes>.activities.first(where: {
+                  $0.attributes.activityId == activityId && !endedActivityIds.contains($0.id)
+              }) else {
             return
         }
         await end(activity, reason: "automatic countdown end")
@@ -264,6 +332,13 @@ final class LiveActivityCoordinator {
                     snapshot: activity.content.state.snapshot
                 )
             }
+            // The stream ends with the activity. Leave the slot free so a
+            // later activity under the same id (the same class next week,
+            // started by push) is observed rather than turned away by the
+            // guard above. A cancelled task has been replaced already and
+            // must not clear its successor.
+            guard !Task.isCancelled else { return }
+            self?.activityUpdateTokenTasks[activityId] = nil
         }
     }
 
