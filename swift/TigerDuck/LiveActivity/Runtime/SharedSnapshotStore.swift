@@ -6,7 +6,9 @@ import os
 /// it the widget extension reads its own per-process defaults and never
 /// sees what the app writes — i.e. Live Activity silently renders empty.
 ///
-/// In DEBUG we crash hard if the suite is unavailable so the empty
+/// In DEBUG we crash hard when the App Group is unreachable (a
+/// container-URL check, not a nil-suite check — see
+/// ``isAppGroupAvailable(_:)``) so the empty
 /// `com.apple.security.application-groups` regression cannot ship
 /// silently again. In release we still fall back to `.standard` with a
 /// loud error so a user with a provisioning hiccup still launches.
@@ -22,8 +24,29 @@ nonisolated final class SharedSnapshotStore {
     private let decoder = JSONDecoder()
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "LiveActivity")
 
+    /// Whether this process can actually reach the shared App Group.
+    ///
+    /// `UserDefaults(suiteName:)` does NOT answer this — it returns nil only
+    /// for reserved names, and hands back a valid *process-local* store for a
+    /// group the process has no entitlement for, which is exactly the
+    /// "renders empty" failure the doc comment above describes. See
+    /// `WidgetSnapshotStore.isAppGroupAvailable(_:)` for the full rationale;
+    /// the check is duplicated rather than shared because the two files sit
+    /// in different synchronized folders and a common home would mean a new
+    /// target-membership exception in the project file.
+    static func isAppGroupAvailable(_ identifier: String) -> Bool {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: identifier
+        ) != nil
+    }
+
     init(appGroupIdentifier: String? = SharedSnapshotStore.defaultAppGroupIdentifier) {
-        if let id = appGroupIdentifier, let suite = UserDefaults(suiteName: id) {
+        // Only the shipping App Group has to be *reachable*. An injected
+        // identifier is a test seam pointing at an ordinary UserDefaults
+        // suite, which has no container and never will.
+        if let id = appGroupIdentifier,
+           id != Self.defaultAppGroupIdentifier || Self.isAppGroupAvailable(id),
+           let suite = UserDefaults(suiteName: id) {
             self.defaults = suite
         } else {
             let identifierForLog = appGroupIdentifier ?? "nil"
