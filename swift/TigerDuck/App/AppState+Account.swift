@@ -100,11 +100,22 @@ extension AppState {
 
         authService.logout()
         Task { await authTokenManager.logout() }
+        // The tracker is process-wide and outlives the account, so the
+        // departing user's last good sync would otherwise still be sitting
+        // there for the next account to inherit — green from the moment the
+        // header dot comes back, before anything has actually synced.
+        ServerStatusTracker.shared.reset()
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.
         didSkipMacLogin = false
         DataCache.shared.clearUserScopedData()
+        // Holiday choices are account-scoped and live in UserDefaults rather
+        // than the cache, so `clearUserScopedData` does not reach them. The
+        // queue goes first: a link still waiting to run would otherwise send
+        // the departing user's toggle over the next account's session.
+        cancelHolidayUploads()
+        AcademicCalendarStore.shared.forgetHolidayOverrides()
         Task { @MainActor in
             await cloudSyncCoordinator.disable()
             await pushCoordinator.disable()

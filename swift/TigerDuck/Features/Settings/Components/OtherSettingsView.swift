@@ -1,4 +1,3 @@
-import Defaults
 import SwiftUI
 #if os(iOS)
 import UIKit
@@ -100,8 +99,7 @@ struct OtherSettingsView: View {
                         openURL(Self.feedbackURL)
                     }
                 } label: {
-                    Text(String(localized: "settings_feedback_bug_report"))
-                        .foregroundStyle(.primary)
+                    linkLabel("settings_feedback_bug_report")
                 }
                 Button {
                     if appState.browserPreference == .inApp {
@@ -110,8 +108,7 @@ struct OtherSettingsView: View {
                         openURL(Self.privacyURL)
                     }
                 } label: {
-                    Text(String(localized: "settings_privacy_policy"))
-                        .foregroundStyle(.primary)
+                    linkLabel("settings_privacy_policy")
                 }
                 Button {
                     if appState.browserPreference == .inApp {
@@ -120,17 +117,17 @@ struct OtherSettingsView: View {
                         openURL(Self.deleteAccountURL)
                     }
                 } label: {
-                    Text(String(localized: "settings_delete_account"))
-                        .foregroundStyle(.primary)
+                    linkLabel("settings_delete_account")
                 }
-                Button(String(localized: "settings_open_source_licenses")) {
+                Button {
                     if appState.browserPreference == .inApp {
                         showLicense = true
                     } else {
                         openURL(Self.licenseURL)
                     }
+                } label: {
+                    linkLabel("settings_open_source_licenses")
                 }
-                .foregroundStyle(.primary)
                 NavigationLink(String(localized: "settings_view_source_code")) {
                     SourceCodePickerView()
                 }
@@ -159,7 +156,7 @@ struct OtherSettingsView: View {
             isPresented: $showReassignColorsConfirm
         ) {
             Button(String(localized: "action_confirm"), role: .destructive) {
-                reassignAllCourseColors()
+                appState.reassignAllCourseColors()
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
         } message: {
@@ -167,24 +164,26 @@ struct OtherSettingsView: View {
         }
     }
 
-    /// Rebuild every course's color assignment from scratch using the
-    /// unique-color algorithm, then broadcast so Home, Class Table, widgets,
-    /// and the Live Activity all pick up the new palette.
-    private func reassignAllCourseColors() {
-        let courses = CanonicalCourseProvider().currentCourses()
-        TigerDuckTheme.reassignAll(courseNos: courses.map(\.courseNo))
-        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-        if Defaults[.cloudSyncEnabled] {
-            let colorMap = TigerDuckTheme.snapshot()
-            for course in courses {
-                guard let moodleId = course.moodleIdNumber,
-                      let hex = colorMap[course.courseNo]
-                else { continue }
-                appState.syncCourseOverride(
-                    moodleCourseId: moodleId,
-                    colorHex: String(format: "#%06X", hex)
-                )
-            }
+    /// A row that leaves this page: tinted, with the same trailing glyph
+    /// `SettingsView` puts on Official website and Check server status.
+    ///
+    /// These four were `.foregroundStyle(.primary)`, which renders a
+    /// Button's label as ordinary settings text — nothing about the row
+    /// said it was tappable, let alone that it opened a web page. The
+    /// glyph follows the browser preference for the same reason that one
+    /// does: an arrow out of the box when the link hands off to the
+    /// browser, an arrow into a card when it opens as a sheet over the
+    /// app.
+    private func linkLabel(_ key: String.LocalizationValue) -> some View {
+        HStack {
+            Text(String(localized: key))
+                .foregroundStyle(.tint)
+            Spacer()
+            Image(systemName: appState.browserPreference == .inApp
+                  ? "rectangle.portrait.and.arrow.right"
+                  : "arrow.up.right.square")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

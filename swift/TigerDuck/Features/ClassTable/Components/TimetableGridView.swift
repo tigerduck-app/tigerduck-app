@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Maps the codebase weekday convention (1=Mon, 2=Tue, ..., 7=Sun) to a
 /// localized short weekday name. DateFormatter's symbol arrays use a
@@ -30,11 +33,23 @@ struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
     @Environment(AppState.self) private var appState
 
-    private let cellHeight: CGFloat = 52
     private let rowSpacing: CGFloat = 3
     private let colSpacing: CGFloat = 3
     private let headerHeight: CGFloat = 30
-    private let periodWidth: CGFloat = 12
+
+    /// The period column stacks three lines — start / 節 / end — which fit a
+    /// 52pt row comfortably at the default text size. The row's height is
+    /// fixed, though, so past a certain Dynamic Type size the three lines
+    /// stop fitting. Grow the row and the column with the text instead:
+    /// unchanged up to roughly 1.3x, taller beyond — which is what someone
+    /// who asked for bigger text wants anyway.
+    @ScaledMetric(relativeTo: .caption2) private var scaledCellHeight: CGFloat = 40
+    @ScaledMetric(relativeTo: .caption2) private var scaledPeriodWidth: CGFloat = 28
+    @ScaledMetric(relativeTo: .caption2) private var periodTimeSize: CGFloat = 9
+    @ScaledMetric(relativeTo: .caption2) private var periodLabelSize: CGFloat = 12
+
+    private var cellHeight: CGFloat { max(52, scaledCellHeight) }
+    private var periodWidth: CGFloat { max(36, scaledPeriodWidth) }
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
 
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
@@ -83,12 +98,30 @@ struct TimetableGridView: View {
             // Grid rows
             ForEach(Array(viewModel.activePeriods.enumerated()), id: \.element.id) { periodIndex, period in
                 HStack(spacing: colSpacing) {
-                    Text(period.displayLabel)
-                        .font(.caption2)
-                        .foregroundStyle(Color.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(width: periodWidth, height: cellHeight)
+                    // Start above, the period number in the middle, end
+                    // below, so the row reads as the span it actually
+                    // occupies. Showing the number with a single timestamp
+                    // said nothing about which end of the period that time
+                    // was: a reader who did not already know had to infer it
+                    // from the next row, and the last row gives nothing to
+                    // infer from.
+                    //
+                    // Every line stays on one line and shrinks rather than
+                    // truncating — "08:…" would tell the reader nothing.
+                    VStack(spacing: 0) {
+                        Text(period.startTime)
+                            .font(.system(size: periodTimeSize))
+                            .foregroundStyle(Color.textSecondary)
+                        Text(period.displayLabel)
+                            .font(.system(size: periodLabelSize, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                        Text(period.endTime)
+                            .font(.system(size: periodTimeSize))
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(width: periodWidth, height: cellHeight)
 
                     // Day cells
                     ForEach(viewModel.activeWeekdays, id: \.self) { weekday in
@@ -441,6 +474,12 @@ private struct ConflictClusterView: View {
     @ViewBuilder
     private func conflictContextMenu() -> some View {
         ForEach(segments, id: \.course.courseNo) { segment in
+            // One section per course. The name alone does not always
+            // separate them -- two sections of the same course colliding is
+            // the ordinary reason to open this menu -- so the course's own
+            // colour, the fill the cell behind the menu is drawn in, rides
+            // on the "Pick color" row. See `colorDot` for why it lives
+            // there and not beside the name.
             Section(segment.course.displayName) {
                 Button {
                     viewModel.startRename(segment.course)
@@ -450,7 +489,11 @@ private struct ConflictClusterView: View {
                 Button {
                     viewModel.startRecolor(segment.course)
                 } label: {
-                    Label(String(localized: "class_table_pick_color"), systemImage: "paintpalette")
+                    Label {
+                        Text(String(localized: "class_table_pick_color"))
+                    } icon: {
+                        Self.colorDot(segment.course.color)
+                    }
                 }
                 Button(role: .destructive) {
                     viewModel.deleteCourse(segment.course)
@@ -459,6 +502,29 @@ private struct ConflictClusterView: View {
                 }
             }
         }
+    }
+
+    /// A filled dot in the course's own colour, for use as a menu icon.
+    ///
+    /// Drawn into a bitmap and marked `.alwaysOriginal` because UIKit
+    /// retints template images -- SF Symbols included -- to the menu's own
+    /// tint. An `Image(systemName: "circle.fill").foregroundStyle(...)`
+    /// therefore arrives grey, which is what the first attempt at this did.
+    ///
+    /// It rides on the "Pick color" row rather than beside the name in the
+    /// section header, because UIKit renders an inline menu's header from
+    /// its title alone and drops any image the header carries.
+    private static func colorDot(_ color: Color) -> Image {
+        #if canImport(UIKit)
+        let side: CGFloat = 16
+        let rendered = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
+            UIColor(color).setFill()
+            ctx.cgContext.fillEllipse(in: CGRect(x: 0, y: 0, width: side, height: side))
+        }
+        return Image(uiImage: rendered.withRenderingMode(.alwaysOriginal))
+        #else
+        return Image(systemName: "circle.fill")
+        #endif
     }
 
     private func courseRegion(

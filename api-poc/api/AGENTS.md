@@ -65,7 +65,7 @@ uv run python -m api.public.bulletin          # reads cached pages by default
 - Cross-module imports use absolute package form (`from api.moodle.auth import ...`)
 
 ## ANTI-PATTERNS
-- ❌ Do not POST `/login/token.php?service=moodle_mobile_app` to NTUST Moodle — triggers login_lockout and bans the account. Use `MoodleOidcAuthClient` (OIDC flow) instead.
-- ❌ Do not treat `runtime/bulletin_pages/` as source; it is generated markdown.
-- ❌ Do not commit real credentials or any file under `runtime/`.
-- ❌ Do not run scripts as plain file paths (`python api/moodle/auth.py`) — imports will fail. Always use `-m api.xxx` form.
+- Do not POST `/login/token.php?service=moodle_mobile_app` to NTUST Moodle — triggers login_lockout and bans the account. Use `MoodleOidcAuthClient` (OIDC flow) instead.
+- Do not treat `runtime/bulletin_pages/` as source; it is generated markdown.
+- Do not commit real credentials or any file under `runtime/`.
+- Do not run scripts as plain file paths (`python api/moodle/auth.py`) — imports will fail. Always use `-m api.xxx` form.

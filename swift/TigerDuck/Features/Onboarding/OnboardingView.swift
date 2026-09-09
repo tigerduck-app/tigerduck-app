@@ -13,6 +13,10 @@ struct OnboardingView: View {
     @State private var syncEnabled = true
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @State private var notificationRequestInFlight = false
+    /// Presents the API-endpoint editor from the sign-in page, for
+    /// users pointing the app at their own backend deployment.
+    @Environment(\.openURL) private var openURL
+    @State private var showEndpointSheet = false
     @Environment(\.scenePhase) private var scenePhase
     @FocusState private var focusedField: Field?
 
@@ -82,7 +86,7 @@ struct OnboardingView: View {
 
     private var welcomePage: some View {
         OnboardingPageView(
-            icon: "graduationcap.fill",
+            icon: .image("AppLogo"),
             title: String(localized: "onboarding_welcome_title"),
             subtitle: String(localized: "onboarding_welcome_subtitle"),
             accentColor: .onboardingAccent,
@@ -176,9 +180,10 @@ struct OnboardingView: View {
             }
         )
         // The Next button is gated on the two boxes, but a swipe went
-        // straight past it. Freeze the pager while this page is showing
-        // and the boxes are not both ticked; `currentPage` is part of the
-        // condition because the pager pre-builds the neighbouring page.
+        // straight past it. Refuse forward swipes off this page until both
+        // are ticked — backward stays free, since going back to Welcome is
+        // not what the tick gates. `currentPage` is part of the condition
+        // because the pager pre-builds the neighbouring page.
         .background(
             PagingScrollLock(isLocked: currentPage == Page.privacy.rawValue && !hasAgreedToTerms)
                 .allowsHitTesting(false)
@@ -405,6 +410,31 @@ struct OnboardingView: View {
             },
             actions: {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
+                    // Ordered least-committal first: look at the server,
+                    // then repoint the app at a different one, then give
+                    // up and skip. A sign-in that fails here has no other
+                    // way to tell the user whether the backend is why.
+                    //
+                    // A Button rather than the Link the rest of onboarding
+                    // uses for external URLs, so it is the same control as
+                    // the two below it and picks up textSecondary without
+                    // fighting the link tint. It does not honour the browser
+                    // preference because the user has not been offered that
+                    // choice yet at this point in the flow.
+                    Button(String(localized: "settings_check_server_status")) {
+                        openURL(AppURLs.serverStatus)
+                    }
+                    .foregroundStyle(Color.textSecondary)
+
+                    // Above "Skip" on purpose: someone running their own
+                    // backend has to point the app at it *before* signing
+                    // in, because the sign-in round-trip is one of the
+                    // calls that goes to it.
+                    Button(String(localized: "onboarding_custom_endpoint_button")) {
+                        showEndpointSheet = true
+                    }
+                    .foregroundStyle(Color.textSecondary)
+
                     Button(String(localized: "onboarding_skip_for_now")) {
                         withAnimation(reduceMotion ? nil : .default) { currentPage = Page.notifications.rawValue }
                     }
@@ -427,6 +457,16 @@ struct OnboardingView: View {
                 }
             }
         )
+        .sheet(isPresented: $showEndpointSheet) {
+            NavigationStack {
+                DebugEndpointView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(String(localized: "action_done")) { showEndpointSheet = false }
+                        }
+                    }
+            }
+        }
     }
 
     private func submitLogin() {
@@ -566,11 +606,27 @@ struct OnboardingView: View {
 }
 
 #if canImport(UIKit)
-/// Toggles `isScrollEnabled` on the nearest enclosing `UIScrollView` —
-/// for a page-style `TabView` that is the pager itself. `scrollDisabled`
-/// does not reach the page-style pager, hence the UIKit walk.
+/// Refuses *forward* drags on the page-style `TabView`'s own scroll view,
+/// leaving backward ones alone. `scrollDisabled` does not reach the
+/// page-style pager, hence the UIKit walk to find it.
+///
+/// The obvious implementation — `isScrollEnabled = false` while locked —
+/// was the first one here, and it froze the page in both directions: a
+/// user who had not ticked the boxes could not swipe back to Welcome
+/// either. Only forward motion is what the tick gates, so the pager stays
+/// scrollable and the offending drag is cancelled instead.
 struct PagingScrollLock: UIViewRepresentable {
     let isLocked: Bool
+
+    /// Whether a drag of `translationX` points at the *next* page.
+    ///
+    /// Pulled out of the gesture handler so the mirroring has a test: a
+    /// page-style `TabView` reverses under a right-to-left language, so the
+    /// same finger movement that advances in English goes back in Arabic,
+    /// and the app ships four right-to-left locales.
+    static func isForwardDrag(translationX: CGFloat, isRTL: Bool) -> Bool {
+        isRTL ? translationX > 0 : translationX < 0
+    }
 
     func makeUIView(context: Context) -> LockView {
         let view = LockView()
@@ -583,22 +639,56 @@ struct PagingScrollLock: UIViewRepresentable {
     }
 
     final class LockView: UIView {
-        var isLocked = false { didSet { apply() } }
+        var isLocked = false
+
+        /// Not private: a test asserts the superview walk still reaches
+        /// the pager, which is the load-bearing half of this class.
+        private(set) weak var attachedPager: UIScrollView?
+        /// Latched at the first movement big enough to have a direction, so
+        /// one judgement is made per drag rather than one per callback.
+        private var hasJudgedDrag = false
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            apply()
+            attachToPager()
         }
 
-        private func apply() {
+        private func attachToPager() {
+            guard attachedPager == nil else { return }
             var candidate = superview
             while let view = candidate {
                 if let scrollView = view as? UIScrollView {
-                    scrollView.isScrollEnabled = !isLocked
+                    attachedPager = scrollView
+                    scrollView.panGestureRecognizer.addTarget(
+                        self, action: #selector(pagerDidPan)
+                    )
                     return
                 }
                 candidate = view.superview
             }
+        }
+
+        @objc private func pagerDidPan(_ recognizer: UIPanGestureRecognizer) {
+            guard let pager = attachedPager else { return }
+            guard recognizer.state == .changed else {
+                hasJudgedDrag = false
+                return
+            }
+            guard isLocked, !hasJudgedDrag else { return }
+
+            let dx = recognizer.translation(in: pager).x
+            // Too small to have a direction yet. Waiting beats guessing —
+            // a wrong guess cancels a legitimate backward swipe.
+            guard abs(dx) > 4 else { return }
+            hasJudgedDrag = true
+
+            let isRTL = pager.effectiveUserInterfaceLayoutDirection == .rightToLeft
+            guard PagingScrollLock.isForwardDrag(translationX: dx, isRTL: isRTL) else { return }
+
+            // Turning scrolling off and straight back on cancels the pan in
+            // flight; the pager snaps back to the page it started on.
+            pager.isScrollEnabled = false
+            pager.isScrollEnabled = true
         }
     }
 }

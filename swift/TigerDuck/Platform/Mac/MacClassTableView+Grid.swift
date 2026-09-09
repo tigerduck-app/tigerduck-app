@@ -70,13 +70,18 @@ extension MacClassTableView {
 
     private func periodLabel(_ period: String) -> some View {
         let times = AppConstants.PeriodTimes.mapping[period]
+        // Start above, the period number in the middle, end below, so the row
+        // reads as the span it occupies rather than as a number followed by
+        // two loose timestamps. Matches the iOS grid and Android.
         return VStack(alignment: .trailing, spacing: 2) {
-            Text(period)
-                .font(.subheadline.weight(.semibold))
             if let times {
                 Text(times.start)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)
+            }
+            Text(period)
+                .font(.subheadline.weight(.semibold))
+            if let times {
                 Text(times.end)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.tertiary)

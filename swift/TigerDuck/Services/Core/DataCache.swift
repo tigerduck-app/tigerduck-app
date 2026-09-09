@@ -67,9 +67,66 @@ final class DataCache {
         }
     }
 
+    /// Drops the term's portal cache in every language. `saveCourses([],
+    /// semester:)` clears only the current language's file, and a reset
+    /// that left the other one holding the pre-reset roster came back the
+    /// moment the language changed — and was uploaded, undoing the reset.
+    func clearCourses(semester: String) {
+        let prefix = "courses_\(semester)_"
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: cacheDir, includingPropertiesForKeys: nil
+        )) ?? []
+        for url in contents
+        where url.lastPathComponent.hasPrefix(prefix) && url.pathExtension == "json" {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     private func coursesFilename(_ semester: String, _ language: String) -> String {
         "courses_\(semester)_\(language).json"
     }
+
+    // MARK: - Semester reset time
+
+    /// When this device last reset each term.
+    ///
+    /// A `/sync/full` snapshot is fetched, then reconciled after the
+    /// assignment overrides and their PATCHes. One fetched before a reset
+    /// still carries the pre-reset roster; merged into the freshly cleared
+    /// cache it put the whole roster back, for the reset's own refetch to
+    /// upload — from the resetting device, whose upload releases its own
+    /// reset tombstones. The reconcile leaves a term alone when the
+    /// snapshot predates its reset, and drops the stamp once a snapshot
+    /// clearly newer has been reconciled.
+    func loadSemesterResetAt() -> [String: Date] {
+        (UserDefaults.standard.dictionary(forKey: Self.semesterResetAtKey) as? [String: Date]) ?? [:]
+    }
+
+    func recordSemesterReset(_ semester: String, at date: Date = Date()) {
+        var all = loadSemesterResetAt()
+        all[semester] = date
+        UserDefaults.standard.set(all, forKey: Self.semesterResetAtKey)
+    }
+
+    /// Drops the stamps a snapshot fetched at `fetchedAt` has outlived:
+    /// those more than `semesterResetGrace` older than it.
+    ///
+    /// A stamp has done its job once a snapshot clearly newer than the
+    /// reset has been reconciled — an overlapping sync's older snapshot is
+    /// at most seconds behind, never a minute. Dropping it then is what
+    /// keeps a wall clock that later steps backwards from muting the term
+    /// for good: the stamp would otherwise sit ahead of every fetch time
+    /// until the clock caught up with it.
+    func clearSemesterResets(outlivedBy fetchedAt: Date) {
+        let all = loadSemesterResetAt()
+        let kept = all.filter { fetchedAt.timeIntervalSince($0.value) <= Self.semesterResetGrace }
+        if kept.count != all.count {
+            UserDefaults.standard.set(kept, forKey: Self.semesterResetAtKey)
+        }
+    }
+
+    private static let semesterResetAtKey = "semesterResetAt"
+    private static let semesterResetGrace: TimeInterval = 60
 
     private func currentCourseApiLanguage() -> String {
         LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
@@ -259,6 +316,51 @@ final class DataCache {
         return dtos.map { $0.toSDCalendarEvent() }
     }
 
+    // MARK: - Courses 選課 Stopped Listing
+
+    /// Course numbers 選課 has stopped naming, per semester.
+    ///
+    /// Written when a successful, non-empty answer no longer names a course
+    /// this device holds — a 加退選 drop. Read by the sync reconcile, which
+    /// would otherwise merge the row the backend still carries straight back
+    /// onto the timetable: `/sync/courses/upload` only ever upserts, so a
+    /// dropped course survives there until an explicit DELETE tombstones it.
+    ///
+    /// Deliberately not the `deleted_courses.json` tombstone set. That one is
+    /// driven by the server — absent there means hide, present there means
+    /// un-hide — so a 選課-driven entry would be un-hidden by the next sync.
+    /// Only 選課 may add to or clear this one.
+    func saveSelectionDroppedNos(_ dropped: [String: [String]]) {
+        save(dropped, to: "selection_dropped.json", in: persistentDir)
+    }
+
+    func loadSelectionDroppedNos() -> [String: [String]] {
+        load(from: "selection_dropped.json", in: persistentDir) ?? [:]
+    }
+
+    /// Folds one successful 選課 answer for `semester` into that set.
+    ///
+    /// Must run *before* the fetch overwrites the course cache: the courses on
+    /// disk right now are what the answer is diffed against, and once they are
+    /// replaced the drop is invisible to everyone.
+    func recordSelectionRoster(semester: String, roster: [String]) {
+        guard !roster.isEmpty else { return }
+        var stored = loadSelectionDroppedNos()
+        let previous = Set(stored[semester] ?? [])
+        let updated = AppServiceBridge.selectionDrops(
+            previous: previous,
+            localPortalNos: loadCourses(semester: semester).map(\.courseNo),
+            roster: roster
+        )
+        guard updated != previous else { return }
+        if updated.isEmpty {
+            stored.removeValue(forKey: semester)
+        } else {
+            stored[semester] = Array(updated).sorted()
+        }
+        saveSelectionDroppedNos(stored)
+    }
+
     // MARK: - Deleted Courses
 
     func saveDeletedCourseNos(_ courseNos: [String]) {
@@ -417,6 +519,7 @@ final class DataCache {
             ("calendar_events.json", cacheDir),
             ("user_added_courses.json", persistentDir),
             ("deleted_courses.json", persistentDir),
+            ("selection_dropped.json", persistentDir),
             ("course_custom_names.json", persistentDir),
             ("course_custom_colors.json", persistentDir),
             ("course_color_map.json", persistentDir),
@@ -454,6 +557,27 @@ final class DataCache {
         // Bulletin detail bodies are user-scoped (read state, subscriptions).
         let bulletinDetails = cacheDir.appendingPathComponent("bulletin_details", isDirectory: true)
         try? FileManager.default.removeItem(at: bulletinDetails)
+    }
+
+    /// Remove **every** file in both cache directories, user-scoped or not.
+    ///
+    /// `clearUserScopedData` deliberately keeps device-wide caches (name
+    /// abbreviations, the academic calendar, bulletin indexes) because a
+    /// logout is an account change, not a factory reset. The erase-everything
+    /// action is the opposite: whatever is left behind is exactly what makes
+    /// the "fresh install" it promises not actually fresh, so this takes the
+    /// directories wholesale rather than naming files — a named list silently
+    /// stops being complete the next time someone adds a cache.
+    func clearEverything() {
+        for dir in [cacheDir, persistentDir] {
+            let contents = (try? FileManager.default.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: nil
+            )) ?? []
+            for url in contents {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     /// Remove every `courses_<semester>.json` file. Used by the abbreviation

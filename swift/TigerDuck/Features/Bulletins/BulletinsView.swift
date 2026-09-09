@@ -191,8 +191,20 @@ struct BulletinsView: View {
                     }
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                SyncStatusDot(servers: [.backend])
+            // The dot opts out of the toolbar's shared background: the
+            // capsule spans neighbouring items and stays put while the dot
+            // fades on idle, which would leave an empty pill in the bar.
+            // Opting out also leaves it bare, which is what it is on the
+            // five pages that draw it in a plain header row.
+            if #available(iOS 26, *) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    SyncStatusDot(servers: [.backend])
+                }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .topBarTrailing) {
+                    SyncStatusDot(servers: [.backend])
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

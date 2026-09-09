@@ -42,9 +42,45 @@ final class PushAPIClient: Sendable {
         try await post(path: "/devices/register", body: request, returning: PushAPI.DeviceRegisterResponse.self)
     }
 
+    /// Register the device itself, with no account attached.
+    ///
+    /// Unauthenticated by design — there is no session to authenticate with
+    /// when this matters. It still goes through the usual `post`, so a Bearer
+    /// header is attached when one happens to exist; the server ignores it
+    /// and keys purely on `device_id`, which is what lets the same call be
+    /// made on every launch regardless of sign-in state.
+    func registerAnonymousDevice(_ request: PushAPI.AnonymousDeviceRequest) async throws {
+        _ = try await postExpectingNoBody(path: "/devices/anonymous", body: request)
+    }
+
     func unregisterDevice(deviceId: String) async throws {
         let safeDevice = Self.percentEncoded(deviceId)
         try await delete(path: "/devices/\(safeDevice)")
+    }
+
+    /// PUT the user's "notify me anyway" exception for one holiday.
+    ///
+    /// Authenticated: the holiday itself is public and comes from
+    /// `/v3/calendar/semesters`, but the exception belongs to an account.
+    func putHolidayOverride(holidayID: Int, notify: Bool) async throws {
+        var request = try await makePostRequest(
+            path: "/sync/holiday-overrides/\(holidayID)",
+            body: PushAPI.HolidayOverrideRequest(notify: notify)
+        )
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        _ = try await execute(request)
+    }
+
+    /// Whether there is a session to authenticate a request with.
+    ///
+    /// Callers that have both an authenticated and an unauthenticated way
+    /// to do the same thing need to pick one up front rather than firing
+    /// the authenticated call and reading a 401 as the answer — a 401 is
+    /// also what a revoked or expired session looks like, and those two
+    /// deserve different handling.
+    func hasAuthSession() async -> Bool {
+        await authHeaderProvider() != nil
     }
 
     /// PATCH the user-facing server-push opt-out. Called from the Settings
@@ -312,6 +348,7 @@ final class PushAPIClient: Sendable {
         guard (200..<300).contains(http.statusCode) else {
             let snippet = String(data: data.prefix(512), encoding: .utf8) ?? ""
             logger.error("Push.API \(http.statusCode, privacy: .public) \(request.url?.path ?? "", privacy: .public): \(snippet, privacy: .private)")
+            APIVersionGate.shared.note(statusCode: http.statusCode)
             throw PushAPIError.httpStatus(http.statusCode, body: snippet)
         }
         return data

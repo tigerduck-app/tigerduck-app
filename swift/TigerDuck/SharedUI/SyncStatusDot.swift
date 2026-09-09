@@ -1,7 +1,9 @@
 import Defaults
 import SwiftUI
 
-/// The one status mark in a page header. Colour is the worst known state
+/// The one status mark in a page header — a bare dot, with no backing.
+///
+/// Colour is the worst known state
 /// of the sources the page depends on (red > green); grey means nothing
 /// has reported yet or the source is switched off, and never wins. While
 /// a fetch is running the dot becomes a spinning ring. Tapping it lists
@@ -39,6 +41,15 @@ struct SyncStatusDot: View {
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Optional so the dot still renders in a preview with no `AppState`
+    /// injected, where "signed out" is the conservative read.
+    @Environment(AppState.self) private var appState: AppState?
+    /// Observed rather than read through `Defaults[...]`. `isOff` feeds
+    /// `sources` and `summary`, which the body reads, and a bare subscript
+    /// is a read SwiftUI never subscribes to -- so switching sync off left
+    /// the mark on whatever colour it already had until something unrelated
+    /// forced a redraw, which is the opposite of what `isOff` is for.
+    @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @State private var showDetails = false
     @State private var spinning = false
     @State private var dimmed = false
@@ -68,14 +79,31 @@ struct SyncStatusDot: View {
         }
     }
 
+    private var isSignedIn: Bool { appState?.authService.hasStoredCredentials ?? false }
+
+    /// Cloud sync switched off: the row reads grey / "Off" rather than
+    /// whatever the tracker happens to be holding.
+    ///
+    /// Reading the setting rather than the tracker is what keeps the row
+    /// honest — the tracker is process-wide, so the OK from the last sync
+    /// before the switch went off would otherwise sit there green. The
+    /// signed-out case never reaches here; `body` draws nothing at all.
+    private func isOff(_ server: ServerKind) -> Bool {
+        server == .backend && !cloudSyncEnabled
+    }
+
     private var sources: [Source] {
         switch mode {
         case .servers(let servers):
             servers.map { server in
-                let status = tracker.status(for: server)
+                let off = isOff(server)
+                let status = off ? ServerStatus.unknown : tracker.status(for: server)
                 return Source(
                     id: server.id, icon: server.icon, name: Self.serverName(server),
-                    status: status, text: Self.statusText(server: server, status: status)
+                    status: status,
+                    text: off
+                        ? String(localized: "settings_sync_status_off")
+                        : Self.statusText(status)
                 )
             }
         case .single(let source, _):
@@ -85,9 +113,25 @@ struct SyncStatusDot: View {
 
     private var summary: ServerStatus {
         switch mode {
-        case .servers: Self.summary(loadingState: session.loadingState, statuses: sources.map(\.status))
-        case .single(let source, _): source.status
+        case .servers(let servers):
+            // Nothing was asked to sync, so the NTUST session's own state is
+            // not this dot's business either — grey, not red.
+            servers.allSatisfy(isOff)
+                ? .unknown
+                : Self.summary(loadingState: session.loadingState, statuses: sources.map(\.status))
+        case .single(let source, _):
+            source.status
         }
+    }
+
+    /// "Off" rather than "Unknown" when every source is switched off — the
+    /// aggregate grey has a reason, and VoiceOver should give it.
+    private var accessibilityStatusText: String {
+        if isLoading { return String(localized: "sync_status_syncing") }
+        if case .servers(let servers) = mode, servers.allSatisfy(isOff) {
+            return String(localized: "settings_sync_status_off")
+        }
+        return Self.statusText(summary)
     }
 
     private var errorMessage: String? {
@@ -95,7 +139,24 @@ struct SyncStatusDot: View {
         return nil
     }
 
+    /// Signed out there is nothing syncing and nothing to report, so the
+    /// header carries no mark at all rather than a grey one that has to
+    /// explain itself. On the pages that need an account the content
+    /// already says so in full, and the one page that works signed out
+    /// (bulletins are public) never had a status worth reading there.
+    ///
+    /// Only `.servers` is account-gated. A `.single` source is page-local
+    /// and tracks something the page signed into itself, like the library.
+    @ViewBuilder
     var body: some View {
+        if case .servers = mode, !isSignedIn {
+            EmptyView()
+        } else {
+            dot
+        }
+    }
+
+    private var dot: some View {
         Button {
             showDetails = true
         } label: {
@@ -109,14 +170,17 @@ struct SyncStatusDot: View {
                         .transition(.scale.combined(with: .opacity))
                 }
             }
+            // The 28pt frame is the tap target, not a backing: the mark
+            // itself stays 10pt. Without it the dot would be a 10pt hit
+            // area, well under the 44pt minimum.
             .frame(width: 28, height: 28)
-            .contentShape(Rectangle())
+            .contentShape(Circle())
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isLoading)
         }
         .buttonStyle(.plain)
         .opacity(dimmed ? Self.idleOpacity : 1)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: dimmed)
-        .accessibilityLabel(Text(isLoading ? String(localized: "sync_status_syncing") : Self.statusText(summary)))
+        .accessibilityLabel(Text(accessibilityStatusText))
         .popover(isPresented: $showDetails, arrowEdge: .top) {
             details.presentationCompactAdaptation(.popover)
         }
@@ -206,13 +270,6 @@ struct SyncStatusDot: View {
         case .courseSelection: String(localized: "feature_course_selection")
         case .backend: String(localized: "cloud_sync_title")
         }
-    }
-
-    private static func statusText(server: ServerKind, status: ServerStatus) -> String {
-        if server == .backend, !Defaults[.cloudSyncEnabled] {
-            return String(localized: "settings_sync_status_off")
-        }
-        return statusText(status)
     }
 
     private static func statusText(_ status: ServerStatus) -> String {

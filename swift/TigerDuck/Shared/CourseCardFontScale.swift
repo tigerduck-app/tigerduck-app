@@ -79,7 +79,9 @@ nonisolated enum CourseCardFontScale {
 /// by both the main app (read + write) and the widget extension
 /// (read-only at view body render time).
 ///
-/// In DEBUG we crash hard if the suite is unavailable so an empty
+/// In DEBUG we crash hard when the App Group is unreachable (a
+/// container-URL check, not a nil-suite check — see
+/// ``isAppGroupAvailable(_:)``) so an empty
 /// `com.apple.security.application-groups` regression cannot ship
 /// silently — same protocol as `WidgetSnapshotStore`. In release we
 /// still fall back to `.standard` with a loud error so a user with a
@@ -87,6 +89,9 @@ nonisolated enum CourseCardFontScale {
 /// invisible (main app vs. widget extension would otherwise persist to
 /// different process-local stores).
 nonisolated final class CourseCardFontScaleStore {
+    /// The shipping App Group. Named so the reachability requirement below
+    /// can tell it apart from an injected test suite.
+    static let appGroupIdentifier = "group.org.ntust.app.TigerDuck"
     static let storageKey = "courseCardFontScaleV2"
     /// Pre-rebase key. Its values were in the old units (1.4 = today's
     /// 1.0), so `read()` converts once and moves the value to `storageKey`.
@@ -95,8 +100,28 @@ nonisolated final class CourseCardFontScaleStore {
     private let defaults: UserDefaults
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "FontScale")
 
-    init(appGroupIdentifier: String = "group.org.ntust.app.TigerDuck") {
-        if let suite = UserDefaults(suiteName: appGroupIdentifier) {
+    /// Whether this process can actually reach the shared App Group.
+    ///
+    /// `UserDefaults(suiteName:)` does NOT answer this — it returns nil only
+    /// for reserved names, and hands back a valid *process-local* store for a
+    /// group the process has no entitlement for. See
+    /// `WidgetSnapshotStore.isAppGroupAvailable(_:)` for the full rationale;
+    /// the check is duplicated rather than shared because the two files sit
+    /// in different synchronized folders and a common home would mean a new
+    /// target-membership exception in the project file.
+    static func isAppGroupAvailable(_ identifier: String) -> Bool {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: identifier
+        ) != nil
+    }
+
+    init(appGroupIdentifier: String = CourseCardFontScaleStore.appGroupIdentifier) {
+        // Only the shipping App Group has to be *reachable*. An injected
+        // identifier is a test seam pointing at an ordinary UserDefaults
+        // suite, which has no container and never will.
+        let requiresSharedContainer = appGroupIdentifier == Self.appGroupIdentifier
+        if !requiresSharedContainer || Self.isAppGroupAvailable(appGroupIdentifier),
+           let suite = UserDefaults(suiteName: appGroupIdentifier) {
             self.defaults = suite
         } else {
             assertionFailure(

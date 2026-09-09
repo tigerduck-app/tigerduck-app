@@ -52,9 +52,15 @@ final class EDRMetalQRView: UIView {
     override class var layerClass: AnyClass { CAMetalLayer.self }
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
 
-    private let device: MTLDevice? = MTLCreateSystemDefaultDevice()
-    private var commandQueue: MTLCommandQueue?
-    private var pipeline: MTLRenderPipelineState?
+    /// Device, queue, pipeline and texture loader — nil until the shared
+    /// stack has finished building. `redraw` already bails on a missing
+    /// pipeline, the same path the no-Metal fallback takes, so the SDR
+    /// image the caller stacks underneath stays visible until it lands.
+    private var stack: EDRMetalStack?
+    /// Held when `setImage` runs before the stack exists; uploaded on
+    /// arrival. Without it the first QR would never reach the GPU, because
+    /// SwiftUI has no reason to call `updateUIView` again.
+    private var pendingImage: UIImage?
     private var texture: MTLTexture?
     /// Reference-identity key for the most recently uploaded QR. The
     /// SwiftUI parent observes a 1 Hz countdown, so `updateUIView` fires
@@ -85,72 +91,34 @@ final class EDRMetalQRView: UIView {
     }
 
     private func commonInit() {
-        // Configure transparency BEFORE the no-Metal early-return so the
-        // SDR fallback the caller stacks underneath us stays visible if
-        // `MTLCreateSystemDefaultDevice()` returns nil.
+        // Transparency is configured unconditionally: the stack may never
+        // arrive — no Metal device, or a shader that will not compile — and
+        // the SDR fallback the caller stacks underneath has to stay visible
+        // when it doesn't.
         backgroundColor = .clear
         metalLayer.isOpaque = false
-        guard let device else { return }
-        metalLayer.device = device
         metalLayer.pixelFormat = .rgba16Float
         metalLayer.framebufferOnly = true
         metalLayer.wantsExtendedDynamicRangeContent = true
         // extendedLinearDisplayP3 keeps pixel values in linear light, which
         // is what the EDR compositor expects when it scales above 1.0.
         metalLayer.colorspace = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)
-        commandQueue = device.makeCommandQueue()
-        buildPipeline()
+        EDRMetalStack.load { [weak self] stack in
+            self?.attach(stack)
+        }
     }
 
-    private func buildPipeline() {
-        guard let device else { return }
-        let source = """
-        #include <metal_stdlib>
-        using namespace metal;
-
-        struct VertexOut {
-            float4 position [[position]];
-            float2 uv;
-        };
-
-        // Single oversized triangle that covers the viewport. Avoids vertex
-        // buffers entirely; gl_VertexID picks the corner.
-        vertex VertexOut qr_vertex(uint vid [[vertex_id]]) {
-            float2 pos[3] = { float2(-1.0, -3.0), float2(-1.0, 1.0), float2(3.0, 1.0) };
-            float2 uv[3]  = { float2( 0.0,  2.0), float2( 0.0, 0.0), float2(2.0, 0.0) };
-            VertexOut o;
-            o.position = float4(pos[vid], 0.0, 1.0);
-            o.uv = uv[vid];
-            return o;
+    /// Adopts the shared stack once it is ready, uploading whatever QR
+    /// arrived while we were waiting.
+    private func attach(_ stack: EDRMetalStack?) {
+        guard let stack else { return }
+        self.stack = stack
+        metalLayer.device = stack.device
+        if let pendingImage {
+            self.pendingImage = nil
+            setImage(pendingImage)
         }
-
-        fragment float4 qr_fragment(VertexOut in [[stage_in]],
-                                    texture2d<float> tex [[texture(0)]],
-                                    constant float &brightness [[buffer(0)]]) {
-            constexpr sampler s(mag_filter::nearest, min_filter::nearest);
-            // Source is black/white grayscale: white modules = 1, black = 0.
-            // Scale by `brightness` so the white pixels punch above SDR.
-            float v = tex.sample(s, in.uv).r * brightness;
-            return float4(v, v, v, 1.0);
-        }
-        """
-        do {
-            let library = try device.makeLibrary(source: source, options: nil)
-            guard
-                let vfn = library.makeFunction(name: "qr_vertex"),
-                let ffn = library.makeFunction(name: "qr_fragment")
-            else { return }
-            let desc = MTLRenderPipelineDescriptor()
-            desc.vertexFunction = vfn
-            desc.fragmentFunction = ffn
-            desc.colorAttachments[0].pixelFormat = .rgba16Float
-            pipeline = try device.makeRenderPipelineState(descriptor: desc)
-        } catch {
-            // Shader compile / pipeline link failure leaves `pipeline` nil;
-            // the view renders nothing and the caller's SDR fallback (if any)
-            // remains visible. Surface via Logger so this doesn't fail silent.
-            pipeline = nil
-        }
+        setNeedsRedraw()
     }
 
     func setImage(_ image: UIImage) {
@@ -158,14 +126,20 @@ final class EDRMetalQRView: UIView {
         // new UIImage on the 30 s QR refresh, so identity is a reliable
         // signal that we genuinely need to re-upload.
         if lastUploadedImage === image { return }
-        guard let device, let cgImage = image.cgImage else { return }
-        let loader = MTKTextureLoader(device: device)
+        guard let stack else {
+            // Stack still building. Remember the QR so `attach` can upload
+            // it; this is the first-launch path, where the shader compile
+            // has not finished by the time the first image arrives.
+            pendingImage = image
+            return
+        }
+        guard let cgImage = image.cgImage else { return }
         let options: [MTKTextureLoader.Option: Any] = [
             .SRGB: false,
             .textureUsage: NSNumber(value: MTLTextureUsage.shaderRead.rawValue),
             .textureStorageMode: NSNumber(value: MTLStorageMode.private.rawValue),
         ]
-        if let tex = try? loader.newTexture(cgImage: cgImage, options: options) {
+        if let tex = try? stack.textureLoader.newTexture(cgImage: cgImage, options: options) {
             self.texture = tex
             self.lastUploadedImage = image
             setNeedsRedraw()
@@ -205,8 +179,7 @@ final class EDRMetalQRView: UIView {
         // back — asking for one would just burn the timeout.
         guard
             window != nil,
-            let pipeline,
-            let commandQueue,
+            let stack,
             let texture,
             metalLayer.drawableSize.width > 0,
             let drawable = metalLayer.nextDrawable()
@@ -219,11 +192,11 @@ final class EDRMetalQRView: UIView {
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
 
         guard
-            let cmd = commandQueue.makeCommandBuffer(),
+            let cmd = stack.commandQueue.makeCommandBuffer(),
             let enc = cmd.makeRenderCommandEncoder(descriptor: pass)
         else { return }
 
-        enc.setRenderPipelineState(pipeline)
+        enc.setRenderPipelineState(stack.pipeline)
         enc.setFragmentTexture(texture, index: 0)
         var b = brightness
         enc.setFragmentBytes(&b, length: MemoryLayout<Float>.size, index: 0)
@@ -233,4 +206,115 @@ final class EDRMetalQRView: UIView {
         cmd.commit()
     }
 }
+/// The Metal objects, built once per process instead of once per view.
+///
+/// `makeLibrary(source:)` invokes the Metal compiler at runtime. It used to
+/// run from `commonInit`, which UIKit reaches through
+/// `UIViewRepresentable.makeUIView` on the main thread — so every visit to
+/// the Library page paid a synchronous shader compile, and the whole UI, tab
+/// bar included, waited on it. A cold compile is the expensive one, and the
+/// view is recreated on every visit, so it was paid again and again.
+///
+/// Now it is built on a background queue and shared, so at worst one visit
+/// per launch waits, and that one does not block the main thread either.
+/// `MTKTextureLoader` moves here for the same reason it should never have
+/// been per-call: it is stateless and cheap to keep, not to make.
+///
+/// Only ever touched on the main queue, so the mutable statics need no lock.
+final class EDRMetalStack {
+    let device: MTLDevice
+    let commandQueue: MTLCommandQueue
+    let pipeline: MTLRenderPipelineState
+    let textureLoader: MTKTextureLoader
+
+    private init(device: MTLDevice, commandQueue: MTLCommandQueue, pipeline: MTLRenderPipelineState) {
+        self.device = device
+        self.commandQueue = commandQueue
+        self.pipeline = pipeline
+        self.textureLoader = MTKTextureLoader(device: device)
+    }
+
+    private static var shared: EDRMetalStack?
+    /// Set once a build has failed, so a device without Metal — or a shader
+    /// that will not compile — is asked once and not on every appearance.
+    private static var didFail = false
+    private static var isBuilding = false
+    private static var waiting: [(EDRMetalStack?) -> Void] = []
+
+    /// Calls back on the main queue, immediately if the stack is already up.
+    static func load(_ completion: @escaping (EDRMetalStack?) -> Void) {
+        if let shared { completion(shared); return }
+        if didFail { completion(nil); return }
+        waiting.append(completion)
+        guard !isBuilding else { return }
+        isBuilding = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let built = build()
+            DispatchQueue.main.async {
+                shared = built
+                didFail = built == nil
+                isBuilding = false
+                let pending = waiting
+                waiting = []
+                pending.forEach { $0(built) }
+            }
+        }
+    }
+
+    private static func build() -> EDRMetalStack? {
+        guard
+            let device = MTLCreateSystemDefaultDevice(),
+            let commandQueue = device.makeCommandQueue()
+        else { return nil }
+
+        let source = """
+            #include <metal_stdlib>
+            using namespace metal;
+
+            struct VertexOut {
+                float4 position [[position]];
+                float2 uv;
+            };
+
+            // Single oversized triangle that covers the viewport. Avoids vertex
+            // buffers entirely; gl_VertexID picks the corner.
+            vertex VertexOut qr_vertex(uint vid [[vertex_id]]) {
+                float2 pos[3] = { float2(-1.0, -3.0), float2(-1.0, 1.0), float2(3.0, 1.0) };
+                float2 uv[3]  = { float2( 0.0,  2.0), float2( 0.0, 0.0), float2(2.0, 0.0) };
+                VertexOut o;
+                o.position = float4(pos[vid], 0.0, 1.0);
+                o.uv = uv[vid];
+                return o;
+            }
+
+            fragment float4 qr_fragment(VertexOut in [[stage_in]],
+                                        texture2d<float> tex [[texture(0)]],
+                                        constant float &brightness [[buffer(0)]]) {
+                constexpr sampler s(mag_filter::nearest, min_filter::nearest);
+                // Source is black/white grayscale: white modules = 1, black = 0.
+                // Scale by `brightness` so the white pixels punch above SDR.
+                float v = tex.sample(s, in.uv).r * brightness;
+                return float4(v, v, v, 1.0);
+            }
+            """
+        do {
+            let library = try device.makeLibrary(source: source, options: nil)
+            guard
+                let vfn = library.makeFunction(name: "qr_vertex"),
+                let ffn = library.makeFunction(name: "qr_fragment")
+            else { return nil }
+            let desc = MTLRenderPipelineDescriptor()
+            desc.vertexFunction = vfn
+            desc.fragmentFunction = ffn
+            desc.colorAttachments[0].pixelFormat = .rgba16Float
+            let pipeline = try device.makeRenderPipelineState(descriptor: desc)
+            return EDRMetalStack(device: device, commandQueue: commandQueue, pipeline: pipeline)
+        } catch {
+            // Compile or link failure leaves the caller with nil: the view
+            // draws nothing and the SDR fallback stays visible.
+            return nil
+        }
+    }
+}
+
 #endif

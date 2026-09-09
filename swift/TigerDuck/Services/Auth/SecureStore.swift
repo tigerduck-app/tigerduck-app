@@ -58,17 +58,28 @@ nonisolated enum SecureStore {
         }
 
         // Migrate from the previous `.afterFirstUnlock` per-app valet.
+        //
+        // The delete is conditional on the write, the way the `legacyLoad`
+        // branch below already does it. Unconditionally, this destroys
+        // credentials: the legacy valet is `.afterFirstUnlock` and readable
+        // behind a locked screen, while `shared` is
+        // `.whenUnlockedThisDeviceOnly` and cannot be written there — so a
+        // read taken while locked would succeed, fail to copy forward, and
+        // then delete the only remaining copy.
         if let value = try? legacyShared.object(forKey: key) {
-            try? shared.setObject(value, forKey: key)
-            try? legacyShared.removeObject(forKey: key)
+            if (try? shared.setObject(value, forKey: key)) != nil {
+                try? legacyShared.removeObject(forKey: key)
+            }
             return value
         }
 
         // Migrate from the App Group valet (we no longer mirror writes
-        // there) and purge the shared copy.
+        // there) and purge the shared copy. Same conditional delete, same
+        // reason.
         if let value = try? legacySharedGroup.object(forKey: key) {
-            try? shared.setObject(value, forKey: key)
-            try? legacySharedGroup.removeObject(forKey: key)
+            if (try? shared.setObject(value, forKey: key)) != nil {
+                try? legacySharedGroup.removeObject(forKey: key)
+            }
             return value
         }
 
@@ -106,6 +117,30 @@ nonisolated enum SecureStore {
         }
         legacyDelete(key: key)
         return ok
+    }
+
+    /// Wipe every secret this app holds, across the current valet and both
+    /// legacy ones, keeping only the keys named in `preserving`.
+    ///
+    /// Backs the erase-everything action. Enumerating
+    /// `AppConstants.KeychainKeys` instead would quietly miss whatever key
+    /// gets added next — and a leftover credential is precisely what makes
+    /// a "fresh install" not one.
+    ///
+    /// `preserving` exists for device configuration that is not user data:
+    /// the API endpoint override is stored here specifically so it outlives
+    /// a wipe, which is the whole reason it is in the Keychain rather than
+    /// `UserDefaults`.
+    static func removeAll(preserving preservedKeys: Set<String> = []) {
+        let preserved: [String: Data] = preservedKeys.reduce(into: [:]) { acc, key in
+            if let value = load(key: key) { acc[key] = value }
+        }
+        for store in [shared, legacyShared, legacySharedGroup] {
+            try? store.removeAllObjects()
+        }
+        for (key, value) in preserved {
+            try? save(value, forKey: key)
+        }
     }
 
     private static func legacyLoad(key: String) -> Data? {

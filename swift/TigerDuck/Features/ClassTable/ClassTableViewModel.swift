@@ -170,6 +170,8 @@ final class ClassTableViewModel {
     /// into a no-op instead of stacking concurrent Tasks that would race
     /// on DataCache writes and `dataDidUpdate` notifications.
     var isRefreshing = false
+    /// Terms with a reset in progress — see `resetCourses`.
+    var resettingSemesters: Set<String> = []
     var currentSemesterCourses: [SDCourse] = []
     private let courseProvider = CanonicalCourseProvider()
 
@@ -314,7 +316,7 @@ final class ClassTableViewModel {
         // ponytail: outside the term there is no "today" worth showing —
         // the carousel would either be empty or surface a stale day. Empty
         // here also hides the section, which keys off `todayCourses.isEmpty`.
-        guard AppConstants.CurrentTerm.isInSession else { return [] }
+        guard AcademicCalendarStore.shared.calendar.isInSession() else { return [] }
         return currentSemesterCourses.coursesForToday()
     }
 
@@ -354,6 +356,12 @@ final class ClassTableViewModel {
 
     var activePeriods: [TimetablePeriod] {
         var periodIds = Set(AppConstants.Periods.defaultVisible)
+        // Pinned rather than merged into `defaultVisible` so the widget
+        // and any other grid keep their own, tighter default — three empty
+        // evening rows cost far more in a widget than on a full page.
+        if Defaults[.alwaysShowPeriodsABC] {
+            periodIds.formUnion(AppConstants.Periods.eveningOptional)
+        }
         for course in courses {
             for periods in course.schedule.values {
                 for p in periods { periodIds.insert(p) }
@@ -385,5 +393,7 @@ final class ClassTableViewModel {
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
     var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
     var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?
-    var onResetBackendCourses: ((_ semester: String) async -> Bool)?
+    /// Wipes the backend for the term and, on success only, runs the local
+    /// wipe it is handed — see `AppState.deleteBackendCourses`.
+    var onResetBackendCourses: ((_ semester: String, _ resetLocally: @MainActor () -> Void) async -> Bool)?
 }

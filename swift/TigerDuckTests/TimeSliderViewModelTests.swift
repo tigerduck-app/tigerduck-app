@@ -76,11 +76,69 @@ struct TimeSliderViewModelTests {
 
         let during = calendar.date(byAdding: .hour, value: 11, to: today)!
         let state = vm.courseState(at: during)
-        if case .inClass(let c) = state {
-            #expect(c.course.courseNo == "MATH101")
+        if case .inClass(let slots) = state {
+            #expect(slots.map(\.course.courseNo) == ["MATH101"])
         } else {
             Issue.record("Expected .inClass, got \(state)")
         }
+    }
+
+    /// 衝堂: two courses on one period. Both belong on screen — keeping
+    /// only the first match showed one and dropped the other, and which
+    /// one survived came out of timeline order rather than any choice the
+    /// reader made.
+    @Test func courseState_inClass_keepsEveryOverlappingCourse() {
+        let vm = TimeSliderViewModel()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let earlier = makeMockSlot(
+            courseNo: "MATH101",
+            start: calendar.date(byAdding: .hour, value: 10, to: today)!,
+            end: calendar.date(byAdding: .hour, value: 12, to: today)!
+        )
+        let later = makeMockSlot(
+            courseNo: "PHYS101",
+            start: calendar.date(byAdding: .hour, value: 11, to: today)!,
+            end: calendar.date(byAdding: .hour, value: 13, to: today)!
+        )
+        vm.timeSlots = [earlier, later]
+
+        // 11:30 — inside both blocks.
+        let during = calendar.date(byAdding: .minute, value: 690, to: today)!
+        guard case .inClass(let slots) = vm.courseState(at: during) else {
+            Issue.record("Expected .inClass, got \(vm.courseState(at: during))")
+            return
+        }
+        #expect(slots.map(\.course.courseNo) == ["MATH101", "PHYS101"])
+    }
+
+    /// The same resolution backs the Live Activity, which can only show
+    /// one class and so takes `first`. The order the overlap comes back in
+    /// is therefore load-bearing, not cosmetic: it decides which of two
+    /// 衝堂 courses the lock screen names.
+    @Test func timelineResolver_inClass_ordersOverlapsAsGiven() {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let earlier = makeMockSlot(
+            courseNo: "MATH101",
+            start: calendar.date(byAdding: .hour, value: 10, to: today)!,
+            end: calendar.date(byAdding: .hour, value: 12, to: today)!
+        )
+        let later = makeMockSlot(
+            courseNo: "PHYS101",
+            start: calendar.date(byAdding: .hour, value: 11, to: today)!,
+            end: calendar.date(byAdding: .hour, value: 13, to: today)!
+        )
+        let during = calendar.date(byAdding: .minute, value: 690, to: today)!
+
+        // Built the way `buildMultiDaySlots` builds one: sorted by start.
+        let state = CourseTimelineResolver().state(at: during, in: [earlier, later])
+        guard case .inClass(let slots) = state else {
+            Issue.record("Expected .inClass, got \(state)")
+            return
+        }
+        #expect(slots.map(\.course.courseNo) == ["MATH101", "PHYS101"])
+        #expect(slots.first?.course.courseNo == "MATH101")
     }
 
     @Test func courseState_beforeFirst() {

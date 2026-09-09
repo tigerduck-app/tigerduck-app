@@ -12,6 +12,7 @@ import SwiftUI
 /// the sidebar.
 struct MacLoginView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
 
     /// Whether to surface the "Skip for now" escape hatch.
     ///
@@ -127,6 +128,17 @@ struct MacLoginView: View {
                     .frame(maxWidth: 280)
             }
             .padding(.top, 8)
+
+            // Shown whether or not the skip hatch is, and never disabled
+            // during a login: a sign-in that is hanging or failing is the
+            // one moment this answers a question the form itself cannot,
+            // and this view is also the Account re-login sheet, where skip
+            // is deliberately absent.
+            Button(String(localized: "settings_check_server_status")) {
+                openURL(AppURLs.serverStatus)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
 
             // Secondary, less-prominent escape hatch so users without
             // NTUST credentials can still explore the public surfaces

@@ -1025,6 +1025,7 @@
 					AppState.swift,
 					"AppState+Conflicts.swift",
 					"AppState+Account.swift",
+					"AppState+CourseColors.swift",
 					"AppState+PushServer.swift",
 					"AppState+BackendSync.swift",
 					"AppState+CourseReconcile.swift",
@@ -1042,6 +1043,7 @@
 					AssignmentFilter.swift,
 					AssignmentStatus.swift,
 					CourseState.swift,
+					SourceRepository.swift,
 					HomeSection.swift,
 					MockData.swift,
 					TimetablePeriod.swift,
@@ -1086,6 +1088,11 @@
 					LiveActivity/Resolvers/CourseTimelineResolver.swift,
 					BulletinAPIClient.swift,
 					BulletinAPIDTO.swift,
+					AcademicCalendar.swift,
+					AcademicCalendarStore.swift,
+					AcademicCalendarEvents.swift,
+					APIVersionGate.swift,
+					UpdateRequiredAlert.swift,
 					CalendarService.swift,
 					LibraryAPI.swift,
 					LibraryService.swift,
@@ -1153,6 +1160,7 @@
 					MacAccountSettingsView.swift,
 					MacDeveloperSettingsView.swift,
 					MacAboutSettingsView.swift,
+					MacOtherSettingsView.swift,
 					MacContentLayout.swift,
 					MacAssignmentsList.swift,
 					MacWidgetCards.swift,
@@ -1160,6 +1168,7 @@
 					DebugClockStore.swift,
 					DebugEndpointStore.swift,
 					DebugEndpointView.swift,
+					EndpointHealthCheck.swift,
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
@@ -1203,7 +1212,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1248,6 +1257,7 @@
 					AppState.swift,
 					"AppState+Conflicts.swift",
 					"AppState+Account.swift",
+					"AppState+CourseColors.swift",
 					"AppState+PushServer.swift",
 					"AppState+BackendSync.swift",
 					"AppState+CourseReconcile.swift",
@@ -1265,6 +1275,7 @@
 					AssignmentFilter.swift,
 					AssignmentStatus.swift,
 					CourseState.swift,
+					SourceRepository.swift,
 					HomeSection.swift,
 					MockData.swift,
 					TimetablePeriod.swift,
@@ -1309,6 +1320,11 @@
 					LiveActivity/Resolvers/CourseTimelineResolver.swift,
 					BulletinAPIClient.swift,
 					BulletinAPIDTO.swift,
+					AcademicCalendar.swift,
+					AcademicCalendarStore.swift,
+					AcademicCalendarEvents.swift,
+					APIVersionGate.swift,
+					UpdateRequiredAlert.swift,
 					CalendarService.swift,
 					LibraryAPI.swift,
 					LibraryService.swift,
@@ -1376,6 +1392,7 @@
 					MacAccountSettingsView.swift,
 					MacDeveloperSettingsView.swift,
 					MacAboutSettingsView.swift,
+					MacOtherSettingsView.swift,
 					MacContentLayout.swift,
 					MacAssignmentsList.swift,
 					MacWidgetCards.swift,
@@ -1383,6 +1400,7 @@
 					DebugClockStore.swift,
 					DebugEndpointStore.swift,
 					DebugEndpointView.swift,
+					EndpointHealthCheck.swift,
 					WidgetSnapshot.swift,
 					WidgetSnapshotBuilder.swift,
 					WidgetSnapshotStore.swift,
@@ -1426,7 +1444,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1452,7 +1470,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
-				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "WatchSyncCoordinatorTests.swift WatchPayloadEncoderTests.swift TimeSliderViewModelTests.swift";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
+					WatchSyncCoordinatorTests.swift,
+					WatchPayloadEncoderTests.swift,
+					TimeSliderViewModelTests.swift,
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
@@ -1480,7 +1502,11 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 4;
 				DEAD_CODE_STRIPPING = YES;
-				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "WatchSyncCoordinatorTests.swift WatchPayloadEncoderTests.swift TimeSliderViewModelTests.swift";
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = (
+					WatchSyncCoordinatorTests.swift,
+					WatchPayloadEncoderTests.swift,
+					TimeSliderViewModelTests.swift,
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
@@ -1572,7 +1598,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1609,7 +1635,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.TigerDuckLiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -1647,7 +1673,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1684,7 +1710,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1831,7 +1857,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1877,7 +1903,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = org.ntust.app.TigerDuck.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

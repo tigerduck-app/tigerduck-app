@@ -1,10 +1,23 @@
 import Defaults
 import SwiftUI
+import SwiftData
 import CoreHaptics
 import UserNotifications
 
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
+    /// Observed, not read through `Defaults[...]`: a bare subscript is a
+    /// plain read that SwiftUI never subscribes to, so this screen kept
+    /// rendering "On" after the switch inside `CloudSyncSettingsView` had
+    /// already turned it off -- popping back does not re-evaluate a parent
+    /// body on its own.
+    ///
+    /// It watches the preference rather than `appState.cloudSyncEnabled`
+    /// because three writers -- onboarding and both ends of
+    /// `CloudSyncCoordinator` -- set the preference directly, so the
+    /// AppState mirror is not guaranteed to agree with it.
+    @Default(.cloudSyncEnabled) private var cloudSyncEnabled
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var notifyAssignments = true
@@ -23,6 +36,7 @@ struct SettingsView: View {
     @State private var hapticPlayer: CHHapticPatternPlayer?
     @State private var notificationsAuthorized: Bool = true
     @State private var showOfficialWebsite = false
+    @State private var showServerStatus = false
     #if os(iOS)
     /// Drives the "you're up to date" / "couldn't reach the App Store"
     /// feedback alert that fires after the manual Check for Updates row.
@@ -104,6 +118,7 @@ struct SettingsView: View {
                     }
                 }
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $appState.showAbsoluteAssignmentTime)
+                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowPeriodsABC)
                 Toggle(String(localized: "settings_remember_bulletin_filter"), isOn: $appState.rememberAnnouncementFilter)
                 Picker(String(localized: "settings_link_opening_method"), selection: $appState.browserPreference) {
                     Text(String(localized: "settings_browser_system_default")).tag(BrowserPreference.system)
@@ -154,7 +169,7 @@ struct SettingsView: View {
                     HStack {
                         Text(String(localized: "cloud_sync_title"))
                         Spacer()
-                        Text(Defaults[.cloudSyncEnabled]
+                        Text(cloudSyncEnabled
                              ? String(localized: "settings_sync_status_on")
                              : String(localized: "settings_sync_status_off"))
                             .foregroundStyle(.secondary)
@@ -164,7 +179,7 @@ struct SettingsView: View {
 
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
-                if !Defaults[.cloudSyncEnabled] {
+                if !cloudSyncEnabled {
                     Link(destination: AppURLs.learnMoreBackend) {
                         Label(
                             String(localized: "settings_sync_off_notifications_warning"),
@@ -243,6 +258,7 @@ struct SettingsView: View {
                 LabeledContent(String(localized: "settings_version"), value: appVersion)
                 #if os(iOS)
                 checkForUpdatesRow
+                serverStatusRow
                 whatsNewRow
                 #endif
                 Button {
@@ -291,7 +307,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading) {
                         Text("Long press to erase everything and restart")
                             .foregroundStyle(.red)
-                        Text("Wipes all data, accounts, and preferences")
+                        Text("Wipes all data, accounts (NTUST, Moodle, library), caches, and preferences. Keeps only the API endpoint override.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -300,20 +316,7 @@ struct SettingsView: View {
                     #if os(iOS)
                     UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                     #endif
-
-                    appState.logoutNTUST()
-                    appState.logoutLibrary()
-
-                    UserDefaults.standard.removePersistentDomain(
-                        forName: Bundle.main.bundleIdentifier!
-                    )
-                    Defaults.removeAll()
-
-                    // Removes outbox.json and any legacy id_map.json.
-                    try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
-
-                    appState.hasCompletedOnboarding = false
-                    Defaults[.hasCompletedOnboarding] = false
+                    eraseEverything()
                 }
             }
             #endif
@@ -333,6 +336,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showOfficialWebsite) {
             InAppBrowserView(url: Self.websiteURL)
+                .ignoresSafeArea()
+        }
+        .sheet(isPresented: $showServerStatus) {
+            InAppBrowserView(url: AppURLs.serverStatus)
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showLibraryLogin) {
@@ -547,6 +554,36 @@ struct SettingsView: View {
         .disabled(appState.updateNotifyCoordinator.isCheckingForUpdate)
     }
 
+    /// "Check Server Status" entry, sitting under Check for Updates
+    /// because the two answer the same question from opposite ends: the
+    /// update row asks whether *this app* is current, this one asks
+    /// whether the services behind it are up.
+    ///
+    /// Honours the in-app / external browser preference like every other
+    /// link in Settings. The in-app path matters here: the status URL
+    /// currently 302s to another origin, and `SFSafariViewController`
+    /// follows that in place — a `WKWebView` with a host allowlist, or an
+    /// `openURL` hand-off, would either dead-end or eject the user into
+    /// Safari mid-redirect.
+    private var serverStatusRow: some View {
+        Button {
+            if appState.browserPreference == .inApp {
+                showServerStatus = true
+            } else {
+                openURL(AppURLs.serverStatus)
+            }
+        } label: {
+            HStack {
+                Text(String(localized: "settings_check_server_status"))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Image(systemName: "arrow.up.right.square")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     /// "What's New" entry — always opens the latest entry registered
     /// in `whatsnew.json`, independent of the
     /// `lastShownWhatsNewVersion` gate. Hidden when the asset has no
@@ -644,6 +681,53 @@ struct SettingsView: View {
             .controlSize(.small)
         }
     }
+
+    #if DEBUG
+    /// Factory-reset the app in place, without an uninstall.
+    ///
+    /// Ordered deliberately. The two logouts run first because they are the
+    /// only paths that unwind *live* state — in-flight sync tasks, the Live
+    /// Activity, scheduled reminders, the push registration, and the watch's
+    /// copy of the library credentials. Blowing the stores away underneath
+    /// them would leave a Live Activity on the Lock Screen and a paired
+    /// watch still holding a library login that this device no longer has.
+    ///
+    /// Then the stores, each of which the logouts intentionally leave alone
+    /// because a logout is an account change rather than a factory reset:
+    /// the whole cache tree (not just the user-scoped files), every Keychain
+    /// secret, the SwiftData store, both defaults domains, and the outbox.
+    private func eraseEverything() {
+        appState.logoutNTUST()
+        appState.logoutLibrary()
+
+        DataCache.shared.clearEverything()
+
+        // Everything except the endpoint: that override lives in the
+        // Keychain precisely so it outlives a wipe, and a developer
+        // resetting the app still wants to point at the same backend.
+        SecureStore.removeAll(preserving: [DebugEndpointStore.keychainKey])
+
+        // Batch-delete through the live container rather than removing the
+        // store file — the container is still mounted and every view is
+        // holding queries against it.
+        try? modelContext.delete(model: SDCourse.self)
+        try? modelContext.delete(model: SDAssignment.self)
+        try? modelContext.delete(model: SDAnnouncement.self)
+        try? modelContext.delete(model: SDCalendarEvent.self)
+        try? modelContext.save()
+
+        UserDefaults.standard.removePersistentDomain(
+            forName: Bundle.main.bundleIdentifier!
+        )
+        Defaults.removeAll()
+
+        // Removes outbox.json and any legacy id_map.json.
+        try? FileManager.default.removeItem(at: SyncOutbox.defaultDirectory())
+
+        appState.hasCompletedOnboarding = false
+        Defaults[.hasCompletedOnboarding] = false
+    }
+    #endif
 
     /// Read the current system-level notification authorization so the
     /// warning row appears whenever the user has revoked permission

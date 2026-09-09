@@ -12,7 +12,11 @@ struct ScoreReport: Codable, Equatable, Sendable {
     var courses: [CourseGrade]
     var creditSummary: CreditSummary
 
-    static let empty = ScoreReport(
+    /// `nonisolated` because `NTUSTScoreParser` is, and it returns this on
+    /// every failure path. Without it the module's MainActor default
+    /// isolation puts the constant on the main actor and the off-main parse
+    /// can't reach it. Safe: an immutable `let` of a `Sendable` type.
+    nonisolated static let empty = ScoreReport(
         student: "",
         currentTerm: "",
         rankings: [],
@@ -142,7 +146,8 @@ struct CreditSummary: Codable, Equatable, Sendable {
     var enrolled: CreditBreakdown
     var total: CreditBreakdown
 
-    static let empty = CreditSummary(
+    /// `nonisolated` for the same reason as ``ScoreReport/empty``.
+    nonisolated static let empty = CreditSummary(
         earned: .zero, enrolled: .zero, total: .zero
     )
 }
@@ -152,5 +157,6 @@ struct CreditBreakdown: Codable, Equatable, Sendable {
     var distance: Int
     var total: Int
 
-    static let zero = CreditBreakdown(inPerson: 0, distance: 0, total: 0)
+    /// `nonisolated` for the same reason as ``ScoreReport/empty``.
+    nonisolated static let zero = CreditBreakdown(inPerson: 0, distance: 0, total: 0)
 }

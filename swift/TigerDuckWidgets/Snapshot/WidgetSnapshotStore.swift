@@ -5,7 +5,9 @@ import os
 /// what the app writes via a shared App Group `UserDefaults` suite. Mirrors
 /// the `SharedSnapshotStore` pattern used by the Live Activity extension.
 ///
-/// In DEBUG we crash hard if the suite is unavailable so the empty
+/// In DEBUG we crash hard when the App Group is unreachable — see
+/// ``isAppGroupAvailable(_:)`` for why that has to be a container-URL check
+/// rather than a nil-suite check — so the empty
 /// `com.apple.security.application-groups` regression cannot ship silently
 /// again. In release we still fall back to `.standard` with a loud error so
 /// a user with a provisioning hiccup still launches.
@@ -15,8 +17,33 @@ nonisolated final class WidgetSnapshotStore {
     private let decoder: JSONDecoder
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Widget")
 
+    /// Whether this process can actually reach the shared App Group.
+    ///
+    /// `UserDefaults(suiteName:)` does NOT answer this. It returns nil only
+    /// for reserved names (this process's own bundle identifier,
+    /// `NSGlobalDomain`); for a group the process holds no entitlement for it
+    /// hands back a perfectly valid *process-local* store. The app's writes
+    /// then never reach the extension and the extension's reads are always
+    /// nil — which is precisely the regression the assertion below exists to
+    /// catch, and which it silently missed for as long as the suite was the
+    /// only check. The container URL is the one that actually fails: it is
+    /// nil unless the entitlement is present in the running binary.
+    ///
+    /// Static and non-private so `AppGroupEntitlementTests` can pin the
+    /// behaviour without constructing a store (the failure path traps).
+    static func isAppGroupAvailable(_ identifier: String) -> Bool {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: identifier
+        ) != nil
+    }
+
     init(appGroupIdentifier: String = WidgetSnapshot.appGroupIdentifier) {
-        if let suite = UserDefaults(suiteName: appGroupIdentifier) {
+        // Only the shipping App Group has to be *reachable*. An injected
+        // identifier is a test seam pointing at an ordinary UserDefaults
+        // suite, which has no container and never will.
+        let requiresSharedContainer = appGroupIdentifier == WidgetSnapshot.appGroupIdentifier
+        if !requiresSharedContainer || Self.isAppGroupAvailable(appGroupIdentifier),
+           let suite = UserDefaults(suiteName: appGroupIdentifier) {
             self.defaults = suite
         } else {
             assertionFailure(

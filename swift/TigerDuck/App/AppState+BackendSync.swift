@@ -31,6 +31,10 @@ extension AppState {
         }
         defer { if !retried { isSyncingOverrides = false } }
         guard await authTokenManager.isLoggedIn else { return }
+        // Not awaited: this is a repair, not a precondition. Its pending
+        // marker makes `applySyncedOverrides` sit out this cycle rather than
+        // race it, and the next sync applies the settled state.
+        retryUnacknowledgedHolidayOverrides()
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)
@@ -41,6 +45,7 @@ extension AppState {
             let preFetchInFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
             let preFetchProtected = preFetchInFlight.union(pendingOverrides)
             let editGenerationAtFetch = overrideEditGeneration
+            let fetchedAt = Date()
             let json = try await pushCoordinator.fetchFullSync()
             let overridesArray = json["assignment_overrides"] as? [[String: Any]] ?? []
 
@@ -155,6 +160,24 @@ extension AppState {
                 applyCourseOverrides(courseOverrides, coursesArray: coursesArray)
             }
 
+            // Holiday exceptions. Not gated on any of the per-category sync
+            // toggles: this is a notification setting, not course or
+            // assignment data, and none of the categories the user can turn
+            // off covers it. An absent key means an older backend that does
+            // not send the section, so the local set stands.
+            if let holidayRows = json["holiday_overrides"] as? [[String: Any]] {
+                // `notify: false` rows exist server-side so a device can tell
+                // "turned it off" from "never set it"; only the true ones
+                // belong in the opted-in set.
+                let optedIn = Set(
+                    holidayRows.compactMap { row -> Int? in
+                        guard row["notify"] as? Bool == true else { return nil }
+                        return row["holiday_id"] as? Int
+                    }
+                )
+                AcademicCalendarStore.shared.applySyncedOverrides(optedIn, fetchedAt: fetchedAt)
+            }
+
             // Conflict resolution: detect reset + process tombstones
             let coursesResetAtStr = json["courses_reset_at"] as? String
             let coursesResetAt = coursesResetAtStr.flatMap { ISO8601DateFormatter().date(from: $0) }
@@ -170,7 +193,7 @@ extension AppState {
             if pendingConflicts.contains("courses") {
                 AppLogger.sync.info("[syncOverrides] skipping course sync — conflict check pending")
             } else if Defaults[.syncCourses] {
-                reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray)
+                reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray, fetchedAt: fetchedAt)
             }
 
             // Update the revision watermark so the poller doesn't
@@ -324,16 +347,23 @@ extension AppState {
         // Record the local delete so the sync reconcile's grace window doesn't
         // resurrect this course before the backend DELETE propagates (F).
         recentCourseDeletions[courseNo] = Date()
-        // Enrolled (Moodle-linked) courses are keyed on the backend by
-        // moodle_id; deleting them by the client key is a no-op server-side and
-        // the course resurrects on the next sync. Prefer the moodle_id resolved
-        // from the cached course; fall back to the client key for purely manual
-        // courses that have no moodle_id.
-        let moodleId = (DataCache.shared.loadCourses(semester: semester)
-            + DataCache.shared.loadUserAddedCourses().filter { DataCache.userAddedCourse($0, belongsTo: semester) })
-            .first { $0.courseNo == courseNo }?.moodleIdNumber
-            .flatMap { $0.isEmpty ? nil : $0 }
-        let courseKey = moodleId ?? "client:\(semester):\(courseNo)"
+        // DELETE /sync/courses/{key} matches on `course_key`, which is a
+        // different namespace from `moodle_id`. The server only ever mints
+        // two shapes: "client:{semester}:{course_no}"
+        // for a row a device uploaded, and "moodle:{numeric course id}" for a
+        // shell row its own Moodle mirror created. Every row this app owns is
+        // the first shape — /sync/courses/upload derives the key that way for
+        // enrolled and manual courses alike, and this app never writes a
+        // "moodle:" row.
+        //
+        // This used to send the bare Moodle *idnumber* ("1142CS5164701"),
+        // which is neither shape. DELETE matches on course_key exactly, so it
+        // returned {"deleted": 0} and wrote no tombstone, and the course came
+        // straight back on the next reconcile. The idnumber is the right
+        // handle for PATCH /sync/courses/{id}/override — that route resolves
+        // against the `moodle_id` column — which is what made the two look
+        // interchangeable.
+        let courseKey = "client:\(semester):\(courseNo)"
         let coordinator = pushCoordinator
         Task.detached {
             do {
@@ -349,12 +379,28 @@ extension AppState {
     /// term it is on so the others survive. Returns false when the wipe did
     /// not land, so the caller can hold off on a reset that the next sync
     /// would otherwise undo by merging the stale server rows back.
+    /// Wipes the backend, then runs `resetLocally` — only then. Wiping
+    /// locally first and then failing the DELETE would leave an empty grid
+    /// with the server still full, to be merged back as hand-added rows.
+    /// The term stays in `resettingSemesters` across both steps, and the
+    /// reset is stamped once the DELETE has landed, so a snapshot fetched
+    /// before that instant is never reconciled into the term.
     @discardableResult
-    func deleteBackendCourses(semester: String? = nil) async -> Bool {
-        guard Defaults[.cloudSyncEnabled] else { return true }
+    func deleteBackendCourses(
+        semester: String? = nil,
+        thenLocally resetLocally: @MainActor () -> Void = {}
+    ) async -> Bool {
+        guard Defaults[.cloudSyncEnabled] else {
+            resetLocally()
+            return true
+        }
+        if let semester { resettingSemesters.insert(semester) }
+        defer { if let semester { resettingSemesters.remove(semester) } }
         do {
             try await pushCoordinator.deleteAllCourses(semester: semester)
             AppLogger.sync.info("deleteBackendCourses ok: \(semester ?? "all", privacy: .public)")
+            if let semester { DataCache.shared.recordSemesterReset(semester) }
+            resetLocally()
             return true
         } catch {
             AppLogger.sync.error("deleteBackendCourses failed: \(error, privacy: .public)")
@@ -410,22 +456,20 @@ extension AppState {
                 classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
             )
         }
-        let colorMap = TigerDuckTheme.courseColorMap
-        let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
-            guard let hex = colorMap[c.courseNo] else { return nil }
-            // Key enrolled courses by moodle_id so the override round-trips: the
-            // override endpoint resolves moodle_id, and applyCourseOverrides
-            // maps server overrides back via moodle_id. A client-keyed override
-            // for a moodle-linked course never maps back. Manual courses (no
-            // moodle_id) keep the client key.
-            let moodleId = c.moodleIdNumber.flatMap { $0.isEmpty ? nil : $0 }
-            return PushAPI.CourseOverrideUploadEntry(
-                courseKey: moodleId ?? "client:\(semester):\(c.courseNo)",
-                colorHex: String(format: "#%06X", hex)
-            )
-        }
-        return PushAPI.CourseUploadRequest(
-            courses: entries, courseOverrides: overrides, forceKeys: forceKeys
-        )
+        // No `course_overrides` here, deliberately. This block used to send
+        // TigerDuckTheme.courseColorMap for every course, keyed by the bare
+        // Moodle idnumber — and the server matches that list on `course_key`,
+        // so every entry was silently dropped. Simply correcting the key would
+        // have been worse than the bug: the map holds auto-assigned colours
+        // alongside chosen ones with no way to tell them apart, and the upload
+        // route's upsert is create-only (`if override.color_hex is None`), so
+        // the first upload would have pinned a generated hex for every course
+        // server-side, permanently, on every device on the account. Android
+        // hit exactly this and now sends only real picks.
+        //
+        // Nothing is lost by dropping it: every path where the user actually
+        // chooses a colour already calls syncCourseOverride, and that PATCH
+        // sets the value outright instead of only filling a blank.
+        return PushAPI.CourseUploadRequest(courses: entries, forceKeys: forceKeys)
     }
 }

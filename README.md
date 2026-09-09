@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.0.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.1)
+[![Version](https://img.shields.io/badge/Version-v2.0.2-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.2)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -112,6 +112,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v2.0.2`** | 2026-09-10 | 📅 **校方行事曆上線** — 學期起訖、假日與補課日直接進 App，iOS 與 Mac 皆有；動態島課程改由伺服器推播啟動，App 在背景也會準時出現；在另一台裝置重置學期後，這台裝置會跟著清空並自動重抓；課表補上每節上下課時間、第 10 節與 A/B/C 節顯示選項；自訂 API 端點成為正式且會驗證的設定 |
 | **`v2.0.1`** | 2026-09-07 | 課表學期選單只列入學年以後的學期，舊制空格補位的學期代碼不再混入；主題色擴及圖示、圖書證倒數圈、歷年成績趨勢線與 Mac 設定視窗；選課系統所服務的學期以選課清單為準，已退選的課不再從 Moodle 被加回 |
 | **`v2.0.0`** | 2026-08-23 | 🚀 **雲端同步正式上線** — 課程/作業即時上傳、macOS 推播與帳號同步、401 自動恢復、伺服器推播頻道設定 |
 | **`v1.8.1`** | 2026-08-21 | 圖書證 QR 改回只靠 HDR 局部高亮，不再調整整台裝置的螢幕亮度 — EDR 判斷誤用了「當下是否正在顯示 HDR 內容」的數值，而 QR 還沒畫出來時它必然為否，於是 EDR 機型仍舊被鎖在最大亮度 |

@@ -36,47 +36,6 @@ nonisolated enum AppConstants {
         return cal
     }()
 
-    /// The academic term the app currently considers "now".
-    ///
-    /// ponytail: hard-coded. Nothing in the app knows when classes actually
-    /// start or end — `CourseSelectionService.currentSemesterCode()` is a
-    /// month heuristic that only guesses the *term code*, and the semester
-    /// catalogue reports which term 選課 has open, which runs weeks ahead of
-    /// the term in session. Swap `code`/`start`/`end` for the academic
-    /// calendar feed (`CalendarService` already fetches the ICS that carries
-    /// 開學/結業) when that lands; every consumer reads `code` or
-    /// `isInSession` and needs no change.
-    enum CurrentTerm {
-        /// 115 學年度第 1 學期.
-        static let code = "1151"
-
-        /// First day of classes, Taipei wall time.
-        static let start = taipeiDate(year: 2026, month: 9, day: 7)
-        /// Exclusive upper bound — the day *after* the last day of classes,
-        /// so 2026-12-25 counts as in session right up to midnight.
-        static let end = taipeiDate(year: 2026, month: 12, day: 26)
-
-        /// True while classes are in session.
-        ///
-        /// Gates the "today"-scoped surfaces — Home's time slider and the
-        /// class table's today carousel — which outside the term would
-        /// either sit empty or scrub a day that has no classes.
-        static var isInSession: Bool {
-            let now = AppClock.now()
-            return now >= start && now < end
-        }
-
-        /// Fails closed: an unbuildable date lands in the distant future, so
-        /// `isInSession` reads false rather than true-forever.
-        private static func taipeiDate(year: Int, month: Int, day: Int) -> Date {
-            var components = DateComponents()
-            components.year = year
-            components.month = month
-            components.day = day
-            return AppConstants.taipeiCalendar.date(from: components) ?? .distantFuture
-        }
-    }
-
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
@@ -159,6 +118,7 @@ nonisolated enum AppConstants {
         static let browserPreference = "browserPreference"
         static let macMoodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
+        static let alwaysShowPeriodsABC = "alwaysShowPeriodsABC"
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"
@@ -254,8 +214,18 @@ nonisolated enum AppConstants {
     static let appStoreLookupStorefront = "tw"
 
     enum Periods {
-        static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9"]
-        static let extended = ["5", "10", "A", "B", "C", "D"]
+        /// Rows the timetable shows before any course asks for more. Ends at
+        /// 10 (17:30-18:20), which is an ordinary teaching slot — leaving it
+        /// out meant a 5th-period-free student saw their day stop at 17:20 and
+        /// had to take on faith that nothing followed. 5 stays out because it
+        /// is the lunch break: a course scheduled there widens the grid on its
+        /// own, via `ClassTableViewModel.activePeriods`.
+        static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9", "10"]
+        static let extended = ["5", "A", "B", "C", "D"]
+        /// The evening periods the Display toggle pins on. D is left out
+        /// deliberately: it ends at 22:00 and is rare enough that pinning
+        /// it would cost a row almost nobody needs.
+        static let eveningOptional = ["A", "B", "C"]
         /// Chronological order of all periods (for sorting)
         static let chronologicalOrder = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "B", "C", "D"]
         static var weekdays: [String] {

@@ -209,6 +209,13 @@ final class CalendarViewModel {
     }
 
     private func setEvents(_ newEvents: [SDCalendarEvent]) {
+        // Merged here rather than at each call site because this is the one
+        // funnel every load path goes through, including the sign-out reset.
+        // Both academic sources are dropped and rebuilt from the feed, so a
+        // boundary left over from the build that still filed them under
+        // `.holiday` is not kept forever from the cache.
+        let newEvents = newEvents.filter { $0.source != .holiday && $0.source != .semester }
+            + AcademicCalendarStore.shared.calendar.calendarEvents()
         events = newEvents
         let cal = AppConstants.taipeiCalendar
         eventsByDay = Dictionary(grouping: newEvents) { event in

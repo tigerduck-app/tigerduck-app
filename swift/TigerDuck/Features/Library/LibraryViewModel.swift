@@ -166,7 +166,11 @@ final class LibraryViewModel {
 
     /// One context for the app's lifetime — creating one per QR compiles
     /// Core Image's Metal pipeline every 30 s.
-    nonisolated(unsafe) private static let ciContext = CIContext()  // CIContext is thread-safe
+    // `nonisolated` (not `nonisolated(unsafe)`) — `CIContext` is `Sendable`
+    // in the current SDK, so the unchecked escape hatch is no longer needed.
+    // The annotation itself still is: the module defaults to MainActor
+    // isolation, and `generateQRImage` runs off it.
+    nonisolated private static let ciContext = CIContext()
 
     nonisolated private static func generateQRImage(from string: String) -> UIImage? {
         // Plain SDR black/white render. HDR brightness is applied at draw

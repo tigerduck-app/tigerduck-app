@@ -300,6 +300,14 @@ final class PushCoordinator {
             #if os(iOS)
             guard UIApplication.shared.applicationState != .background else { return }
             #endif
+            // `/schedule/sync` is an authenticated endpoint, and this was the
+            // one sync path with no auth check at all — every scene
+            // activation and data change fired it while signed out, and each
+            // one could only come back 401 missing_bearer_token. Ask for a
+            // usable token rather than `isLoggedIn`, which only means "a
+            // refresh token exists" and is true for a stale one that no
+            // longer refreshes.
+            guard await self?.apiClient.hasAuthSession() == true else { return }
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
         }
@@ -318,18 +326,22 @@ final class PushCoordinator {
     nonisolated static func assertEnvConsistency() {
         let resolved = PushServerConfig.resolveServerURL()
         let host = resolved.host?.lowercased() ?? ""
-        // Mirror the runtime override gate: any host `isOverrideAllowed`
-        // accepts must also pass this assert, otherwise a build that
-        // saved an `api.tigerduck.app` apex or `*.api.tigerduck.app`
-        // subdomain override would crash on next launch with a Keychain
-        // value the user can't reach to clear. The apns_env mismatch when
-        // pointing a Debug build at prod is still real, but it surfaces
-        // as push failing at registration time — not as a hard launch
-        // crash before any UI renders.
-        let hostOK = host == "localhost"
+        // The host check only applies to the *built-in* default, and is
+        // skipped entirely once the user has set their own endpoint.
+        //
+        // It exists to catch someone flipping `PushAPNsEnv` or
+        // `AppConstants.productionPushServerURL` without the other. A
+        // self-hosted backend is a legitimate value we cannot enumerate,
+        // and asserting on it would hard-crash a Debug build at launch
+        // over a Keychain entry the user then has no UI left to clear.
+        // Pointing a Debug build at prod is still a real apns_env
+        // mismatch, but it surfaces as push failing at registration —
+        // not before the first frame renders.
+        let hostOK = DebugEndpointStore.currentOverride() != nil
+            || host == "localhost"
             || host == "127.0.0.1"
             || PushServerConfig.isPrivateIPv4(host)
-            || PushServerConfig.isAllowedPublicHost(host)
+            || host == AppConstants.productionPushServerURL.host?.lowercased()
         #if DEBUG
         let expectedEnv = "development"
         #else

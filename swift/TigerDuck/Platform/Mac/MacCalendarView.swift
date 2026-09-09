@@ -11,9 +11,14 @@ import SwiftUI
 /// matches the iPhone look the user already knows.
 ///
 /// Source-of-truth is `DataCache.loadCalendarEvents()` (populated by
-/// `appState.backgroundSync()`). EventKit overlay (system Calendar
+/// `appState.backgroundSync()`) merged with the academic calendar's
+/// own rows — see `allEvents`. EventKit overlay (system Calendar
 /// events) is intentionally out of scope on Mac — keeps us out of
 /// the Mac Calendar TCC entitlement.
+///
+/// Holidays and semester boundaries are listed but not actionable: the
+/// iPhone puts a "still remind me" toggle on a holiday row, and macOS
+/// delivers no class reminders for one to switch back on.
 struct MacCalendarView: View {
     @Environment(AppState.self) private var appState
 
@@ -33,9 +38,22 @@ struct MacCalendarView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
     private let cellHeight: CGFloat = 64
 
+    /// Cached network events plus the academic calendar's own rows.
+    ///
+    /// The academic rows have to be merged in here rather than read off
+    /// disk: they are never cached (`CalendarViewModel` rebuilds them on
+    /// every load for the same reason), so reading `DataCache` alone left
+    /// the Mac with no semester boundaries and no holidays at all. Same
+    /// merge as the iPhone — drop anything stale under those two sources,
+    /// then rebuild from the in-memory calendar.
+    ///
+    /// `AcademicCalendarStore` posts `dataDidUpdate` after a successful
+    /// fetch, so `cacheRevision` re-reads this when the calendar lands.
     private var allEvents: [SDCalendarEvent] {
         _ = cacheRevision
-        return DataCache.shared.loadCalendarEvents()
+        let cached = DataCache.shared.loadCalendarEvents()
+            .filter { $0.source != .holiday && $0.source != .semester }
+        return cached + AcademicCalendarStore.shared.calendar.calendarEvents()
     }
 
     private var eventsByDay: [DateComponents: [SDCalendarEvent]] {
@@ -252,6 +270,11 @@ struct MacCalendarView: View {
         case .school: return .orange
         case .exam: return .red
         case .system: return .gray
+        // Listed on the Mac, not actionable: macOS delivers no class
+        // reminders, so there is nothing for a "still remind me" toggle to
+        // turn on. The row still says the day is a holiday.
+        case .holiday: return .green
+        case .semester: return .indigo
         }
     }
 
@@ -264,6 +287,8 @@ struct MacCalendarView: View {
         // for now — fall back to school so we don't crash if a future
         // ingest path adds them.
         case .system: String(localized: "calendar_source_school")
+        case .holiday: String(localized: "calendar_source_holiday")
+        case .semester: String(localized: "calendar_source_semester")
         }
     }
 
@@ -349,8 +374,13 @@ private struct DayCell: View {
         return AnyShapeStyle(.primary)
     }
 
+    /// `order` has to name every source: it is the whitelist the result is
+    /// filtered through, so anything missing from it never gets a dot no
+    /// matter how many events the day holds. Holidays and boundaries sit
+    /// last — a Moodle deadline is the thing worth seeing first when the
+    /// `prefix(3)` cap bites.
     private func dedupedSources() -> [EventSource] {
-        let order: [EventSource] = [.moodle, .school, .exam, .system]
+        let order: [EventSource] = [.moodle, .school, .exam, .system, .holiday, .semester]
         var seen = Set<EventSource>()
         var result: [EventSource] = []
         for src in events.map(\.source) where !seen.contains(src) {
@@ -366,6 +396,11 @@ private struct DayCell: View {
         case .school: return .orange
         case .exam: return .red
         case .system: return .gray
+        // Listed on the Mac, not actionable: macOS delivers no class
+        // reminders, so there is nothing for a "still remind me" toggle to
+        // turn on. The row still says the day is a holiday.
+        case .holiday: return .green
+        case .semester: return .indigo
         }
     }
 }

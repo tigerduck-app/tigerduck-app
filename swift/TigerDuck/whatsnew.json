@@ -76,5 +76,27 @@
         "The term the course-selection system is serving follows its enrolment list, so dropped courses no longer come back from Moodle."
       ]
     }
+  },
+  "2.0.2": {
+    "zh-TW": {
+      "title": "2.0.2 更新內容",
+      "highlights": [
+        "新增校方行事曆：學期起訖、假日與補課日一次看完，Mac 版也有。",
+        "課程的動態島改由伺服器啟動，App 沒開著也會準時出現。",
+        "在另一台裝置重置學期後，這台裝置會跟著清空並自動重新抓取。",
+        "課表看得到每一節的上下課時間，也可以固定顯示第 10 節與 A、B、C 節。",
+        "設定裡可以自訂並驗證 API 端點，並新增「檢查伺服器狀態」。"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.0.2",
+      "highlights": [
+        "A new Academic Calendar shows term dates, holidays and make-up days — on Mac too.",
+        "Live Activities for classes now start from the server, so a class shows up on time even when the app isn't open.",
+        "Reset a semester on one device and this one empties and refetches to match.",
+        "The class table shows each period's start and end time, and can always display periods 10, A, B and C.",
+        "Settings lets you set and validate a custom API endpoint, and adds a \"Check Server Status\" row."
+      ]
+    }
   }
 }

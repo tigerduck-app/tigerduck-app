@@ -8,10 +8,16 @@ import Foundation
 public final class LibraryQRCache {
     public static let shared = LibraryQRCache()
 
+    // Both are the library's fixed policy rather than anything this cache
+    // holds, and they read from default-argument position — which the caller
+    // evaluates, so it is checked as nonisolated no matter how the function
+    // it belongs to is isolated. `nonisolated` keeps the module's MainActor
+    // default from pulling them onto the actor.
+
     /// How long the library accepts a code after it was issued.
-    public static let lifetime = 30
+    nonisolated public static let lifetime = 30
     /// A cached code with at least this many seconds left is shown again.
-    public static let reuseThreshold = 15
+    nonisolated public static let reuseThreshold = 15
 
     public private(set) var payload: String?
     public private(set) var fetchedAt: Date?

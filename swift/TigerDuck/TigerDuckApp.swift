@@ -21,6 +21,10 @@ struct TigerDuckApp: App {
     init() {
         AppLogger.start()
         #if DEBUG
+        // Scaffolding for the Library freeze: tells a blocked main thread
+        // apart from swallowed touches, which a spinning ProgressView
+        // cannot. See MainThreadWatchdog.
+        MainThreadWatchdog.start()
         // Apply any persisted clock override before any UI reads the clock,
         // so view models constructed during the first render see the right
         // "now". Entire branch compiles out in Release.
@@ -78,6 +82,7 @@ struct TigerDuckApp: App {
         WindowGroup {
             ContentView()
                 .id(rootLanguageId)
+                .updateRequiredAlert()
                 .tint(appState.accentColor)
                 .preferredColorScheme(.dark)
                 .background(WatchSyncBridge(coordinator: watchSyncCoordinator))
@@ -136,6 +141,19 @@ struct TigerDuckApp: App {
                         // .active transition so rapid scene toggles do not
                         // interleave through cancelAllOwnedRequests()'s
                         // await suspension point and double the reschedule.
+                        // The school calendar, unconditionally: it is the
+                        // one backend call not gated on sign-in or cloud
+                        // sync, because suppressing class reminders on a
+                        // public holiday should not depend on either. A
+                        // change re-runs the surfaces that read it, since
+                        // the Live Activity and widgets may now be for a
+                        // day classes do not meet.
+                        Task {
+                            if await AcademicCalendarStore.shared.refresh() {
+                                await appState.refreshLiveActivity()
+                                widgetSnapshotWriter?.regenerate()
+                            }
+                        }
                         sceneRefreshTask?.cancel()
                         sceneRefreshTask = Task {
                             await appState.refreshLiveActivity()
@@ -302,6 +320,7 @@ struct TigerDuckApp: App {
         Window("TigerDuck", id: "main") {
             MacRootView()
                 .id(rootLanguageId)
+                .updateRequiredAlert()
                 .environment(appState)
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
@@ -323,6 +342,22 @@ struct TigerDuckApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
+                        // The school calendar, unconditionally: it is the
+                        // one backend call not gated on sign-in or cloud
+                        // sync, because suppressing class reminders on a
+                        // public holiday should not depend on either. A
+                        // change re-runs the surfaces that read it, since
+                        // the Live Activity and widgets may now be for a
+                        // day classes do not meet.
+                        // No Live Activity call here: the Mac has none —
+                        // `AppState+LiveActivity.swift` is not compiled for
+                        // macOS — so the widgets are the only surface a
+                        // calendar change can move.
+                        Task {
+                            if await AcademicCalendarStore.shared.refresh() {
+                                widgetSnapshotWriter?.regenerate()
+                            }
+                        }
                         sceneRefreshTask?.cancel()
                         sceneRefreshTask = Task {
                             appState.requestPushScheduleSync()

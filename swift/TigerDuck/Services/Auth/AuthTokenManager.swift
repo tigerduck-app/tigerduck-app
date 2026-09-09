@@ -132,6 +132,9 @@ actor AuthTokenManager {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            if let http = response as? HTTPURLResponse {
+                await APIVersionGate.shared.note(statusCode: http.statusCode)
+            }
             throw AuthError.loginFailed
         }
         let result = try JSONDecoder().decode(LoginResponse.self, from: data)
@@ -184,6 +187,12 @@ actor AuthTokenManager {
             store(access: result.access_token, refresh: result.refresh_token, expiresIn: result.expires_in)
             return result.access_token
         }
+
+        // A 410 here is not "the refresh token went bad" — it is the whole
+        // API version being gone, so do not fall through to the relogin /
+        // logout path below and sign the user out over it.
+        await APIVersionGate.shared.note(statusCode: http.statusCode)
+        if http.statusCode == 410 { return nil }
 
         guard (400...499).contains(http.statusCode) else {
             return nil

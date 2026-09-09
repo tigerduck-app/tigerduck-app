@@ -1,14 +1,18 @@
 import SwiftUI
 
 /// "Current class" card — surfaces a course whose period block contains
-/// the current minute. Sits leftmost in the today carousel so the user's
-/// active class is the first thing they see when they open the class
-/// table. Mirrors the Android `CurrentClassCard` (red dot + label,
-/// course name, classroom, progress bar, time range).
+/// the current minute. Renders in the course's own slot in the today
+/// carousel, which scrolls itself so this card leads; it is not lifted to
+/// the head of the row. Mirrors the Android `CurrentClassCard` (red dot +
+/// label, course name, classroom, progress bar, time range).
 struct CurrentClassCard: View {
+    /// Named because `carouselScrollTarget` measures the row with it — a
+    /// resized card must not silently desync the self-scroll from the layout.
+    static let defaultWidth: CGFloat = 200
+
     let info: OngoingCourseInfo
     var hasAssignment: Bool = false
-    var width: CGFloat? = 200
+    var width: CGFloat? = CurrentClassCard.defaultWidth
     var onTap: (() -> Void)? = nil
 
     var body: some View {

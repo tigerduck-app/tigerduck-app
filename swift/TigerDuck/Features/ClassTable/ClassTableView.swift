@@ -17,7 +17,7 @@ struct ClassTableView: View {
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
-                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0) }
+                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0, thenLocally: $1) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
@@ -32,7 +32,7 @@ struct ClassTableView: View {
                     viewModel.onCoursesChanged = { appState.uploadCourses($0, semester: $1) }
                     viewModel.onCourseAdded = { appState.uploadCourses($0, semester: $1, forceKeys: ["client:\($1):\($2)"]) }
                     viewModel.onCourseDeleted = { appState.deleteBackendCourse(courseNo: $0, semester: $1) }
-                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0) }
+                    viewModel.onResetBackendCourses = { await appState.deleteBackendCourses(semester: $0, thenLocally: $1) }
                     Task { await viewModel.warmCachesIfNeeded(authService: appState.authService) }
                 }
                 .onChange(of: viewModel.currentSemester) { _, _ in
@@ -224,23 +224,97 @@ struct ClassTableView: View {
             if pageAccessState != .loginRequired {
                 HStack(spacing: TigerDuckTheme.Spacing.lg) {
                     SyncStatusDot(servers: [.moodle, .courseSelection, .backend])
-                    Button {
-                        viewModel.showResetConfirm = true
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                    }
-                    .accessibilityLabel(Text("class_table_reset_title"))
-                    Button {
-                        viewModel.showAddCourse = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel(Text("add_course_title"))
+                    headerActions
                 }
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)
+    }
+
+    /// Runtime-dependent, because the reference differs per OS.
+    ///
+    /// Below 26 this tracks the Calendar "Today" button, which renders
+    /// 40.33pt there — a padded `.bordered` from `GlassTextButtonModifier`.
+    /// Matching it is what keeps the two pages' header controls the same
+    /// size on that OS.
+    ///
+    /// On 26 Today is only 28.33pt, because `.buttonStyle(.glass)` is a much
+    /// tighter control. Deliberately not matched: this capsule holds two icon
+    /// targets rather than one short word, and at Today's height the glass
+    /// read as a thin sliver behind the glyphs. 36pt is ~1.3x that, which
+    /// gives the pair enough glass to read as a control in its own right —
+    /// and lands close to the 40pt the pre-26 path already uses, so the two
+    /// OSes end up more alike than the underlying button styles are.
+    ///
+    /// `HeaderControlMetricsTests` measures both against the live Today
+    /// button, so it still catches Apple moving those metrics underneath us.
+    private static var headerActionHeight: CGFloat {
+        if #available(iOS 26, *) { 36 } else { 40 }
+    }
+    /// Wider than it is tall: the extra width is what turns two adjacent
+    /// cells into a capsule rather than a circle, and it is where the glyphs
+    /// get their breathing room now that the height is pinned.
+    private static let headerActionWidth: CGFloat = 40
+
+    /// Reset and add, sharing one Liquid Glass capsule.
+    ///
+    /// One backing rather than two circles: they are a set — both act on the
+    /// timetable directly below — and two separate circles read as two
+    /// unrelated controls that happen to be adjacent. This is also what the
+    /// system does with a toolbar item group on iOS 26, which is the shape
+    /// users are learning to read as "these belong together".
+    ///
+    /// The status dot stays outside it deliberately. It reports on the
+    /// servers, it does not act on the timetable, and folding it in would
+    /// claim a relationship that isn't there.
+    ///
+    /// Sits in the page's own header row rather than a toolbar, so nothing
+    /// supplies a backing unless we do — and a bare glyph over a dense
+    /// timetable reads as part of the grid instead of a control acting on it.
+    @ViewBuilder
+    private var headerActions: some View {
+        let row = HStack(spacing: 0) {
+            Button {
+                viewModel.showResetConfirm = true
+            } label: {
+                headerIcon("arrow.triangle.2.circlepath")
+            }
+            .accessibilityLabel(Text("class_table_reset_title"))
+            Button {
+                viewModel.showAddCourse = true
+            } label: {
+                headerIcon("plus")
+            }
+            .accessibilityLabel(Text("add_course_title"))
+        }
+        if #available(iOS 26, *) {
+            row.glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            // Below 26 there is no glass to supply a backing, and a bare
+            // pair of glyphs beside Today's filled pill reads as unfinished
+            // rather than as the same class of control. `.secondarySystemFill`
+            // is what `.bordered` — Today's own pre-26 style — fills with.
+            row.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
+        }
+    }
+
+    /// `contentShape` is explicit because the glyph is smaller than its
+    /// cell: without it the tappable area is the symbol's own bounds, and
+    /// the padding that makes the capsule look right would not be tappable.
+    /// `.subheadline` rather than `.body`: Today's caption label renders
+    /// 14.33pt tall inside its 28.33pt pill, where a `.body` symbol is a
+    /// full 17pt. Matching the outer height alone still left these icons
+    /// visibly heavier than the button they sit next to a tab away —
+    /// `.subheadline` puts the glyph at 15.33pt, the same optical weight.
+    /// A semantic font, not a fixed size, so it scales with Dynamic Type
+    /// the way Today's label does.
+    private func headerIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.primary)
+            .frame(width: Self.headerActionWidth, height: Self.headerActionHeight)
+            .contentShape(.rect)
     }
 
     private var authenticatedContent: some View {

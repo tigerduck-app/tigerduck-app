@@ -10,6 +10,12 @@ enum PushAPI {
     struct DeviceRegisterRequest: Encodable, Sendable {
         let client_device_id: String
         let platform: String
+        /// Form factor, for operator targeting. Redundant with `platform` on
+        /// Apple, where ios / ipados / macos already separate the three — but
+        /// Android reports one value for phones and tablets, so targeting
+        /// filters on this column and falls back to `platform` only for rows
+        /// that predate it. Sending it keeps Apple devices off that fallback.
+        let device_class: String?
         let app_version: String?
         let os_version: String?
         let push_token: PushTokenIn?
@@ -30,12 +36,41 @@ enum PushAPI {
         let scope_key: String
     }
 
+    /// Device-only registration, for an app with no account on it.
+    ///
+    /// Deliberately carries no student id, no account and no preferences —
+    /// just enough for an operator to see that a device is running the app
+    /// and send it a custom push. `platform` is the flat apple/android value
+    /// the legacy `device_registrations` table uses, not the precise
+    /// ios/ipados/macos of `DeviceRegisterRequest`; the iPhone/iPad/Mac
+    /// distinction rides in `device_class`.
+    struct AnonymousDeviceRequest: Encodable, Sendable {
+        let device_id: String
+        let platform: String
+        let device_class: String
+        let push_token: String?
+        let bundle_id: String
+        /// The signed-out half of the server-push opt-out.
+        ///
+        /// `PATCH /devices/{id}/preferences` needs a session and writes
+        /// `user_devices`, but operator targeting resolves signed-out
+        /// devices from `device_registrations` — so without this the
+        /// toggle had no way to reach the row that actually decides, and
+        /// a device that opted out kept receiving custom push.
+        let server_push_enabled: Bool?
+    }
+
     struct DeviceRegisterResponse: Decodable, Sendable {
         let device_id: String
         let push_token_id: Int?
     }
 
     // MARK: - Device unregister (v3 uses DELETE /devices/{id}, no request body needed)
+
+    /// "Keep reminding me about classes on this holiday."
+    struct HolidayOverrideRequest: Encodable, Sendable {
+        let notify: Bool
+    }
 
     // MARK: - Device preferences (unchanged shape)
 

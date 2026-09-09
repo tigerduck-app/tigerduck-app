@@ -77,81 +77,12 @@ struct MacDeveloperSettingsView: View {
                     }
                 }
             }
-
-            // MARK: API endpoint
-
-            Section {
-                Text(endpointVM.effectiveURL)
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
-            } header: {
-                Text("Effective endpoint")
-            } footer: {
-                Text("Resolved by PushServerConfig — Keychain override → UserDefaults override → Secrets.plist → localhost fallback.")
-            }
-
-            // Surface a previously-saved override that no longer passes
-            // the allowlist (e.g. allowlist tightened in a later build).
-            // Mirrors the iOS DebugEndpointView — without this section,
-            // the Mac user only sees the effective URL silently fall
-            // through to the next priority with no breadcrumb explaining
-            // why their saved override stopped taking effect.
-            if let stale = endpointVM.staleOverride {
-                Section {
-                    Text(stale)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                } header: {
-                    Text("Stored override no longer accepted")
-                } footer: {
-                    Text("The allowlist tightened since this value was saved, so it's being ignored and the resolver is using the next priority. Save a new value or clear the override.")
-                        .foregroundStyle(.orange)
-                }
-            }
-
-            Section {
-                // Show the example URL above the field instead of as the
-                // TextField's leading label — on macOS Form's grouped
-                // style the title-string initializer renders a left-side
-                // label that eats horizontal space and pushes the input
-                // into a sliver. Putting the hint on its own row keeps
-                // the input field full-width and easier to paste into.
-                Text(verbatim: "http://192.168.X.X:40000/v2")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                TextField("", text: $endpointVM.draft, prompt: Text(verbatim: "http://192.168.X.X:40000/v2"))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-                    .autocorrectionDisabled()
-                    .labelsHidden()
-
-                if let error = endpointVM.validationError {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
-
-                HStack {
-                    Button("Save") { endpointVM.save() }
-                        .disabled(endpointVM.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Spacer()
-                    Button("Clear override", role: .destructive) { endpointVM.clear() }
-                        .disabled(endpointVM.storedOverride == nil)
-                }
-            } header: {
-                Text("Override (Keychain — survives reinstall)")
-            } footer: {
-                Text("Allowed: api.tigerduck.app (apex + any subdomain) over HTTPS, loopback, or any RFC1918 IPv4. Pointing a Debug build at the prod apex breaks push (apns_env mismatch — sandbox tokens get rejected at registration), but read-side API surfaces still work for testing.")
-            }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { await viewModel.observeEffectiveNow() }
     }
-
-    @State private var endpointVM = DebugEndpointViewModel()
 }
 
 @MainActor

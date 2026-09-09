@@ -40,6 +40,13 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime,
         default: false
     )
+    /// Pin periods A, B and C to the timetable even when no course uses
+    /// them. Off by default: an empty evening is three rows of nothing
+    /// for the majority who never have a class there.
+    static let alwaysShowPeriodsABC = Key<Bool>(
+        AppConstants.UserDefaultsKeys.alwaysShowPeriodsABC,
+        default: false
+    )
     static let configuredTabsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.configuredTabs
     )
@@ -130,11 +137,56 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.cloudSyncEnabled,
         default: true
     )
+    /// Mirrors "an NTUST account exists" outside the Keychain.
+    ///
+    /// The Keychain answers nil for two unrelated reasons — the item is
+    /// absent, and the item cannot be read right now — and `SecureStore`
+    /// cannot tell them apart, because Valet reports both as a thrown error
+    /// that `try?` flattens. So a nil read is not evidence of being signed
+    /// out, and treating it as such is what put a signed-in user on the
+    /// login prompt until they pulled to refresh.
+    ///
+    /// UserDefaults is readable when the Keychain is not, which makes it the
+    /// right place to answer "is there an account" for UI gating. The
+    /// Keychain is still the only home of the secret itself.
+    ///
+    /// Raised by any successful credential read and by login; lowered only
+    /// by logout, the one moment a nil read is authoritative because we just
+    /// caused it.
+    static let ntustCredentialsPresent = Key<Bool>(
+        "ntustCredentialsPresent",
+        default: false
+    )
     static let syncCourses = Key<Bool>("syncCourses", default: true)
     static let syncCourseColors = Key<Bool>("syncCourseColors", default: true)
     static let syncCourseNames = Key<Bool>("syncCourseNames", default: true)
     static let syncAssignments = Key<Bool>("syncAssignments", default: true)
     static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
+
+    // MARK: Academic calendar
+    /// Decoded `AcademicCalendar` from the last successful fetch. Cached so
+    /// a cold launch with no network, and the widget extension, can still
+    /// answer "is today a holiday".
+    static let academicCalendarCache = Key<Data>("academicCalendarCache", default: Data())
+    /// ETag of that payload, so the launch-time refresh costs a 304 rather
+    /// than a full body when nothing changed.
+    static let academicCalendarETag = Key<String>("academicCalendarETag", default: "")
+    /// Holidays the user asked to keep receiving class reminders on.
+    ///
+    /// Written whether or not cloud sync is on — the holiday guard is not a
+    /// sync feature — and additionally uploaded when sync is enabled so a
+    /// user's devices agree. Ids rather than dates because an operator can
+    /// edit a holiday's range after the user opted in, and the opt-in should
+    /// follow the holiday.
+    static let holidayNotifyOverrides = Key<[Int]>("holidayNotifyOverrides", default: [])
+    /// Holiday toggles the backend has not acknowledged yet — an upload that
+    /// failed, or one still in flight when the app was killed. Persisted so a
+    /// restart between the failure and the next sync does not quietly hand the
+    /// user's choice back to the server. See
+    /// ``AcademicCalendarStore/applySyncedOverrides(_:fetchedAt:)``.
+    static let holidayOverridesAwaitingUpload = Key<[Int]>(
+        "holidayOverridesAwaitingUpload", default: []
+    )
 
     // MARK: Push server
     /// Default on as of the custom-push feature: every device registers

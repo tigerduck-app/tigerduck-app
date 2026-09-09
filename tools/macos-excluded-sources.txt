@@ -142,6 +142,10 @@ AssignmentReminderScheduler.swift
 # Services/API — App Store update check, iOS distribution only
 AppStoreUpdateService.swift
 
+# Services/Logging — DEBUG-only scaffolding for the iOS Library freeze. Its one
+# caller is TigerDuckApp's init, and that whole struct sits inside #if os(iOS).
+MainThreadWatchdog.swift
+
 # Services/Watch — WatchConnectivity — a paired Apple Watch is an iOS-only relationship
 WatchLibraryCredentialBroadcaster.swift
 WatchPayloadEncoder.swift

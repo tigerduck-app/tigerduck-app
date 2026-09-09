@@ -4,13 +4,6 @@ import UIKit
 struct SourceCodePickerView: View {
     @Environment(AppState.self) private var appState
 
-    private struct RepoEntry {
-        let slug: String
-        let descriptionKey: String
-        let url: URL
-        let isCurrent: Bool
-    }
-
     private struct IdentifiableURL: Identifiable {
         let url: URL
         var id: URL { url }
@@ -18,54 +11,14 @@ struct SourceCodePickerView: View {
 
     @State private var inAppURL: IdentifiableURL?
 
-    private let orgEntry = RepoEntry(
-        slug: "tigerduck-app",
-        descriptionKey: "source_code_picker_org_description",
-        url: URL(string: "https://github.com/tigerduck-app")!,
-        isCurrent: false
-    )
-
-    private let repoEntries: [RepoEntry] = [
-        RepoEntry(
-            slug: "tigerduck-app",
-            descriptionKey: "source_code_picker_repo_apple_description",
-            url: URL(string: "https://github.com/tigerduck-app/tigerduck-app")!,
-            isCurrent: true
-        ),
-        RepoEntry(
-            slug: "tigerduck-app-android",
-            descriptionKey: "source_code_picker_repo_android_description",
-            url: URL(string: "https://github.com/tigerduck-app/tigerduck-app-android")!,
-            isCurrent: false
-        ),
-        RepoEntry(
-            slug: "app-translation",
-            descriptionKey: "source_code_picker_repo_translation_description",
-            url: URL(string: "https://github.com/tigerduck-app/app-translation")!,
-            isCurrent: false
-        ),
-        RepoEntry(
-            slug: "name-abbr",
-            descriptionKey: "source_code_picker_repo_name_abbr_description",
-            url: URL(string: "https://github.com/tigerduck-app/name-abbr")!,
-            isCurrent: false
-        ),
-        RepoEntry(
-            slug: "tigerduck-web",
-            descriptionKey: "source_code_picker_repo_web_description",
-            url: URL(string: "https://github.com/tigerduck-app/tigerduck-web")!,
-            isCurrent: false
-        ),
-    ]
-
     var body: some View {
         List {
             Section {
-                repoRow(entry: orgEntry)
+                repoRow(entry: .organization)
             }
 
             Section(String(localized: "source_code_picker_section_repositories")) {
-                ForEach(repoEntries, id: \.slug) { entry in
+                ForEach(SourceRepository.all) { entry in
                     repoRow(entry: entry)
                 }
             }
@@ -79,7 +32,7 @@ struct SourceCodePickerView: View {
     }
 
     @ViewBuilder
-    private func repoRow(entry: RepoEntry) -> some View {
+    private func repoRow(entry: SourceRepository) -> some View {
         Button {
             openURL(entry.url)
         } label: {

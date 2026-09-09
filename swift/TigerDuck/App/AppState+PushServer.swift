@@ -111,6 +111,97 @@ extension AppState {
     /// PATCHes the backend and only then persists the local pref so a
     /// transient failure doesn't leave the UI claiming agreement with
     /// the server. Throws on failure so the caller can roll back.
+    /// Record whether the user wants class reminders on one holiday.
+    ///
+    /// The local write is what makes the guard behave — it happens whether
+    /// or not cloud sync is on, and whether or not the upload succeeds. The
+    /// upload only makes the user's other devices agree, so a failure there
+    /// is logged rather than rolled back: the setting the user just made on
+    /// this device should stand either way.
+    func setHolidayNotify(_ notify: Bool, holidayID: Int) {
+        guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID) else {
+            return
+        }
+        // The Live Activity and widgets read the same set, so they have to
+        // be told: today may have just become loud, or quiet. iOS only —
+        // `AppState+LiveActivity.swift` is not compiled for macOS, and the
+        // Mac has no class reminders for the toggle to affect anyway.
+        #if os(iOS)
+        Task { await refreshLiveActivity() }
+        #endif
+        guard Defaults[.cloudSyncEnabled] else { return }
+        enqueueHolidayUpload(holidayID: holidayID)
+    }
+
+    /// Re-send toggles the backend never acknowledged.
+    ///
+    /// A failed upload leaves the server honestly reporting the old value, and
+    /// `AcademicCalendarStore` keeps re-imposing the local one over every sync
+    /// snapshot until that changes — correct, but it is a standoff, not a
+    /// resolution. This ends it. Called at the top of a full sync, which is
+    /// the app's own "we have a network again" signal.
+    /// Abandon queued holiday uploads. Called at logout: the queue holds the
+    /// departing account's edits, and the session they would travel on now
+    /// belongs to whoever signs in next.
+    func cancelHolidayUploads() {
+        HolidayUploadQueue.generation += 1
+        HolidayUploadQueue.tail?.cancel()
+        HolidayUploadQueue.tail = nil
+    }
+
+    func retryUnacknowledgedHolidayOverrides() {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        for holidayID in AcademicCalendarStore.shared.unacknowledgedHolidayIDs {
+            enqueueHolidayUpload(holidayID: holidayID)
+        }
+    }
+
+    /// Queue one holiday override upload.
+    ///
+    /// Chained rather than fired independently: two taps inside one round trip
+    /// would otherwise be two unordered Tasks racing to PATCH the same row,
+    /// and the server would keep whichever landed last rather than whichever
+    /// the user meant last. Each link also re-reads the flag at the moment it
+    /// runs, so a tap that arrived while an earlier upload was in flight is
+    /// the one that gets sent — and so a retry sends today's value, not the
+    /// one that failed.
+    private func enqueueHolidayUpload(holidayID: Int) {
+        let previous = HolidayUploadQueue.tail
+        let generation = HolidayUploadQueue.generation
+        // Marked before the request and cleared only on success. Held across
+        // the whole chained task, not just the request, so a sync response
+        // cannot overwrite the local set between the tap and the upload.
+        let store = AcademicCalendarStore.shared
+        store.setHolidayAcknowledged(false, holidayID: holidayID)
+        store.beginHolidayUpload()
+        HolidayUploadQueue.tail = Task { [weak self] in
+            _ = await previous?.value
+            defer { AcademicCalendarStore.shared.endHolidayUpload() }
+            // A logout between queueing and running belongs to the departing
+            // account; sending it now would write their choice into whoever
+            // signed in since.
+            guard let self, generation == HolidayUploadQueue.generation else { return }
+            let sent = AcademicCalendarStore.shared.optedInHolidayIDs.contains(holidayID)
+            do {
+                try await self.pushCoordinator.registration.uploadHolidayOverride(
+                    holidayID: holidayID, notify: sent
+                )
+                // Settled only if the server now holds what the user still
+                // wants. A toggle made while this request was in flight is
+                // queued behind it and has to stay protected until *it*
+                // lands — clearing on any success would hand the newer
+                // choice back at the next sync if that upload then failed.
+                if AcademicCalendarStore.shared.optedInHolidayIDs.contains(holidayID) == sent {
+                    AcademicCalendarStore.shared.setHolidayAcknowledged(true, holidayID: holidayID)
+                }
+            } catch {
+                AppLogger.sync.error(
+                    "holiday override upload failed: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+    }
+
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
@@ -126,4 +217,19 @@ extension AppState {
             )
         }
     }
+}
+
+/// Serialises holiday-override uploads so they reach the backend in the
+/// order the user tapped them.
+///
+/// A stored property on `AppState` would be the obvious home, but this is an
+/// extension and Swift does not allow one there. Static is fine regardless:
+/// there is a single `AppState` per process, and the queue's whole job is to
+/// order writes to one shared backend row.
+@MainActor
+private enum HolidayUploadQueue {
+    static var tail: Task<Void, Never>?
+    /// Bumped at logout. Links queued before it bail instead of sending the
+    /// departing account's choices over the next account's session.
+    static var generation = 0
 }

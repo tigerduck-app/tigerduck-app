@@ -46,18 +46,15 @@ struct LibraryQRCodeView: View {
             // QR Code — has comfortable inset on both sides so the
             // matrix doesn't run right to the card edge.
             //
-            // `.screenCaptureProtected()` wraps ONLY the matrix subtree,
-            // not the whole card. The wrapper hosts content through
-            // `UIHostingController` and intercepts SwiftUI's sizing
-            // protocol — when applied at the card level, it squished
-            // the QR because the title + countdown rows reported their
-            // own row heights and the wrapper's compressed-fit probe
-            // gave the aspect-ratio QR row 0 height. Wrapping the
-            // matrix directly puts the `.aspectRatio(1, .fit)` modifier
-            // OUTSIDE the wrap, so SwiftUI proposes a finite square
-            // straight to the wrap.
+            // `.screenCaptureProtected()` is applied inside
+            // `qrCodeContent`, on the matrix branch alone — see there for
+            // why. It stays under the `.aspectRatio(1, .fit)` below either
+            // way, which is what lets SwiftUI propose a finite square
+            // straight to the wrap: applied at the card level instead, the
+            // title + countdown rows reported their own heights and the
+            // wrapper's compressed-fit probe gave the QR row 0 height,
+            // squishing the matrix.
             qrCodeContent
-                .screenCaptureProtected()
                 .frame(maxWidth: Self.qrCodeMaxWidth)
                 .aspectRatio(1, contentMode: .fit)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -114,6 +111,21 @@ struct LibraryQRCodeView: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
+    /// The three states of the QR slot. Only the middle one is wrapped in
+    /// `.screenCaptureProtected()`.
+    ///
+    /// The wrapper is not free: it hosts its subtree in a
+    /// `UIHostingController` parented onto a secure `UITextField`'s private
+    /// canvas, re-measures that tree through `sizeThatFits` on every layout
+    /// pass, and walks the field's view hierarchy each `layoutSubviews` to
+    /// keep the hosted view on top. Its own documentation says to keep it to
+    /// small leaves. A spinner is the worst thing to put inside it — an
+    /// indeterminate `ProgressView` animates forever, so the measure-and-
+    /// reparent work runs forever with it, on the main thread, for as long
+    /// as the code is being fetched.
+    ///
+    /// And there is nothing to protect: the placeholder and the spinner
+    /// carry no scannable credential. Only the matrix does.
     @ViewBuilder
     private var qrCodeContent: some View {
         if isLoading {
@@ -121,31 +133,36 @@ struct LibraryQRCodeView: View {
                 .scaleEffect(1.5)
                 .frame(maxWidth: .infinity, minHeight: 200)
         } else if let image = qrImage {
-            #if os(iOS)
-            // EDR-backed Metal renderer — drives pixels >1.0 on HDR-capable
-            // displays so the QR "pops" out of the surrounding glass card
-            // without changing system brightness. Falls back to the SDR
-            // `Image` below if Metal can't initialise (no MTLDevice / shader
-            // build failure), since the Metal view then draws transparent.
-            ZStack {
-                Image(uiImage: image)
-                    .interpolation(.none)
-                    .resizable()
-                    .scaledToFit()
-                HDRQRCodeImage(image: image)
-                    .aspectRatio(1, contentMode: .fit)
-            }
-            #else
-            Image(uiImage: image)
-                .interpolation(.none)
-                .resizable()
-                .scaledToFit()
-            #endif
+            qrMatrix(image).screenCaptureProtected()
         } else {
             Image(systemName: "qrcode")
                 .font(.system(size: heroIconSize))
                 .foregroundStyle(Color.textSecondary)
                 .frame(maxWidth: .infinity, minHeight: 200)
         }
+    }
+
+    @ViewBuilder
+    private func qrMatrix(_ image: UIImage) -> some View {
+        #if os(iOS)
+        // EDR-backed Metal renderer — drives pixels >1.0 on HDR-capable
+        // displays so the QR "pops" out of the surrounding glass card
+        // without changing system brightness. Falls back to the SDR
+        // `Image` below if Metal can't initialise (no MTLDevice / shader
+        // build failure), since the Metal view then draws transparent.
+        ZStack {
+            Image(uiImage: image)
+                .interpolation(.none)
+                .resizable()
+                .scaledToFit()
+            HDRQRCodeImage(image: image)
+                .aspectRatio(1, contentMode: .fit)
+        }
+        #else
+        Image(uiImage: image)
+            .interpolation(.none)
+            .resizable()
+            .scaledToFit()
+        #endif
     }
 }

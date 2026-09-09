@@ -231,6 +231,7 @@ final class BulletinAPIClient: Sendable {
             // headers or correlation tokens that must not be retained in
             // the system log indefinitely.
             logger.error("Bulletin.API \(http.statusCode, privacy: .public) \(path, privacy: .public): \(snippet, privacy: .private)")
+            APIVersionGate.shared.note(statusCode: http.statusCode)
             throw BulletinAPIError.httpStatus(http.statusCode, body: snippet)
         }
         logger.info("Bulletin.API ← \(http.statusCode, privacy: .public) \(path, privacy: .public) (\(data.count, privacy: .public)B)")
