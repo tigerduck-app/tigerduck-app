@@ -55,61 +55,100 @@ struct AcademicCalendarStoreTests {
 
     // MARK: - Holiday overrides
 
+    /// Both holiday keys, restored afterwards, and cleared going in so one
+    /// test's leftovers cannot decide another's outcome.
+    private static func withCleanHolidayDefaults(_ body: () -> Void) {
+        let savedOverrides = Defaults[.holidayNotifyOverrides]
+        let savedAwaiting = Defaults[.holidayOverridesAwaitingUpload]
+        defer {
+            Defaults[.holidayNotifyOverrides] = savedOverrides
+            Defaults[.holidayOverridesAwaitingUpload] = savedAwaiting
+        }
+        Defaults[.holidayNotifyOverrides] = []
+        Defaults[.holidayOverridesAwaitingUpload] = []
+        body()
+    }
+
     @Test("a sync snapshot arriving mid-upload does not overwrite the local set")
     func syncedOverridesDeferToPendingUpload() {
-        let saved = Defaults[.holidayNotifyOverrides]
-        defer { Defaults[.holidayNotifyOverrides] = saved }
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            store.applySyncedOverrides([1, 2], fetchedAt: Date())
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2])
 
-        let store = AcademicCalendarStore()
-        store.applySyncedOverrides([1, 2], fetchedAt: Date())
-        #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2])
+            // The user taps holiday 9 on, and its upload is still in flight.
+            // The snapshot below was fetched *after* the tap, so its timestamp
+            // is no help — only the pending count knows the server has not
+            // heard yet.
+            store.setNotify(true, forHoliday: 9)
+            store.beginHolidayUpload()
+            store.applySyncedOverrides([1, 2], fetchedAt: Date().addingTimeInterval(1))
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2, 9])
 
-        // The user taps holiday 9 on, and its upload is still in flight. The
-        // snapshot below was fetched *after* the tap, so its timestamp is no
-        // help — only the pending count knows the server has not heard yet.
-        store.setNotify(true, forHoliday: 9)
-        store.beginHolidayUpload()
-        store.applySyncedOverrides([1, 2], fetchedAt: Date().addingTimeInterval(1))
-        #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2, 9])
-
-        // Once it lands, the server is the authority again.
-        store.endHolidayUpload()
-        store.applySyncedOverrides([1, 2, 9], fetchedAt: Date().addingTimeInterval(1))
-        #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2, 9])
+            // Once it lands, the server is the authority again.
+            store.endHolidayUpload()
+            store.applySyncedOverrides([1, 2, 9], fetchedAt: Date().addingTimeInterval(1))
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 2, 9])
+        }
     }
 
     @Test("a snapshot older than the local edit is ignored even once the upload lands")
     func staleSnapshotIgnoredAfterUpload() {
-        let saved = Defaults[.holidayNotifyOverrides]
-        defer { Defaults[.holidayNotifyOverrides] = saved }
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            let fetchedBeforeTap = Date()
+            store.applySyncedOverrides([1], fetchedAt: fetchedBeforeTap)
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1])
 
-        let store = AcademicCalendarStore()
-        let fetchedBeforeTap = Date()
-        store.applySyncedOverrides([1], fetchedAt: fetchedBeforeTap)
-        #expect(Set(Defaults[.holidayNotifyOverrides]) == [1])
+            store.setNotify(true, forHoliday: 9)
+            store.beginHolidayUpload()
+            store.endHolidayUpload()
 
-        store.setNotify(true, forHoliday: 9)
-        store.beginHolidayUpload()
-        store.endHolidayUpload()
+            // The upload has landed, so the pending count is zero — but this
+            // response left the server before the tap and cannot know about it.
+            store.applySyncedOverrides([1], fetchedAt: fetchedBeforeTap)
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 9])
+        }
+    }
 
-        // The upload has landed, so the pending count is zero — but this
-        // response left the server before the tap and cannot know about it.
-        store.applySyncedOverrides([1], fetchedAt: fetchedBeforeTap)
-        #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 9])
+    @Test("a toggle the server never acknowledged outlives the sync snapshot")
+    func unacknowledgedToggleSurvivesSync() {
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            store.applySyncedOverrides([1, 5], fetchedAt: Date())
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 5])
+
+            // 9 turned on and 5 turned off, both uploads failed, so neither
+            // is acknowledged and the server still reports the old set.
+            store.setNotify(true, forHoliday: 9)
+            store.setHolidayAcknowledged(false, holidayID: 9)
+            store.setNotify(false, forHoliday: 5)
+            store.setHolidayAcknowledged(false, holidayID: 5)
+
+            store.applySyncedOverrides([1, 5], fetchedAt: Date().addingTimeInterval(1))
+            // Both local edits stand, in both directions, and holiday 1 —
+            // which this device never touched — still comes from the server.
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 9])
+
+            // Once the retry lands, the server's word wins again.
+            store.setHolidayAcknowledged(true, holidayID: 9)
+            store.setHolidayAcknowledged(true, holidayID: 5)
+            store.applySyncedOverrides([1, 5], fetchedAt: Date().addingTimeInterval(2))
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [1, 5])
+        }
     }
 
     @Test("the pending count never goes negative")
     func pendingCountFloors() {
-        let saved = Defaults[.holidayNotifyOverrides]
-        defer { Defaults[.holidayNotifyOverrides] = saved }
-
-        let store = AcademicCalendarStore()
-        store.endHolidayUpload()
-        store.endHolidayUpload()
-        // Still applying: an unbalanced end must not latch the guard on and
-        // leave the device ignoring the server forever.
-        store.applySyncedOverrides([4], fetchedAt: Date())
-        #expect(Set(Defaults[.holidayNotifyOverrides]) == [4])
+        Self.withCleanHolidayDefaults {
+            let store = AcademicCalendarStore()
+            store.endHolidayUpload()
+            store.endHolidayUpload()
+            // Still applying: an unbalanced end must not latch the guard on
+            // and leave the device ignoring the server forever.
+            store.applySyncedOverrides([4], fetchedAt: Date())
+            #expect(Set(Defaults[.holidayNotifyOverrides]) == [4])
+        }
     }
 
     // MARK: - Multi-day holidays

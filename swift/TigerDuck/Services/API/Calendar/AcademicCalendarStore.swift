@@ -42,6 +42,20 @@ final class AcademicCalendarStore {
     /// Holidays this user asked to keep hearing about.
     var optedInHolidayIDs: Set<Int> { Set(Defaults[.holidayNotifyOverrides]) }
 
+    /// Toggles the backend has not acknowledged. Survives a relaunch, because
+    /// the failure this protects against — an upload that never landed — is
+    /// exactly the one that outlives the process that made it.
+    var unacknowledgedHolidayIDs: Set<Int> {
+        Set(Defaults[.holidayOverridesAwaitingUpload])
+    }
+
+    /// Record that `holidayID` is waiting on the server, or has reached it.
+    func setHolidayAcknowledged(_ acknowledged: Bool, holidayID: Int) {
+        var ids = unacknowledgedHolidayIDs
+        if acknowledged { ids.remove(holidayID) } else { ids.insert(holidayID) }
+        Defaults[.holidayOverridesAwaitingUpload] = ids.sorted()
+    }
+
     /// Whether class reminders, the Live Activity and the next-class widgets
     /// stay quiet on `day`.
     func suppressesClasses(on day: Date = Date()) -> Bool {
@@ -194,12 +208,25 @@ final class AcademicCalendarStore {
     ///   pending count covers that window.
     ///
     /// Either way the local edit is the newer fact. The next sync settles it.
+    ///
+    /// Toggles the server has never acknowledged survive the snapshot
+    /// regardless. An upload that failed leaves the server honestly reporting
+    /// the old value, so applying it wholesale would hand the user's choice
+    /// back — and `setHolidayNotify` promises the opposite: the setting made
+    /// on this device stands whether or not the upload succeeded. They are
+    /// re-imposed on top of the snapshot rather than discarding it, so the
+    /// *other* holidays in the same payload still land.
     func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date) {
         guard pendingHolidayUploads == 0, fetchedAt > lastHolidayEditAt else {
             logger.info("holiday overrides from sync ignored — a local toggle is newer")
             return
         }
-        Defaults[.holidayNotifyOverrides] = Array(ids).sorted()
+        let local = optedInHolidayIDs
+        var merged = ids
+        for id in unacknowledgedHolidayIDs {
+            if local.contains(id) { merged.insert(id) } else { merged.remove(id) }
+        }
+        Defaults[.holidayNotifyOverrides] = merged.sorted()
     }
 
     /// Brackets an in-flight holiday upload, so ``applySyncedOverrides(_:)``

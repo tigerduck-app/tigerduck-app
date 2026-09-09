@@ -179,6 +179,14 @@ nonisolated extension Defaults.Keys {
     /// edit a holiday's range after the user opted in, and the opt-in should
     /// follow the holiday.
     static let holidayNotifyOverrides = Key<[Int]>("holidayNotifyOverrides", default: [])
+    /// Holiday toggles the backend has not acknowledged yet — an upload that
+    /// failed, or one still in flight when the app was killed. Persisted so a
+    /// restart between the failure and the next sync does not quietly hand the
+    /// user's choice back to the server. See
+    /// ``AcademicCalendarStore/applySyncedOverrides(_:fetchedAt:)``.
+    static let holidayOverridesAwaitingUpload = Key<[Int]>(
+        "holidayOverridesAwaitingUpload", default: []
+    )
 
     // MARK: Push server
     /// Default on as of the custom-push feature: every device registers

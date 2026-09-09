@@ -31,6 +31,10 @@ extension AppState {
         }
         defer { if !retried { isSyncingOverrides = false } }
         guard await authTokenManager.isLoggedIn else { return }
+        // Not awaited: this is a repair, not a precondition. Its pending
+        // marker makes `applySyncedOverrides` sit out this cycle rather than
+        // race it, and the next sync applies the settled state.
+        retryUnacknowledgedHolidayOverrides()
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)

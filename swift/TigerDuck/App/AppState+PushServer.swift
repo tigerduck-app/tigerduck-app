@@ -130,17 +130,40 @@ extension AppState {
         Task { await refreshLiveActivity() }
         #endif
         guard Defaults[.cloudSyncEnabled] else { return }
-        // Chained rather than fired independently: two taps inside one
-        // round trip would otherwise be two unordered Tasks racing to PATCH
-        // the same row, and the server would keep whichever landed last
-        // rather than whichever the user meant last. Each link also re-reads
-        // the flag at the moment it runs, so a tap that arrived while an
-        // earlier upload was in flight is the one that gets sent.
+        enqueueHolidayUpload(holidayID: holidayID)
+    }
+
+    /// Re-send toggles the backend never acknowledged.
+    ///
+    /// A failed upload leaves the server honestly reporting the old value, and
+    /// `AcademicCalendarStore` keeps re-imposing the local one over every sync
+    /// snapshot until that changes — correct, but it is a standoff, not a
+    /// resolution. This ends it. Called at the top of a full sync, which is
+    /// the app's own "we have a network again" signal.
+    func retryUnacknowledgedHolidayOverrides() {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        for holidayID in AcademicCalendarStore.shared.unacknowledgedHolidayIDs {
+            enqueueHolidayUpload(holidayID: holidayID)
+        }
+    }
+
+    /// Queue one holiday override upload.
+    ///
+    /// Chained rather than fired independently: two taps inside one round trip
+    /// would otherwise be two unordered Tasks racing to PATCH the same row,
+    /// and the server would keep whichever landed last rather than whichever
+    /// the user meant last. Each link also re-reads the flag at the moment it
+    /// runs, so a tap that arrived while an earlier upload was in flight is
+    /// the one that gets sent — and so a retry sends today's value, not the
+    /// one that failed.
+    private func enqueueHolidayUpload(holidayID: Int) {
         let previous = HolidayUploadQueue.tail
-        // Held across the whole chained task, not just the request, so a
-        // sync response cannot overwrite the local set between the tap and
-        // the upload either.
-        AcademicCalendarStore.shared.beginHolidayUpload()
+        // Marked before the request and cleared only on success. Held across
+        // the whole chained task, not just the request, so a sync response
+        // cannot overwrite the local set between the tap and the upload.
+        let store = AcademicCalendarStore.shared
+        store.setHolidayAcknowledged(false, holidayID: holidayID)
+        store.beginHolidayUpload()
         HolidayUploadQueue.tail = Task { [weak self] in
             _ = await previous?.value
             defer { AcademicCalendarStore.shared.endHolidayUpload() }
@@ -150,6 +173,7 @@ extension AppState {
                 try await self.pushCoordinator.registration.uploadHolidayOverride(
                     holidayID: holidayID, notify: current
                 )
+                AcademicCalendarStore.shared.setHolidayAcknowledged(true, holidayID: holidayID)
             } catch {
                 AppLogger.sync.error(
                     "holiday override upload failed: \(error.localizedDescription, privacy: .public)"
