@@ -471,7 +471,14 @@ private struct ConflictClusterView: View {
     @ViewBuilder
     private func conflictContextMenu() -> some View {
         ForEach(segments, id: \.course.courseNo) { segment in
-            Section(segment.course.displayName) {
+            // Header carries the course's own colour as well as its name.
+            // Two courses in a conflict can share a name -- a timetable
+            // full of "Calculus" sections is the normal case, not the odd
+            // one -- and then the names alone give the user two identical
+            // groups to choose between. The dot is the one thing that
+            // differs, and it is the same colour the cell behind the menu
+            // is already drawn in.
+            Section {
                 Button {
                     viewModel.startRename(segment.course)
                 } label: {
@@ -486,6 +493,13 @@ private struct ConflictClusterView: View {
                     viewModel.deleteCourse(segment.course)
                 } label: {
                     Label(String(localized: "class_table_delete"), systemImage: "trash")
+                }
+            } header: {
+                Label {
+                    Text(segment.course.displayName)
+                } icon: {
+                    Image(systemName: "circle.fill")
+                        .foregroundStyle(segment.course.color)
                 }
             }
         }
