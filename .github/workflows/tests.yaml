@@ -112,6 +112,11 @@ jobs:
       # run that silently executed nothing exits 0 exactly like a real pass.
       # Read the counts back out so the log says what actually ran. `always()`
       # so a failing run still reports which tests failed.
+      #
+      # The per-failure detail matters more than it looks: `-quiet` also hides
+      # *why* a test failed, and a mid-run crash marks every remaining test
+      # failed with no message attached — so a bare list of names cannot tell
+      # "173 real failures" apart from "one crash, 172 casualties".
       - name: Test summary
         if: always()
         run: |
@@ -121,7 +126,22 @@ jobs:
             if [ -d "$bundle" ]; then
               xcrun xcresulttool get test-results summary --path "$bundle" \
                 | jq '{result, totalTestCount, passedTests, failedTests, skippedTests}'
+              echo "-- failures"
+              xcrun xcresulttool get test-results tests --path "$bundle" \
+                | jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
+                         | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"'
             else
               echo "not produced (the step before it did not get that far)"
             fi
           done
+
+      # The summary above is a best effort against a JSON shape Apple changes
+      # between Xcode releases. Keep the bundle itself so a failure can be
+      # opened locally when it does not.
+      - name: Keep the result bundles
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: xcresults
+          path: "*.xcresult"
+          retention-days: 7
