@@ -164,7 +164,8 @@ final class LiveActivityCoordinator {
                 // started is ended inside the prune; nothing below is for it.
                 if endedActivityIds.contains(activity.id) { continue }
                 let snapshot = activity.content.state.snapshot
-                if snapshot.countdownTarget.map({ $0 <= now }) == true {
+                let facts = Self.makeFacts(activity)
+                if Self.expiredInstanceIds([facts], now: now).contains(facts.instanceId) {
                     await end(activity, reason: "observed expired activity")
                 } else {
                     observeUpdateToken(for: activity)
