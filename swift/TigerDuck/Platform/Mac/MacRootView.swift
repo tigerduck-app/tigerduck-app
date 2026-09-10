@@ -210,7 +210,9 @@ struct MacFeatureDetail: View {
         switch feature {
         case .home: [.moodle, .backend]
         case .classTable: [.moodle, .courseSelection, .backend]
-        case .calendar: [.moodle, .courseSelection]
+        // Backend included for the same reason as the iPhone tab: the holiday
+        // and term-boundary rows come from its published academic calendar.
+        case .calendar: [.moodle, .courseSelection, .backend]
         case .announcements: [.backend]
         default: ServerKind.allCases
         }

@@ -78,7 +78,11 @@ struct CalendarTabView: View {
                 .font(TigerDuckTheme.Typography.title)
                 .foregroundStyle(Color.textPrimary)
             Spacer()
-            SyncStatusDot(servers: [.moodle])
+            // TigerSync as well as Moodle: the deadlines are Moodle's, but the
+            // holidays and term boundaries on this screen come from the
+            // backend's published academic calendar, so a backend the app
+            // cannot reach is a source this screen is missing rows from.
+            SyncStatusDot(servers: [.moodle, .backend])
             Button {
                 viewModel.goToToday()
             } label: {
