@@ -164,6 +164,14 @@ final class ClassTableViewModel {
     @ObservationIgnored
     private nonisolated(unsafe) var languageObserver: Any?
 
+    /// Mirrors `Defaults[.alwaysShowAllPeriods]`. `activePeriods` has to read
+    /// this rather than the key directly: a raw `Defaults` read registers no
+    /// SwiftUI dependency, so flipping the toggle left the grid on its old
+    /// row set until something else forced a reload.
+    private(set) var showsAllPeriods: Bool = Defaults[.alwaysShowAllPeriods]
+    @ObservationIgnored
+    private nonisolated(unsafe) var periodVisibilityTask: Task<Void, Never>?
+
     /// Guards the fire-and-forget pull-to-refresh path against overlapping
     /// fetches. ``triggerRefresh(authService:)`` flips this to `true` while
     /// a fetch is running; additional pulls within that window coalesce
@@ -194,6 +202,17 @@ final class ClassTableViewModel {
             }
         }
 
+        // Invalidating alongside the mirror is not optional: `cellRoleCache`
+        // is keyed by index into `activePeriods`, so a row set that just grew
+        // makes every cached entry point at the wrong period.
+        periodVisibilityTask = Task { [weak self] in
+            for await value in Defaults.updates(.alwaysShowAllPeriods, initial: false) {
+                guard let self else { return }
+                self.showsAllPeriods = value
+                self.invalidateCellRoleCache()
+            }
+        }
+
         languageObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.languageDidChange,
             object: nil,
@@ -207,6 +226,7 @@ final class ClassTableViewModel {
     }
 
     deinit {
+        periodVisibilityTask?.cancel()
         if let observer = dataObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -359,7 +379,7 @@ final class ClassTableViewModel {
         // Pinned rather than merged into `defaultVisible` so the widget
         // and any other grid keep their own, tighter default — five empty
         // rows cost far more in a widget than on a full page.
-        if Defaults[.alwaysShowAllPeriods] {
+        if showsAllPeriods {
             periodIds.formUnion(AppConstants.Periods.chronologicalOrder)
         }
         for course in courses {
