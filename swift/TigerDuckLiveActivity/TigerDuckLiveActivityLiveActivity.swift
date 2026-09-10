@@ -44,8 +44,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                         .foregroundStyle(hexColor(snapshot.accentHex))
                         .lineLimit(1)
                 } else {
-                    Image(systemName: iconName(for: snapshot.scenario))
-                        .foregroundStyle(hexColor(snapshot.accentHex))
+                    scenarioIcon(snapshot)
                 }
             } compactTrailing: {
                 countdownLabel(snapshot)
@@ -53,8 +52,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                     .foregroundStyle(hexColor(snapshot.accentHex))
                     .frame(width: 60, alignment: .leading)
             } minimal: {
-                Image(systemName: iconName(for: snapshot.scenario))
-                    .foregroundStyle(hexColor(snapshot.accentHex))
+                scenarioIcon(snapshot)
             }
             .widgetURL(snapshot.deepLink)
             .keylineTint(hexColor(snapshot.accentHex))
@@ -247,6 +245,33 @@ private struct MetadataRowView: View {
 }
 
 // MARK: - File-scope helpers (shared by lock screen + dynamic island)
+
+/// The mark in the island's two small slots.
+///
+/// In class this is the app icon rather than a glyph: those slots are where
+/// the system asks "which app is this?", and the tiger answers it in a way a
+/// borrowed SF Symbol never did — a mortarboard reads as *some* school app.
+/// The other two scenarios keep their glyph, which is carrying real
+/// information the countdown alone doesn't (a class about to start vs. an
+/// assignment about to be due).
+///
+/// Rendered at a fixed 20pt. The artwork is full-colour and detailed, so it
+/// is not tinted with the accent the way a symbol is, and it must be sized
+/// explicitly — an asset-catalog image in a widget otherwise lays out at its
+/// natural size and blows the slot open.
+@ViewBuilder
+private func scenarioIcon(_ snapshot: LiveActivitySnapshot) -> some View {
+    switch snapshot.scenario {
+    case .inClass:
+        Image("AppLogo")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 20, height: 20)
+    case .classPreparing, .assignmentUrgent:
+        Image(systemName: iconName(for: snapshot.scenario))
+            .foregroundStyle(hexColor(snapshot.accentHex))
+    }
+}
 
 private func iconName(for scenario: LiveActivityScenarioKind) -> String {
     switch scenario {
