@@ -256,6 +256,29 @@ final class LiveActivityCoordinator {
             .map(\.instanceId)
     }
 
+    /// 同一個 `activityId` 有多份 live 副本時，應當結束的那些 `Activity.id`。
+    ///
+    /// 留下的是 APNs 已鑄出 update token 的那一份——它才是伺服器搆得到的；
+    /// 都沒有 token 時退回 `instanceId` 最小者，讓結果可預測。
+    nonisolated static func duplicateInstanceIdsToEnd(
+        _ facts: [RunningActivityFacts]
+    ) -> [String] {
+        var result: [String] = []
+        let live = facts.filter(\.isLive)
+        for (_, copies) in Dictionary(grouping: live, by: \.activityId)
+        where copies.count > 1 {
+            guard let keeper = copies.first(where: \.hasPushToken)
+                ?? copies.min(by: { $0.instanceId < $1.instanceId })
+            else { continue }
+            result.append(
+                contentsOf: copies
+                    .filter { $0.instanceId != keeper.instanceId }
+                    .map(\.instanceId)
+            )
+        }
+        return result.sorted()
+    }
+
     /// Keeps one copy of every `activityId` and ends the rest.
     ///
     /// A push-to-start can land for an activity this app already started
@@ -276,21 +299,33 @@ final class LiveActivityCoordinator {
     private func endDuplicateActivities(now: Date) async {
         let listed = Activity<TigerDuckActivityAttributes>.activities
         endedActivityIds = endedActivityIds.intersection(listed.map(\.id))
+        // `isLive` 的過濾在這裡做完，下面挑 keeper 時才不會選到已經
+        // dismissed 的副本。`duplicateInstanceIdsToEnd` 內部也會再濾一次，
+        // 但那是為了讓純函式自身的契約完整，兩者不衝突。
         let live = listed.filter {
             ($0.activityState == .active || $0.activityState == .stale)
                 && !endedActivityIds.contains($0.id)
         }
-        for (activityId, copies) in Dictionary(grouping: live, by: { $0.attributes.activityId })
-        where copies.count > 1 {
-            let keeper = copies.first { $0.pushToken != nil }
-                ?? copies.min { $0.id < $1.id }!
-            for copy in copies where copy.id != keeper.id {
+        let toEnd = Set(Self.duplicateInstanceIdsToEnd(live.map(Self.makeFacts)))
+        guard !toEnd.isEmpty else { return }
+
+        for (activityId, copies) in Dictionary(
+            grouping: live, by: { $0.attributes.activityId }
+        ) {
+            let doomed = copies.filter { toEnd.contains($0.id) }
+            guard !doomed.isEmpty,
+                  let keeper = copies.first(where: { !toEnd.contains($0.id) })
+            else { continue }
+            for copy in doomed {
                 logger.info(
                     "Ending duplicate Live Activity id=\(activityId, privacy: .public) reason=already running"
                 )
                 endedActivityIds.insert(copy.id)
                 await copy.end(nil, dismissalPolicy: .immediate)
             }
+            // observer 與 end timer 都以 activityId 為鍵，可能仍指向剛消失的
+            // 副本；重新指向留存者，否則它的 token 永遠不會註冊，伺服器既
+            // 結束不了也看不到它在跑。
             activityUpdateTokenTasks[activityId]?.cancel()
             activityUpdateTokenTasks[activityId] = nil
             observeUpdateToken(for: keeper)

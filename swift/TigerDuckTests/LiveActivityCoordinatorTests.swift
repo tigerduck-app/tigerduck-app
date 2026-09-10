@@ -106,4 +106,87 @@ struct LiveActivityCoordinatorTests {
 
         #expect(ended.isEmpty)
     }
+
+    // MARK: - 重複副本
+
+    @Test("同一個 activityId 有兩份時，保留 APNs 已鑄出 token 的那一份")
+    func duplicateKeepsCopyWithPushToken() {
+        let withToken = Self.facts(
+            instanceId: "i2",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(600),
+            hasPushToken: true
+        )
+        let withoutToken = Self.facts(
+            instanceId: "i1",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(600),
+            hasPushToken: false
+        )
+
+        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd(
+            [withToken, withoutToken]
+        )
+
+        // 即使 i1 的 instanceId 較小，有 token 的 i2 仍勝出——
+        // 它才是伺服器搆得到的那一份。
+        #expect(ended == ["i1"])
+    }
+
+    @Test("兩份都沒有 token 時保留 instanceId 較小的那份")
+    func duplicateWithoutTokenKeepsLowestId() {
+        let a = Self.facts(
+            instanceId: "i1",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(600)
+        )
+        let b = Self.facts(
+            instanceId: "i2",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(600)
+        )
+
+        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd([a, b])
+
+        #expect(ended == ["i2"])
+    }
+
+    @Test("非 live 的副本不參與重複判定")
+    func nonLiveCopiesAreIgnored() {
+        let live = Self.facts(
+            instanceId: "i1",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(600)
+        )
+        let dismissed = Self.facts(
+            instanceId: "i2",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(600),
+            isLive: false
+        )
+
+        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd(
+            [live, dismissed]
+        )
+
+        #expect(ended.isEmpty)
+    }
+
+    @Test("不同 activityId 不算重複")
+    func differentActivityIdsAreNotDuplicates() {
+        let a = Self.facts(
+            instanceId: "i1",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(600)
+        )
+        let b = Self.facts(
+            instanceId: "i2",
+            activityId: "classPreparing-B",
+            countdownTarget: Self.now.addingTimeInterval(7200)
+        )
+
+        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd([a, b])
+
+        #expect(ended.isEmpty)
+    }
 }
