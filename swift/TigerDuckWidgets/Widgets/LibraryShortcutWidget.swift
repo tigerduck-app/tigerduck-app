@@ -40,11 +40,16 @@ struct LibraryShortcutProvider: TimelineProvider {
 struct LibraryShortcutWidgetView: View {
     let entry: LibraryShortcutEntry
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         let palette = entry.snapshot.map {
-            WidgetPalette.resolve(snapshot: $0, colorScheme: colorScheme)
-        } ?? WidgetPalette.resolve(snapshot: Self.fallbackSnapshot, colorScheme: colorScheme)
+            WidgetPalette.resolve(snapshot: $0, colorScheme: colorScheme, renderingMode: renderingMode)
+        } ?? WidgetPalette.resolve(
+            snapshot: Self.fallbackSnapshot,
+            colorScheme: colorScheme,
+            renderingMode: renderingMode
+        )
         LibraryShortcutView(palette: palette)
             .containerBackground(palette.background, for: .widget)
             .widgetURL(URL(string: "tigerduck://library"))

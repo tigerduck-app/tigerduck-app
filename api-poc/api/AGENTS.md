@@ -41,6 +41,10 @@ uv run python -m api.moodle.auth              # OIDC login + token smoke test
 uv run python -m api.moodle.auth --refresh    # force re-auth
 uv run python -m api.moodle.homework          # REST webservice homework list
 uv run python -m api.moodle.legacy.homework_sso   # legacy SSO path for comparison
+uv run python -m api.moodle.enrolled_users <courseid>   # classmates + teachers of a course
+uv run python -m api.moodle.course_files <courseid>     # downloadable files in a course
+uv run python -m api.moodle.announcements <courseid>    # news-forum announcements
+uv run python -m api.moodle.grades [courseid]           # grade items, or overview when omitted
 uv run python -m api.ntust.course_list
 uv run python -m api.ntust.course_lookup
 uv run python -m api.public.calendar

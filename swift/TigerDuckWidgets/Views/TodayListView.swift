@@ -106,9 +106,28 @@ struct TodayListView: View {
         let endTime = snapshot.periodTimes[last]?.end ?? ""
         let range = first == last ? first : "\(first)–\(last)"
 
-        let rowFill: Color = isOngoing ? Color(widgetHex: course.colorHex) : palette.surface
-        let primary: Color = isOngoing ? .white : palette.onSurface
-        let secondary: Color = isOngoing ? Color.white.opacity(0.85) : palette.onSurfaceVariant
+        // The ongoing row is painted from the course color rather than from a
+        // palette token, so the rendering-mode branch has to happen here too.
+        // Outside `.fullColor` it drops to the same 0.25 wash the week grid
+        // uses for a course block — enough to still read as "this one is
+        // running" without putting an opaque slab on the material — and the
+        // label colors come back off the palette, because white was only ever
+        // chosen for contrast against a saturated fill that is no longer there.
+        let rowFill: Color
+        let primary: Color
+        let secondary: Color
+        if isOngoing {
+            let courseColor = Color(widgetHex: course.colorHex)
+            rowFill = palette.isFullColor ? courseColor : courseColor.opacity(0.25)
+            primary = palette.isFullColor ? .white : palette.onSurface
+            secondary = palette.isFullColor
+                ? Color.white.opacity(0.85)
+                : palette.onSurfaceVariant
+        } else {
+            rowFill = palette.surface
+            primary = palette.onSurface
+            secondary = palette.onSurfaceVariant
+        }
 
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {

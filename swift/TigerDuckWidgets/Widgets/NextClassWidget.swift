@@ -67,9 +67,14 @@ struct NextClassWidgetView: View {
     let entry: NextClassEntry
     @Environment(\.widgetFamily) private var family
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
-        let palette = WidgetPalette.resolve(snapshot: entry.snapshot, colorScheme: colorScheme)
+        let palette = WidgetPalette.resolve(
+            snapshot: entry.snapshot,
+            colorScheme: colorScheme,
+            renderingMode: renderingMode
+        )
         NextClassView(derived: entry.derived, palette: palette, family: family)
             .padding(family == .systemSmall ? 10 : 14)
             .containerBackground(palette.background, for: .widget)

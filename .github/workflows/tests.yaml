@@ -86,6 +86,19 @@ jobs:
           echo "iphone=$iphone" >> "$GITHUB_OUTPUT"
           echo "watch=$watch" >> "$GITHUB_OUTPUT"
 
+      # Every date in this app is a Taiwan school day: `AcademicCalendar.calendar`
+      # and `WidgetTaipei.calendar` are hard-pinned to Asia/Taipei, while the
+      # tests build their fixtures with `Calendar.current`. On the machines
+      # these were written on those agree. On a UTC runner they are eight hours
+      # apart, so a fixture meaning "Monday 09:30" arrives as Monday 17:30 —
+      # `.ongoing` comes back `.tomorrowFirst`, and `(comps.hour → 2) == 10`
+      # misses by exactly the offset. A simulator takes the host's zone, so
+      # this is the one place to say it.
+      - name: Run in the school's timezone
+        run: |
+          sudo systemsetup -settimezone Asia/Taipei
+          date
+
       - name: Phone unit tests
         run: >
           xcodebuild test
@@ -119,21 +132,27 @@ jobs:
       # "173 real failures" apart from "one crash, 172 casualties".
       - name: Test summary
         if: always()
+        # `set +e`: the job's verdict is the test steps', not this step's. It
+        # reads a JSON shape Apple reshuffles between Xcode releases, and a
+        # green run must not turn red because jq could not find a key.
         run: |
-          set -uo pipefail
+          set +e -u
           for bundle in PhoneTests.xcresult WatchTests.xcresult; do
             echo "== $bundle"
-            if [ -d "$bundle" ]; then
-              xcrun xcresulttool get test-results summary --path "$bundle" \
-                | jq '{result, totalTestCount, passedTests, failedTests, skippedTests}'
-              echo "-- failures"
-              xcrun xcresulttool get test-results tests --path "$bundle" \
-                | jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
-                         | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"'
-            else
+            if [ ! -d "$bundle" ]; then
               echo "not produced (the step before it did not get that far)"
+              continue
             fi
+            xcrun xcresulttool get test-results summary --path "$bundle" \
+              | jq '{result, totalTestCount, passedTests, failedTests, skippedTests}' \
+              || echo "could not read the summary — see the uploaded bundle"
+            echo "-- failures"
+            xcrun xcresulttool get test-results tests --path "$bundle" \
+              | jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
+                       | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"' \
+              || echo "could not read the failures — see the uploaded bundle"
           done
+          exit 0
 
       # The summary above is a best effort against a JSON shape Apple changes
       # between Xcode releases. Keep the bundle itself so a failure can be

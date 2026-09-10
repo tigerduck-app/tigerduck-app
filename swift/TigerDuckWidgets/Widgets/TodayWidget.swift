@@ -71,6 +71,7 @@ struct TodayWidgetView: View {
     let entry: TodayEntry
     @Environment(\.widgetFamily) private var family
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     private var maxRows: Int {
         switch family {
@@ -81,7 +82,11 @@ struct TodayWidgetView: View {
     }
 
     var body: some View {
-        let palette = WidgetPalette.resolve(snapshot: entry.snapshot, colorScheme: colorScheme)
+        let palette = WidgetPalette.resolve(
+            snapshot: entry.snapshot,
+            colorScheme: colorScheme,
+            renderingMode: renderingMode
+        )
         TodayListView(snapshot: entry.snapshot, now: entry.appNow, palette: palette, maxRows: maxRows)
             .padding(12)
             .containerBackground(palette.background, for: .widget)

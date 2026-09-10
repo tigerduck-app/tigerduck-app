@@ -12,6 +12,7 @@ import SwiftUI
 struct CourseDetailSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let course: SDCourse
     let assignments: [SDAssignment]
@@ -69,8 +70,17 @@ struct CourseDetailSheet: View {
 
     // MARK: - Emphasis cards
 
+    /// Side by side normally; stacked at accessibility text sizes. Each card
+    /// holds its value on one line by shrinking it, and half the sheet is not
+    /// enough room to shrink a room list or a time range into at those sizes —
+    /// it would have to truncate. Full width is, so the pair gives up being a
+    /// pair before the values give up being readable.
     private var emphasisCards: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: TigerDuckTheme.Spacing.md))
+            : AnyLayout(HStackLayout(spacing: TigerDuckTheme.Spacing.md))
+
+        return layout {
             EmphasisCard(
                 label: String(localized: "course_detail_classroom_label"),
                 value: classroomValue,
@@ -204,8 +214,14 @@ private struct EmphasisCard: View {
             Text(value)
                 .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
                 .foregroundStyle(Color.textPrimary)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
+                // A classroom or a time range is one unit and reads wrong split
+                // across lines ("18:25 -" / "22:00"), so it shrinks to fit
+                // instead of wrapping. The floor is half size; the caller
+                // widens the card at accessibility sizes so that stays enough
+                // for a multi-room classroom rather than ellipsising it.
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .allowsTightening(true)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: .center)
         }

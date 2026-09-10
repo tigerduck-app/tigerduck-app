@@ -516,8 +516,21 @@ actor PushRegistrationService {
         let snapshot = registration.snapshot
         // v3: encode `countdown_target` as ISO 8601 string (the server expects a
         // string field, not a nested object). Device identity comes from the JWT.
+        //
+        // Translated to real time first, like every other server-bound date:
+        // this becomes the `fire_at` of the end job, and the server dispatches
+        // on the real wall clock. `ScheduleSyncService.buildEvents` does the
+        // same to every `fireAt` it sends. Left raw, a debug clock override
+        // filed the end push at the fake-clock instant — days out, or already
+        // past, in which case the register endpoint skips the job entirely and
+        // the activity has no remote end at all. The snapshot's own dates stay
+        // in app-clock space; the widget translates those at render time.
+        //
+        // The conversion itself happened once, when the registration was made
+        // (see `countdownTargetRealTime`), so every retry of this send asks for
+        // the same instant.
         let countdownISO: String?
-        if let target = snapshot.countdownTarget {
+        if let target = registration.countdownTargetRealTime {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             countdownISO = formatter.string(from: target)

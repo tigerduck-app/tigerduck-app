@@ -12,6 +12,21 @@ final class LibraryViewModel {
     var isLoggedIn = false
     var isLoggingIn = false
 
+    /// Invoked whenever this screen changes the *stored* library credential
+    /// state — a sign-in, or a token found expired.
+    ///
+    /// `AppState.isLibraryLoggedIn` reads the keychain behind an observable
+    /// revision counter, so a screen that changes the credential without
+    /// bumping that counter leaves every other screen rendering the previous
+    /// answer. Settings' own sign-in sheet already bumps it; this screen did
+    /// not, so signing in here and switching back to Settings still showed a
+    /// red dot and "not signed in" until something unrelated invalidated it.
+    ///
+    /// A stored closure rather than an `AppState` parameter because two of the
+    /// three call sites are timer-driven — the QR refresh discovering a dead
+    /// token has no view in the loop to hand one in.
+    var onLibraryStateChanged: (() -> Void)?
+
     // Manual login fields
     var libUsername = ""
     var libPassword = ""
@@ -66,6 +81,7 @@ final class LibraryViewModel {
             qrPayload = nil
             LibraryQRCache.shared.clear()
             stopTimers()
+            onLibraryStateChanged?()
             return
         }
         if hasLoaded && isLoggedIn && refreshTimer == nil {
@@ -104,6 +120,7 @@ final class LibraryViewModel {
                 isLoggedIn = true
                 isLoggingIn = false
                 startQRRefreshCycle()
+                onLibraryStateChanged?()
             } catch {
                 errorMessage = error.localizedDescription
                 // Clear the password on every failure so it never lingers
@@ -142,6 +159,7 @@ final class LibraryViewModel {
                     consecutiveErrors = 0
                     LibraryQRCache.shared.clear()
                     stopTimers()
+                    onLibraryStateChanged?()
                 } else {
                     // Transient (5xx etc.) — back off so a flapping
                     // server can't keep the 30s timer hammering it.

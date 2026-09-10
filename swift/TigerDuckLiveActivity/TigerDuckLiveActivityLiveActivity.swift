@@ -44,8 +44,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                         .foregroundStyle(hexColor(snapshot.accentHex))
                         .lineLimit(1)
                 } else {
-                    Image(systemName: iconName(for: snapshot.scenario))
-                        .foregroundStyle(hexColor(snapshot.accentHex))
+                    scenarioIcon(snapshot)
                 }
             } compactTrailing: {
                 countdownLabel(snapshot)
@@ -53,8 +52,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                     .foregroundStyle(hexColor(snapshot.accentHex))
                     .frame(width: 60, alignment: .leading)
             } minimal: {
-                Image(systemName: iconName(for: snapshot.scenario))
-                    .foregroundStyle(hexColor(snapshot.accentHex))
+                scenarioIcon(snapshot)
             }
             .widgetURL(snapshot.deepLink)
             .keylineTint(hexColor(snapshot.accentHex))
@@ -248,6 +246,33 @@ private struct MetadataRowView: View {
 
 // MARK: - File-scope helpers (shared by lock screen + dynamic island)
 
+/// The mark in the island's two small slots.
+///
+/// In class this is the app icon rather than a glyph: those slots are where
+/// the system asks "which app is this?", and the tiger answers it in a way a
+/// borrowed SF Symbol never did — a mortarboard reads as *some* school app.
+/// The other two scenarios keep their glyph, which is carrying real
+/// information the countdown alone doesn't (a class about to start vs. an
+/// assignment about to be due).
+///
+/// Rendered at a fixed 20pt. The artwork is full-colour and detailed, so it
+/// is not tinted with the accent the way a symbol is, and it must be sized
+/// explicitly — an asset-catalog image in a widget otherwise lays out at its
+/// natural size and blows the slot open.
+@ViewBuilder
+private func scenarioIcon(_ snapshot: LiveActivitySnapshot) -> some View {
+    switch snapshot.scenario {
+    case .inClass:
+        Image("AppLogo")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 20, height: 20)
+    case .classPreparing, .assignmentUrgent:
+        Image(systemName: iconName(for: snapshot.scenario))
+            .foregroundStyle(hexColor(snapshot.accentHex))
+    }
+}
+
 private func iconName(for scenario: LiveActivityScenarioKind) -> String {
     switch scenario {
     case .inClass: return "graduationcap.fill"
@@ -272,7 +297,32 @@ private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
     if let target = snapshot.countdownTarget, target > AppClock.now() {
         Text(timerInterval: Date()...AppClock.realTime(forApp: target), countsDown: true)
     } else {
-        Text("—")
+        Text(terminalLabel(for: snapshot.scenario))
+    }
+}
+
+/// What the countdown slot reads once its target has passed.
+///
+/// Reaching this branch means nothing has ended the activity yet, and that
+/// is a state the design has to survive rather than treat as impossible.
+/// An end push is the only remote removal path — ActivityKit has no
+/// expire-at-date API, and `staleDate` marks an activity stale without
+/// dismissing it (see `LiveActivityCoordinator`) — while the local end
+/// timer and the foreground prune both need the app to be running. So a
+/// user lands here whenever the server is down, the phone is offline past
+/// the push TTL, the push is dropped, or the app was force-quit.
+///
+/// `"—"` made every one of those read as a broken app. Naming the terminal
+/// state costs nothing and makes the worst case look deliberate: the class
+/// is over, and the island is saying so while it waits to be cleared.
+private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
+    switch scenario {
+    case .inClass:
+        return String(localized: "live_activity_countdown_done_in_class")
+    case .classPreparing:
+        return String(localized: "live_activity_countdown_done_class_preparing")
+    case .assignmentUrgent:
+        return String(localized: "live_activity_countdown_done_assignment_urgent")
     }
 }
 

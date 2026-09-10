@@ -40,11 +40,12 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.showAbsoluteAssignmentTime,
         default: false
     )
-    /// Pin periods A, B and C to the timetable even when no course uses
-    /// them. Off by default: an empty evening is three rows of nothing
-    /// for the majority who never have a class there.
-    static let alwaysShowPeriodsABC = Key<Bool>(
-        AppConstants.UserDefaultsKeys.alwaysShowPeriodsABC,
+    /// Pin every period — lunch (5) and the evening block (A–D) included —
+    /// to the timetable even when no course uses them. Off by default: an
+    /// empty evening is rows of nothing for the majority who never have a
+    /// class there.
+    static let alwaysShowAllPeriods = Key<Bool>(
+        AppConstants.UserDefaultsKeys.alwaysShowAllPeriods,
         default: false
     )
     static let configuredTabsData = Key<Data?>(

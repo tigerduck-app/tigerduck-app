@@ -44,11 +44,11 @@ struct SyncStatusDot: View {
     /// Optional so the dot still renders in a preview with no `AppState`
     /// injected, where "signed out" is the conservative read.
     @Environment(AppState.self) private var appState: AppState?
-    /// Observed rather than read through `Defaults[...]`. `isOff` feeds
-    /// `sources` and `summary`, which the body reads, and a bare subscript
-    /// is a read SwiftUI never subscribes to -- so switching sync off left
-    /// the mark on whatever colour it already had until something unrelated
-    /// forced a redraw, which is the opposite of what `isOff` is for.
+    /// Observed rather than read through `Defaults[...]`. `isMinimal` feeds
+    /// `sources`, which the body reads, and a bare subscript is a read
+    /// SwiftUI never subscribes to -- so switching sync off left the row on
+    /// whatever word it already had until something unrelated forced a
+    /// redraw, which is the opposite of what `isMinimal` is for.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @State private var showDetails = false
     @State private var spinning = false
@@ -81,14 +81,22 @@ struct SyncStatusDot: View {
 
     private var isSignedIn: Bool { appState?.authService.hasStoredCredentials ?? false }
 
-    /// Cloud sync switched off: the row reads grey / "Off" rather than
-    /// whatever the tracker happens to be holding.
+    /// Sync switched off: the row reads "Minimal" instead of "OK", and
+    /// nothing else about it changes.
     ///
-    /// Reading the setting rather than the tracker is what keeps the row
-    /// honest — the tracker is process-wide, so the OK from the last sync
-    /// before the switch went off would otherwise sit there green. The
-    /// signed-out case never reaches here; `body` draws nothing at all.
-    private func isOff(_ server: ServerKind) -> Bool {
+    /// It is deliberately not treated as *off*. The academic calendar —
+    /// semester dates and holidays — and the bulletin feed are public GETs
+    /// that carry no account and are fetched regardless of this setting, so
+    /// the backend is doing work for this device either way and always has a
+    /// real answer: reachable, or not. The row used to be pinned grey / "Off",
+    /// which said the opposite — that there was nothing to know — and hid a
+    /// backend that was genuinely down from anyone who had turned sync off.
+    ///
+    /// The stale-green worry that pinning it grey used to answer is handled
+    /// at the source now: `AppState.cloudSyncEnabled` clears the reading on
+    /// the flip, and only `noteBackendReachable` writes it back while off.
+    /// The signed-out case never reaches here; `body` draws nothing at all.
+    private func isMinimal(_ server: ServerKind) -> Bool {
         server == .backend && !cloudSyncEnabled
     }
 
@@ -96,13 +104,12 @@ struct SyncStatusDot: View {
         switch mode {
         case .servers(let servers):
             servers.map { server in
-                let off = isOff(server)
-                let status = off ? ServerStatus.unknown : tracker.status(for: server)
+                let status = tracker.status(for: server)
                 return Source(
                     id: server.id, icon: server.icon, name: Self.serverName(server),
                     status: status,
-                    text: off
-                        ? String(localized: "settings_sync_status_off")
+                    text: isMinimal(server) && status == .ok
+                        ? String(localized: "sync_status_minimal")
                         : Self.statusText(status)
                 )
             }
@@ -113,23 +120,25 @@ struct SyncStatusDot: View {
 
     private var summary: ServerStatus {
         switch mode {
-        case .servers(let servers):
-            // Nothing was asked to sync, so the NTUST session's own state is
-            // not this dot's business either — grey, not red.
-            servers.allSatisfy(isOff)
-                ? .unknown
-                : Self.summary(loadingState: session.loadingState, statuses: sources.map(\.status))
+        case .servers:
+            // No allSatisfy(isMinimal) shortcut any more. A page whose only
+            // source is the backend still has a state worth colouring while
+            // sync is off — that is the whole point of the minimal reading —
+            // and short-circuiting to grey would throw away the one thing
+            // this change exists to show.
+            Self.summary(loadingState: session.loadingState, statuses: sources.map(\.status))
         case .single(let source, _):
             source.status
         }
     }
 
-    /// "Off" rather than "Unknown" when every source is switched off — the
-    /// aggregate grey has a reason, and VoiceOver should give it.
+    /// "Minimal" rather than the bare state when the only thing running is the
+    /// public part — VoiceOver should give the same distinction the rows do.
     private var accessibilityStatusText: String {
         if isLoading { return String(localized: "sync_status_syncing") }
-        if case .servers(let servers) = mode, servers.allSatisfy(isOff) {
-            return String(localized: "settings_sync_status_off")
+        if case .servers(let servers) = mode,
+           servers.allSatisfy(isMinimal), summary == .ok {
+            return String(localized: "sync_status_minimal")
         }
         return Self.statusText(summary)
     }

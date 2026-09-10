@@ -62,8 +62,10 @@ struct TimeSliderSection: View {
                     viewModel.returnToNow()
                 }
                 .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                // Padding belongs to the modifier, which applies it on the
+                // pre-26 branch only. Repeating it here double-padded this
+                // button below iOS 26 and left it visibly larger than
+                // Calendar's "Today", which uses the same modifier bare.
                 .modifier(GlassTextButtonModifier())
                 .transition(.opacity.combined(with: .scale(0.85, anchor: .trailing)))
             }

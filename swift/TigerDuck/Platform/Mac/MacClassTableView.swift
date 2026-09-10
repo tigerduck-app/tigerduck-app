@@ -22,6 +22,10 @@ import Defaults
 struct MacClassTableView: View {
     @Environment(AppState.self) var appState
 
+    /// Read through `@Default` rather than `Defaults[...]` so toggling the
+    /// setting redraws the grid — a raw read registers no SwiftUI dependency.
+    @Default(.alwaysShowAllPeriods) private var showsAllPeriods
+
     @State var selectedSemester: String = SemesterCatalog.selectedSemester(
         storedPick: Defaults[.classTableSelectedSemester]
     )
@@ -115,14 +119,12 @@ struct MacClassTableView: View {
     }
 
     var visiblePeriods: [String] {
+        guard !showsAllPeriods else {
+            return AppConstants.Periods.chronologicalOrder
+        }
         let occupied = Set(courses.flatMap { $0.schedule.values.flatMap { $0 } })
-        let pinned = Defaults[.alwaysShowPeriodsABC]
-            ? Set(AppConstants.Periods.eveningOptional)
-            : []
         return AppConstants.Periods.chronologicalOrder.filter {
-            AppConstants.Periods.defaultVisible.contains($0)
-                || pinned.contains($0)
-                || occupied.contains($0)
+            AppConstants.Periods.defaultVisible.contains($0) || occupied.contains($0)
         }
     }
 
