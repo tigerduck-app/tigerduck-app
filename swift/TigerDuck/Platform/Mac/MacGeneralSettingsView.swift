@@ -48,7 +48,7 @@ struct MacGeneralSettingsView: View {
             // even though `MacClassTableView` has always read it.
             Section(String(localized: "settings_section_display")) {
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
-                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $state.alwaysShowPeriodsABC)
+                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $state.alwaysShowAllPeriods)
             }
 
             Section(String(localized: "settings_section_abbreviation")) {

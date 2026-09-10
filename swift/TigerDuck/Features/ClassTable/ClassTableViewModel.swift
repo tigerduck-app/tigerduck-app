@@ -357,10 +357,10 @@ final class ClassTableViewModel {
     var activePeriods: [TimetablePeriod] {
         var periodIds = Set(AppConstants.Periods.defaultVisible)
         // Pinned rather than merged into `defaultVisible` so the widget
-        // and any other grid keep their own, tighter default — three empty
-        // evening rows cost far more in a widget than on a full page.
-        if Defaults[.alwaysShowPeriodsABC] {
-            periodIds.formUnion(AppConstants.Periods.eveningOptional)
+        // and any other grid keep their own, tighter default — five empty
+        // rows cost far more in a widget than on a full page.
+        if Defaults[.alwaysShowAllPeriods] {
+            periodIds.formUnion(AppConstants.Periods.chronologicalOrder)
         }
         for course in courses {
             for periods in course.schedule.values {

@@ -118,7 +118,7 @@ struct SettingsView: View {
                     }
                 }
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $appState.showAbsoluteAssignmentTime)
-                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowPeriodsABC)
+                Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $appState.alwaysShowAllPeriods)
                 Toggle(String(localized: "settings_remember_bulletin_filter"), isOn: $appState.rememberAnnouncementFilter)
                 Picker(String(localized: "settings_link_opening_method"), selection: $appState.browserPreference) {
                     Text(String(localized: "settings_browser_system_default")).tag(BrowserPreference.system)

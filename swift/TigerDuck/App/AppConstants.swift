@@ -118,7 +118,9 @@ nonisolated enum AppConstants {
         static let browserPreference = "browserPreference"
         static let macMoodleOpenTarget = "macMoodleOpenTarget"
         static let showAbsoluteAssignmentTime = "showAbsoluteAssignmentTime"
-        static let alwaysShowPeriodsABC = "alwaysShowPeriodsABC"
+        /// Stored name predates the rename from "always show A/B/C" to
+        /// "always show every period" — keeping it carries the setting over.
+        static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"
@@ -221,11 +223,6 @@ nonisolated enum AppConstants {
         /// is the lunch break: a course scheduled there widens the grid on its
         /// own, via `ClassTableViewModel.activePeriods`.
         static let defaultVisible = ["1", "2", "3", "4", "6", "7", "8", "9", "10"]
-        static let extended = ["5", "A", "B", "C", "D"]
-        /// The evening periods the Display toggle pins on. D is left out
-        /// deliberately: it ends at 22:00 and is rare enough that pinning
-        /// it would cost a row almost nobody needs.
-        static let eveningOptional = ["A", "B", "C"]
         /// Chronological order of all periods (for sorting)
         static let chronologicalOrder = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "B", "C", "D"]
         static var weekdays: [String] {
