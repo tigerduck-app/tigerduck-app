@@ -1,8 +1,12 @@
 """Moodle course-files probe via long-lived OIDC webservice token.
 
 core_course_get_contents returns the whole section/module tree; this flattens it
-to the downloadable files. fileurl needs `?token=<wstoken>` appended (or
-`&token=` when it already has a query) before it can actually be fetched.
+to the course material — uploaded files and mod_url links alike.
+
+Only `type == "file"` rows are hosted on Moodle and need `?token=<wstoken>`
+appended to fileurl (or `&token=` when it already has a query) before they can
+be fetched. `type == "url"` rows are external links (Google Drive, YouTube, ...)
+with no mimetype and filesize 0; open them as-is.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from api import load_creds
 from api.moodle.auth import MoodleOidcAuthClient
 
 WSFUNCTION = "core_course_get_contents"
+MATERIAL_TYPES = ("file", "url")
 
 
 def fetch_course_contents(
@@ -26,6 +31,7 @@ def fetch_course_contents(
 def flatten_files(sections: list) -> list[dict]:
     return [
         {
+            "type": content.get("type"),
             "section": section.get("name"),
             "module": module.get("name"),
             "modname": module.get("modname"),
@@ -38,7 +44,7 @@ def flatten_files(sections: list) -> list[dict]:
         for section in sections
         for module in section.get("modules", [])
         for content in module.get("contents", [])
-        if content.get("type") == "file"
+        if content.get("type") in MATERIAL_TYPES
     ]
 
 
