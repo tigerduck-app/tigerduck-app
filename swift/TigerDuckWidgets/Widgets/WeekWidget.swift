@@ -56,9 +56,14 @@ struct WeekProvider: TimelineProvider {
 struct WeekWidgetView: View {
     let entry: WeekEntry
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
-        let palette = WidgetPalette.resolve(snapshot: entry.snapshot, colorScheme: colorScheme)
+        let palette = WidgetPalette.resolve(
+            snapshot: entry.snapshot,
+            colorScheme: colorScheme,
+            renderingMode: renderingMode
+        )
         WeekGridView(snapshot: entry.snapshot, now: entry.appNow, palette: palette)
             .padding(3)
             .containerBackground(palette.background, for: .widget)

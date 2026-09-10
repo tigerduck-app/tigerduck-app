@@ -1,8 +1,18 @@
 import SwiftUI
+import WidgetKit
 
 /// Color tokens for the widget extension. Light/dark variants are picked from
 /// `colorScheme` at render time; `highlight` is overlayed from the snapshot's
 /// accent color so widgets follow the user's theme choice.
+///
+/// The surface tokens are also rendering-mode aware. Outside `.fullColor` the
+/// system is compositing the widget over its own material — a tinted home
+/// screen, clear glass — and expects the widget to contribute *content*, not
+/// surfaces. `containerBackground` is the one background it knows how to strip
+/// on its own; a `.fill()` or `.background()` inside the view is ordinary
+/// drawing it cannot see, so an opaque token there survives as a solid block
+/// floating on the glass. Resolving them to clear here fixes every call site at
+/// once, and keeps the branch out of the views.
 struct WidgetPalette {
     let background: Color
     let surface: Color
@@ -10,16 +20,31 @@ struct WidgetPalette {
     let onSurfaceVariant: Color
     let emptyCell: Color
     let highlight: Color
+    /// Views that build their own fills (rather than reading a token) branch on
+    /// this — see `TodayListView.row`, whose ongoing row is painted from the
+    /// course color rather than from `surface`.
+    let isFullColor: Bool
 
-    static func resolve(snapshot: WidgetSnapshot, colorScheme: ColorScheme) -> WidgetPalette {
+    static func resolve(
+        snapshot: WidgetSnapshot,
+        colorScheme: ColorScheme,
+        renderingMode: WidgetRenderingMode = .fullColor
+    ) -> WidgetPalette {
         let base = colorScheme == .dark ? Self.dark : Self.light
+        let isFullColor = renderingMode == .fullColor
         return WidgetPalette(
-            background: base.background,
-            surface: base.surface,
+            background: isFullColor ? base.background : .clear,
+            surface: isFullColor ? base.surface : .clear,
             onSurface: base.onSurface,
             onSurfaceVariant: base.onSurfaceVariant,
-            emptyCell: base.emptyCell,
-            highlight: Color(widgetHex: snapshot.accentColorHex)
+            // Not clear: a timetable with no cell structure is a field of
+            // floating labels, and the grid is most of what makes it readable
+            // at a glance. A low-alpha wash keeps the ruling visible while
+            // still letting the material through, and the system tints it
+            // along with everything else.
+            emptyCell: isFullColor ? base.emptyCell : Color.white.opacity(0.10),
+            highlight: Color(widgetHex: snapshot.accentColorHex),
+            isFullColor: isFullColor
         )
     }
 
@@ -29,7 +54,8 @@ struct WidgetPalette {
         onSurface: Color(widgetHex: 0x1C1C1E),
         onSurfaceVariant: Color(widgetHex: 0x6E6E73),
         emptyCell: Color(widgetHex: 0xECECEC),
-        highlight: .blue   // overridden by resolve()
+        highlight: .blue,  // overridden by resolve()
+        isFullColor: true  // ditto
     )
 
     private static let dark = WidgetPalette(
@@ -38,7 +64,8 @@ struct WidgetPalette {
         onSurface: Color(widgetHex: 0xF5F5F5),
         onSurfaceVariant: Color(widgetHex: 0x8E8E93),
         emptyCell: Color(widgetHex: 0x2C2C2E),
-        highlight: .blue   // overridden by resolve()
+        highlight: .blue,  // overridden by resolve()
+        isFullColor: true  // ditto
     )
 }
 
