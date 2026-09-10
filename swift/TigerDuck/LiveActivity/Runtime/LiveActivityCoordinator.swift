@@ -6,6 +6,19 @@ nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
     let activityId: String
     let updateTokenHex: String
     let snapshot: LiveActivitySnapshot
+    /// `snapshot.countdownTarget` in real wall-clock time, converted once here
+    /// rather than at each send. Under a frozen debug clock the conversion is
+    /// "real now plus the remaining fake interval", so recomputing it on a
+    /// retry would push the server's end job out by the whole backoff — a
+    /// target ten fake minutes away stays ten minutes away forever.
+    let countdownTargetRealTime: Date?
+
+    init(activityId: String, updateTokenHex: String, snapshot: LiveActivitySnapshot) {
+        self.activityId = activityId
+        self.updateTokenHex = updateTokenHex
+        self.snapshot = snapshot
+        countdownTargetRealTime = snapshot.countdownTarget.map(AppClock.realTime(forApp:))
+    }
 }
 
 /// Reflects a resolved `LiveActivitySnapshot` as at most one running
