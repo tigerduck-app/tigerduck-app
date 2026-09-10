@@ -67,7 +67,8 @@ final class LiveActivityCoordinator {
     }
 
     /// Apply the resolved snapshot. Starts or updates the single activity
-    /// matching the target id and ends stale or unrelated activities.
+    /// matching the target id, and ends only activities that are expired or
+    /// duplicates; an activity that is not the current target is left running.
     func apply(snapshot: LiveActivitySnapshot?) async {
         let now = AppClock.now()
         await pruneRunningActivities(now: now)
