@@ -297,7 +297,32 @@ private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
     if let target = snapshot.countdownTarget, target > AppClock.now() {
         Text(timerInterval: Date()...AppClock.realTime(forApp: target), countsDown: true)
     } else {
-        Text("—")
+        Text(terminalLabel(for: snapshot.scenario))
+    }
+}
+
+/// What the countdown slot reads once its target has passed.
+///
+/// Reaching this branch means nothing has ended the activity yet, and that
+/// is a state the design has to survive rather than treat as impossible.
+/// An end push is the only remote removal path — ActivityKit has no
+/// expire-at-date API, and `staleDate` marks an activity stale without
+/// dismissing it (see `LiveActivityCoordinator`) — while the local end
+/// timer and the foreground prune both need the app to be running. So a
+/// user lands here whenever the server is down, the phone is offline past
+/// the push TTL, the push is dropped, or the app was force-quit.
+///
+/// `"—"` made every one of those read as a broken app. Naming the terminal
+/// state costs nothing and makes the worst case look deliberate: the class
+/// is over, and the island is saying so while it waits to be cleared.
+private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
+    switch scenario {
+    case .inClass:
+        return String(localized: "live_activity_countdown_done_in_class")
+    case .classPreparing:
+        return String(localized: "live_activity_countdown_done_class_preparing")
+    case .assignmentUrgent:
+        return String(localized: "live_activity_countdown_done_assignment_urgent")
     }
 }
 
