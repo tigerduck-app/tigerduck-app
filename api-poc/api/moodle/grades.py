@@ -21,8 +21,13 @@ def fetch_course_grades(
     client: MoodleOidcAuthClient,
     course_id: int,
 ) -> dict:
-    userid = client.call(SITE_INFO_WSFUNCTION)["userid"]
-    return client.call(COURSE_WSFUNCTION, courseid=course_id, userid=userid)
+    site_info = client.call(SITE_INFO_WSFUNCTION)
+    if isinstance(site_info, dict) and site_info.get("errorcode"):
+        # `call` hands back Moodle's error object verbatim; indexing it here
+        # would raise a KeyError past main's [FAIL] handler and lose the
+        # diagnostic (a revoked cached token is the usual cause).
+        return site_info
+    return client.call(COURSE_WSFUNCTION, courseid=course_id, userid=site_info["userid"])
 
 
 def fetch_grade_overview(client: MoodleOidcAuthClient) -> dict:
