@@ -398,6 +398,13 @@ final class AppState {
         didSet {
             guard cloudSyncEnabled != oldValue else { return }
             Defaults[.cloudSyncEnabled] = cloudSyncEnabled
+            // The status dot's backend row means a different thing on each
+            // side of this flip — a full sync result vs. a public GET's
+            // reachability — so the reading taken under the old meaning goes
+            // now rather than lingering as a green "Minimal" that no minimal
+            // fetch ever vouched for. The next fetch of either kind fills it
+            // back in, which on the off path is the next calendar refresh.
+            ServerStatusTracker.shared.clearBackendStatus()
             if cloudSyncEnabled {
                 Task {
                     await cloudSyncCoordinator.enable()
