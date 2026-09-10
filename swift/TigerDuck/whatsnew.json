@@ -98,5 +98,27 @@
         "Settings lets you set and validate a custom API endpoint, and adds a \"Check Server Status\" row."
       ]
     }
+  },
+  "2.0.3": {
+    "zh-TW": {
+      "title": "2.0.3 更新內容",
+      "highlights": [
+        "課表可以固定顯示全部節次，切換時會立刻重畫，晚間節次的時間也修正了。",
+        "動態島改用 App 圖示，課程結束後會顯示結束狀態，不再只是一個破折號。",
+        "小工具在單色模式下不再蓋上多餘的不透明底色。",
+        "TigerSync 會正確顯示在同步狀態與行事曆的同步來源中。",
+        "在圖書館畫面登入後，設定頁也會立刻看到登入狀態。"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.0.3",
+      "highlights": [
+        "The class table can pin every period, redraws the moment you toggle one, and the evening period times are corrected.",
+        "The Dynamic Island uses the app icon and names the end state when a class finishes, instead of showing a dash.",
+        "Widgets no longer paint an extra opaque background in single-colour rendering.",
+        "TigerSync shows correctly in sync status and among the calendar's sync sources.",
+        "Sign in on the Library screen and Settings sees it right away."
+      ]
+    }
   }
 }
