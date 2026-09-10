@@ -46,6 +46,9 @@ struct LibraryView: View {
         }
         .background(Color.backgroundPrimary)
         .onAppear {
+            // Wired before `load()`/`onAppear()`, both of which can already
+            // discover an expired token and flip the stored state.
+            viewModel.onLibraryStateChanged = { appState.notifyLibraryStateChanged() }
             viewModel.load()
             viewModel.onAppear()
             if viewModel.isLoggedIn {
