@@ -8,8 +8,8 @@ nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
     let snapshot: LiveActivitySnapshot
 }
 
-/// Reflects a resolved `LiveActivitySnapshot` as at most one running
-/// `TigerDuckActivityAttributes` activity.
+/// Reflects a resolved `LiveActivitySnapshot` as one running
+/// `TigerDuckActivityAttributes` activity among whatever else is running.
 ///
 /// Scenario-scoped `activityId` (`snapshot.composedActivityId`) is the
 /// single source of truth for identity. It keeps the on-device path and
@@ -30,6 +30,9 @@ nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
 /// 由伺服器排定的 end job 或其自身的倒數收尾。
 /// 決策邏輯抽在 `expiredInstanceIds` / `duplicateInstanceIdsToEnd`，
 /// 由 `LiveActivityCoordinatorTests` 釘住。詳見 spec §4.3。
+/// 但釘住的只是這兩個決策函式本身，不是 `pruneRunningActivities` 這個迴圈：
+/// 迴圈裡若被插回一段 `else if !isCurrentTarget { await end(...) }`，
+/// 八個測試依然全線通過——迴圈怎麼使用這兩個函式的結果，測試套件看不到。
 @MainActor
 final class LiveActivityCoordinator {
     private let store: SharedSnapshotStore
@@ -87,7 +90,14 @@ final class LiveActivityCoordinator {
 
         guard let snapshot else {
             store.writeSnapshot(nil)
-            cancelAutomaticEndTasks()
+            // Nothing to cancel here: `pruneRunningActivities` above already
+            // cancelled every automatic-end timer except the survivors'
+            // (`except: retainedTaskIds`), and those survivors are running
+            // activities this coordinator is deliberately leaving alone —
+            // not being the current target does not mean "end it". An
+            // unconditional `cancelAutomaticEndTasks()` here would strand
+            // every one of them with no timer left to end it. Do not add
+            // it back.
             return
         }
 
@@ -210,6 +220,8 @@ final class LiveActivityCoordinator {
         cancelUpdateTokenTasks(except: retainedTaskIds)
     }
 
+    // MARK: - 純決策（不接觸 ActivityKit，供單元測試使用）
+
     /// 把一個 ActivityKit 活動壓成純事實值。
     nonisolated static func makeFacts(
         _ activity: Activity<TigerDuckActivityAttributes>
@@ -223,8 +235,6 @@ final class LiveActivityCoordinator {
                 || activity.activityState == .stale
         )
     }
-
-    // MARK: - 純決策（不接觸 ActivityKit，供單元測試使用）
 
     /// `prune` 需要知道的、關於一個執行中活動的全部事實。
     ///
