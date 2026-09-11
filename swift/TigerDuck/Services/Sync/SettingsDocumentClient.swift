@@ -108,14 +108,9 @@ actor SettingsDocumentClient {
         guard (200..<300).contains(statusCode) else {
             throw httpStatusError(statusCode, data: data, context: "PUT \(namespace)")
         }
-        guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let revision = json["revision"] as? Int
-        else {
-            throw PushAPIError.decodingFailed(
-                NSError(domain: "SettingsAPI", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Missing 'revision' in response"])
-            )
+        let json = try Self.jsonDictionary(data, context: "PUT response body is not a JSON object")
+        guard let revision = json["revision"] as? Int else {
+            throw Self.malformed("Missing 'revision' in response")
         }
         return .written(revision: revision)
     }
@@ -126,35 +121,61 @@ actor SettingsDocumentClient {
         baseURLProvider().appendingPathComponent("settings/\(Self.percentEncoded(namespace))")
     }
 
+    /// Every JSON failure in this client surfaces as
+    /// `PushAPIError.decodingFailed`, never as a raw `NSCocoaErrorDomain`
+    /// 3840 from `JSONSerialization`. The class's contract is that
+    /// transport and decoding failures come back as `PushAPIError`, and a
+    /// body that is not JSON at all — a proxy's HTML error page, a
+    /// truncated response — is the most likely way to hit one.
+    private static func jsonDictionary(_ data: Data, context: @autoclosure () -> String) throws -> [String: Any] {
+        let parsed: Any
+        do {
+            parsed = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            throw PushAPIError.decodingFailed(error)
+        }
+        guard let dictionary = parsed as? [String: Any] else {
+            throw Self.malformed(context())
+        }
+        return dictionary
+    }
+
+    private static func malformed(_ message: String) -> PushAPIError {
+        .decodingFailed(
+            NSError(domain: "SettingsAPI", code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: message])
+        )
+    }
+
+    private static func documentData(_ object: Any) throws -> Data {
+        do {
+            return try JSONSerialization.data(withJSONObject: object, options: [.fragmentsAllowed])
+        } catch {
+            throw PushAPIError.decodingFailed(error)
+        }
+    }
+
     private static func parseDocumentEnvelope(_ data: Data) throws -> (document: Data, revision: Int) {
+        let json = try jsonDictionary(data, context: "Response body is not a JSON object")
         guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let revision = json["revision"] as? Int,
             let documentObject = json["document"]
         else {
-            throw PushAPIError.decodingFailed(
-                NSError(domain: "SettingsAPI", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Missing 'document' or 'revision' in response"])
-            )
+            throw Self.malformed("Missing 'document' or 'revision' in response")
         }
-        let documentData = try JSONSerialization.data(withJSONObject: documentObject, options: [.fragmentsAllowed])
-        return (documentData, revision)
+        return (try documentData(documentObject), revision)
     }
 
     private static func parseConflict(_ data: Data) throws -> SettingsWriteResult {
+        let json = try jsonDictionary(data, context: "409 body is not a JSON object")
         guard
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let server = json["server"] as? [String: Any],
             let revision = server["revision"] as? Int,
             let documentObject = server["document"]
         else {
-            throw PushAPIError.decodingFailed(
-                NSError(domain: "SettingsAPI", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Missing 'server.document' or 'server.revision' in 409 body"])
-            )
+            throw Self.malformed("Missing 'server.document' or 'server.revision' in 409 body")
         }
-        let documentData = try JSONSerialization.data(withJSONObject: documentObject, options: [.fragmentsAllowed])
-        return .conflict(document: documentData, revision: revision)
+        return .conflict(document: try documentData(documentObject), revision: revision)
     }
 
     /// Attach the `Authorization: Bearer <token>` header when
@@ -170,6 +191,23 @@ actor SettingsDocumentClient {
         guard let http = response as? HTTPURLResponse else {
             throw PushAPIError.invalidResponse
         }
+        // This is our own backend, so it reports in — same rule every other
+        // first-party client follows (`PushAPIClient:351`,
+        // `BulletinAPIClient:234`, `AcademicCalendarStore:131`,
+        // `AuthTokenManager:136`/`:194`). `APIVersionGate` is scoped by
+        // *whose* server answered, not by which endpoint
+        // (`APIVersionGate.swift:12-15`), and `/v3/settings/...` is ours.
+        //
+        // Reported here rather than from `httpStatusError` because this
+        // client has two non-2xx statuses that deliberately never reach that
+        // helper — 404 on read and 409 on write — and a future third would
+        // silently opt out of the gate the same way. Only 410 latches, so
+        // handing over every status costs nothing.
+        //
+        // `await`ed onto the main actor exactly like `AuthTokenManager` does
+        // from its own non-main context; the request above already completed
+        // off the main actor, which is what this being an `actor` buys.
+        await APIVersionGate.shared.note(statusCode: http.statusCode)
         return (data, http.statusCode)
     }
 
