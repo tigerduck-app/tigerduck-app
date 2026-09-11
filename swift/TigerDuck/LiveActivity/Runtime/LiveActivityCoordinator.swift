@@ -239,8 +239,8 @@ final class LiveActivityCoordinator {
     /// `prune` 需要知道的、關於一個執行中活動的全部事實。
     ///
     /// 從 ActivityKit 抬起來成為普通值型別，讓下面的決策函式可以在沒有
-    /// ActivityKit 的環境下被單元測試——與 `ScheduleSyncService.buildEvents`、
-    /// `AssignmentReminderScheduler.buildPayloads` 相同的純工廠慣例。
+    /// ActivityKit 的環境下被單元測試——與 `ScheduleSyncService.buildEvents`
+    /// 相同的純工廠慣例。
     nonisolated struct RunningActivityFacts: Equatable, Sendable {
         /// `Activity.id`——同一個 `activityId` 可能有多個副本。
         let instanceId: String

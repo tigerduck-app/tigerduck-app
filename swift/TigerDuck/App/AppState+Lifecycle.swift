@@ -34,6 +34,16 @@ extension AppState {
         Task(priority: .utility) { @MainActor in
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
+            #if os(iOS)
+            // iOS only: `PendingReminderPurgeMigration.swift` is not in
+            // project.pbxproj's `INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]`
+            // allow-list (macOS excludes all *.swift by default and
+            // opts specific files back in), matching the deleted
+            // AssignmentReminderScheduler it cleans up after — macOS never
+            // scheduled `LA-reminder-*` requests, so there is nothing for
+            // it to purge, and the type is invisible to a macOS build.
+            await PendingReminderPurgeMigration.runIfNeeded()
+            #endif
             // Add future migrations here in sequence. Anything that deletes
             // cached data belongs above the task, not in it.
         }

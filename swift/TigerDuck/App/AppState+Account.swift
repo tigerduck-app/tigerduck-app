@@ -77,10 +77,9 @@ extension AppState {
     }
 
     /// Full NTUST logout: cancel any in-flight background sync, invalidate
-    /// credentials, tear down the Live Activity, cancel pending assignment
-    /// reminders, and purge user-scoped caches so a subsequent login (possibly
-    /// a different user) never inherits previous state on the lock screen or
-    /// in notifications.
+    /// credentials, tear down the Live Activity, and purge user-scoped
+    /// caches so a subsequent login (possibly a different user) never
+    /// inherits previous state on the lock screen or in notifications.
     ///
     /// `syncTask` is cancelled first so that `AppServiceBridge` and the
     /// `backgroundSync` finalize block — both of which check
@@ -127,7 +126,6 @@ extension AppState {
             await pushCoordinator.disable()
             #if os(iOS)
             await liveActivityCoordinator.endAll()
-            await reminderScheduler.cancelAllOwnedRequests()
             #endif
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }

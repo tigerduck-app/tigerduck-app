@@ -143,8 +143,7 @@ final class AppState {
         // Flipping the debug clock must drive an LA refresh; otherwise the
         // coordinator only re-evaluates on scene-active and the user has
         // to leave/re-enter the app to see the Dynamic Island appear at the
-        // fake instant. Reminder reschedule rides along because reminders
-        // are also AppClock-keyed (see AssignmentReminderScheduler).
+        // fake instant.
         clockObserver = NotificationCenter.default.addObserver(
             forName: DebugClockController.didChangeNotification,
             object: nil,
@@ -302,7 +301,6 @@ final class AppState {
 
     let liveActivityPreferences = LiveActivityPreferencesStore()
     let liveActivityCoordinator = LiveActivityCoordinator()
-    let reminderScheduler = AssignmentReminderScheduler()
     let scenarioResolver = LiveActivityScenarioResolver()
     let timelineResolver = CourseTimelineResolver()
     let courseProvider = CanonicalCourseProvider()
@@ -375,10 +373,8 @@ final class AppState {
         didSet {
             Defaults[.accentColorHex] = accentColorHex
             #if os(iOS)
-            // Accent color only affects the Live Activity snapshot — reminder
-            // notifications are content-identical, so skip rescheduling to
-            // avoid thrashing UNUserNotificationCenter on slider drags.
-            scheduleLiveActivityRefresh(rescheduleReminderNotifications: false)
+            // Accent color only affects the Live Activity snapshot.
+            scheduleLiveActivityRefresh()
             #endif
         }
     }
