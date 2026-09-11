@@ -119,6 +119,7 @@ final class AppState {
         ) { [weak self] _ in
             self?.scheduleLiveActivityRefresh()
             self?.requestPushScheduleSync()
+            self?.scheduleNotificationSettingsPush()
         }
 
         skipStateObserver = NotificationCenter.default.addObserver(

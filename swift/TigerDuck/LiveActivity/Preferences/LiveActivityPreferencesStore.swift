@@ -24,7 +24,11 @@ final class LiveActivityPreferencesStore {
     nonisolated static let maximumAssignmentLeadTime: TimeInterval = 8 * 3600
 
     var assignmentReminderOffsets: Set<AssignmentReminderOffset> {
-        didSet { persistOffsets(); notifyChange() }
+        didSet {
+            persistOffsets()
+            guard !isApplyingRemoteUpdate else { return }
+            notifyChange()
+        }
     }
     /// Master switch for assignment due reminders. When off, the scheduler is
     /// fed an empty offset set, which cancels all pending reminders. Mirrors
@@ -32,6 +36,7 @@ final class LiveActivityPreferencesStore {
     var isAssignmentReminderEnabled: Bool {
         didSet {
             Defaults[.isAssignmentReminderEnabled] = isAssignmentReminderEnabled
+            guard !isApplyingRemoteUpdate else { return }
             notifyChange()
         }
     }
@@ -44,33 +49,46 @@ final class LiveActivityPreferencesStore {
     var assignmentLiveActivityLeadTime: TimeInterval {
         didSet {
             Defaults[.assignmentLiveActivityLeadTime] = assignmentLiveActivityLeadTime
+            guard !isApplyingRemoteUpdate else { return }
             notifyChange()
         }
     }
     var classPreparingLeadTime: TimeInterval {
         didSet {
             Defaults[.classPreparingLeadTime] = classPreparingLeadTime
+            guard !isApplyingRemoteUpdate else { return }
             notifyChange()
         }
     }
     var showAssignmentScenario: Bool {
         didSet {
             Defaults[.showAssignmentScenario] = showAssignmentScenario
+            guard !isApplyingRemoteUpdate else { return }
             notifyChange()
         }
     }
     var showClassPreparingScenario: Bool {
         didSet {
             Defaults[.showClassPreparingScenario] = showClassPreparingScenario
+            guard !isApplyingRemoteUpdate else { return }
             notifyChange()
         }
     }
     var showInClassScenario: Bool {
         didSet {
             Defaults[.showInClassScenario] = showInClassScenario
+            guard !isApplyingRemoteUpdate else { return }
             notifyChange()
         }
     }
+
+    /// Set while ``applyFromNotificationSettingsDocument`` is assigning
+    /// properties on behalf of a pull from the backend. Suppresses
+    /// ``notifyChange()`` on the affected properties' `didSet` so applying
+    /// a value that just arrived FROM the server does not immediately
+    /// re-queue it as an outgoing push of the same data — see
+    /// `AppState+NotificationSettings.swift`.
+    private var isApplyingRemoteUpdate = false
 
     init() {
         if let data = Defaults[.assignmentReminderOffsetsData],
@@ -112,6 +130,45 @@ final class LiveActivityPreferencesStore {
         showAssignmentScenario = true
         showClassPreparingScenario = true
         showInClassScenario = true
+    }
+
+    /// Applies the subset of preferences carried by the `notification`
+    /// settings document's `assignments` and `live_activity` sections
+    /// (`AppState.pullNotificationSettings()`). Persists exactly like a
+    /// local edit — each property's normal `didSet` still runs and writes
+    /// through to `Defaults` — but does not post
+    /// `liveActivityPreferencesDidChange`: these values just arrived FROM
+    /// the server, so treating the pull as a fresh local edit would
+    /// immediately queue a redundant push of the same data straight back
+    /// to the document it came from.
+    ///
+    /// Clamps the two lead times the same way `init()` does: a value from
+    /// another platform (or a future server-side default) is not bound by
+    /// this build's slider ranges and could exceed today's caps.
+    func applyFromNotificationSettingsDocument(
+        isAssignmentReminderEnabled: Bool,
+        assignmentReminderOffsets: Set<AssignmentReminderOffset>,
+        showClassPreparingScenario: Bool,
+        showInClassScenario: Bool,
+        showAssignmentScenario: Bool,
+        classPreparingLeadTime: TimeInterval,
+        assignmentLiveActivityLeadTime: TimeInterval
+    ) {
+        isApplyingRemoteUpdate = true
+        defer { isApplyingRemoteUpdate = false }
+
+        self.isAssignmentReminderEnabled = isAssignmentReminderEnabled
+        self.assignmentReminderOffsets = assignmentReminderOffsets
+
+        self.showClassPreparingScenario = showClassPreparingScenario
+        self.showInClassScenario = showInClassScenario
+        self.showAssignmentScenario = showAssignmentScenario
+
+        let resolvedClassLead = classPreparingLeadTime > 0 ? classPreparingLeadTime : Self.defaultClassPreparingLeadTime
+        self.classPreparingLeadTime = min(max(resolvedClassLead, Self.minimumClassPreparingLeadTime), Self.maximumClassPreparingLeadTime)
+
+        let resolvedAssignmentLead = assignmentLiveActivityLeadTime > 0 ? assignmentLiveActivityLeadTime : Self.defaultAssignmentLeadTime
+        self.assignmentLiveActivityLeadTime = min(resolvedAssignmentLead, Self.maximumAssignmentLeadTime)
     }
 
     private func persistOffsets() {
