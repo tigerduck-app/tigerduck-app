@@ -296,8 +296,8 @@ final class AppState {
     var revisionPollTimer: Timer?
 
     #if os(iOS)
-    // MARK: - Live Activity (iOS only — ActivityKit + reminder scheduler
-    // are platform-restricted; Mac has no equivalent surfaces).
+    // MARK: - Live Activity (iOS only — ActivityKit is platform-restricted;
+    // Mac has no equivalent surface).
 
     let liveActivityPreferences = LiveActivityPreferencesStore()
     let liveActivityCoordinator = LiveActivityCoordinator()

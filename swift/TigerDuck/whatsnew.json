@@ -108,7 +108,7 @@
         "通知設定會跨裝置同步，在一台調整好，其他裝置就跟著更新。",
         "Moodle 登入過期時，通知會說清楚發生什麼事，不再是一則空白橫幅。",
         "預先排好的課程動態島不會再被 App 自己關掉。",
-        "關閉「同步課程資訊」後，本裝置將不再收到作業到期提醒與即時動態。"
+        "關閉「同步課程資訊」後，本裝置將不再收到作業到期提醒。"
       ]
     },
     "en": {
@@ -119,7 +119,7 @@
         "Notification settings sync across your devices — change them on one and the rest follow.",
         "When your Moodle login expires, the notification explains what happened instead of arriving blank.",
         "Scheduled class Live Activities are no longer ended by the app itself.",
-        "Turning off \"Sync course information\" now also turns off assignment reminders and Live Activity on this device."
+        "Turning off \"Sync course information\" now also turns off assignment reminders on this device."
       ]
     }
   }
