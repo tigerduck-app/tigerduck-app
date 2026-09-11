@@ -15,11 +15,8 @@ struct CloudSyncSettingsView: View {
     @Default(.serverPushUserOptOut) private var serverPushOptOut
     @State private var snapshot: PushDiagnostic?
     /// Tracks whether the server-push opt-out PATCH is in flight or rolled
-    /// back. Mirrors `PushServerSettingsView.serverPushOptOutFailed` — this
-    /// toggle is now shown on both screens (spec §6 moves it here; nothing
-    /// asked for it to be removed from the original push-server screen),
-    /// the same way both screens already duplicate device-registration
-    /// status.
+    /// back. The Toggle binds against this so a failed PATCH can revert
+    /// the visual state in lock-step with the stored Default.
     @State private var serverPushOptOutFailed: Bool = false
     /// In-flight server-push opt-out PATCH, held so a rapid second tap can
     /// cancel the prior request before starting a new one.
@@ -165,8 +162,9 @@ struct CloudSyncSettingsView: View {
     /// present, the latest error — the only two things the spec keeps from
     /// the old inline status section. Sync Now, the last-registration/
     /// last-sync timestamps, and the Device ID row are deliberately not
-    /// here: Device ID moves to Task 5's Developer page, and the spec's
-    /// "only keep these two" drops the rest.
+    /// here: Device ID lives on the DEBUG-only Developer page
+    /// (`TigerSyncStatusView`), and the spec's "only keep these two" drops
+    /// the rest.
     @ViewBuilder
     private var syncStatusView: some View {
         Form {
@@ -192,11 +190,10 @@ struct CloudSyncSettingsView: View {
         .navigationTitle(String(localized: "sync_status_nav_label"))
     }
 
-    /// User-facing opt-out for operator-issued "server" pushes, mirrored
-    /// from `PushServerSettingsView.serverPushBinding`. Bound as `isOn`
-    /// (ON = user wants them); inverted into `serverPushUserOptOut` for
-    /// storage. The setter awaits the actor, which PATCHes first and only
-    /// writes the local Default on success — a throw trips
+    /// User-facing opt-out for operator-issued "server" pushes. Bound as
+    /// `isOn` (ON = user wants them); inverted into `serverPushUserOptOut`
+    /// for storage. The setter awaits the actor, which PATCHes first and
+    /// only writes the local Default on success — a throw trips
     /// `serverPushOptOutFailed` so the footer surfaces the failure and the
     /// Toggle stays at the prior, server-agreeing value.
     private var serverPushBinding: Binding<Bool> {

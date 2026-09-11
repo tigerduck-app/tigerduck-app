@@ -1,5 +1,6 @@
 #if os(macOS)
 import SwiftUI
+import UserNotifications
 
 // Developer tab and its clock-override view-model. DEBUG builds only —
 // the whole file body is inside `#if DEBUG`, so a release build compiles
@@ -10,7 +11,10 @@ import SwiftUI
 /// DebugSettingsView, minus the "fake local notification" button —
 /// notifications are intentionally absent from the Mac app.
 struct MacDeveloperSettingsView: View {
+    @Environment(AppState.self) private var appState
     @State private var viewModel = MacDebugClockViewModel()
+    @State private var snapshot: PushDiagnostic?
+    @State private var refreshTimer: Timer?
 
     var body: some View {
         Form {
@@ -77,11 +81,68 @@ struct MacDeveloperSettingsView: View {
                     }
                 }
             }
+
+            // MARK: TigerSync status
+            //
+            // Raw `PushDiagnostic` for engineering use — the corresponding
+            // iOS page is `TigerSyncStatusView`. The user-facing TigerSync
+            // screen (inlined above in `MacAccountSettingsView`) keeps only
+            // device-registration status and the latest error.
+            Section("TigerSync status") {
+                if let s = snapshot {
+                    LabeledContent("Enabled") { Text(s.enabled ? "true" : "false") }
+                    LabeledContent("Started") { Text(s.isStarted ? "true" : "false") }
+                    LabeledContent("Live Activities enabled") { Text(s.liveActivitiesEnabled ? "true" : "false") }
+                    LabeledContent("Notification auth status") { Text(notificationStatusText(s.notificationAuthStatus)) }
+                    LabeledContent("PTS token length") { Text("\(s.registration.ptsTokenLength)") }
+                    LabeledContent("Device token length") { Text("\(s.registration.deviceTokenLength)") }
+                    LabeledContent("Device ID") {
+                        Text(s.uuid)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    LabeledContent("Server URL") {
+                        Text(s.resolvedServerURL.absoluteString)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                } else {
+                    Text("Loading…").foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { await viewModel.observeEffectiveNow() }
+        .task { await refreshSnapshot() }
+        .onAppear {
+            refreshTimer?.invalidate()
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+                Task { @MainActor in await refreshSnapshot() }
+            }
+        }
+        .onDisappear {
+            refreshTimer?.invalidate()
+            refreshTimer = nil
+        }
+    }
+
+    private func refreshSnapshot() async {
+        snapshot = await appState.pushCoordinator.currentSnapshot()
+    }
+
+    private func notificationStatusText(_ status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .notDetermined: return "Not determined"
+        case .denied: return "Denied"
+        case .authorized: return "Authorized"
+        case .provisional: return "Provisional"
+        case .ephemeral: return "Ephemeral"
+        @unknown default: return "Unknown"
+        }
     }
 }
 

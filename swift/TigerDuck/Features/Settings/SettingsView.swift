@@ -213,9 +213,6 @@ struct SettingsView: View {
                     NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                         LiveActivitySettingsView(store: appState.liveActivityPreferences)
                     }
-                    NavigationLink(String(localized: "settings_push_server_nav_label")) {
-                        PushServerSettingsView()
-                    }
                 }
             }
 
@@ -295,6 +292,9 @@ struct SettingsView: View {
                 #if os(iOS)
                 NavigationLink("Triggers") {
                     TriggersDebugView()
+                }
+                NavigationLink("TigerSync status") {
+                    TigerSyncStatusView()
                 }
                 #endif
                 // Bypass `.screenCaptureProtected(...)` system-wide for

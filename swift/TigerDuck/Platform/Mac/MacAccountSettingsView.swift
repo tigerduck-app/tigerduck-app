@@ -143,7 +143,7 @@ struct MacAccountSettingsView: View {
                 .disabled(!state.cloudSyncEnabled || appState.sessionManager.loadingState == .loading)
             }
 
-            if state.cloudSyncEnabled, let s = snapshot {
+            if let s = snapshot {
                 Section(String(localized: "push_server_status_section")) {
                     syncStatusRow(
                         label: String(localized: "push_server_status_device_registration"),
