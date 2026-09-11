@@ -566,6 +566,23 @@ nonisolated enum NotificationSettingsSync {
         written && current == sent
     }
 
+    /// Whether a device switch's change (`syncAssignmentReminders` /
+    /// `syncLiveActivity`) should trigger an extra `pushNotificationSettings()`
+    /// beyond the unconditional device-preferences PATCH
+    /// (`AppState.pushSyncPreferences()`, which fires on every change either
+    /// direction and only carries the switch itself). True only on the
+    /// off→on transition: turning the switch back on ungates the section it
+    /// guards in `push(...)` above, and nothing else pushes that section's
+    /// now-current local value to the server until this fires. The on→off
+    /// direction needs no push — the section simply goes back to being left
+    /// exactly as the server holds it, which needs no write. Task 4 review,
+    /// Minor 4 (promoted): before this, the just-ungated section stayed
+    /// stale server-side until some unrelated local edit happened to
+    /// trigger a push.
+    static func shouldPushOnDeviceSwitchChange(old: Bool, new: Bool) -> Bool {
+        new && !old
+    }
+
     // MARK: - Pull
 
     /// Fetches the current `notification` document. `nil` when sync is off

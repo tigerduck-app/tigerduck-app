@@ -86,6 +86,16 @@ struct MacAccountSettingsView: View {
                                 appState.checkPendingConflicts()
                             }
                             macSyncCourses = newValue
+                            // Spec §6's course-sync → course-colours
+                            // dependency (task-4 review, Important 1) —
+                            // same cascade as iOS's "Synced content" menu;
+                            // `AppState.courseColorsAfterCoursesChange`
+                            // (AppState+CourseColors.swift) is the shared
+                            // decision function both platforms call.
+                            macSyncCourseColors = AppState.courseColorsAfterCoursesChange(
+                                coursesNowOn: newValue,
+                                coloursCurrentlyOn: macSyncCourseColors
+                            )
                             appState.pushSyncPreferences()
                         }
                     ))

@@ -28,7 +28,7 @@ struct LiveActivitySettingsView: View {
                     HStack {
                         Text(String(localized: "live_activity_settings_assignment_warning"))
                         Spacer()
-                        Text(formatHours(store.assignmentLiveActivityLeadTime))
+                        Text(Self.formatHoursAndMinutes(store.assignmentLiveActivityLeadTime))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
@@ -42,7 +42,7 @@ struct LiveActivitySettingsView: View {
                     HStack {
                         Text(String(localized: "live_activity_status_class_preparing"))
                         Spacer()
-                        Text(formatHoursAndMinutes(store.classPreparingLeadTime))
+                        Text(Self.formatHoursAndMinutes(store.classPreparingLeadTime))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
@@ -79,12 +79,17 @@ struct LiveActivitySettingsView: View {
         .navigationTitle(String(localized: "live_activity_settings_nav_title"))
     }
 
-    private func formatHours(_ interval: TimeInterval) -> String {
-        let hours = Int(interval / 3600)
-        return String(format: String(localized: "live_activity_settings_hours_label"), hours)
-    }
-
-    private func formatHoursAndMinutes(_ interval: TimeInterval) -> String {
+    /// `static` and not `private` (task-4 review Important 2: the
+    /// assignment-lead-time row used to call the now-deleted `formatHours`,
+    /// which truncated to whole hours and silently mis-rendered 7 of the
+    /// slider's 15 half-hour positions). Static — not an instance method
+    /// reading `store` — and internal rather than private so
+    /// `LiveActivitySettingsViewTests` can assert on its output directly;
+    /// this codebase has no SwiftUI view-inspection facility, and
+    /// constructing a `LiveActivityPreferencesStore` just to reach a
+    /// formatter that never touches it would only add an unrelated
+    /// `Defaults` dependency to the test.
+    static func formatHoursAndMinutes(_ interval: TimeInterval) -> String {
         let totalMinutes = Int(interval / 60)
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60

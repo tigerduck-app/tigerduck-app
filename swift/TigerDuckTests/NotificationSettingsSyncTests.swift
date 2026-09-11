@@ -527,6 +527,30 @@ struct NotificationSettingsSyncTests {
         #expect(!NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: editedWhileInFlight))
     }
 
+    // MARK: - Device switch re-enable reconcile (Minor 4, promoted, fix round 1)
+
+    @Test("a device switch turning back on needs an extra push; turning it off does not")
+    func shouldPushOnDeviceSwitchChangeOnlyFiresOnTheOffToOnTransition() {
+        // The off→on transition: `push`'s per-section gating above just
+        // re-included this section, but the device-preferences PATCH
+        // (`AppState.pushSyncPreferences()`, called unconditionally on
+        // every change either direction — not exercised here) only carries
+        // the switch itself, never the section's content. Without this,
+        // the section stays stale server-side until some unrelated local
+        // edit happens to trigger a push — the exact hazard task-4-review's
+        // Minor 4 named.
+        #expect(NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: false, new: true))
+
+        // The on→off transition needs no extra push: the section goes back
+        // to being left exactly as the server holds it. Asserting this
+        // too — not just the on-transition above — is what stops an
+        // "always push regardless of direction" implementation from
+        // passing: that would look right on the on-transition case alone
+        // but reintroduce the unconditional-push shape this fix
+        // deliberately narrows away from.
+        #expect(!NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: true, new: false))
+    }
+
     @Test("pull sends no request and returns nil when cloud sync is off")
     func pullSendsNothingWhenSyncDisabled() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()

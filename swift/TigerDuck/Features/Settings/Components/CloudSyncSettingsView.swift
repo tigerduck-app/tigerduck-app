@@ -77,11 +77,14 @@ struct CloudSyncSettingsView: View {
                 }
             }
 
-            if syncEnabled {
-                Section {
-                    NavigationLink(String(localized: "sync_status_nav_label")) {
-                        syncStatusView
-                    }
+            // Unconditional per spec §6's tree (task-4 review, Important 4):
+            // registration status and the latest error are exactly what a
+            // user needs to see while investigating why sync isn't
+            // working, which is disproportionately likely to be a moment
+            // course sync is off.
+            Section {
+                NavigationLink(String(localized: "sync_status_nav_label")) {
+                    syncStatusView
                 }
             }
 

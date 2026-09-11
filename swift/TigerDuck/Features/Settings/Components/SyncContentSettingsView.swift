@@ -34,14 +34,32 @@ struct SyncContentSettingsView: View {
 
                 Toggle(String(localized: "sync_content_assignment_reminders"), isOn: $syncAssignmentReminders)
                     .disabled(!cloudSyncEnabled)
-                    .onChange(of: syncAssignmentReminders) { _, _ in
+                    .onChange(of: syncAssignmentReminders) { old, new in
                         appState.pushSyncPreferences()
+                        #if os(iOS)
+                        // On re-enable, the section this switch guards is
+                        // ungated again in `NotificationSettingsSync.push`,
+                        // but nothing else pushes its now-current local
+                        // value to the server until this fires — the
+                        // device-preferences PATCH above only carries the
+                        // switch itself, not the assignments/live_activity
+                        // section content (task-4 review, Minor 4,
+                        // promoted).
+                        if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
+                            Task { await appState.pushNotificationSettings() }
+                        }
+                        #endif
                     }
 
                 Toggle(String(localized: "sync_content_live_activity"), isOn: $syncLiveActivity)
                     .disabled(!cloudSyncEnabled)
-                    .onChange(of: syncLiveActivity) { _, _ in
+                    .onChange(of: syncLiveActivity) { old, new in
                         appState.pushSyncPreferences()
+                        #if os(iOS)
+                        if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
+                            Task { await appState.pushNotificationSettings() }
+                        }
+                        #endif
                     }
 
                 Toggle(String(localized: "sync_content_class_table_all"), isOn: $syncCourses)
@@ -50,6 +68,10 @@ struct SyncContentSettingsView: View {
                             appState.markCategoryReenabled("courses")
                             appState.checkPendingConflicts()
                         }
+                        syncCourseColors = AppState.courseColorsAfterCoursesChange(
+                            coursesNowOn: new,
+                            coloursCurrentlyOn: syncCourseColors
+                        )
                         appState.pushSyncPreferences()
                     }
 

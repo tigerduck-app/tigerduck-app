@@ -292,15 +292,19 @@ actor PushRegistrationService {
         syncAssignmentReminders: Bool,
         syncLiveActivity: Bool
     ) async {
-        _ = try? await apiClient.updateDevicePreferences(
-            deviceId: identity.uuid,
-            syncCourses: syncCourses,
-            syncCourseColors: syncCourseColors,
-            syncCourseNames: syncCourseNames,
-            syncAssignments: syncAssignments,
-            syncAssignmentReminders: syncAssignmentReminders,
-            syncLiveActivity: syncLiveActivity
-        )
+        do {
+            _ = try await apiClient.updateDevicePreferences(
+                deviceId: identity.uuid,
+                syncCourses: syncCourses,
+                syncCourseColors: syncCourseColors,
+                syncCourseNames: syncCourseNames,
+                syncAssignments: syncAssignments,
+                syncAssignmentReminders: syncAssignmentReminders,
+                syncLiveActivity: syncLiveActivity
+            )
+        } catch {
+            logger.error("[sync] preferences PATCH failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Snapshot of internal state for UI display. Safe to call from any isolation.
