@@ -138,6 +138,19 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.cloudSyncEnabled,
         default: true
     )
+    /// "This device has a reminder/Live Activity preference the
+    /// `notification` settings document has not acknowledged yet."
+    ///
+    /// Set when the preference changes, cleared only when a write actually
+    /// lands. `AppState.retryUnacknowledgedNotificationSettings()` re-sends
+    /// on the strength of it at the next full sync — the same
+    /// mark-before / clear-on-success shape as
+    /// `holidayOverridesAwaitingUpload`. Default `false`: a fresh install
+    /// has nothing outstanding.
+    static let notificationSettingsPushPending = Key<Bool>(
+        AppConstants.UserDefaultsKeys.notificationSettingsPushPending,
+        default: false
+    )
     /// Mirrors "an NTUST account exists" outside the Keychain.
     ///
     /// The Keychain answers nil for two unrelated reasons — the item is

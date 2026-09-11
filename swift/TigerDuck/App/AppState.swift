@@ -116,9 +116,18 @@ final class AppState {
             forName: AppConstants.liveActivityPreferencesDidChange,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] note in
             self?.scheduleLiveActivityRefresh()
             self?.requestPushScheduleSync()
+            // A remote-origin post carries values that just arrived from
+            // the `notification` settings document. The two refreshes above
+            // still have to run — this device's Live Activity and its
+            // server-side schedule have to catch up to what was pulled —
+            // but pushing would write the document straight back to itself.
+            let isRemote = note.userInfo?[
+                AppConstants.liveActivityPreferencesRemoteOriginKey
+            ] as? Bool == true
+            guard !isRemote else { return }
             self?.scheduleNotificationSettingsPush()
         }
 

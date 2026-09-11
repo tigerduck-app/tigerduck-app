@@ -35,6 +35,13 @@ extension AppState {
         // marker makes `applySyncedOverrides` sit out this cycle rather than
         // race it, and the next sync applies the settled state.
         retryUnacknowledgedHolidayOverrides()
+        #if os(iOS)
+        // Same shape, same reason: a reminder/Live Activity preference
+        // whose settings-document write never landed (dropped debounce,
+        // expired session, offline, 5xx) is re-sent here. No-ops unless
+        // something is actually outstanding.
+        retryUnacknowledgedNotificationSettings()
+        #endif
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)

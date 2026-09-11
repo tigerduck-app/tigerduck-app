@@ -27,7 +27,7 @@ final class LiveActivityPreferencesStore {
         didSet {
             persistOffsets()
             guard !isApplyingRemoteUpdate else { return }
-            notifyChange()
+            notifyChange(isRemoteOrigin: false)
         }
     }
     /// Master switch for assignment due reminders. When off, the scheduler is
@@ -37,57 +37,69 @@ final class LiveActivityPreferencesStore {
         didSet {
             Defaults[.isAssignmentReminderEnabled] = isAssignmentReminderEnabled
             guard !isApplyingRemoteUpdate else { return }
-            notifyChange()
+            notifyChange(isRemoteOrigin: false)
         }
     }
     var isLiveActivityEnabled: Bool {
         didSet {
             Defaults[.isLiveActivityEnabled] = isLiveActivityEnabled
-            notifyChange()
+            // Not one of the seven synced fields, so
+            // `applyFromNotificationSettingsDocument` never assigns it and
+            // it needs no remote-origin suppression.
+            notifyChange(isRemoteOrigin: false)
         }
     }
     var assignmentLiveActivityLeadTime: TimeInterval {
         didSet {
             Defaults[.assignmentLiveActivityLeadTime] = assignmentLiveActivityLeadTime
             guard !isApplyingRemoteUpdate else { return }
-            notifyChange()
+            notifyChange(isRemoteOrigin: false)
         }
     }
     var classPreparingLeadTime: TimeInterval {
         didSet {
             Defaults[.classPreparingLeadTime] = classPreparingLeadTime
             guard !isApplyingRemoteUpdate else { return }
-            notifyChange()
+            notifyChange(isRemoteOrigin: false)
         }
     }
     var showAssignmentScenario: Bool {
         didSet {
             Defaults[.showAssignmentScenario] = showAssignmentScenario
             guard !isApplyingRemoteUpdate else { return }
-            notifyChange()
+            notifyChange(isRemoteOrigin: false)
         }
     }
     var showClassPreparingScenario: Bool {
         didSet {
             Defaults[.showClassPreparingScenario] = showClassPreparingScenario
             guard !isApplyingRemoteUpdate else { return }
-            notifyChange()
+            notifyChange(isRemoteOrigin: false)
         }
     }
     var showInClassScenario: Bool {
         didSet {
             Defaults[.showInClassScenario] = showInClassScenario
             guard !isApplyingRemoteUpdate else { return }
-            notifyChange()
+            notifyChange(isRemoteOrigin: false)
         }
     }
 
     /// Set while ``applyFromNotificationSettingsDocument`` is assigning
-    /// properties on behalf of a pull from the backend. Suppresses
-    /// ``notifyChange()`` on the affected properties' `didSet` so applying
-    /// a value that just arrived FROM the server does not immediately
-    /// re-queue it as an outgoing push of the same data — see
-    /// `AppState+NotificationSettings.swift`.
+    /// properties on behalf of a pull from the backend.
+    ///
+    /// This coalesces only: it holds back the per-property `didSet` posts —
+    /// up to seven for one pull — and the method posts a single
+    /// remote-origin notification at the end instead. It does **not**
+    /// silence the pull. `liveActivityPreferencesDidChange` drives three
+    /// separate things (`AppState.setupObservers`), and two of them —
+    /// refreshing this device's Live Activity and re-syncing its push
+    /// schedule — are exactly what has to happen when new preference values
+    /// arrive. Only the third, the outgoing settings push, must sit out, or
+    /// applying a pull would immediately queue a push of the data it just
+    /// came from; that one is skipped by reading
+    /// ``AppConstants/liveActivityPreferencesRemoteOriginKey`` off the
+    /// notification.
     private var isApplyingRemoteUpdate = false
 
     init() {
@@ -136,11 +148,16 @@ final class LiveActivityPreferencesStore {
     /// settings document's `assignments` and `live_activity` sections
     /// (`AppState.pullNotificationSettings()`). Persists exactly like a
     /// local edit — each property's normal `didSet` still runs and writes
-    /// through to `Defaults` — but does not post
-    /// `liveActivityPreferencesDidChange`: these values just arrived FROM
-    /// the server, so treating the pull as a fresh local edit would
-    /// immediately queue a redundant push of the same data straight back
-    /// to the document it came from.
+    /// through to `Defaults`.
+    ///
+    /// Posts `liveActivityPreferencesDidChange` **once**, flagged as
+    /// remote-origin, and only if a value actually moved. Once, rather than
+    /// once per assigned property, because seven posts would be seven Live
+    /// Activity refreshes and seven push-schedule syncs for one pull. Only
+    /// on a real change, because a pull that confirms what this device
+    /// already had is not news. Flagged, so the outgoing settings push sits
+    /// this one out while the other two observers still run — see
+    /// ``isApplyingRemoteUpdate``.
     ///
     /// Clamps the two lead times the same way `init()` does: a value from
     /// another platform (or a future server-side default) is not bound by
@@ -154,8 +171,12 @@ final class LiveActivityPreferencesStore {
         classPreparingLeadTime: TimeInterval,
         assignmentLiveActivityLeadTime: TimeInterval
     ) {
+        // The seven fields this method owns, exactly — reused rather than
+        // re-listed so the before/after comparison can never drift out of
+        // step with what is assigned below.
+        let before = NotificationSettingsSync.LocalPreferences(from: self)
+
         isApplyingRemoteUpdate = true
-        defer { isApplyingRemoteUpdate = false }
 
         self.isAssignmentReminderEnabled = isAssignmentReminderEnabled
         self.assignmentReminderOffsets = assignmentReminderOffsets
@@ -169,6 +190,15 @@ final class LiveActivityPreferencesStore {
 
         let resolvedAssignmentLead = assignmentLiveActivityLeadTime > 0 ? assignmentLiveActivityLeadTime : Self.defaultAssignmentLeadTime
         self.assignmentLiveActivityLeadTime = min(resolvedAssignmentLead, Self.maximumAssignmentLeadTime)
+
+        // Cleared before the post, never by a `defer`: an observer woken by
+        // it must not find the store still claiming to be mid-apply.
+        isApplyingRemoteUpdate = false
+
+        // Compared after the clamps, so a value the clamp brought back to
+        // where it already was does not read as a change.
+        guard NotificationSettingsSync.LocalPreferences(from: self) != before else { return }
+        notifyChange(isRemoteOrigin: true)
     }
 
     private func persistOffsets() {
@@ -183,10 +213,19 @@ final class LiveActivityPreferencesStore {
     /// Broadcasts that one or more preferences changed. AppState debounces
     /// the resulting refresh so rapid changes (e.g. dragging a slider) do
     /// not trigger many back-to-back Live Activity / notification reschedules.
-    private func notifyChange() {
+    ///
+    /// `isRemoteOrigin` marks a post whose values came from the
+    /// `notification` settings document rather than from the user. The
+    /// observer runs every side effect either way except the outgoing
+    /// settings push, which would otherwise bounce the pull straight back
+    /// as a push of the same data.
+    private func notifyChange(isRemoteOrigin: Bool) {
         NotificationCenter.default.post(
             name: AppConstants.liveActivityPreferencesDidChange,
-            object: nil
+            object: nil,
+            userInfo: isRemoteOrigin
+                ? [AppConstants.liveActivityPreferencesRemoteOriginKey: true]
+                : nil
         )
     }
 }
