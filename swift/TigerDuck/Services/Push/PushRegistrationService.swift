@@ -128,6 +128,15 @@ actor PushRegistrationService {
         self.deviceClass = deviceClass
     }
 
+    // MARK: - Locale
+
+    /// The language the app is rendering, not the device's region setting:
+    /// `preferredLocalizations` reflects what actually resolved against the
+    /// bundle, so the server's copy matches what the user sees on screen.
+    static var currentLocaleTag: String {
+        Bundle.main.preferredLocalizations.first ?? "en"
+    }
+
     // MARK: - Token intake
 
     func update(deviceToken: Data) async {
@@ -167,6 +176,7 @@ actor PushRegistrationService {
             device_class: deviceClass,
             app_version: appVersion,
             os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+            locale: Self.currentLocaleTag,
             push_token: nil,
             cloud_sync_enabled: Defaults[.cloudSyncEnabled]
         )
@@ -419,6 +429,7 @@ actor PushRegistrationService {
                 device_class: deviceClass,
                 app_version: appVersion,
                 os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+                locale: Self.currentLocaleTag,
                 push_token: PushAPI.PushTokenIn(
                     provider: "apns",
                     token_kind: "push_to_start",
@@ -439,6 +450,7 @@ actor PushRegistrationService {
                     device_class: deviceClass,
                     app_version: appVersion,
                     os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+                    locale: Self.currentLocaleTag,
                     push_token: PushAPI.PushTokenIn(
                         provider: "apns",
                         token_kind: "standard",

@@ -18,6 +18,10 @@ enum PushAPI {
         let device_class: String?
         let app_version: String?
         let os_version: String?
+        /// BCP-47 tag for the language the app is actually displaying, so the
+        /// server can compose push copy in it. Sent unconditionally — it is a
+        /// device fact, not a preference.
+        let locale: String?
         let push_token: PushTokenIn?
         let cloud_sync_enabled: Bool?
     }
