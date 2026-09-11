@@ -47,10 +47,11 @@ extension AppState {
     ///
     /// Failures are logged rather than thrown: no caller awaits this. They
     /// are not, however, dropped — `Defaults[.notificationSettingsPushPending]`
-    /// stays set until a write actually lands, and
-    /// `retryUnacknowledgedNotificationSettings()` re-runs the push at the
-    /// next full sync. Same mark-before / clear-on-success shape as the
-    /// holiday-override queue (`AppState+PushServer.swift`).
+    /// stays set until a write actually lands **and** nothing has changed
+    /// locally since, and `retryUnacknowledgedNotificationSettings()`
+    /// re-runs the push at the next full sync. Same mark-before /
+    /// clear-on-settled shape as the holiday-override queue
+    /// (`AppState+PushServer.swift`).
     func pushNotificationSettings() async {
         guard Defaults[.cloudSyncEnabled] else { return }
         guard await authTokenManager.isLoggedIn else { return }
@@ -66,7 +67,19 @@ extension AppState {
                 client: client,
                 cloudSyncEnabled: Defaults[.cloudSyncEnabled]
             )
-            if written {
+            // Settled only if the store still matches what was just sent. A
+            // preference change that arrived while this request was in
+            // flight is already queued behind it
+            // (`enqueueNotificationSettingsPush`'s chain) and must stay
+            // marked pending until *that* push lands — clearing here would
+            // let a kill in the next 250 ms lose it. Mirrors
+            // `enqueueHolidayUpload`'s re-read-and-compare
+            // (`AppState+PushServer.swift`).
+            if NotificationSettingsSync.canClearPendingMarker(
+                written: written,
+                sent: local,
+                current: .init(from: liveActivityPreferences)
+            ) {
                 Defaults[.notificationSettingsPushPending] = false
             }
         } catch {
@@ -145,10 +158,12 @@ extension AppState {
     /// in-flight PUT, and each link reads `liveActivityPreferences` at the
     /// moment it runs, so the value that gets sent is the current one
     /// rather than the one that was current when it was queued.
+    ///
+    /// Delegates the actual chaining/generation-guard to
+    /// `NotificationSettingsPushQueue.enqueue(_:)` so that logic can be
+    /// driven directly from a test without constructing an `AppState`.
     func enqueueNotificationSettingsPush() {
-        let previous = NotificationSettingsPushQueue.tail
-        NotificationSettingsPushQueue.tail = Task { @MainActor [weak self] in
-            _ = await previous?.value
+        NotificationSettingsPushQueue.enqueue { [weak self] in
             await self?.pushNotificationSettings()
         }
     }
@@ -168,24 +183,80 @@ extension AppState {
         guard Defaults[.notificationSettingsPushPending] else { return }
         enqueueNotificationSettingsPush()
     }
+
+    /// Abandon any queued or in-flight notification-settings push and clear
+    /// the pending marker. Called at logout, right alongside
+    /// `cancelHolidayUploads()` (`AppState+Account.swift`): the queue and
+    /// the marker hold the departing account's preferences, and the session
+    /// they would travel on now belongs to whoever signs in next.
+    func cancelNotificationSettingsPushes() {
+        NotificationSettingsPushQueue.cancelAll()
+        Defaults[.notificationSettingsPushPending] = false
+    }
     #endif // os(iOS)
 }
 
 /// Holds the debounce timer and the serialized push chain for
-/// `scheduleNotificationSettingsPush()`.
+/// `scheduleNotificationSettingsPush()`, plus the generation guard that
+/// keeps both from outliving a logout.
 ///
 /// Stored properties on `AppState` would be the obvious home, but this is
 /// an extension and Swift does not allow them there — same constraint
 /// `HolidayUploadQueue` documents in `AppState+PushServer.swift`. Static is
 /// fine regardless: there is a single `AppState` per process.
+///
+/// Unlike `HolidayUploadQueue`, not `private`: `enqueue(_:)` and
+/// `cancelAll()` take a plain closure and touch nothing `AppState`-shaped,
+/// so `NotificationSettingsPushQueueTests` can drive the generation guard
+/// — the actual cross-account hazard — directly. Nothing in this test
+/// target constructs a full `AppState` (see `NotificationSettingsSync`'s
+/// own doc comment above).
 @MainActor
-private enum NotificationSettingsPushQueue {
+enum NotificationSettingsPushQueue {
     /// The sleeping debounce task. Cancelled and replaced by each new
     /// change; never holds a network call.
     static var pendingDebounce: Task<Void, Never>?
     /// The most recently queued push. Each new push awaits this one before
-    /// starting, so pushes never overlap. Never cancelled.
+    /// starting, so pushes never overlap. Never cancelled except by
+    /// `cancelAll()`.
     static var tail: Task<Void, Never>?
+    /// Bumped by `cancelAll()`. A push queued before the bump bails instead
+    /// of sending the departing account's preferences over whoever signs in
+    /// next. Mirrors `HolidayUploadQueue.generation`
+    /// (`AppState+PushServer.swift`).
+    static var generation = 0
+
+    /// Chains `work` behind whatever push is already queued, and only runs
+    /// it if `cancelAll()` has not bumped the generation since it was
+    /// queued. Mirrors `enqueueHolidayUpload`'s capture-and-compare
+    /// (`AppState+PushServer.swift`).
+    @discardableResult
+    static func enqueue(_ work: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let previous = tail
+        let queuedGeneration = generation
+        let task = Task { @MainActor in
+            _ = await previous?.value
+            // A logout between queueing and running belongs to the
+            // departing account; running now would send its preferences
+            // over whoever signed in since.
+            guard queuedGeneration == generation else { return }
+            await work()
+        }
+        tail = task
+        return task
+    }
+
+    /// Abandons the sleeping debounce (if any) and the queued/in-flight
+    /// push chain, and bumps the generation so a link already past this
+    /// point but not yet past its own guard still bails. Called from
+    /// `AppState.cancelNotificationSettingsPushes()`.
+    static func cancelAll() {
+        generation += 1
+        pendingDebounce?.cancel()
+        pendingDebounce = nil
+        tail?.cancel()
+        tail = nil
+    }
 }
 
 // MARK: - Testable sync logic
@@ -443,6 +514,27 @@ nonisolated enum NotificationSettingsSync {
         (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 
+    /// Whether `pushNotificationSettings()` may clear
+    /// `Defaults[.notificationSettingsPushPending]` after this push.
+    ///
+    /// Only when the write actually landed (`written`) **and** the store
+    /// still matches what was sent (`current == sent`). A preference edit
+    /// that arrived while the request was in flight is already queued
+    /// behind it (`enqueueNotificationSettingsPush`'s chain) and must stay
+    /// marked pending until *that* push lands — clearing on any success
+    /// would let a kill in the next 250 ms lose the newer edit with the
+    /// marker already `false`. Mirrors `enqueueHolidayUpload`'s
+    /// re-read-and-compare (`AppState+PushServer.swift`), which only
+    /// acknowledges a holiday toggle if the server now holds what the user
+    /// still wants.
+    static func canClearPendingMarker(
+        written: Bool,
+        sent: LocalPreferences,
+        current: LocalPreferences
+    ) -> Bool {
+        written && current == sent
+    }
+
     // MARK: - Pull
 
     /// Fetches the current `notification` document. `nil` when sync is off
@@ -485,7 +577,16 @@ nonisolated enum NotificationSettingsSync {
             return Set(documentMinutes.compactMap(offset(forMinutes:)))
         }
         guard let documentHours else { return currentLocal }
-        let fromDocument = Set(documentHours.compactMap { offset(forMinutes: $0 * 60) })
+        let fromDocument = Set(documentHours.compactMap { hours -> AssignmentReminderOffset? in
+            // `hours` comes straight off the server's document, which the
+            // route does not validate (`SettingsPut.document: dict`). A
+            // value large enough that `hours * 60` overflows `Int` used to
+            // be an arithmetic trap — a crash, not a decode error. It now
+            // just fails to match any case, the same degradation an
+            // out-of-range value already gets below.
+            let (minutes, overflowed) = hours.multipliedReportingOverflow(by: 60)
+            return overflowed ? nil : offset(forMinutes: minutes)
+        })
         let localSubHour = currentLocal.filter { $0.timeInterval < 3600 }
         return fromDocument.union(localSubHour)
     }

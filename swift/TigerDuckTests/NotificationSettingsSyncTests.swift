@@ -403,6 +403,29 @@ struct NotificationSettingsSyncTests {
         #expect(written)
     }
 
+    // MARK: - Pending marker (Important 1 / Minor 2, fix round 2)
+
+    @Test("the pending marker clears only when the write landed and nothing changed since")
+    func canClearPendingMarkerRequiresWriteAndNoInterveningEdit() {
+        let sent = Self.local()
+
+        // The ordinary case: it landed, and the store still says what was sent.
+        #expect(NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: sent))
+
+        // Didn't run / didn't land: must never read as settled, or the
+        // repair path (`retryUnacknowledgedNotificationSettings`) would
+        // drop the change forever.
+        #expect(!NotificationSettingsSync.canClearPendingMarker(written: false, sent: sent, current: sent))
+
+        // Landed, but a newer edit arrived while the request was in
+        // flight — the exact race Minor 2 names. That edit is already
+        // queued behind this push (`enqueueNotificationSettingsPush`'s
+        // chain); clearing here would let a kill in the next 250 ms lose
+        // it with the marker already `false`.
+        let editedWhileInFlight = Self.local(isAssignmentReminderEnabled: !sent.isAssignmentReminderEnabled)
+        #expect(!NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: editedWhileInFlight))
+    }
+
     @Test("pull sends no request and returns nil when cloud sync is off")
     func pullSendsNothingWhenSyncDisabled() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
@@ -584,6 +607,22 @@ struct NotificationSettingsSyncTests {
             currentLocal: [.hr48, .hr1, .min30]
         )
         #expect(resolved == [.hr16, .min30])
+    }
+
+    @Test("an hours value large enough to overflow on ×60 is skipped, not trapped (Minor 1, fix round 2)")
+    func resolveOffsetsToleratesOverflowingHours() {
+        // `Int.max` is straight off a hostile/corrupt document — the route
+        // does not validate `reminder_offsets_hours`. Pre-fix, `$0 * 60`
+        // was a Swift arithmetic trap (a crash) for any value this large;
+        // it must now just fail to match a case, same as any other
+        // unrecognised value, while `24` still resolves normally and the
+        // local sub-hour pick still survives (the unrelated C1 rule).
+        let resolved = NotificationSettingsSync.resolveOffsets(
+            documentMinutes: nil,
+            documentHours: [Int.max, 24],
+            currentLocal: [.min30]
+        )
+        #expect(resolved == [.hr24, .min30])
     }
 
     @Test("a document with no offset fields at all changes nothing")

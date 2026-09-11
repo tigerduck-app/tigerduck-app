@@ -116,6 +116,12 @@ extension AppState {
         // the departing user's toggle over the next account's session.
         cancelHolidayUploads()
         AcademicCalendarStore.shared.forgetHolidayOverrides()
+        // Same hazard, same fix, for the notification-settings push queue:
+        // a queued write or a pending marker set by the departing account
+        // must not land on — or be inherited by — whoever signs in next.
+        #if os(iOS)
+        cancelNotificationSettingsPushes()
+        #endif
         Task { @MainActor in
             await cloudSyncCoordinator.disable()
             await pushCoordinator.disable()
