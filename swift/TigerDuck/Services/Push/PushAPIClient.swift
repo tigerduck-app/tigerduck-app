@@ -93,6 +93,8 @@ final class PushAPIClient: Sendable {
         syncCourseColors: Bool? = nil,
         syncCourseNames: Bool? = nil,
         syncAssignments: Bool? = nil,
+        syncAssignmentReminders: Bool? = nil,
+        syncLiveActivity: Bool? = nil,
         cloudSyncEnabled: Bool? = nil
     ) async throws -> PushAPI.DevicePreferencesResponse {
         let body = PushAPI.DevicePreferencesRequest(
@@ -101,6 +103,8 @@ final class PushAPIClient: Sendable {
             syncCourseColors: syncCourseColors,
             syncCourseNames: syncCourseNames,
             syncAssignments: syncAssignments,
+            syncAssignmentReminders: syncAssignmentReminders,
+            syncLiveActivity: syncLiveActivity,
             cloudSyncEnabled: cloudSyncEnabled
         )
         let safeDevice = Self.percentEncoded(deviceId)

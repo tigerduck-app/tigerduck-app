@@ -213,7 +213,9 @@ extension AppState {
                 syncCourses: Defaults[.syncCourses],
                 syncCourseColors: Defaults[.syncCourseColors],
                 syncCourseNames: Defaults[.syncCourseNames],
-                syncAssignments: Defaults[.syncAssignments]
+                syncAssignments: Defaults[.syncAssignments],
+                syncAssignmentReminders: Defaults[.syncAssignmentReminders],
+                syncLiveActivity: Defaults[.syncLiveActivity]
             )
         }
     }

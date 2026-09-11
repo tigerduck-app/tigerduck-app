@@ -32,10 +32,11 @@ extension AppState {
     // MARK: - Public entry points
 
     /// Pushes this device's `assignments` + `live_activity` preferences to
-    /// the backend. Gated on `cloudSyncEnabled` only — the per-category
-    /// device switches (`syncAssignmentReminders` / `syncLiveActivity`)
-    /// don't exist yet; a later task adds them and the per-section gating
-    /// that goes with them.
+    /// the backend. Gated on `cloudSyncEnabled`, and per-section on the
+    /// device switches `syncAssignmentReminders` / `syncLiveActivity`: a
+    /// section whose switch is off is left exactly as the server currently
+    /// holds it rather than overwritten with the local value, and if both
+    /// are off nothing is sent at all (see `NotificationSettingsSync.push`).
     ///
     /// Two preconditions decided up front rather than read off a failure,
     /// matching `syncOverridesFromBackend` (`AppState+BackendSync.swift`):
@@ -65,7 +66,9 @@ extension AppState {
             let written = try await NotificationSettingsSync.push(
                 local: local,
                 client: client,
-                cloudSyncEnabled: Defaults[.cloudSyncEnabled]
+                cloudSyncEnabled: Defaults[.cloudSyncEnabled],
+                syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
+                syncLiveActivityEnabled: Defaults[.syncLiveActivity]
             )
             // Settled only if the store still matches what was just sent. A
             // preference change that arrived while this request was in
@@ -394,12 +397,23 @@ nonisolated enum NotificationSettingsSync {
         }
 
         /// The keys this app owns, as JSON objects ready to splice over
-        /// whatever the server currently holds.
-        func documentUpdates() throws -> [String: Any] {
-            [
-                "assignments": try NotificationSettingsSync.jsonObject(assignmentsSection),
-                "live_activity": try NotificationSettingsSync.jsonObject(liveActivitySection),
-            ]
+        /// whatever the server currently holds. Each section is included
+        /// only when its device switch is on; a section left out here is
+        /// left exactly as the server currently holds it by
+        /// `merging(_:into:)` rather than overwritten with a local value
+        /// the device is not supposed to be syncing.
+        func documentUpdates(
+            includeAssignments: Bool = true,
+            includeLiveActivity: Bool = true
+        ) throws -> [String: Any] {
+            var updates: [String: Any] = [:]
+            if includeAssignments {
+                updates["assignments"] = try NotificationSettingsSync.jsonObject(assignmentsSection)
+            }
+            if includeLiveActivity {
+                updates["live_activity"] = try NotificationSettingsSync.jsonObject(liveActivitySection)
+            }
+            return updates
         }
     }
 
@@ -454,10 +468,18 @@ nonisolated enum NotificationSettingsSync {
     /// ``merging(_:into:)``). On a 409, adopts the server's document and
     /// its revision, then retries exactly once — never loops.
     ///
+    /// `syncAssignmentRemindersEnabled` / `syncLiveActivityEnabled` gate
+    /// their sections independently: a section whose switch is off is
+    /// omitted from `updates`, so `merging(_:into:)` leaves the server's
+    /// current value for it untouched rather than overwriting it with a
+    /// local value the device is not supposed to be syncing. When both are
+    /// off there is nothing to write, so this returns `false` without
+    /// reading or writing anything — same as `cloudSyncEnabled == false`.
+    ///
     /// Returns `true` only when a write actually landed on the server;
-    /// `false` when cloud sync is off and nothing was attempted. The caller
-    /// uses that to decide whether the pending marker can be cleared — a
-    /// "didn't run" must not read as "succeeded".
+    /// `false` when nothing was attempted (cloud sync off, or both section
+    /// switches off). The caller uses that to decide whether the pending
+    /// marker can be cleared — a "didn't run" must not read as "succeeded".
     ///
     /// Deliberately tolerant of whatever the server currently holds: a
     /// document that is missing sections, or is not even a JSON object, is
@@ -469,9 +491,15 @@ nonisolated enum NotificationSettingsSync {
     static func push(
         local: LocalPreferences,
         client: SettingsDocumentClient,
-        cloudSyncEnabled: Bool
+        cloudSyncEnabled: Bool,
+        syncAssignmentRemindersEnabled: Bool = true,
+        syncLiveActivityEnabled: Bool = true
     ) async throws -> Bool {
         guard cloudSyncEnabled else { return false }
+        // Neither section may sync — there is nothing to read or write.
+        // Mirrors the guard above: "didn't run" must report `false`, never
+        // `true`.
+        guard syncAssignmentRemindersEnabled || syncLiveActivityEnabled else { return false }
 
         var existing: [String: Any] = [:]
         var baseRevision: Int?
@@ -481,7 +509,10 @@ nonisolated enum NotificationSettingsSync {
             baseRevision = revision
         }
 
-        let updates = try local.documentUpdates()
+        let updates = try local.documentUpdates(
+            includeAssignments: syncAssignmentRemindersEnabled,
+            includeLiveActivity: syncLiveActivityEnabled
+        )
 
         var attempt = 0
         while true {

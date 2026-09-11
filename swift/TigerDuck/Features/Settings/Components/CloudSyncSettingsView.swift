@@ -1,9 +1,10 @@
 import Defaults
 import SwiftUI
-#if os(iOS)
-import UIKit
-#endif
 
+/// TigerSync settings (spec §6): essential-info notice, the course-sync
+/// toggle with its "Synced content" drill-down, the server-push opt-out,
+/// and a trimmed status page. See `SyncContentSettingsView` for the
+/// six-toggle drill-down this screen links to.
 struct CloudSyncSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.cloudSyncEnabled) private var syncEnabled
@@ -11,20 +12,30 @@ struct CloudSyncSettingsView: View {
     @Default(.syncCourseColors) private var syncCourseColors
     @Default(.syncCourseNames) private var syncCourseNames
     @Default(.syncAssignments) private var syncAssignments
-    @Default(.pushLastRegistrationAt) private var lastRegistrationAt
-    @Default(.pushLastSyncAt) private var lastSyncAt
+    @Default(.serverPushUserOptOut) private var serverPushOptOut
     @State private var snapshot: PushDiagnostic?
-
-    #if os(iOS)
-    @State private var copyStatus: CopyResult?
-    @State private var copyResetTask: Task<Void, Never>?
-    private enum CopyResult { case copied, blocked }
-    #endif
+    /// Tracks whether the server-push opt-out PATCH is in flight or rolled
+    /// back. Mirrors `PushServerSettingsView.serverPushOptOutFailed` — this
+    /// toggle is now shown on both screens (spec §6 moves it here; nothing
+    /// asked for it to be removed from the original push-server screen),
+    /// the same way both screens already duplicate device-registration
+    /// status.
+    @State private var serverPushOptOutFailed: Bool = false
+    /// In-flight server-push opt-out PATCH, held so a rapid second tap can
+    /// cancel the prior request before starting a new one.
+    @State private var serverPushOptOutTask: Task<Void, Never>?
 
     var body: some View {
         Form {
             Section {
-                Toggle(String(localized: "cloud_sync_title"), isOn: $syncEnabled)
+                Toggle(String(localized: "sync_essential_toggle"), isOn: .constant(true))
+                    .disabled(true)
+            } footer: {
+                Text(String(localized: "sync_essential_footer"))
+            }
+
+            Section {
+                Toggle(String(localized: "sync_courses_toggle"), isOn: $syncEnabled)
                     .onChange(of: syncEnabled) { old, newValue in
                         if newValue && !old {
                             if syncCourses { appState.markCategoryReenabled("courses") }
@@ -36,96 +47,41 @@ struct CloudSyncSettingsView: View {
                         appState.cloudSyncEnabled = newValue
                     }
             } footer: {
-                #if os(iOS)
-                Text(String(localized: "settings_sync_brief_description_ios"))
-                #else
-                Text(String(localized: "settings_sync_brief_description"))
-                #endif
-            }
-
-            if syncEnabled {
-                Section("Sync options") {
-                    Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
-                        .onChange(of: syncAssignments) { old, new in
-                            if new && !old {
-                                appState.markCategoryReenabled("assignments")
-                                appState.checkPendingConflicts()
-                            }
-                            appState.pushSyncPreferences()
-                        }
-
-                    NavigationLink {
-                        classTableSyncOptions
-                    } label: {
-                        HStack {
-                            Text(String(localized: "cloud_sync_class_table"))
-                            Spacer()
-                            let count = [syncCourses, syncCourseColors, syncCourseNames].filter { $0 }.count
-                            Text("\(count)/3")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-            } else {
-                Section {
-                    Label(
-                        String(localized: "settings_sync_disabled_note"),
-                        systemImage: "info.circle"
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                }
-            }
-
-            if syncEnabled {
-                if let err = snapshot?.registration.lastError {
-                    Section(String(localized: "push_server_latest_error")) {
-                        Text(err)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-                    }
-                }
-
-                if let s = snapshot {
-                    Section(String(localized: "push_server_status_section")) {
-                        statusRow(label: String(localized: "push_server_status_device_registration"),
-                                  ok: s.registration.ptsTokenLength > 0,
-                                  okText: String(localized: "push_server_status_done"),
-                                  badText: String(localized: "push_server_status_waiting_token"))
-                        LabeledContent(String(localized: "push_server_last_registration")) {
-                            if let at = lastRegistrationAt {
-                                Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
-                            } else {
-                                Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
-                            }
-                        }
-                        LabeledContent(String(localized: "push_server_last_sync")) {
-                            if let at = lastSyncAt {
-                                Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
-                            } else {
-                                Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
-                            }
-                        }
-                        Button {
-                            appState.requestPushScheduleSync()
-                        } label: {
-                            Label(String(localized: "cloud_sync_sync_now"), systemImage: "arrow.triangle.2.circlepath")
-                        }
-                    }
-
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "sync_courses_footer"))
                     #if os(iOS)
-                    Section {
-                        idRow(label: "Device ID", value: s.uuid)
-                    } header: {
-                        Text(String(localized: "push_server_ids_section"))
-                    } footer: {
-                        if let footer = copyFooter {
-                            Text(footer.text).foregroundStyle(footer.color)
-                        }
-                    }
+                    Text(String(localized: "sync_courses_footer_platform_note"))
                     #endif
+                }
+            }
+
+            Section {
+                NavigationLink(String(localized: "sync_content_nav_label")) {
+                    SyncContentSettingsView()
+                }
+            }
+
+            Section {
+                Toggle(String(localized: "settings_server_push_label"), isOn: serverPushBinding)
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "settings_server_push_footer"))
+                    if serverPushOptOutFailed {
+                        // Surfaces the rollback so the user knows the tap
+                        // didn't take. The Toggle has already snapped back
+                        // to the server-agreeing value because the actor
+                        // only writes Defaults on success.
+                        Text(String(localized: "settings_server_push_update_failed"))
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+
+            if syncEnabled {
+                Section {
+                    NavigationLink(String(localized: "sync_status_nav_label")) {
+                        syncStatusView
+                    }
                 }
             }
 
@@ -202,136 +158,60 @@ struct CloudSyncSettingsView: View {
         }
     }
 
-    #if os(iOS)
+    /// TigerSync status destination (spec §6): device registration and, if
+    /// present, the latest error — the only two things the spec keeps from
+    /// the old inline status section. Sync Now, the last-registration/
+    /// last-sync timestamps, and the Device ID row are deliberately not
+    /// here: Device ID moves to Task 5's Developer page, and the spec's
+    /// "only keep these two" drops the rest.
     @ViewBuilder
-    private func idRow(label: String, value: String) -> some View {
-        Button {
-            copyToPasteboard(value: value)
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(label).foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: copyStatus == .copied ? "checkmark" : "doc.on.doc")
-                        .foregroundStyle(copyStatus == .copied ? .green : .secondary)
-                        .font(.caption)
+    private var syncStatusView: some View {
+        Form {
+            if let s = snapshot {
+                Section {
+                    statusRow(
+                        label: String(localized: "sync_status_device_registered"),
+                        ok: s.registration.ptsTokenLength > 0,
+                        okText: String(localized: "push_server_status_done"),
+                        badText: String(localized: "push_server_status_waiting_token")
+                    )
                 }
-                Text(value)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let err = s.registration.lastError {
+                    Section(String(localized: "push_server_latest_error")) {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                    }
+                }
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .navigationTitle(String(localized: "sync_status_nav_label"))
     }
 
-    private func copyToPasteboard(value: String) {
-        let pb = UIPasteboard.general
-        pb.string = value
-        copyStatus = (pb.string == value) ? .copied : .blocked
-        copyResetTask?.cancel()
-        copyResetTask = Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            if Task.isCancelled { return }
-            copyStatus = nil
-            copyResetTask = nil
-        }
-    }
-
-    private var copyFooter: (text: String, color: Color)? {
-        if copyStatus == .blocked {
-            return ("Copy blocked — pasteboard access is restricted on this device.", .orange)
-        }
-        if copyStatus == .copied {
-            return ("Copied.", .green)
-        }
-        return nil
-    }
-    #endif
-
-    private var classTableMasterBinding: Binding<Bool> {
+    /// User-facing opt-out for operator-issued "server" pushes, mirrored
+    /// from `PushServerSettingsView.serverPushBinding`. Bound as `isOn`
+    /// (ON = user wants them); inverted into `serverPushUserOptOut` for
+    /// storage. The setter awaits the actor, which PATCHes first and only
+    /// writes the local Default on success — a throw trips
+    /// `serverPushOptOutFailed` so the footer surfaces the failure and the
+    /// Toggle stays at the prior, server-agreeing value.
+    private var serverPushBinding: Binding<Bool> {
         Binding(
-            get: { syncCourses || syncCourseColors || syncCourseNames },
-            set: { newValue in
-                if newValue && !(syncCourses || syncCourseColors || syncCourseNames) {
-                    appState.markCategoryReenabled("courses")
-                    appState.markCategoryReenabled("course_colors")
-                    appState.markCategoryReenabled("course_names")
-                    appState.checkPendingConflicts()
+            get: { !serverPushOptOut },
+            set: { isOn in
+                serverPushOptOutTask?.cancel()
+                serverPushOptOutTask = Task {
+                    do {
+                        try await appState.updateServerPushOptOut(!isOn)
+                        guard !Task.isCancelled else { return }
+                        serverPushOptOutFailed = false
+                    } catch {
+                        guard !Task.isCancelled else { return }
+                        serverPushOptOutFailed = true
+                    }
                 }
-                syncCourses = newValue
-                syncCourseColors = newValue
-                syncCourseNames = newValue
-                appState.pushSyncPreferences()
             }
         )
-    }
-
-    private var classTableSyncOptions: some View {
-        Form {
-            Section {
-                Toggle(String(localized: "cloud_sync_class_table"), isOn: classTableMasterBinding)
-            } footer: {
-                Text(String(localized: "cloud_sync_class_table_footer"))
-            }
-
-            if syncCourses || syncCourseColors || syncCourseNames {
-                Section {
-                    Toggle(String(localized: "cloud_sync_courses"), isOn: Binding(
-                        get: { syncCourses },
-                        set: { newValue in
-                            if newValue && !syncCourses {
-                                appState.markCategoryReenabled("courses")
-                                appState.checkPendingConflicts()
-                            }
-                            syncCourses = newValue
-                            if !newValue {
-                                syncCourseColors = false
-                            }
-                            appState.pushSyncPreferences()
-                        }
-                    ))
-                    Toggle(String(localized: "cloud_sync_course_colours"), isOn: $syncCourseColors)
-                        .disabled(!syncCourses)
-                        .onChange(of: syncCourseColors) { old, new in
-                            if new && !old {
-                                appState.markCategoryReenabled("course_colors")
-                                appState.checkPendingConflicts()
-                            }
-                            appState.pushSyncPreferences()
-                        }
-                    Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $syncCourseNames)
-                        .onChange(of: syncCourseNames) { old, new in
-                            if new && !old {
-                                appState.markCategoryReenabled("course_names")
-                                appState.checkPendingConflicts()
-                            }
-                            appState.pushSyncPreferences()
-                        }
-                }
-            }
-        }
-        .navigationTitle(String(localized: "cloud_sync_class_table_sync"))
-        .alert(
-            String(localized: "sync_conflict_title"),
-            isPresented: Binding(
-                get: { appState.reenableConflict != nil },
-                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
-            )
-        ) {
-            Button(String(localized: "sync_conflict_use_server")) {
-                appState.resolveReenableConflict(keepLocal: false)
-            }
-            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
-                appState.resolveReenableConflict(keepLocal: true)
-            }
-        } message: {
-            Text(String(localized: "sync_conflict_reenable_message"))
-            + Text("\n")
-            + Text(appState.reenableConflict?.description ?? "")
-        }
     }
 }

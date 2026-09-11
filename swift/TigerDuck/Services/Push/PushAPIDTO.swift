@@ -78,12 +78,29 @@ enum PushAPI {
 
     // MARK: - Device preferences (unchanged shape)
 
-    struct DevicePreferencesRequest: Codable, Sendable {
+    /// `nonisolated`: this target defaults unannotated types to `@MainActor`
+    /// (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`), but a plain request
+    /// DTO has no actor affinity and must be encodable from any isolation
+    /// domain — including `PushAPIClient`, a plain `Sendable` class, and
+    /// non-`@MainActor` test functions. Without this the compiler-
+    /// synthesized `Encodable` conformance is main-actor-isolated, which is
+    /// only a warning in today's Swift 5 mode but a hard error in Swift 6
+    /// (same reasoning as `NotificationSettingsDocument`'s own `nonisolated`).
+    nonisolated struct DevicePreferencesRequest: Codable, Sendable {
         var serverPushEnabled: Bool?
         var syncCourses: Bool?
         var syncCourseColors: Bool?
         var syncCourseNames: Bool?
         var syncAssignments: Bool?
+        /// Device-level gate for whether the server should push
+        /// assignment-due reminders to this device, now that reminder
+        /// scheduling has moved server-side (v2.1.0). Distinct from the
+        /// notification-settings-document's `assignments.enabled`, which
+        /// is the user's reminder *content* preference (which offsets);
+        /// this is the per-device on/off switch for the feature itself.
+        var syncAssignmentReminders: Bool?
+        /// Same shape as `syncAssignmentReminders`, for Live Activity.
+        var syncLiveActivity: Bool?
         var cloudSyncEnabled: Bool?
 
         enum CodingKeys: String, CodingKey {
@@ -92,17 +109,27 @@ enum PushAPI {
             case syncCourseColors = "sync_course_colors"
             case syncCourseNames = "sync_course_names"
             case syncAssignments = "sync_assignments"
+            case syncAssignmentReminders = "sync_assignment_reminders"
+            case syncLiveActivity = "sync_live_activity"
             case cloudSyncEnabled = "cloud_sync_enabled"
         }
     }
 
-    struct DevicePreferencesResponse: Codable, Sendable {
+    /// `nonisolated` for the same reason as `DevicePreferencesRequest`
+    /// above: a plain response DTO must be decodable from any isolation
+    /// domain, including non-`@MainActor` test functions.
+    nonisolated struct DevicePreferencesResponse: Codable, Sendable {
         let deviceId: String
         let serverPushEnabled: Bool
         let syncCourses: Bool
         let syncCourseColors: Bool
         let syncCourseNames: Bool
         let syncAssignments: Bool
+        /// Non-null with a `server_default` on the backend (migration
+        /// `67b03e3`), so pre-existing rows read back `true` rather than
+        /// requiring a decode fallback here.
+        let syncAssignmentReminders: Bool
+        let syncLiveActivity: Bool
         let cloudSyncEnabled: Bool
 
         enum CodingKeys: String, CodingKey {
@@ -112,6 +139,8 @@ enum PushAPI {
             case syncCourseColors = "sync_course_colors"
             case syncCourseNames = "sync_course_names"
             case syncAssignments = "sync_assignments"
+            case syncAssignmentReminders = "sync_assignment_reminders"
+            case syncLiveActivity = "sync_live_activity"
             case cloudSyncEnabled = "cloud_sync_enabled"
         }
     }

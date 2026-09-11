@@ -35,7 +35,7 @@ struct LiveActivitySettingsView: View {
                     Slider(
                         value: $store.assignmentLiveActivityLeadTime,
                         in: 3600 ... LiveActivityPreferencesStore.maximumAssignmentLeadTime,
-                        step: 3600
+                        step: 1800
                     )
                 }
                 VStack(alignment: .leading, spacing: 4) {

@@ -288,14 +288,18 @@ actor PushRegistrationService {
         syncCourses: Bool,
         syncCourseColors: Bool,
         syncCourseNames: Bool,
-        syncAssignments: Bool
+        syncAssignments: Bool,
+        syncAssignmentReminders: Bool,
+        syncLiveActivity: Bool
     ) async {
         _ = try? await apiClient.updateDevicePreferences(
             deviceId: identity.uuid,
             syncCourses: syncCourses,
             syncCourseColors: syncCourseColors,
             syncCourseNames: syncCourseNames,
-            syncAssignments: syncAssignments
+            syncAssignments: syncAssignments,
+            syncAssignmentReminders: syncAssignmentReminders,
+            syncLiveActivity: syncLiveActivity
         )
     }
 

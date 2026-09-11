@@ -403,6 +403,107 @@ struct NotificationSettingsSyncTests {
         #expect(written)
     }
 
+    // MARK: - Step 6b: per-device-switch section gating (Task 4)
+    //
+    // `syncAssignmentRemindersEnabled` / `syncLiveActivityEnabled` gate
+    // `assignments` / `live_activity` independently: a section whose switch
+    // is off is left exactly as the server currently holds it (never
+    // overwritten with the local value), and when both are off nothing is
+    // sent at all — mirroring how `courses` is already preserved above.
+
+    @Test("assignments off leaves that section exactly as the server holds it, but live_activity still updates")
+    func assignmentsOffPreservesServerAssignmentsSection() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+
+        let serverAssignments = NotificationSettingsDocument.Assignments(enabled: false, reminderOffsetsHours: [1])
+        let existing = NotificationSettingsDocument(
+            assignments: serverAssignments,
+            liveActivity: .init(showInClass: false)
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(document: existing, revision: 1)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
+
+        let written = try await NotificationSettingsSync.push(
+            local: Self.local(isAssignmentReminderEnabled: true, showInClassScenario: true),
+            client: client,
+            cloudSyncEnabled: true,
+            syncAssignmentRemindersEnabled: false,
+            syncLiveActivityEnabled: true
+        )
+
+        #expect(written)
+        let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
+
+        // The server's own values survive untouched — not the local ones
+        // (`enabled: true`, offsets `[24, 2]` per `Self.local`'s defaults).
+        let sentAssignments = try #require(sent["assignments"] as? [String: Any])
+        #expect(sentAssignments["enabled"] as? Bool == false)
+        #expect(sentAssignments["reminder_offsets_hours"] as? [Int] == [1])
+
+        // live_activity's switch is on, so it does take the local value.
+        let sentLiveActivity = try #require(sent["live_activity"] as? [String: Any])
+        #expect(sentLiveActivity["show_in_class"] as? Bool == true)
+    }
+
+    @Test("live_activity off leaves that section exactly as the server holds it, but assignments still updates")
+    func liveActivityOffPreservesServerLiveActivitySection() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+
+        let serverLiveActivity = NotificationSettingsDocument.LiveActivity(showInClass: true, assignmentLeadSeconds: 999)
+        let existing = NotificationSettingsDocument(
+            assignments: .init(enabled: false, reminderOffsetsHours: []),
+            liveActivity: serverLiveActivity
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(document: existing, revision: 1)), for: url)
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
+
+        let written = try await NotificationSettingsSync.push(
+            local: Self.local(isAssignmentReminderEnabled: true),
+            client: client,
+            cloudSyncEnabled: true,
+            syncAssignmentRemindersEnabled: true,
+            syncLiveActivityEnabled: false
+        )
+
+        #expect(written)
+        let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
+
+        // The server's own values survive untouched.
+        let sentLiveActivity = try #require(sent["live_activity"] as? [String: Any])
+        #expect(sentLiveActivity["show_in_class"] as? Bool == true)
+        #expect(sentLiveActivity["assignment_lead_seconds"] as? Int == 999)
+
+        // assignments' switch is on, so it does take the local value
+        // (`enabled: true`), overwriting the server's `false`.
+        let sentAssignments = try #require(sent["assignments"] as? [String: Any])
+        #expect(sentAssignments["enabled"] as? Bool == true)
+    }
+
+    @Test("both device switches off sends no request whatsoever, and reports that it did not write")
+    func bothDeviceSwitchesOffSendsNothing() async throws {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+        // Deliberately nothing enqueued: if a request were sent anyway, the
+        // stub has nothing to serve and the call would throw instead of
+        // returning cleanly.
+
+        let written = try await NotificationSettingsSync.push(
+            local: Self.local(),
+            client: client,
+            cloudSyncEnabled: true,
+            syncAssignmentRemindersEnabled: false,
+            syncLiveActivityEnabled: false
+        )
+
+        #expect(written == false)
+        #expect(SettingsAPIStub.requests(for: url).isEmpty)
+    }
+
     // MARK: - Pending marker (Important 1 / Minor 2, fix round 2)
 
     @Test("the pending marker clears only when the write landed and nothing changed since")

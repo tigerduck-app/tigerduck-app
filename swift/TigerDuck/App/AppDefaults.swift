@@ -175,6 +175,17 @@ nonisolated extension Defaults.Keys {
     static let syncCourseColors = Key<Bool>("syncCourseColors", default: true)
     static let syncCourseNames = Key<Bool>("syncCourseNames", default: true)
     static let syncAssignments = Key<Bool>("syncAssignments", default: true)
+    /// Device-level: whether this device syncs its assignment-reminder
+    /// preference to the server and wants the server to push assignment-due
+    /// reminders to it, now that reminder scheduling has moved server-side.
+    /// Distinct from `isAssignmentReminderEnabled` (the local on/off switch
+    /// for the reminder feature itself, `LiveActivityPreferencesStore`) —
+    /// this is "let this device receive that", not "want reminders at all".
+    /// Default true: existing users keep receiving reminders after the
+    /// upgrade, matching the backend column's `server_default`.
+    static let syncAssignmentReminders = Key<Bool>("syncAssignmentReminders", default: true)
+    /// Same shape as `syncAssignmentReminders`, for Live Activity.
+    static let syncLiveActivity = Key<Bool>("syncLiveActivity", default: true)
     static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
 
     // MARK: Academic calendar

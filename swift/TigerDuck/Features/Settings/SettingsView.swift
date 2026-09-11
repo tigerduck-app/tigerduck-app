@@ -182,7 +182,7 @@ struct SettingsView: View {
                 if !cloudSyncEnabled {
                     Link(destination: AppURLs.learnMoreBackend) {
                         Label(
-                            String(localized: "settings_sync_off_notifications_warning"),
+                            String(localized: "settings_notifications_need_course_sync"),
                             systemImage: "icloud.slash"
                         )
                         .foregroundStyle(.orange)

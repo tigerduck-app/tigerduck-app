@@ -44,8 +44,15 @@ struct MacAccountSettingsView: View {
                 }
             }
 
+            Section {
+                Toggle(String(localized: "sync_essential_toggle"), isOn: .constant(true))
+                    .disabled(true)
+            } footer: {
+                Text(String(localized: "sync_essential_footer"))
+            }
+
             Section(String(localized: "cloud_sync_title")) {
-                Toggle(String(localized: "cloud_sync_title"), isOn: $state.cloudSyncEnabled)
+                Toggle(String(localized: "sync_courses_toggle"), isOn: $state.cloudSyncEnabled)
                     .onChange(of: state.cloudSyncEnabled) { old, newValue in
                         if newValue && !old {
                             if macSyncCourses { appState.markCategoryReenabled("courses") }
@@ -66,62 +73,46 @@ struct MacAccountSettingsView: View {
                             appState.pushSyncPreferences()
                         }
 
-                    Toggle(String(localized: "cloud_sync_class_table"), isOn: Binding(
-                        get: { macSyncCourses || macSyncCourseColors || macSyncCourseNames },
+                    // macOS does not receive notifications, so it omits the
+                    // assignment-due-reminders and Live Activity rows the
+                    // iOS "Synced content" menu has (spec §6, step 6) — the
+                    // class-table rows below are the same flat four the
+                    // iOS menu shows for what's left.
+                    Toggle(String(localized: "sync_content_class_table_all"), isOn: Binding(
+                        get: { macSyncCourses },
                         set: { newValue in
-                            if newValue && !(macSyncCourses || macSyncCourseColors || macSyncCourseNames) {
+                            if newValue && !macSyncCourses {
                                 appState.markCategoryReenabled("courses")
-                                appState.markCategoryReenabled("course_colors")
-                                appState.markCategoryReenabled("course_names")
                                 appState.checkPendingConflicts()
                             }
                             macSyncCourses = newValue
-                            macSyncCourseColors = newValue
-                            macSyncCourseNames = newValue
                             appState.pushSyncPreferences()
                         }
                     ))
-
-                    if macSyncCourses || macSyncCourseColors || macSyncCourseNames {
-                        Toggle(String(localized: "cloud_sync_courses"), isOn: Binding(
-                            get: { macSyncCourses },
-                            set: { newValue in
-                                if newValue && !macSyncCourses {
-                                    appState.markCategoryReenabled("courses")
-                                    appState.checkPendingConflicts()
-                                }
-                                macSyncCourses = newValue
-                                if !newValue {
-                                    macSyncCourseColors = false
-                                }
-                                appState.pushSyncPreferences()
+                    Toggle(String(localized: "sync_content_class_table_colors"), isOn: $macSyncCourseColors)
+                        .disabled(!macSyncCourses)
+                        .onChange(of: macSyncCourseColors) { old, new in
+                            if new && !old {
+                                appState.markCategoryReenabled("course_colors")
+                                appState.checkPendingConflicts()
                             }
-                        ))
-                            .padding(.leading, 20)
-                        Toggle(String(localized: "cloud_sync_course_colours"), isOn: $macSyncCourseColors)
-                            .padding(.leading, 20)
-                            .disabled(!macSyncCourses)
-                            .onChange(of: macSyncCourseColors) { old, new in
-                                if new && !old {
-                                    appState.markCategoryReenabled("course_colors")
-                                    appState.checkPendingConflicts()
-                                }
-                                appState.pushSyncPreferences()
+                            appState.pushSyncPreferences()
+                        }
+                    Toggle(String(localized: "sync_content_class_table_names"), isOn: $macSyncCourseNames)
+                        .onChange(of: macSyncCourseNames) { old, new in
+                            if new && !old {
+                                appState.markCategoryReenabled("course_names")
+                                appState.checkPendingConflicts()
                             }
-                        Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $macSyncCourseNames)
-                            .padding(.leading, 20)
-                            .onChange(of: macSyncCourseNames) { old, new in
-                                if new && !old {
-                                    appState.markCategoryReenabled("course_names")
-                                    appState.checkPendingConflicts()
-                                }
-                                appState.pushSyncPreferences()
-                            }
-                    }
+                            appState.pushSyncPreferences()
+                        }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "settings_sync_brief_description"))
+                    // No platform note here — `sync_courses_footer_platform_note`
+                    // is about the iOS-only Live Activity / reminder
+                    // fallout of turning this off, and macOS has neither.
+                    Text(String(localized: "sync_courses_footer"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Link(destination: AppURLs.learnMoreBackend) {
