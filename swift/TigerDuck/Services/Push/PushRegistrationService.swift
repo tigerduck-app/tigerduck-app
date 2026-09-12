@@ -181,7 +181,8 @@ actor PushRegistrationService {
             locale: Self.currentLocaleTag,
             push_token: nil,
             cloud_sync_enabled: Defaults[.cloudSyncEnabled],
-            bulletin_push_enabled: Defaults[.bulletinPushEnabled]
+            bulletin_push_enabled: Defaults[.bulletinPushEnabled],
+            server_push_enabled: !Defaults[.serverPushUserOptOut]
         )
         do {
             let response = try await apiClient.registerDevice(request)
@@ -516,7 +517,8 @@ actor PushRegistrationService {
                     locale: Self.currentLocaleTag,
                     push_token: token,
                     cloud_sync_enabled: cloudSync,
-                    bulletin_push_enabled: Defaults[.bulletinPushEnabled]
+                    bulletin_push_enabled: Defaults[.bulletinPushEnabled],
+                    server_push_enabled: !Defaults[.serverPushUserOptOut]
                 )
                 let response = try await apiClient.registerDevice(request)
                 logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .public)")

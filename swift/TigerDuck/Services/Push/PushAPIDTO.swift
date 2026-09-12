@@ -28,6 +28,11 @@ enum PushAPI {
         /// page's toggle changes, so a migrated value or a PATCH the
         /// server missed self-heals the moment the device next registers.
         let bulletin_push_enabled: Bool?
+        /// Self-heals the operator-push opt-out the same way, alongside
+        /// it. Today only the anonymous announce (`AnonymousDeviceRequest`)
+        /// carries the equivalent value; the signed-in row otherwise only
+        /// changes when the TigerSync toggle's own PATCH succeeds.
+        let server_push_enabled: Bool?
     }
 
     struct PushTokenIn: Encodable, Sendable {

@@ -32,14 +32,29 @@ struct BulletinPushOptOutMigrationTests {
 
     // MARK: - Tests
 
-    @Test("a 2.0.x false reading re-arms the push stack and marks bulletins off")
+    @Test("a 2.0.x false reading re-arms the push stack, marks bulletins off, and opts out of operator pushes")
     func falseReadingReArmsPushAndDisablesBulletins() {
         Defaults[.pushServerEnabled] = false
+        Defaults[.serverPushUserOptOut] = false
 
         BulletinPushOptOutMigration.runIfNeeded()
 
         #expect(Defaults[.pushServerEnabled] == true)
         #expect(Defaults[.bulletinPushEnabled] == false)
+        #expect(Defaults[.serverPushUserOptOut] == true)
+    }
+
+    @Test("a false reading never flips an already-true serverPushUserOptOut back to false")
+    func falseReadingNeverUndoesAnExistingOperatorOptOut() {
+        // A user who separately opted out of operator pushes on the
+        // TigerSync page before upgrading must stay opted out — this
+        // migration only ever writes `true` to `serverPushUserOptOut`.
+        Defaults[.pushServerEnabled] = false
+        Defaults[.serverPushUserOptOut] = true
+
+        BulletinPushOptOutMigration.runIfNeeded()
+
+        #expect(Defaults[.serverPushUserOptOut] == true)
     }
 
     @Test("a true reading touches nothing")

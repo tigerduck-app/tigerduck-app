@@ -25,5 +25,15 @@ enum BulletinPushOptOutMigration {
         guard Defaults[.pushServerEnabled] == false else { return }
         Defaults[.bulletinPushEnabled] = false
         Defaults[.pushServerEnabled] = true
+        // Conservative reading of the same ambiguity: a 2.0.x `false` might
+        // have meant "all server push off", not just bulletins, and
+        // re-enabling operator pushes (接收額外伺服器推播) for someone who
+        // deliberately turned every server push off is a consent problem —
+        // unlike turning them back off for someone who only meant
+        // bulletins, which costs one visible tap on the TigerSync page.
+        // Only ever set to `true` here, never `false`: an earlier explicit
+        // choice on this same toggle must survive regardless of what this
+        // migration decides about `pushServerEnabled`.
+        Defaults[.serverPushUserOptOut] = true
     }
 }
