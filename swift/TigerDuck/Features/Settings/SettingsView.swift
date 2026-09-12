@@ -222,6 +222,13 @@ struct SettingsView: View {
                     // screen has nothing to take effect either.
                     .disabled(!cloudSyncEnabled)
                 }
+                // Owner's ruling, 2026-09-12 (spec §6, item 4): third row,
+                // always enabled — it reads OS-level permission state
+                // directly, which stays meaningful whether or not course
+                // sync is on. iPhone/iPad only; macOS has no equivalent.
+                NavigationLink(String(localized: "notification_permission_settings_nav_title")) {
+                    NotificationPermissionSettingsView()
+                }
             }
 
             // MARK: - Other settings
