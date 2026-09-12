@@ -312,9 +312,17 @@ actor PushRegistrationService {
             // need its work to be done before ours starts.
             _ = try? await predecessor?.value
             do {
-                _ = try await apiClient.updateDevicePreferences(
+                let response = try await apiClient.updateDevicePreferences(
                     deviceId: uuid, bulletinPushEnabled: enabled
                 )
+                // A backend without the column answers 200 and ignores the
+                // request key it does not know, so a 2xx on its own is not
+                // evidence the change was applied. `DevicePreferencesResponse`
+                // stays decode-tolerant of a missing field for every other
+                // PATCH; here the missing field *is* the answer.
+                guard response.bulletinPushEnabled == enabled else {
+                    throw PushAPIError.invalidResponse
+                }
                 await MainActor.run { Defaults[.bulletinPushEnabled] = enabled }
                 logger.info("bulletin push enabled=\(enabled, privacy: .public) propagated")
             } catch {

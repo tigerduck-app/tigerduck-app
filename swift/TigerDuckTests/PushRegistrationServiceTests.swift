@@ -48,9 +48,11 @@ struct PushRegistrationServiceTests {
 
     /// The 200 body `PATCH /devices/{id}/preferences` answers with, echoing
     /// the bulletin flag the way the backend does (the column is NOT NULL
-    /// with a `server_default`).
-    private static func preferencesBody(bulletinPushEnabled: Bool) -> Data {
-        Data("""
+    /// with a `server_default`). `nil` omits the key entirely, which is
+    /// what a backend without the column answers.
+    private static func preferencesBody(bulletinPushEnabled: Bool?) -> Data {
+        let echo = bulletinPushEnabled.map { ",\n  \"bulletin_push_enabled\": \($0)" } ?? ""
+        return Data("""
         {
           "device_id": "server-device",
           "server_push_enabled": true,
@@ -58,8 +60,7 @@ struct PushRegistrationServiceTests {
           "sync_course_colors": true,
           "sync_course_names": true,
           "sync_assignments": true,
-          "cloud_sync_enabled": true,
-          "bulletin_push_enabled": \(bulletinPushEnabled)
+          "cloud_sync_enabled": true\(echo)
         }
         """.utf8)
     }
@@ -240,6 +241,47 @@ struct PushRegistrationServiceTests {
             try await service.updateBulletinPushEnabled(false)
 
             #expect(Defaults[.bulletinPushEnabled] == false)
+        }
+    }
+
+    @Test("a 200 that does not come back carrying the new value is not treated as success")
+    func unconfirmedBulletinPatchDoesNotPersist() async throws {
+        try await Self.withBulletinPreference(startingAt: true) {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            // A backend without the column — rolled back, self-hosted, or
+            // simply older than this build — ignores the request key it
+            // does not know and answers 200 without it. Nothing changed
+            // server-side, so treating that as success would leave the
+            // page saying bulletins are off while they keep arriving.
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: nil)),
+                for: Self.preferencesURL(baseURL)
+            )
+
+            await #expect(throws: (any Error).self) {
+                try await service.updateBulletinPushEnabled(false)
+            }
+
+            #expect(Defaults[.bulletinPushEnabled] == true)
+        }
+    }
+
+    @Test("a 200 echoing the opposite value is not treated as success either")
+    func contradictedBulletinPatchDoesNotPersist() async throws {
+        try await Self.withBulletinPreference(startingAt: true) {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: true)),
+                for: Self.preferencesURL(baseURL)
+            )
+
+            await #expect(throws: (any Error).self) {
+                try await service.updateBulletinPushEnabled(false)
+            }
+
+            #expect(Defaults[.bulletinPushEnabled] == true)
         }
     }
 }
