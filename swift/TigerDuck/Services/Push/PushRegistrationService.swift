@@ -564,9 +564,6 @@ actor PushRegistrationService {
     private func noteSuccessfulRegistration() {
         lastRegisteredAt = Date()
         lastError = nil
-        Task { @MainActor in
-            Defaults[.pushLastRegistrationAt] = Date()
-        }
     }
 
     private func noteRegistrationError(_ error: Error) {

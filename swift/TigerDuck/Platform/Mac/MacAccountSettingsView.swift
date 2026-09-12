@@ -8,7 +8,6 @@ import Defaults
 struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    @Default(.pushLastRegistrationAt) private var lastRegistrationAt
     @Default(.syncCourses) private var macSyncCourses
     @Default(.syncCourseColors) private var macSyncCourseColors
     @Default(.syncCourseNames) private var macSyncCourseNames
@@ -141,13 +140,6 @@ struct MacAccountSettingsView: View {
                         okText: String(localized: "push_server_status_done"),
                         badText: String(localized: "push_server_pending_incomplete")
                     )
-                    LabeledContent(String(localized: "push_server_last_registration")) {
-                        if let at = lastRegistrationAt {
-                            Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
-                        } else {
-                            Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
-                        }
-                    }
                     LabeledContent("Device ID") {
                         Text(s.uuid)
                             .font(.system(.caption, design: .monospaced))

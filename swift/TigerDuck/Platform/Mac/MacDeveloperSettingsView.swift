@@ -85,7 +85,7 @@ struct MacDeveloperSettingsView: View {
             //
             // Raw `PushDiagnostic` for engineering use — the corresponding
             // iOS page is `TigerSyncStatusView`. The Account tab already
-            // shows registration status and timestamps to every user; this
+            // shows the registration status to every user; this
             // section adds the fields nothing else surfaces (enabled/
             // isStarted, token lengths, resolved server URL). Device ID
             // appears on both tabs — the Account tab's copy is already

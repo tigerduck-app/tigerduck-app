@@ -240,9 +240,6 @@ nonisolated extension Defaults.Keys {
     static let pushServerURLOverride = Key<String?>(
         AppConstants.UserDefaultsKeys.pushServerURLOverride
     )
-    static let pushLastRegistrationAt = Key<Date?>(
-        AppConstants.UserDefaultsKeys.pushLastRegistrationAt
-    )
     /// User-facing opt-out for operator-issued "server" pushes. Default off
     /// (i.e. user is opted in). Backend reads the inverse as
     /// `server_push_enabled` and the dispatcher filters on
