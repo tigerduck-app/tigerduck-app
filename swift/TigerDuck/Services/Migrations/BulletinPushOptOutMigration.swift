@@ -17,7 +17,11 @@ import Foundation
 ///
 /// `pushServerEnabled` is this migration's own input and nothing else's —
 /// no runtime code gates on it any more, so the write of `true` below is
-/// only how a completed run records what it read.
+/// only how a completed run records what it read. That is why it is
+/// written last: it is also the value this branches on, so a process that
+/// dies part-way through leaves the `false` standing and the whole repair
+/// re-applies at the next launch, rather than losing the two writes that
+/// had not happened yet.
 enum BulletinPushOptOutMigration {
     private static let doneKey = "BulletinPushOptOutMigration.v1.done"
 
@@ -26,7 +30,6 @@ enum BulletinPushOptOutMigration {
         defer { UserDefaults.standard.set(true, forKey: doneKey) }
         guard Defaults[.pushServerEnabled] == false else { return }
         Defaults[.bulletinPushEnabled] = false
-        Defaults[.pushServerEnabled] = true
         // Conservative reading of the same ambiguity: a 2.0.x `false` might
         // have meant "all server push off", not just bulletins, and
         // re-enabling operator pushes (接收額外伺服器推播) for someone who
@@ -37,5 +40,7 @@ enum BulletinPushOptOutMigration {
         // choice on this same toggle must survive regardless of what this
         // migration decides about `pushServerEnabled`.
         Defaults[.serverPushUserOptOut] = true
+        // Last, and last for a reason — see the type doc.
+        Defaults[.pushServerEnabled] = true
     }
 }
