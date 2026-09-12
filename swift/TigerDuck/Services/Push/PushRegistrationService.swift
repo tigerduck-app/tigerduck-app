@@ -205,6 +205,11 @@ actor PushRegistrationService {
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
     }
 
+    /// PUT one holiday exception so the user's other devices agree.
+    func uploadHolidayOverride(holidayID: Int, notify: Bool) async throws {
+        try await apiClient.putHolidayOverride(holidayID: holidayID, notify: notify)
+    }
+
     /// Called from the settings toggle. PATCHes the backend first; only
     /// flips the local pref after a 2xx so a transient failure doesn't
     /// leave local state pretending the server agrees. Throws on failure
@@ -222,11 +227,6 @@ actor PushRegistrationService {
     /// reads enabled, and vice versa). Chaining instead lets every
     /// successfully-applied server change reach `Defaults`, and tap
     /// order is preserved because each task awaits its predecessor.
-    /// PUT one holiday exception so the user's other devices agree.
-    func uploadHolidayOverride(holidayID: Int, notify: Bool) async throws {
-        try await apiClient.putHolidayOverride(holidayID: holidayID, notify: notify)
-    }
-
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         let predecessor = optOutPatchChain
         let uuid = identity.uuid
@@ -396,7 +396,10 @@ actor PushRegistrationService {
 
     // MARK: - Unregister
 
-    /// Called when the user turns off server push or logs out.
+    /// Called on sign-out, and only there. Its one caller is
+    /// `PushCoordinator.disable()`, whose one caller is `AppState.logout()`
+    /// — there is no longer a switch that takes the push stack down, only
+    /// the per-channel opt-outs, which leave the device registered.
     func unregister() async {
         do {
             try await apiClient.unregisterDevice(deviceId: identity.uuid)
