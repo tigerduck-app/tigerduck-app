@@ -13,7 +13,6 @@ struct CloudSyncSettingsView: View {
     @Default(.syncCourseNames) private var syncCourseNames
     @Default(.syncAssignments) private var syncAssignments
     @Default(.serverPushUserOptOut) private var serverPushOptOut
-    @State private var snapshot: PushDiagnostic?
     /// Tracks whether the server-push opt-out PATCH is in flight or rolled
     /// back. The Toggle binds against this so a failed PATCH can revert
     /// the visual state in lock-step with the stored Default.
@@ -81,7 +80,7 @@ struct CloudSyncSettingsView: View {
             // course sync is off.
             Section {
                 NavigationLink(String(localized: "sync_status_nav_label")) {
-                    syncStatusView
+                    SyncStatusPage()
                 }
             }
 
@@ -98,58 +97,60 @@ struct CloudSyncSettingsView: View {
             }
         }
         .navigationTitle(String(localized: "cloud_sync_title"))
-        .task { await refreshSnapshot() }
         .onAppear {
-            startRefreshTimer()
             appState.checkPendingConflicts()
         }
         .onDisappear {
-            stopRefreshTimer()
             appState.checkPendingConflicts()
         }
         .reenableConflictAlert()
     }
 
+    /// User-facing opt-out for operator-issued "server" pushes. Bound as
+    /// `isOn` (ON = user wants them); inverted into `serverPushUserOptOut`
+    /// for storage. The setter awaits the actor, which PATCHes first and
+    /// only writes the local Default on success — a throw trips
+    /// `serverPushOptOutFailed` so the footer surfaces the failure and the
+    /// Toggle stays at the prior, server-agreeing value.
+    private var serverPushBinding: Binding<Bool> {
+        Binding(
+            get: { !serverPushOptOut },
+            set: { isOn in
+                serverPushOptOutTask?.cancel()
+                serverPushOptOutTask = Task {
+                    do {
+                        try await appState.updateServerPushOptOut(!isOn)
+                        guard !Task.isCancelled else { return }
+                        serverPushOptOutFailed = false
+                    } catch {
+                        guard !Task.isCancelled else { return }
+                        serverPushOptOutFailed = true
+                    }
+                }
+            }
+        )
+    }
+}
+
+/// TigerSync status destination (spec §6): device registration and, if
+/// present, the latest error — the only two things the spec keeps from
+/// the old inline status section. Sync Now, the last-registration/
+/// last-sync timestamps, and the Device ID row are deliberately not
+/// here: Device ID lives on the DEBUG-only Developer page
+/// (`TigerSyncStatusView`), and the spec's "only keep these two" drops
+/// the rest.
+///
+/// Owns its own snapshot and refresh timer rather than reading the parent
+/// screen's, so it keeps refreshing while it is the one on screen: pushing
+/// this page onto the navigation stack stops `CloudSyncSettingsView`'s own
+/// `onAppear`/`onDisappear` pair from firing again until the user pops back,
+/// so a shared timer would have gone stale for as long as this page is open.
+struct SyncStatusPage: View {
+    @Environment(AppState.self) private var appState
+    @State private var snapshot: PushDiagnostic?
     @State private var refreshTimer: Timer?
 
-    private func refreshSnapshot() async {
-        snapshot = await appState.pushCoordinator.currentSnapshot()
-    }
-
-    private func startRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
-            Task { await refreshSnapshot() }
-        }
-    }
-
-    private func stopRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-    }
-
-    @ViewBuilder
-    private func statusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
-        LabeledContent(label) {
-            HStack(spacing: 6) {
-                Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(ok ? .green : .orange)
-                Text(ok ? okText : badText)
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            }
-        }
-    }
-
-    /// TigerSync status destination (spec §6): device registration and, if
-    /// present, the latest error — the only two things the spec keeps from
-    /// the old inline status section. Sync Now, the last-registration/
-    /// last-sync timestamps, and the Device ID row are deliberately not
-    /// here: Device ID lives on the DEBUG-only Developer page
-    /// (`TigerSyncStatusView`), and the spec's "only keep these two" drops
-    /// the rest.
-    @ViewBuilder
-    private var syncStatusView: some View {
+    var body: some View {
         Form {
             if let s = snapshot {
                 Section {
@@ -176,31 +177,38 @@ struct CloudSyncSettingsView: View {
             }
         }
         .navigationTitle(String(localized: "sync_status_nav_label"))
+        .task { await refreshSnapshot() }
+        .onAppear { startRefreshTimer() }
+        .onDisappear { stopRefreshTimer() }
     }
 
-    /// User-facing opt-out for operator-issued "server" pushes. Bound as
-    /// `isOn` (ON = user wants them); inverted into `serverPushUserOptOut`
-    /// for storage. The setter awaits the actor, which PATCHes first and
-    /// only writes the local Default on success — a throw trips
-    /// `serverPushOptOutFailed` so the footer surfaces the failure and the
-    /// Toggle stays at the prior, server-agreeing value.
-    private var serverPushBinding: Binding<Bool> {
-        Binding(
-            get: { !serverPushOptOut },
-            set: { isOn in
-                serverPushOptOutTask?.cancel()
-                serverPushOptOutTask = Task {
-                    do {
-                        try await appState.updateServerPushOptOut(!isOn)
-                        guard !Task.isCancelled else { return }
-                        serverPushOptOutFailed = false
-                    } catch {
-                        guard !Task.isCancelled else { return }
-                        serverPushOptOutFailed = true
-                    }
-                }
+    @ViewBuilder
+    private func statusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
+        LabeledContent(label) {
+            HStack(spacing: 6) {
+                Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(ok ? .green : .orange)
+                Text(ok ? okText : badText)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
             }
-        )
+        }
+    }
+
+    private func refreshSnapshot() async {
+        snapshot = await appState.pushCoordinator.currentSnapshot()
+    }
+
+    private func startRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+            Task { await refreshSnapshot() }
+        }
+    }
+
+    private func stopRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
     }
 }
 
