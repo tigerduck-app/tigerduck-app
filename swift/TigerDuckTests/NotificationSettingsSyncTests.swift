@@ -656,6 +656,26 @@ struct NotificationSettingsSyncTests {
         #expect(assignments["reminder_offsets_hours"] as? [Int] == [24, 3, 2])
     }
 
+    @Test("a preserved zero or negative minute never reaches the legacy hours field")
+    func foreignNonPositiveMinutesStayOutOfTheHoursMirror() {
+        // `reminder_offsets_hours` has meant "this many hours before the
+        // deadline" to every reader that predates the minutes field, and
+        // one hour is the smallest it has ever carried. `0` and negatives
+        // divide evenly by 60, so a bare whole-hour test mirrors them into
+        // it — where a reader with no `reminder_offsets_minutes` case acts
+        // on a reminder due at, or after, the deadline itself. They are
+        // still carried losslessly in the minutes array, which is where a
+        // reader that understands them can decide for itself.
+        let existing: [String: Any] = [
+            "assignments": ["reminder_offsets_minutes": [1440, 0, -120]],
+        ]
+        let section = Self.local(assignmentReminderOffsets: [.hr24])
+            .assignmentsSection(preservingForeignMinutesFrom: existing)
+
+        #expect(section.reminderOffsetsMinutes == [1440, 0, -120])
+        #expect(section.reminderOffsetsHours == [24])
+    }
+
     @Test("an offset this build does know, but the user deselected, is still removed")
     func pushRemovesDeselectedOffsetsItDoesKnow() async throws {
         // The other half of the rule: "preserve what this enum cannot

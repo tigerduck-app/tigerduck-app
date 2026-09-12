@@ -432,6 +432,14 @@ nonisolated enum NotificationSettingsSync {
         /// descending, for a deterministic, readable document (`Set`
         /// iteration order is not stable).
         ///
+        /// An hour, not just a whole multiple of one, is the floor: `0` and
+        /// negatives divide evenly by 60 too, and a preserved foreign value
+        /// of either shape would otherwise be mirrored into the legacy
+        /// field as a reminder due at — or after — the deadline, for a
+        /// reader that has no `reminder_offsets_minutes` case to weigh it
+        /// against. They stay in the minutes array, where a reader that
+        /// understands that field decides for itself.
+        ///
         /// A foreign value living only in a legacy `reminder_offsets_hours`
         /// entry, with no `reminder_offsets_minutes` beside it, is not
         /// separately preserved: every writer that knows the minutes field
@@ -445,7 +453,7 @@ nonisolated enum NotificationSettingsSync {
             let minutes = Set(reminderOffsetsMinutes + foreign).sorted(by: >)
             return .init(
                 enabled: isAssignmentReminderEnabled,
-                reminderOffsetsHours: minutes.filter { $0 % 60 == 0 }.map { $0 / 60 },
+                reminderOffsetsHours: minutes.filter { $0 >= 60 && $0 % 60 == 0 }.map { $0 / 60 },
                 reminderOffsetsMinutes: minutes
             )
         }
