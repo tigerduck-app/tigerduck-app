@@ -1,5 +1,5 @@
 // `NotificationPermissionSettingsView`'s two rows each collapse a system
-// authorization value down to one of three statuses (spec §6, owner's
+// authorization value down to granted or not granted (spec §6, owner's
 // ruling 2026-09-12, item 4). That collapse is the one piece of this
 // screen's own logic — everything else is either a SwiftUI Form or a
 // direct read of `UNUserNotificationCenter`/`ActivityAuthorizationInfo`,
@@ -25,7 +25,7 @@ struct NotificationPermissionSettingsViewTests {
         }
     }
 
-    @Test("denied and not-determined notification statuses read as not granted, not as not-applicable")
+    @Test("denied and not-determined notification statuses read as not granted")
     func notGrantedNotificationStatuses() {
         for status: UNAuthorizationStatus in [.denied, .notDetermined] {
             #expect(

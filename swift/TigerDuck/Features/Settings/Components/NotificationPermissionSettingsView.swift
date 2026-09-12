@@ -53,13 +53,11 @@ struct NotificationPermissionSettingsView: View {
     enum RowStatus {
         case granted
         case notGranted
-        case notApplicable
 
         var text: String {
             switch self {
             case .granted: return String(localized: "permission_granted")
             case .notGranted: return String(localized: "permission_not_granted_tap_settings")
-            case .notApplicable: return String(localized: "permission_not_applicable")
             }
         }
 
@@ -67,7 +65,6 @@ struct NotificationPermissionSettingsView: View {
             switch self {
             case .granted: return .green
             case .notGranted: return .orange
-            case .notApplicable: return .secondary
             }
         }
 
@@ -75,15 +72,14 @@ struct NotificationPermissionSettingsView: View {
             switch self {
             case .granted: return "checkmark.circle.fill"
             case .notGranted: return "exclamationmark.triangle.fill"
-            case .notApplicable: return "minus.circle.fill"
             }
         }
     }
 
     /// Same authorized/not split as `SettingsView.refreshNotificationsAuthorization()`:
     /// `.authorized`, `.provisional`, and `.ephemeral` all count as granted.
-    /// Never `.notApplicable` — every iPhone/iPad in this app's deployment
-    /// target has a real notification-authorization concept.
+    /// Granted or not is the whole answer: every iPhone and iPad this app
+    /// deploys to has a real notification-authorization concept.
     static func notificationPermissionStatus(for status: UNAuthorizationStatus) -> RowStatus {
         switch status {
         case .authorized, .provisional, .ephemeral: return .granted
@@ -93,8 +89,8 @@ struct NotificationPermissionSettingsView: View {
     }
 
     /// `ActivityAuthorizationInfo().areActivitiesEnabled` is a plain Bool on
-    /// this app's deployment target — never `.notApplicable` for the same
-    /// reason as the notification row above.
+    /// this app's deployment target, so this row is granted or not, the same
+    /// as the notification row above.
     static func liveActivityPermissionStatus(enabled: Bool) -> RowStatus {
         enabled ? .granted : .notGranted
     }
