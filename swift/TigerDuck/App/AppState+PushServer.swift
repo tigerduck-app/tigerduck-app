@@ -100,13 +100,6 @@ extension AppState {
     }
 
 
-    /// Disable server push (tells server to drop the device, stops relay).
-    func disablePushServer() async {
-        Defaults[.pushServerEnabled] = false
-        stopRevisionPolling()
-        await pushCoordinator.disable()
-    }
-
     /// Wire the settings toggle to the registration actor. The actor
     /// PATCHes the backend and only then persists the local pref so a
     /// transient failure doesn't leave the UI claiming agreement with
@@ -204,6 +197,15 @@ extension AppState {
 
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         try await pushCoordinator.registration.updateServerPushOptOut(optOut)
+    }
+
+    /// Wire the bulletin page's toggle to the registration actor, on the
+    /// same PATCH-first pattern as `updateServerPushOptOut`: PATCH, then
+    /// persist the local Default only on success. The device stays
+    /// registered either way — this gates bulletin delivery server-side
+    /// only, unlike the old `disablePushServer()` this replaces.
+    func updateBulletinPushEnabled(_ enabled: Bool) async throws {
+        try await pushCoordinator.registration.updateBulletinPushEnabled(enabled)
     }
 
     func pushSyncPreferences() {

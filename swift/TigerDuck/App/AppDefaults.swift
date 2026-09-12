@@ -225,6 +225,18 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.pushServerEnabled,
         default: true
     )
+    /// Per-device bulletin push opt-out (spec §6 item 5) — distinct from
+    /// `pushServerEnabled` above, which is the whole push stack (assignment
+    /// reminders, Live Activities, sync triggers), and from
+    /// `serverPushUserOptOut` below, which is the operator-push channel
+    /// alone. Positive polarity to match the `user_devices.bulletin_push_
+    /// enabled` column this mirrors: do not invert it the way
+    /// `serverPushUserOptOut` inverts `server_push_enabled`, or the
+    /// bulletin page ends up double-negated.
+    static let bulletinPushEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.bulletinPushEnabled,
+        default: true
+    )
     static let pushServerURLOverride = Key<String?>(
         AppConstants.UserDefaultsKeys.pushServerURLOverride
     )

@@ -1,7 +1,10 @@
 // `PushAPI.DevicePreferencesRequest` / `DevicePreferencesResponse`
-// (PushAPIDTO.swift) — specifically the two device-preference fields
+// (PushAPIDTO.swift) — the two device-preference fields
 // `syncAssignmentReminders` / `syncLiveActivity`, wired to the wire keys
-// `sync_assignment_reminders` / `sync_live_activity`.
+// `sync_assignment_reminders` / `sync_live_activity`; the per-device
+// bulletin opt-out `bulletinPushEnabled` / `bulletin_push_enabled` on both
+// `DevicePreferencesRequest`/`Response` and `DeviceRegisterRequest`; and
+// `DeviceRegisterRequest`'s `server_push_enabled`.
 //
 // Swift's synthesized `Decodable` only decodes keys an explicit
 // `CodingKeys` enum names, and a plain `Encodable` only *emits* keys
@@ -59,6 +62,31 @@ struct PushAPIDTOTests {
         #expect(object["server_push_enabled"] as? Bool == true)
     }
 
+    @Test("encoding bulletinPushEnabled produces the bulletin_push_enabled wire key")
+    func requestEncodesBulletinPushEnabledToItsWireKey() throws {
+        let request = PushAPI.DevicePreferencesRequest(bulletinPushEnabled: false)
+        let data = try JSONEncoder().encode(request)
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+
+        #expect(object["bulletin_push_enabled"] as? Bool == false)
+    }
+
+    @Test("omitted bulletinPushEnabled does not appear on the wire at all")
+    func requestOmitsNilBulletinPushEnabledEntirely() throws {
+        // A PATCH that only changes, say, `serverPushEnabled` must not send
+        // `bulletin_push_enabled` as an explicit `null` — that would tell
+        // the backend to reset a preference the caller never touched.
+        let request = PushAPI.DevicePreferencesRequest(serverPushEnabled: true)
+        let data = try JSONEncoder().encode(request)
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+
+        #expect(object["bulletin_push_enabled"] == nil)
+    }
+
     // MARK: - Response: decodes the wire keys the backend actually sends
 
     @Test("decoding sync_assignment_reminders and sync_live_activity from the wire populates both properties")
@@ -108,5 +136,67 @@ struct PushAPIDTOTests {
         #expect(response.syncAssignmentReminders == nil)
         #expect(response.syncLiveActivity == nil)
         #expect(response.cloudSyncEnabled == false)
+    }
+
+    @Test("decoding bulletin_push_enabled from the wire populates bulletinPushEnabled")
+    func responseDecodesBulletinPushEnabledFromItsWireKey() throws {
+        let json = Data("""
+        {
+          "device_id": "abc-123",
+          "server_push_enabled": true,
+          "sync_courses": true,
+          "sync_course_colors": true,
+          "sync_course_names": true,
+          "sync_assignments": true,
+          "cloud_sync_enabled": true,
+          "bulletin_push_enabled": false
+        }
+        """.utf8)
+
+        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+
+        #expect(response.bulletinPushEnabled == false)
+    }
+
+    @Test("a response without bulletin_push_enabled still decodes, leaving the field nil")
+    func responseWithoutBulletinPushEnabledStillDecodes() throws {
+        // Tolerates a backend without the column (rolled back, or
+        // self-hosted) the same way `syncAssignmentReminders` /
+        // `syncLiveActivity` already do — an absent key must not turn a
+        // change the server applied into a reported decode failure.
+        let json = Data("""
+        {
+          "device_id": "abc-123",
+          "server_push_enabled": true,
+          "sync_courses": true,
+          "sync_course_colors": true,
+          "sync_course_names": true,
+          "sync_assignments": true,
+          "cloud_sync_enabled": true
+        }
+        """.utf8)
+
+        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+
+        #expect(response.bulletinPushEnabled == nil)
+    }
+
+    // MARK: - Register request: fields carried on every signed-in register
+    // call so a migrated value or a PATCH the server missed self-heals on
+    // the next launch, the way `cloud_sync_enabled` already does.
+
+    @Test("encoding bulletin_push_enabled on the register request produces its wire key")
+    func deviceRegisterRequestEncodesBulletinPushEnabledToItsWireKey() throws {
+        let request = PushAPI.DeviceRegisterRequest(
+            client_device_id: "device-1",
+            platform: "ios",
+            bulletin_push_enabled: false
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+
+        #expect(object["bulletin_push_enabled"] as? Bool == false)
     }
 }

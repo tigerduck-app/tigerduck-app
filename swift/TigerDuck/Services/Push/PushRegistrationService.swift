@@ -180,7 +180,8 @@ actor PushRegistrationService {
             os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
             locale: Self.currentLocaleTag,
             push_token: nil,
-            cloud_sync_enabled: Defaults[.cloudSyncEnabled]
+            cloud_sync_enabled: Defaults[.cloudSyncEnabled],
+            bulletin_push_enabled: Defaults[.bulletinPushEnabled]
         )
         do {
             let response = try await apiClient.registerDevice(request)
@@ -272,6 +273,31 @@ actor PushRegistrationService {
             }
         }
         try await task.value
+    }
+
+    /// Called from the bulletin page's toggle. PATCHes the backend first;
+    /// only flips the local pref after a 2xx so a transient failure doesn't
+    /// leave local state pretending the server agrees. Throws on failure so
+    /// the caller can leave the page showing the pre-tap state. The next
+    /// `/devices/register` call also re-sends the value (see
+    /// `performRegister`), so a later success backstops eventual
+    /// consistency.
+    ///
+    /// Unlike `updateServerPushOptOut`, there is no signed-out row to
+    /// announce this to: bulletin delivery has no anonymous-pipeline
+    /// counterpart (`user_devices.bulletin_push_enabled` only), and this
+    /// page's other calls already require a session.
+    func updateBulletinPushEnabled(_ enabled: Bool) async throws {
+        do {
+            _ = try await apiClient.updateDevicePreferences(
+                deviceId: identity.uuid, bulletinPushEnabled: enabled
+            )
+            await MainActor.run { Defaults[.bulletinPushEnabled] = enabled }
+            logger.info("bulletin push enabled=\(enabled, privacy: .public) propagated")
+        } catch {
+            logger.error("bulletin push enabled=\(enabled, privacy: .public) did not propagate: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
     }
 
     func updateCloudSyncEnabled(_ enabled: Bool) async {
@@ -489,7 +515,8 @@ actor PushRegistrationService {
                     os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
                     locale: Self.currentLocaleTag,
                     push_token: token,
-                    cloud_sync_enabled: cloudSync
+                    cloud_sync_enabled: cloudSync,
+                    bulletin_push_enabled: Defaults[.bulletinPushEnabled]
                 )
                 let response = try await apiClient.registerDevice(request)
                 logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .public)")

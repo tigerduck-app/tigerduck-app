@@ -24,6 +24,10 @@ enum PushAPI {
         let locale: String?
         let push_token: PushTokenIn?
         let cloud_sync_enabled: Bool?
+        /// Carried on every register call, not just when the bulletin
+        /// page's toggle changes, so a migrated value or a PATCH the
+        /// server missed self-heals the moment the device next registers.
+        let bulletin_push_enabled: Bool?
     }
 
     struct PushTokenIn: Encodable, Sendable {
@@ -103,6 +107,10 @@ enum PushAPI {
         /// Same shape as `syncAssignmentReminders`, for Live Activity.
         var syncLiveActivity: Bool?
         var cloudSyncEnabled: Bool?
+        /// Per-device bulletin opt-out (spec §6 item 5) — distinct from
+        /// `serverPushEnabled` above, which covers operator-issued pushes
+        /// only and never gates bulletin delivery.
+        var bulletinPushEnabled: Bool?
 
         enum CodingKeys: String, CodingKey {
             case serverPushEnabled = "server_push_enabled"
@@ -113,6 +121,7 @@ enum PushAPI {
             case syncAssignmentReminders = "sync_assignment_reminders"
             case syncLiveActivity = "sync_live_activity"
             case cloudSyncEnabled = "cloud_sync_enabled"
+            case bulletinPushEnabled = "bulletin_push_enabled"
         }
     }
 
@@ -135,6 +144,11 @@ enum PushAPI {
         let syncAssignmentReminders: Bool?
         let syncLiveActivity: Bool?
         let cloudSyncEnabled: Bool
+        /// Optional for the same reason as `syncAssignmentReminders` above:
+        /// the backend always sends it (NOT NULL, `server_default true`),
+        /// but requiring it would fail the decode of every preferences
+        /// PATCH answered by a backend without the column.
+        let bulletinPushEnabled: Bool?
 
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"
@@ -146,6 +160,7 @@ enum PushAPI {
             case syncAssignmentReminders = "sync_assignment_reminders"
             case syncLiveActivity = "sync_live_activity"
             case cloudSyncEnabled = "cloud_sync_enabled"
+            case bulletinPushEnabled = "bulletin_push_enabled"
         }
     }
 

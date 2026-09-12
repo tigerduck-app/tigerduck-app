@@ -31,6 +31,17 @@ extension AppState {
         ClassroomAbbrCacheMigration.runIfNeeded()
         CustomNameCacheMigration.runIfNeeded()
         SemesterAttributionCacheMigration.runIfNeeded()
+        #if os(iOS)
+        // Also synchronous, and also ahead of the Task below — not because
+        // it deletes a cache, but because `pushCoordinator.enable()` a few
+        // lines later in this same `init()` reads `Defaults[.pushServer
+        // Enabled]`. Landing this inside the Task would let that read see
+        // the stale 2.0.x value, leaving the device unregistered for the
+        // whole first session after upgrade. iOS only: bulletin push has no
+        // macOS surface (see Features/Bulletins), so a Mac build never
+        // wrote the ambiguous flag state this disambiguates.
+        BulletinPushOptOutMigration.runIfNeeded()
+        #endif
         Task(priority: .utility) { @MainActor in
             #if os(iOS)
             // First, because it is purely local: it must not wait behind the

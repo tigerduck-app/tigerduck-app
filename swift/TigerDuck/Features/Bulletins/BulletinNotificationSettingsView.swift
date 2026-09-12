@@ -6,9 +6,13 @@ import UserNotifications
 ///
 /// Three responsibilities:
 /// 1. Surface the OS push permission state and let the user request it.
-/// 2. Toggle our `pushServerEnabled` flag (a `Defaults` key); flipping it
-///    on triggers `PushCoordinator` registration, off tells the server
-///    to drop this device.
+/// 2. Toggle our `bulletinPushEnabled` flag (a `Defaults` key) via a PATCH-
+///    first pattern: flipping it PATCHes `bulletin_push_enabled` on this
+///    device's row and only then updates the local Default, so a failed
+///    request leaves the toggle agreeing with the server. The device
+///    itself stays registered either way (spec §6 item 5) — only bulletin
+///    delivery is gated server-side; assignment reminders, Live Activities
+///    and sync triggers are unaffected.
 /// 3. CRUD the device's subscription rules. There is no manual 儲存
 ///    button — the page auto-persists in three situations:
 ///    * on editor 完成 (upsert + save)
@@ -43,7 +47,7 @@ struct BulletinNotificationSettingsView: View {
     /// clobbered the user's in-flight pending array.
     @State private var didInitialLoad: Bool = false
 
-    @Default(.pushServerEnabled) private var pushEnabled
+    @Default(.bulletinPushEnabled) private var pushEnabled
 
     var body: some View {
         List {
@@ -308,7 +312,7 @@ struct BulletinNotificationSettingsView: View {
             .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshAuthStatus()
         guard granted || authStatus == .provisional else { return }
-        appState.enablePushServer()
+        try? await appState.updateBulletinPushEnabled(true)
         if !didInitialLoad {
             didInitialLoad = true
             await store.load()
@@ -316,7 +320,7 @@ struct BulletinNotificationSettingsView: View {
     }
 
     private func disablePush() async {
-        await appState.disablePushServer()
+        try? await appState.updateBulletinPushEnabled(false)
         // pushEnabled flips reactively via @Default; no manual refresh.
     }
 
