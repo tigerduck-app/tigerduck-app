@@ -107,24 +107,7 @@ struct CloudSyncSettingsView: View {
             stopRefreshTimer()
             appState.checkPendingConflicts()
         }
-        .alert(
-            String(localized: "sync_conflict_title"),
-            isPresented: Binding(
-                get: { appState.reenableConflict != nil },
-                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
-            )
-        ) {
-            Button(String(localized: "sync_conflict_use_server")) {
-                appState.resolveReenableConflict(keepLocal: false)
-            }
-            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
-                appState.resolveReenableConflict(keepLocal: true)
-            }
-        } message: {
-            Text(String(localized: "sync_conflict_reenable_message"))
-            + Text("\n")
-            + Text(appState.reenableConflict?.description ?? "")
-        }
+        .reenableConflictAlert()
     }
 
     @State private var refreshTimer: Timer?
@@ -218,5 +201,41 @@ struct CloudSyncSettingsView: View {
                 }
             }
         )
+    }
+}
+
+/// Re-enable conflict prompt (`AppState.reenableConflict`), shared by every
+/// screen where a sync category can be switched back on: this screen's own
+/// "Sync course information" toggle, and `SyncContentSettingsView`'s
+/// per-category toggles. Not used by the Mac equivalent, which keeps its
+/// own copy in `MacAccountSettingsView`.
+struct ReenableConflictAlert: ViewModifier {
+    @Environment(AppState.self) private var appState
+
+    func body(content: Content) -> some View {
+        content.alert(
+            String(localized: "sync_conflict_title"),
+            isPresented: Binding(
+                get: { appState.reenableConflict != nil },
+                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
+            )
+        ) {
+            Button(String(localized: "sync_conflict_use_server")) {
+                appState.resolveReenableConflict(keepLocal: false)
+            }
+            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
+                appState.resolveReenableConflict(keepLocal: true)
+            }
+        } message: {
+            Text(String(localized: "sync_conflict_reenable_message"))
+            + Text("\n")
+            + Text(appState.reenableConflict?.description ?? "")
+        }
+    }
+}
+
+extension View {
+    func reenableConflictAlert() -> some View {
+        modifier(ReenableConflictAlert())
     }
 }

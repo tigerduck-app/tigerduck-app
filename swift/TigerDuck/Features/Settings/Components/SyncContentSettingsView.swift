@@ -101,5 +101,6 @@ struct SyncContentSettingsView: View {
             }
         }
         .navigationTitle(String(localized: "sync_content_nav_label"))
+        .reenableConflictAlert()
     }
 }
