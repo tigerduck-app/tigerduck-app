@@ -7,8 +7,10 @@
 // Every test runs inside `withRealMigrationKeys`, which takes the shared
 // gate (`RealDefaultsGate.swift`), resets the doneKey and all three flags
 // to their defaults, and afterwards puts back exactly what the test host
-// held — the flags, and the doneKey as present-or-absent rather than
-// present-and-`false`, which the migration reads as "not run yet".
+// held — all four as present-or-absent, never as present-at-their-default.
+// Absence is the distinction that matters here: the migration reads an
+// absent doneKey as "not run yet", and a flag the host has never written
+// must not come back written just because its value would read the same.
 //
 // Restoring matters beyond tidiness: without it, `secondRunIsNoOp` leaves
 // the test host's own UserDefaults with the flag off and the doneKey set,
@@ -33,16 +35,33 @@ private let doneKey = "BulletinPushOptOutMigration.v1.done"
 @Suite("Bulletin push opt-out migration", .serialized)
 struct BulletinPushOptOutMigrationTests {
 
+    /// A flag as *stored*, not as read: `nil` when nothing has ever written
+    /// the key and the read is the registered default. The three flags get
+    /// the same present-or-absent treatment as `doneKey` — a key the test
+    /// host had never written must not come back written, even at a value
+    /// that reads identically.
+    private static func storedFlag(_ key: Defaults.Key<Bool>) -> Bool? {
+        key.suite.object(forKey: key.name) as? Bool
+    }
+
+    private static func restoreFlag(_ key: Defaults.Key<Bool>, to stored: Bool?) {
+        if let stored {
+            Defaults[key] = stored
+        } else {
+            Defaults.reset(key)
+        }
+    }
+
     private static func withRealMigrationKeys(_ body: () -> Void) async {
         await withExclusiveRealDefaults {
-            let savedPushServerEnabled = Defaults[.pushServerEnabled]
-            let savedBulletinPushEnabled = Defaults[.bulletinPushEnabled]
-            let savedServerPushUserOptOut = Defaults[.serverPushUserOptOut]
+            let savedPushServerEnabled = storedFlag(.pushServerEnabled)
+            let savedBulletinPushEnabled = storedFlag(.bulletinPushEnabled)
+            let savedServerPushUserOptOut = storedFlag(.serverPushUserOptOut)
             let savedDoneKey = UserDefaults.standard.object(forKey: doneKey) as? Bool
             defer {
-                Defaults[.pushServerEnabled] = savedPushServerEnabled
-                Defaults[.bulletinPushEnabled] = savedBulletinPushEnabled
-                Defaults[.serverPushUserOptOut] = savedServerPushUserOptOut
+                restoreFlag(.pushServerEnabled, to: savedPushServerEnabled)
+                restoreFlag(.bulletinPushEnabled, to: savedBulletinPushEnabled)
+                restoreFlag(.serverPushUserOptOut, to: savedServerPushUserOptOut)
                 if let savedDoneKey {
                     UserDefaults.standard.set(savedDoneKey, forKey: doneKey)
                 } else {
