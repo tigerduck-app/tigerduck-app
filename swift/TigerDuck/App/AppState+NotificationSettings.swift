@@ -392,28 +392,6 @@ nonisolated enum NotificationSettingsSync {
             )
         }
 
-        /// `AssignmentReminderOffset` → `assignments.reminder_offsets_hours`.
-        ///
-        /// The whole-hour offsets only, because this field has always meant
-        /// whole hours to every reader that predates
-        /// `reminder_offsets_minutes`. The four sub-hour cases
-        /// (`min30`/`min15`/`min10`/`min5`) would collide on truncation —
-        /// all four → `0` — so they are left out here and carried
-        /// losslessly in `reminderOffsetsMinutes` instead. Sorted
-        /// descending for a deterministic, readable array (`Set` iteration
-        /// order is not stable).
-        var reminderOffsetsHours: [Int] {
-            assignmentReminderOffsets
-                .compactMap { offset -> Int? in
-                    let seconds = offset.timeInterval
-                    guard seconds >= 3600, seconds.truncatingRemainder(dividingBy: 3600) == 0 else {
-                        return nil
-                    }
-                    return Int(seconds / 3600)
-                }
-                .sorted(by: >)
-        }
-
         /// `AssignmentReminderOffset` → `assignments.reminder_offsets_minutes`,
         /// the lossless mirror: **every** selected offset, sub-hour ones
         /// included. Every `AssignmentReminderOffset` case is a whole number
@@ -424,11 +402,51 @@ nonisolated enum NotificationSettingsSync {
                 .sorted(by: >)
         }
 
-        var assignmentsSection: NotificationSettingsDocument.Assignments {
-            .init(
+        /// The `assignments` section to write, given what the server
+        /// currently holds at `existing`.
+        ///
+        /// `reminder_offsets_minutes` is this device's complete selection
+        /// **plus** every minute value already in the document that no
+        /// `AssignmentReminderOffset` in this build represents. Without
+        /// that, a value only a different client's enum understands — a
+        /// newer build's, another platform's, or this one's after the enum
+        /// changes — is deleted the moment this device edits any offset and
+        /// pushes: this app writes that key outright, so `merging(_:into:)`'s
+        /// "leave keys you don't mention alone" cannot protect it. Android
+        /// folds the same values back in
+        /// (`push/NotificationSettingsSync.kt`'s `documentUpdates`).
+        ///
+        /// Deselection still works: a value this build *does* have a case
+        /// for and the user has turned off is not foreign, so it is not
+        /// preserved.
+        ///
+        /// `reminder_offsets_hours` is then derived from that merged set
+        /// rather than computed separately, so the lossy mirror never drifts
+        /// out of step with the complete one — including for a preserved
+        /// value that happens to be a whole number of hours. Whole hours
+        /// only, because that field has always meant whole hours to every
+        /// reader that predates `reminder_offsets_minutes`: the four
+        /// sub-hour cases (`min30`/`min15`/`min10`/`min5`) would collide on
+        /// truncation — all four → `0` — so they are left out of it and
+        /// carried losslessly in the minutes array instead. Both arrays are
+        /// descending, for a deterministic, readable document (`Set`
+        /// iteration order is not stable).
+        ///
+        /// A foreign value living only in a legacy `reminder_offsets_hours`
+        /// entry, with no `reminder_offsets_minutes` beside it, is not
+        /// separately preserved: every writer that knows the minutes field
+        /// mirrors into it, so that shape can only come from a client older
+        /// than this whole feature, and the hours field has always been the
+        /// lossy one by design.
+        func assignmentsSection(
+            preservingForeignMinutesFrom existing: [String: Any]
+        ) -> NotificationSettingsDocument.Assignments {
+            let foreign = NotificationSettingsSync.foreignMinutes(in: existing)
+            let minutes = Set(reminderOffsetsMinutes + foreign).sorted(by: >)
+            return .init(
                 enabled: isAssignmentReminderEnabled,
-                reminderOffsetsHours: reminderOffsetsHours,
-                reminderOffsetsMinutes: reminderOffsetsMinutes
+                reminderOffsetsHours: minutes.filter { $0 % 60 == 0 }.map { $0 / 60 },
+                reminderOffsetsMinutes: minutes
             )
         }
 
@@ -448,13 +466,23 @@ nonisolated enum NotificationSettingsSync {
         /// left exactly as the server currently holds it by
         /// `merging(_:into:)` rather than overwritten with a local value
         /// the device is not supposed to be syncing.
+        ///
+        /// `existing` is what the server currently holds — the same object
+        /// the result is about to be merged over. The `assignments` section
+        /// depends on it (see `assignmentsSection(preservingForeignMinutesFrom:)`),
+        /// so this must be recomputed against the document that is actually
+        /// being written to, including after a 409 rebase adopts a different
+        /// one.
         func documentUpdates(
+            existing: [String: Any],
             includeAssignments: Bool = true,
             includeLiveActivity: Bool = true
         ) throws -> [String: Any] {
             var updates: [String: Any] = [:]
             if includeAssignments {
-                updates["assignments"] = try NotificationSettingsSync.jsonObject(assignmentsSection)
+                updates["assignments"] = try NotificationSettingsSync.jsonObject(
+                    assignmentsSection(preservingForeignMinutesFrom: existing)
+                )
             }
             if includeLiveActivity {
                 updates["live_activity"] = try NotificationSettingsSync.jsonObject(liveActivitySection)
@@ -497,6 +525,20 @@ nonisolated enum NotificationSettingsSync {
             }
         }
         return merged
+    }
+
+    /// Minute values in `existing`'s `assignments.reminder_offsets_minutes`
+    /// that no `AssignmentReminderOffset` in this build represents.
+    ///
+    /// Read through the document type's own decoder rather than by casting
+    /// the raw array, so "a readable minute value" means exactly the same
+    /// thing on the write path as on the read path — one element rule, in
+    /// one place.
+    static func foreignMinutes(in existing: [String: Any]) -> [Int] {
+        let section: NotificationSettingsDocument.Assignments? =
+            decodedSection(existing[OwnedSection.assignments.rawValue])
+        return (section?.reminderOffsetsMinutes ?? [])
+            .filter { offset(forMinutes: $0) == nil }
     }
 
     private static func jsonObject<T: Encodable>(_ value: T) throws -> [String: Any] {
@@ -555,13 +597,17 @@ nonisolated enum NotificationSettingsSync {
             baseRevision = revision
         }
 
-        let updates = try local.documentUpdates(
-            includeAssignments: syncAssignmentRemindersEnabled,
-            includeLiveActivity: syncLiveActivityEnabled
-        )
-
         var attempt = 0
         while true {
+            // Rebuilt every iteration, not once before the loop: the
+            // `assignments` section preserves offsets the *current*
+            // document holds, and after a 409 that is the winner's
+            // document, not the one this call started from.
+            let updates = try local.documentUpdates(
+                existing: existing,
+                includeAssignments: syncAssignmentRemindersEnabled,
+                includeLiveActivity: syncLiveActivityEnabled
+            )
             let merged = merging(updates, into: existing)
             // `.sortedKeys` only so the bytes on the wire are deterministic
             // for a given document; the backend stores JSONB and does not
@@ -736,6 +782,7 @@ nonisolated enum NotificationSettingsSync {
                 return .settled(adopted: adopted, seeded: [])
             }
             let updates = try expected.documentUpdates(
+                existing: existing,
                 includeAssignments: missing.contains(.assignments),
                 includeLiveActivity: missing.contains(.liveActivity)
             )

@@ -114,14 +114,14 @@ struct NotificationSettingsSyncTests {
 
     @Test("assignments.enabled mirrors isAssignmentReminderEnabled exactly")
     func assignmentsEnabledMapsDirectly() {
-        #expect(Self.local(isAssignmentReminderEnabled: true).assignmentsSection.enabled == true)
-        #expect(Self.local(isAssignmentReminderEnabled: false).assignmentsSection.enabled == false)
+        #expect(Self.local(isAssignmentReminderEnabled: true).assignmentsSection(preservingForeignMinutesFrom: [:]).enabled == true)
+        #expect(Self.local(isAssignmentReminderEnabled: false).assignmentsSection(preservingForeignMinutesFrom: [:]).enabled == false)
     }
 
     @Test("assignments.reminder_offsets_hours mirrors the whole-hour offsets, descending")
     func assignmentOffsetsMapToHours() {
         let prefs = Self.local(assignmentReminderOffsets: [.hr2, .hr48, .hr24])
-        #expect(prefs.assignmentsSection.reminderOffsetsHours == [48, 24, 2])
+        #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsHours == [48, 24, 2])
     }
 
     @Test("sub-hour offsets are dropped from reminder_offsets_hours, never truncated to a phantom 0")
@@ -132,7 +132,7 @@ struct NotificationSettingsSyncTests {
         // readers that predate `reminder_offsets_minutes` use, and Android
         // types it as `List<Int>`, so it stays whole hours only.
         let prefs = Self.local(assignmentReminderOffsets: [.min30, .min15, .min10, .min5])
-        #expect(prefs.assignmentsSection.reminderOffsetsHours == [])
+        #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsHours == [])
     }
 
     @Test("assignments.reminder_offsets_minutes carries every offset, sub-hour included")
@@ -142,14 +142,14 @@ struct NotificationSettingsSyncTests {
         // whole truth. Without it a pull has no way to learn about — or to
         // turn off — a sub-hour offset.
         let prefs = Self.local(assignmentReminderOffsets: [.hr24, .hr1, .min30, .min5])
-        #expect(prefs.assignmentsSection.reminderOffsetsMinutes == [1440, 60, 30, 5])
-        #expect(prefs.assignmentsSection.reminderOffsetsHours == [24, 1])
+        #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsMinutes == [1440, 60, 30, 5])
+        #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsHours == [24, 1])
 
         // Sub-hour only: the hours array empties out, the minutes array
         // does not.
         let subHourOnly = Self.local(assignmentReminderOffsets: [.min30, .min15, .min10, .min5])
-        #expect(subHourOnly.assignmentsSection.reminderOffsetsHours == [])
-        #expect(subHourOnly.assignmentsSection.reminderOffsetsMinutes == [30, 15, 10, 5])
+        #expect(subHourOnly.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsHours == [])
+        #expect(subHourOnly.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsMinutes == [30, 15, 10, 5])
     }
 
     @Test("all seven assignments + live_activity fields map to their own document field, independently")
@@ -164,8 +164,8 @@ struct NotificationSettingsSyncTests {
             assignmentLiveActivityLeadTime: 28_800
         )
 
-        #expect(prefs.assignmentsSection.enabled == true)
-        #expect(prefs.assignmentsSection.reminderOffsetsHours == [8])
+        #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).enabled == true)
+        #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsHours == [8])
 
         let liveActivity = prefs.liveActivitySection
         #expect(liveActivity.showClassPreparing == true)
@@ -607,6 +607,128 @@ struct NotificationSettingsSyncTests {
         #expect(Set(sent.keys) == ["assignments", "live_activity"])
     }
 
+    // MARK: - 5b. Offsets this build has no case for survive a push
+
+    /// Reads the `assignments` section out of the document the client PUT.
+    private static func sentAssignments(from request: URLRequest) throws -> [String: Any] {
+        try #require(try sentDocumentObject(from: request)["assignments"] as? [String: Any])
+    }
+
+    @Test("a minute offset no local case represents is written back, not deleted")
+    func pushKeepsForeignMinuteOffsets() async throws {
+        // `reminder_offsets_minutes` is a key this app writes outright, so
+        // `merging` cannot protect it the way it protects a key nobody
+        // mentions: whatever this device sends replaces the array. A value
+        // only a newer client's enum understands — or one a changed enum
+        // used to have — would be gone the moment this device edits any
+        // offset. Android already folds such values back in.
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+
+        let existing: [String: Any] = [
+            "assignments": [
+                "enabled": true,
+                // 45 and 180 match no `AssignmentReminderOffset`; 1440 and
+                // 120 are this device's own selection coming back.
+                "reminder_offsets_minutes": [1440, 180, 120, 45],
+                "reminder_offsets_hours": [24, 3, 2],
+            ],
+        ]
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: try Self.readEnvelope(documentObject: existing, revision: 4)),
+            for: url
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 5)), for: url)
+
+        try await NotificationSettingsSync.push(
+            local: Self.local(assignmentReminderOffsets: [.hr24, .hr2]),
+            client: client,
+            cloudSyncEnabled: true
+        )
+
+        let assignments = try Self.sentAssignments(from: SettingsAPIStub.requests(for: url)[1])
+        #expect(assignments["reminder_offsets_minutes"] as? [Int] == [1440, 180, 120, 45])
+        // And the lossy mirror is derived from that same merged set, so the
+        // 180 the document already held is still a whole number of hours in
+        // it. A separately-computed hours list would have dropped it and
+        // left the two fields describing different sets.
+        #expect(assignments["reminder_offsets_hours"] as? [Int] == [24, 3, 2])
+    }
+
+    @Test("an offset this build does know, but the user deselected, is still removed")
+    func pushRemovesDeselectedOffsetsItDoesKnow() async throws {
+        // The other half of the rule: "preserve what this enum cannot
+        // represent" must not become "never remove anything", or turning an
+        // offset off would never sync.
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+
+        let existing: [String: Any] = [
+            "assignments": ["reminder_offsets_minutes": [2880, 1440, 30]],
+        ]
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: try Self.readEnvelope(documentObject: existing, revision: 1)),
+            for: url
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 2)), for: url)
+
+        try await NotificationSettingsSync.push(
+            local: Self.local(assignmentReminderOffsets: [.hr24]),
+            client: client,
+            cloudSyncEnabled: true
+        )
+
+        let assignments = try Self.sentAssignments(from: SettingsAPIStub.requests(for: url)[1])
+        #expect(assignments["reminder_offsets_minutes"] as? [Int] == [1440])
+        #expect(assignments["reminder_offsets_hours"] as? [Int] == [24])
+    }
+
+    @Test("a conflict rebases the preserved values onto the winner's document, not the stale one")
+    func pushRecomputesForeignOffsetsAfterAConflict() async throws {
+        // What this device preserves depends on what the document holds, so
+        // it has to be recomputed against the document that actually won —
+        // building the update once, before the loop, would write the loser's
+        // foreign values and delete the winner's.
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = Self.documentURL(baseURL)
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
+
+        SettingsAPIStub.enqueue(
+            .init(
+                statusCode: 200,
+                body: try Self.readEnvelope(
+                    documentObject: ["assignments": ["reminder_offsets_minutes": [1440, 45]]],
+                    revision: 1
+                )
+            ),
+            for: url
+        )
+        SettingsAPIStub.enqueue(
+            .init(
+                statusCode: 409,
+                body: try JSONSerialization.data(withJSONObject: [
+                    "server": [
+                        "document": ["assignments": ["reminder_offsets_minutes": [1440, 77]]],
+                        "revision": 2,
+                    ],
+                ])
+            ),
+            for: url
+        )
+        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.writeSuccess(revision: 3)), for: url)
+
+        try await NotificationSettingsSync.push(
+            local: Self.local(assignmentReminderOffsets: [.hr24]),
+            client: client,
+            cloudSyncEnabled: true
+        )
+
+        let retried = try Self.sentAssignments(from: SettingsAPIStub.requests(for: url)[2])
+        #expect(retried["reminder_offsets_minutes"] as? [Int] == [1440, 77])
+    }
+
     // MARK: - 6. Offset resolution on the pull side
 
     @Test("reminder_offsets_minutes is authoritative and complete, sub-hour offsets included")
@@ -843,7 +965,7 @@ struct NotificationSettingsSyncTests {
     @Test("a full push/pull round trip through the document preserves every offset exactly")
     func offsetsSurviveARoundTrip() {
         let original = LiveActivityPreferencesStore.defaultOffsets
-        let section = Self.local(assignmentReminderOffsets: original).assignmentsSection
+        let section = Self.local(assignmentReminderOffsets: original).assignmentsSection(preservingForeignMinutesFrom: [:])
         let resolved = NotificationSettingsSync.resolveOffsets(
             documentMinutes: section.reminderOffsetsMinutes,
             documentHours: section.reminderOffsetsHours,
