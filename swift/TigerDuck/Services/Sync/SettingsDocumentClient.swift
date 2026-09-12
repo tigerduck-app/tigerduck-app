@@ -192,7 +192,7 @@ actor SettingsDocumentClient {
             throw PushAPIError.invalidResponse
         }
         // This is our own backend, so it reports in — same rule every other
-        // first-party client follows (`PushAPIClient:351`,
+        // first-party client follows (`PushAPIClient:355`,
         // `BulletinAPIClient:234`, `AcademicCalendarStore:131`,
         // `AuthTokenManager:136`/`:194`). `APIVersionGate` is scoped by
         // *whose* server answered, not by which endpoint

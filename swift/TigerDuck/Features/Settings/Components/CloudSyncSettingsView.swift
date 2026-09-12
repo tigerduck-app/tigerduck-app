@@ -13,9 +13,11 @@ struct CloudSyncSettingsView: View {
     @Default(.syncCourseNames) private var syncCourseNames
     @Default(.syncAssignments) private var syncAssignments
     @Default(.serverPushUserOptOut) private var serverPushOptOut
-    /// Tracks whether the server-push opt-out PATCH is in flight or rolled
-    /// back. The Toggle binds against this so a failed PATCH can revert
-    /// the visual state in lock-step with the stored Default.
+    /// Tracks whether the last server-push opt-out PATCH failed. Set inside
+    /// `serverPushBinding`'s setter; the footer reads it to show the
+    /// failure notice. The Toggle itself binds to `serverPushBinding`, not
+    /// to this — the visual state reverts because that binding's getter
+    /// re-reads the stored Default, which a failed PATCH never changed.
     @State private var serverPushOptOutFailed: Bool = false
     /// In-flight server-push opt-out PATCH, held so a rapid second tap can
     /// cancel the prior request before starting a new one.
