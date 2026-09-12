@@ -40,3 +40,28 @@ struct LiveActivitySettingsViewTests {
         )
     }
 }
+
+// The other static decision this view owns: whether to put a link row to
+// 通知權限設定 above its settings. `permissionGapStatus(liveActivitiesEnabled:)`
+// is the whole shown/hidden rule — `nil` means show nothing — so the two
+// cases below are the entire contract, and the SwiftUI `if let` around the
+// row carries no logic of its own.
+@Suite("Live Activity permission link row")
+struct LiveActivityPermissionGapTests {
+    @Test("the row is hidden while the system switch a Live Activity needs is on")
+    func hiddenWhenActivitiesEnabled() {
+        #expect(LiveActivitySettingsView.permissionGapStatus(liveActivitiesEnabled: true) == nil)
+    }
+
+    @Test("the row appears, as not-granted, once that switch is off")
+    func shownWhenActivitiesDisabled() {
+        // Reuses `NotificationPermissionSettingsView.RowStatus`, so the status
+        // line is the same sentence the permission screen's own row shows —
+        // asserting on `.text` is what pins that, rather than a second copy
+        // of the string.
+        #expect(
+            LiveActivitySettingsView.permissionGapStatus(liveActivitiesEnabled: false)?.text
+                == String(localized: "permission_not_granted_tap_settings")
+        )
+    }
+}
