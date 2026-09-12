@@ -25,11 +25,11 @@ struct NotificationPermissionSettingsView: View {
             Section {
                 permissionRow(
                     label: String(localized: "permission_notifications_name"),
-                    status: notificationPermissionStatus
+                    status: Self.notificationPermissionStatus(for: notificationStatus)
                 )
                 permissionRow(
                     label: String(localized: "live_activity_settings_nav_title"),
-                    status: liveActivityPermissionStatus
+                    status: Self.liveActivityPermissionStatus(enabled: liveActivitiesEnabled)
                 )
             }
         }
@@ -45,7 +45,12 @@ struct NotificationPermissionSettingsView: View {
         }
     }
 
-    private enum RowStatus {
+    /// Internal rather than `private`, and the two mappings below are
+    /// `static` functions of plain values rather than instance-computed
+    /// properties, so `NotificationPermissionSettingsViewTests` can pin the
+    /// decision without constructing a view, environment, or `AppState` —
+    /// the same move `LiveActivitySettingsView.formatHoursAndMinutes` made.
+    enum RowStatus {
         case granted
         case notGranted
         case notApplicable
@@ -79,8 +84,8 @@ struct NotificationPermissionSettingsView: View {
     /// `.authorized`, `.provisional`, and `.ephemeral` all count as granted.
     /// Never `.notApplicable` — every iPhone/iPad in this app's deployment
     /// target has a real notification-authorization concept.
-    private var notificationPermissionStatus: RowStatus {
-        switch notificationStatus {
+    static func notificationPermissionStatus(for status: UNAuthorizationStatus) -> RowStatus {
+        switch status {
         case .authorized, .provisional, .ephemeral: return .granted
         case .denied, .notDetermined: return .notGranted
         @unknown default: return .notGranted
@@ -90,8 +95,8 @@ struct NotificationPermissionSettingsView: View {
     /// `ActivityAuthorizationInfo().areActivitiesEnabled` is a plain Bool on
     /// this app's deployment target — never `.notApplicable` for the same
     /// reason as the notification row above.
-    private var liveActivityPermissionStatus: RowStatus {
-        liveActivitiesEnabled ? .granted : .notGranted
+    static func liveActivityPermissionStatus(enabled: Bool) -> RowStatus {
+        enabled ? .granted : .notGranted
     }
 
     @ViewBuilder
