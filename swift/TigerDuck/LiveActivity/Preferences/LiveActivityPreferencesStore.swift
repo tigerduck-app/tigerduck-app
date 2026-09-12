@@ -5,10 +5,8 @@ import Defaults
 /// does not keep accumulating unrelated toggles.
 ///
 /// Defaults:
-/// - `assignmentReminderOffsets`: 6 high-signal offsets (48h/24h/8h/2h/1h/30m)
-///   — sized so 10 concurrent unfinished assignments still fit under the
-///   scheduler's 60-pending cap without silent drops. Users can opt into
-///   denser coverage in Settings.
+/// - `assignmentReminderOffsets`: 6 high-signal offsets (48h/24h/8h/2h/1h/30m).
+///   Users can opt into denser coverage in Settings.
 /// - `isLiveActivityEnabled`: true
 /// - `assignmentLiveActivityLeadTime`: 8 hours (also the spec cap)
 /// - `classPreparingLeadTime`: 1 hour (range 5 minutes ... 4 hours)
@@ -30,9 +28,10 @@ final class LiveActivityPreferencesStore {
             notifyChange(isRemoteOrigin: false)
         }
     }
-    /// Master switch for assignment due reminders. When off, the scheduler is
-    /// fed an empty offset set, which cancels all pending reminders. Mirrors
-    /// Android's `notifyAssignments`.
+    /// Master switch for assignment due reminders. Synced as the
+    /// `notification` document's `assignments.enabled`, which the backend
+    /// checks before sending any reminder. Mirrors Android's
+    /// `notifyAssignments`.
     var isAssignmentReminderEnabled: Bool {
         didSet {
             Defaults[.isAssignmentReminderEnabled] = isAssignmentReminderEnabled
@@ -45,8 +44,10 @@ final class LiveActivityPreferencesStore {
             Defaults[.isLiveActivityEnabled] = isLiveActivityEnabled
             // Not one of the seven synced fields, so
             // `applyFromNotificationSettingsDocument` never assigns it and
-            // it needs no remote-origin suppression.
-            notifyChange(isRemoteOrigin: false)
+            // it needs no remote-origin suppression. The post says so, so
+            // the observer does not write the settings document over a
+            // change the document does not carry.
+            notifyChange(isRemoteOrigin: false, isDeviceOnly: true)
         }
     }
     var assignmentLiveActivityLeadTime: TimeInterval {
@@ -159,9 +160,10 @@ final class LiveActivityPreferencesStore {
     /// this one out while the other two observers still run — see
     /// ``isApplyingRemoteUpdate``.
     ///
-    /// Clamps the two lead times the same way `init()` does: a value from
-    /// another platform (or a future server-side default) is not bound by
-    /// this build's slider ranges and could exceed today's caps.
+    /// Clamps the two lead times to this build's slider ranges — the same
+    /// maximums `init()` applies, plus the class-preparing minimum, which
+    /// `init()` does not: a value from another platform (or a future
+    /// server-side default) is not bound by those ranges.
     func applyFromNotificationSettingsDocument(
         isAssignmentReminderEnabled: Bool,
         assignmentReminderOffsets: Set<AssignmentReminderOffset>,
@@ -211,21 +213,25 @@ final class LiveActivityPreferencesStore {
     }
 
     /// Broadcasts that one or more preferences changed. AppState debounces
-    /// the resulting refresh so rapid changes (e.g. dragging a slider) do
-    /// not trigger many back-to-back Live Activity / notification reschedules.
+    /// what follows so rapid changes (e.g. dragging a slider) do not trigger
+    /// many back-to-back Live Activity refreshes, push-schedule syncs and
+    /// settings pushes.
     ///
     /// `isRemoteOrigin` marks a post whose values came from the
-    /// `notification` settings document rather than from the user. The
+    /// `notification` settings document rather than from the user, and
+    /// `isDeviceOnly` one for a preference the document does not carry. The
     /// observer runs every side effect either way except the outgoing
-    /// settings push, which would otherwise bounce the pull straight back
-    /// as a push of the same data.
-    private func notifyChange(isRemoteOrigin: Bool) {
+    /// settings push: for the first it would bounce the pull straight back
+    /// as a push of the same data, for the second it would have nothing to
+    /// write (`NotificationSettingsSync.changeNeedsDocumentPush`).
+    private func notifyChange(isRemoteOrigin: Bool, isDeviceOnly: Bool = false) {
+        var userInfo: [AnyHashable: Any] = [:]
+        if isRemoteOrigin { userInfo[AppConstants.liveActivityPreferencesRemoteOriginKey] = true }
+        if isDeviceOnly { userInfo[AppConstants.liveActivityPreferencesDeviceOnlyKey] = true }
         NotificationCenter.default.post(
             name: AppConstants.liveActivityPreferencesDidChange,
             object: nil,
-            userInfo: isRemoteOrigin
-                ? [AppConstants.liveActivityPreferencesRemoteOriginKey: true]
-                : nil
+            userInfo: userInfo.isEmpty ? nil : userInfo
         )
     }
 }

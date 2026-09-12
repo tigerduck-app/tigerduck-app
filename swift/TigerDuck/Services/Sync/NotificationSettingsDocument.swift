@@ -39,8 +39,8 @@ import Foundation
 nonisolated struct NotificationSettingsDocument: Codable, Equatable, Sendable {
     nonisolated struct Assignments: Codable, Equatable, Sendable {
         var enabled: Bool?
-        /// Whole-hour reminder offsets. **This is the field the backend
-        /// scheduler reads** (`server/push/reminders.py:78`), so it keeps
+        /// Whole-hour reminder offsets, for readers that predate
+        /// `reminder_offsets_minutes` (an older Android build), so it keeps
         /// carrying exactly what it has always carried: whole hours, as
         /// integers, descending.
         ///
@@ -59,10 +59,10 @@ nonisolated struct NotificationSettingsDocument: Codable, Equatable, Sendable {
         /// `Set<AssignmentReminderOffset>`.
         ///
         /// Added by this build. `reminder_offsets_hours` is a strict subset
-        /// of it and stays authoritative for every existing reader, so this
-        /// key is purely additive: the backend ignores it (it reads only
-        /// `enabled` and `reminder_offsets_hours` from this section) and an
-        /// older client that has never heard of it is unaffected.
+        /// of it, kept for readers that predate it. A reader that knows this
+        /// key prefers it (spec §4.6), the backend included
+        /// (`server/push/reminders.py`); an older client that has never
+        /// heard of it is unaffected.
         ///
         /// Same name and same units as `courses.reminder_offsets_minutes`,
         /// which has been in this document since phase 4a — a shape both

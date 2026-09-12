@@ -210,6 +210,10 @@ struct SettingsView: View {
                     NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
                         AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
                     }
+                    // Greyed out with course sync off: the backend sends
+                    // assignment reminders only to devices that sync, so
+                    // nothing set here would take effect.
+                    .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                         LiveActivitySettingsView(store: appState.liveActivityPreferences)
                     }

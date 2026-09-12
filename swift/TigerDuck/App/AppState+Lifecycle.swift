@@ -32,9 +32,11 @@ extension AppState {
         CustomNameCacheMigration.runIfNeeded()
         SemesterAttributionCacheMigration.runIfNeeded()
         Task(priority: .utility) { @MainActor in
-            await MoodleTokenMigration.runIfNeeded()
-            HomeSectionTitleMigration.runIfNeeded()
             #if os(iOS)
+            // First, because it is purely local: it must not wait behind the
+            // Moodle migration's network refresh while the reminders it
+            // removes are still queued to fire.
+            //
             // iOS only: `PendingReminderPurgeMigration.swift` is not in
             // project.pbxproj's `INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]`
             // allow-list (macOS excludes all *.swift by default and
@@ -49,6 +51,8 @@ extension AppState {
                 self.reconcileNotificationSettings(onSettled: onSettled)
             }
             #endif
+            await MoodleTokenMigration.runIfNeeded()
+            HomeSectionTitleMigration.runIfNeeded()
             // Add future migrations here in sequence. Anything that deletes
             // cached data belongs above the task, not in it.
         }

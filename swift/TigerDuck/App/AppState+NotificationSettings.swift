@@ -152,12 +152,11 @@ extension AppState {
     /// Debounces bursts of `liveActivityPreferencesDidChange` (e.g. a
     /// slider drag posts many in a row) into a single push, reusing
     /// `scheduleLiveActivityRefresh`'s 250 ms convention
-    /// (`AppState+LiveActivity.swift:146-157`). Kept as its own timer
-    /// rather than folded into that function: `scheduleLiveActivityRefresh`
-    /// also runs off `dataDidUpdate` and `courseSkipStateDidChange`, neither
-    /// of which is a preference change this document cares about — piggy-
-    /// backing on it would fire a settings PUT on every data sync, which is
-    /// exactly the "API call on every tick" the task brief says to avoid.
+    /// (`AppState+LiveActivity.swift`). Kept as its own timer rather than
+    /// folded into that function: `scheduleLiveActivityRefresh` also runs
+    /// off `dataDidUpdate` and `courseSkipStateDidChange`, neither of which
+    /// is a preference change this document cares about — piggy-backing on
+    /// it would fire a settings PUT on every data sync.
     ///
     /// The pending marker is set here, before the debounce rather than
     /// after it, so the window the debounce itself opens is covered: the
@@ -396,9 +395,9 @@ nonisolated enum NotificationSettingsSync {
 
         /// `AssignmentReminderOffset` → `assignments.reminder_offsets_hours`.
         ///
-        /// The whole-hour offsets only, because this is the field the
-        /// backend scheduler reads and it has always meant whole hours
-        /// (`server/push/reminders.py:78`). The four sub-hour cases
+        /// The whole-hour offsets only, because this field has always meant
+        /// whole hours to every reader that predates
+        /// `reminder_offsets_minutes`. The four sub-hour cases
         /// (`min30`/`min15`/`min10`/`min5`) would collide on truncation —
         /// all four → `0` — so they are left out here and carried
         /// losslessly in `reminderOffsetsMinutes` instead. Sorted
@@ -615,20 +614,31 @@ nonisolated enum NotificationSettingsSync {
     }
 
     /// Whether a device switch's change (`syncAssignmentReminders` /
-    /// `syncLiveActivity`) should trigger an extra `pushNotificationSettings()`
-    /// beyond the unconditional device-preferences PATCH
+    /// `syncLiveActivity`) should queue an extra settings push
+    /// (`AppState.scheduleNotificationSettingsPush()`) beyond the
+    /// unconditional device-preferences PATCH
     /// (`AppState.pushSyncPreferences()`, which fires on every change either
     /// direction and only carries the switch itself). True only on the
     /// off→on transition: turning the switch back on ungates the section it
     /// guards in `push(...)` above, and nothing else pushes that section's
     /// now-current local value to the server until this fires. The on→off
     /// direction needs no push — the section simply goes back to being left
-    /// exactly as the server holds it, which needs no write. Task 4 review,
-    /// Minor 4 (promoted): before this, the just-ungated section stayed
-    /// stale server-side until some unrelated local edit happened to
-    /// trigger a push.
+    /// exactly as the server holds it, which needs no write. Without it,
+    /// the just-ungated section stayed stale server-side until some
+    /// unrelated local edit happened to trigger a push.
     static func shouldPushOnDeviceSwitchChange(old: Bool, new: Bool) -> Bool {
         new && !old
+    }
+
+    /// Whether a `liveActivityPreferencesDidChange` post should queue a
+    /// settings push. Only a local edit to a field the document carries
+    /// does: a remote-origin post brings values that just came from the
+    /// document, and a device-only one (`isLiveActivityEnabled`) changed
+    /// nothing in it.
+    static func changeNeedsDocumentPush(_ userInfo: [AnyHashable: Any]?) -> Bool {
+        let isRemoteOrigin = userInfo?[AppConstants.liveActivityPreferencesRemoteOriginKey] as? Bool == true
+        let isDeviceOnly = userInfo?[AppConstants.liveActivityPreferencesDeviceOnlyKey] as? Bool == true
+        return !isRemoteOrigin && !isDeviceOnly
     }
 
     // MARK: - Read before write

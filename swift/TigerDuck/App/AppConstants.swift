@@ -49,6 +49,12 @@ nonisolated enum AppConstants {
     /// `LiveActivityPreferencesStore.applyFromNotificationSettingsDocument`
     /// and the observer in `AppState.setupObservers`.
     static let liveActivityPreferencesRemoteOriginKey = "TigerDuck.liveActivityPreferencesRemoteOrigin"
+    /// `userInfo` flag on `liveActivityPreferencesDidChange` marking a post
+    /// for a preference the `notification` settings document does not
+    /// carry — `isLiveActivityEnabled`, a per-device switch. The Live
+    /// Activity refresh and the push schedule sync still run for it; the
+    /// settings push does not, since there is nothing for it to write.
+    static let liveActivityPreferencesDeviceOnlyKey = "TigerDuck.liveActivityPreferencesDeviceOnly"
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
     /// Posted when a course's per-date skip state mutates. Drives the
     /// Live Activity refresh so a user marking the current class as

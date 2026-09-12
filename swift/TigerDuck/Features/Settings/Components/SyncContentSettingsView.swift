@@ -42,11 +42,12 @@ struct SyncContentSettingsView: View {
                         // but nothing else pushes its now-current local
                         // value to the server until this fires — the
                         // device-preferences PATCH above only carries the
-                        // switch itself, not the assignments/live_activity
-                        // section content (task-4 review, Minor 4,
-                        // promoted).
+                        // switch itself, not the section's content. It goes
+                        // through the same queued, marker-setting path as
+                        // any edit, so it cannot overlap another push and a
+                        // failed attempt stays marked for the next retry.
                         if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
-                            Task { await appState.pushNotificationSettings() }
+                            appState.scheduleNotificationSettingsPush()
                         }
                         #endif
                     }
@@ -57,7 +58,7 @@ struct SyncContentSettingsView: View {
                         appState.pushSyncPreferences()
                         #if os(iOS)
                         if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
-                            Task { await appState.pushNotificationSettings() }
+                            appState.scheduleNotificationSettingsPush()
                         }
                         #endif
                     }

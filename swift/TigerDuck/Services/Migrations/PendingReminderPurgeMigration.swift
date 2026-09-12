@@ -13,6 +13,10 @@ import UserNotifications
 /// schedule days or weeks later, duplicating the reminders the backend now
 /// sends. This migration removes them once, on the upgrade that drops local
 /// scheduling, and flags itself done so it never re-scans on every launch.
+///
+/// Keep until the minimum supported version is past 2.1.0: until then a
+/// device can still arrive here straight from 2.0.x with those requests
+/// queued.
 enum PendingReminderPurgeMigration {
     /// Copy of the deleted `AssignmentReminderScheduler.requestPrefix`. That
     /// type is gone, so this migration owns its own copy rather than

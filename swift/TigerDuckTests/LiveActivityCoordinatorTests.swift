@@ -124,8 +124,9 @@ struct LiveActivityCoordinatorTests {
             hasPushToken: false
         )
 
+        // 刻意把該保留的那份放在後面：「一律留第一份」的實作會在這裡失敗。
         let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd(
-            [withToken, withoutToken]
+            [withoutToken, withToken]
         )
 
         // 即使 i1 的 instanceId 較小，有 token 的 i2 仍勝出——
@@ -146,7 +147,8 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: Self.now.addingTimeInterval(600)
         )
 
-        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd([a, b])
+        // 同上：instanceId 較小的 i1 放在後面。
+        let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd([b, a])
 
         #expect(ended == ["i2"])
     }

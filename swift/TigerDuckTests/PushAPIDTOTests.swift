@@ -64,7 +64,7 @@ struct PushAPIDTOTests {
     @Test("decoding sync_assignment_reminders and sync_live_activity from the wire populates both properties")
     func responseDecodesNewFieldsFromTheirWireKeys() throws {
         // Shape the backend actually returns (both fields non-null, per
-        // the `67b03e3` migration's `server_default`).
+        // the `server_default` of migration `07b22743e0f1`).
         let json = Data("""
         {
           "device_id": "abc-123",
@@ -83,5 +83,30 @@ struct PushAPIDTOTests {
 
         #expect(response.syncAssignmentReminders == false)
         #expect(response.syncLiveActivity == true)
+    }
+
+    @Test("a response from a backend without the two fields still decodes")
+    func responseWithoutNewFieldsStillDecodes() throws {
+        // A backend without the columns — rolled back, or self-hosted —
+        // answers the preferences PATCH without them. The client never
+        // reads them, so their absence must not turn a change the server
+        // applied into a reported failure.
+        let json = Data("""
+        {
+          "device_id": "abc-123",
+          "server_push_enabled": true,
+          "sync_courses": true,
+          "sync_course_colors": true,
+          "sync_course_names": true,
+          "sync_assignments": true,
+          "cloud_sync_enabled": false
+        }
+        """.utf8)
+
+        let response = try JSONDecoder().decode(PushAPI.DevicePreferencesResponse.self, from: json)
+
+        #expect(response.syncAssignmentReminders == nil)
+        #expect(response.syncLiveActivity == nil)
+        #expect(response.cloudSyncEnabled == false)
     }
 }

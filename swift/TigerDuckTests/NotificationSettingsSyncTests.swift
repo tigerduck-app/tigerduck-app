@@ -127,9 +127,9 @@ struct NotificationSettingsSyncTests {
     func subHourOffsetsDoNotCollideAtZero() {
         // 30/15/10/5-minute offsets would all round down to "0 hours" if
         // truncated instead of dropped, silently merging four distinct
-        // user choices into one value. `reminder_offsets_hours` is the
-        // field the backend scheduler reads and Android types as
-        // `List<Int>`, so it stays whole hours only.
+        // user choices into one value. `reminder_offsets_hours` is what
+        // readers that predate `reminder_offsets_minutes` use, and Android
+        // types it as `List<Int>`, so it stays whole hours only.
         let prefs = Self.local(assignmentReminderOffsets: [.min30, .min15, .min10, .min5])
         #expect(prefs.assignmentsSection.reminderOffsetsHours == [])
     }
@@ -898,6 +898,40 @@ struct NotificationSettingsApplyTests {
             }
 
             #expect(origins == [false])
+        }
+    }
+
+    /// For each `liveActivityPreferencesDidChange` post made while `body`
+    /// runs, whether `AppState`'s observer queues a settings push for it
+    /// (`NotificationSettingsSync.changeNeedsDocumentPush`).
+    private static func recordedPushDecisions(_ body: () -> Void) -> [Bool] {
+        let log = OriginLog()
+        let token = NotificationCenter.default.addObserver(
+            forName: AppConstants.liveActivityPreferencesDidChange,
+            object: nil,
+            queue: nil
+        ) { note in
+            log.append(NotificationSettingsSync.changeNeedsDocumentPush(note.userInfo))
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        body()
+        return log.all
+    }
+
+    @Test("switching Live Activity off queues no settings push; an edit to a synced field still does")
+    func deviceOnlyEditQueuesNoSettingsPush() {
+        Self.withStore { store in
+            store.isLiveActivityEnabled = true
+
+            // Not in the document, so there is nothing for a push to write.
+            #expect(Self.recordedPushDecisions { store.isLiveActivityEnabled = false } == [false])
+            // A field the document carries still goes up.
+            #expect(Self.recordedPushDecisions { store.showInClassScenario.toggle() } == [true])
+            // And a pull still never bounces back as a push.
+            let document = NotificationSettingsDocument(
+                liveActivity: .init(showInClass: !store.showInClassScenario)
+            )
+            #expect(Self.recordedPushDecisions { NotificationSettingsSync.apply(document, to: store) } == [false])
         }
     }
 

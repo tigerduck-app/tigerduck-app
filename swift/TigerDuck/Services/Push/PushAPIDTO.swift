@@ -95,9 +95,10 @@ enum PushAPI {
         /// Device-level gate for whether the server should push
         /// assignment-due reminders to this device, now that reminder
         /// scheduling has moved server-side (v2.1.0). Distinct from the
-        /// notification-settings-document's `assignments.enabled`, which
-        /// is the user's reminder *content* preference (which offsets);
-        /// this is the per-device on/off switch for the feature itself.
+        /// notification settings document's `assignments` section, which
+        /// holds the user's reminder preferences themselves — `enabled`,
+        /// the account-wide on/off switch, and `reminder_offsets_*`, which
+        /// offsets. This is whether this one device takes part.
         var syncAssignmentReminders: Bool?
         /// Same shape as `syncAssignmentReminders`, for Live Activity.
         var syncLiveActivity: Bool?
@@ -125,11 +126,14 @@ enum PushAPI {
         let syncCourseColors: Bool
         let syncCourseNames: Bool
         let syncAssignments: Bool
-        /// Non-null with a `server_default` on the backend (migration
-        /// `67b03e3`), so pre-existing rows read back `true` rather than
-        /// requiring a decode fallback here.
-        let syncAssignmentReminders: Bool
-        let syncLiveActivity: Bool
+        /// Optional although the backend always sends them (non-null with a
+        /// `server_default`, migration `07b22743e0f1`): nothing reads them,
+        /// and requiring them would fail the decode of every preferences
+        /// PATCH answered by a backend without the columns — a rollback, or
+        /// a self-hosted server — reporting failure for a change that was
+        /// applied.
+        let syncAssignmentReminders: Bool?
+        let syncLiveActivity: Bool?
         let cloudSyncEnabled: Bool
 
         enum CodingKeys: String, CodingKey {
