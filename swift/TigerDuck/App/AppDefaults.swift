@@ -215,19 +215,25 @@ nonisolated extension Defaults.Keys {
     )
 
     // MARK: Push server
-    /// Default on as of the custom-push feature: every device registers
-    /// once onboarding is complete, so operator-issued pushes can target it.
-    /// Notification *permission* is still requested only via onboarding; the
-    /// device row just exists either way. Users can opt out via
-    /// `serverPushUserOptOut`. `AppState` gates the launch-time enable on
-    /// `hasCompletedOnboarding` so no device identity is sent pre-consent.
+    /// **Not a gate any more — read it from nothing but the migration.**
+    ///
+    /// Up to 2.0.x this switched the whole push stack off, and a `false`
+    /// here meant one of two different things (spec §6 item 5). Nothing
+    /// gates on it now: what a user can turn off is a delivery channel —
+    /// `bulletinPushEnabled` below, or `serverPushUserOptOut` — never the
+    /// registration itself, so every device past onboarding registers.
+    ///
+    /// The key survives purely as `BulletinPushOptOutMigration`'s input:
+    /// a stored `false` is how that migration recognises a 2.0.x user who
+    /// switched something off, and its own write of `true` is how it
+    /// records that it has read it. It goes when that file goes, per the
+    /// lifecycle in `Services/Migrations/AGENTS.md` — leaving the stored
+    /// key behind as a harmless orphan.
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
         default: true
     )
     /// Per-device bulletin push opt-out (spec §6 item 5) — distinct from
-    /// `pushServerEnabled` above, which is the whole push stack (assignment
-    /// reminders, Live Activities, sync triggers), and from
     /// `serverPushUserOptOut` below, which is the operator-push channel
     /// alone. Positive polarity to match the `user_devices.bulletin_push_
     /// enabled` column this mirrors: do not invert it the way

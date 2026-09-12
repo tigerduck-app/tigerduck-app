@@ -10,8 +10,8 @@ import UserNotifications
 /// The user-facing TigerSync screen (`CloudSyncSettingsView`) keeps only
 /// device-registration status and the latest error — the two things a
 /// normal user needs. Everything here is the raw `PushDiagnostic` behind
-/// that: including `enabled`, `isStarted`, and `resolvedServerURL`, which
-/// nothing else in the UI surfaces.
+/// that: including `isStarted` and `resolvedServerURL`, which nothing else
+/// in the UI surfaces.
 struct TigerSyncStatusView: View {
     @Environment(AppState.self) private var appState
     @State private var snapshot: PushDiagnostic?
@@ -21,7 +21,6 @@ struct TigerSyncStatusView: View {
         Form {
             if let s = snapshot {
                 Section("PushCoordinator") {
-                    LabeledContent("Enabled") { Text(s.enabled ? "true" : "false") }
                     LabeledContent("Started") { Text(s.isStarted ? "true" : "false") }
                     LabeledContent("Live Activities enabled") { Text(s.liveActivitiesEnabled ? "true" : "false") }
                     LabeledContent("Notification auth status") { Text(notificationStatusText(s.notificationAuthStatus)) }

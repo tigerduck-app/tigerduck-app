@@ -86,8 +86,8 @@ struct MacDeveloperSettingsView: View {
             // Raw `PushDiagnostic` for engineering use — the corresponding
             // iOS page is `TigerSyncStatusView`. The Account tab already
             // shows the registration status to every user; this
-            // section adds the fields nothing else surfaces (enabled/
-            // isStarted, token lengths, resolved server URL). Device ID
+            // section adds the fields nothing else surfaces (isStarted,
+            // token lengths, resolved server URL). Device ID
             // appears on both tabs — the Account tab's copy is already
             // monospaced and selectable too, so this one is purely a
             // convenience for not having to switch tabs mid bug report.
@@ -97,7 +97,6 @@ struct MacDeveloperSettingsView: View {
             // ever show one constant, meaningless value here.
             Section("TigerSync status") {
                 if let s = snapshot {
-                    LabeledContent("Enabled") { Text(s.enabled ? "true" : "false") }
                     LabeledContent("Started") { Text(s.isStarted ? "true" : "false") }
                     LabeledContent("PTS token length") { Text("\(s.registration.ptsTokenLength)") }
                     LabeledContent("Device token length") { Text("\(s.registration.deviceTokenLength)") }

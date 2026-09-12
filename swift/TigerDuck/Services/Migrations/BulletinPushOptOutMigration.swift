@@ -10,12 +10,14 @@ import Foundation
 /// user turned off all server push" (the since-removed 「伺服器推播」
 /// settings-menu toggle) — both called the same `disablePushServer()`. This
 /// migration cannot tell which one happened, so it takes the reading that
-/// matches what the bulletin page's button does now: mark bulletins off and
-/// re-arm the push stack so the device registers again. Assignment
-/// reminders, Live Activities and sync triggers were never meant to stay
-/// off for either kind of 2.0.x user, and re-registering is always safe —
-/// the device row is soft-deleted, not gone, and `POST /devices/register`
-/// clears the tombstone unconditionally.
+/// matches what the bulletin page's button does now: mark bulletins off,
+/// and keep operator pushes off too. Assignment reminders, Live Activities
+/// and sync triggers were never meant to stay off for either kind of 2.0.x
+/// user.
+///
+/// `pushServerEnabled` is this migration's own input and nothing else's —
+/// no runtime code gates on it any more, so the write of `true` below is
+/// only how a completed run records what it read.
 enum BulletinPushOptOutMigration {
     private static let doneKey = "BulletinPushOptOutMigration.v1.done"
 

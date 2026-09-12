@@ -221,14 +221,11 @@ NotificationSettingsSeedMigration.swift
 PendingReminderPurgeMigration.swift
 
 # BulletinPushOptOutMigration.swift — the upgrade fix-up for the 2.1.0
-# bulletin-push opt-out (spec §6 item 5). Called synchronously from its own
-# `#if os(iOS)` guard in `runPendingMigrations()`, above the `Task` the two
-# migrations above run inside — it must land before `pushCoordinator
-# .enable()` reads `pushServerEnabled` later in the same `init()`. iOS-only
-# because the feature it repairs is: bulletin notification settings have no
-# macOS surface at all (see Features/Bulletins above), so a Mac build has
-# never had a way to write the ambiguous 2.0.x flag state this migration
-# disambiguates.
+# bulletin-push opt-out (spec §6 item 5). Called from its own `#if os(iOS)`
+# guard in `runPendingMigrations()`. iOS-only because the feature it repairs
+# is: bulletin notification settings have no macOS surface at all (see
+# Features/Bulletins above), so a Mac build has never had a way to write the
+# ambiguous 2.0.x flag state this migration disambiguates.
 BulletinPushOptOutMigration.swift
 
 # Services/Sync — the `notification` settings-document model and its client.

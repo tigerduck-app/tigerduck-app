@@ -32,14 +32,16 @@ extension AppState {
         CustomNameCacheMigration.runIfNeeded()
         SemesterAttributionCacheMigration.runIfNeeded()
         #if os(iOS)
-        // Also synchronous, and also ahead of the Task below — not because
-        // it deletes a cache, but because `pushCoordinator.enable()` a few
-        // lines later in this same `init()` reads `Defaults[.pushServer
-        // Enabled]`. Landing this inside the Task would let that read see
-        // the stale 2.0.x value, leaving the device unregistered for the
-        // whole first session after upgrade. iOS only: bulletin push has no
-        // macOS surface (see Features/Bulletins), so a Mac build never
-        // wrote the ambiguous flag state this disambiguates.
+        // Synchronous like the three above, though nothing at launch reads
+        // what it writes any more: registration is no longer gated on a
+        // stored flag, and the two delivery preferences it repairs
+        // (`bulletinPushEnabled`, `serverPushUserOptOut`) are read when a
+        // register request is built — after an APNs round trip, and re-sent
+        // on every later register, so a late write would self-heal anyway.
+        // Kept inline because it costs three UserDefaults reads and there
+        // is nothing to await. iOS only: bulletin push has no macOS surface
+        // (see Features/Bulletins), so a Mac build never wrote the
+        // ambiguous flag state this disambiguates.
         BulletinPushOptOutMigration.runIfNeeded()
         #endif
         Task(priority: .utility) { @MainActor in

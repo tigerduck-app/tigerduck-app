@@ -87,23 +87,4 @@ struct BulletinPushOptOutMigrationTests {
         #expect(Defaults[.pushServerEnabled] == false)
         #expect(Defaults[.bulletinPushEnabled] == false)
     }
-
-    @Test("runs synchronously, so a caller with no await observes the migrated value the instant the call returns")
-    func runsSynchronously() {
-        // This is the ordering property `AppState+Lifecycle.swift` depends
-        // on: `runIfNeeded()` is called with no `await`, above the `Task`
-        // in `runPendingMigrations()`, strictly before `pushCoordinator
-        // .enable()` reads `pushServerEnabled` later in the same `init()`.
-        // A plain, non-`async` `@Test` function can only call a non-`async`
-        // function with no suspension point — this would fail to compile
-        // if `runIfNeeded()` were ever changed to `async`, and the
-        // assertions below would fail if it ever deferred its writes into
-        // an unstructured `Task` instead of applying them inline.
-        Defaults[.pushServerEnabled] = false
-
-        BulletinPushOptOutMigration.runIfNeeded()
-
-        #expect(Defaults[.pushServerEnabled] == true)
-        #expect(Defaults[.bulletinPushEnabled] == false)
-    }
 }

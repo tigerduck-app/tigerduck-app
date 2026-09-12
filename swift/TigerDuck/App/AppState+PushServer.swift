@@ -76,10 +76,9 @@ extension AppState {
 
     /// Enable server push (registers for remote notifications, starts PTS
     /// relay, queues an immediate sync). Call only from explicit user intent
-    /// — turning on the Settings toggle. Passes `requestPermission: true`
-    /// so the user sees an iOS prompt as feedback for their tap.
+    /// — the notification step in onboarding. Passes `requestPermission:
+    /// true` so the user sees an iOS prompt as feedback for their tap.
     func enablePushServer() {
-        Defaults[.pushServerEnabled] = true
         pushCoordinator.enable(requestPermission: true)
         requestPushScheduleSync()
     }
