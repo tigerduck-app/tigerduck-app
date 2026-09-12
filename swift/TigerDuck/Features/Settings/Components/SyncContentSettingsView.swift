@@ -39,7 +39,6 @@ struct SyncContentSettingsView: View {
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncAssignmentReminders) { old, new in
                         appState.pushSyncPreferences()
-                        #if os(iOS)
                         // On re-enable, the section this switch guards is
                         // ungated again in `NotificationSettingsSync.push`,
                         // but nothing else pushes its now-current local
@@ -52,18 +51,15 @@ struct SyncContentSettingsView: View {
                         if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
                             appState.scheduleNotificationSettingsPush()
                         }
-                        #endif
                     }
 
                 Toggle(String(localized: "sync_content_live_activity"), isOn: $syncLiveActivity)
                     .disabled(!cloudSyncEnabled)
                     .onChange(of: syncLiveActivity) { old, new in
                         appState.pushSyncPreferences()
-                        #if os(iOS)
                         if NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: old, new: new) {
                             appState.scheduleNotificationSettingsPush()
                         }
-                        #endif
                     }
 
                 if cloudSyncEnabled {

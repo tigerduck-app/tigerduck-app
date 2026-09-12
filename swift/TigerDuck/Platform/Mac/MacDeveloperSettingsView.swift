@@ -1,6 +1,5 @@
 #if os(macOS)
 import SwiftUI
-import UserNotifications
 
 // Developer tab and its clock-override view-model. DEBUG builds only —
 // the whole file body is inside `#if DEBUG`, so a release build compiles
@@ -85,20 +84,21 @@ struct MacDeveloperSettingsView: View {
             // MARK: TigerSync status
             //
             // Raw `PushDiagnostic` for engineering use — the corresponding
-            // iOS page is `TigerSyncStatusView`. The account tab above
-            // already shows registration status and timestamps to every
-            // user; this section adds the fields nothing else surfaces
-            // (enabled/isStarted, Live Activities, notification auth,
-            // token lengths, resolved server URL). Device ID appears in
-            // both: the account tab displays it, this one repeats it
-            // monospaced and selectable so it can be copied into a bug
-            // report.
+            // iOS page is `TigerSyncStatusView`. The Account tab already
+            // shows registration status and timestamps to every user; this
+            // section adds the fields nothing else surfaces (enabled/
+            // isStarted, token lengths, resolved server URL). Device ID
+            // appears on both tabs — the Account tab's copy is already
+            // monospaced and selectable too, so this one is purely a
+            // convenience for not having to switch tabs mid bug report.
+            //
+            // Live Activities and notification authorization are omitted:
+            // macOS never registers for either, so both fields would only
+            // ever show one constant, meaningless value here.
             Section("TigerSync status") {
                 if let s = snapshot {
                     LabeledContent("Enabled") { Text(s.enabled ? "true" : "false") }
                     LabeledContent("Started") { Text(s.isStarted ? "true" : "false") }
-                    LabeledContent("Live Activities enabled") { Text(s.liveActivitiesEnabled ? "true" : "false") }
-                    LabeledContent("Notification auth status") { Text(notificationStatusText(s.notificationAuthStatus)) }
                     LabeledContent("PTS token length") { Text("\(s.registration.ptsTokenLength)") }
                     LabeledContent("Device token length") { Text("\(s.registration.deviceTokenLength)") }
                     LabeledContent("Device ID") {
@@ -137,17 +137,6 @@ struct MacDeveloperSettingsView: View {
 
     private func refreshSnapshot() async {
         snapshot = await appState.pushCoordinator.currentSnapshot()
-    }
-
-    private func notificationStatusText(_ status: UNAuthorizationStatus) -> String {
-        switch status {
-        case .notDetermined: return "Not determined"
-        case .denied: return "Denied"
-        case .authorized: return "Authorized"
-        case .provisional: return "Provisional"
-        case .ephemeral: return "Ephemeral"
-        @unknown default: return "Unknown"
-        }
     }
 }
 

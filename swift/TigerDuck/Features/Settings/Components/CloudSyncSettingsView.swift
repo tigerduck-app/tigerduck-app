@@ -47,9 +47,7 @@ struct CloudSyncSettingsView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "sync_courses_footer"))
-                    #if os(iOS)
                     Text(String(localized: "sync_courses_footer_platform_note"))
-                    #endif
                 }
             }
 
