@@ -79,9 +79,9 @@ struct CloudSyncSettingsView: View {
                 }
             }
 
-            // Unconditional per spec §6's tree: registration status and the
-            // latest error are exactly what a user needs to see while
-            // investigating why sync isn't working, which is
+            // Unconditional per spec §6's tree: registration status, the
+            // latest error and the device ID are exactly what a user needs
+            // while investigating why sync isn't working, which is
             // disproportionately likely to be a moment course sync is off.
             // Owner's ruling, 2026-09-12 (spec §6, item 3): reads inline as
             // a section titled with `sync_status_nav_label` itself rather
@@ -101,6 +101,12 @@ struct CloudSyncSettingsView: View {
                                 .foregroundStyle(.red)
                                 .textSelection(.enabled)
                         }
+                    }
+                    LabeledContent(String(localized: "cloud_sync_device_id")) {
+                        Text(s.uuid)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
                     }
                 }
             }

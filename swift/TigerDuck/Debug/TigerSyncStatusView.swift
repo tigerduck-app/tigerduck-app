@@ -8,10 +8,10 @@ import UserNotifications
 /// purpose (no need to localize a debug menu into 50+ languages).
 ///
 /// The user-facing TigerSync screen (`CloudSyncSettingsView`) keeps only
-/// device-registration status and the latest error — the two things a
-/// normal user needs. Everything here is the raw `PushDiagnostic` behind
-/// that: including `isStarted` and `resolvedServerURL`, which nothing else
-/// in the UI surfaces.
+/// device-registration status, the latest error and the device ID — the
+/// things a normal user needs. Everything here is the raw `PushDiagnostic`
+/// behind that: including `isStarted` and `resolvedServerURL`, which
+/// nothing else in the UI surfaces.
 struct TigerSyncStatusView: View {
     @Environment(AppState.self) private var appState
     @State private var snapshot: PushDiagnostic?

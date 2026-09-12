@@ -140,7 +140,7 @@ struct MacAccountSettingsView: View {
                         okText: String(localized: "push_server_status_done"),
                         badText: String(localized: "push_server_pending_incomplete")
                     )
-                    LabeledContent("Device ID") {
+                    LabeledContent(String(localized: "cloud_sync_device_id")) {
                         Text(s.uuid)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
