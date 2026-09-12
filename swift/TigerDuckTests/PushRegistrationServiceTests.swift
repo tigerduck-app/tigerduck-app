@@ -66,35 +66,73 @@ struct PushRegistrationServiceTests {
         (registration["push_token"] as? [String: Any])?["token_kind"] as? String
     }
 
+    /// Runs `body` with the two delivery-preference flags the register body
+    /// carries pinned to their non-default values, then puts both back.
+    ///
+    /// Pinned rather than re-read live at assertion time, because what
+    /// needs pinning is the expression at the call site: the register sends
+    /// the *inverse* of `serverPushUserOptOut`, and an expectation that
+    /// re-derived its expected value the same way would still pass if the
+    /// `!` were lost. Both keys live in process-wide `UserDefaults` (no
+    /// `Defaults.suite` override — see `AppDefaults.swift`), so they are
+    /// restored as found: `BulletinPushOptOutMigrationTests` reads and
+    /// writes the same two.
+    private static func withPinnedDeliveryPreferences(
+        _ body: () async throws -> Void
+    ) async rethrows {
+        let savedBulletin = Defaults[.bulletinPushEnabled]
+        let savedOptOut = Defaults[.serverPushUserOptOut]
+        defer {
+            Defaults[.bulletinPushEnabled] = savedBulletin
+            Defaults[.serverPushUserOptOut] = savedOptOut
+        }
+        // Shipped defaults are the opposite of both: bulletins on, and not
+        // opted out of operator pushes.
+        Defaults[.bulletinPushEnabled] = false
+        Defaults[.serverPushUserOptOut] = true
+        try await body()
+    }
+
     // MARK: - Tests
 
     @Test("with only the standard APNs token the device registers — it does not wait for a push-to-start token")
     func registersWithoutPushToStartToken() async throws {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let service = Self.makeService(baseURL: baseURL)
-        Self.expectAttempt(baseURL, registrations: 1)
+        try await Self.withPinnedDeliveryPreferences {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            Self.expectAttempt(baseURL, registrations: 1)
 
-        // Live Activities are off, so iOS never hands over a PTS token.
-        await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
-        await service.awaitPendingRegistration()
+            // Live Activities are off, so iOS never hands over a PTS token.
+            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+            await service.awaitPendingRegistration()
 
-        let sent = try Self.sentRegistrations(baseURL)
-        try #require(sent.count == 1)
-        let registration = sent[0]
-        let token = try #require(registration["push_token"] as? [String: Any])
-        #expect(token["token_kind"] as? String == "standard")
-        #expect(token["token_value"] as? String == "abcdef")
+            let sent = try Self.sentRegistrations(baseURL)
+            try #require(sent.count == 1)
+            let registration = sent[0]
+            let token = try #require(registration["push_token"] as? [String: Any])
+            #expect(token["token_kind"] as? String == "standard")
+            #expect(token["token_value"] as? String == "abcdef")
 
-        // What the backend's reminder gate reads off the device row.
-        #expect(registration["client_device_id"] as? String == "test-device")
-        #expect(registration["platform"] as? String == "ios")
-        let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        #expect(appVersion != nil)
-        #expect(registration["app_version"] as? String == appVersion)
-        #expect(registration["locale"] as? String == PushRegistrationService.currentLocaleTag)
-        #expect(registration["cloud_sync_enabled"] as? Bool == Defaults[.cloudSyncEnabled])
+            // What the backend's reminder gate reads off the device row.
+            #expect(registration["client_device_id"] as? String == "test-device")
+            #expect(registration["platform"] as? String == "ios")
+            let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            #expect(appVersion != nil)
+            #expect(registration["app_version"] as? String == appVersion)
+            #expect(registration["locale"] as? String == PushRegistrationService.currentLocaleTag)
+            #expect(registration["cloud_sync_enabled"] as? Bool == Defaults[.cloudSyncEnabled])
 
-        #expect(await service.snapshot().lastRegisteredAt != nil)
+            // The two delivery preferences, carried on every register so a
+            // migrated value or a PATCH the server missed self-heals. Both
+            // are pinned above to the opposite of their shipped default:
+            // a register that stopped reading the bulletin flag, or that
+            // lost the `!` in front of `serverPushUserOptOut`, would write
+            // the inverse of the user's choice back on every launch.
+            #expect(registration["bulletin_push_enabled"] as? Bool == false)
+            #expect(registration["server_push_enabled"] as? Bool == false)
+
+            #expect(await service.snapshot().lastRegisteredAt != nil)
+        }
     }
 
     @Test("a push-to-start token that arrives later is attached by a second registration")
