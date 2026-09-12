@@ -671,7 +671,7 @@ struct NotificationSettingsSyncTests {
         #expect(resolved == [.hr16, .min30])
     }
 
-    @Test("an hours value large enough to overflow on ×60 is skipped, not trapped (Minor 1, fix round 2)")
+    @Test("an hours value large enough to overflow on ×60 is skipped, not trapped")
     func resolveOffsetsToleratesOverflowingHours() {
         // `Int.max` is straight off a hostile/corrupt document — the route
         // does not validate `reminder_offsets_hours`. Pre-fix, `$0 * 60`

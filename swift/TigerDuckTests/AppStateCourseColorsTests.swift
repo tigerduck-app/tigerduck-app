@@ -11,7 +11,7 @@
 import Testing
 @testable import TigerDuck
 
-@Suite("Course-sync → course-colours cascade (task-4 review Important 1)")
+@Suite("Course-sync → course-colours cascade")
 struct AppStateCourseColorsTests {
     @Test("turning courses off forces colours off, even though colours started on")
     func coursesOffForcesColoursOff() {

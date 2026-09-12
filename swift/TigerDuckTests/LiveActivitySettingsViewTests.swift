@@ -13,7 +13,7 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-@Suite("Live Activity lead-time label formatting (task-4 review Important 2)")
+@Suite("Live Activity lead-time label formatting")
 struct LiveActivitySettingsViewTests {
     @Test("a half-hour-past-an-hour lead time renders its own value, not the nearest whole hour")
     func halfHourPositionRendersExactly() {
