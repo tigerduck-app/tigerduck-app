@@ -12,7 +12,10 @@ import UserNotifications
 ///    request leaves the toggle agreeing with the server. The device
 ///    itself stays registered either way (spec §6 item 5) — only bulletin
 ///    delivery is gated server-side; assignment reminders, Live Activities
-///    and sync triggers are unaffected.
+///    and sync triggers are unaffected. A request that does not land says
+///    so in the section footer instead of leaving the tap looking like a
+///    no-op; the page is reachable without a sign-in check of its own, and
+///    the PATCH needs a Bearer.
 /// 3. CRUD the device's subscription rules. There is no manual 儲存
 ///    button — the page auto-persists in three situations:
 ///    * on editor 完成 (upsert + save)
@@ -33,7 +36,18 @@ struct BulletinNotificationSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var store = BulletinSubscriptionsStore()
     @State private var authStatus: UNAuthorizationStatus = .notDetermined
+    /// In-flight for the whole enable path — the permission prompt and the
+    /// PATCH behind it.
     @State private var isAskingPermission: Bool = false
+    /// In-flight for the destructive 關閉公告推播 button, which is only the
+    /// PATCH.
+    @State private var isDisablingPush: Bool = false
+    /// Set when the bulletin PATCH throws — offline, or signed out. Reuses
+    /// TigerSync's wording for the same kind of failure. Cleared by the
+    /// next attempt that lands. The page keeps showing the pre-tap state
+    /// on its own: the actor writes the Default only after a 2xx, so
+    /// `pushEnabled` below never moved.
+    @State private var pushUpdateFailed: Bool = false
     @State private var editingClientId: UUID?
     /// Unpersisted rule that lives only while the editor is on screen.
     /// Transitions to `store.pending` via `upsert` when the user taps
@@ -133,10 +147,18 @@ struct BulletinNotificationSettingsView: View {
                 Button(role: .destructive) {
                     Task { await disablePush() }
                 } label: {
-                    Label(String(localized: "bulletin_push_disable_action"), systemImage: "bell.slash")
+                    LoadingButtonLabel(isLoading: isDisablingPush) {
+                        Label(String(localized: "bulletin_push_disable_action"), systemImage: "bell.slash")
+                    }
                 }
+                .disabled(isDisablingPush)
             } header: {
                 Text(String(localized: "bulletin_push_settings_header"))
+            } footer: {
+                if pushUpdateFailed {
+                    Text(String(localized: "settings_server_push_update_failed"))
+                        .foregroundStyle(.orange)
+                }
             }
         } else {
             Section {
@@ -160,7 +182,13 @@ struct BulletinNotificationSettingsView: View {
             } header: {
                 Text(String(localized: "bulletin_push_settings_header"))
             } footer: {
-                Text(String(localized: "bulletin_push_footer"))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "bulletin_push_footer"))
+                    if pushUpdateFailed {
+                        Text(String(localized: "settings_server_push_update_failed"))
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
         }
     }
@@ -312,7 +340,13 @@ struct BulletinNotificationSettingsView: View {
             .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshAuthStatus()
         guard granted || authStatus == .provisional else { return }
-        try? await appState.updateBulletinPushEnabled(true)
+        do {
+            try await appState.updateBulletinPushEnabled(true)
+            pushUpdateFailed = false
+        } catch {
+            pushUpdateFailed = true
+            return
+        }
         if !didInitialLoad {
             didInitialLoad = true
             await store.load()
@@ -320,8 +354,15 @@ struct BulletinNotificationSettingsView: View {
     }
 
     private func disablePush() async {
-        try? await appState.updateBulletinPushEnabled(false)
-        // pushEnabled flips reactively via @Default; no manual refresh.
+        isDisablingPush = true
+        defer { isDisablingPush = false }
+        do {
+            try await appState.updateBulletinPushEnabled(false)
+            pushUpdateFailed = false
+            // pushEnabled flips reactively via @Default; no manual refresh.
+        } catch {
+            pushUpdateFailed = true
+        }
     }
 
     private func refreshAuthStatus() async {

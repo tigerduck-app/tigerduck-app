@@ -91,6 +91,11 @@ actor PushRegistrationService {
     /// at the boundary would let a server-accepted change desync from the
     /// stored value.
     private var optOutPatchChain: Task<Void, Error>?
+    /// The same, for the bulletin page's toggle. A chain of its own rather
+    /// than a shared one: the two PATCH different columns and neither has
+    /// to wait on the other, but two taps on *this* toggle inside one round
+    /// trip must still land in the order they were made.
+    private var bulletinPatchChain: Task<Void, Error>?
     #if os(iOS)
     private var pendingActivityRegistrations: [String: LiveActivityUpdateTokenRegistration] = [:]
     private var activity404Attempts: [String: Int] = [:]
@@ -288,17 +293,44 @@ actor PushRegistrationService {
     /// announce this to: bulletin delivery has no anonymous-pipeline
     /// counterpart (`user_devices.bulletin_push_enabled` only), and this
     /// page's other calls already require a session.
+    ///
+    /// Concurrent calls are serialised through `bulletinPatchChain` for the
+    /// same reason `updateServerPushOptOut` uses `optOutPatchChain`: two
+    /// taps inside one round trip would otherwise be two Tasks racing to
+    /// PATCH the same column, and the server would keep whichever landed
+    /// last rather than whichever the user meant last. Each link awaits its
+    /// predecessor, so the `apiClient → Defaults` pair stays atomic and tap
+    /// order is preserved.
     func updateBulletinPushEnabled(_ enabled: Bool) async throws {
-        do {
-            _ = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid, bulletinPushEnabled: enabled
-            )
-            await MainActor.run { Defaults[.bulletinPushEnabled] = enabled }
-            logger.info("bulletin push enabled=\(enabled, privacy: .public) propagated")
-        } catch {
-            logger.error("bulletin push enabled=\(enabled, privacy: .public) did not propagate: \(error.localizedDescription, privacy: .public)")
-            throw error
+        let predecessor = bulletinPatchChain
+        let uuid = identity.uuid
+        let apiClient = self.apiClient
+        let logger = self.logger
+        let task = Task<Void, Error> {
+            // Tolerate predecessor failure — each tap's success is
+            // independent of whether the previous one succeeded; we just
+            // need its work to be done before ours starts.
+            _ = try? await predecessor?.value
+            do {
+                _ = try await apiClient.updateDevicePreferences(
+                    deviceId: uuid, bulletinPushEnabled: enabled
+                )
+                await MainActor.run { Defaults[.bulletinPushEnabled] = enabled }
+                logger.info("bulletin push enabled=\(enabled, privacy: .public) propagated")
+            } catch {
+                logger.error("bulletin push enabled=\(enabled, privacy: .public) did not propagate: \(error.localizedDescription, privacy: .public)")
+                throw error
+            }
         }
+        bulletinPatchChain = task
+        defer {
+            // Don't pin a long-completed task as the chain head — clear
+            // it unless a newer call has already taken our place.
+            if bulletinPatchChain == task {
+                bulletinPatchChain = nil
+            }
+        }
+        try await task.value
     }
 
     func updateCloudSyncEnabled(_ enabled: Bool) async {
