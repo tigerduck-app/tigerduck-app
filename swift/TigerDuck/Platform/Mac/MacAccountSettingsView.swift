@@ -62,7 +62,11 @@ struct MacAccountSettingsView: View {
                             appState.checkPendingConflicts()
                         }
                     }
+            }
 
+            // Header, not footer: `sync_courses_footer` ("Choose what to
+            // include below") only reads true above the rows it describes.
+            Section(String(localized: "sync_courses_footer")) {
                 if state.cloudSyncEnabled {
                     Toggle(String(localized: "cloud_sync_assignments"), isOn: $macSyncAssignments)
                         .onChange(of: macSyncAssignments) { old, new in
@@ -87,9 +91,8 @@ struct MacAccountSettingsView: View {
                             }
                             macSyncCourses = newValue
                             // Spec §6's course-sync → course-colours
-                            // dependency (task-4 review, Important 1) —
-                            // same cascade as iOS's "Synced content" menu;
-                            // `AppState.courseColorsAfterCoursesChange`
+                            // dependency — same cascade as iOS's "Synced
+                            // content" menu; `AppState.courseColorsAfterCoursesChange`
                             // (AppState+CourseColors.swift) is the shared
                             // decision function both platforms call.
                             macSyncCourseColors = AppState.courseColorsAfterCoursesChange(
@@ -118,21 +121,16 @@ struct MacAccountSettingsView: View {
                         }
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    // No platform note here — `sync_courses_footer_platform_note`
-                    // is about the iOS-only Live Activity / reminder
-                    // fallout of turning this off, and macOS has neither.
-                    Text(String(localized: "sync_courses_footer"))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Link(destination: AppURLs.learnMoreBackend) {
-                        HStack(spacing: 4) {
-                            Text(String(localized: "settings_learn_more_backend"))
-                            Image(systemName: "arrow.up.right.square")
-                                .font(.caption2)
-                        }
-                        .font(.callout)
+                // No platform note here — `sync_courses_footer_platform_note`
+                // is about the iOS-only Live Activity / reminder fallout of
+                // turning this off, and macOS has neither.
+                Link(destination: AppURLs.learnMoreBackend) {
+                    HStack(spacing: 4) {
+                        Text(String(localized: "settings_learn_more_backend"))
+                        Image(systemName: "arrow.up.right.square")
+                            .font(.caption2)
                     }
+                    .font(.callout)
                 }
 
                 Button {
