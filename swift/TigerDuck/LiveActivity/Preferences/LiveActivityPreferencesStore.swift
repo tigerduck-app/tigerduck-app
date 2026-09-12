@@ -9,8 +9,12 @@ import Defaults
 ///
 /// The one place that combined answer gets computed — every reader goes
 /// through it instead of re-deriving `isLiveActivityEnabled &&
-/// cloudSyncEnabled` at its own call site. `LiveActivityScenarioResolver
-/// .resolve` is that reader today. `cloudSyncEnabled` lives on `AppState`,
+/// cloudSyncEnabled` at its own call site. Three read it:
+/// `LiveActivityScenarioResolver.resolve` (what the app starts itself),
+/// `ScheduleSyncService.Inputs` (what the server may start — nothing, when
+/// this is false), and `AppState.isLiveActivityAvailable`, which
+/// `LiveActivityCoordinator` asks before keeping any activity, a
+/// server-started one included. `cloudSyncEnabled` lives on `AppState`,
 /// not on this store, so it is a parameter here rather than a stored
 /// property this type owns — the same shape as Android's
 /// `effectiveCloudSyncEnabled`: a free function over explicit inputs, so a

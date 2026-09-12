@@ -28,6 +28,10 @@ extension AppState {
     /// Sync the next-48h event list to the push server. No-ops when the user
     /// has not enabled server push. Safe to call from any scene / data
     /// transition — `PushCoordinator` debounces bursts into a single POST.
+    ///
+    /// While Live Activity is unavailable (spec §6) the list is empty, and
+    /// the server cancels every start this device had queued — so this also
+    /// has to run when the rule turns off, not only when data changes.
     func requestPushScheduleSync() {
         pushCoordinator.requestSync { [weak self] in
             guard let self else {
@@ -39,21 +43,22 @@ extension AppState {
                     assignmentLeadTime: 0,
                     showClassPreparing: false,
                     showInClass: false,
-                    showAssignmentScenario: false
+                    showAssignmentScenario: false,
+                    liveActivityAvailable: false
                 )
             }
             #if os(iOS)
             return ScheduleSyncService.Inputs(
                 courses: courseProvider.currentCourses(),
                 assignments: DataCache.shared.loadAssignments(),
-                accentHex: accentColorHex,
-                classPreparingLeadTime: liveActivityPreferences.classPreparingLeadTime,
-                assignmentLeadTime: liveActivityPreferences.assignmentLiveActivityLeadTime,
-                showClassPreparing: liveActivityPreferences.showClassPreparingScenario,
-                showInClass: liveActivityPreferences.showInClassScenario,
-                showAssignmentScenario: liveActivityPreferences.showAssignmentScenario
+                preferences: liveActivityPreferences,
+                cloudSyncEnabled: cloudSyncEnabled,
+                accentHex: accentColorHex
             )
             #else
+            // The Mac has no Live Activity and no switch for it, and the
+            // backend never delivers a schedule start to a macOS device, so
+            // there is nothing here for the rule to gate.
             return ScheduleSyncService.Inputs(
                 courses: CanonicalCourseProvider().currentCourses(),
                 assignments: DataCache.shared.loadAssignments(),
@@ -62,7 +67,8 @@ extension AppState {
                 assignmentLeadTime: 8 * 3600,
                 showClassPreparing: true,
                 showInClass: true,
-                showAssignmentScenario: true
+                showAssignmentScenario: true,
+                liveActivityAvailable: true
             )
             #endif
         }

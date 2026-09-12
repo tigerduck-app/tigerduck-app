@@ -3,9 +3,10 @@
 // (`sync_courses_footer_platform_note`) already promises this. Spec §6.
 //
 // `effectiveLiveActivityEnabled` is the one place that combined answer is
-// computed; `LiveActivityScenarioResolver.resolve` is the reader. Both are
-// covered here without constructing `AppState`, which this test target
-// cannot do.
+// computed; `LiveActivityScenarioResolver.resolve` is the reader covered
+// here, without constructing `AppState`, which this test target cannot do.
+// The schedule upload's reading is pinned in `ScheduleSyncServiceTests`, the
+// coordinator's in `LiveActivityCoordinatorTests`.
 import Foundation
 import Testing
 @testable import TigerDuck

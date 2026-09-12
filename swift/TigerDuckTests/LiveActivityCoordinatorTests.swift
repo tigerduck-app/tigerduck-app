@@ -191,4 +191,37 @@ struct LiveActivityCoordinatorTests {
 
         #expect(ended.isEmpty)
     }
+
+    // MARK: - 即時動態不可用
+
+    @Test("即時動態不可用時全部結束，包括伺服器預排、倒數還沒到的活動")
+    func unavailableEndsEveryActivity() {
+        // 同步課程資訊關閉後，伺服器仍照先前上傳的排程，用 push-to-start
+        // 啟動了 B 課的 classPreparing（2 小時後開始）；A 課的 inClass 還有
+        // 30 分鐘；另有一個沒有倒數目標的。可用時三者都不該結束——這正是
+        // `futurePrelaunchedActivitiesSurvive` 釘住的——不可用時則全部結束。
+        let prelaunched = Self.facts(
+            instanceId: "i1",
+            activityId: "classPreparing-B",
+            countdownTarget: Self.now.addingTimeInterval(2 * 3600),
+            hasPushToken: true
+        )
+        let running = Self.facts(
+            instanceId: "i2",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(30 * 60)
+        )
+        let untimed = Self.facts(
+            instanceId: "i3",
+            activityId: "assignmentUrgent-C",
+            countdownTarget: nil
+        )
+        let all = [prelaunched, running, untimed]
+
+        #expect(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
+        #expect(
+            Set(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: false))
+                == ["i1", "i2", "i3"]
+        )
+    }
 }

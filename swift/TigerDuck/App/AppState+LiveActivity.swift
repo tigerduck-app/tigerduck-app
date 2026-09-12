@@ -20,6 +20,17 @@ extension AppState {
     #if os(iOS)
     // MARK: - Live Activity refresh & notification authorization (iOS only)
 
+    /// Spec §6's answer for this device right now: the user's own switch AND
+    /// course sync, through `effectiveLiveActivityEnabled`. What
+    /// `LiveActivityCoordinator` asks before keeping, or registering the
+    /// update token of, any activity — the ones the server starts included.
+    var isLiveActivityAvailable: Bool {
+        effectiveLiveActivityEnabled(
+            isLiveActivityEnabled: liveActivityPreferences.isLiveActivityEnabled,
+            cloudSyncEnabled: cloudSyncEnabled
+        )
+    }
+
     /// Recomputes the scenario and pushes it to the coordinator. Safe to call
     /// frequently — the coordinator only issues ActivityKit calls when the
     /// snapshot actually changes.

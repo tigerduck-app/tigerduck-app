@@ -157,6 +157,9 @@ final class AppState {
         liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
             await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
         }
+        liveActivityCoordinator.setAvailabilityProvider { [weak self] in
+            self?.isLiveActivityAvailable ?? false
+        }
         #endif
 
         // Install the refresh-failure relogin handler BEFORE enabling the push
@@ -433,13 +436,15 @@ final class AppState {
             } else {
                 stopRevisionPolling()
                 Task { await cloudSyncCoordinator.disable() }
+                // Uploads an empty schedule now (spec §6), which cancels
+                // every Live Activity start the server had queued for this
+                // device.
+                requestPushScheduleSync()
                 #if os(iOS)
-                // An explicit privacy-style shutoff, the same as logout:
-                // `LiveActivityCoordinator.apply` deliberately leaves an
-                // already-running activity alone when a refresh simply has
-                // nothing to show, so withholding new snapshots is not
-                // enough here — the one on screen needs this direct call to
-                // end it now instead of running until its own countdown.
+                // An explicit privacy-style shutoff, the same as logout: end
+                // what is on screen now rather than at the next refresh.
+                // Anything the server still starts afterwards is ended on
+                // arrival — `LiveActivityCoordinator` checks the same rule.
                 Task { @MainActor in await liveActivityCoordinator.endAll() }
                 #endif
             }

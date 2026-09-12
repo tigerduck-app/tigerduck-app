@@ -26,6 +26,12 @@ final class ScheduleSyncService {
         let showClassPreparing: Bool
         let showInClass: Bool
         let showAssignmentScenario: Bool
+        /// Whether Live Activity may run on this device at all. On iPhone and
+        /// iPad that is `effectiveLiveActivityEnabled` — see the initializer
+        /// in the extension below. False makes the upload an empty list: the
+        /// backend files a push-to-start job for every event it receives, and
+        /// an empty list is what cancels the ones this device queued before.
+        let liveActivityAvailable: Bool
     }
 
     private let identity: PushIdentity
@@ -86,6 +92,11 @@ final class ScheduleSyncService {
         horizonEnd: Date,
         timelineResolver: CourseTimelineResolver? = nil
     ) -> [PushAPI.ScheduleEvent] {
+        // Spec §6: nothing for the server to start while Live Activity is
+        // unavailable. The empty list still goes out — it is what cancels
+        // the starts this device queued before.
+        guard inputs.liveActivityAvailable else { return [] }
+
         var events: [PushAPI.ScheduleEvent] = []
 
         let resolver = timelineResolver ?? CourseTimelineResolver()
@@ -196,3 +207,35 @@ final class ScheduleSyncService {
         await inflight?.value
     }
 }
+
+#if os(iOS)
+extension ScheduleSyncService.Inputs {
+    /// This device's upload, read off the same preferences the on-device
+    /// resolver uses, with `liveActivityAvailable` answered by
+    /// `effectiveLiveActivityEnabled` (spec §6): course sync off, or the
+    /// user's own Live Activity switch off, leaves the server nothing to
+    /// start.
+    init(
+        courses: [SDCourse],
+        assignments: [SDAssignment],
+        preferences: LiveActivityPreferencesStore,
+        cloudSyncEnabled: Bool,
+        accentHex: Int
+    ) {
+        self.init(
+            courses: courses,
+            assignments: assignments,
+            accentHex: accentHex,
+            classPreparingLeadTime: preferences.classPreparingLeadTime,
+            assignmentLeadTime: preferences.assignmentLiveActivityLeadTime,
+            showClassPreparing: preferences.showClassPreparingScenario,
+            showInClass: preferences.showInClassScenario,
+            showAssignmentScenario: preferences.showAssignmentScenario,
+            liveActivityAvailable: effectiveLiveActivityEnabled(
+                isLiveActivityEnabled: preferences.isLiveActivityEnabled,
+                cloudSyncEnabled: cloudSyncEnabled
+            )
+        )
+    }
+}
+#endif

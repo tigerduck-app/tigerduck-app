@@ -68,7 +68,8 @@ struct ScheduleSyncServiceTests {
             assignmentLeadTime: assignmentLead,
             showClassPreparing: showClassPreparing,
             showInClass: showInClass,
-            showAssignmentScenario: showAssignmentScenario
+            showAssignmentScenario: showAssignmentScenario,
+            liveActivityAvailable: true
         )
     }
 
@@ -80,6 +81,59 @@ struct ScheduleSyncServiceTests {
         let end = now.addingTimeInterval(48 * 3600)
         let events = ScheduleSyncService.buildEvents(inputs: inputs, now: now, horizonEnd: end)
         #expect(events.isEmpty)
+    }
+
+    // MARK: - Live Activity availability (spec §6)
+
+    /// The server starts a Live Activity from every event this device
+    /// uploads, whether or not the app is running. With course sync off, or
+    /// the user's own Live Activity switch off, the upload has to be empty —
+    /// that is also what makes the server cancel what it already queued.
+    /// Built through the initializer `AppState` uses, so the rule is read the
+    /// way it is read there.
+    @Test func unavailableLiveActivity_uploadsNoEvents() async {
+        let ctx = Self.context()
+        let course = Self.makeCourse(
+            courseNo: "CS201",
+            name: "Operating Systems",
+            weekdayToPeriods: [2: ["3", "4"]],
+            context: ctx
+        )
+        let assignment = SDAssignment(
+            assignmentId: "a-201",
+            courseNo: "CS201",
+            courseName: "Operating Systems",
+            title: "Lab 1",
+            dueDate: Self.tuesdayAt(12)
+        )
+        ctx.insert(assignment)
+        let now = Self.tuesdayAt(8)
+        let end = now.addingTimeInterval(48 * 3600)
+
+        await NotificationSettingsFixtures.withStore { store in
+            store.showClassPreparingScenario = true
+            store.showInClassScenario = true
+            store.showAssignmentScenario = true
+            for (userSwitch, cloudSync) in [(true, true), (true, false), (false, true), (false, false)] {
+                store.isLiveActivityEnabled = userSwitch
+                let events = ScheduleSyncService.buildEvents(
+                    inputs: ScheduleSyncService.Inputs(
+                        courses: [course],
+                        assignments: [assignment],
+                        preferences: store,
+                        cloudSyncEnabled: cloudSync,
+                        accentHex: 0x4A90E2
+                    ),
+                    now: now,
+                    horizonEnd: end
+                )
+                if userSwitch && cloudSync {
+                    #expect(!events.isEmpty)
+                } else {
+                    #expect(events.isEmpty, "Live Activity switch \(userSwitch), course sync \(cloudSync)")
+                }
+            }
+        }
     }
 
     @Test func singleCourse_emitsBothClassPreparingAndInClass() {
