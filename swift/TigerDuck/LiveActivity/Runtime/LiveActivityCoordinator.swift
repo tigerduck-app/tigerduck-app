@@ -45,7 +45,9 @@ final class LiveActivityCoordinator {
     /// promise that an ended activity has left `Activity.activities` by the
     /// time `end` returns, so a survivor search that trusted
     /// `activityState` alone could pick a copy that is already on its way
-    /// out. Pruned of ids ActivityKit no longer lists.
+    /// out. Pruned of ids ActivityKit no longer lists, on every pass of
+    /// `pruneRunningActivities` — including the passes that run while Live
+    /// Activity is unavailable, which is when the ending happens wholesale.
     private var endedActivityIds: Set<String> = []
     private var updateTokenRegistrationHandler: (@Sendable (LiveActivityUpdateTokenRegistration) async -> Void)?
     /// Whether Live Activity may run at all right now —
@@ -216,6 +218,15 @@ final class LiveActivityCoordinator {
 
     private func pruneRunningActivities(now: Date) async {
         let available = isAvailable()
+        // 收斂 `endedActivityIds`：只留下 ActivityKit 還列得出來的副本。
+        // 必須在這裡、在可用與否的判斷之外做——`end(_:reason:)` 每結束一個
+        // 就記一筆，包含不可用時把整批掃掉的那條路，而唯一會收斂它的
+        // `endDuplicateActivities` 只在可用時才呼叫。放在重複處理之前，
+        // 沿用它原本的時機：這一輪剛結束的副本即使已從清單消失，仍留在
+        // 集合裡到下一輪，觀察者迴圈的 `contains` 才擋得住它。
+        endedActivityIds = endedActivityIds.intersection(
+            Activity<TigerDuckActivityAttributes>.activities.map(\.id)
+        )
         // 不可用時下面會全部結束；先處理重複，只會把 token observer 重新指向
         // 一個馬上就要結束的留存者。
         if available {
@@ -357,7 +368,6 @@ final class LiveActivityCoordinator {
     /// keys instead of re-pointing them.
     private func endDuplicateActivities(now: Date) async {
         let listed = Activity<TigerDuckActivityAttributes>.activities
-        endedActivityIds = endedActivityIds.intersection(listed.map(\.id))
         // `isLive` 的過濾在這裡做完，下面挑 keeper 時才不會選到已經
         // dismissed 的副本。`duplicateInstanceIdsToEnd` 內部也會再濾一次，
         // 但那是為了讓純函式自身的契約完整，兩者不衝突。
