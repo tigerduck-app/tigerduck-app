@@ -217,6 +217,10 @@ struct SettingsView: View {
                     NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                         LiveActivitySettingsView(store: appState.liveActivityPreferences)
                     }
+                    // Same reason as the row above: Live Activity itself is
+                    // unavailable with course sync off (spec §6), so this
+                    // screen has nothing to take effect either.
+                    .disabled(!cloudSyncEnabled)
                 }
             }
 
