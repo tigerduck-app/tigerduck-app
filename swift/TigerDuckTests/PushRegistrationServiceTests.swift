@@ -42,6 +42,28 @@ struct PushRegistrationServiceTests {
         baseURL.appendingPathComponent("devices/anonymous")
     }
 
+    private static func preferencesURL(_ baseURL: URL) -> URL {
+        baseURL.appendingPathComponent("devices/test-device/preferences")
+    }
+
+    /// The 200 body `PATCH /devices/{id}/preferences` answers with, echoing
+    /// the bulletin flag the way the backend does (the column is NOT NULL
+    /// with a `server_default`).
+    private static func preferencesBody(bulletinPushEnabled: Bool) -> Data {
+        Data("""
+        {
+          "device_id": "server-device",
+          "server_push_enabled": true,
+          "sync_courses": true,
+          "sync_course_colors": true,
+          "sync_course_names": true,
+          "sync_assignments": true,
+          "cloud_sync_enabled": true,
+          "bulletin_push_enabled": \(bulletinPushEnabled)
+        }
+        """.utf8)
+    }
+
     /// Stubs one registration attempt: the anonymous announce, then
     /// `registrations` successful POSTs to `/devices/register`.
     private static func expectAttempt(_ baseURL: URL, registrations: Int) {
@@ -90,6 +112,19 @@ struct PushRegistrationServiceTests {
         // opted out of operator pushes.
         Defaults[.bulletinPushEnabled] = false
         Defaults[.serverPushUserOptOut] = true
+        try await body()
+    }
+
+    /// Runs `body` with `bulletinPushEnabled` set to `start` and restores
+    /// whatever was there before — `updateBulletinPushEnabled` writes that
+    /// key into process-wide UserDefaults on success.
+    private static func withBulletinPreference(
+        startingAt start: Bool,
+        _ body: () async throws -> Void
+    ) async rethrows {
+        let saved = Defaults[.bulletinPushEnabled]
+        defer { Defaults[.bulletinPushEnabled] = saved }
+        Defaults[.bulletinPushEnabled] = start
         try await body()
     }
 
@@ -159,5 +194,46 @@ struct PushRegistrationServiceTests {
         #expect(ptsToken["token_value"] as? String == "a1b2")
         #expect(ptsToken["scope_key"] as? String == "TigerDuckActivityAttributes")
         #expect(secondAttempt.contains { Self.tokenKind($0) == "standard" })
+    }
+
+    // MARK: - The bulletin toggle PATCHes before it persists
+
+    @Test("a bulletin opt-out the server rejects leaves the local preference alone")
+    func rejectedBulletinPatchDoesNotPersist() async throws {
+        try await Self.withBulletinPreference(startingAt: true) {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 500, body: Data(#"{"detail":"internal_error"}"#.utf8)),
+                for: Self.preferencesURL(baseURL)
+            )
+
+            await #expect(throws: (any Error).self) {
+                try await service.updateBulletinPushEnabled(false)
+            }
+
+            // The page reads this key through `@Default`. Persisting ahead
+            // of the response — say, to make the tap feel instant — would
+            // leave it showing bulletins off while the server keeps
+            // sending them, with nothing to correct it until the next
+            // register.
+            #expect(Defaults[.bulletinPushEnabled] == true)
+        }
+    }
+
+    @Test("a bulletin opt-out the server accepts is persisted locally")
+    func acceptedBulletinPatchPersists() async throws {
+        try await Self.withBulletinPreference(startingAt: true) {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: false)),
+                for: Self.preferencesURL(baseURL)
+            )
+
+            try await service.updateBulletinPushEnabled(false)
+
+            #expect(Defaults[.bulletinPushEnabled] == false)
+        }
     }
 }
