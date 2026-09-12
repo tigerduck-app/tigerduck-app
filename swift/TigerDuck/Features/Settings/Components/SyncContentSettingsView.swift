@@ -8,7 +8,8 @@ import SwiftUI
 /// Reachable regardless of whether "Sync course information"
 /// (`cloudSyncEnabled`) is on, but not every row behaves the same way while
 /// it's off: the two notification-related rows (assignment due reminders,
-/// Live Activity) stay visible but greyed out, per spec step 3. The other
+/// Live Activity) stay visible but greyed out, per spec step 3, and so does
+/// the jump to the Live Activity screen at the bottom. The other
 /// four — assignment status and the three class-table rows — are hidden
 /// entirely, matching the Mac account tab, so a category the user cannot
 /// see or touch can never pick up a re-enable mark while sync is off.
@@ -100,6 +101,10 @@ struct SyncContentSettingsView: View {
                 NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }
+                // Greyed with sync off, like the row under 通知 that leads to
+                // the same screen: Live Activity is unavailable then
+                // (spec §6), so its switches would take effect on nothing.
+                .disabled(!cloudSyncEnabled)
             }
         }
         .navigationTitle(String(localized: "sync_content_nav_label"))
