@@ -18,6 +18,9 @@ enum PushAPI {
         let device_class: String?
         let app_version: String?
         let os_version: String?
+        /// Hardware model — see `PushDeviceModel`. Support information for
+        /// the portal; nothing on the server targets on it.
+        let device_model: String?
         /// BCP-47 tag for the language the app is actually displaying, so the
         /// server can compose push copy in it. Sent unconditionally — it is a
         /// device fact, not a preference.

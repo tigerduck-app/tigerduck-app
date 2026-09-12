@@ -32,6 +32,31 @@ nonisolated enum PushAPNsEnv {
     #endif
 }
 
+/// The hardware model this device reports to the backend, for support work
+/// in the portal: the machine identifier ("iPhone17,3", "iPad16,3",
+/// "Mac15,3"). Apple exposes no marketing name. A simulator reports the
+/// identifier of the device it simulates.
+nonisolated enum PushDeviceModel {
+    static let current: String? = {
+        #if os(macOS)
+        var size = 0
+        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return nil }
+        return String(decoding: buffer.prefix { $0 != 0 }, as: UTF8.self)
+        #else
+        if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
+            return simulated
+        }
+        var info = utsname()
+        uname(&info)
+        return withUnsafeBytes(of: &info.machine) { raw in
+            String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+        }
+        #endif
+    }()
+}
+
 /// `device_class` value the iOS client reports. Drives operator-side
 /// targeting (iPhone vs iPad vs Mac) without needing the backend to
 /// re-parse build metadata.
@@ -183,6 +208,7 @@ actor PushRegistrationService {
             device_class: deviceClass,
             app_version: appVersion,
             os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+            device_model: PushDeviceModel.current,
             locale: Self.currentLocaleTag,
             push_token: nil,
             cloud_sync_enabled: Defaults[.cloudSyncEnabled],
@@ -557,6 +583,7 @@ actor PushRegistrationService {
                     device_class: deviceClass,
                     app_version: appVersion,
                     os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+                    device_model: PushDeviceModel.current,
                     locale: Self.currentLocaleTag,
                     push_token: token,
                     cloud_sync_enabled: cloudSync,

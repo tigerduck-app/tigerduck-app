@@ -197,6 +197,7 @@ struct PushAPIDTOTests {
             device_class: nil,
             app_version: nil,
             os_version: nil,
+            device_model: nil,
             locale: nil,
             push_token: nil,
             cloud_sync_enabled: nil,
@@ -219,6 +220,7 @@ struct PushAPIDTOTests {
             device_class: nil,
             app_version: nil,
             os_version: nil,
+            device_model: nil,
             locale: nil,
             push_token: nil,
             cloud_sync_enabled: nil,
@@ -231,5 +233,28 @@ struct PushAPIDTOTests {
         )
 
         #expect(object["server_push_enabled"] as? Bool == true)
+    }
+
+    @Test("encoding device_model on the register request produces its wire key")
+    func deviceRegisterRequestEncodesDeviceModelToItsWireKey() throws {
+        let request = PushAPI.DeviceRegisterRequest(
+            client_device_id: "device-1",
+            platform: "ios",
+            device_class: nil,
+            app_version: nil,
+            os_version: nil,
+            device_model: "iPhone17,3",
+            locale: nil,
+            push_token: nil,
+            cloud_sync_enabled: nil,
+            bulletin_push_enabled: nil,
+            server_push_enabled: nil
+        )
+        let data = try JSONEncoder().encode(request)
+        let object = try #require(
+            try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+
+        #expect(object["device_model"] as? String == "iPhone17,3")
     }
 }
