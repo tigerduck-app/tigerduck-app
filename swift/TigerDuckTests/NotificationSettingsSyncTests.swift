@@ -787,7 +787,7 @@ struct NotificationSettingsApplyTests {
 
     @Test("a pull carrying only whole-hour offsets does not delete the shipped .min30 default")
     func pullDoesNotDeleteSubHourDefaults() throws {
-        try Self.withStore { store in
+        Self.withStore { store in
             store.assignmentReminderOffsets = LiveActivityPreferencesStore.defaultOffsets
 
             // Exactly what this app's own push writes to
@@ -807,7 +807,7 @@ struct NotificationSettingsApplyTests {
 
     @Test("a pull carrying reminder_offsets_minutes can turn a sub-hour offset off")
     func pullWithMinutesRemovesSubHourOffset() throws {
-        try Self.withStore { store in
+        Self.withStore { store in
             store.assignmentReminderOffsets = LiveActivityPreferencesStore.defaultOffsets
 
             let document = NotificationSettingsDocument(
@@ -827,7 +827,7 @@ struct NotificationSettingsApplyTests {
 
     @Test("a document with no assignments section leaves the local assignment preferences alone")
     func applyWithoutAssignmentsLeavesLocalAlone() throws {
-        try Self.withStore { store in
+        Self.withStore { store in
             store.isAssignmentReminderEnabled = true
             store.assignmentReminderOffsets = [.hr24, .min15]
 
@@ -847,7 +847,7 @@ struct NotificationSettingsApplyTests {
 
     @Test("fields absent from live_activity keep their local values")
     func applyWithPartialLiveActivityKeepsLocalValues() throws {
-        try Self.withStore { store in
+        Self.withStore { store in
             store.showClassPreparingScenario = true
             store.showAssignmentScenario = true
             store.classPreparingLeadTime = 1800
@@ -868,7 +868,7 @@ struct NotificationSettingsApplyTests {
 
     @Test("applying a pull posts exactly one change notification, flagged remote-origin")
     func applyPostsOneRemoteOriginNotification() throws {
-        try Self.withStore { store in
+        Self.withStore { store in
             store.showInClassScenario = true
             store.showAssignmentScenario = true
 
@@ -892,7 +892,7 @@ struct NotificationSettingsApplyTests {
 
     @Test("a local edit posts an un-flagged notification, so the push still fires")
     func localEditPostsWithoutRemoteOriginFlag() throws {
-        try Self.withStore { store in
+        Self.withStore { store in
             let origins = Self.recordedOrigins {
                 store.showInClassScenario = !store.showInClassScenario
             }
@@ -937,7 +937,7 @@ struct NotificationSettingsApplyTests {
 
     @Test("a pull that changes nothing posts nothing")
     func applyWithNoChangePostsNothing() throws {
-        try Self.withStore { store in
+        Self.withStore { store in
             store.isAssignmentReminderEnabled = true
             store.assignmentReminderOffsets = [.hr24, .min30]
             store.showClassPreparingScenario = true
