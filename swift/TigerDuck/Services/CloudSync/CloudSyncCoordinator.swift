@@ -36,7 +36,6 @@ final class CloudSyncCoordinator {
     // MARK: Observable state
 
     private(set) var state: CloudSyncState = .disabled
-    private(set) var lastSyncedAt: Date?
     private(set) var lastError: String?
 
     // MARK: Shared instance
@@ -76,8 +75,6 @@ final class CloudSyncCoordinator {
         if Defaults[.cloudSyncEnabled] {
             state = .active
         }
-        let ts = Defaults[.cloudSyncLastSyncedAt]
-        lastSyncedAt = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
     }
 
     // MARK: - Lifecycle serialization
@@ -121,8 +118,6 @@ final class CloudSyncCoordinator {
             await pushCoordinator.registration.updateCloudSyncEnabled(true)
             state = .enabling(step: "sync")
             try await pullFullSync()
-            Defaults[.cloudSyncLastSyncedAt] = Date().timeIntervalSince1970
-            lastSyncedAt = Date()
         } catch {
             lastError = String(describing: error)
             AppLogger.captureError(error, context: ["phase": "cloudSync.enable"])
@@ -158,8 +153,6 @@ final class CloudSyncCoordinator {
         await outbox.clearAll()
 
         Defaults[.cloudSyncEnabled] = false
-        Defaults[.cloudSyncLastSyncedAt] = 0
-        lastSyncedAt = nil
         lastError = nil
         state = .disabled
     }
@@ -187,11 +180,6 @@ final class CloudSyncCoordinator {
             guard let self else { throw CancellationError() }
             try await self.execute(op)
         }
-
-        guard state == .active else { return }
-
-        Defaults[.cloudSyncLastSyncedAt] = Date().timeIntervalSince1970
-        lastSyncedAt = Date()
     }
 
     /// Called by the revision poller when the server revision is ahead.
@@ -366,11 +354,4 @@ final class CloudSyncCoordinator {
         if case PushAPIError.httpStatus(401, _) = error { return true }
         return false
     }
-}
-
-
-// MARK: - Defaults keys
-
-extension Defaults.Keys {
-    static let cloudSyncLastSyncedAt = Key<TimeInterval>("cloudSyncLastSyncedAt", default: 0)
 }

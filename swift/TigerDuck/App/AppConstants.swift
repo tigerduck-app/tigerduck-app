@@ -178,7 +178,6 @@ nonisolated enum AppConstants {
         static let pushServerEnabled = "pushServerEnabled"
         static let pushServerURLOverride = "pushServerURLOverride"
         static let pushLastRegistrationAt = "pushLastRegistrationAt"
-        static let pushLastSyncAt = "pushLastSyncAt"
         static let serverPushUserOptOut = "serverPushUserOptOut"
         static let shownServerPopupIds = "shownServerPopupIds"
 

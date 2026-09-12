@@ -9,7 +9,6 @@ struct MacAccountSettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
     @Default(.pushLastRegistrationAt) private var lastRegistrationAt
-    @Default(.pushLastSyncAt) private var lastSyncAt
     @Default(.syncCourses) private var macSyncCourses
     @Default(.syncCourseColors) private var macSyncCourseColors
     @Default(.syncCourseNames) private var macSyncCourseNames
@@ -132,13 +131,6 @@ struct MacAccountSettingsView: View {
                     }
                     .font(.callout)
                 }
-
-                Button {
-                    appState.backgroundSync()
-                } label: {
-                    Label(String(localized: "cloud_sync_sync_now"), systemImage: "arrow.triangle.2.circlepath")
-                }
-                .disabled(!state.cloudSyncEnabled || appState.sessionManager.loadingState == .loading)
             }
 
             if let s = snapshot {
@@ -151,13 +143,6 @@ struct MacAccountSettingsView: View {
                     )
                     LabeledContent(String(localized: "push_server_last_registration")) {
                         if let at = lastRegistrationAt {
-                            Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
-                        } else {
-                            Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
-                        }
-                    }
-                    LabeledContent(String(localized: "push_server_last_sync")) {
-                        if let at = lastSyncAt {
                             Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
                         } else {
                             Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)

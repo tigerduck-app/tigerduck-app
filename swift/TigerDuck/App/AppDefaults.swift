@@ -231,9 +231,6 @@ nonisolated extension Defaults.Keys {
     static let pushLastRegistrationAt = Key<Date?>(
         AppConstants.UserDefaultsKeys.pushLastRegistrationAt
     )
-    static let pushLastSyncAt = Key<Date?>(
-        AppConstants.UserDefaultsKeys.pushLastSyncAt
-    )
     /// User-facing opt-out for operator-issued "server" pushes. Default off
     /// (i.e. user is opted in). Backend reads the inverse as
     /// `server_push_enabled` and the dispatcher filters on

@@ -1,4 +1,3 @@
-import Defaults
 import Foundation
 import os
 
@@ -63,14 +62,12 @@ final class ScheduleSyncService {
         logger.info("sync start events=\(events.count, privacy: .public)")
 
         inflight?.cancel()
-        inflight = Task { [apiClient, logger, weak self] in
+        inflight = Task { [apiClient, logger] in
             do {
                 let response = try await apiClient.syncSchedule(request)
                 logger.info(
                     "sync ok pending=\(response.pending, privacy: .public) replaced=\(response.replaced, privacy: .public)"
                 )
-                if Task.isCancelled { return }
-                self?.markSuccess()
             } catch {
                 logger.error("sync failed: \(error.localizedDescription, privacy: .public)")
             }
@@ -188,10 +185,6 @@ final class ScheduleSyncService {
             return now.addingTimeInterval(5)
         }
         return nil
-    }
-
-    private func markSuccess() {
-        Defaults[.pushLastSyncAt] = Date()
     }
 
     /// Wait until any in-flight POST has completed (or terminally errored).
