@@ -3,7 +3,7 @@ import SwiftUI
 
 /// TigerSync settings (spec §6): essential-info notice, the course-sync
 /// toggle with its "Synced content" drill-down, the server-push opt-out,
-/// and a trimmed status page. See `SyncContentSettingsView` for the
+/// and an inline status section. See `SyncContentSettingsView` for the
 /// six-toggle drill-down this screen links to.
 struct CloudSyncSettingsView: View {
     @Environment(AppState.self) private var appState
@@ -22,6 +22,11 @@ struct CloudSyncSettingsView: View {
     /// In-flight server-push opt-out PATCH, held so a rapid second tap can
     /// cancel the prior request before starting a new one.
     @State private var serverPushOptOutTask: Task<Void, Never>?
+    /// Backs the inline TigerSync-status section below (spec §6, owner's
+    /// ruling 2026-09-12, item 3). Owned here rather than by a pushed
+    /// destination now that the section lives directly in this screen.
+    @State private var statusSnapshot: PushDiagnostic?
+    @State private var statusRefreshTimer: Timer?
 
     var body: some View {
         Form {
@@ -73,14 +78,29 @@ struct CloudSyncSettingsView: View {
                 }
             }
 
-            // Unconditional per spec §6's tree:
-            // registration status and the latest error are exactly what a
-            // user needs to see while investigating why sync isn't
-            // working, which is disproportionately likely to be a moment
-            // course sync is off.
-            Section {
-                NavigationLink(String(localized: "sync_status_nav_label")) {
-                    SyncStatusPage()
+            // Unconditional per spec §6's tree: registration status and the
+            // latest error are exactly what a user needs to see while
+            // investigating why sync isn't working, which is
+            // disproportionately likely to be a moment course sync is off.
+            // Owner's ruling, 2026-09-12 (spec §6, item 3): reads inline as
+            // a section titled with `sync_status_nav_label` itself rather
+            // than a destination reached through it.
+            Section(String(localized: "sync_status_nav_label")) {
+                if let s = statusSnapshot {
+                    syncStatusRow(
+                        label: String(localized: "sync_status_device_registered"),
+                        ok: s.registration.lastRegisteredAt != nil,
+                        okText: String(localized: "push_server_status_done"),
+                        badText: String(localized: "push_server_pending_incomplete")
+                    )
+                    if let err = s.registration.lastError {
+                        LabeledContent(String(localized: "push_server_latest_error")) {
+                            Text(err)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .textSelection(.enabled)
+                        }
+                    }
                 }
             }
 
@@ -97,11 +117,14 @@ struct CloudSyncSettingsView: View {
             }
         }
         .navigationTitle(String(localized: "cloud_sync_title"))
+        .task { await refreshStatusSnapshot() }
         .onAppear {
             appState.checkPendingConflicts()
+            startStatusRefreshTimer()
         }
         .onDisappear {
             appState.checkPendingConflicts()
+            stopStatusRefreshTimer()
         }
         .reenableConflictAlert()
     }
@@ -130,60 +153,13 @@ struct CloudSyncSettingsView: View {
             }
         )
     }
-}
 
-/// TigerSync status destination (spec §6): device registration and, if
-/// present, the latest error — the only two things the spec keeps from
-/// the old inline status section. Sync Now, the last-registration/
-/// last-sync timestamps, and the Device ID row are deliberately not
-/// here: Device ID lives on the DEBUG-only Developer page
-/// (`TigerSyncStatusView`), and the spec's "only keep these two" drops
-/// the rest.
-///
-/// Owns its own snapshot and refresh timer rather than reading the parent
-/// screen's, so it keeps refreshing while it is the one on screen: pushing
-/// this page onto the navigation stack stops `CloudSyncSettingsView`'s own
-/// `onAppear`/`onDisappear` pair from firing again until the user pops back,
-/// so a shared timer would have gone stale for as long as this page is open.
-struct SyncStatusPage: View {
-    @Environment(AppState.self) private var appState
-    @State private var snapshot: PushDiagnostic?
-    @State private var refreshTimer: Timer?
-
-    var body: some View {
-        Form {
-            if let s = snapshot {
-                Section {
-                    // Registered means the server accepted this device,
-                    // which is what `lastRegisteredAt` records — the Mac
-                    // account tab reads the same. A push-to-start token only
-                    // exists while Live Activities are on, so its length
-                    // said nothing about whether reminders can reach here.
-                    statusRow(
-                        label: String(localized: "sync_status_device_registered"),
-                        ok: s.registration.lastRegisteredAt != nil,
-                        okText: String(localized: "push_server_status_done"),
-                        badText: String(localized: "push_server_pending_incomplete")
-                    )
-                }
-                if let err = s.registration.lastError {
-                    Section(String(localized: "push_server_latest_error")) {
-                        Text(err)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-                    }
-                }
-            }
-        }
-        .navigationTitle(String(localized: "sync_status_nav_label"))
-        .task { await refreshSnapshot() }
-        .onAppear { startRefreshTimer() }
-        .onDisappear { stopRefreshTimer() }
-    }
-
+    /// Registered means the server accepted this device, which is what
+    /// `lastRegisteredAt` records — the Mac account tab reads the same. A
+    /// push-to-start token only exists while Live Activities are on, so its
+    /// length said nothing about whether reminders can reach here.
     @ViewBuilder
-    private func statusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
+    private func syncStatusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
         LabeledContent(label) {
             HStack(spacing: 6) {
                 Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
@@ -195,20 +171,24 @@ struct SyncStatusPage: View {
         }
     }
 
-    private func refreshSnapshot() async {
-        snapshot = await appState.pushCoordinator.currentSnapshot()
+    private func refreshStatusSnapshot() async {
+        statusSnapshot = await appState.pushCoordinator.currentSnapshot()
     }
 
-    private func startRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
-            Task { await refreshSnapshot() }
+    /// Keeps the inline status section current while this screen is the one
+    /// on screen — the behaviour `SyncStatusPage` used to own as its own
+    /// destination. Started from `onAppear` and invalidated from
+    /// `onDisappear` so leaving this screen never leaves it running.
+    private func startStatusRefreshTimer() {
+        statusRefreshTimer?.invalidate()
+        statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+            Task { await refreshStatusSnapshot() }
         }
     }
 
-    private func stopRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
+    private func stopStatusRefreshTimer() {
+        statusRefreshTimer?.invalidate()
+        statusRefreshTimer = nil
     }
 }
 
