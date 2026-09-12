@@ -5,11 +5,12 @@ import SwiftUI
 /// six per-category sync toggles plus a jump to Live Activity settings.
 ///
 /// Reachable regardless of whether "Sync course information"
-/// (`cloudSyncEnabled`) is on: the two notification-related rows
-/// (assignment due reminders, Live Activity) are greyed out while it's
-/// off, per spec step 3. The other four rows stay interactive — they
-/// already have no effect while sync is off, but the spec only calls out
-/// the first two for an explicit disabled state.
+/// (`cloudSyncEnabled`) is on, but not every row behaves the same way while
+/// it's off: the two notification-related rows (assignment due reminders,
+/// Live Activity) stay visible but greyed out, per spec step 3. The other
+/// four — assignment status and the three class-table rows — are hidden
+/// entirely, matching the Mac account tab, so a category the user cannot
+/// see or touch can never pick up a re-enable mark while sync is off.
 struct SyncContentSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
@@ -23,14 +24,16 @@ struct SyncContentSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
-                    .onChange(of: syncAssignments) { old, new in
-                        if new && !old {
-                            appState.markCategoryReenabled("assignments")
-                            appState.checkPendingConflicts()
+                if cloudSyncEnabled {
+                    Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
+                        .onChange(of: syncAssignments) { old, new in
+                            if new && !old {
+                                appState.markCategoryReenabled("assignments")
+                                appState.checkPendingConflicts()
+                            }
+                            appState.pushSyncPreferences()
                         }
-                        appState.pushSyncPreferences()
-                    }
+                }
 
                 Toggle(String(localized: "sync_content_assignment_reminders"), isOn: $syncAssignmentReminders)
                     .disabled(!cloudSyncEnabled)
@@ -63,37 +66,39 @@ struct SyncContentSettingsView: View {
                         #endif
                     }
 
-                Toggle(String(localized: "sync_content_class_table_all"), isOn: $syncCourses)
-                    .onChange(of: syncCourses) { old, new in
-                        if new && !old {
-                            appState.markCategoryReenabled("courses")
-                            appState.checkPendingConflicts()
+                if cloudSyncEnabled {
+                    Toggle(String(localized: "sync_content_class_table_all"), isOn: $syncCourses)
+                        .onChange(of: syncCourses) { old, new in
+                            if new && !old {
+                                appState.markCategoryReenabled("courses")
+                                appState.checkPendingConflicts()
+                            }
+                            syncCourseColors = AppState.courseColorsAfterCoursesChange(
+                                coursesNowOn: new,
+                                coloursCurrentlyOn: syncCourseColors
+                            )
+                            appState.pushSyncPreferences()
                         }
-                        syncCourseColors = AppState.courseColorsAfterCoursesChange(
-                            coursesNowOn: new,
-                            coloursCurrentlyOn: syncCourseColors
-                        )
-                        appState.pushSyncPreferences()
-                    }
 
-                Toggle(String(localized: "sync_content_class_table_colors"), isOn: $syncCourseColors)
-                    .disabled(!syncCourses)
-                    .onChange(of: syncCourseColors) { old, new in
-                        if new && !old {
-                            appState.markCategoryReenabled("course_colors")
-                            appState.checkPendingConflicts()
+                    Toggle(String(localized: "sync_content_class_table_colors"), isOn: $syncCourseColors)
+                        .disabled(!syncCourses)
+                        .onChange(of: syncCourseColors) { old, new in
+                            if new && !old {
+                                appState.markCategoryReenabled("course_colors")
+                                appState.checkPendingConflicts()
+                            }
+                            appState.pushSyncPreferences()
                         }
-                        appState.pushSyncPreferences()
-                    }
 
-                Toggle(String(localized: "sync_content_class_table_names"), isOn: $syncCourseNames)
-                    .onChange(of: syncCourseNames) { old, new in
-                        if new && !old {
-                            appState.markCategoryReenabled("course_names")
-                            appState.checkPendingConflicts()
+                    Toggle(String(localized: "sync_content_class_table_names"), isOn: $syncCourseNames)
+                        .onChange(of: syncCourseNames) { old, new in
+                            if new && !old {
+                                appState.markCategoryReenabled("course_names")
+                                appState.checkPendingConflicts()
+                            }
+                            appState.pushSyncPreferences()
                         }
-                        appState.pushSyncPreferences()
-                    }
+                }
 
                 NavigationLink(String(localized: "sync_content_live_activity_settings_nav")) {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
