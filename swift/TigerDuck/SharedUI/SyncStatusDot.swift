@@ -93,8 +93,9 @@ struct SyncStatusDot: View {
     /// backend that was genuinely down from anyone who had turned sync off.
     ///
     /// The stale-green worry that pinning it grey used to answer is handled
-    /// at the source now: `AppState.cloudSyncEnabled` clears the reading on
-    /// the flip, and only `noteBackendReachable` writes it back while off.
+    /// at the source now: `AppState` clears the reading on every flip,
+    /// whichever writer made it, and only `noteBackendReachable` writes it
+    /// back while off.
     /// The signed-out case never reaches here; `body` draws nothing at all.
     private func isMinimal(_ server: ServerKind) -> Bool {
         server == .backend && !cloudSyncEnabled

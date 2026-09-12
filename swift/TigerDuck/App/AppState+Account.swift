@@ -121,8 +121,12 @@ extension AppState {
         #if os(iOS)
         cancelNotificationSettingsPushes()
         #endif
+        // Signing out turns 同步課程資訊 off, the way every other writer does —
+        // through the preference — so the change runs its usual course in
+        // `cloudSyncEnabledDidChange(to:)`.
+        cloudSyncEnabled = false
         Task { @MainActor in
-            await cloudSyncCoordinator.disable()
+            await cloudSyncCoordinator.settleForSignOut()
             await pushCoordinator.disable()
             #if os(iOS)
             await liveActivityCoordinator.endAll()

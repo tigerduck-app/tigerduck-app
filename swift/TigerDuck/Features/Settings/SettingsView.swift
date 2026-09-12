@@ -12,10 +12,8 @@ struct SettingsView: View {
     /// already turned it off -- popping back does not re-evaluate a parent
     /// body on its own.
     ///
-    /// It watches the preference rather than `appState.cloudSyncEnabled`
-    /// because three writers -- onboarding and both ends of
-    /// `CloudSyncCoordinator` -- set the preference directly, so the
-    /// AppState mirror is not guaranteed to agree with it.
+    /// The preference is the flag's only copy -- `appState.cloudSyncEnabled`
+    /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL

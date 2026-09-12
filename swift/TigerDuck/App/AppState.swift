@@ -204,6 +204,12 @@ final class AppState {
             #endif
         }
 
+        // Every change to 同步課程資訊, whichever writer made it — see
+        // `cloudSyncEnabled`.
+        cloudSyncPreference.onChange { [weak self] enabled in
+            self?.cloudSyncEnabledDidChange(to: enabled)
+        }
+
         // Apply a stored in-app language override on launch so string lookups
         // use the user's chosen locale. Skip when "system" — calling apply()
         // there would removeObject(AppleLanguages), wiping the per-app override
@@ -404,50 +410,59 @@ final class AppState {
         didSet { Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter }
     }
 
-    /// Cross-device sync toggle. When OFF, all backend sync calls
-    /// (override download/upload, course upload, assignment upload) are
-    /// skipped and push notifications + Live Activity are unavailable
-    /// (spec §6) — `effectiveLiveActivityEnabled` is what
-    /// `LiveActivityScenarioResolver` gates new snapshots on; the activity
-    /// already on screen does not wait for that and is ended directly below.
-    var cloudSyncEnabled: Bool = Defaults[.cloudSyncEnabled] {
-        didSet {
-            guard cloudSyncEnabled != oldValue else { return }
-            Defaults[.cloudSyncEnabled] = cloudSyncEnabled
-            // The status dot's backend row means a different thing on each
-            // side of this flip — a full sync result vs. a public GET's
-            // reachability — so the reading taken under the old meaning goes
-            // now rather than lingering as a green "Minimal" that no minimal
-            // fetch ever vouched for. The next fetch of either kind fills it
-            // back in, which on the off path is the next calendar refresh.
-            ServerStatusTracker.shared.clearBackendStatus()
-            if cloudSyncEnabled {
-                Task {
-                    await cloudSyncCoordinator.enable()
-                }
-                requestPushScheduleSync()
-                startRevisionPolling()
-                #if os(iOS)
-                // Resumes without a relaunch. `isLiveActivityEnabled` itself
-                // was never touched while sync was off, so this restores
-                // exactly what the user had.
-                scheduleLiveActivityRefresh()
-                #endif
-            } else {
-                stopRevisionPolling()
-                Task { await cloudSyncCoordinator.disable() }
-                // Uploads an empty schedule now (spec §6), which cancels
-                // every Live Activity start the server had queued for this
-                // device.
-                requestPushScheduleSync()
-                #if os(iOS)
-                // An explicit privacy-style shutoff, the same as logout: end
-                // what is on screen now rather than at the next refresh.
-                // Anything the server still starts afterwards is ended on
-                // arrival — `LiveActivityCoordinator` checks the same rule.
-                Task { @MainActor in await liveActivityCoordinator.endAll() }
-                #endif
-            }
+    /// Cross-device sync toggle (同步課程資訊). When OFF, all backend sync
+    /// calls (override download/upload, course upload, assignment upload)
+    /// are skipped and push notifications + Live Activity are unavailable
+    /// (spec §6).
+    ///
+    /// The preference itself, not a copy of it: this reads and writes
+    /// `Defaults[.cloudSyncEnabled]` through `cloudSyncPreference`, so it
+    /// cannot disagree with what onboarding, the settings switches or
+    /// sign-out wrote there. What a change sets off is in
+    /// `cloudSyncEnabledDidChange(to:)`, which runs for every change,
+    /// whichever writer made it.
+    var cloudSyncEnabled: Bool {
+        get { cloudSyncPreference.isEnabled }
+        set { cloudSyncPreference.isEnabled = newValue }
+    }
+
+    let cloudSyncPreference = CloudSyncPreference()
+
+    /// Everything a change to 同步課程資訊 sets off. `cloudSyncPreference`
+    /// calls it once per change, whichever writer made it.
+    ///
+    /// Nothing in here writes the preference, and `CloudSyncCoordinator` only
+    /// follows it, so no side effect can come back around as another change.
+    private func cloudSyncEnabledDidChange(to enabled: Bool) {
+        // The status dot's backend row means a different thing on each
+        // side of this flip — a full sync result vs. a public GET's
+        // reachability — so the reading taken under the old meaning goes
+        // now rather than lingering as a green "Minimal" that no minimal
+        // fetch ever vouched for. The next fetch of either kind fills it
+        // back in, which on the off path is the next calendar refresh.
+        ServerStatusTracker.shared.clearBackendStatus()
+        cloudSyncCoordinator.followPreference()
+        // On, the schedule Live Activities are started from; off, an empty
+        // one, which cancels every start the server had queued for this
+        // device (spec §6).
+        requestPushScheduleSync()
+        if enabled {
+            startRevisionPolling()
+            #if os(iOS)
+            // Resumes without a relaunch. `isLiveActivityEnabled` itself
+            // was never touched while sync was off, so this restores
+            // exactly what the user had.
+            scheduleLiveActivityRefresh()
+            #endif
+        } else {
+            stopRevisionPolling()
+            #if os(iOS)
+            // An explicit privacy-style shutoff, the same as logout: end
+            // what is on screen now rather than at the next refresh.
+            // Anything the server still starts afterwards is ended on
+            // arrival — `LiveActivityCoordinator` checks the same rule.
+            Task { @MainActor in await liveActivityCoordinator.endAll() }
+            #endif
         }
     }
 

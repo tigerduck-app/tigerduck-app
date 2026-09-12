@@ -38,6 +38,8 @@ struct CloudSyncSettingsView: View {
             }
 
             Section {
+                // Writes the preference itself; `AppState` acts on that the
+                // way it acts on every change to it, whichever writer made it.
                 Toggle(String(localized: "sync_courses_toggle"), isOn: $syncEnabled)
                     .onChange(of: syncEnabled) { old, newValue in
                         if newValue && !old {
@@ -47,7 +49,6 @@ struct CloudSyncSettingsView: View {
                             if syncAssignments { appState.markCategoryReenabled("assignments") }
                             appState.checkPendingConflicts()
                         }
-                        appState.cloudSyncEnabled = newValue
                     }
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {

@@ -77,35 +77,66 @@ final class CloudSyncCoordinator {
         }
     }
 
-    // MARK: - Lifecycle serialization
+    // MARK: - Following the preference
 
-    /// enable()/disable() run multi-step async work with side effects (push
-    /// enable/disable, outbox clear). MainActor isolation does NOT serialize
-    /// across await suspension points, so an interleaved enable/disable could
-    /// leave the coordinator active while the push stack is disabled. Chain
-    /// every lifecycle transition through this task so they run to completion
-    /// one at a time — the last toggle wins.
+    /// Transitions run multi-step async work with side effects (push enable,
+    /// the preference PATCH, outbox clear). MainActor isolation does NOT
+    /// serialize across await suspension points, so an interleaved
+    /// enable/disable could leave the coordinator active while the push
+    /// stack is disabled. Every transition is chained through this task so
+    /// they run to completion one at a time.
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
-    private enum LifecycleOp { case enable, disable }
 
-    private func runLifecycle(_ op: LifecycleOp) async {
+    /// Brings the lifecycle in line with 同步課程資訊. `AppState` calls this on
+    /// every change to the preference, whichever writer made it.
+    ///
+    /// Queued behind any transition still running, and the preference is read
+    /// when its turn comes rather than when it was asked for, so a burst of
+    /// toggles lands on the last one. This coordinator never writes the
+    /// preference: it follows it, and a write from here would come straight
+    /// back through `AppState` as another change.
+    func followPreference() {
+        enqueueTransition { [weak self] in
+            await self?.matchPreference()
+        }
+    }
+
+    /// Sign-out, which has just turned the preference off: waits for the
+    /// lifecycle to follow it, and empties the outbox even when sync was
+    /// already off, so none of the departing account's queued edits reach
+    /// whoever signs in next.
+    func settleForSignOut() async {
+        await enqueueTransition { [weak self] in
+            await self?.matchPreference()
+            await self?.outbox.clearAll()
+        }.value
+    }
+
+    private func matchPreference() async {
+        switch (Defaults[.cloudSyncEnabled], state) {
+        case (true, .disabled):
+            await performEnable()
+        case (false, .active), (false, .enabling):
+            await performDisable()
+        default:
+            break
+        }
+    }
+
+    @discardableResult
+    private func enqueueTransition(
+        _ transition: @escaping @MainActor () async -> Void
+    ) -> Task<Void, Never> {
         let previous = lifecycleTask
-        let task = Task { @MainActor [weak self] in
+        let task = Task { @MainActor in
             await previous?.value
-            switch op {
-            case .enable: await self?.performEnable()
-            case .disable: await self?.performDisable()
-            }
+            await transition()
         }
         lifecycleTask = task
-        await task.value
+        return task
     }
 
     // MARK: - Enable
-
-    func enable() async {
-        await runLifecycle(.enable)
-    }
 
     private func performEnable() async {
         if case .enabling = state { return }
@@ -123,7 +154,6 @@ final class CloudSyncCoordinator {
             AppLogger.captureError(error, context: ["phase": "cloudSync.enable"])
         }
 
-        Defaults[.cloudSyncEnabled] = true
         state = .active
         // Start even when the initial pull failed (e.g. enabled while
         // offline): the timer and observers are how sync self-heals, and
@@ -135,10 +165,6 @@ final class CloudSyncCoordinator {
     }
 
     // MARK: - Disable
-
-    func disable() async {
-        await runLifecycle(.disable)
-    }
 
     private func performDisable() async {
         stop()
@@ -152,7 +178,6 @@ final class CloudSyncCoordinator {
 
         await outbox.clearAll()
 
-        Defaults[.cloudSyncEnabled] = false
         lastError = nil
         state = .disabled
     }

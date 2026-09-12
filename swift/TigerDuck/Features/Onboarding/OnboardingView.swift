@@ -266,6 +266,8 @@ struct OnboardingView: View {
             },
             actions: {
                 Button(String(localized: "action_next")) {
+                    // `AppState` acts on this like on any other change to the
+                    // preference (`CloudSyncPreference`).
                     Defaults[.cloudSyncEnabled] = syncEnabled
                     let nextPage = showsWatchPage ? Page.watchOS.rawValue : Page.login.rawValue
                     withAnimation(reduceMotion ? nil : .default) { currentPage = nextPage }
