@@ -68,10 +68,12 @@ nonisolated struct NotificationSettingsDocument: Codable, Equatable, Sendable {
         /// which has been in this document since phase 4a — a shape both
         /// platforms already parse, not a new idiom.
         ///
-        /// `nil` (an older or foreign writer) means "this document cannot
-        /// describe the sub-hour offsets"; see
-        /// `NotificationSettingsSync.resolveOffsets` for what a reader does
-        /// with that. Empty means the user really has no offsets selected.
+        /// `nil` (an older or foreign writer, or a value that is not a JSON
+        /// array at all) means "this document cannot describe the sub-hour
+        /// offsets"; see `NotificationSettingsSync.resolveOffsets` for what
+        /// a reader does with that. Empty means the user really has no
+        /// offsets selected — including when every element in the array was
+        /// unreadable, which is what the backend concludes too.
         var reminderOffsetsMinutes: [Int]?
 
         enum CodingKeys: String, CodingKey {
@@ -131,9 +133,58 @@ nonisolated extension NotificationSettingsDocument.Assignments {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try? container.decodeIfPresent(Bool.self, forKey: .enabled)
-        reminderOffsetsHours = try? container.decodeIfPresent([Int].self, forKey: .reminderOffsetsHours)
-        reminderOffsetsMinutes = try? container.decodeIfPresent([Int].self, forKey: .reminderOffsetsMinutes)
+        reminderOffsetsHours = wholeNumberList(in: container, forKey: .reminderOffsetsHours)
+        reminderOffsetsMinutes = wholeNumberList(in: container, forKey: .reminderOffsetsMinutes)
     }
+}
+
+/// One element of an offset array: the whole number it holds, or nothing.
+///
+/// Never throws, which is the whole point — `[WholeNumberElement]` decodes
+/// whatever a JSON array contains, so a bad element cannot fail the array
+/// around it.
+private nonisolated struct WholeNumberElement: Decodable {
+    let value: Int?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        // A string, `null`, a nested array or object, a fraction, or a
+        // number too large for `Int` all land here as `nil`.
+        value = try? container.decode(Int.self)
+    }
+}
+
+/// The whole numbers in the array at `key`, or `nil` when the document does
+/// not carry a JSON array there at all.
+///
+/// Tolerant per element rather than all-or-nothing, matching the backend —
+/// which is what actually delivers these reminders, so a shape it reads one
+/// way and this device reads another means two phones on one account get
+/// different reminders. `server/push/reminders.py`'s `_numbers` filters the
+/// non-numeric entries out of an otherwise-valid list rather than
+/// discarding the list, and `_offsets_hours` decides precedence on whether
+/// the value *is a list*, independently of how clean its elements are
+/// (spec §4.6). Android's `asValidatedIntListOrNull` mirrors the same rule.
+///
+/// `[30, "15"]` is the case this exists for: the backend and Android drop
+/// the `"15"` and treat `[30]` as the authoritative set, and a reader that
+/// threw the whole field away instead fell back to `reminder_offsets_hours`
+/// — or kept its local value — off the very same document.
+///
+/// Anything that is not a JSON array — a string, a number, an object,
+/// `null`, or an absent key — returns `nil`, which is "the document says
+/// nothing here", exactly as before.
+private nonisolated func wholeNumberList<Key: CodingKey>(
+    in container: KeyedDecodingContainer<Key>,
+    forKey key: Key
+) -> [Int]? {
+    // `decodeIfPresent` returns `nil` for an absent key or an explicit
+    // `null`, and `try?` turns "present but not an array" into the same
+    // answer; the flatten collapses the two levels of optionality that
+    // produces.
+    let decoded = try? container.decodeIfPresent([WholeNumberElement].self, forKey: key)
+    guard let elements = decoded.flatMap({ $0 }) else { return nil }
+    return elements.compactMap(\.value)
 }
 
 nonisolated extension NotificationSettingsDocument.LiveActivity {

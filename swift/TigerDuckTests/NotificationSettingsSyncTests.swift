@@ -699,6 +699,145 @@ struct NotificationSettingsSyncTests {
         #expect(resolved == current)
     }
 
+    // MARK: - 6b. The same shapes the backend reads, resolved the same way
+
+    /// One row of the shape table: an `assignments` section exactly as it
+    /// sits in the document, and what this device must end up with.
+    private struct OffsetShape {
+        let name: Comment
+        let section: String
+        var currentLocal: Set<AssignmentReminderOffset> = []
+        let expected: Set<AssignmentReminderOffset>
+    }
+
+    /// Decodes `section` as the document's `assignments` and resolves it,
+    /// so the row exercises the decoder and the resolver together — which
+    /// is what a document actually goes through, and where the divergence
+    /// from the backend lived.
+    private static func resolve(_ shape: OffsetShape) throws -> Set<AssignmentReminderOffset> {
+        let document = try JSONDecoder().decode(
+            NotificationSettingsDocument.self,
+            from: Data(#"{"assignments":\#(shape.section)}"#.utf8)
+        )
+        return NotificationSettingsSync.resolveOffsets(
+            documentMinutes: document.assignments?.reminderOffsetsMinutes,
+            documentHours: document.assignments?.reminderOffsetsHours,
+            currentLocal: shape.currentLocal
+        )
+    }
+
+    @Test("every shape the backend's reader distinguishes resolves to the same offsets here")
+    func resolvesEveryShapeTheBackendDistinguishes() throws {
+        // Mirrors `server/push/reminders.py`'s `_offsets_hours` / `_numbers`
+        // case for case — the backend is what actually delivers these
+        // reminders, so a document it reads one way and this device reads
+        // another means two phones on one account get different reminders.
+        //
+        // Its rule: `reminder_offsets_minutes` decides whenever the value
+        // *is a JSON array*, however messy its elements — elements that are
+        // not numbers are dropped, the array still stands, and an empty
+        // result really does mean "no offsets". Anything that is not an
+        // array (a string, a number, an object, `null`, absent) is not an
+        // answer, and the reader falls through to `reminder_offsets_hours`
+        // under the same element rule.
+        let shapes: [OffsetShape] = [
+            .init(
+                name: "a plain minutes list decides",
+                section: #"{"reminder_offsets_minutes":[1440,120]}"#,
+                expected: [.hr24, .hr2]
+            ),
+            .init(
+                name: "an empty minutes list is a real answer: everything off",
+                section: #"{"reminder_offsets_minutes":[],"reminder_offsets_hours":[24]}"#,
+                currentLocal: [.hr48, .min30],
+                expected: []
+            ),
+            .init(
+                // The review's example. The backend drops `"15"` and
+                // schedules for `[30]`; discarding the whole list here
+                // meant this phone fell back to hours, or kept whatever it
+                // had, off the same document.
+                name: "one bad element does not discard the list",
+                section: #"{"reminder_offsets_minutes":[30,"15"],"reminder_offsets_hours":[24]}"#,
+                currentLocal: [.hr48],
+                expected: [.min30]
+            ),
+            .init(
+                name: "every element bad is still a list, and an empty one",
+                section: #"{"reminder_offsets_minutes":["a","b"],"reminder_offsets_hours":[24]}"#,
+                currentLocal: [.hr48, .min30],
+                expected: []
+            ),
+            .init(
+                name: "a null element is dropped like any other non-number",
+                section: #"{"reminder_offsets_minutes":[1440,null,120]}"#,
+                expected: [.hr24, .hr2]
+            ),
+            .init(
+                // The backend keeps 30.5 as 0.508 hours; no offset either
+                // client has is 30.5 minutes, so both end up with the same
+                // resolved set.
+                name: "a fractional element matches nothing, and takes nothing with it",
+                section: #"{"reminder_offsets_minutes":[1440,30.5]}"#,
+                expected: [.hr24]
+            ),
+            .init(
+                name: "a minutes value that is a string is not a list: read hours",
+                section: #"{"reminder_offsets_minutes":"nope","reminder_offsets_hours":[24]}"#,
+                expected: [.hr24]
+            ),
+            .init(
+                name: "an explicit null minutes is not a list either: read hours",
+                section: #"{"reminder_offsets_minutes":null,"reminder_offsets_hours":[2]}"#,
+                expected: [.hr2]
+            ),
+            .init(
+                name: "an object at minutes is not a list either: read hours",
+                section: #"{"reminder_offsets_minutes":{"a":1},"reminder_offsets_hours":[2]}"#,
+                expected: [.hr2]
+            ),
+            .init(
+                name: "absent minutes: read hours",
+                section: #"{"reminder_offsets_hours":[8]}"#,
+                expected: [.hr8]
+            ),
+            .init(
+                // Same element rule on the hours list, and iOS's own rule
+                // on top: a field that cannot carry sub-hour offsets is not
+                // evidence the user turned them off.
+                name: "one bad element does not discard the hours list either",
+                section: #"{"reminder_offsets_hours":[24,"2"]}"#,
+                currentLocal: [.hr48, .min30],
+                expected: [.hr24, .min30]
+            ),
+            .init(
+                name: "an empty hours list is a real answer too",
+                section: #"{"reminder_offsets_hours":[]}"#,
+                currentLocal: [.hr48, .min30],
+                expected: [.min30]
+            ),
+            .init(
+                // Where the two readers legitimately differ: with no answer
+                // in the document the backend has only its own default to
+                // fall back on, and a client has the user's actual choice.
+                name: "neither field is a list: keep the local choice",
+                section: #"{"reminder_offsets_minutes":3,"reminder_offsets_hours":"nope"}"#,
+                currentLocal: [.hr24, .min10],
+                expected: [.hr24, .min10]
+            ),
+            .init(
+                name: "a section carrying neither field: keep the local choice",
+                section: #"{"enabled":true}"#,
+                currentLocal: [.hr24, .min10],
+                expected: [.hr24, .min10]
+            ),
+        ]
+
+        for shape in shapes {
+            #expect(try Self.resolve(shape) == shape.expected, shape.name)
+        }
+    }
+
     // MARK: - Round trip
 
     @Test("a full push/pull round trip through the document preserves every offset exactly")
