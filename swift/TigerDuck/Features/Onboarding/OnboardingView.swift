@@ -248,7 +248,7 @@ struct OnboardingView: View {
                     }
 
                     VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                        Link(destination: AppURLs.learnMoreBackend) {
+                        Link(destination: AppURLs.learnMoreTigerSync) {
                             Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
                                 .font(.caption)
                         }

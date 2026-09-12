@@ -89,7 +89,7 @@ struct SyncContentSettingsView: View {
                 Section {
                     Toggle(String(localized: "cloud_sync_class_table"), isOn: classTableGroup)
 
-                    Toggle(String(localized: "cloud_sync_courses"), isOn: $syncCourses)
+                    Toggle(String(localized: "sync_content_class_table_all"), isOn: $syncCourses)
                         .padding(.leading, Self.childIndent)
                         .disabled(!classTableGroupOn)
                         .onChange(of: syncCourses) { old, new in

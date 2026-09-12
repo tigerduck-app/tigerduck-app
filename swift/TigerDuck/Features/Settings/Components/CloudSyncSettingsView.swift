@@ -112,7 +112,7 @@ struct CloudSyncSettingsView: View {
             }
 
             Section {
-                Link(destination: AppURLs.learnMoreBackend) {
+                Link(destination: AppURLs.learnMoreTigerSync) {
                     Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
                 }
                 Link(destination: AppURLs.privacyPolicy) {
