@@ -170,11 +170,16 @@ struct CloudSyncSettingsView: View {
         Form {
             if let s = snapshot {
                 Section {
+                    // Registered means the server accepted this device,
+                    // which is what `lastRegisteredAt` records — the Mac
+                    // account tab reads the same. A push-to-start token only
+                    // exists while Live Activities are on, so its length
+                    // said nothing about whether reminders can reach here.
                     statusRow(
                         label: String(localized: "sync_status_device_registered"),
-                        ok: s.registration.ptsTokenLength > 0,
+                        ok: s.registration.lastRegisteredAt != nil,
                         okText: String(localized: "push_server_status_done"),
-                        badText: String(localized: "push_server_status_waiting_token")
+                        badText: String(localized: "push_server_pending_incomplete")
                     )
                 }
                 if let err = s.registration.lastError {

@@ -159,7 +159,9 @@ actor PushRegistrationService {
         _ registration: LiveActivityUpdateTokenRegistration
     ) async {
         pendingActivityRegistrations[registration.activityId] = registration
-        guard ptsTokenHex != nil else {
+        // Parked until the device itself can register; the success path in
+        // `performRegister` flushes it.
+        guard hasRegistrableToken else {
             await registerIfReady()
             return
         }
@@ -317,6 +319,14 @@ actor PushRegistrationService {
         )
     }
 
+    /// Waits for the debounced registration attempt, if one is scheduled,
+    /// to finish. The debounce runs in an unstructured `Task`, so this is
+    /// the only way for a caller to observe the attempt's outcome
+    /// deterministically.
+    func awaitPendingRegistration() async {
+        await lastAttempt?.value
+    }
+
     // MARK: - Unregister
 
     /// Called when the user turns off server push or logs out.
@@ -345,11 +355,17 @@ actor PushRegistrationService {
 
     // MARK: - Internals
 
+    /// Whether the device holds a token `performRegister` can register.
+    /// Either one will do; see `registerIfReady`.
+    private var hasRegistrableToken: Bool {
+        deviceTokenHex != nil || ptsTokenHex != nil
+    }
+
     /// Re-attempt registration after the auth state changes — the user just
     /// signed in and a v3 JWT is now available. Resets the give-up counter so
     /// a registration that exhausted its retries while unauthenticated gets a
-    /// fresh chance, then fires immediately (subject to the PTS-token gate in
-    /// `registerIfReady`).
+    /// fresh chance, then fires immediately (subject to `registerIfReady`'s
+    /// token gate).
     func retryAfterAuthChange() async {
         deviceRegisterAttempts = 0
         deviceRegisterRetryTask?.cancel()
@@ -361,9 +377,15 @@ actor PushRegistrationService {
         #endif
     }
 
-    /// We upload as soon as the PTS token exists. Device token alone is not
-    /// enough to start a Live Activity, and PTS is the Checkpoint-2/3 focus.
-    /// The device token rides along for later standard-alert pushes.
+    /// Registers as soon as the device holds either token. The standard
+    /// APNs token must not wait for the push-to-start one: it is where the
+    /// backend sends assignment reminders, and the registration is how the
+    /// server learns this device's app version, locale and cloud-sync flag.
+    /// A PTS token only exists while Live Activities are enabled, so
+    /// waiting for it left a device with them switched off unregistered
+    /// and unreachable. Whichever token arrives second is attached by a
+    /// fresh attempt, which re-sends every token held (see
+    /// `performRegister`).
     ///
     /// At app launch the PTS and APNs device tokens arrive within a few
     /// tens of ms of each other, so the naive "POST on every update"
@@ -371,12 +393,14 @@ actor PushRegistrationService {
     /// flight by the second `lastAttempt?.cancel()` and surfaced as the
     /// "register failed: 已取消" line in the logs. A 250ms debounce at
     /// the head of the Task is enough to coalesce both arrivals into
-    /// one POST, and `CancellationError`s are silenced since they're
+    /// one attempt, and `CancellationError`s are silenced since they're
     /// the expected side-effect of a newer request winning.
+    ///
+    /// iOS only: the Mac registers passively (`registerPassiveDevice`),
+    /// never with a token.
     private func registerIfReady() async {
         #if os(iOS)
-        guard ptsTokenHex != nil else { return }
-        #endif
+        guard hasRegistrableToken else { return }
 
         lastAttempt?.cancel()
         let logger = self.logger
@@ -386,14 +410,39 @@ actor PushRegistrationService {
             guard let self else { return }
             await self.performRegister(logger: logger)
         }
+        #endif
     }
 
-    /// Re-reads the current tokens inside the actor and POSTs the
-    /// registration. Split out so the debounce `Task` can call an
-    /// actor-isolated method for fresh state instead of capturing
-    /// stale `let`s from the enqueue site.
+    /// Re-reads the current tokens inside the actor and POSTs one
+    /// registration per token held: `/devices/register` carries a single
+    /// `push_token`, so the standard and PTS tokens travel separately, and
+    /// every attempt re-sends both (the server upserts). Split out so the
+    /// debounce `Task` can call an actor-isolated method for fresh state
+    /// instead of capturing stale `let`s from the enqueue site.
     private func performRegister(logger: Logger) async {
-        guard let pts = ptsTokenHex else { return }
+        var tokens: [PushAPI.PushTokenIn] = []
+        // The standard token first: it is the one reminders are sent to.
+        if let deviceToken = deviceTokenHex {
+            tokens.append(PushAPI.PushTokenIn(
+                provider: "apns",
+                token_kind: "standard",
+                token_value: deviceToken,
+                bundle_id: bundleId,
+                environment: apnsEnv,
+                scope_key: ""
+            ))
+        }
+        if let pts = ptsTokenHex {
+            tokens.append(PushAPI.PushTokenIn(
+                provider: "apns",
+                token_kind: "push_to_start",
+                token_value: pts,
+                bundle_id: bundleId,
+                environment: apnsEnv,
+                scope_key: attrsType
+            ))
+        }
+        guard !tokens.isEmpty else { return }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
         // Announce the hardware first, on every launch, signed in or not.
@@ -431,46 +480,19 @@ actor PushRegistrationService {
         do {
             let cloudSync = Defaults[.cloudSyncEnabled]
             logger.info("[register] cloud_sync_enabled=\(cloudSync, privacy: .public)")
-            let ptsRequest = PushAPI.DeviceRegisterRequest(
-                client_device_id: identity.uuid,
-                platform: PushDeviceClass.platform(for: deviceClass),
-                device_class: deviceClass,
-                app_version: appVersion,
-                os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
-                locale: Self.currentLocaleTag,
-                push_token: PushAPI.PushTokenIn(
-                    provider: "apns",
-                    token_kind: "push_to_start",
-                    token_value: pts,
-                    bundle_id: bundleId,
-                    environment: apnsEnv,
-                    scope_key: attrsType
-                ),
-                cloud_sync_enabled: cloudSync
-            )
-            let ptsResponse = try await apiClient.registerDevice(ptsRequest)
-            logger.info("registered device (PTS) device_id=\(ptsResponse.device_id, privacy: .public)")
-
-            if let deviceToken = deviceTokenHex {
-                let deviceTokenRequest = PushAPI.DeviceRegisterRequest(
+            for token in tokens {
+                let request = PushAPI.DeviceRegisterRequest(
                     client_device_id: identity.uuid,
                     platform: PushDeviceClass.platform(for: deviceClass),
                     device_class: deviceClass,
                     app_version: appVersion,
                     os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
                     locale: Self.currentLocaleTag,
-                    push_token: PushAPI.PushTokenIn(
-                        provider: "apns",
-                        token_kind: "standard",
-                        token_value: deviceToken,
-                        bundle_id: bundleId,
-                        environment: apnsEnv,
-                        scope_key: ""
-                    ),
+                    push_token: token,
                     cloud_sync_enabled: cloudSync
                 )
-                let tokenResponse = try await apiClient.registerDevice(deviceTokenRequest)
-                logger.info("registered device (standard APNs) device_id=\(tokenResponse.device_id, privacy: .public)")
+                let response = try await apiClient.registerDevice(request)
+                logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .public)")
             }
 
             deviceRegisterRetryTask?.cancel()

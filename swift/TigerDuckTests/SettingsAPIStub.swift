@@ -9,6 +9,9 @@
 // - `NotificationSettingsSyncTests` — `NotificationSettingsSync` end to
 //   end, which reaches the same code paths from above.
 //
+// `PushRegistrationServiceTests` also routes a `PushAPIClient` through it:
+// that client takes a `URLSession` in its `init` the same way.
+//
 // `SettingsDocumentClient` is a concrete `actor`, not a protocol, so it
 // cannot be swapped for a lightweight fake; its `init` takes a
 // `URLSession`, which is the seam this uses.
