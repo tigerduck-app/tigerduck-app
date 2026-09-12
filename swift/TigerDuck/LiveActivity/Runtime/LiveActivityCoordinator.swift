@@ -443,6 +443,13 @@ final class LiveActivityCoordinator {
         logger.info(
             "Ending Live Activity id=\(activityId, privacy: .public) reason=\(reason, privacy: .public)"
         )
+        // Recorded before the await, as the duplicate path already does:
+        // ActivityKit can still list a copy this coordinator has ended, and
+        // an unrecorded one is picked up again — `apply` would update the
+        // dead copy instead of starting a fresh activity, and the prune would
+        // re-register its update token, which is how the server decides an
+        // activity is still running.
+        endedActivityIds.insert(activity.id)
         await activity.end(nil, dismissalPolicy: .immediate)
         automaticEndTasks[activityId]?.cancel()
         automaticEndTasks[activityId] = nil
