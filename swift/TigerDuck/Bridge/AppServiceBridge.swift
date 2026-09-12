@@ -282,7 +282,7 @@ enum AppServiceBridge {
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveCourses(courses, semester: semester)
 
-                if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
+                if CourseUploadPolicy.uploadsCourses, let atm = authService.authTokenManager {
                     let entries = courses.map { c in
                         PushAPI.CourseUploadEntry(
                             semester: semester,
@@ -298,8 +298,9 @@ enum AppServiceBridge {
                         )
                     }
                     let colorMap = TigerDuckTheme.courseColorMap
+                    let sendColors = CourseUploadPolicy.uploadsCourseColors
                     let overrides = courses.compactMap { c -> PushAPI.CourseOverrideUploadEntry? in
-                        guard let hex = colorMap[c.courseNo] else { return nil }
+                        guard sendColors, let hex = colorMap[c.courseNo] else { return nil }
                         return PushAPI.CourseOverrideUploadEntry(
                             courseKey: "client:\(semester):\(c.courseNo)",
                             colorHex: String(format: "#%06X", hex)

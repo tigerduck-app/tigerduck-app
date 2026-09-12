@@ -56,19 +56,22 @@ extension AppState {
                 accentHex: accentColorHex
             )
             #else
-            // The Mac has no Live Activity and no switch for it, and the
-            // backend never delivers a schedule start to a macOS device, so
-            // there is nothing here for the rule to gate.
+            // A Mac uploads no schedule. The backend never delivers a Live
+            // Activity or any push to macOS, so a list would only put course
+            // and assignment titles on the server for nothing — with TigerSync
+            // off, data the user asked us not to keep. The empty list still
+            // goes up: it is what cancels any starts an older build queued
+            // for this Mac.
             return ScheduleSyncService.Inputs(
-                courses: CanonicalCourseProvider().currentCourses(),
-                assignments: DataCache.shared.loadAssignments(),
+                courses: [],
+                assignments: [],
                 accentHex: accentColorHex,
-                classPreparingLeadTime: 3600,
-                assignmentLeadTime: 8 * 3600,
-                showClassPreparing: true,
-                showInClass: true,
-                showAssignmentScenario: true,
-                liveActivityAvailable: true
+                classPreparingLeadTime: 0,
+                assignmentLeadTime: 0,
+                showClassPreparing: false,
+                showInClass: false,
+                showAssignmentScenario: false,
+                liveActivityAvailable: false
             )
             #endif
         }

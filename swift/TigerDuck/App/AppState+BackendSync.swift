@@ -425,7 +425,7 @@ extension AppState {
     }
 
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = []) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+        guard CourseUploadPolicy.uploadsCourses else { return }
         let request = courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         let coordinator = pushCoordinator
         Task.detached {
@@ -447,7 +447,7 @@ extension AppState {
         semester: String,
         forceKeys: [String] = []
     ) async throws {
-        guard Defaults[.cloudSyncEnabled] else { return }
+        guard CourseUploadPolicy.uploadsCourses else { return }
         let request = courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         try await pushCoordinator.uploadCourses(request)
         AppLogger.sync.info("uploadCourses: \(request.courses.count, privacy: .public) courses sent")
@@ -487,5 +487,30 @@ extension AppState {
         // chooses a colour already calls syncCourseOverride, and that PATCH
         // sets the value outright instead of only filling a blank.
         return PushAPI.CourseUploadRequest(courses: entries, forceKeys: forceKeys)
+    }
+}
+
+/// When this device may upload its course list.
+///
+/// iPhone and iPad follow 同步課程資訊 alone: class reminders are built from
+/// what they upload, so it is more than sync for them. A Mac takes no push,
+/// so its upload serves cross-device sync and nothing else, and it follows
+/// the 同步內容 switches too — 所有課程 for the list, 課程顏色 for colours.
+enum CourseUploadPolicy {
+    static var uploadsCourses: Bool {
+        guard Defaults[.cloudSyncEnabled] else { return false }
+        #if os(macOS)
+        return Defaults[.syncCourses]
+        #else
+        return true
+        #endif
+    }
+
+    static var uploadsCourseColors: Bool {
+        #if os(macOS)
+        return uploadsCourses && Defaults[.syncCourseColors]
+        #else
+        return uploadsCourses
+        #endif
     }
 }
