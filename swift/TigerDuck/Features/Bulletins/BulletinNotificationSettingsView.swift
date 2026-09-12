@@ -179,10 +179,22 @@ struct BulletinNotificationSettingsView: View {
                     }
                 }
                 .disabled(isAskingPermission)
+
+                if Self.requiresSystemSettingsRoute(for: authStatus) {
+                    Button {
+                        openAppSettings()
+                    } label: {
+                        Label(String(localized: "bulletin_push_reopen_settings"), systemImage: "gear")
+                    }
+                }
             } header: {
                 Text(String(localized: "bulletin_push_settings_header"))
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
+                    if Self.requiresSystemSettingsRoute(for: authStatus) {
+                        Text(String(localized: "permission_not_granted_tap_settings"))
+                            .foregroundStyle(.orange)
+                    }
                     Text(String(localized: "bulletin_push_footer"))
                     if pushUpdateFailed {
                         Text(String(localized: "settings_server_push_update_failed"))
@@ -373,6 +385,37 @@ struct BulletinNotificationSettingsView: View {
     private func openAppSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
+    }
+
+    // MARK: - Permission routing
+
+    /// Whether the off-state section has to spell out the permission
+    /// problem and offer iOS Settings, instead of leaving 開啟公告推播 as
+    /// the only control.
+    ///
+    /// `.denied` is the one status the enable button cannot move on its
+    /// own: iOS never re-prompts after a refusal, so `requestAuthorization`
+    /// returns `false` without showing anything and `enablePush()` returns
+    /// at its guard — a tap with nothing to show for itself. The status row
+    /// and the Settings button in the on-state branch above are unreachable
+    /// from here, so this section has to carry both. `.notDetermined` still
+    /// prompts, and `.authorized`/`.provisional`/`.ephemeral` let the enable
+    /// path through, so none of them needs the detour.
+    ///
+    /// An unknown future status errs toward offering the route rather than
+    /// repeating the dead end, matching
+    /// `NotificationPermissionSettingsView.notificationPermissionStatus(for:)`,
+    /// which resolves the same `@unknown default` to `.notGranted`.
+    ///
+    /// `static`, over a plain value, so the decision can be pinned without
+    /// constructing a view, an environment or an `AppState` — the same move
+    /// that view's two mappings already made.
+    static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
+        switch status {
+        case .denied: return true
+        case .authorized, .provisional, .ephemeral, .notDetermined: return false
+        @unknown default: return true
+        }
     }
 
     // MARK: - Text helpers
