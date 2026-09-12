@@ -170,10 +170,12 @@ final class CloudSyncCoordinator {
         stop()
 
         // Leave the push stack up: the device stays registered with
-        // cloud_sync_enabled=false so bulletins and Live Activities keep
-        // working, and the Push Server toggle keeps telling the truth.
-        // (Relaunch re-enabled push anyway, so tearing it down here only
-        // ever produced a temporary mismatch.)
+        // cloud_sync_enabled=false so bulletins and operator pushes keep
+        // arriving — neither is gated on this flag. Live Activity is not in
+        // that list any more: spec §6 makes it unavailable with sync off, and
+        // the schedule this device uploads goes empty. (Relaunch re-enables
+        // the push stack anyway, so tearing it down here only ever produced a
+        // temporary mismatch.)
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
 
         await outbox.clearAll()
