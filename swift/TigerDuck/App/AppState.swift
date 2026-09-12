@@ -403,7 +403,10 @@ final class AppState {
 
     /// Cross-device sync toggle. When OFF, all backend sync calls
     /// (override download/upload, course upload, assignment upload) are
-    /// skipped and push notifications + Live Activity are unavailable.
+    /// skipped and push notifications + Live Activity are unavailable
+    /// (spec §6) — `effectiveLiveActivityEnabled` is what
+    /// `LiveActivityScenarioResolver` gates new snapshots on; the activity
+    /// already on screen does not wait for that and is ended directly below.
     var cloudSyncEnabled: Bool = Defaults[.cloudSyncEnabled] {
         didSet {
             guard cloudSyncEnabled != oldValue else { return }
@@ -421,9 +424,24 @@ final class AppState {
                 }
                 requestPushScheduleSync()
                 startRevisionPolling()
+                #if os(iOS)
+                // Resumes without a relaunch. `isLiveActivityEnabled` itself
+                // was never touched while sync was off, so this restores
+                // exactly what the user had.
+                scheduleLiveActivityRefresh()
+                #endif
             } else {
                 stopRevisionPolling()
                 Task { await cloudSyncCoordinator.disable() }
+                #if os(iOS)
+                // An explicit privacy-style shutoff, the same as logout:
+                // `LiveActivityCoordinator.apply` deliberately leaves an
+                // already-running activity alone when a refresh simply has
+                // nothing to show, so withholding new snapshots is not
+                // enough here — the one on screen needs this direct call to
+                // end it now instead of running until its own countdown.
+                Task { @MainActor in await liveActivityCoordinator.endAll() }
+                #endif
             }
         }
     }
