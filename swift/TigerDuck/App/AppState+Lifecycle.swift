@@ -43,6 +43,11 @@ extension AppState {
             // scheduled `LA-reminder-*` requests, so there is nothing for
             // it to purge, and the type is invisible to a macOS build.
             await PendingReminderPurgeMigration.runIfNeeded()
+            // Not in the macOS allow-list either. It queues and returns: the
+            // routine runs on the notification-settings push queue.
+            NotificationSettingsSeedMigration.runIfNeeded { onSettled in
+                self.reconcileNotificationSettings(onSettled: onSettled)
+            }
             #endif
             // Add future migrations here in sequence. Anything that deletes
             // cached data belongs above the task, not in it.

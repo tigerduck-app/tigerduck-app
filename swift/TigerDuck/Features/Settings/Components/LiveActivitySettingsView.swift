@@ -5,6 +5,7 @@ import SwiftUI
 /// stays short.
 struct LiveActivitySettingsView: View {
     @Bindable var store: LiveActivityPreferencesStore
+    @Environment(AppState.self) private var appState
     @State private var showResetConfirmation = false
     @State private var resetFeedbackTrigger = 0
 
@@ -77,6 +78,10 @@ struct LiveActivitySettingsView: View {
             }
         }
         .navigationTitle(String(localized: "live_activity_settings_nav_title"))
+        .task {
+            // Show what another device last saved, not only this one's copy.
+            appState.reconcileNotificationSettings()
+        }
     }
 
     /// `static` and not `private` (task-4 review Important 2: the

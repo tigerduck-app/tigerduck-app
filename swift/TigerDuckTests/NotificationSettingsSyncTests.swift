@@ -19,6 +19,9 @@
 //   6. a pull can never delete a reminder offset the document structurally
 //      cannot describe.
 //
+// The read side, `NotificationSettingsSync.reconcile`, is pinned in
+// `NotificationSettingsReconcileTests`.
+//
 // Exercises `NotificationSettingsSync` directly rather than through
 // `AppState`, matching that type's own doc comment: nothing in this test
 // target constructs a full `AppState` (SwiftData, `AuthService`, live push
@@ -551,18 +554,6 @@ struct NotificationSettingsSyncTests {
         #expect(!NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: true, new: false))
     }
 
-    @Test("pull sends no request and returns nil when cloud sync is off")
-    func pullSendsNothingWhenSyncDisabled() async throws {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let url = Self.documentURL(baseURL)
-        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-
-        let result = try await NotificationSettingsSync.pull(client: client, cloudSyncEnabled: false)
-
-        #expect(result == nil)
-        #expect(SettingsAPIStub.requests(for: url).isEmpty)
-    }
-
     // MARK: - 5. A partial or foreign document degrades instead of wedging
 
     @Test("a document with no assignments and no courses still pushes")
@@ -614,60 +605,6 @@ struct NotificationSettingsSyncTests {
         #expect(written)
         let sent = try Self.sentDocumentObject(from: SettingsAPIStub.requests(for: url)[1])
         #expect(Set(sent.keys) == ["assignments", "live_activity"])
-    }
-
-    @Test("pull decodes a document that carries only one section")
-    func pullToleratesPartialDocument() async throws {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let url = Self.documentURL(baseURL)
-        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-
-        let existing: [String: Any] = ["live_activity": ["show_in_class": false]]
-        SettingsAPIStub.enqueue(
-            .init(statusCode: 200, body: try Self.readEnvelope(documentObject: existing, revision: 2)),
-            for: url
-        )
-
-        let result = try #require(try await NotificationSettingsSync.pull(client: client, cloudSyncEnabled: true))
-
-        #expect(result.assignments == nil)
-        #expect(result.courses == nil)
-        #expect(result.liveActivity?.showInClass == false)
-        // Absent keys inside a present section are absent, not defaulted.
-        #expect(result.liveActivity?.showAssignment == nil)
-    }
-
-    // MARK: - Pull correctness
-
-    @Test("pull decodes the current document when one exists")
-    func pullDecodesExistingDocument() async throws {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let url = Self.documentURL(baseURL)
-        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-
-        let doc = NotificationSettingsDocument(
-            assignments: .init(enabled: true, reminderOffsetsHours: [24], reminderOffsetsMinutes: [1440, 30]),
-            courses: .init(enabled: true, reminderOffsetsMinutes: [10]),
-            liveActivity: .init(
-                showClassPreparing: true, showInClass: true, showAssignment: false,
-                classPreparingLeadSeconds: 900, assignmentLeadSeconds: 1800
-            )
-        )
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: try Self.readEnvelope(document: doc, revision: 9)), for: url)
-
-        let result = try await NotificationSettingsSync.pull(client: client, cloudSyncEnabled: true)
-        #expect(result == doc)
-    }
-
-    @Test("pull returns nil when the user has never synced this namespace")
-    func pullReturnsNilWhenNoDocumentExists() async throws {
-        let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let url = Self.documentURL(baseURL)
-        let client = SettingsAPIStub.makeClient(baseURL: baseURL)
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
-
-        let result = try await NotificationSettingsSync.pull(client: client, cloudSyncEnabled: true)
-        #expect(result == nil)
     }
 
     // MARK: - 6. Offset resolution on the pull side
@@ -787,10 +724,12 @@ struct NotificationSettingsSyncTests {
 ///
 /// `.serialized` and Defaults-restoring: `LiveActivityPreferencesStore`
 /// reads and writes `UserDefaults.standard` through `Defaults`, and posts
-/// on `NotificationCenter.default` — both process-wide. These are the only
-/// tests in the target that construct one (verified by grep), so
-/// serializing this suite is enough to keep them from tripping over each
-/// other.
+/// on `NotificationCenter.default` — both process-wide. Other suites
+/// construct stores too (the reconcile, seed-migration and push-queue
+/// tests), but every test here is `@MainActor` and synchronous from its
+/// first store write to its last assertion, so no other test's code can
+/// run in the middle of one; serializing this suite keeps its own tests
+/// apart.
 @Suite("Notification settings apply", .serialized)
 @MainActor
 struct NotificationSettingsApplyTests {

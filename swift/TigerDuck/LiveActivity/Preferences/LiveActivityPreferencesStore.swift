@@ -146,7 +146,7 @@ final class LiveActivityPreferencesStore {
 
     /// Applies the subset of preferences carried by the `notification`
     /// settings document's `assignments` and `live_activity` sections
-    /// (`AppState.pullNotificationSettings()`). Persists exactly like a
+    /// (`NotificationSettingsSync.reconcile`). Persists exactly like a
     /// local edit — each property's normal `didSet` still runs and writes
     /// through to `Defaults`.
     ///

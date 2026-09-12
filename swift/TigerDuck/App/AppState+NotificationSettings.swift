@@ -92,32 +92,58 @@ extension AppState {
         }
     }
 
-    /// Fetches the backend's `notification` document and applies its
-    /// `assignments` + `live_activity` sections onto
-    /// `liveActivityPreferences` — the reverse of `pushNotificationSettings()`,
-    /// e.g. so a reminder configured on another device shows up here.
-    /// Gated on `cloudSyncEnabled` and on having a session for the same
-    /// reasons the push is.
-    /// Not wired to an automatic call site yet (e.g. app launch / login);
-    /// available for a later task to invoke.
-    func pullNotificationSettings() async {
-        guard Defaults[.cloudSyncEnabled] else { return }
-        guard await authTokenManager.isLoggedIn else { return }
+    /// The one routine that reads the `notification` document: it reads
+    /// it, adopts each synced section the server has, and writes only the
+    /// sections it lacks (`NotificationSettingsSync.reconcile`). Runs as a
+    /// link on `NotificationSettingsPushQueue`, so it never interleaves
+    /// with a push's read-modify-write and never outlives a logout.
+    ///
+    /// Called once after upgrade (`NotificationSettingsSeedMigration`),
+    /// after each full sync that lands (`syncOverridesFromBackend`), when
+    /// either notification settings screen opens, and after sign-in.
+    /// Sign-in comes here rather than to a push on purpose: a push would
+    /// write this device's values over the account's document — values a
+    /// previous account may have left on the device — where reading first
+    /// adopts what the account already holds.
+    ///
+    /// A local edit the server has not acknowledged wins: the routine does
+    /// not read over it, and that edit's push runs instead. Gated on
+    /// `cloudSyncEnabled` and on having a session for the same reasons the
+    /// push is. `onSettled` runs only once the document has actually been
+    /// read and every synced section settled.
+    func reconcileNotificationSettings(onSettled: (@MainActor () -> Void)? = nil) {
+        NotificationSettingsPushQueue.enqueueReconcile { [weak self] isCurrent in
+            guard let self, Defaults[.cloudSyncEnabled] else { return }
+            guard await self.authTokenManager.isLoggedIn, isCurrent() else { return }
 
-        let atm = authTokenManager
-        let client = SettingsDocumentClient(
-            authHeaderProvider: { await atm.authorizationHeader() }
-        )
-        do {
-            guard let document = try await NotificationSettingsSync.pull(
-                client: client,
-                cloudSyncEnabled: Defaults[.cloudSyncEnabled]
-            ) else { return }
-            NotificationSettingsSync.apply(document, to: liveActivityPreferences)
-        } catch {
-            AppLogger.sync.error(
-                "pullNotificationSettings failed: \(error.localizedDescription, privacy: .public)"
+            let atm = self.authTokenManager
+            let client = SettingsDocumentClient(
+                authHeaderProvider: { await atm.authorizationHeader() }
             )
+            do {
+                let outcome = try await NotificationSettingsSync.reconcile(
+                    store: self.liveActivityPreferences,
+                    client: client,
+                    cloudSyncEnabled: Defaults[.cloudSyncEnabled],
+                    syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
+                    syncLiveActivityEnabled: Defaults[.syncLiveActivity],
+                    isPushPending: { Defaults[.notificationSettingsPushPending] },
+                    isCurrent: isCurrent
+                )
+                switch outcome {
+                case .settled:
+                    onSettled?()
+                case .deferredToPendingPush:
+                    // Make sure the edit that won actually goes out.
+                    self.retryUnacknowledgedNotificationSettings()
+                case .skipped, .abandoned:
+                    break
+                }
+            } catch {
+                AppLogger.sync.error(
+                    "reconcileNotificationSettings failed: \(error.localizedDescription, privacy: .public)"
+                )
+            }
         }
     }
 
@@ -199,9 +225,10 @@ extension AppState {
     #endif // os(iOS)
 }
 
-/// Holds the debounce timer and the serialized push chain for
-/// `scheduleNotificationSettingsPush()`, plus the generation guard that
-/// keeps both from outliving a logout.
+/// Holds the debounce timer for `scheduleNotificationSettingsPush()` and
+/// the serialized chain every read and write of the document runs on —
+/// pushes and `reconcileNotificationSettings()` alike — plus the
+/// generation guard that keeps both from outliving a logout.
 ///
 /// Stored properties on `AppState` would be the obvious home, but this is
 /// an extension and Swift does not allow them there — same constraint
@@ -219,9 +246,9 @@ enum NotificationSettingsPushQueue {
     /// The sleeping debounce task. Cancelled and replaced by each new
     /// change; never holds a network call.
     static var pendingDebounce: Task<Void, Never>?
-    /// The most recently queued push. Each new push awaits this one before
-    /// starting, so pushes never overlap. Never cancelled except by
-    /// `cancelAll()`.
+    /// The most recently queued link, push or reconcile. Each new link
+    /// awaits this one before starting, so no two ever overlap. Never
+    /// cancelled except by `cancelAll()`.
     static var tail: Task<Void, Never>?
     /// Bumped by `cancelAll()`. A push queued before the bump bails instead
     /// of sending the departing account's preferences over whoever signs in
@@ -249,9 +276,30 @@ enum NotificationSettingsPushQueue {
         return task
     }
 
+    /// Queues one read-before-write of the document
+    /// (`AppState.reconcileNotificationSettings()`) as a link on the same
+    /// chain, so it cannot interleave with a push's read-modify-write, and
+    /// a logout between queueing and running drops it like any other link.
+    ///
+    /// `reconcile` is handed `isCurrent`, which turns false once a logout
+    /// bumps the generation. The guard in `enqueue(_:)` only covers the
+    /// wait before a link starts, and a reconcile makes round trips after
+    /// that: it checks `isCurrent` after each one, so the departing
+    /// account's document is never applied and nothing is written over
+    /// the next account's.
+    @discardableResult
+    static func enqueueReconcile(
+        _ reconcile: @escaping @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Void
+    ) -> Task<Void, Never> {
+        let queuedGeneration = generation
+        return enqueue {
+            await reconcile { queuedGeneration == generation }
+        }
+    }
+
     /// Abandons the sleeping debounce (if any) and the queued/in-flight
-    /// push chain, and bumps the generation so a link already past this
-    /// point but not yet past its own guard still bails. Called from
+    /// chain, and bumps the generation so a link already past this point
+    /// but not yet past its own guard still bails. Called from
     /// `AppState.cancelNotificationSettingsPushes()`.
     static func cancelAll() {
         generation += 1
@@ -583,19 +631,147 @@ nonisolated enum NotificationSettingsSync {
         new && !old
     }
 
-    // MARK: - Pull
+    // MARK: - Read before write
 
-    /// Fetches the current `notification` document. `nil` when sync is off
-    /// or the user has never written to this namespace — both normal, not
-    /// errors.
-    static func pull(
-        client: SettingsDocumentClient,
-        cloudSyncEnabled: Bool
-    ) async throws -> NotificationSettingsDocument? {
-        guard cloudSyncEnabled else { return nil }
-        guard let (data, _) = try await client.read(namespace: namespace) else { return nil }
-        return try JSONDecoder().decode(NotificationSettingsDocument.self, from: data)
+    /// The two sections of the document this app owns, by key.
+    enum OwnedSection: String, CaseIterable, Sendable {
+        case assignments
+        case liveActivity = "live_activity"
     }
+
+    /// What one ``reconcile(store:client:cloudSyncEnabled:syncAssignmentRemindersEnabled:syncLiveActivityEnabled:isPushPending:isCurrent:)``
+    /// run did.
+    enum ReconcileOutcome: Equatable, Sendable {
+        /// Nothing to do — cloud sync is off, or neither section syncs on
+        /// this device. No request was made.
+        case skipped
+        /// A local edit had not reached the server yet. It wins: nothing
+        /// was adopted or written, and the caller runs its push instead.
+        case deferredToPendingPush
+        /// A logout happened mid-way. Nothing more was adopted or written.
+        case abandoned
+        /// The document was read and every synced section settled: the
+        /// ones the server had were adopted, the ones it lacked seeded.
+        case settled(adopted: Set<OwnedSection>, seeded: Set<OwnedSection>)
+    }
+
+    /// Settles this device's synced sections against the server's
+    /// `notification` document, reading before it writes, section by
+    /// section:
+    ///
+    /// - the server has the section: it is adopted onto `store` through
+    ///   ``apply(_:to:)``, so a field that is absent or malformed keeps its
+    ///   local value;
+    /// - the document or the section is absent (a 404, or no such key):
+    ///   this device's local values for that section are written, merged
+    ///   over whatever else the document holds.
+    ///
+    /// A section syncs when its device switch is on
+    /// (`syncAssignmentRemindersEnabled` / `syncLiveActivityEnabled`). One
+    /// that does not is neither adopted nor written.
+    ///
+    /// A local edit the server has not acknowledged wins. While
+    /// `isPushPending()` is true nothing is read. It is checked again after
+    /// every round trip, together with the local values themselves (an
+    /// edit's marker may not be set yet). Either way nothing is adopted or
+    /// written, and the edit's own push carries it up.
+    ///
+    /// `isCurrent()` turns false once a logout has happened. It is checked
+    /// after every round trip, so nothing read under the departing account
+    /// is applied and nothing is written over the next account's document.
+    ///
+    /// A 409 on the write means another device wrote first. The winning
+    /// document is settled the same way — what it now has is adopted, what
+    /// it still lacks is written — and the write is retried once.
+    @MainActor
+    static func reconcile(
+        store: LiveActivityPreferencesStore,
+        client: SettingsDocumentClient,
+        cloudSyncEnabled: Bool,
+        syncAssignmentRemindersEnabled: Bool,
+        syncLiveActivityEnabled: Bool,
+        isPushPending: () -> Bool,
+        isCurrent: () -> Bool = { true }
+    ) async throws -> ReconcileOutcome {
+        var synced: Set<OwnedSection> = []
+        if syncAssignmentRemindersEnabled { synced.insert(.assignments) }
+        if syncLiveActivityEnabled { synced.insert(.liveActivity) }
+        guard cloudSyncEnabled, !synced.isEmpty else { return .skipped }
+        guard !isPushPending() else { return .deferredToPendingPush }
+
+        var expected = LocalPreferences(from: store)
+        let stored = try await client.read(namespace: namespace)
+        var existing = stored.map { Self.object(from: $0.document) } ?? [:]
+        var baseRevision = stored?.revision
+        var adopted: Set<OwnedSection> = []
+        var attempt = 0
+
+        while true {
+            guard isCurrent() else { return .abandoned }
+            guard !isPushPending(), LocalPreferences(from: store) == expected else {
+                return .deferredToPendingPush
+            }
+
+            // Present means the document holds the section as an object.
+            // Anything else at that key — `null`, a number — carries no
+            // settings to adopt, so it is written over like a missing key.
+            let present = synced.filter { existing[$0.rawValue] is [String: Any] }
+            if !present.isEmpty {
+                apply(Self.document(from: existing, sections: present), to: store)
+                adopted.formUnion(present)
+                expected = LocalPreferences(from: store)
+            }
+
+            let missing = synced.subtracting(present)
+            guard !missing.isEmpty else {
+                return .settled(adopted: adopted, seeded: [])
+            }
+            let updates = try expected.documentUpdates(
+                includeAssignments: missing.contains(.assignments),
+                includeLiveActivity: missing.contains(.liveActivity)
+            )
+            let body = try JSONSerialization.data(
+                withJSONObject: merging(updates, into: existing),
+                options: [.sortedKeys]
+            )
+            switch try await client.write(namespace: namespace, document: body, baseRevision: baseRevision) {
+            case .written:
+                return .settled(adopted: adopted, seeded: missing)
+            case .conflict(let serverDocument, let serverRevision):
+                attempt += 1
+                guard attempt <= 1 else { throw SyncError.conflictNotResolved }
+                existing = Self.object(from: serverDocument)
+                baseRevision = serverRevision
+            }
+        }
+    }
+
+    /// The typed view of `sections`, each decoded on its own so one that
+    /// cannot be read does not take the other with it. A section that fails
+    /// to decode at all reads as absent, and every field in it then keeps
+    /// its local value in ``apply(_:to:)``.
+    private static func document(
+        from object: [String: Any],
+        sections: Set<OwnedSection>
+    ) -> NotificationSettingsDocument {
+        var document = NotificationSettingsDocument()
+        if sections.contains(.assignments) {
+            document.assignments = decodedSection(object[OwnedSection.assignments.rawValue])
+        }
+        if sections.contains(.liveActivity) {
+            document.liveActivity = decodedSection(object[OwnedSection.liveActivity.rawValue])
+        }
+        return document
+    }
+
+    private static func decodedSection<T: Decodable>(_ value: Any?) -> T? {
+        guard let value, JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value)
+        else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+
+    // MARK: - Applying what was read
 
     /// Document offsets → the local `Set<AssignmentReminderOffset>` to
     /// store. **Never returns less than the caller can justify losing.**

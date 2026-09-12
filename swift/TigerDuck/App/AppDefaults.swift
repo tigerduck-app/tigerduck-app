@@ -145,8 +145,9 @@ nonisolated extension Defaults.Keys {
     /// lands. `AppState.retryUnacknowledgedNotificationSettings()` re-sends
     /// on the strength of it at the next full sync — the same
     /// mark-before / clear-on-success shape as
-    /// `holidayOverridesAwaitingUpload`. Default `false`: a fresh install
-    /// has nothing outstanding.
+    /// `holidayOverridesAwaitingUpload`. While it is set the document is
+    /// not read over the edit (`NotificationSettingsSync.reconcile`): the
+    /// edit wins. Default `false`: a fresh install has nothing outstanding.
     static let notificationSettingsPushPending = Key<Bool>(
         AppConstants.UserDefaultsKeys.notificationSettingsPushPending,
         default: false

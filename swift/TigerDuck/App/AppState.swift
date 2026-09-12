@@ -195,6 +195,13 @@ final class AppState {
             guard let self else { return }
             self.pushCoordinator.refreshRegistrationAfterAuth()
             self.requestPushScheduleSync()
+            #if os(iOS)
+            // Read the account's notification settings before anything
+            // writes them. A push here would overwrite the account's
+            // document with whatever this device holds, including values a
+            // previous account left behind.
+            self.reconcileNotificationSettings()
+            #endif
         }
 
         // Apply a stored in-app language override on launch so string lookups

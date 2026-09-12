@@ -120,3 +120,29 @@ nonisolated struct NotificationSettingsDocument: Codable, Equatable, Sendable {
         case liveActivity = "live_activity"
     }
 }
+
+// Forgiving, field by field, for the two sections this app adopts: a field
+// of the wrong type decodes as absent instead of failing its whole section.
+// Absent is what `NotificationSettingsSync.apply` already handles — the
+// local value stays — so one malformed field another client wrote cannot
+// stop every well-formed field beside it from being adopted. In extensions
+// so the memberwise initializers stay.
+nonisolated extension NotificationSettingsDocument.Assignments {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try? container.decodeIfPresent(Bool.self, forKey: .enabled)
+        reminderOffsetsHours = try? container.decodeIfPresent([Int].self, forKey: .reminderOffsetsHours)
+        reminderOffsetsMinutes = try? container.decodeIfPresent([Int].self, forKey: .reminderOffsetsMinutes)
+    }
+}
+
+nonisolated extension NotificationSettingsDocument.LiveActivity {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        showClassPreparing = try? container.decodeIfPresent(Bool.self, forKey: .showClassPreparing)
+        showInClass = try? container.decodeIfPresent(Bool.self, forKey: .showInClass)
+        showAssignment = try? container.decodeIfPresent(Bool.self, forKey: .showAssignment)
+        classPreparingLeadSeconds = try? container.decodeIfPresent(Int.self, forKey: .classPreparingLeadSeconds)
+        assignmentLeadSeconds = try? container.decodeIfPresent(Int.self, forKey: .assignmentLeadSeconds)
+    }
+}

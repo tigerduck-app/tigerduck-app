@@ -217,6 +217,15 @@ extension AppState {
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             ServerStatusTracker.shared.set(.ok, for: .backend)
             recordSyncSource(.backend)
+            #if os(iOS)
+            // The fetch landed, so there is a network and a session: settle
+            // the notification settings document too, so a change made on
+            // another device shows up here. Down here rather than beside
+            // `retryUnacknowledgedNotificationSettings()` at the top: that
+            // retry is queued first, and the routine never reads over an
+            // edit still waiting to go up.
+            reconcileNotificationSettings()
+            #endif
         } catch {
             ServerStatusTracker.shared.set(.failed, for: .backend)
             recordSyncSource(.local)
