@@ -96,36 +96,42 @@ struct PushRegistrationServiceTests {
     /// the *inverse* of `serverPushUserOptOut`, and an expectation that
     /// re-derived its expected value the same way would still pass if the
     /// `!` were lost. Both keys live in process-wide `UserDefaults` (no
-    /// `Defaults.suite` override — see `AppDefaults.swift`), so they are
-    /// restored as found: `BulletinPushOptOutMigrationTests` reads and
-    /// writes the same two.
+    /// `Defaults.suite` override — see `AppDefaults.swift`), so this takes
+    /// the shared gate and puts both back as found: this suite's own tests
+    /// run concurrently with each other and with
+    /// `BulletinPushOptOutMigrationTests`, which arranges the same keys.
     private static func withPinnedDeliveryPreferences(
         _ body: () async throws -> Void
     ) async rethrows {
-        let savedBulletin = Defaults[.bulletinPushEnabled]
-        let savedOptOut = Defaults[.serverPushUserOptOut]
-        defer {
-            Defaults[.bulletinPushEnabled] = savedBulletin
-            Defaults[.serverPushUserOptOut] = savedOptOut
+        try await withExclusiveRealDefaults {
+            let savedBulletin = Defaults[.bulletinPushEnabled]
+            let savedOptOut = Defaults[.serverPushUserOptOut]
+            defer {
+                Defaults[.bulletinPushEnabled] = savedBulletin
+                Defaults[.serverPushUserOptOut] = savedOptOut
+            }
+            // Shipped defaults are the opposite of both: bulletins on, and
+            // not opted out of operator pushes.
+            Defaults[.bulletinPushEnabled] = false
+            Defaults[.serverPushUserOptOut] = true
+            try await body()
         }
-        // Shipped defaults are the opposite of both: bulletins on, and not
-        // opted out of operator pushes.
-        Defaults[.bulletinPushEnabled] = false
-        Defaults[.serverPushUserOptOut] = true
-        try await body()
     }
 
     /// Runs `body` with `bulletinPushEnabled` set to `start` and restores
     /// whatever was there before — `updateBulletinPushEnabled` writes that
-    /// key into process-wide UserDefaults on success.
+    /// key into process-wide UserDefaults on success. Same gate, same
+    /// reason.
     private static func withBulletinPreference(
         startingAt start: Bool,
         _ body: () async throws -> Void
     ) async rethrows {
-        let saved = Defaults[.bulletinPushEnabled]
-        defer { Defaults[.bulletinPushEnabled] = saved }
-        Defaults[.bulletinPushEnabled] = start
-        try await body()
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.bulletinPushEnabled]
+            defer { Defaults[.bulletinPushEnabled] = saved }
+            Defaults[.bulletinPushEnabled] = start
+            try await body()
+        }
     }
 
     // MARK: - Tests

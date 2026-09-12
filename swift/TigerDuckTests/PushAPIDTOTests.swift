@@ -48,9 +48,9 @@ struct PushAPIDTOTests {
     @Test("omitted syncAssignmentReminders/syncLiveActivity do not appear on the wire at all")
     func requestOmitsNilNewFieldsEntirely() throws {
         // A PATCH that only changes, say, `serverPushEnabled` must not send
-        // `sync_assignment_reminders`/`sync_live_activity` as an explicit
-        // `null` — that would tell the backend to clear a preference the
-        // caller never touched.
+        // `sync_assignment_reminders`/`sync_live_activity` at all — see
+        // `requestOmitsNilBulletinPushEnabledEntirely` below for why a
+        // `null` is wrong here even though the backend ignores it.
         let request = PushAPI.DevicePreferencesRequest(serverPushEnabled: true)
         let data = try JSONEncoder().encode(request)
         let object = try #require(
@@ -76,8 +76,12 @@ struct PushAPIDTOTests {
     @Test("omitted bulletinPushEnabled does not appear on the wire at all")
     func requestOmitsNilBulletinPushEnabledEntirely() throws {
         // A PATCH that only changes, say, `serverPushEnabled` must not send
-        // `bulletin_push_enabled` as an explicit `null` — that would tell
-        // the backend to reset a preference the caller never touched.
+        // `bulletin_push_enabled` at all. The backend reads an absent field
+        // and an explicit `null` the same way — `if payload.bulletin_push_
+        // enabled is not None` (`server/routes/user_devices.py`), so `None`
+        // means "unchanged", not "reset" — but the PATCH contract is that
+        // the body names what the caller changed, and a `null` that only
+        // happens to be harmless against today's handler is not that.
         let request = PushAPI.DevicePreferencesRequest(serverPushEnabled: true)
         let data = try JSONEncoder().encode(request)
         let object = try #require(
