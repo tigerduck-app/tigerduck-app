@@ -2,7 +2,8 @@ import Defaults
 import SwiftUI
 
 /// "Synced content" secondary menu under TigerSync settings (spec §6) — the
-/// six per-category sync toggles plus a jump to Live Activity settings.
+/// six per-category sync toggles plus a jump to Live Activity settings,
+/// under the destination screen's own name rather than a second one.
 ///
 /// Reachable regardless of whether "Sync course information"
 /// (`cloudSyncEnabled`) is on, but not every row behaves the same way while
@@ -96,7 +97,7 @@ struct SyncContentSettingsView: View {
                         }
                 }
 
-                NavigationLink(String(localized: "sync_content_live_activity_settings_nav")) {
+                NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                     LiveActivitySettingsView(store: appState.liveActivityPreferences)
                 }
             }
