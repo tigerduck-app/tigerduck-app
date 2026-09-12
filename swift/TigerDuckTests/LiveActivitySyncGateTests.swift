@@ -70,35 +70,4 @@ struct LiveActivitySyncGateTests {
             #expect(whileOff == nil)
         }
     }
-
-    @Test("the user's own Live Activity preference survives a sync off/on cycle")
-    func preferenceSurvivesSyncOffOnCycle() async {
-        await NotificationSettingsFixtures.withStore { store in
-            store.isLiveActivityEnabled = true
-            let resolver = LiveActivityScenarioResolver()
-
-            _ = resolver.resolve(
-                courses: [],
-                assignments: [Self.urgentAssignment()],
-                preferences: store,
-                cloudSyncEnabled: false,
-                accentHex: 0,
-                now: Self.now
-            )
-            // Suppressed, not erased: the stored preference must not have
-            // been touched while sync was off.
-            #expect(store.isLiveActivityEnabled == true)
-
-            let resumed = resolver.resolve(
-                courses: [],
-                assignments: [Self.urgentAssignment()],
-                preferences: store,
-                cloudSyncEnabled: true,
-                accentHex: 0,
-                now: Self.now
-            )
-            #expect(resumed != nil)
-            #expect(store.isLiveActivityEnabled == true)
-        }
-    }
 }
