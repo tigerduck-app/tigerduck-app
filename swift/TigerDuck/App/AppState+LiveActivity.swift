@@ -31,6 +31,7 @@ extension AppState {
             courses: courses,
             assignments: assignments,
             preferences: liveActivityPreferences,
+            cloudSyncEnabled: cloudSyncEnabled,
             accentHex: accentColorHex,
             now: now,
             calendar: AcademicCalendarStore.shared.calendar,

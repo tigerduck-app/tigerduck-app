@@ -1,6 +1,28 @@
 import SwiftUI
 import Defaults
 
+/// The effective answer to "is Live Activity allowed to run right now": the
+/// user's own `isLiveActivityEnabled` switch AND `cloudSyncEnabled`
+/// (同步課程資訊). Spec §6: turning cloud sync off makes Live Activity
+/// unavailable, exactly as `sync_courses_footer_platform_note` already
+/// tells users.
+///
+/// The one place that combined answer gets computed — every reader goes
+/// through it instead of re-deriving `isLiveActivityEnabled &&
+/// cloudSyncEnabled` at its own call site. `LiveActivityScenarioResolver
+/// .resolve` is that reader today. `cloudSyncEnabled` lives on `AppState`,
+/// not on this store, so it is a parameter here rather than a stored
+/// property this type owns — the same shape as Android's
+/// `effectiveCloudSyncEnabled`: a free function over explicit inputs, so a
+/// plain unit test can reach it without constructing anything.
+///
+/// Reads both inputs, writes neither: suppressing the feature while sync is
+/// off must not persist `isLiveActivityEnabled = false`, or turning sync
+/// back on would silently lose whatever the user had.
+func effectiveLiveActivityEnabled(isLiveActivityEnabled: Bool, cloudSyncEnabled: Bool) -> Bool {
+    isLiveActivityEnabled && cloudSyncEnabled
+}
+
 /// Centralizes Live Activity / reminder related preferences so `AppState`
 /// does not keep accumulating unrelated toggles.
 ///
