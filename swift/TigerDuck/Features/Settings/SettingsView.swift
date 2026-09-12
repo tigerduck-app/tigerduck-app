@@ -178,14 +178,12 @@ struct SettingsView: View {
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
                 if !cloudSyncEnabled {
-                    Link(destination: AppURLs.learnMoreBackend) {
-                        Label(
-                            String(localized: "settings_notifications_need_course_sync"),
-                            systemImage: "icloud.slash"
-                        )
-                        .foregroundStyle(.orange)
-                        .font(.callout)
-                    }
+                    Label(
+                        String(localized: "settings_notifications_need_course_sync"),
+                        systemImage: "icloud.slash"
+                    )
+                    .foregroundStyle(.orange)
+                    .font(.callout)
                 }
 
                 #if os(iOS)
