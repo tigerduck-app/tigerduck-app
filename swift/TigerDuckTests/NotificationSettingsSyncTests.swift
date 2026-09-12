@@ -3,8 +3,9 @@
 //
 // Pins:
 //
-//   1. local -> document field mapping matches the brief's table exactly,
-//      field by field (not sampling a couple of fields).
+//   1. local -> document field mapping matches
+//      `NotificationSettingsSync.LocalPreferences`'s table exactly, field
+//      by field (not sampling a couple of fields).
 //   2. every key this app does NOT own round-trips untouched — `courses`
 //      (clearing it silently turns off the user's class reminders), whole
 //      sections another client added, and unknown keys *inside* the two
@@ -109,7 +110,7 @@ struct NotificationSettingsSyncTests {
         return try JSONDecoder().decode(NotificationSettingsDocument.self, from: data)
     }
 
-    // MARK: - 1. Local -> document field mapping, per the brief's table (field-by-field)
+    // MARK: - 1. Local -> document field mapping (field-by-field)
 
     @Test("assignments.enabled mirrors isAssignmentReminderEnabled exactly")
     func assignmentsEnabledMapsDirectly() {
@@ -406,7 +407,7 @@ struct NotificationSettingsSyncTests {
         #expect(written)
     }
 
-    // MARK: - Step 6b: per-device-switch section gating (Task 4)
+    // MARK: - Step 6b: per-device-switch section gating
     //
     // `syncAssignmentRemindersEnabled` / `syncLiveActivityEnabled` gate
     // `assignments` / `live_activity` independently: a section whose switch
@@ -507,7 +508,7 @@ struct NotificationSettingsSyncTests {
         #expect(SettingsAPIStub.requests(for: url).isEmpty)
     }
 
-    // MARK: - Pending marker (Important 1 / Minor 2, fix round 2)
+    // MARK: - Pending marker
 
     @Test("the pending marker clears only when the write landed and nothing changed since")
     func canClearPendingMarkerRequiresWriteAndNoInterveningEdit() {
@@ -522,15 +523,15 @@ struct NotificationSettingsSyncTests {
         #expect(!NotificationSettingsSync.canClearPendingMarker(written: false, sent: sent, current: sent))
 
         // Landed, but a newer edit arrived while the request was in
-        // flight — the exact race Minor 2 names. That edit is already
-        // queued behind this push (`enqueueNotificationSettingsPush`'s
-        // chain); clearing here would let a kill in the next 250 ms lose
-        // it with the marker already `false`.
+        // flight. That edit is already queued behind this push
+        // (`enqueueNotificationSettingsPush`'s chain); clearing here would
+        // let a kill in the next 250 ms lose it with the marker already
+        // `false`.
         let editedWhileInFlight = Self.local(isAssignmentReminderEnabled: !sent.isAssignmentReminderEnabled)
         #expect(!NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: editedWhileInFlight))
     }
 
-    // MARK: - Device switch re-enable reconcile (Minor 4, promoted, fix round 1)
+    // MARK: - Device switch re-enable reconcile
 
     @Test("a device switch turning back on needs an extra push; turning it off does not")
     func shouldPushOnDeviceSwitchChangeOnlyFiresOnTheOffToOnTransition() {
@@ -540,8 +541,7 @@ struct NotificationSettingsSyncTests {
         // every change either direction — not exercised here) only carries
         // the switch itself, never the section's content. Without this,
         // the section stays stale server-side until some unrelated local
-        // edit happens to trigger a push — the exact hazard task-4-review's
-        // Minor 4 named.
+        // edit happens to trigger a push.
         #expect(NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: false, new: true))
 
         // The on→off transition needs no extra push: the section goes back
@@ -644,7 +644,7 @@ struct NotificationSettingsSyncTests {
 
     @Test("with only reminder_offsets_hours, the device's sub-hour offsets are kept, not deleted")
     func resolveOffsetsKeepsLocalSubHourWhenOnlyHoursArePresent() {
-        // The Critical this round fixes. `.min30` ships in
+        // `.min30` ships in
         // `LiveActivityPreferencesStore.defaultOffsets`, and
         // `reminder_offsets_hours` structurally cannot carry it, so a
         // document that only has that field is not evidence the user
@@ -678,7 +678,8 @@ struct NotificationSettingsSyncTests {
         // was a Swift arithmetic trap (a crash) for any value this large;
         // it must now just fail to match a case, same as any other
         // unrecognised value, while `24` still resolves normally and the
-        // local sub-hour pick still survives (the unrelated C1 rule).
+        // local sub-hour pick still survives (the unrelated sub-hour-
+        // preservation rule tested above).
         let resolved = NotificationSettingsSync.resolveOffsets(
             documentMinutes: nil,
             documentHours: [Int.max, 24],

@@ -17,7 +17,7 @@ extension AppState {
     /// their own `syncCourses` change handler, so a user turning courses
     /// off can't leave the now-`.disabled` colours row stuck reading ON
     /// while `applyCourseOverrides` (`AppState+BackendSync.swift`) keeps
-    /// applying server colours underneath it — task-4 review, Important 1.
+    /// applying server colours underneath it.
     ///
     /// Lives here — not on either settings view — because it must compile
     /// for both platforms: this file is on both platforms'

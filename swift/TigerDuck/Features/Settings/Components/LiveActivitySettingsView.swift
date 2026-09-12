@@ -84,10 +84,10 @@ struct LiveActivitySettingsView: View {
         }
     }
 
-    /// `static` and not `private` (task-4 review Important 2: the
-    /// assignment-lead-time row used to call the now-deleted `formatHours`,
-    /// which truncated to whole hours and silently mis-rendered 7 of the
-    /// slider's 15 half-hour positions). Static — not an instance method
+    /// `static` and not `private` (the assignment-lead-time row used to
+    /// call the now-deleted `formatHours`, which truncated to whole hours
+    /// and silently mis-rendered 7 of the slider's 15 half-hour
+    /// positions). Static — not an instance method
     /// reading `store` — and internal rather than private so
     /// `LiveActivitySettingsViewTests` can assert on its output directly;
     /// this codebase has no SwiftUI view-inspection facility, and

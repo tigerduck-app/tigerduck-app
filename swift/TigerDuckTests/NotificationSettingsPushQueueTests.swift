@@ -2,14 +2,14 @@
 // the generation guard and debounce/tail cancellation that keep a queued
 // or in-flight notification-settings push from crossing a logout.
 //
-// Fix round 2, Important 1: the push queue introduced alongside
-// `NotificationSettingsSync` copied `enqueueHolidayUpload`'s chained-tail
-// shape (`AppState+PushServer.swift`) but not the half of `HolidayUploadQueue`
-// that makes chaining safe across a logout — a `generation` counter, bumped
-// on logout, that a queued link checks before running. Without it, a
-// preference edit still sitting in the 250 ms debounce or the push chain
-// when the user logs out can land on whichever account signs in next, once
-// a pull (Task 4) makes those preferences carry another account's data.
+// The push queue introduced alongside `NotificationSettingsSync` copied
+// `enqueueHolidayUpload`'s chained-tail shape (`AppState+PushServer.swift`)
+// but not the half of `HolidayUploadQueue` that makes chaining safe across
+// a logout — a `generation` counter, bumped on logout, that a queued link
+// checks before running. Without it, a preference edit still sitting in
+// the 250 ms debounce or the push chain when the user logs out can land on
+// whichever account signs in next, once a pull makes those preferences
+// carry another account's data.
 //
 // These tests drive the actual hazard — enqueue work, "log out"
 // (`cancelAll()`), enqueue more work as if a different account had signed

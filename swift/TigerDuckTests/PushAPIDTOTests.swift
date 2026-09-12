@@ -1,7 +1,7 @@
 // `PushAPI.DevicePreferencesRequest` / `DevicePreferencesResponse`
-// (PushAPIDTO.swift) — specifically the two device-preference fields Task 4
-// adds, `syncAssignmentReminders` / `syncLiveActivity`, wired to the wire
-// keys `sync_assignment_reminders` / `sync_live_activity`.
+// (PushAPIDTO.swift) — specifically the two device-preference fields
+// `syncAssignmentReminders` / `syncLiveActivity`, wired to the wire keys
+// `sync_assignment_reminders` / `sync_live_activity`.
 //
 // Swift's synthesized `Decodable` only decodes keys an explicit
 // `CodingKeys` enum names, and a plain `Encodable` only *emits* keys

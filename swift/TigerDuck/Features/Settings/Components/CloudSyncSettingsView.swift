@@ -73,7 +73,7 @@ struct CloudSyncSettingsView: View {
                 }
             }
 
-            // Unconditional per spec §6's tree (task-4 review, Important 4):
+            // Unconditional per spec §6's tree:
             // registration status and the latest error are exactly what a
             // user needs to see while investigating why sync isn't
             // working, which is disproportionately likely to be a moment

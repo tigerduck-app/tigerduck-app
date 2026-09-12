@@ -3,7 +3,8 @@ import Defaults
 @testable import TigerDuck
 
 final class NameAbbrServiceTests: XCTestCase {
-    // After Task 1 + Xcode bundle step, the JSON files are in the app bundle.
+    // The name-abbr JSON files ship in the app bundle via the Xcode
+    // build's bundle step.
     // These tests verify the service can load and apply abbreviations.
 
     func test_abbreviateName_unknownName_returnsOriginal() {

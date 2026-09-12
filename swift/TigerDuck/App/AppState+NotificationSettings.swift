@@ -326,9 +326,8 @@ nonisolated enum NotificationSettingsSync {
     static let namespace = "notification"
 
     enum SyncError: Error, Equatable, Sendable {
-        /// The retried write also ended in conflict. Per the task brief:
-        /// adopt the server's version and retry once, but never loop
-        /// forever.
+        /// The retried write also ended in conflict: adopt the server's
+        /// version and retry once, but never loop forever.
         case conflictNotResolved
         /// A section this app owns did not encode to a JSON object. Cannot
         /// happen for the two `Codable` structs involved; thrown rather
@@ -341,8 +340,8 @@ nonisolated enum NotificationSettingsSync {
     /// so tests can construct one directly instead of standing up a real
     /// store (which reads/writes `Defaults` / `UserDefaults`).
     ///
-    /// Field mapping is fixed by the task brief's table — do not add or
-    /// infer fields beyond these seven:
+    /// Field mapping is fixed by the table below — do not add or infer
+    /// fields beyond these seven:
     ///
     /// | local                             | document field                               |
     /// |------------------------------------|-----------------------------------------------|

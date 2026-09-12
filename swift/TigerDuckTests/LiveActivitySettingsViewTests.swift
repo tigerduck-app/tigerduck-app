@@ -1,16 +1,14 @@
-// `LiveActivitySettingsView.formatHoursAndMinutes` — task-4 review
-// Important 2: the assignment-lead-time slider's `step` moved to 1800s (30
-// minutes) as the brief mandated, but its label was still driven by
-// `formatHours` (`Int(interval / 3600)`), so 7 of the 15 reachable slider
-// positions rendered a lead time that was not the one selected (5400s, i.e.
-// 1h30m, rendered as "1 hour").
+// `LiveActivitySettingsView.formatHoursAndMinutes` — the assignment-
+// lead-time slider's `step` moved to 1800s (30 minutes), but its label
+// was still driven by `formatHours` (`Int(interval / 3600)`), so 7 of the
+// 15 reachable slider positions rendered a lead time that was not the one
+// selected (5400s, i.e. 1h30m, rendered as "1 hour").
 //
 // `formatHoursAndMinutes` was lifted from `private` to `static` (dropping
 // the `private` that made it untestable) rather than adding a SwiftUI
-// view-inspection dependency for one assertion — see
-// task-4-fix-1-report.md. It takes a plain `TimeInterval` and touches no
-// `store`/`Defaults`, so this test calls it directly with no view or store
-// construction involved.
+// view-inspection dependency for one assertion. It takes a plain
+// `TimeInterval` and touches no `store`/`Defaults`, so this test calls it
+// directly with no view or store construction involved.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -20,7 +18,8 @@ struct LiveActivitySettingsViewTests {
     @Test("a half-hour-past-an-hour lead time renders its own value, not the nearest whole hour")
     func halfHourPositionRendersExactly() {
         // 5400s = 1h30m — one of the seven newly-reachable half-hour
-        // positions the brief's hazard names. A whole-hour input (3600s)
+        // positions that the old `formatHours` mis-rendered. A whole-hour
+        // input (3600s)
         // would render identically under the buggy `formatHours` and the
         // correct `formatHoursAndMinutes`, so asserting there would prove
         // nothing; 5400s is where they diverge ("1 hr" vs "1 hr 30 min").
