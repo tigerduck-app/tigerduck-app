@@ -179,10 +179,13 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 - [x] **Update prompt + What's New sheet** — Shows what changed after installing `v1.8.0`
 - [x] **Sensitive-screen masking** — Passwords and the library QR hidden from screenshots and recordings `v1.8.0`
 - [x] **TLS SPKI pinning** — NTUST and Library traffic `v1.8.0`
+- [x] **Assignment reminders sent by the server** — on time with the app closed, withdrawn once submitted on Moodle `v2.1.0`
+- [x] **Notification permission settings** — Notifications and Live Activities authorization at a glance, a tap away from System Settings `v2.1.0`
 
 ### ☁️ Cloud Sync
 - [x] **Account and multi-device sync** — Live course / assignment upload, 401 auto-recovery `v2.0.0`
 - [x] **Server push channel settings** `v2.0.0`
+- [x] **Notification settings sync** — assignment reminder and Live Activity settings across devices `v2.1.0`
 
 ### ⌚ Apple Watch / 🧩 Widgets / 💻 macOS
 - [x] **Apple Watch app** — Library QR, WatchConnectivity credential sync `v1.7.0`
