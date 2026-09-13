@@ -1,7 +1,7 @@
 # LIVE ACTIVITY KNOWLEDGE BASE
 
 ## OVERVIEW
-`LiveActivity/` is a self-contained subsystem for Dynamic Island / lock-screen state, reminder scheduling, and scenario resolution based on courses and assignments.
+`LiveActivity/` is a self-contained subsystem for Dynamic Island / lock-screen state and scenario resolution based on courses and assignments. Assignment reminders are sent by the backend since v2.1.0; nothing here schedules them.
 
 ## STRUCTURE
 ```text
@@ -10,19 +10,17 @@ LiveActivity/
 ├── Preferences/   # persisted user settings and invariants
 ├── Providers/     # canonical course source for timeline logic
 ├── Resolvers/     # scenario + course timeline computation
-├── Runtime/       # ActivityKit lifecycle + shared snapshot storage
-└── Scheduling/    # notification scheduling
+└── Runtime/       # ActivityKit lifecycle + shared snapshot storage
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |---|---|---|
-| Activity lifecycle | `Runtime/LiveActivityCoordinator.swift` | Single-activity invariant, start/update/end |
+| Activity lifecycle | `Runtime/LiveActivityCoordinator.swift` | One copy per `composedActivityId`, start/update/end, ends expired and duplicate copies |
 | Widget/app shared payload | `Runtime/SharedSnapshotStore.swift` | Shared data for extension |
 | Scenario decision logic | `Resolvers/LiveActivityScenarioResolver.swift` | Assignment/class/idle selection |
 | Course boundary timing | `Resolvers/CourseTimelineResolver.swift` | Computes in-class / preparing transitions |
 | User prefs and limits | `Preferences/LiveActivityPreferencesStore.swift` | Lead-time limits, toggle broadcasting |
-| Reminder notification scheduling | `Scheduling/AssignmentReminderScheduler.swift` | No-prompt scheduling path |
 
 ## CONVENTIONS
 - `AppState` orchestrates entry into this subsystem, but the subsystem owns the rules for scenario computation and scheduling behavior.
@@ -30,7 +28,7 @@ LiveActivity/
 - The course source for this subsystem goes through `CanonicalCourseProvider` so Home, Class Table, and Live Activity stay aligned.
 
 ## ANTI-PATTERNS
-- Do not create multiple concurrent live activities; coordinator logic assumes a single activity instance.
+- Do not end an activity only because it is not the current resolved target. Several can run at once: server push-to-start pre-starts later ones (a classPreparing activity and its inClass follow-up are distinct), and each is ended by its server end job or its own countdown. The coordinator ends only expired activities and duplicate copies of one `composedActivityId`, and all of them while Live Activity is unavailable — see the header of `LiveActivityCoordinator.swift`.
 - Do not exceed the assignment lead-time invariant in `LiveActivityPreferencesStore` (8 hours).
 - Do not prompt for notification authorization from background-safe scheduling paths; explicit user intent is required.
 - Do not reschedule reminders for purely visual changes like accent-only updates.
