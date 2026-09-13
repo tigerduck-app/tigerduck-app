@@ -205,9 +205,15 @@ final class ClassTableViewModel {
         // Invalidating alongside the mirror is not optional: `cellRoleCache`
         // is keyed by index into `activePeriods`, so a row set that just grew
         // makes every cached entry point at the wrong period.
+        //
+        // `initial: true` because this task subscribes a hop after the
+        // property initializer copied the key: a write in between would never
+        // arrive, and the grid would keep the old row set for good. The
+        // replayed value usually matches the copy and is skipped.
         periodVisibilityTask = Task { [weak self] in
-            for await value in Defaults.updates(.alwaysShowAllPeriods, initial: false) {
+            for await value in Defaults.updates(.alwaysShowAllPeriods, initial: true) {
                 guard let self else { return }
+                guard value != self.showsAllPeriods else { continue }
                 self.showsAllPeriods = value
                 self.invalidateCellRoleCache()
             }
