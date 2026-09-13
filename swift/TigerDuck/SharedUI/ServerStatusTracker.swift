@@ -59,6 +59,19 @@ final class ServerStatusTracker {
         set(reachable ? .ok : .failed, for: .backend)
     }
 
+    /// Report the outcome of a *full sync*.
+    ///
+    /// The mirror of ``noteBackendReachable(_:)``, and ignored for the mirror
+    /// reason: a sync started while TigerSync was on can finish after it has
+    /// been switched off, and its result no longer describes what the row now
+    /// means. Without this guard a request that fails on the way out shows up
+    /// in the freshly cleared dot as a public-backend failure that no public
+    /// fetch ever saw, and sits there until the next calendar refresh.
+    func noteSyncResult(_ ok: Bool) {
+        guard Defaults[.cloudSyncEnabled] else { return }
+        set(ok ? .ok : .failed, for: .backend)
+    }
+
     /// Drop the backend reading when sync is switched on or off.
     ///
     /// The slot means a different thing on each side of that flip — a full

@@ -6,6 +6,11 @@ import Testing
 /// The "always show all periods" toggle used to leave the grid on its old row
 /// set until something else forced a reload, because `activePeriods` read
 /// `Defaults` directly and SwiftUI cannot see a raw `Defaults` read.
+///
+/// Serialized: both tests drive the one global `alwaysShowAllPeriods` key, and
+/// `@MainActor` still lets them interleave at their awaits — one test's restore
+/// would flip the other's toggle back out from under its polling loop.
+@Suite(.serialized)
 @MainActor
 struct ClassTablePeriodVisibilityTests {
     @Test func flippingTheToggle_widensTheGridWithoutAReload() async throws {

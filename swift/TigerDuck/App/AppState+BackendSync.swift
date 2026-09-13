@@ -215,7 +215,7 @@ extension AppState {
 
             UserDefaults.standard.set(Date(), forKey: "lastCourseSyncAt")
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
-            ServerStatusTracker.shared.set(.ok, for: .backend)
+            ServerStatusTracker.shared.noteSyncResult(true)
             recordSyncSource(.backend)
             #if os(iOS)
             // The fetch landed, so there is a network and a session: settle
@@ -227,7 +227,7 @@ extension AppState {
             reconcileNotificationSettings()
             #endif
         } catch {
-            ServerStatusTracker.shared.set(.failed, for: .backend)
+            ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
             if case PushAPIError.httpStatus(401, _) = error, !retried {
                 let reloginOk = await attemptBackendRelogin()

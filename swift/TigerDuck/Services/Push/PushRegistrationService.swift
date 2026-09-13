@@ -663,11 +663,15 @@ actor PushRegistrationService {
         // past, in which case the register endpoint skips the job entirely and
         // the activity has no remote end at all. The snapshot's own dates stay
         // in app-clock space; the widget translates those at render time.
+        //
+        // The conversion itself happened once, when the registration was made
+        // (see `countdownTargetRealTime`), so every retry of this send asks for
+        // the same instant.
         let countdownISO: String?
-        if let target = snapshot.countdownTarget {
+        if let target = registration.countdownTargetRealTime {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            countdownISO = formatter.string(from: AppClock.realTime(forApp: target))
+            countdownISO = formatter.string(from: target)
         } else {
             countdownISO = nil
         }
