@@ -27,6 +27,7 @@ ContentView.swift
 DebugServerFailureView.swift
 DebugSettingsView.swift
 DebugSettingsViewModel.swift
+TigerSyncStatusView.swift
 TriggersDebugView.swift
 
 # Extensions — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
@@ -110,9 +111,10 @@ CloudSyncSettingsView.swift
 FontSizeSettingsView.swift
 LiveActivitySettingsView.swift
 LoginSheet.swift
+NotificationPermissionSettingsView.swift  # macOS never receives notifications, by design (spec §2) — not merely a different UI tree like the rest of this group
 OtherSettingsView.swift
-PushServerSettingsView.swift
 SourceCodePickerView.swift
+SyncContentSettingsView.swift
 TabEditorView.swift
 SettingsView.swift
 
@@ -126,7 +128,6 @@ WhatsNewSheetView.swift
 
 # LiveActivity/Models — ActivityKit — iOS only
 AssignmentReminderOffset.swift
-ReminderPayload.swift
 
 # LiveActivity/Preferences — ActivityKit — iOS only
 LiveActivityPreferencesStore.swift
@@ -137,7 +138,6 @@ SharedSnapshotStore.swift
 TigerDuckActivityAttributes.swift
 
 # LiveActivity/Scheduling — ActivityKit — iOS only
-AssignmentReminderScheduler.swift
 
 # Services/API — App Store update check, iOS distribution only
 AppStoreUpdateService.swift
@@ -200,3 +200,38 @@ AppState+LiveActivity.swift
 # AppState itself, and this file's whole body sits inside #if os(iOS)
 # for the same reason: there is nothing to route to on macOS.
 AppState+PushRouting.swift
+
+# AppState+NotificationSettings.swift — the `notification` settings-document
+# sync (assignment-due reminders, Live Activity). Its `#if os(iOS)`-gated
+# `AppState` methods serve a feature macOS does not have; the un-gated
+# `NotificationSettingsPushQueue` / `NotificationSettingsSync` below them in
+# the same file read and write `LiveActivityPreferencesStore` (excluded
+# above under LiveActivity/Preferences), which does not exist on a macOS
+# build — so this file cannot compile there as it stands.
+AppState+NotificationSettings.swift
+
+# Services/Migrations — one-shot migrations behind the notification-settings
+# cloud sync (spec §4.6), both called only from the `#if os(iOS)` block in
+# `AppState+Lifecycle.swift`'s `runPendingMigrations()`: one seeds
+# `assignments` + `live_activity` from `LiveActivityPreferencesStore`
+# (iOS-only); the other purges local notification requests scheduled by the
+# deleted, iOS-only `AssignmentReminderScheduler` — macOS never scheduled
+# them, so there is nothing to purge.
+NotificationSettingsSeedMigration.swift
+PendingReminderPurgeMigration.swift
+
+# BulletinPushOptOutMigration.swift — the upgrade fix-up for the 2.1.0
+# bulletin-push opt-out (spec §6 item 5). Called from its own `#if os(iOS)`
+# guard in `runPendingMigrations()`. iOS-only because the feature it repairs
+# is: bulletin notification settings have no macOS surface at all (see
+# Features/Bulletins above), so a Mac build has never had a way to write the
+# ambiguous 2.0.x flag state this migration disambiguates.
+BulletinPushOptOutMigration.swift
+
+# Services/Sync — the `notification` settings-document model and its client.
+# Both sections `NotificationSettingsDocument` carries (`assignments`,
+# `live_activity`) describe local reminder scheduling and Live Activity
+# state, neither of which macOS has; `SettingsDocumentClient` has no caller
+# outside `AppState+NotificationSettings.swift`, itself excluded above.
+NotificationSettingsDocument.swift
+SettingsDocumentClient.swift

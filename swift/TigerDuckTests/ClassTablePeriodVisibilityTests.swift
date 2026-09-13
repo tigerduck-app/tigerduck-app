@@ -21,12 +21,11 @@ struct ClassTablePeriodVisibilityTests {
         let viewModel = ClassTableViewModel()
         #expect(viewModel.activePeriods.map(\.id) == AppConstants.Periods.defaultVisible)
 
-        // Let the view model's observation task register before writing, so
-        // the change it is waiting for isn't published into a dead stream.
-        await Task.yield()
+        // Written before the view model's observation task has run at all:
+        // the change must still arrive, or the grid keeps the old row set.
         Defaults[.alwaysShowAllPeriods] = true
 
-        try await Self.waitUntil { viewModel.showsAllPeriods }
+        try await waitUntil { viewModel.showsAllPeriods }
         #expect(viewModel.activePeriods.map(\.id) == AppConstants.Periods.chronologicalOrder)
     }
 
@@ -41,24 +40,8 @@ struct ClassTablePeriodVisibilityTests {
         _ = viewModel.cellRole(weekday: 1, periodIndex: 0)
         #expect(!viewModel.cellRoleCache.isEmpty)
 
-        await Task.yield()
         Defaults[.alwaysShowAllPeriods] = true
 
-        try await Self.waitUntil { viewModel.cellRoleCache.isEmpty }
-    }
-
-    /// Polls `condition` until it holds or the deadline passes — the mirror is
-    /// updated from an `AsyncStream`, so the flip lands a hop after the write.
-    private static func waitUntil(
-        timeout: Duration = .seconds(2),
-        _ condition: () -> Bool,
-        sourceLocation: SourceLocation = #_sourceLocation
-    ) async throws {
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline {
-            if condition() { return }
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        Issue.record("condition never became true within \(timeout)", sourceLocation: sourceLocation)
+        try await waitUntil { viewModel.cellRoleCache.isEmpty }
     }
 }

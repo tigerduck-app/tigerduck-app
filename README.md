@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.0.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.0.3)
+[![Version](https://img.shields.io/badge/Version-v2.1.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -112,6 +112,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點 |
 |:---:|:---:|---|
+| **`v2.1.0`** | 2026-09-12 | 🔔 **作業提醒改由伺服器送出** — iOS 不再依賴本地排程，App 沒開著也會準時提醒；已在 Moodle 繳交的作業自動停止提醒；通知設定跨裝置同步，一台改完其他裝置跟上；Moodle 登入過期的通知補上文字與翻譯，不再是空白橫幅；TigerSync 設定頁三平台重整，同步與通知分開陳列 |
 | **`v2.0.3`** | 2026-09-11 | 課表可以固定顯示全部節次，切換節次顯示時會立刻重畫，晚間節次的上下課時間也修正了；動態島改用 App 圖示，課程結束後顯示結束狀態而不是破折號，結束時間改以真實時鐘註冊；小工具在單色渲染下不再蓋上多餘的不透明底色，Now 與 Today 沿用課表那組膠囊樣式；TigerSync 在同步狀態與行事曆的同步來源中都會正確列出；在圖書館畫面登入後，設定頁立刻看得到登入狀態 |
 | **`v2.0.2`** | 2026-09-10 | 📅 **校方行事曆上線** — 學期起訖、假日與補課日直接進 App，iOS 與 Mac 皆有；動態島課程改由伺服器推播啟動，App 在背景也會準時出現；在另一台裝置重置學期後，這台裝置會跟著清空並自動重抓；課表補上每節上下課時間、第 10 節與 A/B/C 節顯示選項；自訂 API 端點成為正式且會驗證的設定 |
 | **`v2.0.1`** | 2026-09-07 | 課表學期選單只列入學年以後的學期，舊制空格補位的學期代碼不再混入；主題色擴及圖示、圖書證倒數圈、歷年成績趨勢線與 Mac 設定視窗；選課系統所服務的學期以選課清單為準，已退選的課不再從 Moodle 被加回 |
@@ -180,10 +181,13 @@ TigerDuck 是由一群學生共同開發的校園助手
 - [x] **新版本提示 +「這一版有什麼」** – 更新後顯示本次變更 `v1.8.0`
 - [x] **敏感畫面遮蔽** – 密碼與圖書證 QR 在截圖 / 螢幕錄影中自動遮蔽 `v1.8.0`
 - [x] **TLS SPKI pinning** – NTUST 與圖書館連線 `v1.8.0`
+- [x] **作業提醒改由伺服器送出** – App 沒開也準時，已在 Moodle 繳交就自動撤回 `v2.1.0`
+- [x] **通知權限設定** – 通知與即時動態的授權狀態一覽，點一下前往系統設定 `v2.1.0`
 
 ### ☁️ 雲端同步
 - [x] **帳號與多裝置同步** – 課表 / 作業即時上傳、401 自動恢復 `v2.0.0`
 - [x] **伺服器推播頻道設定** `v2.0.0`
+- [x] **通知設定跨裝置同步** – 作業提醒與即時動態設定 `v2.1.0`
 
 ### ⌚ Apple Watch / 🧩 小工具 / 💻 macOS
 - [x] **Apple Watch App** – 圖書證 QR、WatchConnectivity 憑證同步 `v1.7.0`

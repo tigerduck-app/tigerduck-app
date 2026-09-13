@@ -32,6 +32,31 @@ nonisolated enum PushAPNsEnv {
     #endif
 }
 
+/// The hardware model this device reports to the backend, for support work
+/// in the portal: the machine identifier ("iPhone17,3", "iPad16,3",
+/// "Mac15,3"). Apple exposes no marketing name. A simulator reports the
+/// identifier of the device it simulates.
+nonisolated enum PushDeviceModel {
+    static let current: String? = {
+        #if os(macOS)
+        var size = 0
+        guard sysctlbyname("hw.model", nil, &size, nil, 0) == 0, size > 0 else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return nil }
+        return String(decoding: buffer.prefix { $0 != 0 }, as: UTF8.self)
+        #else
+        if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
+            return simulated
+        }
+        var info = utsname()
+        uname(&info)
+        return withUnsafeBytes(of: &info.machine) { raw in
+            String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+        }
+        #endif
+    }()
+}
+
 /// `device_class` value the iOS client reports. Drives operator-side
 /// targeting (iPhone vs iPad vs Mac) without needing the backend to
 /// re-parse build metadata.
@@ -91,6 +116,11 @@ actor PushRegistrationService {
     /// at the boundary would let a server-accepted change desync from the
     /// stored value.
     private var optOutPatchChain: Task<Void, Error>?
+    /// The same, for the bulletin page's toggle. A chain of its own rather
+    /// than a shared one: the two PATCH different columns and neither has
+    /// to wait on the other, but two taps on *this* toggle inside one round
+    /// trip must still land in the order they were made.
+    private var bulletinPatchChain: Task<Void, Error>?
     #if os(iOS)
     private var pendingActivityRegistrations: [String: LiveActivityUpdateTokenRegistration] = [:]
     private var activity404Attempts: [String: Int] = [:]
@@ -128,6 +158,15 @@ actor PushRegistrationService {
         self.deviceClass = deviceClass
     }
 
+    // MARK: - Locale
+
+    /// The language the app is rendering, not the device's region setting:
+    /// `preferredLocalizations` reflects what actually resolved against the
+    /// bundle, so the server's copy matches what the user sees on screen.
+    static var currentLocaleTag: String {
+        Bundle.main.preferredLocalizations.first ?? "en"
+    }
+
     // MARK: - Token intake
 
     func update(deviceToken: Data) async {
@@ -150,7 +189,9 @@ actor PushRegistrationService {
         _ registration: LiveActivityUpdateTokenRegistration
     ) async {
         pendingActivityRegistrations[registration.activityId] = registration
-        guard ptsTokenHex != nil else {
+        // Parked until the device itself can register; the success path in
+        // `performRegister` flushes it.
+        guard hasRegistrableToken else {
             await registerIfReady()
             return
         }
@@ -167,8 +208,12 @@ actor PushRegistrationService {
             device_class: deviceClass,
             app_version: appVersion,
             os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+            device_model: PushDeviceModel.current,
+            locale: Self.currentLocaleTag,
             push_token: nil,
-            cloud_sync_enabled: Defaults[.cloudSyncEnabled]
+            cloud_sync_enabled: Defaults[.cloudSyncEnabled],
+            bulletin_push_enabled: Defaults[.bulletinPushEnabled],
+            server_push_enabled: !Defaults[.serverPushUserOptOut]
         )
         do {
             let response = try await apiClient.registerDevice(request)
@@ -184,6 +229,11 @@ actor PushRegistrationService {
     func registrationFailed(_ error: Error) {
         lastError = "APNs register failed: \(error.localizedDescription)"
         logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+    }
+
+    /// PUT one holiday exception so the user's other devices agree.
+    func uploadHolidayOverride(holidayID: Int, notify: Bool) async throws {
+        try await apiClient.putHolidayOverride(holidayID: holidayID, notify: notify)
     }
 
     /// Called from the settings toggle. PATCHes the backend first; only
@@ -203,11 +253,6 @@ actor PushRegistrationService {
     /// reads enabled, and vice versa). Chaining instead lets every
     /// successfully-applied server change reach `Defaults`, and tap
     /// order is preserved because each task awaits its predecessor.
-    /// PUT one holiday exception so the user's other devices agree.
-    func uploadHolidayOverride(holidayID: Int, notify: Bool) async throws {
-        try await apiClient.putHolidayOverride(holidayID: holidayID, notify: notify)
-    }
-
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         let predecessor = optOutPatchChain
         let uuid = identity.uuid
@@ -262,6 +307,66 @@ actor PushRegistrationService {
         try await task.value
     }
 
+    /// Called from the bulletin page's toggle. PATCHes the backend first;
+    /// only flips the local pref after a 2xx so a transient failure doesn't
+    /// leave local state pretending the server agrees. Throws on failure so
+    /// the caller can leave the page showing the pre-tap state. The next
+    /// `/devices/register` call also re-sends the value (see
+    /// `performRegister`), so a later success backstops eventual
+    /// consistency.
+    ///
+    /// Unlike `updateServerPushOptOut`, there is no signed-out row to
+    /// announce this to: bulletin delivery has no anonymous-pipeline
+    /// counterpart (`user_devices.bulletin_push_enabled` only), and this
+    /// page's other calls already require a session.
+    ///
+    /// Concurrent calls are serialised through `bulletinPatchChain` for the
+    /// same reason `updateServerPushOptOut` uses `optOutPatchChain`: two
+    /// taps inside one round trip would otherwise be two Tasks racing to
+    /// PATCH the same column, and the server would keep whichever landed
+    /// last rather than whichever the user meant last. Each link awaits its
+    /// predecessor, so the `apiClient → Defaults` pair stays atomic and tap
+    /// order is preserved.
+    func updateBulletinPushEnabled(_ enabled: Bool) async throws {
+        let predecessor = bulletinPatchChain
+        let uuid = identity.uuid
+        let apiClient = self.apiClient
+        let logger = self.logger
+        let task = Task<Void, Error> {
+            // Tolerate predecessor failure — each tap's success is
+            // independent of whether the previous one succeeded; we just
+            // need its work to be done before ours starts.
+            _ = try? await predecessor?.value
+            do {
+                let response = try await apiClient.updateDevicePreferences(
+                    deviceId: uuid, bulletinPushEnabled: enabled
+                )
+                // A backend without the column answers 200 and ignores the
+                // request key it does not know, so a 2xx on its own is not
+                // evidence the change was applied. `DevicePreferencesResponse`
+                // stays decode-tolerant of a missing field for every other
+                // PATCH; here the missing field *is* the answer.
+                guard response.bulletinPushEnabled == enabled else {
+                    throw PushAPIError.invalidResponse
+                }
+                await MainActor.run { Defaults[.bulletinPushEnabled] = enabled }
+                logger.info("bulletin push enabled=\(enabled, privacy: .public) propagated")
+            } catch {
+                logger.error("bulletin push enabled=\(enabled, privacy: .public) did not propagate: \(error.localizedDescription, privacy: .public)")
+                throw error
+            }
+        }
+        bulletinPatchChain = task
+        defer {
+            // Don't pin a long-completed task as the chain head — clear
+            // it unless a newer call has already taken our place.
+            if bulletinPatchChain == task {
+                bulletinPatchChain = nil
+            }
+        }
+        try await task.value
+    }
+
     func updateCloudSyncEnabled(_ enabled: Bool) async {
         do {
             _ = try await apiClient.updateDevicePreferences(
@@ -278,15 +383,23 @@ actor PushRegistrationService {
         syncCourses: Bool,
         syncCourseColors: Bool,
         syncCourseNames: Bool,
-        syncAssignments: Bool
+        syncAssignments: Bool,
+        syncAssignmentReminders: Bool,
+        syncLiveActivity: Bool
     ) async {
-        _ = try? await apiClient.updateDevicePreferences(
-            deviceId: identity.uuid,
-            syncCourses: syncCourses,
-            syncCourseColors: syncCourseColors,
-            syncCourseNames: syncCourseNames,
-            syncAssignments: syncAssignments
-        )
+        do {
+            _ = try await apiClient.updateDevicePreferences(
+                deviceId: identity.uuid,
+                syncCourses: syncCourses,
+                syncCourseColors: syncCourseColors,
+                syncCourseNames: syncCourseNames,
+                syncAssignments: syncAssignments,
+                syncAssignmentReminders: syncAssignmentReminders,
+                syncLiveActivity: syncLiveActivity
+            )
+        } catch {
+            logger.error("[sync] preferences PATCH failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Snapshot of internal state for UI display. Safe to call from any isolation.
@@ -299,9 +412,20 @@ actor PushRegistrationService {
         )
     }
 
+    /// Waits for the debounced registration attempt, if one is scheduled,
+    /// to finish. The debounce runs in an unstructured `Task`, so this is
+    /// the only way for a caller to observe the attempt's outcome
+    /// deterministically.
+    func awaitPendingRegistration() async {
+        await lastAttempt?.value
+    }
+
     // MARK: - Unregister
 
-    /// Called when the user turns off server push or logs out.
+    /// Called on sign-out, and only there. Its one caller is
+    /// `PushCoordinator.disable()`, whose one caller is `AppState.logout()`
+    /// — there is no longer a switch that takes the push stack down, only
+    /// the per-channel opt-outs, which leave the device registered.
     func unregister() async {
         do {
             try await apiClient.unregisterDevice(deviceId: identity.uuid)
@@ -327,11 +451,17 @@ actor PushRegistrationService {
 
     // MARK: - Internals
 
+    /// Whether the device holds a token `performRegister` can register.
+    /// Either one will do; see `registerIfReady`.
+    private var hasRegistrableToken: Bool {
+        deviceTokenHex != nil || ptsTokenHex != nil
+    }
+
     /// Re-attempt registration after the auth state changes — the user just
     /// signed in and a v3 JWT is now available. Resets the give-up counter so
     /// a registration that exhausted its retries while unauthenticated gets a
-    /// fresh chance, then fires immediately (subject to the PTS-token gate in
-    /// `registerIfReady`).
+    /// fresh chance, then fires immediately (subject to `registerIfReady`'s
+    /// token gate).
     func retryAfterAuthChange() async {
         deviceRegisterAttempts = 0
         deviceRegisterRetryTask?.cancel()
@@ -343,9 +473,15 @@ actor PushRegistrationService {
         #endif
     }
 
-    /// We upload as soon as the PTS token exists. Device token alone is not
-    /// enough to start a Live Activity, and PTS is the Checkpoint-2/3 focus.
-    /// The device token rides along for later standard-alert pushes.
+    /// Registers as soon as the device holds either token. The standard
+    /// APNs token must not wait for the push-to-start one: it is where the
+    /// backend sends assignment reminders, and the registration is how the
+    /// server learns this device's app version, locale and cloud-sync flag.
+    /// A PTS token only exists while Live Activities are enabled, so
+    /// waiting for it left a device with them switched off unregistered
+    /// and unreachable. Whichever token arrives second is attached by a
+    /// fresh attempt, which re-sends every token held (see
+    /// `performRegister`).
     ///
     /// At app launch the PTS and APNs device tokens arrive within a few
     /// tens of ms of each other, so the naive "POST on every update"
@@ -353,12 +489,14 @@ actor PushRegistrationService {
     /// flight by the second `lastAttempt?.cancel()` and surfaced as the
     /// "register failed: 已取消" line in the logs. A 250ms debounce at
     /// the head of the Task is enough to coalesce both arrivals into
-    /// one POST, and `CancellationError`s are silenced since they're
+    /// one attempt, and `CancellationError`s are silenced since they're
     /// the expected side-effect of a newer request winning.
+    ///
+    /// iOS only: the Mac registers passively (`registerPassiveDevice`),
+    /// never with a token.
     private func registerIfReady() async {
         #if os(iOS)
-        guard ptsTokenHex != nil else { return }
-        #endif
+        guard hasRegistrableToken else { return }
 
         lastAttempt?.cancel()
         let logger = self.logger
@@ -368,14 +506,39 @@ actor PushRegistrationService {
             guard let self else { return }
             await self.performRegister(logger: logger)
         }
+        #endif
     }
 
-    /// Re-reads the current tokens inside the actor and POSTs the
-    /// registration. Split out so the debounce `Task` can call an
-    /// actor-isolated method for fresh state instead of capturing
-    /// stale `let`s from the enqueue site.
+    /// Re-reads the current tokens inside the actor and POSTs one
+    /// registration per token held: `/devices/register` carries a single
+    /// `push_token`, so the standard and PTS tokens travel separately, and
+    /// every attempt re-sends both (the server upserts). Split out so the
+    /// debounce `Task` can call an actor-isolated method for fresh state
+    /// instead of capturing stale `let`s from the enqueue site.
     private func performRegister(logger: Logger) async {
-        guard let pts = ptsTokenHex else { return }
+        var tokens: [PushAPI.PushTokenIn] = []
+        // The standard token first: it is the one reminders are sent to.
+        if let deviceToken = deviceTokenHex {
+            tokens.append(PushAPI.PushTokenIn(
+                provider: "apns",
+                token_kind: "standard",
+                token_value: deviceToken,
+                bundle_id: bundleId,
+                environment: apnsEnv,
+                scope_key: ""
+            ))
+        }
+        if let pts = ptsTokenHex {
+            tokens.append(PushAPI.PushTokenIn(
+                provider: "apns",
+                token_kind: "push_to_start",
+                token_value: pts,
+                bundle_id: bundleId,
+                environment: apnsEnv,
+                scope_key: attrsType
+            ))
+        }
+        guard !tokens.isEmpty else { return }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
         // Announce the hardware first, on every launch, signed in or not.
@@ -413,44 +576,22 @@ actor PushRegistrationService {
         do {
             let cloudSync = Defaults[.cloudSyncEnabled]
             logger.info("[register] cloud_sync_enabled=\(cloudSync, privacy: .public)")
-            let ptsRequest = PushAPI.DeviceRegisterRequest(
-                client_device_id: identity.uuid,
-                platform: PushDeviceClass.platform(for: deviceClass),
-                device_class: deviceClass,
-                app_version: appVersion,
-                os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
-                push_token: PushAPI.PushTokenIn(
-                    provider: "apns",
-                    token_kind: "push_to_start",
-                    token_value: pts,
-                    bundle_id: bundleId,
-                    environment: apnsEnv,
-                    scope_key: attrsType
-                ),
-                cloud_sync_enabled: cloudSync
-            )
-            let ptsResponse = try await apiClient.registerDevice(ptsRequest)
-            logger.info("registered device (PTS) device_id=\(ptsResponse.device_id, privacy: .public)")
-
-            if let deviceToken = deviceTokenHex {
-                let deviceTokenRequest = PushAPI.DeviceRegisterRequest(
+            for token in tokens {
+                let request = PushAPI.DeviceRegisterRequest(
                     client_device_id: identity.uuid,
                     platform: PushDeviceClass.platform(for: deviceClass),
                     device_class: deviceClass,
                     app_version: appVersion,
                     os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
-                    push_token: PushAPI.PushTokenIn(
-                        provider: "apns",
-                        token_kind: "standard",
-                        token_value: deviceToken,
-                        bundle_id: bundleId,
-                        environment: apnsEnv,
-                        scope_key: ""
-                    ),
-                    cloud_sync_enabled: cloudSync
+                    device_model: PushDeviceModel.current,
+                    locale: Self.currentLocaleTag,
+                    push_token: token,
+                    cloud_sync_enabled: cloudSync,
+                    bulletin_push_enabled: Defaults[.bulletinPushEnabled],
+                    server_push_enabled: !Defaults[.serverPushUserOptOut]
                 )
-                let tokenResponse = try await apiClient.registerDevice(deviceTokenRequest)
-                logger.info("registered device (standard APNs) device_id=\(tokenResponse.device_id, privacy: .public)")
+                let response = try await apiClient.registerDevice(request)
+                logger.info("registered device (\(token.token_kind, privacy: .public)) device_id=\(response.device_id, privacy: .public)")
             }
 
             deviceRegisterRetryTask?.cancel()
@@ -493,9 +634,6 @@ actor PushRegistrationService {
     private func noteSuccessfulRegistration() {
         lastRegisteredAt = Date()
         lastError = nil
-        Task { @MainActor in
-            Defaults[.pushLastRegistrationAt] = Date()
-        }
     }
 
     private func noteRegistrationError(_ error: Error) {

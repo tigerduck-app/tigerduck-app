@@ -8,7 +8,8 @@ enum AppURLs {
     static let github         = URL(string: "https://github.com/tigerduck-app")!
     static let privacyPolicy    = URL(string: "https://tigerduck.app/privacy-policy")!
     static let deleteAccount    = URL(string: "https://tigerduck.app/delete-account")!
-    static let learnMoreBackend = URL(string: "https://tigerduck.app/learn-more-about-backend")!
+    /// The website's TigerSync page: what it is and what it keeps.
+    static let learnMoreTigerSync = URL(string: "https://tigerduck.app/tigersync")!
     static let issues         = URL(string: "https://github.com/tigerduck-app/tigerduck-app/issues")!
     /// Public uptime page for every TigerDuck-facing service. Currently
     /// 302s to `status.ntust.org`; opened through ``InAppBrowserView``

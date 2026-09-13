@@ -18,8 +18,24 @@ enum PushAPI {
         let device_class: String?
         let app_version: String?
         let os_version: String?
+        /// Hardware model — see `PushDeviceModel`. Support information for
+        /// the portal; nothing on the server targets on it.
+        let device_model: String?
+        /// BCP-47 tag for the language the app is actually displaying, so the
+        /// server can compose push copy in it. Sent unconditionally — it is a
+        /// device fact, not a preference.
+        let locale: String?
         let push_token: PushTokenIn?
         let cloud_sync_enabled: Bool?
+        /// Carried on every register call, not just when the bulletin
+        /// page's toggle changes, so a migrated value or a PATCH the
+        /// server missed self-heals the moment the device next registers.
+        let bulletin_push_enabled: Bool?
+        /// Self-heals the operator-push opt-out the same way, alongside
+        /// it. Today only the anonymous announce (`AnonymousDeviceRequest`)
+        /// carries the equivalent value; the signed-in row otherwise only
+        /// changes when the TigerSync toggle's own PATCH succeeds.
+        let server_push_enabled: Bool?
     }
 
     struct PushTokenIn: Encodable, Sendable {
@@ -74,13 +90,35 @@ enum PushAPI {
 
     // MARK: - Device preferences (unchanged shape)
 
-    struct DevicePreferencesRequest: Codable, Sendable {
+    /// `nonisolated`: this target defaults unannotated types to `@MainActor`
+    /// (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`), but a plain request
+    /// DTO has no actor affinity and must be encodable from any isolation
+    /// domain — including `PushAPIClient`, a plain `Sendable` class, and
+    /// non-`@MainActor` test functions. Without this the compiler-
+    /// synthesized `Encodable` conformance is main-actor-isolated, which is
+    /// only a warning in today's Swift 5 mode but a hard error in Swift 6
+    /// (same reasoning as `NotificationSettingsDocument`'s own `nonisolated`).
+    nonisolated struct DevicePreferencesRequest: Codable, Sendable {
         var serverPushEnabled: Bool?
         var syncCourses: Bool?
         var syncCourseColors: Bool?
         var syncCourseNames: Bool?
         var syncAssignments: Bool?
+        /// Device-level gate for whether the server should push
+        /// assignment-due reminders to this device, now that reminder
+        /// scheduling has moved server-side (v2.1.0). Distinct from the
+        /// notification settings document's `assignments` section, which
+        /// holds the user's reminder preferences themselves — `enabled`,
+        /// the account-wide on/off switch, and `reminder_offsets_*`, which
+        /// offsets. This is whether this one device takes part.
+        var syncAssignmentReminders: Bool?
+        /// Same shape as `syncAssignmentReminders`, for Live Activity.
+        var syncLiveActivity: Bool?
         var cloudSyncEnabled: Bool?
+        /// Per-device bulletin opt-out (spec §6 item 5) — distinct from
+        /// `serverPushEnabled` above, which covers operator-issued pushes
+        /// only and never gates bulletin delivery.
+        var bulletinPushEnabled: Bool?
 
         enum CodingKeys: String, CodingKey {
             case serverPushEnabled = "server_push_enabled"
@@ -88,18 +126,37 @@ enum PushAPI {
             case syncCourseColors = "sync_course_colors"
             case syncCourseNames = "sync_course_names"
             case syncAssignments = "sync_assignments"
+            case syncAssignmentReminders = "sync_assignment_reminders"
+            case syncLiveActivity = "sync_live_activity"
             case cloudSyncEnabled = "cloud_sync_enabled"
+            case bulletinPushEnabled = "bulletin_push_enabled"
         }
     }
 
-    struct DevicePreferencesResponse: Codable, Sendable {
+    /// `nonisolated` for the same reason as `DevicePreferencesRequest`
+    /// above: a plain response DTO must be decodable from any isolation
+    /// domain, including non-`@MainActor` test functions.
+    nonisolated struct DevicePreferencesResponse: Codable, Sendable {
         let deviceId: String
         let serverPushEnabled: Bool
         let syncCourses: Bool
         let syncCourseColors: Bool
         let syncCourseNames: Bool
         let syncAssignments: Bool
+        /// Optional although the backend always sends them (non-null with a
+        /// `server_default`, migration `07b22743e0f1`): nothing reads them,
+        /// and requiring them would fail the decode of every preferences
+        /// PATCH answered by a backend without the columns — a rollback, or
+        /// a self-hosted server — reporting failure for a change that was
+        /// applied.
+        let syncAssignmentReminders: Bool?
+        let syncLiveActivity: Bool?
         let cloudSyncEnabled: Bool
+        /// Optional for the same reason as `syncAssignmentReminders` above:
+        /// the backend always sends it (NOT NULL, `server_default true`),
+        /// but requiring it would fail the decode of every preferences
+        /// PATCH answered by a backend without the column.
+        let bulletinPushEnabled: Bool?
 
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"
@@ -108,7 +165,10 @@ enum PushAPI {
             case syncCourseColors = "sync_course_colors"
             case syncCourseNames = "sync_course_names"
             case syncAssignments = "sync_assignments"
+            case syncAssignmentReminders = "sync_assignment_reminders"
+            case syncLiveActivity = "sync_live_activity"
             case cloudSyncEnabled = "cloud_sync_enabled"
+            case bulletinPushEnabled = "bulletin_push_enabled"
         }
     }
 

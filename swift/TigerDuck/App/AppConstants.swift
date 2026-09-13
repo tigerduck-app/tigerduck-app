@@ -38,6 +38,23 @@ nonisolated enum AppConstants {
 
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
+    /// `userInfo` flag on `liveActivityPreferencesDidChange` marking a post
+    /// whose values arrived FROM the `notification` settings document
+    /// rather than from a local edit.
+    ///
+    /// Observers that react to the new values — the Live Activity refresh,
+    /// the push schedule sync — must still run for these; only the outgoing
+    /// settings push must not, or applying a pull would immediately queue a
+    /// push of the data it just arrived from. See
+    /// `LiveActivityPreferencesStore.applyFromNotificationSettingsDocument`
+    /// and the observer in `AppState.setupObservers`.
+    static let liveActivityPreferencesRemoteOriginKey = "TigerDuck.liveActivityPreferencesRemoteOrigin"
+    /// `userInfo` flag on `liveActivityPreferencesDidChange` marking a post
+    /// for a preference the `notification` settings document does not
+    /// carry — `isLiveActivityEnabled`, a per-device switch. The Live
+    /// Activity refresh and the push schedule sync still run for it; the
+    /// settings push does not, since there is nothing for it to write.
+    static let liveActivityPreferencesDeviceOnlyKey = "TigerDuck.liveActivityPreferencesDeviceOnly"
     static let languageDidChange = Notification.Name("TigerDuck.languageDidChange")
     /// Posted when a course's per-date skip state mutates. Drives the
     /// Live Activity refresh so a user marking the current class as
@@ -150,12 +167,17 @@ nonisolated enum AppConstants {
 
         // MARK: Cloud sync
         static let cloudSyncEnabled = "cloudSyncEnabled"
+        /// Set when a reminder/Live Activity preference changes, cleared
+        /// only once the `notification` settings document write has landed.
+        /// Persisted so a suspend, a kill, an expired session or an offline
+        /// stretch inside that window is repaired at the next full sync
+        /// rather than leaving the cloud copy stale forever.
+        static let notificationSettingsPushPending = "notificationSettingsPushPending"
 
         // MARK: Push server
         static let pushServerEnabled = "pushServerEnabled"
+        static let bulletinPushEnabled = "bulletinPushEnabled"
         static let pushServerURLOverride = "pushServerURLOverride"
-        static let pushLastRegistrationAt = "pushLastRegistrationAt"
-        static let pushLastSyncAt = "pushLastSyncAt"
         static let serverPushUserOptOut = "serverPushUserOptOut"
         static let shownServerPopupIds = "shownServerPopupIds"
 

@@ -77,10 +77,9 @@ extension AppState {
     }
 
     /// Full NTUST logout: cancel any in-flight background sync, invalidate
-    /// credentials, tear down the Live Activity, cancel pending assignment
-    /// reminders, and purge user-scoped caches so a subsequent login (possibly
-    /// a different user) never inherits previous state on the lock screen or
-    /// in notifications.
+    /// credentials, tear down the Live Activity, and purge user-scoped
+    /// caches so a subsequent login (possibly a different user) never
+    /// inherits previous state on the lock screen or in notifications.
     ///
     /// `syncTask` is cancelled first so that `AppServiceBridge` and the
     /// `backgroundSync` finalize block — both of which check
@@ -116,12 +115,21 @@ extension AppState {
         // the departing user's toggle over the next account's session.
         cancelHolidayUploads()
         AcademicCalendarStore.shared.forgetHolidayOverrides()
+        // Same hazard, same fix, for the notification-settings push queue:
+        // a queued write or a pending marker set by the departing account
+        // must not land on — or be inherited by — whoever signs in next.
+        #if os(iOS)
+        cancelNotificationSettingsPushes()
+        #endif
+        // Signing out turns 同步課程資訊 off, the way every other writer does —
+        // through the preference — so the change runs its usual course in
+        // `cloudSyncEnabledDidChange(to:)`.
+        cloudSyncEnabled = false
         Task { @MainActor in
-            await cloudSyncCoordinator.disable()
+            await cloudSyncCoordinator.settleForSignOut()
             await pushCoordinator.disable()
             #if os(iOS)
             await liveActivityCoordinator.endAll()
-            await reminderScheduler.cancelAllOwnedRequests()
             #endif
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }

@@ -120,5 +120,29 @@
         "Sign in on the Library screen and Settings sees it right away."
       ]
     }
+  },
+  "2.1.0": {
+    "zh-TW": {
+      "title": "2.1.0 更新內容",
+      "highlights": [
+        "作業提醒改由伺服器送出，App 沒開著也會準時提醒。",
+        "已經在 Moodle 繳交的作業，不會再提醒你交。",
+        "通知設定會跨裝置同步，在一台調整好，其他裝置就跟著更新。",
+        "Moodle 登入過期時，通知會說清楚發生什麼事，不再是一則空白橫幅。",
+        "預先排好的課程動態島不會再被 App 自己關掉。",
+        "關閉「同步課程資訊」後，本裝置將不再收到作業到期提醒。"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.1.0",
+      "highlights": [
+        "Assignment reminders now come from the server, so they arrive on time even when the app isn't open.",
+        "Assignments you have already submitted on Moodle stop reminding you.",
+        "Notification settings sync across your devices — change them on one and the rest follow.",
+        "When your Moodle login expires, the notification explains what happened instead of arriving blank.",
+        "Scheduled class Live Activities are no longer ended by the app itself.",
+        "Turning off \"Sync course information\" now also turns off assignment reminders on this device."
+      ]
+    }
   }
 }

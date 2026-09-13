@@ -28,6 +28,9 @@ struct AssignmentReminderSettingsView: View {
         }
         .navigationTitle(String(localized: "live_activity_settings_assignment_notification_header"))
         .task {
+            // Show what another device last saved, not only this one's
+            // copy. Queued, so it does not wait behind the prompt below.
+            appState.reconcileNotificationSettings()
             // This screen is now the assignment-reminder feature's explicit
             // entry point, so the notification permission prompt lives here.
             // Refresh paths (theme tweaks, foreground transitions, background

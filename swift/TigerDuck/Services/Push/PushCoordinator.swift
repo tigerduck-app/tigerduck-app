@@ -1,7 +1,6 @@
 #if canImport(ActivityKit)
 import ActivityKit
 #endif
-import Defaults
 import Foundation
 #if canImport(UIKit)
 import UIKit
@@ -18,7 +17,6 @@ protocol PushTokenSource: AnyObject {
 }
 
 struct PushDiagnostic: Sendable {
-    let enabled: Bool
     let isStarted: Bool
     let liveActivitiesEnabled: Bool
     let notificationAuthStatus: UNAuthorizationStatus
@@ -29,8 +27,11 @@ struct PushDiagnostic: Sendable {
 
 /// Owns the push-server lifecycle for the app.
 ///
-/// AppState holds a single instance. Enabling/disabling flips the full
-/// stack on or off idempotently so the settings toggle can toggle freely.
+/// AppState holds a single instance. `enable()` brings the stack up
+/// idempotently at every launch past onboarding; `disable()` takes it down
+/// at sign-out, which is now the only way down. There is no stored flag
+/// gating either — what a user can turn off is a delivery channel
+/// (bulletins, operator pushes), never the registration itself.
 ///
 /// Responsibilities:
 /// * Register for remote notifications on enable
@@ -126,10 +127,6 @@ final class PushCoordinator {
     ///   Auto-enable must NOT prompt — that would land the system alert
     ///   on top of OnboardingView.
     func enable(requestPermission: Bool = false) {
-        guard Defaults[.pushServerEnabled] else {
-            logger.info("enable skipped — pushServerEnabled=false")
-            return
-        }
         // One-time stack bring-up: relay + `isStarted` flip happen on the
         // first call only. The permission/register block below intentionally
         // runs every time — auto-enable at launch (`requestPermission:
@@ -245,7 +242,6 @@ final class PushCoordinator {
         #endif
         let notificationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         return PushDiagnostic(
-            enabled: Defaults[.pushServerEnabled],
             isStarted: isStarted,
             liveActivitiesEnabled: liveActivitiesEnabled,
             notificationAuthStatus: notificationStatus,
@@ -279,7 +275,6 @@ final class PushCoordinator {
     func registerLiveActivityUpdateToken(
         _ registrationPayload: LiveActivityUpdateTokenRegistration
     ) async {
-        guard Defaults[.pushServerEnabled] else { return }
         await registration.registerLiveActivityUpdateToken(registrationPayload)
     }
     #endif
@@ -287,12 +282,12 @@ final class PushCoordinator {
     // MARK: - Sync driver
 
     /// Schedules a debounced sync. Multiple rapid callers coalesce into one
-    /// POST. If push is not enabled, no-op.
+    /// POST. Drops the sync when the app is backgrounded or there is no
+    /// session to authenticate `/schedule/sync` with.
     func requestSync(
         debounceMs: Int = 400,
         inputsBuilder: @escaping @MainActor () -> ScheduleSyncService.Inputs
     ) {
-        guard Defaults[.pushServerEnabled] else { return }
         pendingSyncTask?.cancel()
         pendingSyncTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(debounceMs))
