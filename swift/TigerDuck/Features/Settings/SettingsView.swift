@@ -12,10 +12,8 @@ struct SettingsView: View {
     /// already turned it off -- popping back does not re-evaluate a parent
     /// body on its own.
     ///
-    /// It watches the preference rather than `appState.cloudSyncEnabled`
-    /// because three writers -- onboarding and both ends of
-    /// `CloudSyncCoordinator` -- set the preference directly, so the
-    /// AppState mirror is not guaranteed to agree with it.
+    /// The preference is the flag's only copy -- `appState.cloudSyncEnabled`
+    /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
@@ -180,14 +178,12 @@ struct SettingsView: View {
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
                 if !cloudSyncEnabled {
-                    Link(destination: AppURLs.learnMoreBackend) {
-                        Label(
-                            String(localized: "settings_sync_off_notifications_warning"),
-                            systemImage: "icloud.slash"
-                        )
-                        .foregroundStyle(.orange)
-                        .font(.callout)
-                    }
+                    Label(
+                        String(localized: "settings_notifications_need_course_sync"),
+                        systemImage: "icloud.slash"
+                    )
+                    .foregroundStyle(.orange)
+                    .font(.callout)
                 }
 
                 #if os(iOS)
@@ -210,12 +206,24 @@ struct SettingsView: View {
                     NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
                         AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
                     }
+                    // Greyed out with course sync off: the backend sends
+                    // assignment reminders only to devices that sync, so
+                    // nothing set here would take effect.
+                    .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                         LiveActivitySettingsView(store: appState.liveActivityPreferences)
                     }
-                    NavigationLink(String(localized: "settings_push_server_nav_label")) {
-                        PushServerSettingsView()
-                    }
+                    // Same reason as the row above: Live Activity itself is
+                    // unavailable with course sync off (spec §6), so this
+                    // screen has nothing to take effect either.
+                    .disabled(!cloudSyncEnabled)
+                }
+                // Owner's ruling, 2026-09-12 (spec §6, item 4): third row,
+                // always enabled — it reads OS-level permission state
+                // directly, which stays meaningful whether or not course
+                // sync is on. iPhone/iPad only; macOS has no equivalent.
+                NavigationLink(String(localized: "notification_permission_settings_nav_title")) {
+                    NotificationPermissionSettingsView()
                 }
             }
 
@@ -295,6 +303,9 @@ struct SettingsView: View {
                 #if os(iOS)
                 NavigationLink("Triggers") {
                     TriggersDebugView()
+                }
+                NavigationLink("TigerSync status") {
+                    TigerSyncStatusView()
                 }
                 #endif
                 // Bypass `.screenCaptureProtected(...)` system-wide for

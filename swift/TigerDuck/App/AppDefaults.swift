@@ -138,6 +138,20 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.cloudSyncEnabled,
         default: true
     )
+    /// "This device has a reminder/Live Activity preference the
+    /// `notification` settings document has not acknowledged yet."
+    ///
+    /// Set when the preference changes, cleared only when a write actually
+    /// lands. `AppState.retryUnacknowledgedNotificationSettings()` re-sends
+    /// on the strength of it at the next full sync — the same
+    /// mark-before / clear-on-success shape as
+    /// `holidayOverridesAwaitingUpload`. While it is set the document is
+    /// not read over the edit (`NotificationSettingsSync.reconcile`): the
+    /// edit wins. Default `false`: a fresh install has nothing outstanding.
+    static let notificationSettingsPushPending = Key<Bool>(
+        AppConstants.UserDefaultsKeys.notificationSettingsPushPending,
+        default: false
+    )
     /// Mirrors "an NTUST account exists" outside the Keychain.
     ///
     /// The Keychain answers nil for two unrelated reasons — the item is
@@ -162,6 +176,17 @@ nonisolated extension Defaults.Keys {
     static let syncCourseColors = Key<Bool>("syncCourseColors", default: true)
     static let syncCourseNames = Key<Bool>("syncCourseNames", default: true)
     static let syncAssignments = Key<Bool>("syncAssignments", default: true)
+    /// Device-level: whether this device syncs its assignment-reminder
+    /// preference to the server and wants the server to push assignment-due
+    /// reminders to it, now that reminder scheduling has moved server-side.
+    /// Distinct from `isAssignmentReminderEnabled` (the local on/off switch
+    /// for the reminder feature itself, `LiveActivityPreferencesStore`) —
+    /// this is "let this device receive that", not "want reminders at all".
+    /// Default true: existing users keep receiving reminders after the
+    /// upgrade, matching the backend column's `server_default`.
+    static let syncAssignmentReminders = Key<Bool>("syncAssignmentReminders", default: true)
+    /// Same shape as `syncAssignmentReminders`, for Live Activity.
+    static let syncLiveActivity = Key<Bool>("syncLiveActivity", default: true)
     static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
 
     // MARK: Academic calendar
@@ -190,24 +215,36 @@ nonisolated extension Defaults.Keys {
     )
 
     // MARK: Push server
-    /// Default on as of the custom-push feature: every device registers
-    /// once onboarding is complete, so operator-issued pushes can target it.
-    /// Notification *permission* is still requested only via onboarding; the
-    /// device row just exists either way. Users can opt out via
-    /// `serverPushUserOptOut`. `AppState` gates the launch-time enable on
-    /// `hasCompletedOnboarding` so no device identity is sent pre-consent.
+    /// **Not a gate any more — read it from nothing but the migration.**
+    ///
+    /// Up to 2.0.x this switched the whole push stack off, and a `false`
+    /// here meant one of two different things (spec §6 item 5). Nothing
+    /// gates on it now: what a user can turn off is a delivery channel —
+    /// `bulletinPushEnabled` below, or `serverPushUserOptOut` — never the
+    /// registration itself, so every device past onboarding registers.
+    ///
+    /// The key survives purely as `BulletinPushOptOutMigration`'s input:
+    /// a stored `false` is how that migration recognises a 2.0.x user who
+    /// switched something off, and its own write of `true` is how it
+    /// records that it has read it. It goes when that file goes, per the
+    /// lifecycle in `Services/Migrations/AGENTS.md` — leaving the stored
+    /// key behind as a harmless orphan.
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
         default: true
     )
+    /// Per-device bulletin push opt-out (spec §6 item 5) — distinct from
+    /// `serverPushUserOptOut` below, which is the operator-push channel
+    /// alone. Positive polarity to match the `user_devices.bulletin_push_
+    /// enabled` column this mirrors: do not invert it the way
+    /// `serverPushUserOptOut` inverts `server_push_enabled`, or the
+    /// bulletin page ends up double-negated.
+    static let bulletinPushEnabled = Key<Bool>(
+        AppConstants.UserDefaultsKeys.bulletinPushEnabled,
+        default: true
+    )
     static let pushServerURLOverride = Key<String?>(
         AppConstants.UserDefaultsKeys.pushServerURLOverride
-    )
-    static let pushLastRegistrationAt = Key<Date?>(
-        AppConstants.UserDefaultsKeys.pushLastRegistrationAt
-    )
-    static let pushLastSyncAt = Key<Date?>(
-        AppConstants.UserDefaultsKeys.pushLastSyncAt
     )
     /// User-facing opt-out for operator-issued "server" pushes. Default off
     /// (i.e. user is opted in). Backend reads the inverse as

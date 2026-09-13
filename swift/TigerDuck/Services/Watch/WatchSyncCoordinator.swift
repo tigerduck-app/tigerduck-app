@@ -144,7 +144,7 @@ extension WatchSyncCoordinator: WCSessionDelegate {
         guard let kind = message[WatchWireFormat.MessageKey.kind] as? String,
               kind == WatchWireFormat.MessageKind.syncRequest else { return }
         Task { @MainActor in
-            // Subscribers in Task 17 will hook into this to re-emit current state.
+            // Future subscribers will hook into this to re-emit current state.
             NotificationCenter.default.post(name: .watchSyncRequested, object: nil)
         }
     }

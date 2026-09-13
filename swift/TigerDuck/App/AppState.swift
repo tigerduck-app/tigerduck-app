@@ -116,9 +116,16 @@ final class AppState {
             forName: AppConstants.liveActivityPreferencesDidChange,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] note in
             self?.scheduleLiveActivityRefresh()
             self?.requestPushScheduleSync()
+            // The two refreshes above run for every change. The settings
+            // push does not: a remote-origin post carries values that just
+            // arrived from the `notification` settings document, so pushing
+            // would write the document straight back to itself, and a
+            // device-only post changed nothing the document carries.
+            guard NotificationSettingsSync.changeNeedsDocumentPush(note.userInfo) else { return }
+            self?.scheduleNotificationSettingsPush()
         }
 
         skipStateObserver = NotificationCenter.default.addObserver(
@@ -133,8 +140,7 @@ final class AppState {
         // Flipping the debug clock must drive an LA refresh; otherwise the
         // coordinator only re-evaluates on scene-active and the user has
         // to leave/re-enter the app to see the Dynamic Island appear at the
-        // fake instant. Reminder reschedule rides along because reminders
-        // are also AppClock-keyed (see AssignmentReminderScheduler).
+        // fake instant.
         clockObserver = NotificationCenter.default.addObserver(
             forName: DebugClockController.didChangeNotification,
             object: nil,
@@ -150,6 +156,9 @@ final class AppState {
         #if os(iOS)
         liveActivityCoordinator.setUpdateTokenRegistrationHandler { [weak self] registration in
             await self?.pushCoordinator.registerLiveActivityUpdateToken(registration)
+        }
+        liveActivityCoordinator.setAvailabilityProvider { [weak self] in
+            self?.isLiveActivityAvailable ?? false
         }
         #endif
 
@@ -186,6 +195,19 @@ final class AppState {
             guard let self else { return }
             self.pushCoordinator.refreshRegistrationAfterAuth()
             self.requestPushScheduleSync()
+            #if os(iOS)
+            // Read the account's notification settings before anything
+            // writes them. A push here would overwrite the account's
+            // document with whatever this device holds, including values a
+            // previous account left behind.
+            self.reconcileNotificationSettings()
+            #endif
+        }
+
+        // Every change to 同步課程資訊, whichever writer made it — see
+        // `cloudSyncEnabled`.
+        cloudSyncPreference.onChange { [weak self] enabled in
+            self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
         // Apply a stored in-app language override on launch so string lookups
@@ -287,12 +309,11 @@ final class AppState {
     var revisionPollTimer: Timer?
 
     #if os(iOS)
-    // MARK: - Live Activity (iOS only — ActivityKit + reminder scheduler
-    // are platform-restricted; Mac has no equivalent surfaces).
+    // MARK: - Live Activity (iOS only — ActivityKit is platform-restricted;
+    // Mac has no equivalent surface).
 
     let liveActivityPreferences = LiveActivityPreferencesStore()
     let liveActivityCoordinator = LiveActivityCoordinator()
-    let reminderScheduler = AssignmentReminderScheduler()
     let scenarioResolver = LiveActivityScenarioResolver()
     let timelineResolver = CourseTimelineResolver()
     let courseProvider = CanonicalCourseProvider()
@@ -365,10 +386,8 @@ final class AppState {
         didSet {
             Defaults[.accentColorHex] = accentColorHex
             #if os(iOS)
-            // Accent color only affects the Live Activity snapshot — reminder
-            // notifications are content-identical, so skip rescheduling to
-            // avoid thrashing UNUserNotificationCenter on slider drags.
-            scheduleLiveActivityRefresh(rescheduleReminderNotifications: false)
+            // Accent color only affects the Live Activity snapshot.
+            scheduleLiveActivityRefresh()
             #endif
         }
     }
@@ -391,30 +410,59 @@ final class AppState {
         didSet { Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter }
     }
 
-    /// Cross-device sync toggle. When OFF, all backend sync calls
-    /// (override download/upload, course upload, assignment upload) are
-    /// skipped and push notifications + Live Activity are unavailable.
-    var cloudSyncEnabled: Bool = Defaults[.cloudSyncEnabled] {
-        didSet {
-            guard cloudSyncEnabled != oldValue else { return }
-            Defaults[.cloudSyncEnabled] = cloudSyncEnabled
-            // The status dot's backend row means a different thing on each
-            // side of this flip — a full sync result vs. a public GET's
-            // reachability — so the reading taken under the old meaning goes
-            // now rather than lingering as a green "Minimal" that no minimal
-            // fetch ever vouched for. The next fetch of either kind fills it
-            // back in, which on the off path is the next calendar refresh.
-            ServerStatusTracker.shared.clearBackendStatus()
-            if cloudSyncEnabled {
-                Task {
-                    await cloudSyncCoordinator.enable()
-                }
-                requestPushScheduleSync()
-                startRevisionPolling()
-            } else {
-                stopRevisionPolling()
-                Task { await cloudSyncCoordinator.disable() }
-            }
+    /// Cross-device sync toggle (同步課程資訊). When OFF, all backend sync
+    /// calls (override download/upload, course upload, assignment upload)
+    /// are skipped and push notifications + Live Activity are unavailable
+    /// (spec §6).
+    ///
+    /// The preference itself, not a copy of it: this reads and writes
+    /// `Defaults[.cloudSyncEnabled]` through `cloudSyncPreference`, so it
+    /// cannot disagree with what onboarding, the settings switches or
+    /// sign-out wrote there. What a change sets off is in
+    /// `cloudSyncEnabledDidChange(to:)`, which runs for every change,
+    /// whichever writer made it.
+    var cloudSyncEnabled: Bool {
+        get { cloudSyncPreference.isEnabled }
+        set { cloudSyncPreference.isEnabled = newValue }
+    }
+
+    let cloudSyncPreference = CloudSyncPreference()
+
+    /// Everything a change to 同步課程資訊 sets off. `cloudSyncPreference`
+    /// calls it once per change, whichever writer made it.
+    ///
+    /// Nothing in here writes the preference, and `CloudSyncCoordinator` only
+    /// follows it, so no side effect can come back around as another change.
+    private func cloudSyncEnabledDidChange(to enabled: Bool) {
+        // The status dot's backend row means a different thing on each
+        // side of this flip — a full sync result vs. a public GET's
+        // reachability — so the reading taken under the old meaning goes
+        // now rather than lingering as a green "Minimal" that no minimal
+        // fetch ever vouched for. The next fetch of either kind fills it
+        // back in, which on the off path is the next calendar refresh.
+        ServerStatusTracker.shared.clearBackendStatus()
+        cloudSyncCoordinator.followPreference()
+        // On, the schedule Live Activities are started from; off, an empty
+        // one, which cancels every start the server had queued for this
+        // device (spec §6).
+        requestPushScheduleSync()
+        if enabled {
+            startRevisionPolling()
+            #if os(iOS)
+            // Resumes without a relaunch. `isLiveActivityEnabled` itself
+            // was never touched while sync was off, so this restores
+            // exactly what the user had.
+            scheduleLiveActivityRefresh()
+            #endif
+        } else {
+            stopRevisionPolling()
+            #if os(iOS)
+            // An explicit privacy-style shutoff, the same as logout: end
+            // what is on screen now rather than at the next refresh.
+            // Anything the server still starts afterwards is ended on
+            // arrival — `LiveActivityCoordinator` checks the same rule.
+            Task { @MainActor in await liveActivityCoordinator.endAll() }
+            #endif
         }
     }
 

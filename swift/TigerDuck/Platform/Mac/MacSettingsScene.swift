@@ -6,8 +6,9 @@ import SwiftUI
 /// Mirrors the subset of `AppState` properties that have meaningful Mac
 /// equivalents: appearance (accent + course palette), language,
 /// display and abbreviation toggles, link-open preference, the API
-/// endpoint override, and — Mac-only — sidebar customisation (which
-/// features get pinned and in what order). Push / Live Activity /
+/// endpoint override, TigerSync (its sync switches and status), and —
+/// Mac-only — sidebar customisation (which features get pinned and in
+/// what order). Push / Live Activity /
 /// library settings are intentionally omitted: they're either iOS-only
 /// or filtered out for Mac in `AppFeature.macHiddenFeatures`.
 ///
@@ -27,6 +28,8 @@ struct MacSettingsScene: View {
                 .tabItem { Label(String(localized: "desktop_settings_tab_sidebar"), systemImage: "sidebar.left") }
             MacAccountSettingsView()
                 .tabItem { Label(String(localized: "settings_section_account"), systemImage: "person.circle") }
+            MacTigerSyncSettingsView()
+                .tabItem { Label(String(localized: "cloud_sync_title"), systemImage: "arrow.triangle.2.circlepath.icloud") }
             MacOtherSettingsView()
                 .tabItem { Label(String(localized: "settings_section_other_settings"), systemImage: "ellipsis.circle") }
             #if DEBUG

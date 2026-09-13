@@ -139,8 +139,8 @@ struct TigerDuckApp: App {
                         UNUserNotificationCenter.current().setBadgeCount(0)
                         // Cancel any still-running refresh from a previous
                         // .active transition so rapid scene toggles do not
-                        // interleave through cancelAllOwnedRequests()'s
-                        // await suspension point and double the reschedule.
+                        // interleave and duplicate the Live Activity /
+                        // push-sync / Moodle-credential work below.
                         // The school calendar, unconditionally: it is the
                         // one backend call not gated on sign-in or cloud
                         // sync, because suppressing class reminders on a
@@ -158,7 +158,6 @@ struct TigerDuckApp: App {
                         sceneRefreshTask = Task {
                             await appState.refreshLiveActivity()
                             guard !Task.isCancelled else { return }
-                            await appState.rescheduleReminders()
                             appState.requestPushScheduleSync()
                             await appState.refreshMoodleCredentials()
                         }

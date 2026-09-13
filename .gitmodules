@@ -1,6 +1,7 @@
 [submodule "app-translation"]
 	path = app-translation
 	url = https://github.com/tigerduck-app/app-translation.git
+	branch = main
 [submodule "name-abbr"]
 	path = name-abbr
 	url = https://github.com/tigerduck-app/name-abbr

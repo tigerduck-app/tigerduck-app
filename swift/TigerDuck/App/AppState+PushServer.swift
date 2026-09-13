@@ -28,6 +28,10 @@ extension AppState {
     /// Sync the next-48h event list to the push server. No-ops when the user
     /// has not enabled server push. Safe to call from any scene / data
     /// transition — `PushCoordinator` debounces bursts into a single POST.
+    ///
+    /// While Live Activity is unavailable (spec §6) the list is empty, and
+    /// the server cancels every start this device had queued — so this also
+    /// has to run when the rule turns off, not only when data changes.
     func requestPushScheduleSync() {
         pushCoordinator.requestSync { [weak self] in
             guard let self else {
@@ -39,30 +43,35 @@ extension AppState {
                     assignmentLeadTime: 0,
                     showClassPreparing: false,
                     showInClass: false,
-                    showAssignmentScenario: false
+                    showAssignmentScenario: false,
+                    liveActivityAvailable: false
                 )
             }
             #if os(iOS)
             return ScheduleSyncService.Inputs(
                 courses: courseProvider.currentCourses(),
                 assignments: DataCache.shared.loadAssignments(),
-                accentHex: accentColorHex,
-                classPreparingLeadTime: liveActivityPreferences.classPreparingLeadTime,
-                assignmentLeadTime: liveActivityPreferences.assignmentLiveActivityLeadTime,
-                showClassPreparing: liveActivityPreferences.showClassPreparingScenario,
-                showInClass: liveActivityPreferences.showInClassScenario,
-                showAssignmentScenario: liveActivityPreferences.showAssignmentScenario
+                preferences: liveActivityPreferences,
+                cloudSyncEnabled: cloudSyncEnabled,
+                accentHex: accentColorHex
             )
             #else
+            // A Mac uploads no schedule. The backend never delivers a Live
+            // Activity or any push to macOS, so a list would only put course
+            // and assignment titles on the server for nothing — with TigerSync
+            // off, data the user asked us not to keep. The empty list still
+            // goes up: it is what cancels any starts an older build queued
+            // for this Mac.
             return ScheduleSyncService.Inputs(
-                courses: CanonicalCourseProvider().currentCourses(),
-                assignments: DataCache.shared.loadAssignments(),
+                courses: [],
+                assignments: [],
                 accentHex: accentColorHex,
-                classPreparingLeadTime: 3600,
-                assignmentLeadTime: 8 * 3600,
-                showClassPreparing: true,
-                showInClass: true,
-                showAssignmentScenario: true
+                classPreparingLeadTime: 0,
+                assignmentLeadTime: 0,
+                showClassPreparing: false,
+                showInClass: false,
+                showAssignmentScenario: false,
+                liveActivityAvailable: false
             )
             #endif
         }
@@ -70,10 +79,9 @@ extension AppState {
 
     /// Enable server push (registers for remote notifications, starts PTS
     /// relay, queues an immediate sync). Call only from explicit user intent
-    /// — turning on the Settings toggle. Passes `requestPermission: true`
-    /// so the user sees an iOS prompt as feedback for their tap.
+    /// — the notification step in onboarding. Passes `requestPermission:
+    /// true` so the user sees an iOS prompt as feedback for their tap.
     func enablePushServer() {
-        Defaults[.pushServerEnabled] = true
         pushCoordinator.enable(requestPermission: true)
         requestPushScheduleSync()
     }
@@ -99,13 +107,6 @@ extension AppState {
         }
     }
 
-
-    /// Disable server push (tells server to drop the device, stops relay).
-    func disablePushServer() async {
-        Defaults[.pushServerEnabled] = false
-        stopRevisionPolling()
-        await pushCoordinator.disable()
-    }
 
     /// Wire the settings toggle to the registration actor. The actor
     /// PATCHes the backend and only then persists the local pref so a
@@ -206,6 +207,15 @@ extension AppState {
         try await pushCoordinator.registration.updateServerPushOptOut(optOut)
     }
 
+    /// Wire the bulletin page's toggle to the registration actor, on the
+    /// same PATCH-first pattern as `updateServerPushOptOut`: PATCH, then
+    /// persist the local Default only on success. The device stays
+    /// registered either way — this gates bulletin delivery server-side
+    /// only, unlike the old `disablePushServer()` this replaces.
+    func updateBulletinPushEnabled(_ enabled: Bool) async throws {
+        try await pushCoordinator.registration.updateBulletinPushEnabled(enabled)
+    }
+
     func pushSyncPreferences() {
         let reg = pushCoordinator.registration
         Task.detached {
@@ -213,7 +223,9 @@ extension AppState {
                 syncCourses: Defaults[.syncCourses],
                 syncCourseColors: Defaults[.syncCourseColors],
                 syncCourseNames: Defaults[.syncCourseNames],
-                syncAssignments: Defaults[.syncAssignments]
+                syncAssignments: Defaults[.syncAssignments],
+                syncAssignmentReminders: Defaults[.syncAssignmentReminders],
+                syncLiveActivity: Defaults[.syncLiveActivity]
             )
         }
     }

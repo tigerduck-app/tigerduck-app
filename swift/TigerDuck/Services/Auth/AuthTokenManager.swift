@@ -99,6 +99,7 @@ actor AuthTokenManager {
             let platform: String
             let app_version: String?
             let os_version: String?
+            let device_model: String?
         }
         struct LoginResponse: Decodable {
             let access_token: String
@@ -121,7 +122,8 @@ actor AuthTokenManager {
                 client_device_id: deviceUUID,
                 platform: platform,
                 app_version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-                os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }()
+                os_version: { let v = ProcessInfo.processInfo.operatingSystemVersion; return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" }(),
+                device_model: PushDeviceModel.current
             )
         )
 

@@ -1,0 +1,149 @@
+// Pins `BulletinPushOptOutMigration`'s behaviour against the real, process-
+// wide `Defaults`/`UserDefaults.standard` — there is no seam to fake here
+// (unlike `PendingReminderPurgeMigration`'s `PendingReminderPurgeCenter`):
+// the migration's whole job is reading and writing three real `Defaults`
+// keys, so the test doubles as the only place that can observe it.
+//
+// Every test runs inside `withRealMigrationKeys`, which takes the shared
+// gate (`RealDefaultsGate.swift`), resets the doneKey and all three flags
+// to their defaults, and afterwards puts back exactly what the test host
+// held — all four as present-or-absent, never as present-at-their-default.
+// Absence is the distinction that matters here: the migration reads an
+// absent doneKey as "not run yet", and a flag the host has never written
+// must not come back written just because its value would read the same.
+//
+// Restoring matters beyond tidiness: without it, `secondRunIsNoOp` leaves
+// the test host's own UserDefaults with the flag off and the doneKey set,
+// which used to be the never-registers state this migration exists to
+// repair — reproduced on the developer's simulator for every later manual
+// launch. The gate matters because `.serialized` orders this suite's tests
+// against each other and nothing else, while `PushRegistrationServiceTests`
+// pins two of the same keys across a 250 ms window.
+//
+// `doneKey` mirrors the migration's own private `UserDefaults.standard`
+// flag literal ("BulletinPushOptOutMigration.v1.done"). Duplicated here
+// rather than referenced because the production constant is intentionally
+// `private`, matching every other migration in this folder — see
+// Services/Migrations/AGENTS.md.
+import Defaults
+import Foundation
+import Testing
+@testable import TigerDuck
+
+private let doneKey = "BulletinPushOptOutMigration.v1.done"
+
+@Suite("Bulletin push opt-out migration", .serialized)
+struct BulletinPushOptOutMigrationTests {
+
+    /// A flag as *stored*, not as read: `nil` when nothing has ever written
+    /// the key and the read is the registered default. The three flags get
+    /// the same present-or-absent treatment as `doneKey` — a key the test
+    /// host had never written must not come back written, even at a value
+    /// that reads identically.
+    private static func storedFlag(_ key: Defaults.Key<Bool>) -> Bool? {
+        key.suite.object(forKey: key.name) as? Bool
+    }
+
+    private static func restoreFlag(_ key: Defaults.Key<Bool>, to stored: Bool?) {
+        if let stored {
+            Defaults[key] = stored
+        } else {
+            Defaults.reset(key)
+        }
+    }
+
+    private static func withRealMigrationKeys(_ body: () -> Void) async {
+        await withExclusiveRealDefaults {
+            let savedPushServerEnabled = storedFlag(.pushServerEnabled)
+            let savedBulletinPushEnabled = storedFlag(.bulletinPushEnabled)
+            let savedServerPushUserOptOut = storedFlag(.serverPushUserOptOut)
+            let savedDoneKey = UserDefaults.standard.object(forKey: doneKey) as? Bool
+            defer {
+                restoreFlag(.pushServerEnabled, to: savedPushServerEnabled)
+                restoreFlag(.bulletinPushEnabled, to: savedBulletinPushEnabled)
+                restoreFlag(.serverPushUserOptOut, to: savedServerPushUserOptOut)
+                if let savedDoneKey {
+                    UserDefaults.standard.set(savedDoneKey, forKey: doneKey)
+                } else {
+                    UserDefaults.standard.removeObject(forKey: doneKey)
+                }
+            }
+
+            UserDefaults.standard.removeObject(forKey: doneKey)
+            Defaults.reset(.pushServerEnabled, .bulletinPushEnabled, .serverPushUserOptOut)
+            body()
+        }
+    }
+
+    // MARK: - Tests
+
+    @Test("a 2.0.x false reading re-arms the push stack, marks bulletins off, and opts out of operator pushes")
+    func falseReadingReArmsPushAndDisablesBulletins() async {
+        await Self.withRealMigrationKeys {
+            Defaults[.pushServerEnabled] = false
+            Defaults[.serverPushUserOptOut] = false
+
+            BulletinPushOptOutMigration.runIfNeeded()
+
+            #expect(Defaults[.pushServerEnabled] == true)
+            #expect(Defaults[.bulletinPushEnabled] == false)
+            #expect(Defaults[.serverPushUserOptOut] == true)
+        }
+    }
+
+    @Test("a false reading never flips an already-true serverPushUserOptOut back to false")
+    func falseReadingNeverUndoesAnExistingOperatorOptOut() async {
+        await Self.withRealMigrationKeys {
+            // A user who separately opted out of operator pushes on the
+            // TigerSync page before upgrading must stay opted out — this
+            // migration only ever writes `true` to `serverPushUserOptOut`.
+            Defaults[.pushServerEnabled] = false
+            Defaults[.serverPushUserOptOut] = true
+
+            BulletinPushOptOutMigration.runIfNeeded()
+
+            #expect(Defaults[.serverPushUserOptOut] == true)
+            // The other two as well, so that "leave an existing opt-out
+            // alone" cannot be implemented as an early return above the
+            // writes — that would pass the assertion above while leaving
+            // this cohort's bulletin flag and migration marker untouched.
+            #expect(Defaults[.pushServerEnabled] == true)
+            #expect(Defaults[.bulletinPushEnabled] == false)
+        }
+    }
+
+    @Test("a true reading touches nothing")
+    func trueReadingTouchesNothing() async {
+        await Self.withRealMigrationKeys {
+            Defaults[.pushServerEnabled] = true
+            Defaults[.bulletinPushEnabled] = true
+            Defaults[.serverPushUserOptOut] = false
+
+            BulletinPushOptOutMigration.runIfNeeded()
+
+            #expect(Defaults[.pushServerEnabled] == true)
+            #expect(Defaults[.bulletinPushEnabled] == true)
+            #expect(Defaults[.serverPushUserOptOut] == false)
+        }
+    }
+
+    @Test("a second run after the flag is set does nothing")
+    func secondRunIsNoOp() async {
+        await Self.withRealMigrationKeys {
+            Defaults[.pushServerEnabled] = false
+            BulletinPushOptOutMigration.runIfNeeded()
+            #expect(Defaults[.pushServerEnabled] == true)
+            #expect(Defaults[.bulletinPushEnabled] == false)
+
+            // Flip the flag back to `false` by hand, as if some other write
+            // set it again. If the doneKey guard were not honoured, a second
+            // run would re-apply the same rewrite; instead it must leave
+            // this exactly as set here.
+            Defaults[.pushServerEnabled] = false
+            BulletinPushOptOutMigration.runIfNeeded()
+
+            #expect(Defaults[.pushServerEnabled] == false)
+            #expect(Defaults[.bulletinPushEnabled] == false)
+        }
+    }
+}
