@@ -147,11 +147,11 @@ extension AppState {
                         AppLogger.sync.info("[reenable] courses \(semester, privacy: .public): local=\(localNos.sorted(), privacy: .public) server=\(serverNos.sorted(), privacy: .public)")
                     }
                     if localOnly > 0 && serverOnly > 0 {
-                        diffs.append(String(localized: "sync_conflict_reenable_courses \(localOnly) \(serverOnly)"))
+                        diffs.append(String(format: String(localized: "sync_conflict_reenable_courses"), String(localOnly), String(serverOnly)))
                     } else if localOnly > 0 {
-                        diffs.append(String(localized: "sync_conflict_reenable_courses_local_only \(localOnly)"))
+                        diffs.append(String(format: String(localized: "sync_conflict_reenable_courses_local_only"), String(localOnly)))
                     } else if serverOnly > 0 {
-                        diffs.append(String(localized: "sync_conflict_reenable_courses_server_only \(serverOnly)"))
+                        diffs.append(String(format: String(localized: "sync_conflict_reenable_courses_server_only"), String(serverOnly)))
                     } else {
                         AppLogger.sync.info("[reenable] courses MATCH — no conflict")
                     }
