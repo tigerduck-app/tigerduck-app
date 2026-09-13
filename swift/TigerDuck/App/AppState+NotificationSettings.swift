@@ -53,9 +53,15 @@ extension AppState {
     /// re-runs the push at the next full sync. Same mark-before /
     /// clear-on-settled shape as the holiday-override queue
     /// (`AppState+PushServer.swift`).
-    func pushNotificationSettings() async {
+    ///
+    /// `isCurrent` turns false once a logout has happened (see
+    /// `NotificationSettingsPushQueue.enqueuePush(_:)`). The push reads the
+    /// document before it writes it, so it is checked before every write and
+    /// before the pending marker is touched: the marker, like the session,
+    /// belongs to whoever signed in since.
+    func pushNotificationSettings(isCurrent: @escaping @MainActor () -> Bool = { true }) async {
         guard Defaults[.cloudSyncEnabled] else { return }
-        guard await authTokenManager.isLoggedIn else { return }
+        guard await authTokenManager.isLoggedIn, isCurrent() else { return }
 
         let atm = authTokenManager
         let client = SettingsDocumentClient(
@@ -68,7 +74,8 @@ extension AppState {
                 client: client,
                 cloudSyncEnabled: Defaults[.cloudSyncEnabled],
                 syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
-                syncLiveActivityEnabled: Defaults[.syncLiveActivity]
+                syncLiveActivityEnabled: Defaults[.syncLiveActivity],
+                isCurrent: isCurrent
             )
             // Settled only if the store still matches what was just sent. A
             // preference change that arrived while this request was in
@@ -78,7 +85,7 @@ extension AppState {
             // let a kill in the next 250 ms lose it. Mirrors
             // `enqueueHolidayUpload`'s re-read-and-compare
             // (`AppState+PushServer.swift`).
-            if NotificationSettingsSync.canClearPendingMarker(
+            if isCurrent(), NotificationSettingsSync.canClearPendingMarker(
                 written: written,
                 sent: local,
                 current: .init(from: liveActivityPreferences)
@@ -191,8 +198,8 @@ extension AppState {
     /// `NotificationSettingsPushQueue.enqueue(_:)` so that logic can be
     /// driven directly from a test without constructing an `AppState`.
     func enqueueNotificationSettingsPush() {
-        NotificationSettingsPushQueue.enqueue { [weak self] in
-            await self?.pushNotificationSettings()
+        NotificationSettingsPushQueue.enqueuePush { [weak self] isCurrent in
+            await self?.pushNotificationSettings(isCurrent: isCurrent)
         }
     }
 
@@ -290,9 +297,27 @@ enum NotificationSettingsPushQueue {
     static func enqueueReconcile(
         _ reconcile: @escaping @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Void
     ) -> Task<Void, Never> {
+        enqueueGuarded(reconcile)
+    }
+
+    /// Queues one push (`AppState.pushNotificationSettings(isCurrent:)`)
+    /// the same way. A push also reads the document before it writes it, so
+    /// a logout can land between the two; it checks `isCurrent` before every
+    /// write, and a document read under the departing account is never
+    /// written over the next account's.
+    @discardableResult
+    static func enqueuePush(
+        _ push: @escaping @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Void
+    ) -> Task<Void, Never> {
+        enqueueGuarded(push)
+    }
+
+    private static func enqueueGuarded(
+        _ work: @escaping @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Void
+    ) -> Task<Void, Never> {
         let queuedGeneration = generation
         return enqueue {
-            await reconcile { queuedGeneration == generation }
+            await work { queuedGeneration == generation }
         }
     }
 
@@ -583,13 +608,21 @@ nonisolated enum NotificationSettingsSync {
     /// would wedge this device's push permanently — every attempt throwing
     /// with only a log line — the first time another client wrote a shape
     /// this build doesn't model.
+    ///
+    /// `isCurrent()` turns false once a logout has happened. It is checked
+    /// before every write, as ``reconcile(store:client:cloudSyncEnabled:syncAssignmentRemindersEnabled:syncLiveActivityEnabled:isPushPending:isCurrent:)``
+    /// checks it after every round trip: the document was read under the
+    /// departing account, and writing it back would put that account's
+    /// whole document over the next one's. Abandoning reports `false`.
+    @MainActor
     @discardableResult
     static func push(
         local: LocalPreferences,
         client: SettingsDocumentClient,
         cloudSyncEnabled: Bool,
         syncAssignmentRemindersEnabled: Bool = true,
-        syncLiveActivityEnabled: Bool = true
+        syncLiveActivityEnabled: Bool = true,
+        isCurrent: () -> Bool = { true }
     ) async throws -> Bool {
         guard cloudSyncEnabled else { return false }
         // Neither section may sync — there is nothing to read or write.
@@ -607,6 +640,7 @@ nonisolated enum NotificationSettingsSync {
 
         var attempt = 0
         while true {
+            guard isCurrent() else { return false }
             // Rebuilt every iteration, not once before the loop: the
             // `assignments` section preserves offsets the *current*
             // document holds, and after a 409 that is the winner's
@@ -645,7 +679,7 @@ nonisolated enum NotificationSettingsSync {
         (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
     }
 
-    /// Whether `pushNotificationSettings()` may clear
+    /// Whether `pushNotificationSettings(isCurrent:)` may clear
     /// `Defaults[.notificationSettingsPushPending]` after this push.
     ///
     /// Only when the write actually landed (`written`) **and** the store

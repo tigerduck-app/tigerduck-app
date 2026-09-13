@@ -179,6 +179,10 @@ struct NotificationSettingsPushQueueTests {
         var outcome: NotificationSettingsSync.ReconcileOutcome?
     }
 
+    private final class WriteLog {
+        var wrote: Bool?
+    }
+
     @Test("a logout between queueing a read of the document and running it drops the read")
     func logoutBeforeAQueuedReadRunsDropsIt() async throws {
         Self.resetQueue()
@@ -261,5 +265,51 @@ struct NotificationSettingsPushQueueTests {
         #expect(log.outcome == .abandoned)
         #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
         #expect(NotificationSettingsSync.LocalPreferences(from: store) == before)
+    }
+
+    @Test("a logout while a push's read is out: nothing is written over the next account's document")
+    func logoutDuringAPushReadAbandonsIt() async throws {
+        Self.resetQueue()
+        defer { Self.resetQueue() }
+
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let url = NotificationSettingsFixtures.documentURL(baseURL)
+        let store = LiveActivityPreferencesStore()
+        // Account A's document, and the write that would follow it. Sent,
+        // that write would carry A's whole document -- `courses` included
+        // -- over whoever signed in since, on their session.
+        SettingsAPIStub.enqueue(
+            try NotificationSettingsFixtures.found(
+                ["courses": ["enabled": true]],
+                revision: 1
+            ),
+            for: url
+        )
+        SettingsAPIStub.enqueue(try NotificationSettingsFixtures.written(revision: 2), for: url)
+        // A logs out while the read is out: the client asks for its auth
+        // header right before sending.
+        let client = SettingsAPIStub.makeClient(baseURL: baseURL, authHeaderProvider: {
+            await MainActor.run { NotificationSettingsPushQueue.cancelAll() }
+            return nil
+        })
+        let log = WriteLog()
+
+        let task = NotificationSettingsPushQueue.enqueuePush { isCurrent in
+            log.wrote = try? await NotificationSettingsSync.push(
+                local: .init(from: store),
+                client: client,
+                cloudSyncEnabled: true,
+                isCurrent: isCurrent
+            )
+        }
+        // Queued behind the push, so the push is not the chain's tail and
+        // the logout leaves its request running: only the generation check
+        // can stop the write that would come after it.
+        let behind = NotificationSettingsPushQueue.enqueue {}
+        await task.value
+        await behind.value
+
+        #expect(log.wrote == false)
+        #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
     }
 }
