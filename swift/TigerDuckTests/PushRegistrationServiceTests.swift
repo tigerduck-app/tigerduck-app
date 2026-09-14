@@ -285,7 +285,7 @@ struct PushRegistrationServiceTests {
 
     @Test("a bulletin opt-out the server rejects leaves the local preference alone")
     func rejectedBulletinPatchDoesNotPersist() async throws {
-        try await Self.withBulletinPreference(startingAt: true) {
+        await Self.withBulletinPreference(startingAt: true) {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
             SettingsAPIStub.enqueue(
@@ -324,7 +324,7 @@ struct PushRegistrationServiceTests {
 
     @Test("a 200 that does not come back carrying the new value is not treated as success")
     func unconfirmedBulletinPatchDoesNotPersist() async throws {
-        try await Self.withBulletinPreference(startingAt: true) {
+        await Self.withBulletinPreference(startingAt: true) {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
             // A backend without the column — rolled back, self-hosted, or
@@ -347,7 +347,7 @@ struct PushRegistrationServiceTests {
 
     @Test("a 200 echoing the opposite value is not treated as success either")
     func contradictedBulletinPatchDoesNotPersist() async throws {
-        try await Self.withBulletinPreference(startingAt: true) {
+        await Self.withBulletinPreference(startingAt: true) {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
             SettingsAPIStub.enqueue(

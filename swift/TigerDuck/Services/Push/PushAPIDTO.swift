@@ -7,7 +7,8 @@ import Foundation
 enum PushAPI {
     // MARK: - Device registration (v3)
 
-    struct DeviceRegisterRequest: Encodable, Sendable {
+    /// `nonisolated` for the reason `DevicePreferencesRequest` gives below.
+    nonisolated struct DeviceRegisterRequest: Encodable, Sendable {
         let client_device_id: String
         let platform: String
         /// Form factor, for operator targeting. Redundant with `platform` on
@@ -38,7 +39,8 @@ enum PushAPI {
         let server_push_enabled: Bool?
     }
 
-    struct PushTokenIn: Encodable, Sendable {
+    /// `nonisolated` because `DeviceRegisterRequest`'s encoding reaches it.
+    nonisolated struct PushTokenIn: Encodable, Sendable {
         /// Always "apns".
         let provider: String
         /// "standard" for the APNs device token, "push_to_start" for the PTS token.

@@ -33,6 +33,9 @@ import Testing
 private let doneKey = "BulletinPushOptOutMigration.v1.done"
 
 @Suite("Bulletin push opt-out migration", .serialized)
+// `@MainActor` because the migration is: the app target defaults every
+// unannotated type to the main actor, and the app runs it from there.
+@MainActor
 struct BulletinPushOptOutMigrationTests {
 
     /// A flag as *stored*, not as read: `nil` when nothing has ever written
