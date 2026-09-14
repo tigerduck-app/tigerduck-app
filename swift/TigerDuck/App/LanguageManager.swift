@@ -79,6 +79,19 @@ nonisolated enum LanguageManager {
             .sorted()
     }
 
+    /// `tag`'s name in its own language — "日本語", "English (UK)",
+    /// "中文（台灣）" — so a list of them reads right to a speaker of each,
+    /// whatever the app is showing. The first letter is capitalized as that
+    /// language capitalizes it ("français" → "Français"). Falls back to the
+    /// tag itself.
+    static func displayName(for tag: String) -> String {
+        let locale = Locale(identifier: tag)
+        guard let name = locale.localizedString(forIdentifier: tag),
+              let first = name.first
+        else { return tag }
+        return String(first).capitalized(with: locale) + name.dropFirst()
+    }
+
     // MARK: - Apply
 
     /// Applies the selected language by writing `AppleLanguages` to UserDefaults.
