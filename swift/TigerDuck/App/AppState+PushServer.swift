@@ -219,14 +219,7 @@ extension AppState {
     func pushSyncPreferences() {
         let reg = pushCoordinator.registration
         Task.detached {
-            await reg.updateSyncPreferences(
-                syncCourses: Defaults[.syncCourses],
-                syncCourseColors: Defaults[.syncCourseColors],
-                syncCourseNames: Defaults[.syncCourseNames],
-                syncAssignments: Defaults[.syncAssignments],
-                syncAssignmentReminders: Defaults[.syncAssignmentReminders],
-                syncLiveActivity: Defaults[.syncLiveActivity]
-            )
+            await reg.updateSyncPreferences()
         }
     }
 }

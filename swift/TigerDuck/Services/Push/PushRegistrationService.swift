@@ -121,6 +121,8 @@ actor PushRegistrationService {
     /// to wait on the other, but two taps on *this* toggle inside one round
     /// trip must still land in the order they were made.
     private var bulletinPatchChain: Task<Void, Error>?
+    /// The same, for the "Synced content" switches.
+    private var syncPreferencesPatchChain: Task<Void, Never>?
     #if os(iOS)
     private var pendingActivityRegistrations: [String: LiveActivityUpdateTokenRegistration] = [:]
     private var activity404Attempts: [String: Int] = [:]
@@ -219,6 +221,7 @@ actor PushRegistrationService {
             let response = try await apiClient.registerDevice(request)
             logger.info("registered passive macOS device device_id=\(response.device_id, privacy: .public)")
             noteSuccessfulRegistration()
+            await resendSyncPreferencesIfPending()
         } catch {
             logger.error("passive device register failed: \(error.localizedDescription, privacy: .public)")
             noteRegistrationError(error)
@@ -379,26 +382,83 @@ actor PushRegistrationService {
         }
     }
 
-    func updateSyncPreferences(
-        syncCourses: Bool,
-        syncCourseColors: Bool,
-        syncCourseNames: Bool,
-        syncAssignments: Bool,
-        syncAssignmentReminders: Bool,
-        syncLiveActivity: Bool
-    ) async {
-        do {
-            _ = try await apiClient.updateDevicePreferences(
-                deviceId: identity.uuid,
-                syncCourses: syncCourses,
-                syncCourseColors: syncCourseColors,
-                syncCourseNames: syncCourseNames,
-                syncAssignments: syncAssignments,
-                syncAssignmentReminders: syncAssignmentReminders,
-                syncLiveActivity: syncLiveActivity
+    /// PATCHes the six "Synced content" switches as they stand when the
+    /// request goes out.
+    ///
+    /// The switches persist the moment they flip, and registration carries
+    /// none of them, so a PATCH that failed used to leave the server on the
+    /// old values until the next flip: assignment reminders switched off
+    /// while offline went on arriving. `syncPreferencesPushPending` goes up
+    /// before every PATCH and down only once one lands with the switches
+    /// still as it sent them, and each successful registration sends again
+    /// while it is up.
+    ///
+    /// Calls queue on `syncPreferencesPatchChain`, and each reads the
+    /// switches only when its turn comes, so the last PATCH to land carries
+    /// the latest values.
+    func updateSyncPreferences() async {
+        let predecessor = syncPreferencesPatchChain
+        let uuid = identity.uuid
+        let apiClient = self.apiClient
+        let logger = self.logger
+        let task = Task<Void, Never> {
+            await predecessor?.value
+            let sent = SyncPreferences.current
+            Defaults[.syncPreferencesPushPending] = true
+            do {
+                _ = try await apiClient.updateDevicePreferences(
+                    deviceId: uuid,
+                    syncCourses: sent.courses,
+                    syncCourseColors: sent.courseColors,
+                    syncCourseNames: sent.courseNames,
+                    syncAssignments: sent.assignments,
+                    syncAssignmentReminders: sent.assignmentReminders,
+                    syncLiveActivity: sent.liveActivity
+                )
+                if SyncPreferences.current == sent {
+                    Defaults[.syncPreferencesPushPending] = false
+                }
+            } catch {
+                logger.error("[sync] preferences PATCH failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        syncPreferencesPatchChain = task
+        defer {
+            if syncPreferencesPatchChain == task {
+                syncPreferencesPatchChain = nil
+            }
+        }
+        await task.value
+    }
+
+    /// Sends the sync switches again if a PATCH of them never landed. Run
+    /// once the server has accepted a registration, the sign that it can
+    /// be reached again.
+    private func resendSyncPreferencesIfPending() async {
+        guard Defaults[.syncPreferencesPushPending] else { return }
+        logger.info("[sync] re-sending sync preferences a failed PATCH left behind")
+        await updateSyncPreferences()
+    }
+
+    /// The six switches as one value, so a PATCH can tell whether what it
+    /// sent is still what they say.
+    private nonisolated struct SyncPreferences: Equatable, Sendable {
+        let courses: Bool
+        let courseColors: Bool
+        let courseNames: Bool
+        let assignments: Bool
+        let assignmentReminders: Bool
+        let liveActivity: Bool
+
+        static var current: SyncPreferences {
+            SyncPreferences(
+                courses: Defaults[.syncCourses],
+                courseColors: Defaults[.syncCourseColors],
+                courseNames: Defaults[.syncCourseNames],
+                assignments: Defaults[.syncAssignments],
+                assignmentReminders: Defaults[.syncAssignmentReminders],
+                liveActivity: Defaults[.syncLiveActivity]
             )
-        } catch {
-            logger.error("[sync] preferences PATCH failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -601,6 +661,7 @@ actor PushRegistrationService {
             #if os(iOS)
             await flushPendingActivityRegistrations(logger: logger)
             #endif
+            await resendSyncPreferencesIfPending()
         } catch is CancellationError {
             // Expected side-effect of debounce preempting an in-flight
             // request. Swallow silently so the logs stay clean.

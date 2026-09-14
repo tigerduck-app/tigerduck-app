@@ -135,7 +135,85 @@ struct PushRegistrationServiceTests {
         }
     }
 
+    /// Runs `body` with the six sync switches and
+    /// `syncPreferencesPushPending` put back as found afterwards —
+    /// `updateSyncPreferences` reads the one and writes the other in
+    /// process-wide UserDefaults. Same gate, same reason.
+    private static func withSyncPreferences(
+        _ body: () async throws -> Void
+    ) async rethrows {
+        try await withExclusiveRealDefaults {
+            let saved = (
+                Defaults[.syncCourses],
+                Defaults[.syncCourseColors],
+                Defaults[.syncCourseNames],
+                Defaults[.syncAssignments],
+                Defaults[.syncAssignmentReminders],
+                Defaults[.syncLiveActivity],
+                Defaults[.syncPreferencesPushPending]
+            )
+            defer {
+                Defaults[.syncCourses] = saved.0
+                Defaults[.syncCourseColors] = saved.1
+                Defaults[.syncCourseNames] = saved.2
+                Defaults[.syncAssignments] = saved.3
+                Defaults[.syncAssignmentReminders] = saved.4
+                Defaults[.syncLiveActivity] = saved.5
+                Defaults[.syncPreferencesPushPending] = saved.6
+            }
+            try await body()
+        }
+    }
+
     // MARK: - Tests
+
+    @Test("a sync-preferences PATCH that fails is sent again once a registration goes through")
+    func failedSyncPreferencesPatchIsResentAfterRegistration() async throws {
+        try await Self.withSyncPreferences {
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+
+            // Assignment reminders switched off with no connection: the
+            // PATCH never lands (nothing is stubbed for it).
+            Defaults[.syncAssignmentReminders] = false
+            await service.updateSyncPreferences()
+            #expect(Defaults[.syncPreferencesPushPending])
+
+            // The next registration reaches the server, and the switches
+            // follow it there.
+            Self.expectAttempt(baseURL, registrations: 1)
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: true)),
+                for: Self.preferencesURL(baseURL)
+            )
+            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+            await service.awaitPendingRegistration()
+
+            let patches = SettingsAPIStub.requests(for: Self.preferencesURL(baseURL))
+            try #require(patches.count == 2)
+            let body = try #require(SettingsAPIStub.bodyData(from: patches[1]))
+            let resent = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+            #expect(resent["sync_assignment_reminders"] as? Bool == false)
+            #expect(!Defaults[.syncPreferencesPushPending])
+        }
+    }
+
+    @Test("a registration with no sync-preferences PATCH outstanding sends none")
+    func registrationWithNothingPendingSendsNoSyncPreferences() async throws {
+        try await Self.withSyncPreferences {
+            Defaults[.syncPreferencesPushPending] = false
+            let baseURL = SettingsAPIStub.uniqueBaseURL()
+            let service = Self.makeService(baseURL: baseURL)
+            Self.expectAttempt(baseURL, registrations: 1)
+
+            await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+            await service.awaitPendingRegistration()
+
+            let registrations = try Self.sentRegistrations(baseURL)
+            #expect(registrations.count == 1)
+            #expect(SettingsAPIStub.requests(for: Self.preferencesURL(baseURL)).isEmpty)
+        }
+    }
 
     @Test("with only the standard APNs token the device registers — it does not wait for a push-to-start token")
     func registersWithoutPushToStartToken() async throws {

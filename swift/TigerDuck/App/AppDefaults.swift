@@ -187,6 +187,12 @@ nonisolated extension Defaults.Keys {
     static let syncAssignmentReminders = Key<Bool>("syncAssignmentReminders", default: true)
     /// Same shape as `syncAssignmentReminders`, for Live Activity.
     static let syncLiveActivity = Key<Bool>("syncLiveActivity", default: true)
+    /// Up while the server may not hold what the six sync switches above
+    /// say: raised before each sync-preferences PATCH, lowered once one
+    /// lands with the switches unchanged. Registration carries none of
+    /// them, so this is how a PATCH lost offline gets sent again — see
+    /// `PushRegistrationService.updateSyncPreferences()`.
+    static let syncPreferencesPushPending = Key<Bool>("syncPreferencesPushPending", default: false)
     static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
 
     // MARK: Academic calendar
