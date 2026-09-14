@@ -13,6 +13,13 @@ name: Tests
 # and its runner already fails to launch on some local simulators), and no
 # second pass on the macOS destination.
 #
+# The phone and watch suites run on runners of their own, side by side. They
+# used to run back to back in one job, so the gate took the sum of the two
+# (8-14 min) where it now takes the slower one. Each leg's time is almost all
+# build plus simulator boot — the tests themselves finish in seconds — so
+# splitting either suite across more runners would only pay for the build
+# again.
+#
 # Note there is no `CODE_SIGNING_ALLOWED=NO` here, the usual CI shorthand for
 # "this machine has no certificates". A simulator build signs ad-hoc and needs
 # none, and turning signing off drops the app's entitlements with it — which
@@ -38,8 +45,28 @@ jobs:
     # 26)`, which still has to *compile*. If a future image defaults to
     # something older, select one explicitly with `sudo xcode-select -s`; the
     # version is printed below so a failure says which one it got.
+    name: unit-tests (${{ matrix.leg }})
     runs-on: macos-26
     timeout-minutes: 60
+    strategy:
+      # Let both legs report: a phone failure must not cancel the watch run
+      # and hide whatever it would have found.
+      fail-fast: false
+      matrix:
+        include:
+          - leg: phone
+            scheme: TigerDuck
+            runtime: iOS
+            device: iPhone
+            only_testing: TigerDuckTests
+          # The watch app is a companion app, so it needs its own scheme and
+          # its own destination; the phone scheme's test action does not reach
+          # it. Xcode pairs the watch simulator with a phone one on its own.
+          - leg: watch
+            scheme: TigerDuckWatch Watch App
+            runtime: watchOS
+            device: Apple Watch
+            only_testing: ""
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
         with:
@@ -56,35 +83,34 @@ jobs:
       # device may not exist on. (That exact mismatch — iPhone 17 Pro Max
       # present on 26.5 while `latest` meant 27.0 — is what it does locally.)
       # Take whichever devices the image actually has.
-      - name: Pick simulators
+      - name: Pick a simulator
         id: sim
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+          DEVICE: ${{ matrix.device }}
         run: |
           set -euo pipefail
           # Newest runtime wins. A runner image ships one matched set of
-          # runtimes per Xcode, so the newest iOS and the newest watchOS pair
-          # with each other; a dev machine that has accumulated several may
-          # not, and that is the case to notice if this ever fails to pair.
-          pick() {
-            xcrun simctl list devices available --json | jq -r --arg os "$1" --arg name "$2" '
-              [ .devices
-                | to_entries[]
-                | select(.key | test("SimRuntime\\." + $os + "-"))
-                | (.key | capture("-(?<a>[0-9]+)-(?<b>[0-9]+)$")) as $v
-                | .value[]
-                | select(.name | startswith($name))
-                | {ver: [($v.a | tonumber), ($v.b | tonumber)], udid}
-              ] | sort_by(.ver) | last.udid // empty'
-          }
-          iphone=$(pick iOS iPhone)
-          watch=$(pick watchOS "Apple Watch")
-          if [ -z "$iphone" ] || [ -z "$watch" ]; then
-            echo "::error::missing a simulator (iPhone='$iphone' watch='$watch')"
+          # runtimes per Xcode, so the newest watchOS pairs with the newest
+          # iOS the watch leg's phone half will come from; a dev machine that
+          # has accumulated several may not, and that is the case to notice if
+          # the watch leg ever fails to pair.
+          udid=$(xcrun simctl list devices available --json | jq -r --arg os "$RUNTIME" --arg name "$DEVICE" '
+            [ .devices
+              | to_entries[]
+              | select(.key | test("SimRuntime\\." + $os + "-"))
+              | (.key | capture("-(?<a>[0-9]+)-(?<b>[0-9]+)$")) as $v
+              | .value[]
+              | select(.name | startswith($name))
+              | {ver: [($v.a | tonumber), ($v.b | tonumber)], udid}
+            ] | sort_by(.ver) | last.udid // empty')
+          if [ -z "$udid" ]; then
+            echo "::error::no $RUNTIME simulator named $DEVICE*"
             xcrun simctl list devices available
             exit 1
           fi
-          xcrun simctl list devices available | grep -E "$iphone|$watch"
-          echo "iphone=$iphone" >> "$GITHUB_OUTPUT"
-          echo "watch=$watch" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices available | grep -E "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       # Every date in this app is a Taiwan school day: `AcademicCalendar.calendar`
       # and `WidgetTaipei.calendar` are hard-pinned to Asia/Taipei, while the
@@ -99,26 +125,18 @@ jobs:
           sudo systemsetup -settimezone Asia/Taipei
           date
 
-      - name: Phone unit tests
+      - name: Unit tests (${{ matrix.leg }})
+        env:
+          SCHEME: ${{ matrix.scheme }}
+          UDID: ${{ steps.sim.outputs.udid }}
+          ONLY_TESTING: ${{ matrix.only_testing }}
         run: >
           xcodebuild test
           -project swift/TigerDuck.xcodeproj
-          -scheme TigerDuck
-          -destination "id=${{ steps.sim.outputs.iphone }}"
-          -only-testing:TigerDuckTests
-          -resultBundlePath PhoneTests.xcresult
-          -quiet
-
-      # The watch app is a companion app, so this needs its own scheme and its
-      # own destination; the phone scheme's test action does not reach it.
-      # Xcode pairs the watch simulator with a phone one on its own.
-      - name: Watch unit tests
-        run: >
-          xcodebuild test
-          -project swift/TigerDuck.xcodeproj
-          -scheme "TigerDuckWatch Watch App"
-          -destination "id=${{ steps.sim.outputs.watch }}"
-          -resultBundlePath WatchTests.xcresult
+          -scheme "$SCHEME"
+          -destination "id=$UDID"
+          ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"}
+          -resultBundlePath Tests.xcresult
           -quiet
 
       # `-quiet` keeps the log readable but also hides the test count, and a
@@ -132,35 +150,33 @@ jobs:
       # "173 real failures" apart from "one crash, 172 casualties".
       - name: Test summary
         if: always()
-        # `set +e`: the job's verdict is the test steps', not this step's. It
+        # `set +e`: the job's verdict is the test step's, not this step's. It
         # reads a JSON shape Apple reshuffles between Xcode releases, and a
         # green run must not turn red because jq could not find a key.
         run: |
           set +e -u
-          for bundle in PhoneTests.xcresult WatchTests.xcresult; do
-            echo "== $bundle"
-            if [ ! -d "$bundle" ]; then
-              echo "not produced (the step before it did not get that far)"
-              continue
-            fi
-            xcrun xcresulttool get test-results summary --path "$bundle" \
-              | jq '{result, totalTestCount, passedTests, failedTests, skippedTests}' \
-              || echo "could not read the summary — see the uploaded bundle"
-            echo "-- failures"
-            xcrun xcresulttool get test-results tests --path "$bundle" \
-              | jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
-                       | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"' \
-              || echo "could not read the failures — see the uploaded bundle"
-          done
+          bundle=Tests.xcresult
+          if [ ! -d "$bundle" ]; then
+            echo "not produced (the step before it did not get that far)"
+            exit 0
+          fi
+          xcrun xcresulttool get test-results summary --path "$bundle" \
+            | jq '{result, totalTestCount, passedTests, failedTests, skippedTests}' \
+            || echo "could not read the summary — see the uploaded bundle"
+          echo "-- failures"
+          xcrun xcresulttool get test-results tests --path "$bundle" \
+            | jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
+                     | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"' \
+            || echo "could not read the failures — see the uploaded bundle"
           exit 0
 
       # The summary above is a best effort against a JSON shape Apple changes
       # between Xcode releases. Keep the bundle itself so a failure can be
       # opened locally when it does not.
-      - name: Keep the result bundles
+      - name: Keep the result bundle
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
-          name: xcresults
-          path: "*.xcresult"
+          name: xcresults-${{ matrix.leg }}
+          path: Tests.xcresult
           retention-days: 7
