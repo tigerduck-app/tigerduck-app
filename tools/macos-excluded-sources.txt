@@ -109,6 +109,7 @@ ScoreView.swift
 AssignmentReminderSettingsView.swift
 CloudSyncSettingsView.swift
 FontSizeSettingsView.swift
+LibrarySettingsView.swift
 LiveActivitySettingsView.swift
 LoginSheet.swift
 NotificationPermissionSettingsView.swift  # macOS never receives notifications, by design (spec §2) — not merely a different UI tree like the rest of this group

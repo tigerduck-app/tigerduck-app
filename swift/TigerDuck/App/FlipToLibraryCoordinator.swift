@@ -119,7 +119,7 @@ extension View {
     /// only — on iPad the modifier is intentionally never attached, so no
     /// scene-phase / preference observers fire and no `FlipDetector` is
     /// ever instantiated. This matches the hidden Settings row in
-    /// `OtherSettingsView`: on iPad the feature does not exist at all.
+    /// `LibrarySettingsView`: on iPad the feature does not exist at all.
     /// The inner `shouldBeActive` guard keeps the iPhone-side belt for
     /// `FlipDetector.isSupported` and runtime state.
     @ViewBuilder
