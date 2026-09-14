@@ -191,9 +191,9 @@ struct MacAssignmentsList: View {
     @ViewBuilder
     private func emptyState(for filter: AssignmentFilter) -> some View {
         let message: String = switch filter {
-        case .incomplete: "All caught up — no outstanding assignments."
-        case .all: "No assignments cached yet."
-        case .ignored: "Nothing ignored."
+        case .incomplete: String(localized: "home_assignments_none_incomplete")
+        case .all: String(localized: "home_assignments_none")
+        case .ignored: String(localized: "home_assignments_no_ignored")
         }
         VStack(spacing: 8) {
             Image(systemName: filter == .incomplete ? "checkmark.circle" : "tray")
