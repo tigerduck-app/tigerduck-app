@@ -176,11 +176,10 @@ struct MacTigerSyncSettingsView: View {
         if on && !syncCourses { appState.markCategoryReenabled("courses") }
         syncCourses = on
         // Spec §6's course-sync → course-colours dependency, through the
-        // decision function every platform's class-table rows share.
-        syncCourseColors = AppState.courseColorsAfterCoursesChange(
-            coursesNowOn: on,
-            coloursCurrentlyOn: syncCourseColors
-        )
+        // decision function every platform's class-table rows share, and
+        // through colours' own setter so turning them back on this way
+        // marks them for the re-enable check too.
+        setCourseColors(AppState.courseColorsAfterCoursesChange(coursesNowOn: on))
     }
 
     private func setCourseColors(_ on: Bool) {

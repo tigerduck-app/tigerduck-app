@@ -6,8 +6,9 @@ import SwiftUI
 /// reminders, Live Activity on its own, and All courses, Course colours and
 /// Custom course names.
 ///
-/// Course colours is greyed out while All courses is off, and turning All
-/// courses off turns it off too (`AppState.courseColorsAfterCoursesChange`).
+/// Course colours follows All courses both ways, turning on and off with it
+/// (`AppState.courseColorsAfterCoursesChange`), and is greyed out while All
+/// courses is off.
 ///
 /// Reachable regardless of whether "Sync course information"
 /// (`cloudSyncEnabled`) is on, but not every row behaves the same way while
@@ -79,10 +80,9 @@ struct SyncContentSettingsView: View {
                                 appState.markCategoryReenabled("courses")
                                 appState.checkPendingConflicts()
                             }
-                            syncCourseColors = AppState.courseColorsAfterCoursesChange(
-                                coursesNowOn: new,
-                                coloursCurrentlyOn: syncCourseColors
-                            )
+                            // Colours' own `onChange` then marks and pushes
+                            // them the way a tap on their row would.
+                            syncCourseColors = AppState.courseColorsAfterCoursesChange(coursesNowOn: new)
                             appState.pushSyncPreferences()
                         }
 

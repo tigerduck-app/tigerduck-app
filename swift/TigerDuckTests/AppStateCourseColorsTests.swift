@@ -13,17 +13,13 @@ import Testing
 
 @Suite("Course-sync → course-colours cascade")
 struct AppStateCourseColorsTests {
-    @Test("turning courses off forces colours off, even though colours started on")
-    func coursesOffForcesColoursOff() {
-        // The starting value is `true` on purpose: if colours already
-        // started `false`, the assertion would pass on a no-op cascade
-        // (or no cascade at all).
-        #expect(AppState.courseColorsAfterCoursesChange(coursesNowOn: false, coloursCurrentlyOn: true) == false)
+    @Test("turning courses off turns colours off")
+    func coursesOffTurnsColoursOff() {
+        #expect(AppState.courseColorsAfterCoursesChange(coursesNowOn: false) == false)
     }
 
-    @Test("turning courses on, or leaving them on, never touches colours")
-    func coursesOnLeavesColoursUntouched() {
-        #expect(AppState.courseColorsAfterCoursesChange(coursesNowOn: true, coloursCurrentlyOn: true) == true)
-        #expect(AppState.courseColorsAfterCoursesChange(coursesNowOn: true, coloursCurrentlyOn: false) == false)
+    @Test("turning courses on turns colours on with them")
+    func coursesOnTurnsColoursOn() {
+        #expect(AppState.courseColorsAfterCoursesChange(coursesNowOn: true) == true)
     }
 }
