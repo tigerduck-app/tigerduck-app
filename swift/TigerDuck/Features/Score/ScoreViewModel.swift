@@ -51,23 +51,10 @@ final class ScoreViewModel {
         applyDefaultCollapseRule()
     }
 
-    /// Ranking row matching a given term, if present. Used to annotate
-    /// each semester header with GPA + rank metadata.
-    func ranking(for term: String) -> SemesterRanking? {
-        report.rankings.first { $0.term == term }
-    }
-
-    /// Rankings sorted chronologically for the trend chart.
-    var rankingTrend: [SemesterRanking] {
-        report.rankings.sorted { $0.term < $1.term }
-    }
-
+    /// The trend point for `term`: its ranking once posted, the estimate
+    /// from its grades until then. Annotates each semester header.
     func gpaPoint(for term: String) -> GPATrendPoint? {
         gpaTrend.first { $0.term == term }
-    }
-
-    var latestRanking: SemesterRanking? {
-        rankingTrend.last
     }
 
     var hasContent: Bool {
