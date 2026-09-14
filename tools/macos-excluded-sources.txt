@@ -119,12 +119,10 @@ SyncContentSettingsView.swift
 TabEditorView.swift
 SettingsView.swift
 
-# Features/Updates — in-app update prompts; the Mac build updates out of band
-UpdateNotifyCoordinator.swift
+# Features/Updates — the iPhone's update and What's New sheets; the Mac answers
+# with an alert (MacUpdateCheck.swift) and shows no What's New
 UpdateNotifySheetHost.swift
 UpdatePromptView.swift
-WhatsNewModels.swift
-WhatsNewRepository.swift
 WhatsNewSheetView.swift
 
 # LiveActivity/Models — ActivityKit — iOS only
@@ -140,9 +138,6 @@ TigerDuckActivityAttributes.swift
 
 # LiveActivity/Scheduling — ActivityKit — iOS only
 
-# Services/API — App Store update check, iOS distribution only
-AppStoreUpdateService.swift
-
 # Services/Logging — DEBUG-only scaffolding for the iOS Library freeze. Its one
 # caller is TigerDuckApp's init, and that whole struct sits inside #if os(iOS).
 MainThreadWatchdog.swift
@@ -154,7 +149,6 @@ WatchSyncBridge.swift
 WatchSyncCoordinator.swift
 
 # Shared — iOS-only shared UI and helpers
-AppVersion.swift
 FirstTriggerPrompt.swift
 
 # Shared/Components — iOS-only shared UI and helpers

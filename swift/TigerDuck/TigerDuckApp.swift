@@ -320,11 +320,13 @@ struct TigerDuckApp: App {
             MacRootView()
                 .id(rootLanguageId)
                 .updateRequiredAlert()
+                .macUpdatePrompt()
                 .environment(appState)
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
                     appState.startCloudSyncIfEnabled()
+                    appState.updateNotifyCoordinator.checkInBackground()
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
@@ -364,6 +366,9 @@ struct TigerDuckApp: App {
                         }
                         appState.startRevisionPolling()
                         widgetSnapshotWriter?.regenerate()
+                        // Throttled to a day inside; a return to the app
+                        // is when a new App Store version is worth telling.
+                        appState.updateNotifyCoordinator.checkInBackground()
                     } else if newPhase == .background {
                         appState.stopRevisionPolling()
                     }
@@ -373,6 +378,9 @@ struct TigerDuckApp: App {
         .defaultSize(width: 1180, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                MacCheckForUpdatesCommand(coordinator: appState.updateNotifyCoordinator)
+            }
         }
 
         Settings {

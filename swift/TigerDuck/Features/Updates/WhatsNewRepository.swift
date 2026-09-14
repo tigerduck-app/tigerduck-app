@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 /// Loads maintainer-authored "What's new" content from the bundled
@@ -149,4 +148,3 @@ struct WhatsNewRepository {
         return isSimplified ? ["zh-Hans", "zh-TW", "en"] : ["zh-TW", "en"]
     }
 }
-#endif

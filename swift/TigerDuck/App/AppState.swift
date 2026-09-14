@@ -32,14 +32,13 @@ final class AppState {
     let authService = AuthService()
     let sessionManager = NTUSTSessionManager.shared
 
-    #if os(iOS)
     /// Coordinator owning the iTunes Lookup + What's New plumbing. Lives
     /// on `AppState` (not as a top-level singleton) so SwiftUI views observe
     /// changes through the same `@Environment(AppState.self)` they already
     /// use, and so its sheet-presentation flags reset alongside the rest of
-    /// app state on logout / fresh install paths.
+    /// app state on logout / fresh install paths. The Mac uses only its
+    /// update check.
     let updateNotifyCoordinator = UpdateNotifyCoordinator()
-    #endif
 
     // MARK: - Fresh Install Keychain Cleanup
 
