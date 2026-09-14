@@ -1,7 +1,8 @@
 import Foundation
 
 /// Selects the single Live Activity snapshot that should be shown right now,
-/// or nil if no scenario qualifies under current preferences.
+/// or nil if no scenario qualifies under current preferences, or Live
+/// Activity is not currently available (`effectiveLiveActivityEnabled`).
 ///
 /// Priority:
 /// 1. assignmentUrgent — earliest uncompleted assignment due within `assignmentLiveActivityLeadTime`
@@ -31,6 +32,7 @@ struct LiveActivityScenarioResolver {
         courses: [SDCourse],
         assignments: [SDAssignment],
         preferences: LiveActivityPreferencesStore,
+        cloudSyncEnabled: Bool,
         accentHex: Int,
         now: Date = AppClock.now(),
         /// Days classes do not meet. Passed in rather than read from the
@@ -39,7 +41,13 @@ struct LiveActivityScenarioResolver {
         calendar: AcademicCalendar = .empty,
         optedInHolidayIDs: Set<Int> = []
     ) -> LiveActivitySnapshot? {
-        guard preferences.isLiveActivityEnabled else { return nil }
+        // Spec §6: cloud sync off makes Live Activity unavailable, same as
+        // the user's own switch off. `effectiveLiveActivityEnabled` is the
+        // one place that combined answer is computed.
+        guard effectiveLiveActivityEnabled(
+            isLiveActivityEnabled: preferences.isLiveActivityEnabled,
+            cloudSyncEnabled: cloudSyncEnabled
+        ) else { return nil }
 
         // The class scenarios go quiet on a school holiday. The assignment
         // scenario deliberately does not: a deadline on a day off is still

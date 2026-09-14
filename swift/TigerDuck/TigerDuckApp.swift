@@ -139,8 +139,8 @@ struct TigerDuckApp: App {
                         UNUserNotificationCenter.current().setBadgeCount(0)
                         // Cancel any still-running refresh from a previous
                         // .active transition so rapid scene toggles do not
-                        // interleave through cancelAllOwnedRequests()'s
-                        // await suspension point and double the reschedule.
+                        // interleave and duplicate the Live Activity /
+                        // push-sync / Moodle-credential work below.
                         // The school calendar, unconditionally: it is the
                         // one backend call not gated on sign-in or cloud
                         // sync, because suppressing class reminders on a
@@ -158,7 +158,6 @@ struct TigerDuckApp: App {
                         sceneRefreshTask = Task {
                             await appState.refreshLiveActivity()
                             guard !Task.isCancelled else { return }
-                            await appState.rescheduleReminders()
                             appState.requestPushScheduleSync()
                             await appState.refreshMoodleCredentials()
                         }
@@ -321,11 +320,13 @@ struct TigerDuckApp: App {
             MacRootView()
                 .id(rootLanguageId)
                 .updateRequiredAlert()
+                .macUpdatePrompt()
                 .environment(appState)
                 .onAppear {
                     appState.bindPushDelegate(pushAppDelegate)
                     appState.backgroundSync()
                     appState.startCloudSyncIfEnabled()
+                    appState.updateNotifyCoordinator.checkInBackground()
                     if widgetSnapshotWriter == nil {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
@@ -365,6 +366,9 @@ struct TigerDuckApp: App {
                         }
                         appState.startRevisionPolling()
                         widgetSnapshotWriter?.regenerate()
+                        // Throttled to a day inside; a return to the app
+                        // is when a new App Store version is worth telling.
+                        appState.updateNotifyCoordinator.checkInBackground()
                     } else if newPhase == .background {
                         appState.stopRevisionPolling()
                     }
@@ -374,6 +378,9 @@ struct TigerDuckApp: App {
         .defaultSize(width: 1180, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                MacCheckForUpdatesCommand(coordinator: appState.updateNotifyCoordinator)
+            }
         }
 
         Settings {

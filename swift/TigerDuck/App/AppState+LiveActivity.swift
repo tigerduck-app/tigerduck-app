@@ -1,20 +1,35 @@
-// Live Activity and reminder scheduling — split out of AppState.swift.
+// Live Activity refresh and notification authorization — split out of
+// AppState.swift.
 //
-// iOS only: ActivityKit has no macOS counterpart, and the reminder
-// scheduler it drives is built on UNUserNotificationCenter time triggers
-// that the Mac app does not register. The whole file is inside
-// `#if os(iOS)` rather than each function, so the macOS build sees an
-// empty extension instead of a pile of individually-fenced members.
+// iOS only: ActivityKit has no macOS counterpart. Assignment due reminders
+// used to be scheduled from here too, via a local UNUserNotificationCenter
+// scheduler; that moved server-side, and this file now only requests the
+// notification permission the server-sent reminders and Live Activity push
+// updates both still need. The whole file is inside `#if os(iOS)` rather
+// than each function, so the macOS build sees an empty extension instead of
+// a pile of individually-fenced members.
 
 import SwiftUI
 import SwiftData
 import Defaults
 import os
+import UserNotifications
 
 extension AppState {
 
     #if os(iOS)
-    // MARK: - Live Activity / reminder refresh (iOS only)
+    // MARK: - Live Activity refresh & notification authorization (iOS only)
+
+    /// Spec §6's answer for this device right now: the user's own switch AND
+    /// course sync, through `effectiveLiveActivityEnabled`. What
+    /// `LiveActivityCoordinator` asks before keeping, or registering the
+    /// update token of, any activity — the ones the server starts included.
+    var isLiveActivityAvailable: Bool {
+        effectiveLiveActivityEnabled(
+            isLiveActivityEnabled: liveActivityPreferences.isLiveActivityEnabled,
+            cloudSyncEnabled: cloudSyncEnabled
+        )
+    }
 
     /// Recomputes the scenario and pushes it to the coordinator. Safe to call
     /// frequently — the coordinator only issues ActivityKit calls when the
@@ -27,6 +42,7 @@ extension AppState {
             courses: courses,
             assignments: assignments,
             preferences: liveActivityPreferences,
+            cloudSyncEnabled: cloudSyncEnabled,
             accentHex: accentColorHex,
             now: now,
             calendar: AcademicCalendarStore.shared.calendar,
@@ -107,53 +123,37 @@ extension AppState {
         return candidates.filter { $0 > now }.min()
     }
 
-    /// Rebuilds all reminder notifications from the current cached assignments
-    /// and the user's selected offsets. The scheduler silently no-ops when
-    /// notifications are not authorized, so this never triggers a permission
-    /// prompt — call `requestNotificationAuthorization()` from explicit user
-    /// intent instead (e.g. when the notifications settings page appears).
-    func rescheduleReminders() async {
-        let assignments = DataCache.shared.loadAssignments()
-        await reminderScheduler.reschedule(
-            assignments: assignments,
-            // Master switch off -> empty set, which makes the scheduler cancel
-            // all pending reminders and bail.
-            offsets: liveActivityPreferences.isAssignmentReminderEnabled
-                ? liveActivityPreferences.assignmentReminderOffsets
-                : []
-        )
-    }
-
     /// Prompts the user for notification authorization when, and only when,
-    /// they reach an explicit notification-related entry point. After a fresh
-    /// grant, immediately rebuild the reminder schedule so the toggles the
-    /// user just saw take effect.
+    /// they reach an explicit notification-related entry point. Assignment
+    /// reminders are scheduled server-side now, but the permission is still
+    /// needed — Live Activity push updates and the backend's own reminder
+    /// pushes both require it.
     func requestNotificationAuthorization() async {
-        let granted = await reminderScheduler.requestAuthorizationIfNeeded()
-        if granted {
-            await rescheduleReminders()
+        let center = UNUserNotificationCenter.current()
+        switch await center.notificationSettings().authorizationStatus {
+        case .notDetermined:
+            do {
+                _ = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+            } catch {
+                AppLogger.captureError(error, context: ["phase": "notification.requestAuthorization"])
+            }
+        case .authorized, .provisional, .ephemeral, .denied:
+            break
+        @unknown default:
+            break
         }
     }
 
     /// Debounces multiple change events (e.g. slider drags or quick toggles)
-    /// into a single refresh pass so the scheduler is not thrashed.
-    ///
-    /// - Parameter rescheduleReminderNotifications: pass `false` when the
-    ///   trigger only affects the Live Activity snapshot (e.g. accent color).
-    ///   Reminder notifications carry only title / course / due date, so
-    ///   re-enqueuing them for visual-only changes does no user-visible work
-    ///   and just thrashes `UNUserNotificationCenter`.
-    func scheduleLiveActivityRefresh(rescheduleReminderNotifications: Bool = true) {
+    /// into a single Live Activity refresh pass.
+    func scheduleLiveActivityRefresh() {
         pendingRefreshTask?.cancel()
         pendingRefreshTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
             await refreshLiveActivity()
-            if rescheduleReminderNotifications {
-                await rescheduleReminders()
-            }
             requestPushScheduleSync()
         }
     }
-    #endif // os(iOS) — Live Activity / reminder refresh
+    #endif // os(iOS) — Live Activity refresh & notification authorization
 }

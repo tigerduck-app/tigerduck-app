@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 /// One localized "What's new" block, decoded from `whatsnew.json`. The
@@ -26,4 +25,3 @@ struct WhatsNewEntry: Decodable, Equatable {
     let title: String?
     let highlights: [String]?
 }
-#endif

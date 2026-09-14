@@ -1,9 +1,10 @@
 import Defaults
 import SwiftUI
-#if os(iOS)
-import UIKit
-#endif
 
+/// TigerSync settings (spec §6): essential-info notice, the course-sync
+/// toggle with its "Synced content" drill-down, the server-push opt-out,
+/// and an inline status section. See `SyncContentSettingsView` for the
+/// six-toggle drill-down this screen links to.
 struct CloudSyncSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.cloudSyncEnabled) private var syncEnabled
@@ -11,20 +12,35 @@ struct CloudSyncSettingsView: View {
     @Default(.syncCourseColors) private var syncCourseColors
     @Default(.syncCourseNames) private var syncCourseNames
     @Default(.syncAssignments) private var syncAssignments
-    @Default(.pushLastRegistrationAt) private var lastRegistrationAt
-    @Default(.pushLastSyncAt) private var lastSyncAt
-    @State private var snapshot: PushDiagnostic?
-
-    #if os(iOS)
-    @State private var copyStatus: CopyResult?
-    @State private var copyResetTask: Task<Void, Never>?
-    private enum CopyResult { case copied, blocked }
-    #endif
+    @Default(.serverPushUserOptOut) private var serverPushOptOut
+    /// Tracks whether the last server-push opt-out PATCH failed. Set inside
+    /// `serverPushBinding`'s setter; the footer reads it to show the
+    /// failure notice. The Toggle itself binds to `serverPushBinding`, not
+    /// to this — the visual state reverts because that binding's getter
+    /// re-reads the stored Default, which a failed PATCH never changed.
+    @State private var serverPushOptOutFailed: Bool = false
+    /// In-flight server-push opt-out PATCH, held so a rapid second tap can
+    /// cancel the prior request before starting a new one.
+    @State private var serverPushOptOutTask: Task<Void, Never>?
+    /// Backs the inline TigerSync-status section below (spec §6, owner's
+    /// ruling 2026-09-12, item 3). Owned here rather than by a pushed
+    /// destination now that the section lives directly in this screen.
+    @State private var statusSnapshot: PushDiagnostic?
+    @State private var statusRefreshTimer: Timer?
 
     var body: some View {
         Form {
             Section {
-                Toggle(String(localized: "cloud_sync_title"), isOn: $syncEnabled)
+                Toggle(String(localized: "sync_essential_toggle"), isOn: .constant(true))
+                    .disabled(true)
+            } footer: {
+                Text(String(localized: "sync_essential_footer"))
+            }
+
+            Section {
+                // Writes the preference itself; `AppState` acts on that the
+                // way it acts on every change to it, whichever writer made it.
+                Toggle(String(localized: "sync_courses_toggle"), isOn: $syncEnabled)
                     .onChange(of: syncEnabled) { old, newValue in
                         if newValue && !old {
                             if syncCourses { appState.markCategoryReenabled("courses") }
@@ -33,104 +49,70 @@ struct CloudSyncSettingsView: View {
                             if syncAssignments { appState.markCategoryReenabled("assignments") }
                             appState.checkPendingConflicts()
                         }
-                        appState.cloudSyncEnabled = newValue
                     }
             } footer: {
-                #if os(iOS)
-                Text(String(localized: "settings_sync_brief_description_ios"))
-                #else
-                Text(String(localized: "settings_sync_brief_description"))
-                #endif
-            }
-
-            if syncEnabled {
-                Section("Sync options") {
-                    Toggle(String(localized: "cloud_sync_assignments"), isOn: $syncAssignments)
-                        .onChange(of: syncAssignments) { old, new in
-                            if new && !old {
-                                appState.markCategoryReenabled("assignments")
-                                appState.checkPendingConflicts()
-                            }
-                            appState.pushSyncPreferences()
-                        }
-
-                    NavigationLink {
-                        classTableSyncOptions
-                    } label: {
-                        HStack {
-                            Text(String(localized: "cloud_sync_class_table"))
-                            Spacer()
-                            let count = [syncCourses, syncCourseColors, syncCourseNames].filter { $0 }.count
-                            Text("\(count)/3")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-            } else {
-                Section {
-                    Label(
-                        String(localized: "settings_sync_disabled_note"),
-                        systemImage: "info.circle"
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                }
-            }
-
-            if syncEnabled {
-                if let err = snapshot?.registration.lastError {
-                    Section(String(localized: "push_server_latest_error")) {
-                        Text(err)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-                    }
-                }
-
-                if let s = snapshot {
-                    Section(String(localized: "push_server_status_section")) {
-                        statusRow(label: String(localized: "push_server_status_device_registration"),
-                                  ok: s.registration.ptsTokenLength > 0,
-                                  okText: String(localized: "push_server_status_done"),
-                                  badText: String(localized: "push_server_status_waiting_token"))
-                        LabeledContent(String(localized: "push_server_last_registration")) {
-                            if let at = lastRegistrationAt {
-                                Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
-                            } else {
-                                Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
-                            }
-                        }
-                        LabeledContent(String(localized: "push_server_last_sync")) {
-                            if let at = lastSyncAt {
-                                Text(at, style: .relative).foregroundStyle(.secondary).monospacedDigit()
-                            } else {
-                                Text(String(localized: "push_server_pending_incomplete")).foregroundStyle(.secondary)
-                            }
-                        }
-                        Button {
-                            appState.requestPushScheduleSync()
-                        } label: {
-                            Label(String(localized: "cloud_sync_sync_now"), systemImage: "arrow.triangle.2.circlepath")
-                        }
-                    }
-
-                    #if os(iOS)
-                    Section {
-                        idRow(label: "Device ID", value: s.uuid)
-                    } header: {
-                        Text(String(localized: "push_server_ids_section"))
-                    } footer: {
-                        if let footer = copyFooter {
-                            Text(footer.text).foregroundStyle(footer.color)
-                        }
-                    }
-                    #endif
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "sync_courses_footer"))
+                    Text(String(localized: "sync_courses_footer_platform_note"))
                 }
             }
 
             Section {
-                Link(destination: AppURLs.learnMoreBackend) {
+                NavigationLink(String(localized: "sync_content_nav_label")) {
+                    SyncContentSettingsView()
+                }
+            }
+
+            Section {
+                Toggle(String(localized: "settings_server_push_label"), isOn: serverPushBinding)
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "settings_server_push_footer"))
+                    if serverPushOptOutFailed {
+                        // Surfaces the rollback so the user knows the tap
+                        // didn't take. The Toggle has already snapped back
+                        // to the server-agreeing value because the actor
+                        // only writes Defaults on success.
+                        Text(String(localized: "settings_server_push_update_failed"))
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+
+            // Unconditional per spec §6's tree: registration status, the
+            // latest error and the device ID are exactly what a user needs
+            // while investigating why sync isn't working, which is
+            // disproportionately likely to be a moment course sync is off.
+            // Owner's ruling, 2026-09-12 (spec §6, item 3): reads inline as
+            // a section titled with `sync_status_nav_label` itself rather
+            // than a destination reached through it.
+            Section(String(localized: "sync_status_nav_label")) {
+                if let s = statusSnapshot {
+                    syncStatusRow(
+                        label: String(localized: "sync_status_device_registered"),
+                        ok: s.registration.lastRegisteredAt != nil,
+                        okText: String(localized: "push_server_status_done"),
+                        badText: String(localized: "push_server_pending_incomplete")
+                    )
+                    if let err = s.registration.lastError {
+                        LabeledContent(String(localized: "push_server_latest_error")) {
+                            Text(err)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    LabeledContent(String(localized: "cloud_sync_device_id")) {
+                        Text(s.uuid)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+
+            Section {
+                Link(destination: AppURLs.learnMoreTigerSync) {
                     Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
                 }
                 Link(destination: AppURLs.privacyPolicy) {
@@ -142,55 +124,49 @@ struct CloudSyncSettingsView: View {
             }
         }
         .navigationTitle(String(localized: "cloud_sync_title"))
-        .task { await refreshSnapshot() }
+        .task { await refreshStatusSnapshot() }
         .onAppear {
-            startRefreshTimer()
             appState.checkPendingConflicts()
+            startStatusRefreshTimer()
         }
         .onDisappear {
-            stopRefreshTimer()
             appState.checkPendingConflicts()
+            stopStatusRefreshTimer()
         }
-        .alert(
-            String(localized: "sync_conflict_title"),
-            isPresented: Binding(
-                get: { appState.reenableConflict != nil },
-                set: { if !$0 { appState.resolveReenableConflict(keepLocal: true) } }
-            )
-        ) {
-            Button(String(localized: "sync_conflict_use_server")) {
-                appState.resolveReenableConflict(keepLocal: false)
+        .reenableConflictAlert()
+    }
+
+    /// User-facing opt-out for operator-issued "server" pushes. Bound as
+    /// `isOn` (ON = user wants them); inverted into `serverPushUserOptOut`
+    /// for storage. The setter awaits the actor, which PATCHes first and
+    /// only writes the local Default on success — a throw trips
+    /// `serverPushOptOutFailed` so the footer surfaces the failure and the
+    /// Toggle stays at the prior, server-agreeing value.
+    private var serverPushBinding: Binding<Bool> {
+        Binding(
+            get: { !serverPushOptOut },
+            set: { isOn in
+                serverPushOptOutTask?.cancel()
+                serverPushOptOutTask = Task {
+                    do {
+                        try await appState.updateServerPushOptOut(!isOn)
+                        guard !Task.isCancelled else { return }
+                        serverPushOptOutFailed = false
+                    } catch {
+                        guard !Task.isCancelled else { return }
+                        serverPushOptOutFailed = true
+                    }
+                }
             }
-            Button(String(localized: "sync_conflict_use_local"), role: .cancel) {
-                appState.resolveReenableConflict(keepLocal: true)
-            }
-        } message: {
-            Text(String(localized: "sync_conflict_reenable_message"))
-            + Text("\n")
-            + Text(appState.reenableConflict?.description ?? "")
-        }
+        )
     }
 
-    @State private var refreshTimer: Timer?
-
-    private func refreshSnapshot() async {
-        snapshot = await appState.pushCoordinator.currentSnapshot()
-    }
-
-    private func startRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
-            Task { await refreshSnapshot() }
-        }
-    }
-
-    private func stopRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-    }
-
+    /// Registered means the server accepted this device, which is what
+    /// `lastRegisteredAt` records — the Mac account tab reads the same. A
+    /// push-to-start token only exists while Live Activities are on, so its
+    /// length said nothing about whether reminders can reach here.
     @ViewBuilder
-    private func statusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
+    private func syncStatusRow(label: String, ok: Bool, okText: String, badText: String) -> some View {
         LabeledContent(label) {
             HStack(spacing: 6) {
                 Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
@@ -202,120 +178,37 @@ struct CloudSyncSettingsView: View {
         }
     }
 
-    #if os(iOS)
-    @ViewBuilder
-    private func idRow(label: String, value: String) -> some View {
-        Button {
-            copyToPasteboard(value: value)
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(label).foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: copyStatus == .copied ? "checkmark" : "doc.on.doc")
-                        .foregroundStyle(copyStatus == .copied ? .green : .secondary)
-                        .font(.caption)
-                }
-                Text(value)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+    private func refreshStatusSnapshot() async {
+        statusSnapshot = await appState.pushCoordinator.currentSnapshot()
     }
 
-    private func copyToPasteboard(value: String) {
-        let pb = UIPasteboard.general
-        pb.string = value
-        copyStatus = (pb.string == value) ? .copied : .blocked
-        copyResetTask?.cancel()
-        copyResetTask = Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            if Task.isCancelled { return }
-            copyStatus = nil
-            copyResetTask = nil
+    /// Keeps the inline status section current while this screen is the one
+    /// on screen — the behaviour `SyncStatusPage` used to own as its own
+    /// destination. Started from `onAppear` and invalidated from
+    /// `onDisappear` so leaving this screen never leaves it running.
+    private func startStatusRefreshTimer() {
+        statusRefreshTimer?.invalidate()
+        statusRefreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+            Task { await refreshStatusSnapshot() }
         }
     }
 
-    private var copyFooter: (text: String, color: Color)? {
-        if copyStatus == .blocked {
-            return ("Copy blocked — pasteboard access is restricted on this device.", .orange)
-        }
-        if copyStatus == .copied {
-            return ("Copied.", .green)
-        }
-        return nil
+    private func stopStatusRefreshTimer() {
+        statusRefreshTimer?.invalidate()
+        statusRefreshTimer = nil
     }
-    #endif
+}
 
-    private var classTableMasterBinding: Binding<Bool> {
-        Binding(
-            get: { syncCourses || syncCourseColors || syncCourseNames },
-            set: { newValue in
-                if newValue && !(syncCourses || syncCourseColors || syncCourseNames) {
-                    appState.markCategoryReenabled("courses")
-                    appState.markCategoryReenabled("course_colors")
-                    appState.markCategoryReenabled("course_names")
-                    appState.checkPendingConflicts()
-                }
-                syncCourses = newValue
-                syncCourseColors = newValue
-                syncCourseNames = newValue
-                appState.pushSyncPreferences()
-            }
-        )
-    }
+/// Re-enable conflict prompt (`AppState.reenableConflict`), shared by every
+/// screen where a sync category can be switched back on: this screen's own
+/// "Sync course information" toggle, and `SyncContentSettingsView`'s
+/// per-category toggles. Not used by the Mac equivalent, which keeps its
+/// own copy in `MacAccountSettingsView`.
+struct ReenableConflictAlert: ViewModifier {
+    @Environment(AppState.self) private var appState
 
-    private var classTableSyncOptions: some View {
-        Form {
-            Section {
-                Toggle(String(localized: "cloud_sync_class_table"), isOn: classTableMasterBinding)
-            } footer: {
-                Text(String(localized: "cloud_sync_class_table_footer"))
-            }
-
-            if syncCourses || syncCourseColors || syncCourseNames {
-                Section {
-                    Toggle(String(localized: "cloud_sync_courses"), isOn: Binding(
-                        get: { syncCourses },
-                        set: { newValue in
-                            if newValue && !syncCourses {
-                                appState.markCategoryReenabled("courses")
-                                appState.checkPendingConflicts()
-                            }
-                            syncCourses = newValue
-                            if !newValue {
-                                syncCourseColors = false
-                            }
-                            appState.pushSyncPreferences()
-                        }
-                    ))
-                    Toggle(String(localized: "cloud_sync_course_colours"), isOn: $syncCourseColors)
-                        .disabled(!syncCourses)
-                        .onChange(of: syncCourseColors) { old, new in
-                            if new && !old {
-                                appState.markCategoryReenabled("course_colors")
-                                appState.checkPendingConflicts()
-                            }
-                            appState.pushSyncPreferences()
-                        }
-                    Toggle(String(localized: "cloud_sync_custom_course_names"), isOn: $syncCourseNames)
-                        .onChange(of: syncCourseNames) { old, new in
-                            if new && !old {
-                                appState.markCategoryReenabled("course_names")
-                                appState.checkPendingConflicts()
-                            }
-                            appState.pushSyncPreferences()
-                        }
-                }
-            }
-        }
-        .navigationTitle(String(localized: "cloud_sync_class_table_sync"))
-        .alert(
+    func body(content: Content) -> some View {
+        content.alert(
             String(localized: "sync_conflict_title"),
             isPresented: Binding(
                 get: { appState.reenableConflict != nil },
@@ -333,5 +226,11 @@ struct CloudSyncSettingsView: View {
             + Text("\n")
             + Text(appState.reenableConflict?.description ?? "")
         }
+    }
+}
+
+extension View {
+    func reenableConflictAlert() -> some View {
+        modifier(ReenableConflictAlert())
     }
 }

@@ -10,6 +10,14 @@ import os
 /// start/stop it around app scene lifecycle. iOS itself rotates the PTS
 /// token periodically, so we always take the latest value.
 ///
+/// A PTS token only exists while Live Activities are enabled, and the user
+/// can switch them on in iOS Settings at any time. So `start()` waits for
+/// that instead of giving up: `PushCoordinator` starts the relay once per
+/// process, and a relay that returned early stayed off until the next
+/// launch. Device registration never waits for this relay —
+/// `PushRegistrationService` registers the standard APNs token on its own
+/// and attaches the PTS token when it arrives.
+///
 /// Note: this observes ONLY the push-to-start token. Per-activity update
 /// tokens (`activity.pushTokenUpdates`) are out of scope for the MVP since
 /// `timerInterval` on-device animation removes the need to push updates.
@@ -28,14 +36,24 @@ final class PushTokenRelay {
 
     func start() {
         guard task == nil else { return }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            logger.info("Live Activities disabled; skipping PTS token relay")
-            return
-        }
 
         let registration = self.registration
         let logger = self.logger
         task = Task.detached(priority: .utility) {
+            let authorization = ActivityAuthorizationInfo()
+            if !authorization.areActivitiesEnabled {
+                logger.info("Live Activities disabled; relaying the PTS token once they are enabled")
+                var enabled = false
+                for await isEnabled in authorization.activityEnablementUpdates where isEnabled {
+                    enabled = true
+                    break
+                }
+                // Ending without a `true` means `stop()` cancelled this task
+                // or the sequence finished; either way there is nothing to
+                // relay.
+                guard enabled else { return }
+                logger.info("Live Activities enabled; starting PTS token relay")
+            }
             for await tokenData in Activity<TigerDuckActivityAttributes>.pushToStartTokenUpdates {
                 let hex = tokenData.hexEncodedString()
                 logger.info("received PTS token (len=\(hex.count, privacy: .public))")

@@ -35,6 +35,13 @@ extension AppState {
         // marker makes `applySyncedOverrides` sit out this cycle rather than
         // race it, and the next sync applies the settled state.
         retryUnacknowledgedHolidayOverrides()
+        #if os(iOS)
+        // Same shape, same reason: a reminder/Live Activity preference
+        // whose settings-document write never landed (dropped debounce,
+        // expired session, offline, 5xx) is re-sent here. No-ops unless
+        // something is actually outstanding.
+        retryUnacknowledgedNotificationSettings()
+        #endif
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.backend)
@@ -210,6 +217,15 @@ extension AppState {
             NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
             ServerStatusTracker.shared.noteSyncResult(true)
             recordSyncSource(.backend)
+            #if os(iOS)
+            // The fetch landed, so there is a network and a session: settle
+            // the notification settings document too, so a change made on
+            // another device shows up here. Down here rather than beside
+            // `retryUnacknowledgedNotificationSettings()` at the top: that
+            // retry is queued first, and the routine never reads over an
+            // edit still waiting to go up.
+            reconcileNotificationSettings()
+            #endif
         } catch {
             ServerStatusTracker.shared.noteSyncResult(false)
             recordSyncSource(.local)
@@ -409,7 +425,7 @@ extension AppState {
     }
 
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = []) {
-        guard Defaults[.cloudSyncEnabled] else { return }
+        guard CourseUploadPolicy.uploadsCourses else { return }
         let request = courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         let coordinator = pushCoordinator
         Task.detached {
@@ -431,7 +447,7 @@ extension AppState {
         semester: String,
         forceKeys: [String] = []
     ) async throws {
-        guard Defaults[.cloudSyncEnabled] else { return }
+        guard CourseUploadPolicy.uploadsCourses else { return }
         let request = courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         try await pushCoordinator.uploadCourses(request)
         AppLogger.sync.info("uploadCourses: \(request.courses.count, privacy: .public) courses sent")
@@ -471,5 +487,30 @@ extension AppState {
         // chooses a colour already calls syncCourseOverride, and that PATCH
         // sets the value outright instead of only filling a blank.
         return PushAPI.CourseUploadRequest(courses: entries, forceKeys: forceKeys)
+    }
+}
+
+/// When this device may upload its course list.
+///
+/// iPhone and iPad follow 同步課程資訊 alone: class reminders are built from
+/// what they upload, so it is more than sync for them. A Mac takes no push,
+/// so its upload serves cross-device sync and nothing else, and it follows
+/// the 同步內容 switches too — 所有課程 for the list, 課程顏色 for colours.
+enum CourseUploadPolicy {
+    static var uploadsCourses: Bool {
+        guard Defaults[.cloudSyncEnabled] else { return false }
+        #if os(macOS)
+        return Defaults[.syncCourses]
+        #else
+        return true
+        #endif
+    }
+
+    static var uploadsCourseColors: Bool {
+        #if os(macOS)
+        return uploadsCourses && Defaults[.syncCourseColors]
+        #else
+        return uploadsCourses
+        #endif
     }
 }

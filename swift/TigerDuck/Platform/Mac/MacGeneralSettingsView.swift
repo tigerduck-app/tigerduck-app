@@ -8,14 +8,22 @@ import AppKit
 struct MacGeneralSettingsView: View {
     @Environment(AppState.self) private var appState
 
+    /// Every language the app ships, in the order of their own names.
+    private static let languageTags: [String] = LanguageManager.supportedLocaleTags()
+        .sorted {
+            LanguageManager.displayName(for: $0)
+                .localizedStandardCompare(LanguageManager.displayName(for: $1)) == .orderedAscending
+        }
+
     var body: some View {
         @Bindable var state = appState
         Form {
             Section(String(localized: "desktop_settings_section_interface")) {
                 Picker(String(localized: "settings_language"), selection: $state.appLanguage) {
-                    Text(String(localized: "settings_language_follow_system")).tag("system")
-                    Text(String(localized: "settings_language_traditional_chinese")).tag("zh-Hant")
-                    Text(String(localized: "settings_language_english")).tag("en")
+                    Text(String(localized: "settings_language_follow_system")).tag(LanguageManager.system)
+                    ForEach(Self.languageTags, id: \.self) { tag in
+                        Text(LanguageManager.displayName(for: tag)).tag(tag)
+                    }
                 }
                 .pickerStyle(.menu)
 

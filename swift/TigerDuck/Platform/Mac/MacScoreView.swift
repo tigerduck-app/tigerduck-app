@@ -5,9 +5,9 @@ import SwiftUI
 ///
 /// Reuses the cross-platform `ScoreViewModel` directly — its dependencies
 /// (NTUSTScoreService, AuthService, ScoreReport models) are all
-/// platform-agnostic. The Mac shell renders the same per-term grouping
-/// the iPhone uses, expanded into wider cards with the per-row table
-/// columns Mac users expect.
+/// platform-agnostic. The Mac shell renders the same GPA trend chart
+/// (`GPATrendChart`) and per-term grouping the iPhone uses, expanded into
+/// wider cards with the per-row table columns Mac users expect.
 struct MacScoreView: View {
     @Environment(AppState.self) private var appState
     @State private var viewModel = ScoreViewModel()
@@ -26,6 +26,7 @@ struct MacScoreView: View {
                 } else if !viewModel.hasContent {
                     emptyState
                 } else {
+                    trendCard
                     semesterSections
                 }
             }
@@ -78,38 +79,26 @@ struct MacScoreView: View {
                 }
             }
             Spacer()
-            if let latest = viewModel.latestRanking {
-                rankSummary(latest)
-            }
         }
     }
 
-    private func rankSummary(_ ranking: SemesterRanking) -> some View {
-        let stats = viewModel.rankingScope == .semester ? ranking.semester : ranking.cumulative
-        return HStack(spacing: 22) {
-            statColumn(label: String(localized: "desktop_score_gpa_label"), value: stats.gpa.map { String(format: "%.2f", $0) } ?? "—")
-            if let cls = stats.classRank {
-                statColumn(label: String(localized: "score_rank_class"), value: "#\(cls)")
+    /// The GPA line and its readout, scoped by the toolbar picker. Every
+    /// term with grades has a point: the school's ranking once 排名 is
+    /// posted, and until then the GPA worked out from the grades in so far,
+    /// marked as an estimate.
+    @ViewBuilder
+    private var trendCard: some View {
+        if !viewModel.gpaTrend.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(String(localized: "score_gpa_trend_title"))
+                    .font(.title3.bold())
+                GPATrendChart(points: viewModel.gpaTrend, scope: viewModel.rankingScope)
             }
-            if let dep = stats.deptRank {
-                statColumn(label: String(localized: "score_ranking_dept_label"), value: "#\(dep)")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md, style: .continuous)
-                .fill(Color.secondarySystemGroupedBackgroundCompat)
-        )
-    }
-
-    private func statColumn(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.bold().monospacedDigit())
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md, style: .continuous)
+                    .fill(Color.secondarySystemGroupedBackgroundCompat)
+            )
         }
     }
 
@@ -158,11 +147,15 @@ struct MacScoreView: View {
                 Text(displayTerm(term))
                     .font(.title3.bold())
                 Spacer()
-                if let ranking = viewModel.ranking(for: term) {
-                    let stats = viewModel.rankingScope == .semester ? ranking.semester : ranking.cumulative
+                // The ranking's GPA once it is posted, the estimate from the
+                // grades so far until then.
+                if let point = viewModel.gpaPoint(for: term) {
+                    let stats = viewModel.rankingScope == .semester ? point.semester : point.cumulative
                     HStack(spacing: 12) {
                         if let gpa = stats.gpa {
-                            Text("GPA \(String(format: "%.2f", gpa))")
+                            let provisional = point.isProvisional
+                                ? " · " + String(localized: "score_gpa_provisional") : ""
+                            Text(String(format: "GPA %.2f", gpa) + provisional)
                                 .font(.subheadline.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }

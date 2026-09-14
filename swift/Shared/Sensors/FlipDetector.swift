@@ -96,7 +96,7 @@ final class FlipDetector {
     /// `true` iff this device exposes a device-motion sensor we can register
     /// against. `let` (not `var`) because Apple's CoreMotion docs warn against
     /// instantiating multiple `CMMotionManager`s — caching the result here
-    /// means hot paths like `OtherSettingsView.body` and the modifier's
+    /// means hot paths like `LibrarySettingsView.body` and the modifier's
     /// `shouldBeActive` don't churn the motion subsystem.
     static let isSupported: Bool = CMMotionManager().isDeviceMotionAvailable
 

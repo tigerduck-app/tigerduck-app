@@ -6,9 +6,16 @@ import UserNotifications
 ///
 /// Three responsibilities:
 /// 1. Surface the OS push permission state and let the user request it.
-/// 2. Toggle our `pushServerEnabled` flag (a `Defaults` key); flipping it
-///    on triggers `PushCoordinator` registration, off tells the server
-///    to drop this device.
+/// 2. Toggle our `bulletinPushEnabled` flag (a `Defaults` key) via a PATCH-
+///    first pattern: flipping it PATCHes `bulletin_push_enabled` on this
+///    device's row and only then updates the local Default, so a failed
+///    request leaves the toggle agreeing with the server. The device
+///    itself stays registered either way (spec §6 item 5) — only bulletin
+///    delivery is gated server-side; assignment reminders, Live Activities
+///    and sync triggers are unaffected. A request that does not land says
+///    so in the section footer instead of leaving the tap looking like a
+///    no-op; the page is reachable without a sign-in check of its own, and
+///    the PATCH needs a Bearer.
 /// 3. CRUD the device's subscription rules. There is no manual 儲存
 ///    button — the page auto-persists in three situations:
 ///    * on editor 完成 (upsert + save)
@@ -29,7 +36,18 @@ struct BulletinNotificationSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var store = BulletinSubscriptionsStore()
     @State private var authStatus: UNAuthorizationStatus = .notDetermined
+    /// In-flight for the whole enable path — the permission prompt and the
+    /// PATCH behind it.
     @State private var isAskingPermission: Bool = false
+    /// In-flight for the destructive 關閉公告推播 button, which is only the
+    /// PATCH.
+    @State private var isDisablingPush: Bool = false
+    /// Set when the bulletin PATCH throws — offline, or signed out. Reuses
+    /// TigerSync's wording for the same kind of failure. Cleared by the
+    /// next attempt that lands. The page keeps showing the pre-tap state
+    /// on its own: the actor writes the Default only after a 2xx, so
+    /// `pushEnabled` below never moved.
+    @State private var pushUpdateFailed: Bool = false
     @State private var editingClientId: UUID?
     /// Unpersisted rule that lives only while the editor is on screen.
     /// Transitions to `store.pending` via `upsert` when the user taps
@@ -43,7 +61,7 @@ struct BulletinNotificationSettingsView: View {
     /// clobbered the user's in-flight pending array.
     @State private var didInitialLoad: Bool = false
 
-    @Default(.pushServerEnabled) private var pushEnabled
+    @Default(.bulletinPushEnabled) private var pushEnabled
 
     var body: some View {
         List {
@@ -129,10 +147,18 @@ struct BulletinNotificationSettingsView: View {
                 Button(role: .destructive) {
                     Task { await disablePush() }
                 } label: {
-                    Label(String(localized: "bulletin_push_disable_action"), systemImage: "bell.slash")
+                    LoadingButtonLabel(isLoading: isDisablingPush) {
+                        Label(String(localized: "bulletin_push_disable_action"), systemImage: "bell.slash")
+                    }
                 }
+                .disabled(isDisablingPush)
             } header: {
                 Text(String(localized: "bulletin_push_settings_header"))
+            } footer: {
+                if pushUpdateFailed {
+                    Text(String(localized: "settings_server_push_update_failed"))
+                        .foregroundStyle(.orange)
+                }
             }
         } else {
             Section {
@@ -153,10 +179,28 @@ struct BulletinNotificationSettingsView: View {
                     }
                 }
                 .disabled(isAskingPermission)
+
+                if Self.requiresSystemSettingsRoute(for: authStatus) {
+                    Button {
+                        openAppSettings()
+                    } label: {
+                        Label(String(localized: "bulletin_push_reopen_settings"), systemImage: "gear")
+                    }
+                }
             } header: {
                 Text(String(localized: "bulletin_push_settings_header"))
             } footer: {
-                Text(String(localized: "bulletin_push_footer"))
+                VStack(alignment: .leading, spacing: 4) {
+                    if Self.requiresSystemSettingsRoute(for: authStatus) {
+                        Text(String(localized: "permission_not_granted_tap_settings"))
+                            .foregroundStyle(.orange)
+                    }
+                    Text(String(localized: "bulletin_push_footer"))
+                    if pushUpdateFailed {
+                        Text(String(localized: "settings_server_push_update_failed"))
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
         }
     }
@@ -308,7 +352,13 @@ struct BulletinNotificationSettingsView: View {
             .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshAuthStatus()
         guard granted || authStatus == .provisional else { return }
-        appState.enablePushServer()
+        do {
+            try await appState.updateBulletinPushEnabled(true)
+            pushUpdateFailed = false
+        } catch {
+            pushUpdateFailed = true
+            return
+        }
         if !didInitialLoad {
             didInitialLoad = true
             await store.load()
@@ -316,8 +366,15 @@ struct BulletinNotificationSettingsView: View {
     }
 
     private func disablePush() async {
-        await appState.disablePushServer()
-        // pushEnabled flips reactively via @Default; no manual refresh.
+        isDisablingPush = true
+        defer { isDisablingPush = false }
+        do {
+            try await appState.updateBulletinPushEnabled(false)
+            pushUpdateFailed = false
+            // pushEnabled flips reactively via @Default; no manual refresh.
+        } catch {
+            pushUpdateFailed = true
+        }
     }
 
     private func refreshAuthStatus() async {
@@ -328,6 +385,37 @@ struct BulletinNotificationSettingsView: View {
     private func openAppSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
+    }
+
+    // MARK: - Permission routing
+
+    /// Whether the off-state section has to spell out the permission
+    /// problem and offer iOS Settings, instead of leaving 開啟公告推播 as
+    /// the only control.
+    ///
+    /// `.denied` is the one status the enable button cannot move on its
+    /// own: iOS never re-prompts after a refusal, so `requestAuthorization`
+    /// returns `false` without showing anything and `enablePush()` returns
+    /// at its guard — a tap with nothing to show for itself. The status row
+    /// and the Settings button in the on-state branch above are unreachable
+    /// from here, so this section has to carry both. `.notDetermined` still
+    /// prompts, and `.authorized`/`.provisional`/`.ephemeral` let the enable
+    /// path through, so none of them needs the detour.
+    ///
+    /// An unknown future status errs toward offering the route rather than
+    /// repeating the dead end, matching
+    /// `NotificationPermissionSettingsView.notificationPermissionStatus(for:)`,
+    /// which resolves the same `@unknown default` to `.notGranted`.
+    ///
+    /// `static`, over a plain value, so the decision can be pinned without
+    /// constructing a view, an environment or an `AppState` — the same move
+    /// that view's two mappings already made.
+    static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
+        switch status {
+        case .denied: return true
+        case .authorized, .provisional, .ephemeral, .notDetermined: return false
+        @unknown default: return true
+        }
     }
 
     // MARK: - Text helpers

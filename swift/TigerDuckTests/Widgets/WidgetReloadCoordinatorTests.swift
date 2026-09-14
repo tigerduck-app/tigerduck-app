@@ -14,11 +14,19 @@ struct WidgetReloadCoordinatorTests {
         func reloadAllTimelines() { count.withLock { $0 += 1 } }
     }
 
+    // Waits on the reload count rather than on fixed sleeps: on a loaded runner
+    // a 50 ms debounce can take far longer than 120 ms to fire, and a second
+    // request made before it fires cancels it — a correct coordinator then
+    // reads as broken.
+
     @Test func collapses_rapidCalls_intoOne() async throws {
         let fake = FakeReloader()
         let coordinator = WidgetReloadCoordinator(reloader: fake, debounceMs: 50)
         for _ in 0..<5 { coordinator.requestReload() }
-        try await Task.sleep(for: .milliseconds(120))
+        try await waitUntil { fake.callCount >= 1 }
+        // Several more debounce windows: long enough for any request that was
+        // not collapsed to have fired as well.
+        try await Task.sleep(for: .milliseconds(200))
         #expect(fake.callCount == 1)
     }
 
@@ -26,9 +34,8 @@ struct WidgetReloadCoordinatorTests {
         let fake = FakeReloader()
         let coordinator = WidgetReloadCoordinator(reloader: fake, debounceMs: 50)
         coordinator.requestReload()
-        try await Task.sleep(for: .milliseconds(120))
+        try await waitUntil { fake.callCount == 1 }
         coordinator.requestReload()
-        try await Task.sleep(for: .milliseconds(120))
-        #expect(fake.callCount == 2)
+        try await waitUntil { fake.callCount == 2 }
     }
 }

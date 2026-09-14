@@ -32,6 +32,23 @@ final class SDCalendarEvent {
         )
         return .school
     }
+
+    /// Whether this row is a whole day rather than a moment, so a time on
+    /// it ("00:00", or "12:00 AM" on a 12-hour clock) says nothing.
+    /// Holidays and term boundaries are days by construction. A school
+    /// calendar row is one when the feed gave a date with no time, which
+    /// `CalendarService` parses to midnight in Taipei. A Moodle deadline at
+    /// midnight is a real deadline and keeps its time.
+    var isAllDay: Bool {
+        switch source {
+        case .holiday, .semester:
+            return true
+        case .school:
+            return AppConstants.taipeiCalendar.startOfDay(for: date) == date
+        case .moodle, .exam, .system:
+            return false
+        }
+    }
 }
 
 enum EventSource: String, Codable {

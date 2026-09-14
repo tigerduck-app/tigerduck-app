@@ -245,9 +245,11 @@ struct MacCalendarView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            Text(event.date, style: .time)
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
+            if !event.isAllDay {
+                Text(event.date, style: .time)
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

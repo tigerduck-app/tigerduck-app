@@ -36,7 +36,6 @@ final class CloudSyncCoordinator {
     // MARK: Observable state
 
     private(set) var state: CloudSyncState = .disabled
-    private(set) var lastSyncedAt: Date?
     private(set) var lastError: String?
 
     // MARK: Shared instance
@@ -76,39 +75,68 @@ final class CloudSyncCoordinator {
         if Defaults[.cloudSyncEnabled] {
             state = .active
         }
-        let ts = Defaults[.cloudSyncLastSyncedAt]
-        lastSyncedAt = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
     }
 
-    // MARK: - Lifecycle serialization
+    // MARK: - Following the preference
 
-    /// enable()/disable() run multi-step async work with side effects (push
-    /// enable/disable, outbox clear). MainActor isolation does NOT serialize
-    /// across await suspension points, so an interleaved enable/disable could
-    /// leave the coordinator active while the push stack is disabled. Chain
-    /// every lifecycle transition through this task so they run to completion
-    /// one at a time — the last toggle wins.
+    /// Transitions run multi-step async work with side effects (push enable,
+    /// the preference PATCH, outbox clear). MainActor isolation does NOT
+    /// serialize across await suspension points, so an interleaved
+    /// enable/disable could leave the coordinator active while the push
+    /// stack is disabled. Every transition is chained through this task so
+    /// they run to completion one at a time.
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
-    private enum LifecycleOp { case enable, disable }
 
-    private func runLifecycle(_ op: LifecycleOp) async {
+    /// Brings the lifecycle in line with 同步課程資訊. `AppState` calls this on
+    /// every change to the preference, whichever writer made it.
+    ///
+    /// Queued behind any transition still running, and the preference is read
+    /// when its turn comes rather than when it was asked for, so a burst of
+    /// toggles lands on the last one. This coordinator never writes the
+    /// preference: it follows it, and a write from here would come straight
+    /// back through `AppState` as another change.
+    func followPreference() {
+        enqueueTransition { [weak self] in
+            await self?.matchPreference()
+        }
+    }
+
+    /// Sign-out, which has just turned the preference off: waits for the
+    /// lifecycle to follow it, and empties the outbox even when sync was
+    /// already off, so none of the departing account's queued edits reach
+    /// whoever signs in next.
+    func settleForSignOut() async {
+        await enqueueTransition { [weak self] in
+            await self?.matchPreference()
+            await self?.outbox.clearAll()
+        }.value
+    }
+
+    private func matchPreference() async {
+        switch (Defaults[.cloudSyncEnabled], state) {
+        case (true, .disabled):
+            await performEnable()
+        case (false, .active), (false, .enabling):
+            await performDisable()
+        default:
+            break
+        }
+    }
+
+    @discardableResult
+    private func enqueueTransition(
+        _ transition: @escaping @MainActor () async -> Void
+    ) -> Task<Void, Never> {
         let previous = lifecycleTask
-        let task = Task { @MainActor [weak self] in
+        let task = Task { @MainActor in
             await previous?.value
-            switch op {
-            case .enable: await self?.performEnable()
-            case .disable: await self?.performDisable()
-            }
+            await transition()
         }
         lifecycleTask = task
-        await task.value
+        return task
     }
 
     // MARK: - Enable
-
-    func enable() async {
-        await runLifecycle(.enable)
-    }
 
     private func performEnable() async {
         if case .enabling = state { return }
@@ -121,14 +149,11 @@ final class CloudSyncCoordinator {
             await pushCoordinator.registration.updateCloudSyncEnabled(true)
             state = .enabling(step: "sync")
             try await pullFullSync()
-            Defaults[.cloudSyncLastSyncedAt] = Date().timeIntervalSince1970
-            lastSyncedAt = Date()
         } catch {
             lastError = String(describing: error)
             AppLogger.captureError(error, context: ["phase": "cloudSync.enable"])
         }
 
-        Defaults[.cloudSyncEnabled] = true
         state = .active
         // Start even when the initial pull failed (e.g. enabled while
         // offline): the timer and observers are how sync self-heals, and
@@ -141,25 +166,20 @@ final class CloudSyncCoordinator {
 
     // MARK: - Disable
 
-    func disable() async {
-        await runLifecycle(.disable)
-    }
-
     private func performDisable() async {
         stop()
 
         // Leave the push stack up: the device stays registered with
-        // cloud_sync_enabled=false so bulletins and Live Activities keep
-        // working, and the Push Server toggle keeps telling the truth.
-        // (Relaunch re-enabled push anyway, so tearing it down here only
-        // ever produced a temporary mismatch.)
+        // cloud_sync_enabled=false so bulletins and operator pushes keep
+        // arriving — neither is gated on this flag. Live Activity is not in
+        // that list any more: spec §6 makes it unavailable with sync off, and
+        // the schedule this device uploads goes empty. (Relaunch re-enables
+        // the push stack anyway, so tearing it down here only ever produced a
+        // temporary mismatch.)
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
 
         await outbox.clearAll()
 
-        Defaults[.cloudSyncEnabled] = false
-        Defaults[.cloudSyncLastSyncedAt] = 0
-        lastSyncedAt = nil
         lastError = nil
         state = .disabled
     }
@@ -187,11 +207,6 @@ final class CloudSyncCoordinator {
             guard let self else { throw CancellationError() }
             try await self.execute(op)
         }
-
-        guard state == .active else { return }
-
-        Defaults[.cloudSyncLastSyncedAt] = Date().timeIntervalSince1970
-        lastSyncedAt = Date()
     }
 
     /// Called by the revision poller when the server revision is ahead.
@@ -366,11 +381,4 @@ final class CloudSyncCoordinator {
         if case PushAPIError.httpStatus(401, _) = error { return true }
         return false
     }
-}
-
-
-// MARK: - Defaults keys
-
-extension Defaults.Keys {
-    static let cloudSyncLastSyncedAt = Key<TimeInterval>("cloudSyncLastSyncedAt", default: 0)
 }

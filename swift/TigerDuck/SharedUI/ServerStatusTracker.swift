@@ -25,7 +25,9 @@ enum ServerKind: String, CaseIterable, Identifiable {
     }
 }
 
-enum ServerStatus: Equatable {
+/// `nonisolated`: a plain value with no actor affinity, compared from
+/// anywhere — `SyncStatusDot.summary` and its tests among them.
+nonisolated enum ServerStatus: Equatable {
     case unknown
     case ok
     case failed

@@ -1,12 +1,12 @@
 import SwiftUI
-#if os(iOS)
-import UIKit
-#endif
 
-/// Sub-page collecting the "miscellaneous" settings that used to live as a
-/// run of header-less Sections at the bottom of `SettingsView`'s
-/// "Other settings" block. Lives behind a NavigationLink in SettingsView so
-/// the top-level list stays short.
+/// Sub-page collecting the "miscellaneous" settings, behind a
+/// NavigationLink in `SettingsView`'s "Other settings" section next to the
+/// one into `LibrarySettingsView`, so the top-level list stays short. One
+/// Section per group: course font size, slider direction, API endpoint,
+/// course colours, then the links out. Android's page has the same groups
+/// plus vibration, screen rotation, colour theme and analytics, which iOS
+/// does not offer.
 struct OtherSettingsView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
@@ -24,12 +24,8 @@ struct OtherSettingsView: View {
     var body: some View {
         @Bindable var appState = appState
         List {
-            // Each row keeps its own Section so the cards stay visually
-            // separated — same arrangement the rows had when they lived
-            // directly in SettingsView under the "Other settings" header.
-            Section {
-                Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
-            }
+            // Each group keeps its own Section so the cards stay visually
+            // separated.
             Section {
                 NavigationLink {
                     FontSizeSettingsView()
@@ -52,43 +48,20 @@ struct OtherSettingsView: View {
             } footer: {
                 Text(String(localized: "settings_font_size_summary"))
             }
-            #if os(iOS)
-            // Flip-to-Library: only meaningful when the library feature is
-            // on (the gesture routes to the Library tab) and only available
-            // on iPhone (iPad use case is unclear and the issue scope says
-            // "phone only"). Mirrors the Android equivalent in
-            // `Settings → 圖書館 → 翻轉開啟圖書館 QR`.
-            //
-            // The row is rendered (not hidden) even when library is off so
-            // the user can see the preference exists and inspect its state
-            // before enabling library — hiding it caused users who turned
-            // library off-then-on to be silently re-armed with the default-
-            // true persisted value. The toggle is also kept enabled in that
-            // state so the user can opt out before flipping the library
-            // feature back on; the gesture is gated at fire time by
-            // `libraryFeatureEnabled` in the coordinator either way.
-            if UIDevice.current.userInterfaceIdiom == .phone && FlipDetector.isSupported {
-                Section {
-                    Toggle(
-                        String(localized: "settings_flip_to_library_title"),
-                        isOn: $appState.flipToLibraryEnabled
-                    )
-                } footer: {
-                    Text(String(localized: "settings_flip_to_library_summary"))
+            Section {
+                Toggle(String(localized: "settings_invert_slider_direction"), isOn: $appState.invertSliderDirection)
+            }
+            Section {
+                NavigationLink(String(localized: "settings_api_endpoint")) {
+                    DebugEndpointView()
                 }
             }
-            #endif
             Section {
                 Button {
                     showReassignColorsConfirm = true
                 } label: {
                     Text(String(localized: "settings_reset_course_colors"))
                         .foregroundStyle(.primary)
-                }
-            }
-            Section {
-                NavigationLink(String(localized: "settings_api_endpoint")) {
-                    DebugEndpointView()
                 }
             }
             Section {

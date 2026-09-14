@@ -1,7 +1,6 @@
 import Defaults
 import SwiftUI
 import SwiftData
-import CoreHaptics
 import UserNotifications
 
 struct SettingsView: View {
@@ -12,10 +11,8 @@ struct SettingsView: View {
     /// already turned it off -- popping back does not re-evaluate a parent
     /// body on its own.
     ///
-    /// It watches the preference rather than `appState.cloudSyncEnabled`
-    /// because three writers -- onboarding and both ends of
-    /// `CloudSyncCoordinator` -- set the preference directly, so the
-    /// AppState mirror is not guaranteed to agree with it.
+    /// The preference is the flag's only copy -- `appState.cloudSyncEnabled`
+    /// reads it too, through `CloudSyncPreference` -- so either would do.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
     @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
@@ -28,12 +25,6 @@ struct SettingsView: View {
     @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
-    @State private var showLibraryWarning = false
-    @State private var pendingLibraryEnable = false
-    @State private var warningFlash = false
-    @State private var libraryWarningTask: Task<Void, Never>?
-    @State private var hapticEngine: CHHapticEngine?
-    @State private var hapticPlayer: CHHapticPatternPlayer?
     @State private var notificationsAuthorized: Bool = true
     @State private var showOfficialWebsite = false
     @State private var showServerStatus = false
@@ -180,14 +171,12 @@ struct SettingsView: View {
             // MARK: - Notifications & Live Activity
             Section(String(localized: "settings_section_notifications")) {
                 if !cloudSyncEnabled {
-                    Link(destination: AppURLs.learnMoreBackend) {
-                        Label(
-                            String(localized: "settings_sync_off_notifications_warning"),
-                            systemImage: "icloud.slash"
-                        )
-                        .foregroundStyle(.orange)
-                        .font(.callout)
-                    }
+                    Label(
+                        String(localized: "settings_notifications_need_course_sync"),
+                        systemImage: "icloud.slash"
+                    )
+                    .foregroundStyle(.orange)
+                    .font(.callout)
                 }
 
                 #if os(iOS)
@@ -210,21 +199,34 @@ struct SettingsView: View {
                     NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
                         AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
                     }
+                    // Greyed out with course sync off: the backend sends
+                    // assignment reminders only to devices that sync, so
+                    // nothing set here would take effect.
+                    .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_nav_title")) {
                         LiveActivitySettingsView(store: appState.liveActivityPreferences)
                     }
-                    NavigationLink(String(localized: "settings_push_server_nav_label")) {
-                        PushServerSettingsView()
-                    }
+                    // Same reason as the row above: Live Activity itself is
+                    // unavailable with course sync off (spec §6), so this
+                    // screen has nothing to take effect either.
+                    .disabled(!cloudSyncEnabled)
+                }
+                // Owner's ruling, 2026-09-12 (spec §6, item 4): third row,
+                // always enabled — it reads OS-level permission state
+                // directly, which stays meaningful whether or not course
+                // sync is on. iPhone/iPad only; macOS has no equivalent.
+                NavigationLink(String(localized: "notification_permission_settings_nav_title")) {
+                    NotificationPermissionSettingsView()
                 }
             }
 
             // MARK: - Other settings
-            // Library toggle keeps its position at the top of the
-            // "Other settings" group; the rest of the miscellany now lives
-            // behind a NavigationLink to `OtherSettingsView`.
+            // Two sub-pages: the library switches, and the rest of the
+            // miscellany.
             Section(String(localized: "settings_section_other_settings")) {
-                Toggle(String(localized: "settings_library_related_features"), isOn: libraryToggleBinding)
+                NavigationLink(String(localized: "settings_library_related_features")) {
+                    LibrarySettingsView()
+                }
                 NavigationLink(String(localized: "settings_section_other_settings")) {
                     OtherSettingsView()
                 }
@@ -295,6 +297,9 @@ struct SettingsView: View {
                 #if os(iOS)
                 NavigationLink("Triggers") {
                     TriggersDebugView()
+                }
+                NavigationLink("TigerSync status") {
+                    TigerSyncStatusView()
                 }
                 #endif
                 // Bypass `.screenCaptureProtected(...)` system-wide for
@@ -374,50 +379,6 @@ struct SettingsView: View {
                 }
             )
         }
-        .overlay {
-            if showLibraryWarning {
-                LibraryWarningOverlay(
-                    isFlashing: $warningFlash,
-                    onCancel: {
-                        pendingLibraryEnable = false
-                        showLibraryWarning = false
-                        warningFlash = false
-                    },
-                    onConfirm: {
-                        pendingLibraryEnable = false
-                        appState.libraryFeatureEnabled = true
-                        // Auto-add library tab if there's room
-                        if !appState.configuredTabs.contains(.library),
-                           appState.configuredTabs.count < 4 {
-                            appState.configuredTabs.append(.library)
-                        }
-                        showLibraryWarning = false
-                        warningFlash = false
-                    }
-                )
-                .onAppear {
-                    warningFlash = false
-                    if !reduceMotion {
-                        withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
-                            warningFlash = true
-                        }
-                    }
-                    triggerWarningVibration()
-                }
-                .onDisappear {
-                    hapticPlayer = nil
-                    hapticEngine?.stop()
-                    hapticEngine = nil
-                }
-            }
-        }
-        .onDisappear {
-            // Cancel any pending warning-overlay delay so it can't fire
-            // (and the countdown loop in LibraryWarningOverlay can't try to
-            // mutate state on a torn-down view) after Settings closes.
-            libraryWarningTask?.cancel()
-            libraryWarningTask = nil
-        }
         #if os(iOS)
         // Manual-check-result alert — covers the "you're up to date" and
         // "couldn't reach the App Store" outcomes. The .offered case is
@@ -474,52 +435,6 @@ struct SettingsView: View {
         }
     }
     #endif
-
-    private var libraryToggleBinding: Binding<Bool> {
-        Binding(
-            get: { appState.libraryFeatureEnabled || pendingLibraryEnable },
-            set: { newValue in
-                if newValue {
-                    guard !showLibraryWarning else { return }
-                    pendingLibraryEnable = true
-                    libraryWarningTask?.cancel()
-                    libraryWarningTask = Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(350))
-                        guard !Task.isCancelled else { return }
-                        showLibraryWarning = true
-                    }
-                } else {
-                    pendingLibraryEnable = false
-                    appState.libraryFeatureEnabled = false
-                    appState.configuredTabs.removeAll { AppFeature.libraryRelatedFeatures.contains($0) }
-                }
-            }
-        )
-    }
-
-    private func triggerWarningVibration() {
-        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
-        do {
-            let engine = try CHHapticEngine()
-            try engine.start()
-            self.hapticEngine = engine
-            let event = CHHapticEvent(
-                eventType: .hapticContinuous,
-                parameters: [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
-                ],
-                relativeTime: 0,
-                duration: 1.0
-            )
-            let pattern = try CHHapticPattern(events: [event], parameters: [])
-            let player = try engine.makePlayer(with: pattern)
-            self.hapticPlayer = player
-            try player.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Silently fail on devices without haptic support
-        }
-    }
 
     #if os(iOS)
     /// "Check for Updates" row. Tapping forces an iTunes Lookup ignoring
@@ -739,127 +654,5 @@ struct SettingsView: View {
         let status = settings.authorizationStatus
         let authorized = (status == .authorized || status == .provisional || status == .ephemeral)
         await MainActor.run { notificationsAuthorized = authorized }
-    }
-}
-
-// MARK: - Library Warning Overlay
-
-private struct LibraryWarningOverlay: View {
-    @Binding var isFlashing: Bool
-    let onCancel: () -> Void
-    let onConfirm: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var countdown = 5
-    @State private var confirmEnabled = false
-
-    private var confirmLabel: String {
-        if confirmEnabled {
-            return String(localized: "settings_library_warning_confirm")
-        }
-        let format = String(localized: "settings_library_warning_confirm_countdown")
-        return String(format: format, countdown)
-    }
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.45)
-                .ignoresSafeArea()
-
-            VStack(spacing: 20) {
-                // Flashing warning title
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                    Text(String(localized: "settings_library_warning_title"))
-                }
-                .font(.headline.bold())
-                .foregroundStyle(.red)
-                .opacity(isFlashing ? 0.15 : 1.0)
-
-                JustifiedText(
-                    String(localized: "settings_library_warning_message"),
-                    textStyle: .subheadline
-                )
-
-                buttons
-            }
-            .padding(24)
-            .modifier(GlassDialogSurface())
-            .padding(.horizontal, 32)
-        }
-        .transition(.opacity)
-        .task {
-            for i in stride(from: 4, through: 0, by: -1) {
-                try? await Task.sleep(for: .seconds(1))
-                countdown = i
-            }
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
-                confirmEnabled = true
-            }
-        }
-    }
-
-    /// Liquid Glass buttons on iOS 26; the hand-rolled red / grey pills
-    /// stay for iOS 18–25 where `.glass` does not exist.
-    @ViewBuilder
-    private var buttons: some View {
-        if #available(iOS 26, *) {
-            VStack(spacing: 10) {
-                Button(action: onConfirm) {
-                    Text(confirmLabel)
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(.red)
-                .controlSize(.large)
-                .disabled(!confirmEnabled)
-
-                Button(action: onCancel) {
-                    Text(String(localized: "settings_library_warning_dismiss"))
-                        .font(.body.weight(.medium))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.glass)
-                .controlSize(.large)
-            }
-        } else {
-            VStack(spacing: 10) {
-                Button(action: onConfirm) {
-                    Text(confirmLabel)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            confirmEnabled ? Color.red : Color.red.opacity(0.35),
-                            in: RoundedRectangle(cornerRadius: 10)
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(!confirmEnabled)
-
-                Button(action: onCancel) {
-                    Text(String(localized: "settings_library_warning_dismiss"))
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-}
-
-/// Dialog surface: Liquid Glass on iOS 26, regular material before it.
-private struct GlassDialogSurface: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: 28))
-        } else {
-            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
-        }
     }
 }

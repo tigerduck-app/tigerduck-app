@@ -21,8 +21,8 @@ nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
     }
 }
 
-/// Reflects a resolved `LiveActivitySnapshot` as at most one running
-/// `TigerDuckActivityAttributes` activity.
+/// Reflects a resolved `LiveActivitySnapshot` as one running
+/// `TigerDuckActivityAttributes` activity among whatever else is running.
 ///
 /// Scenario-scoped `activityId` (`snapshot.composedActivityId`) is the
 /// single source of truth for identity. It keeps the on-device path and
@@ -31,11 +31,22 @@ nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
 /// the server can start the inClass one without colliding with the
 /// classPreparing one that iOS already has running.
 ///
-/// The coordinator owns the client-side single-activity invariant. ActivityKit
-/// does not treat `staleDate` as an end signal, and server-started activities
-/// are not guaranteed to disappear unless an explicit end path runs. Every
-/// foreground refresh therefore prunes expired activities and ends any
-/// non-current activity before starting or updating the resolved target.
+/// 這個 coordinator **不**維持「同時只有一個活動」的 invariant。ActivityKit
+/// 不把 `staleDate` 當結束訊號，所以每次前景刷新仍會結束倒數已過的活動、
+/// 以及同一個 `activityId` 的重複副本；但「不是當下解析目標」**不是**結束理由。
+///
+/// 這一點翻過一次：d7843a2（2026-04-22）移除 prune，理由是伺服器
+/// push-to-start 會預先啟動未來時段的 classPreparing 活動，而 resolver
+/// 一次只回傳單一 snapshot，導致 App 一進前景就把預排的活動全部殺掉；
+/// b8d8ca9（2026-04-24）兩天後又整段加回來以解決「過期活動賴著不走」。
+/// 現行設計同時滿足兩者：逾期與重複照樣清理，非當前目標則放著不動，
+/// 由伺服器排定的 end job 或其自身的倒數收尾。即時動態不可用時（spec §6，
+/// `effectiveLiveActivityEnabled` 為 false）則一個不留，伺服器啟動的也一樣。
+/// 決策邏輯抽在 `instanceIdsToEnd`（可用時即 `expiredInstanceIds`）與
+/// `duplicateInstanceIdsToEnd`，由 `LiveActivityCoordinatorTests` 釘住。詳見 spec §4.3。
+/// 但釘住的只是這些決策函式本身，不是 `pruneRunningActivities` 這個迴圈：
+/// 迴圈裡若被插回一段 `else if !isCurrentTarget { await end(...) }`，
+/// 這些測試依然全線通過——迴圈怎麼使用這些函式的結果，測試套件看不到。
 @MainActor
 final class LiveActivityCoordinator {
     private let store: SharedSnapshotStore
@@ -47,9 +58,18 @@ final class LiveActivityCoordinator {
     /// promise that an ended activity has left `Activity.activities` by the
     /// time `end` returns, so a survivor search that trusted
     /// `activityState` alone could pick a copy that is already on its way
-    /// out. Pruned of ids ActivityKit no longer lists.
+    /// out. Pruned of ids ActivityKit no longer lists, on every pass of
+    /// `pruneRunningActivities` — including the passes that run while Live
+    /// Activity is unavailable, which is when the ending happens wholesale.
     private var endedActivityIds: Set<String> = []
     private var updateTokenRegistrationHandler: (@Sendable (LiveActivityUpdateTokenRegistration) async -> Void)?
+    /// Whether Live Activity may run at all right now —
+    /// `effectiveLiveActivityEnabled`, supplied by `AppState`. The prune and
+    /// the activity observer ask it on every pass, so an activity the server
+    /// starts after the rule turned off, from a schedule uploaded before, is
+    /// ended when it shows up instead of running to its own countdown.
+    /// `true` until `AppState` installs the real answer.
+    private var isAvailable: () -> Bool = { true }
 
     init(store: SharedSnapshotStore = SharedSnapshotStore()) {
         self.store = store
@@ -72,11 +92,18 @@ final class LiveActivityCoordinator {
         updateTokenRegistrationHandler = handler
     }
 
+    func setAvailabilityProvider(_ provider: @escaping () -> Bool) {
+        isAvailable = provider
+    }
+
     /// Apply the resolved snapshot. Starts or updates the single activity
-    /// matching the target id and ends stale or unrelated activities.
+    /// matching the target id, and ends only activities that are expired or
+    /// duplicates; an activity that is not the current target is left running.
+    /// While Live Activity is unavailable it ends every activity instead, and
+    /// starts none.
     func apply(snapshot: LiveActivitySnapshot?) async {
         let now = AppClock.now()
-        await pruneRunningActivities(keeping: snapshot?.composedActivityId, now: now)
+        await pruneRunningActivities(now: now)
 
         // Persist the snapshot to the App Group AFTER the system gate so
         // a user with Live Activities disabled cannot leave a stale
@@ -90,9 +117,19 @@ final class LiveActivityCoordinator {
             return
         }
 
-        guard let snapshot else {
+        // Unavailable, the prune above has already ended everything, and the
+        // resolver hands back nil anyway; this keeps a snapshot resolved just
+        // before the switch flipped from starting a new activity after it.
+        guard let snapshot, isAvailable() else {
             store.writeSnapshot(nil)
-            cancelAutomaticEndTasks()
+            // Nothing to cancel here: `pruneRunningActivities` above already
+            // cancelled every automatic-end timer except the survivors'
+            // (`except: retainedTaskIds`), and those survivors are running
+            // activities this coordinator is deliberately leaving alone —
+            // not being the current target does not mean "end it". An
+            // unconditional `cancelAutomaticEndTasks()` here would strand
+            // every one of them with no timer left to end it. Do not add
+            // it back.
             return
         }
 
@@ -164,12 +201,21 @@ final class LiveActivityCoordinator {
             for await activity in Activity<TigerDuckActivityAttributes>.activityUpdates {
                 guard let self else { return }
                 let now = AppClock.now()
-                await pruneRunningActivities(keeping: nil, now: now, expiredOnly: true)
+                await pruneRunningActivities(now: now)
                 // A push-to-start twin of an activity this app already
                 // started is ended inside the prune; nothing below is for it.
                 if endedActivityIds.contains(activity.id) { continue }
+                // Live Activity unavailable (spec §6): the server can still
+                // start one from a schedule this device uploaded before the
+                // rule turned off. End it on arrival, and never register its
+                // update token — the prune above may not have listed it yet.
+                guard isAvailable() else {
+                    await end(activity, reason: "Live Activity unavailable")
+                    continue
+                }
                 let snapshot = activity.content.state.snapshot
-                if snapshot.countdownTarget.map({ $0 <= now }) == true {
+                let facts = Self.makeFacts(activity)
+                if Self.expiredInstanceIds([facts], now: now).contains(facts.instanceId) {
                     await end(activity, reason: "observed expired activity")
                 } else {
                     observeUpdateToken(for: activity)
@@ -183,25 +229,40 @@ final class LiveActivityCoordinator {
         }
     }
 
-    private func pruneRunningActivities(
-        keeping targetId: String?,
-        now: Date,
-        expiredOnly: Bool = false
-    ) async {
-        await endDuplicateActivities(now: now)
+    private func pruneRunningActivities(now: Date) async {
+        let available = isAvailable()
+        // 收斂 `endedActivityIds`：只留下 ActivityKit 還列得出來的副本。
+        // 必須在這裡、在可用與否的判斷之外做——`end(_:reason:)` 每結束一個
+        // 就記一筆，包含不可用時把整批掃掉的那條路，而唯一會收斂它的
+        // `endDuplicateActivities` 只在可用時才呼叫。放在重複處理之前，
+        // 沿用它原本的時機：這一輪剛結束的副本即使已從清單消失，仍留在
+        // 集合裡到下一輪，觀察者迴圈的 `contains` 才擋得住它。
+        endedActivityIds = endedActivityIds.intersection(
+            Activity<TigerDuckActivityAttributes>.activities.map(\.id)
+        )
+        // 不可用時下面會全部結束；先處理重複，只會把 token observer 重新指向
+        // 一個馬上就要結束的留存者。
+        if available {
+            await endDuplicateActivities(now: now)
+        }
+        // 一次取樣後重複使用。分兩次讀 `Activity.activities` 會讓結束判定
+        // 與實際迴圈看到不同的清單。
+        let listed = Activity<TigerDuckActivityAttributes>.activities
+        let doomed = Set(
+            Self.instanceIdsToEnd(listed.map(Self.makeFacts), now: now, isAvailable: available)
+        )
         var retainedTaskIds: Set<String> = []
-        for activity in Activity<TigerDuckActivityAttributes>.activities {
-            // Ended above and still listed: `end(_:reason:)` on it would
-            // drop the keeper's observer, which shares its activityId.
+        for activity in listed {
+            // 上面已經結束、但仍被列出的副本：對它呼叫 `end(_:reason:)`
+            // 會把留存者的 observer 一起拔掉，兩者共用同一個 activityId。
             if endedActivityIds.contains(activity.id) { continue }
             let activityId = activity.attributes.activityId
-            let isExpired = activity.content.state.snapshot.countdownTarget.map { $0 <= now } ?? false
-            let isCurrentTarget = targetId.map { $0 == activityId } ?? false
 
-            if isExpired {
-                await end(activity, reason: "countdown expired")
-            } else if !expiredOnly, !isCurrentTarget {
-                await end(activity, reason: "non-current activity")
+            if doomed.contains(activity.id) {
+                await end(
+                    activity,
+                    reason: available ? "countdown expired" : "Live Activity unavailable"
+                )
             } else {
                 retainedTaskIds.insert(activityId)
                 observeUpdateToken(for: activity)
@@ -214,6 +275,91 @@ final class LiveActivityCoordinator {
         }
         cancelAutomaticEndTasks(except: retainedTaskIds)
         cancelUpdateTokenTasks(except: retainedTaskIds)
+    }
+
+    // MARK: - 純決策（不接觸 ActivityKit，供單元測試使用）
+
+    /// 把一個 ActivityKit 活動壓成純事實值。
+    nonisolated static func makeFacts(
+        _ activity: Activity<TigerDuckActivityAttributes>
+    ) -> RunningActivityFacts {
+        RunningActivityFacts(
+            instanceId: activity.id,
+            activityId: activity.attributes.activityId,
+            countdownTarget: activity.content.state.snapshot.countdownTarget,
+            hasPushToken: activity.pushToken != nil,
+            isLive: activity.activityState == .active
+                || activity.activityState == .stale
+        )
+    }
+
+    /// `prune` 需要知道的、關於一個執行中活動的全部事實。
+    ///
+    /// 從 ActivityKit 抬起來成為普通值型別，讓下面的決策函式可以在沒有
+    /// ActivityKit 的環境下被單元測試——與 `ScheduleSyncService.buildEvents`
+    /// 相同的純工廠慣例。
+    nonisolated struct RunningActivityFacts: Equatable, Sendable {
+        /// `Activity.id`——同一個 `activityId` 可能有多個副本。
+        let instanceId: String
+        /// `attributes.activityId`——場景範圍的身分。
+        let activityId: String
+        let countdownTarget: Date?
+        /// APNs 是否已為這個副本鑄出 update token。
+        let hasPushToken: Bool
+        /// `activityState` 是 `.active` 或 `.stale`。
+        let isLive: Bool
+    }
+
+    /// 應當因倒數已過而結束的 `Activity.id`。
+    ///
+    /// 只看倒數，不看「是不是當下解析出來的目標」。伺服器 push-to-start
+    /// 會預先啟動未來時段的活動，而 resolver 一次只回傳單一 snapshot，
+    /// 所以用「非當前目標」當結束條件會把預排的活動全部殺掉。詳見 spec §4.3。
+    nonisolated static func expiredInstanceIds(
+        _ facts: [RunningActivityFacts],
+        now: Date
+    ) -> [String] {
+        facts
+            .filter { $0.countdownTarget.map { $0 <= now } ?? false }
+            .map(\.instanceId)
+    }
+
+    /// prune 應當結束的 `Activity.id`。
+    ///
+    /// 即時動態可用時，就是 `expiredInstanceIds`。不可用時——同步課程資訊關閉，
+    /// 或使用者自己的即時動態開關關閉（`effectiveLiveActivityEnabled`）——
+    /// 則是全部，連伺服器以 push-to-start 預先啟動、倒數還沒到的也算在內：
+    /// 伺服器是照裝置先前上傳的排程啟動它們的，不會替這條規則把關。spec §6。
+    nonisolated static func instanceIdsToEnd(
+        _ facts: [RunningActivityFacts],
+        now: Date,
+        isAvailable: Bool
+    ) -> [String] {
+        guard isAvailable else { return facts.map(\.instanceId) }
+        return expiredInstanceIds(facts, now: now)
+    }
+
+    /// 同一個 `activityId` 有多份 live 副本時，應當結束的那些 `Activity.id`。
+    ///
+    /// 留下的是 APNs 已鑄出 update token 的那一份——它才是伺服器搆得到的；
+    /// 都沒有 token 時退回 `instanceId` 最小者，讓結果可預測。
+    nonisolated static func duplicateInstanceIdsToEnd(
+        _ facts: [RunningActivityFacts]
+    ) -> [String] {
+        var result: [String] = []
+        let live = facts.filter(\.isLive)
+        for (_, copies) in Dictionary(grouping: live, by: \.activityId)
+        where copies.count > 1 {
+            guard let keeper = copies.first(where: \.hasPushToken)
+                ?? copies.min(by: { $0.instanceId < $1.instanceId })
+            else { continue }
+            result.append(
+                contentsOf: copies
+                    .filter { $0.instanceId != keeper.instanceId }
+                    .map(\.instanceId)
+            )
+        }
+        return result.sorted()
     }
 
     /// Keeps one copy of every `activityId` and ends the rest.
@@ -235,22 +381,33 @@ final class LiveActivityCoordinator {
     /// keys instead of re-pointing them.
     private func endDuplicateActivities(now: Date) async {
         let listed = Activity<TigerDuckActivityAttributes>.activities
-        endedActivityIds = endedActivityIds.intersection(listed.map(\.id))
+        // `isLive` 的過濾在這裡做完，下面挑 keeper 時才不會選到已經
+        // dismissed 的副本。`duplicateInstanceIdsToEnd` 內部也會再濾一次，
+        // 但那是為了讓純函式自身的契約完整，兩者不衝突。
         let live = listed.filter {
             ($0.activityState == .active || $0.activityState == .stale)
                 && !endedActivityIds.contains($0.id)
         }
-        for (activityId, copies) in Dictionary(grouping: live, by: { $0.attributes.activityId })
-        where copies.count > 1 {
-            let keeper = copies.first { $0.pushToken != nil }
-                ?? copies.min { $0.id < $1.id }!
-            for copy in copies where copy.id != keeper.id {
+        let toEnd = Set(Self.duplicateInstanceIdsToEnd(live.map(Self.makeFacts)))
+        guard !toEnd.isEmpty else { return }
+
+        for (activityId, copies) in Dictionary(
+            grouping: live, by: { $0.attributes.activityId }
+        ) {
+            let doomed = copies.filter { toEnd.contains($0.id) }
+            guard !doomed.isEmpty,
+                  let keeper = copies.first(where: { !toEnd.contains($0.id) })
+            else { continue }
+            for copy in doomed {
                 logger.info(
                     "Ending duplicate Live Activity id=\(activityId, privacy: .public) reason=already running"
                 )
                 endedActivityIds.insert(copy.id)
                 await copy.end(nil, dismissalPolicy: .immediate)
             }
+            // observer 與 end timer 都以 activityId 為鍵，可能仍指向剛消失的
+            // 副本；重新指向留存者，否則它的 token 永遠不會註冊，伺服器既
+            // 結束不了也看不到它在跑。
             activityUpdateTokenTasks[activityId]?.cancel()
             activityUpdateTokenTasks[activityId] = nil
             observeUpdateToken(for: keeper)
@@ -309,6 +466,13 @@ final class LiveActivityCoordinator {
         logger.info(
             "Ending Live Activity id=\(activityId, privacy: .public) reason=\(reason, privacy: .public)"
         )
+        // Recorded before the await, as the duplicate path already does:
+        // ActivityKit can still list a copy this coordinator has ended, and
+        // an unrecorded one is picked up again — `apply` would update the
+        // dead copy instead of starting a fresh activity, and the prune would
+        // re-register its update token, which is how the server decides an
+        // activity is still running.
+        endedActivityIds.insert(activity.id)
         await activity.end(nil, dismissalPolicy: .immediate)
         automaticEndTasks[activityId]?.cancel()
         automaticEndTasks[activityId] = nil
@@ -371,7 +535,10 @@ final class LiveActivityCoordinator {
         tokenData: Data,
         snapshot: LiveActivitySnapshot
     ) async {
-        guard let updateTokenRegistrationHandler else { return }
+        // Never while Live Activity is unavailable: a registered token is
+        // what lets the server keep pushing to an activity this device is
+        // ending.
+        guard let updateTokenRegistrationHandler, isAvailable() else { return }
         let tokenHex = tokenData.hexEncodedString()
         await updateTokenRegistrationHandler(
             LiveActivityUpdateTokenRegistration(

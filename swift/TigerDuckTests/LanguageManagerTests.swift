@@ -50,5 +50,14 @@ final class LanguageManagerTests: XCTestCase {
         let tags = LanguageManager.supportedLocaleTags()
         XCTAssertTrue(tags.contains("en"))
         XCTAssertTrue(tags.contains("zh-Hant"))
+        XCTAssertTrue(tags.contains("zh-Hans"))
+        XCTAssertTrue(tags.contains("ja"))
+        XCTAssertFalse(tags.contains("Base"))
+    }
+
+    func test_displayName_namesEachLanguageInItself() {
+        XCTAssertEqual(LanguageManager.displayName(for: "ja"), "日本語")
+        XCTAssertEqual(LanguageManager.displayName(for: "de"), "Deutsch")
+        XCTAssertEqual(LanguageManager.displayName(for: "fr"), "Français")
     }
 }

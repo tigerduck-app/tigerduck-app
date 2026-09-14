@@ -248,7 +248,7 @@ struct OnboardingView: View {
                     }
 
                     VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                        Link(destination: AppURLs.learnMoreBackend) {
+                        Link(destination: AppURLs.learnMoreTigerSync) {
                             Label(String(localized: "settings_learn_more_backend"), systemImage: "server.rack")
                                 .font(.caption)
                         }
@@ -266,6 +266,8 @@ struct OnboardingView: View {
             },
             actions: {
                 Button(String(localized: "action_next")) {
+                    // `AppState` acts on this like on any other change to the
+                    // preference (`CloudSyncPreference`).
                     Defaults[.cloudSyncEnabled] = syncEnabled
                     let nextPage = showsWatchPage ? Page.watchOS.rawValue : Page.login.rawValue
                     withAnimation(reduceMotion ? nil : .default) { currentPage = nextPage }
@@ -572,11 +574,11 @@ struct OnboardingView: View {
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         await refreshNotificationStatus()
-        // Onboarding is the user's first opt-in to notifications; flip the
-        // `pushServerEnabled` flag so PushCoordinator registers for remote
-        // notifications and the server sync runs. Without this the user
-        // would have to find Settings → Notifications later to actually
-        // start receiving server-backed pushes.
+        // Onboarding is the user's first opt-in to notifications; bring the
+        // push stack up now so PushCoordinator registers for remote
+        // notifications and the server sync runs. Without this the device
+        // would not register until the next launch, and nothing
+        // server-backed would arrive in the meantime.
         guard granted else { return }
         appState.enablePushServer()
     }

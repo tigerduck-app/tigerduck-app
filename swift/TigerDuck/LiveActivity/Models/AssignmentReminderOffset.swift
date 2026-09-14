@@ -50,20 +50,4 @@ nonisolated enum AssignmentReminderOffset: String, CaseIterable, Identifiable, C
         case .min5:  return String(localized: "assignment_reminder_offset_5m")
         }
     }
-
-    /// Copy template used in the local notification body. Body strings live in
-    /// Localization/Localizable.strings under `notification_assignment_reminder_body_*` keys.
-    func notificationBody(assignmentTitle: String, courseName: String) -> String {
-        let key: String
-        switch self {
-        case .hr48: key = "notification_assignment_reminder_body_48h"
-        case .hr24: key = "notification_assignment_reminder_body_24h"
-        case .hr16: key = "notification_assignment_reminder_body_16h"
-        case .hr8, .hr4, .hr2, .hr1: key = "notification_assignment_reminder_body_multi_hour"
-        case .min30: key = "notification_assignment_reminder_body_30m"
-        case .min15, .min10: key = "notification_assignment_reminder_body_15m"
-        case .min5: key = "notification_assignment_reminder_body_5m"
-        }
-        return String(format: String(localized: String.LocalizationValue(key)), courseName, assignmentTitle)
-    }
 }

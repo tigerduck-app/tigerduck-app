@@ -31,7 +31,39 @@ extension AppState {
         ClassroomAbbrCacheMigration.runIfNeeded()
         CustomNameCacheMigration.runIfNeeded()
         SemesterAttributionCacheMigration.runIfNeeded()
+        #if os(iOS)
+        // Synchronous like the three above, though nothing at launch reads
+        // what it writes any more: registration is no longer gated on a
+        // stored flag, and the two delivery preferences it repairs
+        // (`bulletinPushEnabled`, `serverPushUserOptOut`) are read when a
+        // register request is built — after an APNs round trip, and re-sent
+        // on every later register, so a late write would self-heal anyway.
+        // Kept inline because it costs three UserDefaults reads and there
+        // is nothing to await. iOS only: bulletin push has no macOS surface
+        // (see Features/Bulletins), so a Mac build never wrote the
+        // ambiguous flag state this disambiguates.
+        BulletinPushOptOutMigration.runIfNeeded()
+        #endif
         Task(priority: .utility) { @MainActor in
+            #if os(iOS)
+            // First, because it is purely local: it must not wait behind the
+            // Moodle migration's network refresh while the reminders it
+            // removes are still queued to fire.
+            //
+            // iOS only: `PendingReminderPurgeMigration.swift` is not in
+            // project.pbxproj's `INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]`
+            // allow-list (macOS excludes all *.swift by default and
+            // opts specific files back in), matching the deleted
+            // AssignmentReminderScheduler it cleans up after — macOS never
+            // scheduled `LA-reminder-*` requests, so there is nothing for
+            // it to purge, and the type is invisible to a macOS build.
+            await PendingReminderPurgeMigration.runIfNeeded()
+            // Not in the macOS allow-list either. It queues and returns: the
+            // routine runs on the notification-settings push queue.
+            NotificationSettingsSeedMigration.runIfNeeded { onSettled in
+                self.reconcileNotificationSettings(onSettled: onSettled)
+            }
+            #endif
             await MoodleTokenMigration.runIfNeeded()
             HomeSectionTitleMigration.runIfNeeded()
             // Add future migrations here in sequence. Anything that deletes

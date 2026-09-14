@@ -1,18 +1,23 @@
-#if os(iOS)
 import Foundation
 import Defaults
+#if os(iOS)
 import UIKit
+#else
+import AppKit
+#endif
 
 /// Owns the "newer build on App Store?" check and the sheet-presentation
 /// flags it feeds. Lives as a child of ``AppState`` so SwiftUI views can
 /// observe `pendingUpdate` / `pendingWhatsNew` through the same
 /// `@Environment(AppState.self)` they already use for everything else.
 ///
-/// **Why iOS-only**: the Mac App Store surfaces its own Updates tab,
-/// and the iTunes Lookup endpoint indexes iOS App Store records only —
-/// running this on Mac would either silently no-op or deep-link into
-/// the iPhone App Store from inside a Mac binary, both of which are
-/// worse than no prompt.
+/// **On the Mac**: the lookup answers for the bundle id with the one App
+/// Store record a universal purchase has, and carries no separate Mac
+/// version. The Mac is built from the same target with the same marketing
+/// version and ships alongside the iPhone release, so that version stands
+/// in for its own, and Update Now opens the record's page in the Mac App
+/// Store rather than Safari. What's New stays an iPhone surface; the Mac
+/// answers with an alert (`MacUpdateCheck.swift`) instead of the sheets.
 ///
 /// **Cross-platform alignment**: the gating constants mirror Android's
 /// `UpdatePromptGate.COOLDOWN_MS` (7 days, same available version after
@@ -215,9 +220,12 @@ final class UpdateNotifyCoordinator {
     /// the user's first home screen the instant they complete the
     /// onboarding hand-off. Calls during onboarding no-op silently; the
     /// `MainTabView.onAppear` post-onboarding kicks off the first real
-    /// check.
+    /// check. The Mac has no onboarding sheet to strand a prompt behind,
+    /// so it checks from the first launch, signed in or not.
     func checkInBackground() {
+        #if os(iOS)
         guard Defaults[.hasCompletedOnboarding] else { return }
+        #endif
         #if DEBUG
         // Debug "Triggers" page can request a synthetic update prompt
         // on next launch — consumed once and surfaced before any real
@@ -318,7 +326,11 @@ final class UpdateNotifyCoordinator {
         guard let pending = pendingUpdate else { return }
         switch action {
         case .updateNow:
+            #if os(iOS)
             UIApplication.shared.open(pending.appStoreURL, options: [:], completionHandler: nil)
+            #else
+            NSWorkspace.shared.open(pending.appStoreURL)
+            #endif
             // Clear the prompt immediately. The next foreground re-runs
             // `checkInBackground()` and only re-arms if `latest >
             // installed` still holds — once the App Store install
@@ -345,6 +357,7 @@ final class UpdateNotifyCoordinator {
         case skipThisVersion
     }
 
+    #if os(iOS)
     // MARK: - Sheet binding
 
     /// Single sheet item consumed by ``updateNotifySheetHost()``. Both
@@ -380,6 +393,7 @@ final class UpdateNotifyCoordinator {
             pendingUpdate = nil
         }
     }
+    #endif
 
     // MARK: - Private
 
@@ -520,7 +534,12 @@ private extension URL {
         // Build through URLComponents so a future trackId edit can't
         // produce a malformed literal that crashes the open call.
         var components = URLComponents()
+        #if os(macOS)
+        // Straight into the Mac App Store, rather than Safari first.
+        components.scheme = "macappstore"
+        #else
         components.scheme = "https"
+        #endif
         components.host = "apps.apple.com"
         components.path = "/app/id\(trackId)"
         // URLComponents always returns non-nil here for a well-formed
@@ -529,4 +548,3 @@ private extension URL {
         return components.url ?? URL(string: "https://apps.apple.com/app/id\(trackId)")!
     }
 }
-#endif
