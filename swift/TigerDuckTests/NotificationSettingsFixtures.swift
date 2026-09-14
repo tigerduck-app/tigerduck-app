@@ -1,7 +1,8 @@
 // Fixtures shared by the suites that drive `NotificationSettingsSync.reconcile`
 // against a real `LiveActivityPreferencesStore` and `SettingsAPIStub`:
-// `NotificationSettingsReconcileTests`, `NotificationSettingsSeedMigrationTests`
-// and the read tests in `NotificationSettingsPushQueueTests`.
+// `NotificationSettingsReconcileTests`, `NotificationSettingsSeedMigrationTests`,
+// `NotificationSettingsApplyTests` and the read tests in
+// `NotificationSettingsPushQueueTests`.
 import Defaults
 import Foundation
 import Testing
@@ -11,30 +12,38 @@ import Testing
 enum NotificationSettingsFixtures {
 
     /// Runs `body` with a fresh store, restoring every `Defaults` key the
-    /// store touches afterwards — the async twin of
-    /// `NotificationSettingsApplyTests.withStore`.
+    /// store touches afterwards.
+    ///
+    /// Under `withExclusiveRealDefaults`, because those keys are
+    /// process-wide and `.serialized` orders one suite's tests but not one
+    /// suite against another, which interleave at every `await`. Without
+    /// it one test could take another's temporary values for the baseline
+    /// it restores, or post store changes into another's window. Every
+    /// test that reads or writes these keys comes through here.
     static func withStore(
         _ body: (LiveActivityPreferencesStore) async throws -> Void
     ) async rethrows {
-        let savedOffsets = Defaults[.assignmentReminderOffsetsData]
-        let savedEnabled = Defaults[.isAssignmentReminderEnabled]
-        let savedLiveActivity = Defaults[.isLiveActivityEnabled]
-        let savedAssignmentLead = Defaults[.assignmentLiveActivityLeadTime]
-        let savedClassLead = Defaults[.classPreparingLeadTime]
-        let savedShowAssignment = Defaults[.showAssignmentScenario]
-        let savedShowClassPreparing = Defaults[.showClassPreparingScenario]
-        let savedShowInClass = Defaults[.showInClassScenario]
-        defer {
-            Defaults[.assignmentReminderOffsetsData] = savedOffsets
-            Defaults[.isAssignmentReminderEnabled] = savedEnabled
-            Defaults[.isLiveActivityEnabled] = savedLiveActivity
-            Defaults[.assignmentLiveActivityLeadTime] = savedAssignmentLead
-            Defaults[.classPreparingLeadTime] = savedClassLead
-            Defaults[.showAssignmentScenario] = savedShowAssignment
-            Defaults[.showClassPreparingScenario] = savedShowClassPreparing
-            Defaults[.showInClassScenario] = savedShowInClass
+        try await withExclusiveRealDefaults {
+            let savedOffsets = Defaults[.assignmentReminderOffsetsData]
+            let savedEnabled = Defaults[.isAssignmentReminderEnabled]
+            let savedLiveActivity = Defaults[.isLiveActivityEnabled]
+            let savedAssignmentLead = Defaults[.assignmentLiveActivityLeadTime]
+            let savedClassLead = Defaults[.classPreparingLeadTime]
+            let savedShowAssignment = Defaults[.showAssignmentScenario]
+            let savedShowClassPreparing = Defaults[.showClassPreparingScenario]
+            let savedShowInClass = Defaults[.showInClassScenario]
+            defer {
+                Defaults[.assignmentReminderOffsetsData] = savedOffsets
+                Defaults[.isAssignmentReminderEnabled] = savedEnabled
+                Defaults[.isLiveActivityEnabled] = savedLiveActivity
+                Defaults[.assignmentLiveActivityLeadTime] = savedAssignmentLead
+                Defaults[.classPreparingLeadTime] = savedClassLead
+                Defaults[.showAssignmentScenario] = savedShowAssignment
+                Defaults[.showClassPreparingScenario] = savedShowClassPreparing
+                Defaults[.showInClassScenario] = savedShowInClass
+            }
+            try await body(LiveActivityPreferencesStore())
         }
-        try await body(LiveActivityPreferencesStore())
     }
 
     static func documentURL(_ baseURL: URL) -> URL {

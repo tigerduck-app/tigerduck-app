@@ -1,11 +1,14 @@
-// One-at-a-time access to the app's real push-preference `Defaults` keys.
+// One-at-a-time access to the app's real, process-wide `Defaults` keys.
 //
 // `pushServerEnabled`, `bulletinPushEnabled` and `serverPushUserOptOut`
 // have no `Defaults.suite` override (see `AppDefaults.swift`), and neither
 // `BulletinPushOptOutMigration` nor `PushRegistrationService` takes them
 // through a seam — the migration's whole job is those keys, and the
-// register body and the bulletin PATCH read and write them directly. So the
-// only way to observe either is to write the real, process-wide keys.
+// register body and the bulletin PATCH read and write them directly. The
+// sync switches and `syncPreferencesPushPending` are the same for the
+// sync-preferences PATCH, as are the notification-settings keys
+// `LiveActivityPreferencesStore` keeps (`NotificationSettingsFixtures`).
+// So the only way to observe any of them is to write the real keys.
 //
 // `.serialized` is not enough on its own: it orders one suite's own tests
 // and nothing else, while Swift Testing runs suites concurrently. The
@@ -15,9 +18,10 @@
 // `Defaults[.bulletinPushEnabled] == true` in one full-suite run and
 // passing in the next.
 //
-// Every test that touches those three keys goes through
+// Every test that touches those keys goes through
 // `withExclusiveRealDefaults`, save and restore included, so only one of
-// them is ever inside that window.
+// them is ever inside that window. The gate is not reentrant: nothing
+// inside it may take it again.
 import Foundation
 
 /// Async mutual exclusion. An actor rather than a lock because callers hold

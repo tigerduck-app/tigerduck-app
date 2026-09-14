@@ -1004,41 +1004,16 @@ struct NotificationSettingsSyncTests {
 /// `LiveActivityPreferencesStore.applyFromNotificationSettingsDocument`,
 /// against a real store.
 ///
-/// `.serialized` and Defaults-restoring: `LiveActivityPreferencesStore`
+/// `.serialized`, and every store made through
+/// `NotificationSettingsFixtures.withStore`: `LiveActivityPreferencesStore`
 /// reads and writes `UserDefaults.standard` through `Defaults`, and posts
 /// on `NotificationCenter.default` — both process-wide. Other suites
 /// construct stores too (the reconcile, seed-migration and push-queue
-/// tests), but every test here is `@MainActor` and synchronous from its
-/// first store write to its last assertion, so no other test's code can
-/// run in the middle of one; serializing this suite keeps its own tests
-/// apart.
+/// tests), and those suspend mid-test, so the fixture's shared gate is what
+/// keeps one of them from running inside one of these.
 @Suite("Notification settings apply", .serialized)
 @MainActor
 struct NotificationSettingsApplyTests {
-
-    /// Runs `body` with a fresh store, restoring every `Defaults` key the
-    /// store touches afterwards.
-    private static func withStore(_ body: (LiveActivityPreferencesStore) throws -> Void) rethrows {
-        let savedOffsets = Defaults[.assignmentReminderOffsetsData]
-        let savedEnabled = Defaults[.isAssignmentReminderEnabled]
-        let savedLiveActivity = Defaults[.isLiveActivityEnabled]
-        let savedAssignmentLead = Defaults[.assignmentLiveActivityLeadTime]
-        let savedClassLead = Defaults[.classPreparingLeadTime]
-        let savedShowAssignment = Defaults[.showAssignmentScenario]
-        let savedShowClassPreparing = Defaults[.showClassPreparingScenario]
-        let savedShowInClass = Defaults[.showInClassScenario]
-        defer {
-            Defaults[.assignmentReminderOffsetsData] = savedOffsets
-            Defaults[.isAssignmentReminderEnabled] = savedEnabled
-            Defaults[.isLiveActivityEnabled] = savedLiveActivity
-            Defaults[.assignmentLiveActivityLeadTime] = savedAssignmentLead
-            Defaults[.classPreparingLeadTime] = savedClassLead
-            Defaults[.showAssignmentScenario] = savedShowAssignment
-            Defaults[.showClassPreparingScenario] = savedShowClassPreparing
-            Defaults[.showInClassScenario] = savedShowInClass
-        }
-        try body(LiveActivityPreferencesStore())
-    }
 
     /// Thread-safe box for the observer block, which `NotificationCenter`
     /// treats as `@Sendable` even though `queue: nil` runs it synchronously
@@ -1068,8 +1043,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("a pull carrying only whole-hour offsets does not delete the shipped .min30 default")
-    func pullDoesNotDeleteSubHourDefaults() throws {
-        Self.withStore { store in
+    func pullDoesNotDeleteSubHourDefaults() async throws {
+        await NotificationSettingsFixtures.withStore { store in
             store.assignmentReminderOffsets = LiveActivityPreferencesStore.defaultOffsets
 
             // Exactly what this app's own push writes to
@@ -1088,8 +1063,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("a pull carrying reminder_offsets_minutes can turn a sub-hour offset off")
-    func pullWithMinutesRemovesSubHourOffset() throws {
-        Self.withStore { store in
+    func pullWithMinutesRemovesSubHourOffset() async throws {
+        await NotificationSettingsFixtures.withStore { store in
             store.assignmentReminderOffsets = LiveActivityPreferencesStore.defaultOffsets
 
             let document = NotificationSettingsDocument(
@@ -1108,8 +1083,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("a document with no assignments section leaves the local assignment preferences alone")
-    func applyWithoutAssignmentsLeavesLocalAlone() throws {
-        Self.withStore { store in
+    func applyWithoutAssignmentsLeavesLocalAlone() async throws {
+        await NotificationSettingsFixtures.withStore { store in
             store.isAssignmentReminderEnabled = true
             store.assignmentReminderOffsets = [.hr24, .min15]
 
@@ -1128,8 +1103,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("fields absent from live_activity keep their local values")
-    func applyWithPartialLiveActivityKeepsLocalValues() throws {
-        Self.withStore { store in
+    func applyWithPartialLiveActivityKeepsLocalValues() async throws {
+        await NotificationSettingsFixtures.withStore { store in
             store.showClassPreparingScenario = true
             store.showAssignmentScenario = true
             store.classPreparingLeadTime = 1800
@@ -1149,8 +1124,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("applying a pull posts exactly one change notification, flagged remote-origin")
-    func applyPostsOneRemoteOriginNotification() throws {
-        Self.withStore { store in
+    func applyPostsOneRemoteOriginNotification() async throws {
+        await NotificationSettingsFixtures.withStore { store in
             store.showInClassScenario = true
             store.showAssignmentScenario = true
 
@@ -1173,8 +1148,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("a local edit posts an un-flagged notification, so the push still fires")
-    func localEditPostsWithoutRemoteOriginFlag() throws {
-        Self.withStore { store in
+    func localEditPostsWithoutRemoteOriginFlag() async throws {
+        await NotificationSettingsFixtures.withStore { store in
             let origins = Self.recordedOrigins {
                 store.showInClassScenario = !store.showInClassScenario
             }
@@ -1201,8 +1176,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("switching Live Activity off queues no settings push; an edit to a synced field still does")
-    func deviceOnlyEditQueuesNoSettingsPush() {
-        Self.withStore { store in
+    func deviceOnlyEditQueuesNoSettingsPush() async {
+        await NotificationSettingsFixtures.withStore { store in
             store.isLiveActivityEnabled = true
 
             // Not in the document, so there is nothing for a push to write.
@@ -1218,8 +1193,8 @@ struct NotificationSettingsApplyTests {
     }
 
     @Test("a pull that changes nothing posts nothing")
-    func applyWithNoChangePostsNothing() throws {
-        Self.withStore { store in
+    func applyWithNoChangePostsNothing() async throws {
+        await NotificationSettingsFixtures.withStore { store in
             store.isAssignmentReminderEnabled = true
             store.assignmentReminderOffsets = [.hr24, .min30]
             store.showClassPreparingScenario = true
