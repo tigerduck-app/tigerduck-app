@@ -102,9 +102,13 @@ def _address(student_id: str) -> str:
     return f"{student_id.strip().lower()}@{HOST.split('.', 1)[1]}"
 
 
-def parse_list_line(line: bytes) -> dict[str, str] | None:
-    """Pull flags/delimiter/name out of one LIST response line."""
-    text = line.decode("utf-8", "replace")
+def parse_list_line(line: bytes | str) -> dict[str, str] | None:
+    """Pull flags/delimiter/name out of one LIST response line.
+
+    imaplib hands most untagged responses back as bytes but not all of them,
+    so both are accepted rather than coerced — `bytes(str)` raises.
+    """
+    text = line.decode("utf-8", "replace") if isinstance(line, bytes) else line
     if not text.startswith("("):
         return None
     flags, _, rest = text.partition(")")
@@ -139,7 +143,7 @@ def probe_imap(student_id: str, password: str, limit: int) -> dict[str, object]:
         folders = []
         if status == "OK":
             for line in lines:
-                parsed = parse_list_line(line if isinstance(line, bytes) else bytes(line))
+                parsed = parse_list_line(line)
                 if parsed:
                     folders.append(parsed)
         report["folders"] = folders
@@ -246,6 +250,12 @@ def _self_check() -> None:
         "raw_name": "INBOX", "name": "INBOX",
     }
     assert parse_list_line(b"NO such mailbox") is None
+    # imaplib does not guarantee bytes for every untagged line; a str must
+    # parse rather than blow up on a bytes() coercion.
+    assert parse_list_line('(\\HasNoChildren) "/" "INBOX"') == {
+        "flags": "\\HasNoChildren", "delimiter": "/",
+        "raw_name": "INBOX", "name": "INBOX",
+    }
 
     # Modified UTF-7: '&' shifts, ',' replaces '/', '&-' is a literal '&'.
     assert decode_mailbox_name("INBOX") == "INBOX"
