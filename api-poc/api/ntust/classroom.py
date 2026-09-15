@@ -58,10 +58,9 @@ import json
 import logging
 import re
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
-import httpx
 from bs4 import BeautifulSoup
 
 from api import load_creds
@@ -76,7 +75,7 @@ CALENDAR_ID = "date_cal"
 GRID_ID = "showinfo_grd"
 
 SECTION_COUNT = 14
-CALENDAR_EPOCH = datetime(2000, 1, 1, tzinfo=timezone.utc)
+CALENDAR_EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
 MAX_PAGES = 20
 
 DO_POSTBACK = re.compile(r"__doPostBack\('([^']*)','([^']*)'\)")
@@ -88,7 +87,7 @@ logger = logging.getLogger(__name__)
 
 def day_argument(when: date) -> str:
     """ASP.NET Calendar postback argument: days since 2000-01-01, in UTC."""
-    utc = datetime(when.year, when.month, when.day, tzinfo=timezone.utc)
+    utc = datetime(when.year, when.month, when.day, tzinfo=UTC)
     return str((utc - CALENDAR_EPOCH).days)
 
 
@@ -397,7 +396,9 @@ def main() -> int:
     argv = sys.argv[1:]
     campus = argv[0] if argv else None
     building = argv[1] if len(argv) > 1 else None
-    when = date.fromisoformat(argv[2]) if len(argv) > 2 else date.today()
+    # Local date on purpose: the caller is asking about rooms on the campus
+    # they are standing on, so the machine's own day is the right default.
+    when = date.fromisoformat(argv[2]) if len(argv) > 2 else date.today()  # noqa: DTZ011
 
     with NtustSsoBridge(sid, pwd) as bridge:
         if not bridge.ensure_service_login(QUERY_URL):
@@ -425,7 +426,7 @@ def _self_check() -> None:
     """Parsers are pure; exercise the shapes that actually differ."""
     assert day_argument(date(2000, 1, 1)) == "0"
     assert day_argument(date(2000, 1, 2)) == "1"
-    assert day_argument(date(2026, 9, 15)) == str((datetime(2026, 9, 15, tzinfo=timezone.utc) - CALENDAR_EPOCH).days)
+    assert day_argument(date(2026, 9, 15)) == str((datetime(2026, 9, 15, tzinfo=UTC) - CALENDAR_EPOCH).days)
 
     # No grid at all -> None (failure), distinct from a grid with no rows.
     assert parse_grid("<html><body>login please</body></html>") is None

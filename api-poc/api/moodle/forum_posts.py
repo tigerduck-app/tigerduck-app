@@ -48,10 +48,8 @@ def fetch_posts(client: MoodleOidcAuthClient, discussion_id: int) -> object:
         sortby="created",
         sortdirection="ASC",
         includeinlineattachments=1,
-        **{
-            "moodlewssettingfilter": "true",
-            "moodlewssettingfileurl": "true",
-        },
+        moodlewssettingfilter="true",
+        moodlewssettingfileurl="true",
     )
 
 
@@ -60,11 +58,9 @@ def fetch_post_for_edit(client: MoodleOidcAuthClient, post_id: int) -> object:
     return client.call(
         POST_WSFUNCTION,
         postid=post_id,
-        **{
-            "moodlewssettingraw": "true",
-            "moodlewssettingfilter": "false",
-            "moodlewssettingfileurl": "false",
-        },
+        moodlewssettingraw="true",
+        moodlewssettingfilter="false",
+        moodlewssettingfileurl="false",
     )
 
 
