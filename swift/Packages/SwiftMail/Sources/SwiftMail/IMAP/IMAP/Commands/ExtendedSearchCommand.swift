@@ -106,10 +106,12 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
                     command: .sort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions)
                 )
             }
-        } else if T.self == UID.self {
-            return TaggedCommand(tag: tag, command: .uidSearch(key: key, returnOptions: returnOptions))
         } else {
-            return TaggedCommand(tag: tag, command: .search(key: key, returnOptions: returnOptions))
+            let charset = criteria.contains(where: \.containsNonASCIIText) ? "UTF-8" : nil
+            if T.self == UID.self {
+                return TaggedCommand(tag: tag, command: .uidSearch(key: key, charset: charset, returnOptions: returnOptions))
+            }
+            return TaggedCommand(tag: tag, command: .search(key: key, charset: charset, returnOptions: returnOptions))
         }
     }
 }

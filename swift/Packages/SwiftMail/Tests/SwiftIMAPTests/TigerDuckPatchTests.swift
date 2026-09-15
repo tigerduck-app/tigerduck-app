@@ -104,6 +104,48 @@ struct TigerDuckPatchTests {
         }
         #expect(charset == nil)
     }
+
+    @Test("Extended search: non-ASCII search text is sent with CHARSET UTF-8")
+    func extendedSearchNonASCIIUsesUTF8() {
+        let tagged = ExtendedSearchCommand<UID>(
+            criteria: [.subject("課程")],
+            useEsearch: false
+        ).toTaggedCommand(tag: "A1")
+        guard case .uidSearch(_, let charset, _) = tagged.command else {
+            Issue.record("expected UID SEARCH")
+            return
+        }
+        #expect(charset == "UTF-8")
+    }
+
+    @Test("Extended search: ASCII search text keeps the default charset")
+    func extendedSearchASCIIOmitsCharset() {
+        let tagged = ExtendedSearchCommand<UID>(
+            criteria: [.or(.from("moodle"), .subject("quiz"))],
+            useEsearch: false
+        ).toTaggedCommand(tag: "A1")
+        guard case .uidSearch(_, let charset, _) = tagged.command else {
+            Issue.record("expected UID SEARCH")
+            return
+        }
+        #expect(charset == nil)
+    }
+
+    @Test("Body text content goes through the installed charset resolver")
+    func bodyTextContentUsesResolver() {
+        defer { MailCharsetResolver.setResolver(nil) }
+        // "中文" in UTF-8. Mapping "big5" to Latin-1 must change the decoded result,
+        // which proves the resolver (not the IANA table's own Big5 handling) was asked.
+        MailCharsetResolver.setResolver { $0.lowercased() == "big5" ? .isoLatin1 : nil }
+        let bytes = Data(base64Encoded: "5Lit5paH")!
+        let part = MessagePart(
+            sectionString: "1",
+            contentType: "text/plain; charset=big5",
+            data: bytes
+        )
+        let expected = String(data: bytes, encoding: .isoLatin1)
+        #expect(part.textContent == expected)
+    }
 }
 
 private final class Recorder: @unchecked Sendable {
