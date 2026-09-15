@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftMail}",
+            "name": "Debug SwiftIMAPCLI",
+            "preLaunchTask": "swift: Build Debug SwiftIMAPCLI",
+            "target": "SwiftIMAPCLI",
+            "configuration": "debug"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftMail}",
+            "name": "Release SwiftIMAPCLI",
+            "preLaunchTask": "swift: Build Release SwiftIMAPCLI",
+            "target": "SwiftIMAPCLI",
+            "configuration": "release"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftMail}",
+            "name": "Debug SwiftSMTPCLI",
+            "preLaunchTask": "swift: Build Debug SwiftSMTPCLI",
+            "target": "SwiftSMTPCLI",
+            "configuration": "debug"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftMail}",
+            "name": "Release SwiftSMTPCLI",
+            "preLaunchTask": "swift: Build Release SwiftSMTPCLI",
+            "target": "SwiftSMTPCLI",
+            "configuration": "release"
+        }
+    ]
+}
