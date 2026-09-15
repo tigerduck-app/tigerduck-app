@@ -126,6 +126,19 @@ struct MailTextRulesTests {
         #expect(!MailAddress(name: nil, address: "not an address").isPlausible)
     }
 
+    /// A token whose address portion carries a smuggled CR/LF (header-injection bait) or
+    /// any other whitespace/control character must never become a `MailAddress` — it's
+    /// dropped, not merely flagged, matching the plain `local@domain` shape
+    /// `AddressParser.looksLikeAddress` requires on Android.
+    @Test func rejectsAddressesCarryingControlCharacters() {
+        #expect(MailAddress.parseList("a@x.tw\r\nBcc: b@y.tw") == [])
+        #expect(MailAddress.parseList("ok@x.tw, a@x.tw\r\nBcc: b@y.tw, also@x.tw") == [
+            MailAddress(name: nil, address: "ok@x.tw"),
+            MailAddress(name: nil, address: "also@x.tw"),
+        ])
+        #expect(!MailAddress(name: nil, address: "a@x.tw\r\nBcc: b@y.tw").isPlausible)
+    }
+
     @Test func findsFoldedHeadersInRawSource() {
         let raw = Data("From: a@b.c\r\nReply-To: \"Office\"\r\n <office@mail.ntust.edu.tw>\r\nSubject: x\r\n\r\nReply-To: body@not.header\r\n".utf8)
         #expect(MailRawHeaders.value(named: "reply-to", in: raw) == "\"Office\" <office@mail.ntust.edu.tw>")
