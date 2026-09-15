@@ -1,0 +1,244 @@
+import Foundation
+import NIOIMAPCore
+import NIOIMAP
+import NIO
+import Logging
+
+/// Handler managing the IMAP IDLE session
+final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+    typealias ResultType = Void
+    typealias InboundIn = Response
+    typealias InboundOut = Never
+
+    enum CompletionReason: String {
+        case taggedResponse
+        case serverTermination
+        case channelInactive
+        case error
+    }
+
+    private let continuation: AsyncStream<IMAPServerEvent>.Continuation
+    private let idleLogger = Logger(label: "com.cocoanetics.SwiftMail.IdleHandler")
+    private var didReceiveIdleStarted = false
+    private var completionReasonStorage: CompletionReason?
+
+    var hasEnteredIdleState: Bool {
+        lock.withLock { didReceiveIdleStarted }
+    }
+
+    var completionReason: CompletionReason? {
+        lock.withLock { completionReasonStorage }
+    }
+
+    var completedWithTaggedResponse: Bool {
+        lock.withLock { completionReasonStorage == .taggedResponse }
+    }
+
+    init(commandTag: String, promise: EventLoopPromise<Void>, continuation: AsyncStream<IMAPServerEvent>.Continuation) {
+        self.continuation = continuation
+        super.init(commandTag: commandTag, promise: promise)
+    }
+
+    override init(commandTag: String, promise: EventLoopPromise<Void>) {
+        fatalError("Use init(commandTag:promise:continuation:) instead")
+    }
+
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings and fulfill the Void promise.
+        recordCompletionReason(.taggedResponse)
+        super.handleTaggedOKResponse(response)
+        continuation.finish()
+    }
+
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
+        recordCompletionReason(.taggedResponse)
+        failWithError(IMAPError.commandFailed(String(describing: response.state)))
+        continuation.finish()
+    }
+
+    /// - Note: `continuation.finish()` is the point of this override.
+    ///
+    ///   The tagged paths above finish the stream; the connection dying did not. A caller sitting
+    ///   in `for await event in stream` therefore waited forever once the transport went away —
+    ///   the stream had no more producer and no end. `AsyncStream` cannot know that on its own:
+    ///   an unfinished continuation is indistinguishable from a quiet mailbox.
+    ///
+    ///   This matters most for the case it was reported under: a parser-limit violation closes
+    ///   the channel (see ``IMAPResponseLimitGuard``), and without finishing here, "fail closed"
+    ///   would only be half true — socket shut, caller still hanging.
+    override func channelInactive(context: ChannelHandlerContext) {
+        recordCompletionReason(.channelInactive)
+        super.channelInactive(context: context)
+        continuation.finish()
+    }
+
+    /// - Note: Finishes the stream for the same reason as ``channelInactive(context:)``.
+    ///
+    ///   `super.errorCaught` fails the private promise, but nothing awaits it until a later DONE
+    ///   or checkpoint — so an error during IDLE used to leave the caller's stream open with no
+    ///   producer behind it. Finishing here ends the loop; the error itself still surfaces
+    ///   through the promise for whoever is waiting on it.
+    override func errorCaught(context: ChannelHandlerContext, error: Error) {
+        recordCompletionReason(.error)
+        super.errorCaught(context: context, error: error)
+        continuation.finish()
+    }
+
+    private func recordCompletionReason(_ reason: CompletionReason) {
+        lock.withLock {
+            if completionReasonStorage == nil {
+                completionReasonStorage = reason
+            }
+        }
+    }
+
+    private var currentSeq: SequenceNumber?
+    private var currentUID: UID?
+    private var currentAttributes: [MessageAttribute] = []
+
+    override func handleUntaggedResponse(_ response: Response) -> Bool {
+        switch response {
+            case .idleStarted:
+                // IDLE confirmation does not complete the command. We must remain
+                // installed to receive untagged events and the final tagged OK after DONE.
+                lock.withLock {
+                    didReceiveIdleStarted = true
+                }
+                return false
+            case .untagged(let payload):
+                return handlePayload(payload)
+            case .fetch(let fetch):
+                handleFetch(fetch)
+            case .fatal(let text):
+                continuation.yield(.bye(text.text))
+                // Server-initiated termination - complete the IDLE session
+                recordCompletionReason(.serverTermination)
+                succeedWithResult(())
+                continuation.finish()
+                return true  // Indicate this response was fully handled
+            default:
+                idleLogger.debug("IdleHandler: unhandled Response case: \(response)")
+        }
+        return false
+    }
+
+    private func handlePayload(_ payload: ResponsePayload) -> Bool {
+        switch payload {
+            case .mailboxData(let mailboxData):
+                handleMailboxData(mailboxData)
+            case .messageData(let messageData):
+                handleMessageData(messageData)
+            case .conditionalState(let status):
+                return handleConditionalState(status)
+            case .capabilityData(let caps):
+                continuation.yield(.capability(caps.map { String($0) }))
+            case .enableData(let caps):
+                idleLogger.debug("IdleHandler: ignoring ENABLED response: \(caps.map { String($0) })")
+            case .id:
+                idleLogger.debug("IdleHandler: ignoring unsolicited ID response during IDLE")
+            case .quotaRoot:
+                idleLogger.debug("IdleHandler: ignoring unsolicited QUOTAROOT during IDLE")
+            case .quota:
+                idleLogger.debug("IdleHandler: ignoring unsolicited QUOTA during IDLE")
+            case .metadata:
+                idleLogger.debug("IdleHandler: ignoring unsolicited METADATA during IDLE")
+            case .jmapAccess:
+                idleLogger.debug("IdleHandler: ignoring unsolicited JMAPACCESS during IDLE")
+        }
+        return false  // Most responses are handled but don't terminate the command
+    }
+
+    private func handleMailboxData(_ mailboxData: MailboxData) {
+        switch mailboxData {
+            case .exists(let count):
+                continuation.yield(.exists(Int(count)))
+            case .recent(let count):
+                continuation.yield(.recent(Int(count)))
+            case .flags(let nioFlags):
+                // Permanent flags of the selected mailbox have changed
+                continuation.yield(.flags(nioFlags.map { Flag(nio: $0) }))
+            case .status(let mailboxName, _):
+                // Unsolicited STATUS — log and ignore (not a selected-mailbox event)
+                let name = String(bytes: mailboxName.bytes, encoding: .utf8) ?? "<unknown>"
+                idleLogger.debug("IdleHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
+            default:
+                // search/sort/list/lsub/extendedSearch/namespace/uidBatches — valid
+                // IMAP responses but not real-time events IDLE cares about.
+                idleLogger.debug("IdleHandler: ignoring unsolicited \(mailboxData) response during IDLE")
+        }
+    }
+
+    private func handleMessageData(_ messageData: MessageData) {
+        switch messageData {
+            case .expunge(let seq):
+                continuation.yield(.expunge(SequenceNumber(seq.rawValue)))
+            case .vanished(let nioUIDSet):
+                // RFC 7162 CONDSTORE: server reports expunged UIDs directly
+                continuation.yield(.vanished(UIDSet(nio: nioUIDSet)))
+            case .vanishedEarlier(let nioUIDSet):
+                // VANISHED (EARLIER) is a historic-sync response, not a real-time event
+                idleLogger.debug("IdleHandler: ignoring VANISHED (EARLIER) for \(nioUIDSet) UIDs")
+            case .generateAuthorizedURL:
+                idleLogger.debug("IdleHandler: ignoring unsolicited GENURLAUTH during IDLE")
+            case .urlFetch:
+                idleLogger.debug("IdleHandler: ignoring unsolicited URLFETCH during IDLE")
+        }
+    }
+
+    /// Returns `true` if the response was fully handled and the IDLE session should end
+    /// (e.g. on a server `BYE`).
+    private func handleConditionalState(_ status: UntaggedStatus) -> Bool {
+        switch status {
+            case .ok(let text):
+                if text.code == .alert {
+                    continuation.yield(.alert(text.text))
+                }
+            case .bye(let text):
+                continuation.yield(.bye(text.text))
+                // Server-initiated termination - complete the IDLE session
+                recordCompletionReason(.serverTermination)
+                succeedWithResult(())
+                continuation.finish()
+                return true
+            default:
+                break
+        }
+        return false
+    }
+
+    private func handleFetch(_ fetch: FetchResponse) {
+        switch fetch {
+            case .start(let seq):
+                currentSeq = SequenceNumber(seq.rawValue)
+                currentUID = nil
+                currentAttributes = []
+            case .startUID(let uid):
+                // UID FETCH response — record the UID and begin collecting attributes
+                currentUID = UID(uid.rawValue)
+                currentSeq = nil
+                currentAttributes = []
+            case .simpleAttribute(let attribute):
+                currentAttributes.append(attribute)
+            case .finish:
+                if let seq = currentSeq {
+                    continuation.yield(.fetch(seq, currentAttributes))
+                } else if let uid = currentUID {
+                    idleLogger.debug(
+                        "IdleHandler: UID FETCH finish for UID \(uid.value), attributes: \(currentAttributes.count)"
+                    )
+                    continuation.yield(.fetchUID(uid, currentAttributes))
+                }
+                currentSeq = nil
+                currentUID = nil
+                currentAttributes = []
+            case .streamingBegin(let kind, let byteCount):
+                idleLogger.debug(
+                    "IdleHandler: ignoring streaming FETCH begin (kind=\(kind), bytes=\(byteCount)) during IDLE"
+                )
+            case .streamingBytes:
+                break  // Silently skip streaming body bytes
+            case .streamingEnd:
+                idleLogger.debug("IdleHandler: streaming FETCH ended during IDLE")
+        }
+    }
+}

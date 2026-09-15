@@ -808,6 +808,9 @@ PublishScripts/
 **/[Pp]ackages/*
 # except build/, which is used as an MSBuild target.
 !**/[Pp]ackages/build/
+# except swift/Packages/SwiftMail, a vendored local Swift package (not a NuGet
+# restore folder) that must stay tracked.
+!swift/Packages/SwiftMail/
 # Uncomment if necessary however generally it will be regenerated when needed
 #!**/[Pp]ackages/repositories.config
 # NuGet v3's project.json files produces more ignorable files
