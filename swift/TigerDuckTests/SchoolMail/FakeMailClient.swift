@@ -85,7 +85,10 @@ actor FakeMailClient: MailClient {
 
     func logout() async { calls.append("logout") }
 
-    func listFolders() async throws -> [String] { folders.keys.sorted() }
+    func listFolders() async throws -> [String] {
+        calls.append("listFolders")
+        return folders.keys.sorted()
+    }
 
     func status(folder: String) async throws -> MailboxStatusInfo {
         calls.append("status \(folder)")
@@ -124,6 +127,7 @@ actor FakeMailClient: MailClient {
     }
 
     func flags(folder: String, uids: ClosedRange<UInt32>) async throws -> [UInt32: MailFlags] {
+        calls.append("flags \(folder) \(uids)")
         var result: [UInt32: MailFlags] = [:]
         for message in folders[folder] ?? [] where uids.contains(message.summary.uid) {
             let s = message.summary
