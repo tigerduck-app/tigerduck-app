@@ -45,7 +45,7 @@ nonisolated enum MailMessageBuilder {
         if !mail.cc.isEmpty { lines.append("Cc: \(mail.cc.map(header(for:)).joined(separator: ", "))") }
         lines.append("Subject: \(encodedWords(mail.subject))")
         lines.append("Date: \(rfc5322Date(date))")
-        lines.append("Message-ID: \(messageID)")
+        lines.append("Message-ID: \(sanitizedHeaderValue(messageID))")
         if let inReplyTo = mail.inReplyTo {
             let sanitized = sanitizedHeaderValue(inReplyTo)
             if !sanitized.isEmpty { lines.append("In-Reply-To: \(sanitized)") }
@@ -71,7 +71,7 @@ nonisolated enum MailMessageBuilder {
             lines += textPart
             for attachment in mail.attachments {
                 lines.append("--\(boundary)")
-                lines.append("Content-Type: \(attachment.mimeType); name=\"\(contentTypeName(attachment.filename))\"")
+                lines.append("Content-Type: \(sanitizedMimeType(attachment.mimeType)); name=\"\(contentTypeName(attachment.filename))\"")
                 lines.append("Content-Transfer-Encoding: base64")
                 lines.append("Content-Disposition: attachment; \(dispositionFilename(attachment.filename))")
                 lines.append("")
@@ -86,13 +86,20 @@ nonisolated enum MailMessageBuilder {
 
     // MARK: Headers
 
+    /// `address.address` is sanitized here as defense in depth: `MailAddress.isPlausible`
+    /// (used by the compose screen before send) and `MailAddress.parseList` already
+    /// reject a value with a plain-shape violation, but a `MailAddress` can also be
+    /// constructed directly (a cache, a demo fixture, a future call site) without going
+    /// through either gate, so this must never emit a raw control character regardless of
+    /// how the address got here.
     static func header(for address: MailAddress) -> String {
-        guard let name = address.name?.mailNonEmpty else { return address.address }
+        let sanitizedAddress = sanitizedHeaderValue(address.address)
+        guard let name = address.name?.mailNonEmpty else { return sanitizedAddress }
         if isPlainASCII(name) {
             let escaped = name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            return "\"\(escaped)\" <\(address.address)>"
+            return "\"\(escaped)\" <\(sanitizedAddress)>"
         }
-        return "\(encodedWords(name)) <\(address.address)>"
+        return "\(encodedWords(name)) <\(sanitizedAddress)>"
     }
 
     /// ASCII text stays as is; anything else becomes UTF-8 base64 encoded words of at most
@@ -131,16 +138,30 @@ nonisolated enum MailMessageBuilder {
         return formatter.string(from: date)
     }
 
-    /// A Message-ID token or References chain never legitimately contains a control
-    /// character; stripping every one (not just CR/LF) defangs a CRLF header-injection
-    /// attempt smuggled in through a hostile In-Reply-To or References value. Bcc is never
-    /// written as a header at all (see `OutgoingMail.envelopeRecipients`), so this only
-    /// has to keep threading headers from growing an extra header line.
+    /// A header value (an address, a Message-ID token, a References chain) never
+    /// legitimately contains a control character; stripping every one (not just CR/LF)
+    /// defangs a CRLF header-injection attempt smuggled in through a hostile address,
+    /// Message-ID, In-Reply-To or References value. Bcc is never written as a header at
+    /// all (see `OutgoingMail.envelopeRecipients`), so this only has to keep every other
+    /// header from growing an extra line.
     private static func sanitizedHeaderValue(_ raw: String) -> String {
         String(raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
     }
 
     // MARK: Attachment names
+
+    /// RFC 2045 `type/subtype`, restricted to token characters (no whitespace, no
+    /// control character, no `/` beyond the one separator). Anything else — including a
+    /// value carrying a smuggled CRLF — falls back to a safe default rather than being
+    /// written into the header verbatim.
+    private static let mimeTypePattern = try! NSRegularExpression(
+        pattern: #"^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"#
+    )
+
+    private static func sanitizedMimeType(_ raw: String) -> String {
+        let range = NSRange(raw.startIndex..<raw.endIndex, in: raw)
+        return mimeTypePattern.firstMatch(in: raw, range: range) != nil ? raw : "application/octet-stream"
+    }
 
     private static func contentTypeName(_ filename: String) -> String {
         isPlainASCII(filename) && !filename.contains("\"") ? filename : encodedWord(filename)
@@ -155,6 +176,14 @@ nonisolated enum MailMessageBuilder {
     }
 
     // MARK: Body
+
+    /// RFC 2045 §6.7's line-length cap the quoted-printable encoder wraps at — shared by
+    /// the real encoder (`encodeLine`) and its size estimate (`quotedPrintableUpperBound`)
+    /// so the two can never drift apart. A gap here (the estimate wrapping later than the
+    /// encoder actually does) undercounts every soft break past the first for a long
+    /// unbroken run, which is exactly the kind of gap that turns an "upper bound" into one
+    /// that isn't.
+    private static let qpLineLength = 75
 
     static func quotedPrintable(_ text: String) -> String {
         text.replacingOccurrences(of: "\r\n", with: "\n")
@@ -180,7 +209,7 @@ nonisolated enum MailMessageBuilder {
         var output = ""
         var length = 0
         for token in tokens {
-            if length + token.count > 75 {
+            if length + token.count > qpLineLength {
                 output += "=\r\n"
                 length = 0
             }
@@ -199,11 +228,11 @@ nonisolated enum MailMessageBuilder {
     /// than UTF-16 code units: a printable ASCII byte (33-126, excluding `=`) costs 1
     /// output byte, everything else (UTF-8 continuation/lead bytes of non-ASCII text,
     /// control characters, `=` itself) costs 3 (`=XX`), and a soft line break (`=CRLF`, 3
-    /// bytes) is charged whenever a line would exceed 76 columns. Every rule here rounds
-    /// toward the real encoder's worst case (or worse), so this can only over-count, never
-    /// under-count -- undercounting is what let CJK bodies (whose UTF-8 encoding is
-    /// already ~3 bytes/char, each of which then triples again under QP) sail past a naive
-    /// `characters * 3` estimate.
+    /// bytes) is charged at the same `qpLineLength` column `encodeLine` itself wraps at.
+    /// Every rule here rounds toward the real encoder's worst case (or worse), so this can
+    /// only over-count, never under-count -- undercounting is what let CJK bodies (whose
+    /// UTF-8 encoding is already ~3 bytes/char, each of which then triples again under QP)
+    /// sail past a naive `characters * 3` estimate.
     static func estimateEncodedSize(body: String, attachmentByteCounts: [Int] = []) -> Int {
         let text = quotedPrintableUpperBound(body)
         let attachments = attachmentByteCounts.reduce(0) { total, bytes in
@@ -218,7 +247,7 @@ nonisolated enum MailMessageBuilder {
         for byte in body.utf8 {
             let value = Int(byte)
             let cost = (value >= 33 && value <= 126 && value != 0x3D) ? 1 : 3
-            if column + cost > 76 {
+            if column + cost > qpLineLength {
                 total += 3
                 column = 0
             }

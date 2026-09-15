@@ -8,10 +8,22 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
 
     var displayName: String { name?.mailNonEmpty ?? address }
 
-    /// Loose check before sending: one `@`, a dot in the domain, no spaces.
-    var isPlausible: Bool {
-        let parts = address.split(separator: "@", omittingEmptySubsequences: false)
-        return parts.count == 2 && !parts[0].isEmpty && parts[1].contains(".") && !address.contains(" ")
+    /// One `@`, a local part and a domain containing a dot, none of them containing
+    /// whitespace, a control character or an RFC 5322 special (`< > ( ) " , ; :`).
+    /// Mirrors Android's `AddressParser.looksLikeAddress`. This is the gate the compose
+    /// screen (Task 17) uses before sending, and it must reject a value carrying a
+    /// smuggled CR/LF (header injection) as forcefully as it rejects "not an address".
+    var isPlausible: Bool { Self.hasAddressShape(address) }
+
+    /// `^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$` plus an explicit Unicode
+    /// control-character ban (`\s` alone doesn't cover every control character, e.g. BEL).
+    private static let addressShapePattern = try! NSRegularExpression(
+        pattern: #"^[^\s@<>()",;:\p{Cc}]+@[^\s@<>()",;:\p{Cc}]+\.[^\s@<>()",;:\p{Cc}]+$"#
+    )
+
+    private static func hasAddressShape(_ candidate: String) -> Bool {
+        let range = NSRange(candidate.startIndex..<candidate.endIndex, in: candidate)
+        return addressShapePattern.firstMatch(in: candidate, range: range) != nil
     }
 
     /// Parses `"Name" <a@b>, c@d; Name <e@f>` — commas and semicolons separate, except
@@ -49,17 +61,22 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
         return pieces.compactMap(parseOne)
     }
 
+    /// A token whose address portion doesn't have a plain `local@domain` shape (an
+    /// embedded whitespace, control character or RFC 5322 special — including a
+    /// smuggled CR/LF) is dropped rather than becoming a `MailAddress`.
     private static func parseOne(_ raw: String) -> MailAddress? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         if let open = trimmed.lastIndex(of: "<"), let close = trimmed.lastIndex(of: ">"), open < close {
             let address = trimmed[trimmed.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+            guard hasAddressShape(address) else { return nil }
             var name = trimmed[..<open].trimmingCharacters(in: .whitespaces)
             if name.count >= 2, name.hasPrefix("\""), name.hasSuffix("\"") {
                 name = unescaped(String(name.dropFirst().dropLast()))
             }
             return MailAddress(name: name.mailNonEmpty, address: address)
         }
+        guard hasAddressShape(trimmed) else { return nil }
         return MailAddress(name: nil, address: trimmed)
     }
 

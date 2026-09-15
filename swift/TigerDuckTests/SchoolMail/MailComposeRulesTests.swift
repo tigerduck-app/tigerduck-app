@@ -98,6 +98,42 @@ struct MailComposeRulesTests {
         #expect(text.hasSuffix("--B--\r\n"))
     }
 
+    /// A hostile `mimeType` (whitespace, a control character, or anything else that
+    /// isn't a plain `type/subtype` token) must never be written into the `Content-Type`
+    /// header verbatim; it falls back to a safe default instead.
+    @Test func fallsBackToASafeMimeTypeWhenMalformed() {
+        let attachment = OutgoingAttachment(
+            filename: "a.bin", mimeType: "text/plain\r\nBcc: attacker@evil.com", data: Data("x".utf8)
+        )
+        let text = Self.text(Self.mail(attachments: [attachment]))
+        #expect(text.contains("Content-Type: application/octet-stream; name=\"a.bin\"\r\n"))
+        #expect(!text.contains("\r\nBcc:"))
+    }
+
+    /// A hostile address carrying a smuggled CRLF must never grow an extra header line,
+    /// whether it appears in From, To or Cc — `MailAddress.parseList`/`isPlausible`
+    /// already reject such a value before it gets this far (see `MailTextRulesTests`),
+    /// but `header(for:)` sanitizes as defense in depth for a `MailAddress` built any
+    /// other way (a cache, a demo fixture, ...).
+    @Test func headerInjectionThroughAddressesIsBlocked() {
+        let hostile = MailAddress(name: nil, address: "victim@x.tw\r\nBcc: attacker@evil.com")
+        var mail = Self.mail(to: [hostile])
+        mail.cc = [hostile]
+        mail.from = hostile
+        let text = Self.text(mail)
+        #expect(!text.contains("\r\nBcc:"))
+        #expect(!text.contains("\r\n\r\nBcc"))
+    }
+
+    /// `messageID` is a public parameter of `build`; a hostile caller-supplied value must
+    /// be sanitized exactly like the other headers.
+    @Test func sanitizesTheMessageIDParameter() {
+        let hostileID = "<id@mail.ntust.edu.tw>\r\nBcc: attacker@evil.com"
+        let data = MailMessageBuilder.build(Self.mail(), messageID: hostileID, date: Self.date, boundary: "B")
+        let built = String(decoding: data, as: UTF8.self)
+        #expect(!built.contains("\r\nBcc:"))
+    }
+
     @Test func outputIsSevenBit() {
         let data = MailMessageBuilder.build(Self.mail(), messageID: MailMessageBuilder.makeMessageID(), date: Self.date)
         #expect(data.allSatisfy { $0 < 0x80 })
@@ -115,6 +151,14 @@ struct MailComposeRulesTests {
 
     @Test func encodedSizeEstimateBoundsARealASCIIBody() {
         assertEstimateCoversRealMessage(String(repeating: "The quick brown fox jumps over the lazy dog.\n", count: 2_000))
+    }
+
+    /// A single unbroken line forces the encoder to soft-wrap every ~75 columns with no
+    /// newline resets in between; the estimate's wrap threshold must match the encoder's
+    /// exactly; a one-column gap (76 vs. 75) undercounts one soft break per ~75 characters,
+    /// which for a run this long is hundreds of missed `=CRLF` triples.
+    @Test func encodedSizeEstimateBoundsALongUnbrokenASCIIRun() {
+        assertEstimateCoversRealMessage(String(repeating: "a", count: 100_000))
     }
 
     private func assertEstimateCoversRealMessage(_ body: String) {
