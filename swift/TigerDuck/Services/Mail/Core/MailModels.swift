@@ -15,16 +15,29 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
     }
 
     /// Parses `"Name" <a@b>, c@d; Name <e@f>` — commas and semicolons separate, except
-    /// inside quotes or angle brackets.
+    /// inside quotes or angle brackets. A backslash inside quotes escapes the character
+    /// after it (matching `MailReplyComposer.formatted`'s escaping of `"` and `\`), so an
+    /// escaped quote never closes the quoted span early.
     static func parseList(_ raw: String) -> [MailAddress] {
         var pieces: [String] = []
         var current = ""
         var inQuotes = false
         var inAngle = false
+        var escaped = false
         for character in raw {
+            if escaped {
+                current.append(character)
+                escaped = false
+                continue
+            }
+            if character == "\\", inQuotes {
+                current.append(character)
+                escaped = true
+                continue
+            }
             if character == "\"" { inQuotes.toggle() }
-            if character == "<" { inAngle = true }
-            if character == ">" { inAngle = false }
+            if character == "<", !inQuotes { inAngle = true }
+            if character == ">", !inQuotes { inAngle = false }
             if (character == "," || character == ";") && !inQuotes && !inAngle {
                 pieces.append(current)
                 current = ""
@@ -43,11 +56,26 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
             let address = trimmed[trimmed.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
             var name = trimmed[..<open].trimmingCharacters(in: .whitespaces)
             if name.count >= 2, name.hasPrefix("\""), name.hasSuffix("\"") {
-                name = String(name.dropFirst().dropLast())
+                name = unescaped(String(name.dropFirst().dropLast()))
             }
             return MailAddress(name: name.mailNonEmpty, address: address)
         }
         return MailAddress(name: nil, address: trimmed)
+    }
+
+    /// Undoes the backslash-escaping `MailReplyComposer.formatted` applies to `"` and `\`
+    /// inside a quoted display name: a backslash always escapes the character after it.
+    private static func unescaped(_ text: String) -> String {
+        var result = ""
+        var iterator = text.makeIterator()
+        while let character = iterator.next() {
+            if character == "\\", let next = iterator.next() {
+                result.append(next)
+            } else {
+                result.append(character)
+            }
+        }
+        return result
     }
 }
 
