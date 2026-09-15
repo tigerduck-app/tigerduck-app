@@ -211,6 +211,10 @@ def main() -> int:
     parser.add_argument("--commit", action="store_true",
                         help="actually deliver the --send message")
     args = parser.parse_args()
+    # uids[-limit:] silently means "everything" at 0 and "all but the first n"
+    # at -n, so an invalid count would widen the read instead of narrowing it.
+    if args.limit < 1:
+        parser.error("--limit must be at least 1")
 
     try:
         sid, pwd = load_creds()
