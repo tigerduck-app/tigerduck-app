@@ -70,9 +70,74 @@ struct MailHTMLSanitizerTests {
         #expect(!html.contains("svg+xml"))
     }
 
+    /// Fix round 1 (2026-09-16, minor): the data-image check requires the MIME subtype to be
+    /// followed immediately by `;` or `,`, matching Android's `DATA_IMAGE` regex exactly — a
+    /// naive prefix check would let a lookalike like `data:image/pngx,...` through.
+    @Test func dataImageCheckRequiresExactMimeBoundary() {
+        let html = MailHTMLSanitizer.sanitize("<img src=\"data:image/pngx,AAAA\">", allowRemoteImages: false).html
+        #expect(!html.contains(" src="))
+        #expect(!html.contains("data:image/pngx"))
+    }
+
     @Test func collectsLinksWithTheirText() {
         let result = MailHTMLSanitizer.sanitize("<p><a href=\"https://www.ntust.edu.tw\">學校首頁</a></p>", allowRemoteImages: false)
         #expect(result.links == [MailLink(text: "學校首頁", href: "https://www.ntust.edu.tw")])
+    }
+
+    /// Ported from Android's `HtmlSanitizerTest` ("links are extracted with their visible
+    /// text"), fix round 1 (2026-09-16, minor): an evil href behind NTUST-looking visible
+    /// text, plus a `mailto:` link, so a sanitizer that dropped everything couldn't
+    /// accidentally pass the negative tests.
+    @Test func linksKeepEvilHrefsBehindTrustedLookingText() {
+        let result = MailHTMLSanitizer.sanitize(
+            "<a href=\"https://evil.example/login\">https://www.ntust.edu.tw</a> <a href=\"mailto:a@b.tw\">mail</a>",
+            allowRemoteImages: false
+        )
+        #expect(result.links == [
+            MailLink(text: "https://www.ntust.edu.tw", href: "https://evil.example/login"),
+            MailLink(text: "mail", href: "mailto:a@b.tw"),
+        ])
+    }
+
+    /// Fix round 1 (2026-09-16, IMPORTANT): SwiftSoup's `Whitelist` validates a URL
+    /// attribute's *trimmed* value but by default writes out the *original* untrimmed bytes.
+    /// Left unfixed, `href=" https://evil.example/login"` (or an entity-decoded `&#x0a;`/
+    /// `&#x09;` control-character prefix) would survive into both `links[].href` and the
+    /// output HTML — `URL(string:)` on that returns nil, silently disabling the A.4
+    /// link-mismatch warning, while WebKit still navigates the untrimmed link. The fix
+    /// mirrors the `src` handling above: trim and write the value back before collecting it.
+    @Test func trimsHrefWhitespaceBeforeChecking() {
+        for prefix in [" ", "\t", "\n", "&#x0a;", "&#x09;"] {
+            let html = "<a href=\"\(prefix)https://www.ntust.edu.tw\">x</a>"
+            let result = MailHTMLSanitizer.sanitize(html, allowRemoteImages: false)
+            #expect(result.links == [MailLink(text: "x", href: "https://www.ntust.edu.tw")], "prefix \(prefix.debugDescription)")
+            #expect(result.html.contains("href=\"https://www.ntust.edu.tw\""), "prefix \(prefix.debugDescription)")
+        }
+    }
+
+    /// Fix round 1 (2026-09-16, minor): link text loses bidi controls too, the same as
+    /// sender names/subjects/attachment names (Task 3's `MailTextCleaner`), mirroring
+    /// Android's `TextCleaning.clean(it.text())` — so a bidi override can't disguise what a
+    /// link's visible text says.
+    @Test func linkTextLosesBidiControls() {
+        let result = MailHTMLSanitizer.sanitize(
+            "<a href=\"https://example.tw\">invoice\u{202E}fdp.exe</a>",
+            allowRemoteImages: false
+        )
+        #expect(result.links == [MailLink(text: "invoicefdp.exe", href: "https://example.tw")])
+    }
+
+    /// Ported from Android's `HtmlSanitizerTest` ("formatting and safe styles are kept"),
+    /// fix round 1 (2026-09-16, minor): a positive test so a sanitizer that dropped
+    /// everything couldn't accidentally pass the negative/corpus tests.
+    @Test func formattingAndSafeStylesAreKept() {
+        let html = MailHTMLSanitizer.sanitize(
+            "<p style=\"color: red; position: fixed\">Hi <b>there</b></p><table border=\"1\"><tr><td colspan=\"2\">x</td></tr></table>",
+            allowRemoteImages: false
+        ).html
+        #expect(html.contains("<b>there</b>"))
+        #expect(html.contains("style=\"color: red\""))
+        #expect(html.contains("colspan=\"2\""))
     }
 
     @Test func plainTextKeepsBlockBreaks() {

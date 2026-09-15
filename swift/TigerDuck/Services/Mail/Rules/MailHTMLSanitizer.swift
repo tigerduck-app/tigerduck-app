@@ -1,6 +1,7 @@
 #if os(iOS)
 import Foundation
 import SwiftSoup
+import os
 
 nonisolated struct MailLink: Codable, Hashable, Sendable {
     var text: String
@@ -18,6 +19,8 @@ nonisolated struct SanitizedHTML: Equatable, Sendable {
 nonisolated enum MailHTMLSanitizer {
     static let cidScheme = "tdcid"
     static let remoteImageAttribute = "data-remote-src"
+
+    private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Sanitizer")
 
     static let allowedTags = [
         "a", "abbr", "b", "big", "blockquote", "br", "caption", "center", "cite", "code", "col", "colgroup",
@@ -45,7 +48,19 @@ nonisolated enum MailHTMLSanitizer {
         "ul": ["type"],
         "li": ["value"],
     ]
-    private static let allowedDataImagePrefixes = ["data:image/png", "data:image/jpeg", "data:image/gif", "data:image/webp"]
+    /// Matches Android's `DATA_IMAGE` regex exactly: the MIME subtype must be followed
+    /// immediately by `;` or `,` (the start of `;base64,` or a raw `,`-separated payload),
+    /// so a bypass like `data:image/pngx,AAAA` does not pass a naive prefix check
+    /// (fix round 1, 2026-09-16).
+    private static let dataImagePattern = try! NSRegularExpression(
+        pattern: "^data:image/(png|jpeg|gif|webp)[;,]",
+        options: .caseInsensitive
+    )
+
+    private static func isAllowedDataImage(_ source: String) -> Bool {
+        let range = NSRange(source.startIndex..., in: source)
+        return dataImagePattern.firstMatch(in: source, options: [], range: range) != nil
+    }
 
     static func sanitize(_ html: String, allowRemoteImages: Bool) -> SanitizedHTML {
         do {
@@ -79,7 +94,7 @@ nonisolated enum MailHTMLSanitizer {
                 let lowered = source.lowercased()
                 if lowered.hasPrefix("cid:") {
                     try image.attr("src", "\(cidScheme):\(source.dropFirst(4))")
-                } else if allowedDataImagePrefixes.contains(where: { lowered.hasPrefix($0) }) {
+                } else if isAllowedDataImage(source) {
                     continue
                 } else if lowered.hasPrefix("https://") || lowered.hasPrefix("http://") {
                     if !allowRemoteImages {
@@ -94,11 +109,27 @@ nonisolated enum MailHTMLSanitizer {
 
             var links: [MailLink] = []
             for anchor in try clean.select("a[href]") {
-                links.append(MailLink(text: try anchor.text(), href: try anchor.attr("href")))
+                // Trim and write the value back before collecting it, mirroring the `src`
+                // ruling above. SwiftSoup's Whitelist validates a URL attribute's *trimmed*
+                // value but by default writes out the *original* bytes, so a leading/trailing
+                // space — or a decoded `&#x0a;`/`&#x09;` control character — would otherwise
+                // survive into both the serialized HTML and `href`, breaking `URL(string:)`
+                // downstream and silently disabling the A.4 link-mismatch warning while
+                // WebKit still navigates the untrimmed link (fix round 1, 2026-09-16).
+                let href = try anchor.attr("href").trimmingCharacters(in: .whitespacesAndNewlines)
+                try anchor.attr("href", href)
+                // A.3: link text loses bidi controls too, same as sender names/subjects,
+                // so a bidi override can't disguise what a link's visible text says.
+                let text = MailTextCleaner.clean(try anchor.text())
+                links.append(MailLink(text: text, href: href))
             }
 
             return SanitizedHTML(html: try clean.body()?.html() ?? "", blockedRemoteImages: blocked, links: links)
         } catch {
+            // Fail closed: fall back to escaped plain text. Log only the error's type, never
+            // its message or the mail content — mail content never leaves the device or reaches
+            // a log (fix round 1, 2026-09-16).
+            logger.error("HTML sanitize failed, falling back to escaped plain text: \(String(describing: type(of: error)), privacy: .public)")
             let escaped = html
                 .replacingOccurrences(of: "&", with: "&amp;")
                 .replacingOccurrences(of: "<", with: "&lt;")
