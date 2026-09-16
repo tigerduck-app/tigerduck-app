@@ -373,6 +373,17 @@ extension IMAPServer {
         try? await entry.idleGroup.shutdownGracefully()
     }
 
+    /// Called by both `disconnect()` and `logout()` — the only two call sites — so both close
+    /// out the stored `authentication` the same way.
+    ///
+    /// TigerDuck change: also clears `authentication`. Without this, `logout()`/`disconnect()`
+    /// leave it set, and the next command any caller issues on this server routes through
+    /// `executeCommand` → `ensurePrimaryConnectionAuthenticated()`, which sees a stored
+    /// `authentication` plus an unauthenticated `primaryConnection` and silently logs back in
+    /// with it — a command still in flight when the caller closed this session (a `detail()`
+    /// per-part fetch loop, a `page()` FETCH after EXAMINE) would reconnect and re-authenticate
+    /// on its own instead of failing as no-longer-authenticated. Clearing it here means the next
+    /// command instead fails outright once nothing is stored to re-authenticate with.
     func closeAllConnections() async throws {
         let idleEntries = idleConnections
         idleConnections.removeAll()
@@ -392,6 +403,7 @@ extension IMAPServer {
         try? await primaryConnection.done()
         try await primaryConnection.disconnect()
 
+        authentication = nil
         clearMailboxState()
     }
 }

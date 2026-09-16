@@ -21,6 +21,12 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    `extendedSearch(...)`/`search(..., sortCriteria:)`'s non-sort (SEARCH/UID SEARCH) branch
    (`IMAP/Models/SearchCriteria.swift`, `IMAP/IMAP/Commands/SearchCommand.swift`,
    `IMAP/IMAP/Commands/ExtendedSearchCommand.swift`).
+4. `closeAllConnections()` also clears the stored `authentication` — without this, `logout()`
+   and `disconnect()` left it set, so the next command any caller issued on the same
+   `IMAPServer` (e.g. a fetch loop still in flight when the caller closed the session) routed
+   through `ensurePrimaryConnectionAuthenticated()`, which silently reconnected and logged back
+   in with the stored credentials instead of failing as no-longer-authenticated
+   (`IMAP/IMAPServer+Connection.swift`).
 
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
