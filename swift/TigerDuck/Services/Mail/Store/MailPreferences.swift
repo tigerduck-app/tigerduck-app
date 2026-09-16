@@ -8,22 +8,6 @@ nonisolated struct MailCheckRecord: Codable, Equatable, Sendable {
     var result: String
 }
 
-nonisolated extension Defaults.Keys {
-    static let schoolMailStudentID = Key<String?>("school_mail_student_id")
-    static let schoolMailDisplayName = Key<String?>("school_mail_display_name")
-    static let schoolMailNotificationsEnabled = Key<Bool>("school_mail_notifications_enabled", default: true)
-    static let schoolMailInboxUIDValidity = Key<Int?>("school_mail_inbox_uid_validity")
-    static let schoolMailInboxNextUID = Key<Int?>("school_mail_inbox_next_uid")
-    static let schoolMailAuthFailed = Key<Bool>("school_mail_auth_failed", default: false)
-    static let schoolMailDemoActive = Key<Bool>("school_mail_demo_active", default: false)
-    static let schoolMailLastCheckAt = Key<Date?>("school_mail_last_check_at")
-    /// JSON-encoded `[OwnedDeletedRecord]` — never a string key joined with a separator, since a
-    /// Mail2000 folder name (modified UTF-7, arbitrary bytes) can contain any character,
-    /// including whatever separator a joined key would pick.
-    static let schoolMailOwnedDeleted = Key<Data?>("school_mail_owned_deleted")
-    static let schoolMailDiagnostics = Key<Data?>("school_mail_diagnostics")
-}
-
 /// School Mail's non-secret state: the student ID (the signed-in signal), display name,
 /// the new-mail marker, and diagnostics. The password lives in `MailCredentialStore`.
 nonisolated protocol MailPreferences: AnyObject, Sendable {
@@ -50,6 +34,12 @@ nonisolated protocol MailPreferences: AnyObject, Sendable {
     func reset()
 }
 
+/// Backed by the `Defaults` library, on a suite chosen at `init`. Production callers use the
+/// no-argument initializer (the app's real `UserDefaults.standard`); tests inject a per-test
+/// `UserDefaults(suiteName:)` so they never read, write or `reset()` the app's real
+/// `school_mail_*` keys — following this repo's existing isolation idiom
+/// (`CloudSyncPreferenceTests.withIsolatedKey`, `ClockCoreTests`'s per-test suite + persistent
+/// domain removal).
 nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sendable {
     /// The Codable twin of `OwnedDeleted` used only for persistence. `OwnedDeleted` itself is
     /// declared in `MailMover.swift` without `Codable`; Swift only synthesizes `Codable` for a
@@ -61,74 +51,113 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         var uids: Set<UInt32>
     }
 
+    private let studentIDKey: Defaults.Key<String?>
+    private let displayNameKey: Defaults.Key<String?>
+    private let notificationsEnabledKey: Defaults.Key<Bool>
+    private let inboxUIDValidityKey: Defaults.Key<Int?>
+    private let inboxNextUIDKey: Defaults.Key<Int?>
+    private let authFailedKey: Defaults.Key<Bool>
+    private let demoActiveKey: Defaults.Key<Bool>
+    private let lastCheckAtKey: Defaults.Key<Date?>
+    /// JSON-encoded `[OwnedDeletedRecord]` — never a string key joined with a separator, since a
+    /// Mail2000 folder name (modified UTF-7, arbitrary bytes) can contain any character,
+    /// including whatever separator a joined key would pick.
+    private let ownedDeletedKey: Defaults.Key<Data?>
+    private let diagnosticsKey: Defaults.Key<Data?>
+
+    /// Guards the `ownedDeletedRecords` read-modify-write in `setOwnedDeleted`: two concurrent
+    /// calls for different folders (e.g. a background check expunging one folder while the user
+    /// deletes mail in another) must not read the same snapshot and each write back a list
+    /// missing the other's entry. Mirrors `MailCache`'s lock. The scalar properties below don't
+    /// need it — each is a single `Defaults[key]` get/set, not a compound operation.
+    private let lock = NSLock()
+
+    init(defaults: UserDefaults = .standard) {
+        studentIDKey = Defaults.Key<String?>("school_mail_student_id", suite: defaults)
+        displayNameKey = Defaults.Key<String?>("school_mail_display_name", suite: defaults)
+        notificationsEnabledKey = Defaults.Key<Bool>("school_mail_notifications_enabled", default: true, suite: defaults)
+        inboxUIDValidityKey = Defaults.Key<Int?>("school_mail_inbox_uid_validity", suite: defaults)
+        inboxNextUIDKey = Defaults.Key<Int?>("school_mail_inbox_next_uid", suite: defaults)
+        authFailedKey = Defaults.Key<Bool>("school_mail_auth_failed", default: false, suite: defaults)
+        demoActiveKey = Defaults.Key<Bool>("school_mail_demo_active", default: false, suite: defaults)
+        lastCheckAtKey = Defaults.Key<Date?>("school_mail_last_check_at", suite: defaults)
+        ownedDeletedKey = Defaults.Key<Data?>("school_mail_owned_deleted", suite: defaults)
+        diagnosticsKey = Defaults.Key<Data?>("school_mail_diagnostics", suite: defaults)
+    }
+
     var studentID: String? {
-        get { Defaults[.schoolMailStudentID] }
-        set { Defaults[.schoolMailStudentID] = newValue }
+        get { Defaults[studentIDKey] }
+        set { Defaults[studentIDKey] = newValue }
     }
     var displayName: String? {
-        get { Defaults[.schoolMailDisplayName] }
-        set { Defaults[.schoolMailDisplayName] = newValue }
+        get { Defaults[displayNameKey] }
+        set { Defaults[displayNameKey] = newValue }
     }
     var notificationsEnabled: Bool {
-        get { Defaults[.schoolMailNotificationsEnabled] }
-        set { Defaults[.schoolMailNotificationsEnabled] = newValue }
+        get { Defaults[notificationsEnabledKey] }
+        set { Defaults[notificationsEnabledKey] = newValue }
     }
     var inboxUIDValidity: UInt32? {
-        get { Defaults[.schoolMailInboxUIDValidity].map { UInt32(truncatingIfNeeded: $0) } }
-        set { Defaults[.schoolMailInboxUIDValidity] = newValue.map(Int.init) }
+        get { Defaults[inboxUIDValidityKey].map { UInt32(truncatingIfNeeded: $0) } }
+        set { Defaults[inboxUIDValidityKey] = newValue.map(Int.init) }
     }
     var inboxNextUID: UInt32? {
-        get { Defaults[.schoolMailInboxNextUID].map { UInt32(truncatingIfNeeded: $0) } }
-        set { Defaults[.schoolMailInboxNextUID] = newValue.map(Int.init) }
+        get { Defaults[inboxNextUIDKey].map { UInt32(truncatingIfNeeded: $0) } }
+        set { Defaults[inboxNextUIDKey] = newValue.map(Int.init) }
     }
     var authFailed: Bool {
-        get { Defaults[.schoolMailAuthFailed] }
-        set { Defaults[.schoolMailAuthFailed] = newValue }
+        get { Defaults[authFailedKey] }
+        set { Defaults[authFailedKey] = newValue }
     }
     var demoActive: Bool {
-        get { Defaults[.schoolMailDemoActive] }
-        set { Defaults[.schoolMailDemoActive] = newValue }
+        get { Defaults[demoActiveKey] }
+        set { Defaults[demoActiveKey] = newValue }
     }
     var lastCheckAt: Date? {
-        get { Defaults[.schoolMailLastCheckAt] }
-        set { Defaults[.schoolMailLastCheckAt] = newValue }
+        get { Defaults[lastCheckAtKey] }
+        set { Defaults[lastCheckAtKey] = newValue }
     }
     var diagnostics: [MailCheckRecord] {
         get {
-            guard let data = Defaults[.schoolMailDiagnostics] else { return [] }
+            guard let data = Defaults[diagnosticsKey] else { return [] }
             return (try? JSONDecoder().decode([MailCheckRecord].self, from: data)) ?? []
         }
-        set { Defaults[.schoolMailDiagnostics] = try? JSONEncoder().encode(newValue) }
+        set { Defaults[diagnosticsKey] = try? JSONEncoder().encode(newValue) }
     }
 
+    /// Not locked itself — only ever called from within a `lock.withLock` block below.
     private var ownedDeletedRecords: [OwnedDeletedRecord] {
         get {
-            guard let data = Defaults[.schoolMailOwnedDeleted] else { return [] }
+            guard let data = Defaults[ownedDeletedKey] else { return [] }
             return (try? JSONDecoder().decode([OwnedDeletedRecord].self, from: data)) ?? []
         }
-        set { Defaults[.schoolMailOwnedDeleted] = try? JSONEncoder().encode(newValue) }
+        set { Defaults[ownedDeletedKey] = try? JSONEncoder().encode(newValue) }
     }
 
     func ownedDeleted(folder: String, uidValidity: UInt32) -> OwnedDeleted {
-        guard let record = ownedDeletedRecords.first(where: { $0.folder == folder && $0.uidValidity == uidValidity }) else {
-            return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: [])
+        lock.withLock {
+            guard let record = ownedDeletedRecords.first(where: { $0.folder == folder && $0.uidValidity == uidValidity }) else {
+                return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: [])
+            }
+            return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: record.uids)
         }
-        return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: record.uids)
     }
 
     func setOwnedDeleted(_ owned: OwnedDeleted) {
-        var records = ownedDeletedRecords.filter { $0.folder != owned.folder }
-        if !owned.uids.isEmpty {
-            records.append(OwnedDeletedRecord(folder: owned.folder, uidValidity: owned.uidValidity, uids: owned.uids))
+        lock.withLock {
+            var records = ownedDeletedRecords.filter { $0.folder != owned.folder }
+            if !owned.uids.isEmpty {
+                records.append(OwnedDeletedRecord(folder: owned.folder, uidValidity: owned.uidValidity, uids: owned.uids))
+            }
+            ownedDeletedRecords = records
         }
-        ownedDeletedRecords = records
     }
 
     func reset() {
         Defaults.reset(
-            .schoolMailStudentID, .schoolMailDisplayName, .schoolMailNotificationsEnabled,
-            .schoolMailInboxUIDValidity, .schoolMailInboxNextUID, .schoolMailAuthFailed,
-            .schoolMailDemoActive, .schoolMailLastCheckAt, .schoolMailOwnedDeleted, .schoolMailDiagnostics
+            studentIDKey, displayNameKey, notificationsEnabledKey,
+            inboxUIDValidityKey, inboxNextUIDKey, authFailedKey,
+            demoActiveKey, lastCheckAtKey, ownedDeletedKey, diagnosticsKey
         )
     }
 }

@@ -3,46 +3,90 @@ import Foundation
 @testable import TigerDuck
 
 final class InMemoryMailPreferences: MailPreferences, @unchecked Sendable {
-    var studentID: String?
-    var displayName: String?
-    var notificationsEnabled = true
-    var inboxUIDValidity: UInt32?
-    var inboxNextUID: UInt32?
-    var authFailed = false
-    var demoActive = false
-    var lastCheckAt: Date?
-    var diagnostics: [MailCheckRecord] = []
+    private let lock = NSLock()
 
+    private var _studentID: String?
+    private var _displayName: String?
+    private var _notificationsEnabled = true
+    private var _inboxUIDValidity: UInt32?
+    private var _inboxNextUID: UInt32?
+    private var _authFailed = false
+    private var _demoActive = false
+    private var _lastCheckAt: Date?
+    private var _diagnostics: [MailCheckRecord] = []
     /// Keyed by folder only (never a joined string key): a stored entry is returned by
     /// `ownedDeleted` only when its UIDVALIDITY also matches, mirroring the persisted store.
     private var ownedByFolder: [String: OwnedDeleted] = [:]
 
+    var studentID: String? {
+        get { lock.withLock { _studentID } }
+        set { lock.withLock { _studentID = newValue } }
+    }
+    var displayName: String? {
+        get { lock.withLock { _displayName } }
+        set { lock.withLock { _displayName = newValue } }
+    }
+    var notificationsEnabled: Bool {
+        get { lock.withLock { _notificationsEnabled } }
+        set { lock.withLock { _notificationsEnabled = newValue } }
+    }
+    var inboxUIDValidity: UInt32? {
+        get { lock.withLock { _inboxUIDValidity } }
+        set { lock.withLock { _inboxUIDValidity = newValue } }
+    }
+    var inboxNextUID: UInt32? {
+        get { lock.withLock { _inboxNextUID } }
+        set { lock.withLock { _inboxNextUID = newValue } }
+    }
+    var authFailed: Bool {
+        get { lock.withLock { _authFailed } }
+        set { lock.withLock { _authFailed = newValue } }
+    }
+    var demoActive: Bool {
+        get { lock.withLock { _demoActive } }
+        set { lock.withLock { _demoActive = newValue } }
+    }
+    var lastCheckAt: Date? {
+        get { lock.withLock { _lastCheckAt } }
+        set { lock.withLock { _lastCheckAt = newValue } }
+    }
+    var diagnostics: [MailCheckRecord] {
+        get { lock.withLock { _diagnostics } }
+        set { lock.withLock { _diagnostics = newValue } }
+    }
+
     func ownedDeleted(folder: String, uidValidity: UInt32) -> OwnedDeleted {
-        guard let stored = ownedByFolder[folder], stored.uidValidity == uidValidity else {
-            return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: [])
+        lock.withLock {
+            guard let stored = ownedByFolder[folder], stored.uidValidity == uidValidity else {
+                return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: [])
+            }
+            return stored
         }
-        return stored
     }
 
     func setOwnedDeleted(_ owned: OwnedDeleted) {
-        if owned.uids.isEmpty {
-            ownedByFolder[owned.folder] = nil
-        } else {
-            ownedByFolder[owned.folder] = owned
+        lock.withLock {
+            if owned.uids.isEmpty {
+                ownedByFolder[owned.folder] = nil
+            } else {
+                ownedByFolder[owned.folder] = owned
+            }
         }
     }
 
     func reset() {
-        studentID = nil
-        displayName = nil
-        notificationsEnabled = true
-        inboxUIDValidity = nil
-        inboxNextUID = nil
-        authFailed = false
-        demoActive = false
-        lastCheckAt = nil
-        diagnostics = []
-        ownedByFolder = [:]
+        lock.withLock {
+            _studentID = nil
+            _displayName = nil
+            _notificationsEnabled = true
+            _inboxUIDValidity = nil
+            _inboxNextUID = nil
+            _authFailed = false
+            _demoActive = false
+            _lastCheckAt = nil
+            _diagnostics = []
+            ownedByFolder = [:]
+        }
     }
 }
 

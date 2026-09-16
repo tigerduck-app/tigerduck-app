@@ -92,12 +92,25 @@ nonisolated final class MailCache: @unchecked Sendable {
     // MARK: Attachments
 
     /// A fresh file for an opened attachment; removed by `clearAll()` (sign-out).
+    ///
+    /// `filename` comes from the server (RFC 2047-decoded), so `.` or `..` would otherwise
+    /// resolve `appendingPathComponent` up out of this call's fresh per-attachment UUID folder —
+    /// `.` back into `attachments/`, `..` a level above that. Both, and an empty name, map to a
+    /// generic `attachment` instead; `/` is still replaced so nothing but the final path
+    /// component can be attacker-influenced.
     func temporaryFileURL(filename: String) throws -> URL {
         let folder = directory.appendingPathComponent("attachments", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try createDirectory(folder)
-        let safeName = filename.replacingOccurrences(of: "/", with: "_").mailNonEmpty ?? "attachment"
-        return folder.appendingPathComponent(safeName)
+        return folder.appendingPathComponent(Self.safeAttachmentName(filename))
+    }
+
+    private static func safeAttachmentName(_ filename: String) -> String {
+        let replaced = filename.replacingOccurrences(of: "/", with: "_")
+        guard let nonEmpty = replaced.mailNonEmpty, nonEmpty != ".", nonEmpty != ".." else {
+            return "attachment"
+        }
+        return nonEmpty
     }
 
     func clearAll() {
