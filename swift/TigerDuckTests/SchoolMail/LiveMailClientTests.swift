@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import SwiftMail
 import Testing
 @testable import TigerDuck
 
@@ -10,6 +11,10 @@ struct LiveMailClientTests {
         ("server busy, try again later", .serverBusy),
         ("NO [AUTHENTICATIONFAILED] Invalid credentials", .authenticationFailed),
         ("connection reset by peer", .unreachable),
+        // A handshake failure that doesn't mention a certificate (e.g. a protocol-version
+        // alert) is a transport problem, not a trust one — it must not be misclassified as
+        // certificateRejected just because the text contains "handshake".
+        ("NIOSSLError.handshakeFailed(... PROTOCOL_VERSION alert)", .unreachable),
     ])
     func classifiesServerText(text: String, expected: MailClientError) {
         #expect(LiveMailClient.classify(text, fallback: .unreachable) == expected)
@@ -21,6 +26,39 @@ struct LiveMailClientTests {
 
     @Test func unknownErrorsCountAsUnreachable() {
         #expect(LiveMailClient.map(URLError(.timedOut)) == .unreachable)
+    }
+
+    @Test func mapsSMTPSendErrorsToProtocolErrorCarryingTheDescription() {
+        let sendError = SMTPSendError(phase: .data, acceptance: .ambiguous, reason: .connectionLost)
+        #expect(LiveMailClient.map(sendError) == .protocolError(String(describing: sendError)))
+    }
+
+    @Test func mapsRefusedSearchCommandsToSearchUnsupported() {
+        #expect(LiveMailClient.mapSearchError(.commandFailed("NO search not allowed")) == .searchUnsupported)
+        #expect(LiveMailClient.mapSearchError(.commandNotSupported("SEARCH not supported")) == .searchUnsupported)
+    }
+
+    @Test func nonSearchIMAPErrorsFallThroughToTheGeneralMapping() {
+        #expect(LiveMailClient.mapSearchError(.timeout) == .unreachable)
+        #expect(LiveMailClient.mapSearchError(.loginFailed("NO")) == .authenticationFailed)
+    }
+
+    @Test func onlyNetworkAndCertificateFailuresCloseTheConnection() {
+        #expect(LiveMailClient.closesConnectionOnFailure(.unreachable))
+        #expect(LiveMailClient.closesConnectionOnFailure(.certificateRejected))
+        #expect(!LiveMailClient.closesConnectionOnFailure(.authenticationFailed))
+        #expect(!LiveMailClient.closesConnectionOnFailure(.serverBusy))
+        #expect(!LiveMailClient.closesConnectionOnFailure(.searchUnsupported))
+        #expect(!LiveMailClient.closesConnectionOnFailure(.folderChanged))
+        #expect(!LiveMailClient.closesConnectionOnFailure(.protocolError("x")))
+    }
+
+    @Test func uidValidityChangeDetection() {
+        // Nothing recorded yet for the folder: never a mismatch — a different layer
+        // (`MailMover.assertFolderUnchanged`) is relied on to have checked already.
+        #expect(!LiveMailClient.uidValidityChanged(remembered: nil, current: 5))
+        #expect(!LiveMailClient.uidValidityChanged(remembered: 5, current: 5))
+        #expect(LiveMailClient.uidValidityChanged(remembered: 5, current: 6))
     }
 
     @Test func swiftMailDecodesHeadersWithTheA5Rules() {

@@ -29,24 +29,28 @@ nonisolated enum SchoolMailCharsetHook {
 /// Mail2000 has no MOVE, UIDPLUS, IDLE or SPECIAL-USE, so none of SwiftMail's helpers for
 /// those are used; `MailMover` composes COPY/STORE/EXPUNGE itself.
 ///
-/// Held-connection lifecycle (controller ruling, carried from the Android T12 reviews):
-/// every command probes the connection with a cheap NOOP first (never a folder-reselecting
-/// STATUS); a dead connection is replaced with exactly one reconnect-and-relogin, then the
-/// caller's command runs exactly once — a command that may already have started (COPY,
-/// STORE, APPEND, EXPUNGE, a streaming download) is never retried. A network or certificate
-/// failure closes the underlying socket so the next use reconnects from scratch; a protocol
-/// error or `.searchUnsupported` leaves the socket alone. `acquire()`/`release()` are the
-/// primitive a screen that holds this client across multiple operations uses: `release()`
-/// arms a ~30 s idle-close timer (re-armed by any further use that ends while still
-/// released); `acquire()` cancels it. Nothing in this file calls `acquire()`/`release()`
-/// itself — a later screen/session-holding task calls them.
+/// Held-connection lifecycle (controller ruling): every command probes the connection with a
+/// cheap NOOP first (never a folder-reselecting STATUS); a dead connection is replaced with
+/// exactly one reconnect-and-relogin, then the caller's command runs exactly once — a command
+/// that may already have started (COPY, STORE, APPEND, EXPUNGE, a streaming download) is never
+/// retried. A network or certificate failure closes the underlying socket so the next use
+/// reconnects from scratch; a protocol error or `.searchUnsupported` leaves the socket alone.
+/// `logout()` always closes. Connection *lifetime* beyond that (idle-close timing, holding the
+/// connection open across a screen's multiple operations) belongs to whatever owns the page
+/// session, not to this type — this file does not implement or expose an idle-close primitive.
 actor LiveMailClient: MailClient {
     nonisolated private static let summaryOptions: FetchMessageInfoOptions = [.envelope, .internalDate, .flags, .size, .bodyStructure]
 
     private let imap: IMAPServer
     private var credentials: (studentID: String, password: String)?
-    private var isAcquired = false
-    private var idleCloseTask: Task<Void, Never>?
+    /// The UIDVALIDITY the most recent `status(folder:)` call observed for each folder. `copy`,
+    /// `setFlag` and `expunge` compare this against the SELECT response on the connection that
+    /// is about to run them, and refuse before sending anything if the folder was recreated
+    /// server-side in between (rule d) — `status()`'s own EXAMINE and a mutating call's SELECT
+    /// can land on different reconnects of this actor's single held connection, so the value has
+    /// to be remembered here rather than trusted from whatever `MailMover.assertFolderUnchanged`
+    /// read moments earlier on a connection that may no longer be the one in use.
+    private var lastKnownUIDValidity: [String: UInt32] = [:]
 
     init() {
         imap = IMAPServer(
@@ -64,55 +68,20 @@ actor LiveMailClient: MailClient {
             try await imap.login(username: studentID, password: password)
             credentials = (studentID, password)
         } catch {
+            // Never leave a previous successful login's credentials in place after a failed
+            // (re)login attempt — otherwise a later command would silently reconnect as the old
+            // account instead of surfacing that this login failed.
+            credentials = nil
             try? await imap.disconnect()
             throw Self.map(error)
         }
-        if !isAcquired { armIdleClose() }
     }
 
     func logout() async {
-        cancelIdleClose()
         try? await imap.logout()
         try? await imap.disconnect()
         credentials = nil
-        isAcquired = false
-    }
-
-    // MARK: Held-connection lifecycle
-
-    /// Cancels the idle-close timer. Call when a screen that holds this client appears.
-    func acquire() {
-        isAcquired = true
-        cancelIdleClose()
-    }
-
-    /// Marks this client as no longer actively held and arms the idle-close timer
-    /// (`MailConstants.connectionIdleClose`, ~30 s). Any further use of the connection
-    /// that completes while still released re-arms the timer, so a background check
-    /// reusing this connection doesn't leave the socket open indefinitely.
-    func release() {
-        isAcquired = false
-        armIdleClose()
-    }
-
-    private func cancelIdleClose() {
-        idleCloseTask?.cancel()
-        idleCloseTask = nil
-    }
-
-    private func armIdleClose() {
-        cancelIdleClose()
-        idleCloseTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Int(MailConstants.connectionIdleClose)))
-            guard !Task.isCancelled else { return }
-            await self?.closeIfStillReleased()
-        }
-    }
-
-    private func closeIfStillReleased() async {
-        idleCloseTask = nil
-        guard !isAcquired else { return }
-        try? await imap.disconnect()
+        lastKnownUIDValidity.removeAll()
     }
 
     func listFolders() async throws -> [String] {
@@ -121,18 +90,32 @@ actor LiveMailClient: MailClient {
 
     func status(folder: String) async throws -> MailboxStatusInfo {
         try await run {
+            // RFC 3501 §6.3.10: a server SHOULD NOT accept STATUS for the mailbox that's
+            // currently selected, so STATUS is issued before EXAMINE, never after. A server that
+            // rejects STATUS outright (`IMAPError.commandFailed`) just means no unseen count;
+            // any other failure (a dropped connection, a malformed response) is a real problem
+            // and propagates through `map` like every other error here.
+            let unseen: Int?
+            do {
+                unseen = try await self.imap.mailboxStatus(folder).unseenCount
+            } catch let error as IMAPError {
+                switch error {
+                case .commandFailed: unseen = nil
+                default: throw error
+                }
+            }
             // `IMAPServer.mailboxStatus` only requests STATUS's UIDNEXT/UIDVALIDITY when the
             // server advertises UIDPLUS, even though both are base RFC 3501 STATUS items —
             // Mail2000 has no UIDPLUS (global-constraints.md), so that STATUS would never
             // carry them. EXAMINE's SELECT response always carries them unconditionally
             // (the same source `page(folder:...)` already uses below), so that's the source
-            // of truth here; STATUS is used only for its best-effort unseen count.
+            // of truth here.
             let selection = try await self.imap.examineMailbox(folder)
-            let status = try? await self.imap.mailboxStatus(folder)
+            self.lastKnownUIDValidity[folder] = selection.uidValidity.value
             return MailboxStatusInfo(
                 uidValidity: selection.uidValidity.value,
                 uidNext: selection.uidNext.value,
-                unseen: status?.unseenCount
+                unseen: unseen
             )
         }
     }
@@ -196,7 +179,12 @@ actor LiveMailClient: MailClient {
     func detail(folder: String, uid: UInt32) async throws -> MailMessageDetail {
         try await run {
             _ = try await self.imap.examineMailbox(folder)
-            guard let info = try await self.imap.fetchMessageInfo(for: UID(uid), options: Self.summaryOptions),
+            // ENVELOPE never carries References (only In-Reply-To); SwiftMail only fills
+            // `MessageInfo.references` from a fetched header section, so it has to be requested
+            // explicitly here or every reply loses the thread chain.
+            guard let info = try await self.imap.fetchMessageInfo(
+                    for: UID(uid), options: Self.summaryOptions, headerFields: ["References"]
+                  ),
                   let summary = Self.summary(from: info) else {
                 throw MailClientError.protocolError("message \(uid) not found")
             }
@@ -254,15 +242,12 @@ actor LiveMailClient: MailClient {
                 _ = try await self.imap.examineMailbox(folder)
                 // The SORT/ESEARCH variants need capabilities Mail2000 lacks; this plain
                 // SEARCH is the one that works (the vendored patch adds CHARSET UTF-8 for Chinese).
-                let found: MessageIdentifierSet<UID> = try await self.imap.search(
+                let found = try await self.rawSearch(
                     criteria: [.or(.or(.from(query), .subject(query)), .body(query))]
                 )
                 return found.toArray().map(\.value)
             } catch let error as IMAPError {
-                switch error {
-                case .commandFailed, .commandNotSupported: throw MailClientError.searchUnsupported
-                default: throw error
-                }
+                throw Self.mapSearchError(error)
             }
         }
     }
@@ -270,7 +255,10 @@ actor LiveMailClient: MailClient {
     func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32]) async throws {
         guard !uids.isEmpty else { return }
         try await run {
-            _ = try await self.imap.selectMailbox(folder)
+            let selection = try await self.imap.selectMailbox(folder)
+            guard !Self.uidValidityChanged(remembered: self.lastKnownUIDValidity[folder], current: selection.uidValidity.value) else {
+                throw MailClientError.folderChanged
+            }
             try await self.imap.store(flags: [flag.swiftMailFlag], on: Self.uidSet(uids), operation: on ? .add : .remove)
         }
     }
@@ -278,7 +266,10 @@ actor LiveMailClient: MailClient {
     func copy(folder: String, uids: [UInt32], to target: String) async throws {
         guard !uids.isEmpty else { return }
         try await run {
-            _ = try await self.imap.selectMailbox(folder)
+            let selection = try await self.imap.selectMailbox(folder)
+            guard !Self.uidValidityChanged(remembered: self.lastKnownUIDValidity[folder], current: selection.uidValidity.value) else {
+                throw MailClientError.folderChanged
+            }
             try await self.imap.copy(messages: Self.uidSet(uids), to: target)
         }
     }
@@ -286,20 +277,31 @@ actor LiveMailClient: MailClient {
     func deletedUIDs(folder: String) async throws -> Set<UInt32> {
         try await run {
             _ = try await self.imap.examineMailbox(folder)
-            let found: MessageIdentifierSet<UID> = try await self.imap.search(criteria: [.deleted])
+            let found = try await self.rawSearch(criteria: [.deleted])
             return Set(found.toArray().map(\.value))
         }
     }
 
     func expunge(folder: String) async throws {
         try await run {
-            _ = try await self.imap.selectMailbox(folder)
+            let selection = try await self.imap.selectMailbox(folder)
+            guard !Self.uidValidityChanged(remembered: self.lastKnownUIDValidity[folder], current: selection.uidValidity.value) else {
+                throw MailClientError.folderChanged
+            }
             try await self.imap.expunge()
         }
     }
 
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {
         try await run {
+            // SwiftMail's IMAP `append` only accepts a `String` (IMAPServer+Append.swift has no
+            // Data-based overload). Every caller builds `message` through `MailMessageBuilder`,
+            // which always quoted-printable- or base64-encodes the body and RFC 2047-encodes
+            // non-ASCII headers, so the payload is 7-bit ASCII by construction and decoding it as
+            // UTF-8 below is lossless (ASCII is a UTF-8 subset). Assert the invariant so a future
+            // caller that breaks it fails loudly in debug/test builds instead of silently losing
+            // bytes to `String(decoding:as:)`'s replacement-character behavior.
+            assert(message.allSatisfy { $0 < 0x80 }, "append() payload must be 7-bit ASCII (MailMessageBuilder's contract)")
             try await self.imap.append(rawMessage: String(decoding: message, as: UTF8.self), to: folder,
                                        flags: flags.map(\.swiftMailFlag), internalDate: nil)
         }
@@ -308,7 +310,7 @@ actor LiveMailClient: MailClient {
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool {
         try await run {
             _ = try await self.imap.examineMailbox(folder)
-            let found: MessageIdentifierSet<UID> = try await self.imap.search(criteria: [.header("Message-ID", messageID)])
+            let found = try await self.rawSearch(criteria: [.header("Message-ID", messageID)])
             return !found.isEmpty
         }
     }
@@ -336,27 +338,29 @@ actor LiveMailClient: MailClient {
 
     // MARK: Helpers
 
+    /// The one place `IMAPServer.search(criteria:)` (deprecated — Mail2000 has no SORT/ESEARCH,
+    /// so this remains the only search variant it supports) is actually called, so the build
+    /// shows a single deprecation warning instead of one per call site.
+    private func rawSearch(criteria: [SearchCriteria]) async throws -> MessageIdentifierSet<UID> {
+        try await imap.search(criteria: criteria)
+    }
+
     /// Runs one command against the held IMAP connection: probes liveness with a cheap
     /// NOOP (never a folder-reselecting STATUS), reconnects-and-relogs-in exactly once if
     /// the probe fails, then runs `body` exactly once — never retried, since `body` may be
     /// a command (COPY, STORE, APPEND, EXPUNGE, a streaming download) that must not be sent
     /// twice. A network or certificate failure closes the socket so the next call
-    /// reconnects from scratch; every other error leaves it alone. Whenever this client
-    /// isn't currently held (`acquire()`/`release()`), finishing re-arms the idle-close
-    /// timer, matching "any use that ends while released re-arms the ~30 s close."
+    /// reconnects from scratch; every other error leaves it alone.
     @discardableResult
     private func run<T>(_ body: () async throws -> T) async throws -> T {
         do {
             try await ensureLiveConnection()
-            let result = try await body()
-            if !isAcquired { armIdleClose() }
-            return result
+            return try await body()
         } catch {
             let mapped = Self.map(error)
             if Self.closesConnectionOnFailure(mapped) {
                 try? await imap.disconnect()
             }
-            if !isAcquired { armIdleClose() }
             throw mapped
         }
     }
@@ -375,18 +379,35 @@ actor LiveMailClient: MailClient {
         }
         do {
             try await imap.connect()
+        } catch {
+            try? await imap.disconnect()
+            throw error
+        }
+        do {
             try await imap.login(username: credentials.studentID, password: credentials.password)
         } catch {
-            // A half-completed reconnect (connected but never authenticated, e.g. the
-            // password was rejected) must not be left for the next call's NOOP probe to
-            // mistake for a live, usable session — tear it down so the next attempt starts
-            // from a clean connect+login.
+            // A reconnect-login that the server rejects means these credentials no longer work —
+            // clear them so the next call fails fast with `.protocolError("not logged in")`
+            // instead of retrying the same bad password forever. A half-completed reconnect
+            // (connected but never authenticated) must also not be left for the next call's NOOP
+            // probe to mistake for a live, usable session.
+            self.credentials = nil
             try? await imap.disconnect()
             throw error
         }
     }
 
-    nonisolated private static func closesConnectionOnFailure(_ error: MailClientError) -> Bool {
+    /// Whether the folder's connection-fresh UIDVALIDITY no longer matches the value the most
+    /// recent `status(folder:)` call recorded for that folder. `nil` (nothing recorded yet)
+    /// never counts as a mismatch — the caller relies on a different layer
+    /// (`MailMover.assertFolderUnchanged`, which always calls `status()` first) having already
+    /// checked in that case.
+    nonisolated static func uidValidityChanged(remembered: UInt32?, current: UInt32) -> Bool {
+        guard let remembered else { return false }
+        return remembered != current
+    }
+
+    nonisolated static func closesConnectionOnFailure(_ error: MailClientError) -> Bool {
         switch error {
         case .unreachable, .certificateRejected: true
         case .authenticationFailed, .serverBusy, .searchUnsupported, .folderChanged, .protocolError: false
@@ -426,10 +447,24 @@ actor LiveMailClient: MailClient {
         return classify(String(describing: error), fallback: .unreachable)
     }
 
-    /// TLS failures surface as NIOSSL handshake errors; a busy server as NO/BYE text.
+    /// `.commandFailed`/`.commandNotSupported` from a server-issued SEARCH means the server
+    /// refused the query outright (Mail2000 can reject search keys it doesn't support); every
+    /// other `IMAPError` isn't search-specific and maps through the general `map(_:)`.
+    nonisolated static func mapSearchError(_ error: IMAPError) -> MailClientError {
+        switch error {
+        case .commandFailed, .commandNotSupported: .searchUnsupported
+        default: map(error)
+        }
+    }
+
+    /// TLS certificate/verification failures surface as NIOSSL handshake errors that mention
+    /// the certificate; a busy server as NO/BYE text. A handshake failure that does *not*
+    /// mention a certificate (e.g. a protocol-version alert) is a transport problem, not a
+    /// trust one, and falls through to `fallback` (`.unreachable` at every call site) rather
+    /// than being misreported as `.certificateRejected`.
     nonisolated static func classify(_ text: String, fallback: MailClientError) -> MailClientError {
         let lowered = text.lowercased()
-        if lowered.contains("certificate") || lowered.contains("handshake") { return .certificateRejected }
+        if lowered.contains("certificate") { return .certificateRejected }
         if lowered.contains("too many") || lowered.contains("busy") || lowered.contains("try again later") { return .serverBusy }
         if lowered.contains("authenticationfailed") || lowered.contains("login failed") { return .authenticationFailed }
         return fallback

@@ -23,9 +23,10 @@ nonisolated enum MailTLSVerifier {
         now: Date = Date(),
         pinPolicy: TLSPinningDelegate.PinPolicy? = nil
     ) -> Bool {
-        // NIOSSL hands the peer chain leaf-first (TLS wire order); this only matters for
-        // logging context here, since the pin check below scans every certificate in the
-        // chain the platform actually evaluated, not just the first.
+        // NIOSSL hands the peer chain leaf-first (TLS wire order), and that order is load-
+        // bearing here, not just a logging nicety: `SecTrustCreateWithCertificates` treats the
+        // first certificate in its input array as the leaf when building the trust chain, so
+        // passing anything else first would evaluate trust against the wrong certificate.
         let certificates = derChain.compactMap { SecCertificateCreateWithData(nil, Data($0) as CFData) }
         guard !certificates.isEmpty, certificates.count == derChain.count else {
             logger.error("Mail TLS certificate parsing failed for \(host, privacy: .public)")
@@ -42,8 +43,15 @@ nonisolated enum MailTLSVerifier {
         SecTrustSetVerifyDate(trust, now as CFDate)
         var error: CFError?
         guard SecTrustEvaluateWithError(trust, &error) else {
+            // The numeric CFError code identifies no one and is safe to log in the clear
+            // (unlike the full description, which can carry hostnames or paths); it also
+            // survives independently of whether the description's `.private(mask: .hash)`
+            // hides anything actionable in a bug report.
+            let code = error.map { String(CFErrorGetCode($0)) } ?? "unknown"
             let description = error.map { String(describing: $0) } ?? "unknown"
-            logger.error("Mail TLS trust evaluation failed for \(host, privacy: .public): \(description, privacy: .private(mask: .hash))")
+            logger.error(
+                "Mail TLS trust evaluation failed for \(host, privacy: .public), code \(code, privacy: .public): \(description, privacy: .private(mask: .hash))"
+            )
             return false
         }
 
