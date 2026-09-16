@@ -29,15 +29,21 @@ nonisolated enum SchoolMailCharsetHook {
 /// Mail2000 has no MOVE, UIDPLUS, IDLE or SPECIAL-USE, so none of SwiftMail's helpers for
 /// those are used; `MailMover` composes COPY/STORE/EXPUNGE itself.
 ///
-/// Held-connection lifecycle (controller ruling): every command probes the connection with a
-/// cheap NOOP first (never a folder-reselecting STATUS); a dead connection is replaced with
-/// exactly one reconnect-and-relogin, then the caller's command runs exactly once — a command
-/// that may already have started (COPY, STORE, APPEND, EXPUNGE, a streaming download) is never
-/// retried. A network or certificate failure closes the underlying socket so the next use
-/// reconnects from scratch; a protocol error or `.searchUnsupported` leaves the socket alone.
-/// `logout()` always closes. Connection *lifetime* beyond that (idle-close timing, holding the
-/// connection open across a screen's multiple operations) belongs to whatever owns the page
-/// session, not to this type — this file does not implement or expose an idle-close primitive.
+/// Held-connection lifecycle (controller ruling): every `run` call is serialized against every
+/// other one by a per-client FIFO lock, so a command's SELECT and the STORE/COPY/EXPUNGE it
+/// guards can never be interleaved by a different call's SELECT running on the same shared
+/// connection. Inside that lock: a command probes the connection with a cheap NOOP first (never
+/// a folder-reselecting STATUS); a dead connection is replaced with exactly one
+/// reconnect-and-relogin, then the caller's command runs exactly once — a command that may
+/// already have started (COPY, STORE, APPEND, EXPUNGE, a streaming download) is never retried.
+/// A network or certificate failure closes the underlying socket so the next use reconnects
+/// from scratch; a protocol error or `.searchUnsupported` leaves the socket alone. `logout()`
+/// always closes, never waits on the command lock, and a reconnect that completes after
+/// `logout()` ran closes the connection it just opened instead of keeping it authenticated
+/// under a session that's already gone. Connection *lifetime* beyond that (idle-close timing,
+/// holding the connection open across a screen's multiple operations) belongs to whatever owns
+/// the page session, not to this type — this file does not implement or expose an idle-close
+/// primitive.
 actor LiveMailClient: MailClient {
     nonisolated private static let summaryOptions: FetchMessageInfoOptions = [.envelope, .internalDate, .flags, .size, .bodyStructure]
 
@@ -51,6 +57,25 @@ actor LiveMailClient: MailClient {
     /// to be remembered here rather than trusted from whatever `MailMover.assertFolderUnchanged`
     /// read moments earlier on a connection that may no longer be the one in use.
     private var lastKnownUIDValidity: [String: UInt32] = [:]
+    /// Bumped by `logout()`. A reconnect in `ensureLiveConnection()` reads `credentials` and
+    /// spans several awaits (connect, login); if `logout()` runs while that's in flight, the
+    /// reconnect must not leave the socket it just authenticated open under a session that's
+    /// already gone — it checks this counter right after login succeeds and tears the new
+    /// connection down instead of keeping it if the generation changed underneath it.
+    private var connectionGeneration = 0
+    /// Per-client FIFO lock (rule D): serializes whole `run` bodies — including the liveness
+    /// probe/reconnect — against each other. Plain actor isolation only excludes *synchronous*
+    /// execution; it does not stop one call's SELECT and the STORE/COPY/EXPUNGE it guards from
+    /// being interleaved by a second call's SELECT at the `await` in between, since suspension
+    /// points let other work scheduled on this actor run. A page that shares one client between
+    /// its 60 s poll and the message screen could otherwise have `expunge(Trash)` SELECT Trash,
+    /// an interleaved `setFlag(.seen, INBOX)` SELECT INBOX read-write, and then EXPUNGE remove
+    /// INBOX's `\Deleted` mail — including another client's — instead of Trash's (spec §8.3).
+    /// `isCommandLockHeld`/`commandLockWaiters` back `acquireCommandLock()`/`releaseCommandLock()`
+    /// below; `logout()` deliberately never touches them (it must not wait behind a long-running
+    /// command).
+    private var isCommandLockHeld = false
+    private var commandLockWaiters: [CheckedContinuation<Void, Never>] = []
 
     init() {
         imap = IMAPServer(
@@ -77,7 +102,12 @@ actor LiveMailClient: MailClient {
         }
     }
 
+    /// Never waits on the command lock (rule E): a long-running command must not be able to
+    /// block logout. Bumps `connectionGeneration` first, so a reconnect already in flight inside
+    /// some other queued/running `run` call notices after it finishes and closes what it just
+    /// opened instead of leaving it authenticated under a session this call already ended.
     func logout() async {
+        connectionGeneration += 1
         try? await imap.logout()
         try? await imap.disconnect()
         credentials = nil
@@ -295,13 +325,11 @@ actor LiveMailClient: MailClient {
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {
         try await run {
             // SwiftMail's IMAP `append` only accepts a `String` (IMAPServer+Append.swift has no
-            // Data-based overload). Every caller builds `message` through `MailMessageBuilder`,
-            // which always quoted-printable- or base64-encodes the body and RFC 2047-encodes
-            // non-ASCII headers, so the payload is 7-bit ASCII by construction and decoding it as
-            // UTF-8 below is lossless (ASCII is a UTF-8 subset). Assert the invariant so a future
-            // caller that breaks it fails loudly in debug/test builds instead of silently losing
-            // bytes to `String(decoding:as:)`'s replacement-character behavior.
-            assert(message.allSatisfy { $0 < 0x80 }, "append() payload must be 7-bit ASCII (MailMessageBuilder's contract)")
+            // Data-based overload). `MailMessageBuilder.build` always returns `Data(string.utf8)`
+            // — valid UTF-8 by construction, not necessarily 7-bit ASCII (RFC 2047-encoded
+            // headers and quoted-printable bodies are ASCII, but addresses, In-Reply-To and
+            // References go out as raw UTF-8) — so decoding it back with `String(decoding:as:
+            // UTF8.self)` is lossless for every builder-produced payload.
             try await self.imap.append(rawMessage: String(decoding: message, as: UTF8.self), to: folder,
                                        flags: flags.map(\.swiftMailFlag), internalDate: nil)
         }
@@ -345,14 +373,23 @@ actor LiveMailClient: MailClient {
         try await imap.search(criteria: criteria)
     }
 
-    /// Runs one command against the held IMAP connection: probes liveness with a cheap
-    /// NOOP (never a folder-reselecting STATUS), reconnects-and-relogs-in exactly once if
-    /// the probe fails, then runs `body` exactly once — never retried, since `body` may be
-    /// a command (COPY, STORE, APPEND, EXPUNGE, a streaming download) that must not be sent
-    /// twice. A network or certificate failure closes the socket so the next call
-    /// reconnects from scratch; every other error leaves it alone.
+    /// Runs one command against the held IMAP connection, serialized against every other `run`
+    /// call by the command lock (rule D): probes liveness with a cheap NOOP (never a
+    /// folder-reselecting STATUS), reconnects-and-relogs-in exactly once if the probe fails,
+    /// then runs `body` exactly once — never retried, since `body` may be a command (COPY,
+    /// STORE, APPEND, EXPUNGE, a streaming download) that must not be sent twice. A network or
+    /// certificate failure closes the socket so the next call reconnects from scratch; every
+    /// other error leaves it alone.
     @discardableResult
     private func run<T>(_ body: () async throws -> T) async throws -> T {
+        await acquireCommandLock()
+        defer { releaseCommandLock() }
+        // A waiter whose surrounding `Task` was cancelled while queued is still resumed here in
+        // its normal turn (see `acquireCommandLock` below) rather than pulled out of line early;
+        // checking cancellation right away, before touching the connection or running `body`,
+        // means it never holds the lock for longer than this one instant check — the very next
+        // queued waiter is released immediately after by the `defer` above.
+        try Task.checkCancellation()
         do {
             try await ensureLiveConnection()
             return try await body()
@@ -377,6 +414,9 @@ actor LiveMailClient: MailClient {
                 try? await imap.disconnect()
             }
         }
+        // Captured before the reconnect's awaits: if `logout()` runs while connect+login below
+        // is in flight, it bumps this and this reconnect must not keep what it just opened.
+        let generationBeforeReconnect = connectionGeneration
         do {
             try await imap.connect()
         } catch {
@@ -386,15 +426,52 @@ actor LiveMailClient: MailClient {
         do {
             try await imap.login(username: credentials.studentID, password: credentials.password)
         } catch {
-            // A reconnect-login that the server rejects means these credentials no longer work —
-            // clear them so the next call fails fast with `.protocolError("not logged in")`
-            // instead of retrying the same bad password forever. A half-completed reconnect
-            // (connected but never authenticated) must also not be left for the next call's NOOP
-            // probe to mistake for a live, usable session.
-            self.credentials = nil
+            // Only an actual authentication rejection means these credentials no longer work.
+            // A timeout, dropped connection or "too many connections" mid-reconnect must not
+            // clear them — otherwise the held client would answer "not logged in" until closed
+            // even though the password is still fine: a background page poll would silently stop
+            // and `send()` would misreport a transient failure as an authentication one. A
+            // half-completed reconnect (connected but never authenticated) must still not be
+            // left for the next call's NOOP probe to mistake for a live, usable session, so the
+            // socket is always torn down here regardless of which case this was.
+            if Self.map(error) == .authenticationFailed {
+                self.credentials = nil
+            }
             try? await imap.disconnect()
             throw error
         }
+        guard connectionGeneration == generationBeforeReconnect else {
+            // `logout()` ran mid-reconnect (rule E): this socket is now authenticated under a
+            // session that already ended. Close it rather than handing it to `body()`.
+            try? await imap.disconnect()
+            throw MailClientError.protocolError("logged out during reconnect")
+        }
+    }
+
+    /// Acquires the per-client command lock, queuing FIFO behind whoever already holds it.
+    /// Exposed above `private` so `LiveMailClientTests` can exercise the lock's ordering and
+    /// non-wedging behavior directly, without a live IMAP connection; `run` is the only
+    /// production caller. Deliberately does not itself observe cancellation — see `run`'s
+    /// `Task.checkCancellation()` for where a real caller opts out of running its body once
+    /// resumed; keeping this primitive simple is what keeps it impossible for it to wedge.
+    func acquireCommandLock() async {
+        if !isCommandLockHeld {
+            isCommandLockHeld = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            commandLockWaiters.append(continuation)
+        }
+    }
+
+    /// Hands the lock to the next queued waiter in FIFO arrival order, or marks it free if none
+    /// are waiting.
+    func releaseCommandLock() {
+        guard !commandLockWaiters.isEmpty else {
+            isCommandLockHeld = false
+            return
+        }
+        commandLockWaiters.removeFirst().resume()
     }
 
     /// Whether the folder's connection-fresh UIDVALIDITY no longer matches the value the most
@@ -460,8 +537,10 @@ actor LiveMailClient: MailClient {
     /// TLS certificate/verification failures surface as NIOSSL handshake errors that mention
     /// the certificate; a busy server as NO/BYE text. A handshake failure that does *not*
     /// mention a certificate (e.g. a protocol-version alert) is a transport problem, not a
-    /// trust one, and falls through to `fallback` (`.unreachable` at every call site) rather
-    /// than being misreported as `.certificateRejected`.
+    /// trust one, and falls through to whatever `fallback` the caller passed — `.unreachable`
+    /// for a raw connection failure, `.protocolError(...)` for an otherwise-unrecognized
+    /// `IMAPError`/`SMTPError`/`SMTPSendError` — rather than being misreported as
+    /// `.certificateRejected`.
     nonisolated static func classify(_ text: String, fallback: MailClientError) -> MailClientError {
         let lowered = text.lowercased()
         if lowered.contains("certificate") { return .certificateRejected }

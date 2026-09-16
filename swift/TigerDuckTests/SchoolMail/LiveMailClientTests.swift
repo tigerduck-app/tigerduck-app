@@ -69,5 +69,76 @@ struct LiveMailClientTests {
         #expect(decoded.hasPrefix("中文"))
         #expect(decoded.count == 3)
     }
+
+    // MARK: Command lock (rule D)
+    //
+    // `LiveMailClient.init()` only builds a `SwiftMail.IMAPServer` value and never opens a
+    // socket, so exercising the lock directly against a real `LiveMailClient` needs no network
+    // and no fixture.
+
+    @Test func commandLockNeverInterleavesTwoBodies() async throws {
+        let client = LiveMailClient()
+        let recorder = LockOrderRecorder()
+
+        async let first: Void = {
+            await client.acquireCommandLock()
+            await recorder.record("A-start")
+            await Task.yield()
+            await recorder.record("A-end")
+            await client.releaseCommandLock()
+        }()
+        async let second: Void = {
+            await client.acquireCommandLock()
+            await recorder.record("B-start")
+            await Task.yield()
+            await recorder.record("B-end")
+            await client.releaseCommandLock()
+        }()
+        _ = await (first, second)
+
+        let events = await recorder.events
+        // Whichever body wins the race runs to completion before the other one starts — the
+        // "start" that lost must never appear before the winner's "end".
+        #expect(events == ["A-start", "A-end", "B-start", "B-end"] || events == ["B-start", "B-end", "A-start", "A-end"])
+    }
+
+    @Test func commandLockCancelledWaiterDoesNotWedgeTheQueue() async throws {
+        let client = LiveMailClient()
+        let recorder = LockOrderRecorder()
+
+        // Hold the lock first, like a long-running in-flight command, so B and C both queue.
+        await client.acquireCommandLock()
+
+        let taskB = Task {
+            await client.acquireCommandLock()
+            await recorder.record("B")
+            await client.releaseCommandLock()
+        }
+        let taskC = Task {
+            await client.acquireCommandLock()
+            await recorder.record("C")
+            await client.releaseCommandLock()
+        }
+        // Let both enqueue behind the held lock, then cancel B before releasing it.
+        try await Task.sleep(for: .milliseconds(20))
+        taskB.cancel()
+        await client.releaseCommandLock()
+
+        // The lock primitive is deliberately cancellation-agnostic (see `run`'s own
+        // `Task.checkCancellation()` for where a real caller opts out of running its body); what
+        // matters here is that cancelling B never prevents C, queued behind it, from eventually
+        // acquiring the lock — the queue must never wedge.
+        _ = await (taskB.value, taskC.value)
+        let events = await recorder.events
+        #expect(events.contains("C"))
+        #expect(events.count == 2)
+    }
+}
+
+/// Collects events from concurrent tasks without a data race — used only to assert ordering in
+/// the command-lock tests above.
+private actor LockOrderRecorder {
+    private(set) var events: [String] = []
+    func record(_ event: String) { events.append(event) }
 }
 #endif
