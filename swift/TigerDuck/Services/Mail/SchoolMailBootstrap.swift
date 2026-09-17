@@ -39,8 +39,12 @@ enum SchoolMailBootstrap {
     /// iOS expects the next refresh to be requested as the app leaves the foreground.
     static func sceneDidEnterBackground() {
         let account = MailAccountManager.shared
-        guard SchoolMailAvailability.isEnabled, account.isLoggedIn,
-              account.notificationsEnabled, !account.authFailed else { return }
+        guard MailBackgroundRefresh.shouldRescheduleAfterHandling(
+            featureEnabled: SchoolMailAvailability.isEnabled,
+            signedIn: account.isLoggedIn,
+            notificationsEnabled: account.notificationsEnabled,
+            authFailed: account.authFailed
+        ) else { return }
         MailBackgroundRefresh.schedule()
     }
 }
