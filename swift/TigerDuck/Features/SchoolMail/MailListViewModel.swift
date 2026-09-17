@@ -1,0 +1,259 @@
+#if os(iOS)
+import Foundation
+import Observation
+
+@MainActor
+@Observable
+final class MailListViewModel {
+    enum LoadState: Equatable {
+        case idle, loading, loaded
+        case failed(String)
+    }
+
+    private(set) var folderRoles: [MailFolderRole: String] = [:]
+    private(set) var otherFolders: [String] = []
+    private(set) var selectedFolder = MailConstants.inbox
+    private(set) var summaries: [MailSummary] = []
+    private(set) var loadState: LoadState = .idle
+    private(set) var serverStatus: ServerStatus = .unknown
+    private(set) var isRefreshing = false
+    private(set) var isPaginating = false
+    private(set) var searchResults: [MailSummary]?
+    private(set) var searchUsedLocalFallback = false
+    var searchText = ""
+    var unreadOnly = false
+
+    @ObservationIgnored let session: MailPageSession
+    @ObservationIgnored private let cache: MailCache
+    @ObservationIgnored private let runPageCheck: (any MailClient) async -> MailCheckOutcome
+    @ObservationIgnored private var page: MailFolderPage?
+    @ObservationIgnored private var pollTask: Task<Void, Never>?
+
+    init(
+        session: MailPageSession = MailPageSession(),
+        cache: MailCache = MailAccountManager.shared.cache,
+        runPageCheck: @escaping (any MailClient) async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .page, using: $0) }
+    ) {
+        self.session = session
+        self.cache = cache
+        self.runPageCheck = runPageCheck
+    }
+
+    var displayedSummaries: [MailSummary] {
+        let base = searchResults ?? summaries
+        return unreadOnly ? base.filter { !$0.isSeen } : base
+    }
+
+    var title: String {
+        folderRoles.first { $0.value == selectedFolder }?.key.title ?? ModifiedUTF7.decode(selectedFolder)
+    }
+
+    // MARK: Loading
+
+    /// Paints the cached list first, then refreshes the newest page from the server.
+    func load() async {
+        let cache = self.cache
+        if page == nil, let cached = await Self.cachedPage(cache: cache, folder: selectedFolder) {
+            apply(cached)
+            loadState = .loaded
+        } else if summaries.isEmpty {
+            loadState = .loading
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        let folder = selectedFolder
+        let needsFolders = folderRoles.isEmpty
+        do {
+            let (resolvedFolders, fresh) = try await session.use { client -> ([String]?, MailFolderPage) in
+                let folders = needsFolders ? try await client.listFolders() : nil
+                let page = try await client.page(folder: folder, olderThanSequence: nil, pageSize: MailConstants.pageSize)
+                return (folders, page)
+            }
+            if let resolvedFolders {
+                folderRoles = MailFolderMap.resolve(available: resolvedFolders)
+                otherFolders = MailFolderMap.otherFolders(available: resolvedFolders)
+            }
+            if let previous = page, previous.uidValidity != fresh.uidValidity {
+                await Self.dropFolder(folder, in: cache)
+            }
+            apply(fresh)
+            await Self.save(fresh, to: cache)
+            serverStatus = .ok
+            loadState = .loaded
+        } catch {
+            serverStatus = .failed
+            loadState = summaries.isEmpty ? .failed(MailAccountManager.LoginError(error).message) : .loaded
+        }
+    }
+
+    func loadMoreIfNeeded(after summary: MailSummary) async {
+        guard searchResults == nil, !isPaginating, summary.uid == summaries.last?.uid,
+              let older = page?.oldestLoadedSequence else { return }
+        isPaginating = true
+        defer { isPaginating = false }
+        let folder = selectedFolder
+        do {
+            let next = try await session.use { client in
+                try await client.page(folder: folder, olderThanSequence: older, pageSize: MailConstants.pageSize)
+            }
+            let known = Set(summaries.map(\.uid))
+            summaries += next.summaries.filter { !known.contains($0.uid) }
+            page?.summaries = summaries
+            page?.oldestLoadedSequence = next.oldestLoadedSequence
+        } catch MailClientError.folderChanged {
+            await recoverFromFolderChange(folder)
+        } catch {
+            serverStatus = .failed
+        }
+    }
+
+    func select(folder: String) async {
+        guard folder != selectedFolder else { return }
+        selectedFolder = folder
+        page = nil
+        summaries = []
+        searchResults = nil
+        searchUsedLocalFallback = false
+        await load()
+    }
+
+    // MARK: Search
+
+    /// Server-side search in the current folder; if the server refuses (or is unreachable),
+    /// only the loaded mail is searched and the list says so (§8.3).
+    func submitSearch() async {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            clearSearch()
+            return
+        }
+        let folder = selectedFolder
+        do {
+            let found = try await session.use { client -> [MailSummary] in
+                let matches = try await client.search(folder: folder, query: query)
+                let newest = Array(matches.sorted(by: >).prefix(MailConstants.pageSize))
+                return try await client.summaries(folder: folder, uids: newest)
+            }
+            searchResults = found.filter { !$0.isDeleted }.sorted { $0.uid > $1.uid }
+            searchUsedLocalFallback = false
+        } catch {
+            if (error as? MailClientError) != .searchUnsupported {
+                serverStatus = .failed
+            }
+            searchResults = summaries.filter { Self.matches($0, query) }
+            searchUsedLocalFallback = true
+        }
+    }
+
+    func clearSearch() {
+        searchResults = nil
+        searchUsedLocalFallback = false
+    }
+
+    private static func matches(_ summary: MailSummary, _ query: String) -> Bool {
+        [summary.subject, summary.fromName, summary.fromAddress].contains {
+            $0?.localizedCaseInsensitiveContains(query) == true
+        }
+    }
+
+    // MARK: Changes
+
+    func toggleRead(_ summary: MailSummary) async {
+        let seen = !summary.isSeen
+        markSeenLocally(uid: summary.uid, seen: seen)
+        let folder = selectedFolder
+        do {
+            try await session.use { client in
+                try await client.setFlag(.seen, on: seen, folder: folder, uids: [summary.uid])
+            }
+        } catch MailClientError.folderChanged {
+            markSeenLocally(uid: summary.uid, seen: !seen)
+            await recoverFromFolderChange(folder)
+        } catch {
+            markSeenLocally(uid: summary.uid, seen: !seen)
+        }
+    }
+
+    /// Called by the message screen after it marks a mail read or unread.
+    func markSeenLocally(uid: UInt32, seen: Bool = true) {
+        if let index = summaries.firstIndex(where: { $0.uid == uid }) { summaries[index].isSeen = seen }
+        if let index = searchResults?.firstIndex(where: { $0.uid == uid }) { searchResults?[index].isSeen = seen }
+        persistPage()
+    }
+
+    /// Called by the message screen after it moves or deletes a mail.
+    func removeLocally(uid: UInt32) {
+        summaries.removeAll { $0.uid == uid }
+        searchResults?.removeAll { $0.uid == uid }
+        persistPage()
+    }
+
+    // MARK: Polling (60 s while the page is visible)
+
+    func startPolling() {
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(MailConstants.pagePollInterval))
+                guard !Task.isCancelled, let self else { return }
+                await self.pollOnce()
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+        session.releaseSoon()
+    }
+
+    func pollOnce() async {
+        let check = runPageCheck
+        guard let outcome = try? await session.use({ client in await check(client) }) else { return }
+        if case .newMail = outcome, selectedFolder == MailConstants.inbox, searchResults == nil {
+            await load()
+        }
+    }
+
+    // MARK: Internals
+
+    private func apply(_ page: MailFolderPage) {
+        self.page = page
+        summaries = page.summaries
+    }
+
+    /// A folder's UIDVALIDITY no longer matches what a list operation was built from (spec
+    /// §8.3): its cached page — and any cached bodies — are meaningless now, so they're
+    /// dropped, and the first page is reloaded fresh from the server.
+    private func recoverFromFolderChange(_ folder: String) async {
+        await Self.dropFolder(folder, in: cache)
+        guard folder == selectedFolder else { return }
+        page = nil
+        await load()
+    }
+
+    /// Fire-and-forget: `markSeenLocally`/`removeLocally` are synchronous (the message screen
+    /// calls them without awaiting), so the disk write can't be awaited here — it's kicked off
+    /// detached instead, off the main actor, same as every other cache write in this type.
+    private func persistPage() {
+        page?.summaries = summaries
+        guard let page else { return }
+        let cache = self.cache
+        Task.detached { cache.savePage(page) }
+    }
+
+    // MARK: Cache (off the main actor — `MailCache` does synchronous disk I/O)
+
+    nonisolated private static func cachedPage(cache: MailCache, folder: String) async -> MailFolderPage? {
+        await Task.detached { cache.loadPage(folder: folder) }.value
+    }
+
+    nonisolated private static func save(_ page: MailFolderPage, to cache: MailCache) async {
+        await Task.detached { cache.savePage(page) }.value
+    }
+
+    nonisolated private static func dropFolder(_ folder: String, in cache: MailCache) async {
+        await Task.detached { cache.dropFolder(folder) }.value
+    }
+}
+#endif
