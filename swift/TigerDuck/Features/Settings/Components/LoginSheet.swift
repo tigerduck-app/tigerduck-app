@@ -1,6 +1,13 @@
 import SwiftUI
 
 struct LoginSheet: View {
+    /// A link under the fields, e.g. School Mail's "忘記密碼？前往 mail.ntust.edu.tw".
+    /// Opens the way bulletins do: in-app when the user prefers it, otherwise the browser.
+    struct FooterLink {
+        let title: String
+        let url: URL
+    }
+
     let title: String
     let subtitle: String?
     let usernamePlaceholder: String
@@ -9,6 +16,11 @@ struct LoginSheet: View {
     let loginError: String?
     let onLogin: (String, String) -> Void
     let onDismiss: () -> Void
+    let footerLink: FooterLink?
+
+    @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
+    @State private var inAppURL: URL?
 
     @State private var username: String
     @State private var password = ""
@@ -24,6 +36,7 @@ struct LoginSheet: View {
         initialUsername: String = "",
         isLoggingIn: Bool,
         loginError: String?,
+        footerLink: FooterLink? = nil,
         onLogin: @escaping (String, String) -> Void,
         onDismiss: @escaping () -> Void
     ) {
@@ -33,6 +46,7 @@ struct LoginSheet: View {
         self.passwordPlaceholder = passwordPlaceholder
         self.isLoggingIn = isLoggingIn
         self.loginError = loginError
+        self.footerLink = footerLink
         self.onLogin = onLogin
         self.onDismiss = onDismiss
         _username = State(initialValue: initialUsername)
@@ -59,9 +73,15 @@ struct LoginSheet: View {
                         onSubmit: { submitIfReady() }
                     )
                 } footer: {
-                    if let subtitle {
-                        Label(subtitle, systemImage: "info.circle")
-                            .font(.caption)
+                    VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
+                        if let subtitle {
+                            Label(subtitle, systemImage: "info.circle")
+                                .font(.caption)
+                        }
+                        if let footerLink {
+                            Button(footerLink.title) { open(footerLink.url) }
+                                .font(.caption)
+                        }
                     }
                 }
 
@@ -100,6 +120,13 @@ struct LoginSheet: View {
                 focusedField = username.isEmpty ? .username : .password
             }
             .interactiveDismissDisabled(isLoggingIn)
+            #if os(iOS)
+            .sheet(isPresented: Binding(get: { inAppURL != nil }, set: { if !$0 { inAppURL = nil } })) {
+                if let inAppURL {
+                    InAppBrowserView(url: inAppURL).ignoresSafeArea()
+                }
+            }
+            #endif
         }
         .presentationDetents([.medium])
     }
@@ -111,5 +138,15 @@ struct LoginSheet: View {
         #endif
         focusedField = nil
         onLogin(username, password)
+    }
+
+    private func open(_ url: URL) {
+        #if os(iOS)
+        if appState.browserPreference == .inApp {
+            inAppURL = url
+            return
+        }
+        #endif
+        openURL(url)
     }
 }
