@@ -46,13 +46,12 @@ nonisolated enum MailMessageBuilder {
         lines.append("Subject: \(encodedWords(mail.subject))")
         lines.append("Date: \(rfc5322Date(date))")
         lines.append("Message-ID: \(sanitizedHeaderValue(messageID))")
-        if let inReplyTo = mail.inReplyTo {
-            let sanitized = sanitizedHeaderValue(inReplyTo)
-            if !sanitized.isEmpty { lines.append("In-Reply-To: \(sanitized)") }
+        if let inReplyTo = mail.inReplyTo, let token = threadingToken(inReplyTo) {
+            lines.append("In-Reply-To: \(token)")
         }
         if !mail.references.isEmpty {
-            let sanitized = mail.references.map(sanitizedHeaderValue).filter { !$0.isEmpty }
-            if !sanitized.isEmpty { lines.append("References: \(sanitized.joined(separator: " "))") }
+            let tokens = mail.references.compactMap(threadingToken)
+            if !tokens.isEmpty { lines.append("References: \(tokens.joined(separator: " "))") }
         }
         lines.append("MIME-Version: 1.0")
 
@@ -146,6 +145,24 @@ nonisolated enum MailMessageBuilder {
     /// header from growing an extra line.
     private static func sanitizedHeaderValue(_ raw: String) -> String {
         String(raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
+    }
+
+    /// One `In-Reply-To`/`References` `msg-id`, or `nil` for one that must not be written.
+    ///
+    /// These are the only header values this builder echoes back from a *received* mail, and a
+    /// received `Message-ID` is attacker-controlled free text. RFC 5322 defines `msg-id` as
+    /// ASCII, and the school's Mail2000 announces neither SMTPUTF8 nor 8BITMIME, so a UTF-8
+    /// byte here is the one way raw 8-bit data can still reach a 7-bit wire — everything else
+    /// is RFC 2047-encoded (subject, display name), quoted-printable (body) or validated
+    /// ASCII (the recipient addresses, at `MailComposeViewModel.parseRecipients`).
+    ///
+    /// Dropped whole rather than stripped down to its ASCII characters: a mangled `msg-id`
+    /// identifies no message on any server, so it would only be junk in the header while still
+    /// claiming to thread. Losing the threading reference is the lesser failure.
+    private static func threadingToken(_ raw: String) -> String? {
+        let sanitized = sanitizedHeaderValue(raw)
+        guard !sanitized.isEmpty, isPlainASCII(sanitized) else { return nil }
+        return sanitized
     }
 
     // MARK: Attachment names

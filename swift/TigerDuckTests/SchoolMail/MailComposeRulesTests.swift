@@ -248,5 +248,42 @@ struct MailComposeRulesTests {
         #expect(headers.inReplyTo == "<m1@x>")
         #expect(headers.references == ["<m0@x>", "<m1@x>"])
     }
+    /// `In-Reply-To`/`References` are the only header values this builder echoes back from a
+    /// *received* mail, and a received `Message-ID` is attacker-controlled free text. RFC 5322
+    /// `msg-id`s are ASCII and Mail2000 announces no SMTPUTF8, so a non-ASCII token is the one
+    /// remaining way raw 8-bit bytes could reach the wire — it is dropped whole rather than
+    /// mangled into something that identifies no message anywhere.
+    @Test func nonASCIIThreadingReferencesAreDroppedRatherThanSentAsRawUTF8() {
+        var mail = Self.mail()
+        mail.inReplyTo = "<王大明@evil.example>"
+        mail.references = ["<real@mail.ntust.edu.tw>", "<王大明@evil.example>"]
+        let built = MailMessageBuilder.build(mail, messageID: "<id@mail.ntust.edu.tw>", date: Self.date, boundary: "B")
+        let text = String(decoding: built, as: UTF8.self)
+
+        #expect(!text.contains("In-Reply-To:"))
+        #expect(text.contains("References: <real@mail.ntust.edu.tw>\r\n"))
+        #expect(!text.contains("王大明@evil.example"))
+    }
+
+    /// The whole header block stays 7-bit even when every echoed value is hostile: the body is
+    /// quoted-printable, the subject and display name are RFC 2047 encoded words, and the
+    /// addresses are ASCII-validated before they get here.
+    @Test func theBuiltMessageIsSevenBitEvenWithNonASCIIThreadingAndNames() {
+        var mail = Self.mail(subject: "選課問題", body: "老師好，附件是選課單")
+        mail.inReplyTo = "<訊息@evil.example>"
+        mail.references = ["<訊息@evil.example>"]
+        let built = MailMessageBuilder.build(mail, messageID: "<id@mail.ntust.edu.tw>", date: Self.date, boundary: "B")
+        #expect(built.allSatisfy { $0 < 0x80 })
+    }
+
+    /// An ordinary ASCII thread is untouched — the rule above must not cost normal threading.
+    @Test func asciiThreadingHeadersAreKept() {
+        var mail = Self.mail()
+        mail.inReplyTo = "<a@mail.ntust.edu.tw>"
+        mail.references = ["<a@mail.ntust.edu.tw>", "<b@mail.ntust.edu.tw>"]
+        let text = Self.text(mail)
+        #expect(text.contains("In-Reply-To: <a@mail.ntust.edu.tw>\r\n"))
+        #expect(text.contains("References: <a@mail.ntust.edu.tw> <b@mail.ntust.edu.tw>\r\n"))
+    }
 }
 #endif
