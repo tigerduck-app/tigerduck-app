@@ -45,6 +45,10 @@
     {"name": "mailto text ends a sentence", "text": "admin@mail.ntust.edu.tw.", "href": "mailto:admin@mail.ntust.edu.tw", "expect": []},
     {"name": "backslash before @ picks the real host", "text": "ntust.edu.tw", "href": "https://evil.example\\@ntust.edu.tw", "expect": ["mismatch:ntust.edu.tw:evil.example"]},
     {"name": "userinfo with an extra @ still resolves to the real host", "text": "ntust.edu.tw", "href": "https://ntust.edu.tw:pa@ss@evil.example/", "expect": ["mismatch:ntust.edu.tw:evil.example"]},
-    {"name": "missing slashes still resolve to the real host", "text": "ntust.edu.tw", "href": "https:evil.example/login", "expect": ["mismatch:ntust.edu.tw:evil.example"]}
+    {"name": "missing slashes still resolve to the real host", "text": "ntust.edu.tw", "href": "https:evil.example/login", "expect": ["mismatch:ntust.edu.tw:evil.example"]},
+    {"name": "invisible word joiner after the shown host", "text": "ntust.edu.tw\u2060", "href": "https://evil.example/login", "expect": ["mismatch:ntust.edu.tw:evil.example"]},
+    {"name": "invisible soft hyphen after the shown host", "text": "ntust.edu.tw\u00ad", "href": "https://evil.example/login", "expect": ["mismatch:ntust.edu.tw:evil.example"]},
+    {"name": "invisible zero-width space after the shown host", "text": "ntust.edu.tw\u200b", "href": "https://evil.example/login", "expect": ["mismatch:ntust.edu.tw:evil.example"]},
+    {"name": "invisible C0 control after the shown host", "text": "ntust.edu.tw\u001c", "href": "https://evil.example/login", "expect": ["mismatch:ntust.edu.tw:evil.example"]}
   ]
 }

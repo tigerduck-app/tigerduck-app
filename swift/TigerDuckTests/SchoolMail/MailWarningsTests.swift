@@ -143,6 +143,129 @@ struct MailWarningsTests {
         let issues = MailWarnings.linkIssues(text: text, href: href)
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
+
+    // MARK: Invisible characters (iOS-local; the shared fixture stays byte-identical to Android's)
+    //
+    // Every case below is the same shape: one character nobody can see makes a crafted mail
+    // produce FEWER warnings than an ordinary one. The four `invisible … after the shown host`
+    // rows in `warnings.json` cover the link-text half on both platforms; these cover the
+    // call sites the shared fixture does not reach.
+
+    /// A zero-width space *inside* the shown host, not after it. The fixture's trailing-ZWSP
+    /// row happens to pass on Darwin because `CharacterSet.whitespaces` contains U+200B, so
+    /// `trimmingCharacters` removes a trailing one — that accident does not extend to the
+    /// middle of a host, which is where an attacker would put it anyway.
+    @Test
+    func linkIssuesInvisibleCharacterInsideTheShownHostStillMismatches() {
+        let issues = MailWarnings.linkIssues(text: "ntust.e\u{200B}du.tw", href: "https://evil.example/login")
+        #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
+    }
+
+    @Test
+    func linkIssuesInvisibleCharacterInMailtoLinkTextStillMismatches() {
+        let issues = MailWarnings.linkIssues(
+            text: "admin@mail.ntust.e\u{200B}du.tw",
+            href: "mailto:phish@evil.example"
+        )
+        #expect(issues == [.mismatch(shownHost: "admin@mail.ntust.edu.tw", realHost: "phish@evil.example")])
+    }
+
+    /// The worst case in the review: the real sender is a compromised *school* account, so the
+    /// external-sender banner does not fire either, and the message screen prints the display
+    /// name as the sender headline. Without the display-name warning the verdict is silent.
+    @Test
+    func displayNameMismatchSurvivesAnInvisibleCharacterInTheFakeAddress() {
+        let input = MailWarningInput(
+            fromAddress: "b10123456@mail.ntust.edu.tw",
+            fromName: "no-reply@ntust.e\u{200B}du.tw",
+            subject: "x",
+            plainText: "",
+            links: [],
+            attachments: []
+        )
+        #expect(MailWarnings.evaluate(input) == [.displayNameMismatch(address: "b10123456@mail.ntust.edu.tw")])
+    }
+
+    /// Android's delimiter-based `EMAIL` matches a non-ASCII local part; the ASCII-only pattern
+    /// iOS used matched nothing at all, so the same mail warned on Android and not here.
+    @Test
+    func displayNameMismatchDetectsANonASCIILocalPart() {
+        let input = MailWarningInput(
+            fromAddress: "x@gmail.com",
+            fromName: "客服 帳務@evil.example",
+            subject: "x",
+            plainText: "",
+            links: [],
+            attachments: []
+        )
+        #expect(MailWarnings.evaluate(input) == [
+            .externalSender(address: "x@gmail.com"),
+            .displayNameMismatch(address: "x@gmail.com"),
+        ])
+    }
+
+    @Test
+    func displayNameMismatchDetectsASingleLetterTLD() {
+        let input = MailWarningInput(
+            fromAddress: "x@gmail.com",
+            fromName: "service@evil.c",
+            subject: "x",
+            plainText: "",
+            links: [],
+            attachments: []
+        )
+        #expect(MailWarnings.evaluate(input) == [
+            .externalSender(address: "x@gmail.com"),
+            .displayNameMismatch(address: "x@gmail.com"),
+        ])
+    }
+
+    /// `isRisky == false` is not just a missing banner: it makes the message screen skip the
+    /// confirmation dialog and hand the file straight to Quick Look or the share sheet.
+    @Test(arguments: [
+        "payload.ex\u{200B}e",
+        "installer.ap\u{2060}k",
+        "setup.apk\u{0001}",
+        "run.sc\u{00AD}r",
+    ])
+    func attachmentRiskSurvivesAnInvisibleCharacterInTheExtension(filename: String) {
+        #expect(
+            MailWarnings.attachmentRisk(filename: filename, contentType: "application/octet-stream", subjectAndBody: "")
+                == .dangerousExtension
+        )
+    }
+
+    /// §9.5: HTML and SVG are never rendered in-process. With the extension mangled, the only
+    /// thing left is the attacker's own Content-Type.
+    @Test(arguments: ["report.ht\u{200B}ml", "diagram.sv\u{0001}g", "page.xhtm\u{2060}l"])
+    func neverRenderedInAppSurvivesAnInvisibleCharacterInTheExtension(filename: String) {
+        #expect(MailWarnings.neverRenderedInApp(filename: filename))
+    }
+
+    /// A.4 rule 3. One invisible character inside the keyword and the bait banner never fires.
+    /// Each subject carries exactly one keyword, the split one — anything else would let the
+    /// test pass on a keyword the attacker did not touch.
+    @Test(arguments: ["您的密\u{200B}碼即將到期", "Please re-enter your pass\u{200B}word"])
+    func passwordBaitSurvivesAnInvisibleCharacterInTheKeyword(subject: String) {
+        let input = MailWarningInput(
+            fromAddress: "admin@evil.example",
+            fromName: nil,
+            subject: subject,
+            plainText: "",
+            links: [],
+            attachments: []
+        )
+        #expect(MailWarnings.evaluate(input) == [.externalSender(address: "admin@evil.example"), .passwordBait])
+    }
+
+    /// The archive hint is read from the subject and body the same way, so it dodges the same way.
+    @Test
+    func encryptedArchiveHintSurvivesAnInvisibleCharacterInTheKeyword() {
+        #expect(
+            MailWarnings.attachmentRisk(filename: "data.zip", contentType: "application/zip", subjectAndBody: "檔案的解\u{200B}壓縮方式請見附件")
+                == .encryptedArchive
+        )
+    }
 }
 
 private extension MailWarning {

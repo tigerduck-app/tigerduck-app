@@ -54,8 +54,19 @@ nonisolated enum MailWarnings {
     /// Extensions whose attachments are never rendered inside the app (§9.5).
     static let neverRenderInApp: Set<String> = ["html", "htm", "shtml", "xhtml", "mht", "mhtml", "svg"]
 
+    /// Delimiter-based, mirroring Android's `EMAIL` (parity fix): the local part, the host and
+    /// the TLD are "everything up to the next delimiter", not an ASCII allowlist. The old
+    /// ASCII-only pattern silently matched nothing — and so produced no display-name or
+    /// `mailto:` mismatch warning at all — for a display name with Han characters before the
+    /// `@`, for a non-ASCII host, and for a single-letter TLD, all of which warn on Android.
+    ///
+    /// The ASCII whitespace class is spelled out instead of written `\s`: Java's `\s` is
+    /// ASCII-only where ICU's, which `NSRegularExpression` uses, is Unicode-wide, so a bare
+    /// `\s` here would end the match at characters Android runs straight through. No
+    /// `.caseInsensitive` — there are no letter ranges left for it to fold.
+    private static let emailDelimiters = "\\x{20}\\x{09}\\x{0A}\\x{0B}\\x{0C}\\x{0D}@<>()\",;:"
     private static let emailPattern = try! NSRegularExpression(
-        pattern: "[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", options: [.caseInsensitive]
+        pattern: "[^\(emailDelimiters)]+@[^\(emailDelimiters)]+\\.[^\(emailDelimiters)]+"
     )
 
     /// The text a link claims to point at (spec A.4 rule 2, link mismatch). Unicode-aware
@@ -269,21 +280,35 @@ nonisolated enum MailWarnings {
 
     static func evaluate(_ input: MailWarningInput) -> [MailWarning] {
         var warnings: [MailWarning] = []
-        let address = MailTextCleaner.clean(input.fromAddress).trimmingCharacters(in: .whitespaces)
+        // The real sender address is deliberately NOT run through `visibleText`: removing an
+        // invisible character here could turn `x@mail.ntust.e<U+200B>du.tw` into a school
+        // domain and suppress the external-sender banner. `clean` alone leaves it external,
+        // which is the safe direction.
+        let address = MailTextCleaner.clean(input.fromAddress)
         let external = !isSchoolDomain(domain(ofAddress: address))
         if external {
             warnings.append(.externalSender(address: address))
         }
-        if let name = input.fromName.map(MailTextCleaner.clean),
+        // The display name is the opposite case: it is the *claim*, so it is read the way the
+        // reader reads it. `From: "no-reply@ntust.e<U+200B>du.tw" <b10123456@mail.ntust.edu.tw>`
+        // renders as a school no-reply address; without `visibleText` no address-shaped
+        // substring is found, no mismatch is reported, and — the sender being a real school
+        // account — no external-sender banner fires either, so the mail passes silently while
+        // the message screen prints the fake address as the sender headline.
+        if let name = input.fromName.map({ MailTextCleaner.visibleText(MailTextCleaner.clean($0)) }),
            let embedded = firstEmail(in: name),
            embedded.lowercased() != address.lowercased() {
             warnings.append(.displayNameMismatch(address: address))
         }
 
-        // Bidi-stripped subject and body together, so a keyword hidden behind a bidi
-        // override in either one still counts (controller ruling, 2026-09-16: the brief
-        // only cleaned the subject, leaving the body's bidi controls in place).
-        let haystack = MailTextCleaner.clean(input.subject + "\n" + input.plainText).lowercased()
+        // Subject and body together, so a keyword hidden behind a bidi override in either one
+        // still counts (controller ruling, 2026-09-16: the brief only cleaned the subject,
+        // leaving the body's bidi controls in place), and `visibleText` on top so that
+        // `pass<U+200B>word` or `密<U+200B>碼` — which read exactly like the keyword — are
+        // matched as the keyword. A.4 rule 3 says to apply A.3 cleaning, and A.3 as written is
+        // bidi-only, so this is deliberately stricter than the spec: the rule is worth nothing
+        // if one character nobody can see turns it off.
+        let haystack = MailTextCleaner.visibleText(MailTextCleaner.clean(input.subject + "\n" + input.plainText)).lowercased()
         let keywordHit = passwordKeywords.contains { haystack.contains($0.lowercased()) }
         let linksOutside = input.links.contains { link in
             let href = sanitizeHref(link.href).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -301,20 +326,42 @@ nonisolated enum MailWarnings {
         return warnings
     }
 
-    /// A.3-cleaned, trailing whitespace and dots removed, original case kept.
+    /// A.3-cleaned, trailing whitespace and dots removed, original case kept. What the user is
+    /// shown — Android's `cleanFileName`, same steps in the same order.
     static func displayFilename(_ raw: String) -> String {
         var name = MailTextCleaner.clean(raw)
         while let last = name.last, last == "." || last.isWhitespace { name.removeLast() }
         return name
     }
 
+    /// The name the extension checks read, which is `displayFilename` with every invisible
+    /// character taken out as well.
+    ///
+    /// `payload.ex<U+200B>e` and `report.ht<U+200B>ml` display and open exactly like
+    /// `payload.exe` and `report.html`, but their last dot-separated piece is `ex\u{200B}e`,
+    /// which is in no extension set — so `attachmentRisk` returned nil, `neverRenderedInApp`
+    /// returned false, and the message screen skipped the confirmation dialog and handed the
+    /// file straight to Quick Look or the share sheet, with only the attacker's own
+    /// Content-Type left between the mail and an in-process render (§9.5).
+    ///
+    /// Invisible characters go before the trailing-dot-and-space trim, so `payload.exe.<U+200B>`
+    /// trims down to `payload.exe` rather than stopping at the character it cannot see.
+    /// This is stricter than Android, whose `cleanFileName` removes control characters but not
+    /// format characters, so the zero-width cases above are still open there — a cross-platform
+    /// follow-up, not something this side should match by weakening.
+    private static func scannedFilename(_ raw: String) -> String {
+        var name = MailTextCleaner.visibleText(MailTextCleaner.clean(raw))
+        while let last = name.last, last == "." || last.isWhitespace { name.removeLast() }
+        return name
+    }
+
     /// Precedence when several apply: double extension, type mismatch, dangerous extension,
-    /// then encrypted archive. [subjectAndBody] is bidi-stripped here too (not just by the
+    /// then encrypted archive. [subjectAndBody] is cleaned here too (not just by the
     /// caller) so a direct call with raw subject/body text is still checked correctly
     /// (controller ruling, 2026-09-16 — mirrors Android's `riskReason`, which re-strips
     /// defensively rather than trusting its caller).
     static func attachmentRisk(filename: String, contentType: String?, subjectAndBody: String) -> MailRiskReason? {
-        let pieces = displayFilename(filename).lowercased().split(separator: ".").map(String.init)
+        let pieces = scannedFilename(filename).lowercased().split(separator: ".").map(String.init)
         guard pieces.count >= 2, let ext = pieces.last else { return nil }
         let dangerous = dangerousExtensions.contains(ext)
         if dangerous, pieces.count >= 3, decoyExtensions.contains(pieces[pieces.count - 2]) {
@@ -325,7 +372,7 @@ nonisolated enum MailWarnings {
             return .typeMismatch
         }
         if dangerous { return .dangerousExtension }
-        let lowered = MailTextCleaner.clean(subjectAndBody).lowercased()
+        let lowered = MailTextCleaner.visibleText(MailTextCleaner.clean(subjectAndBody)).lowercased()
         if archiveExtensions.contains(ext), archivePasswordHints.contains(where: { lowered.contains($0) }) {
             return .encryptedArchive
         }
@@ -343,7 +390,7 @@ nonisolated enum MailWarnings {
     }
 
     static func neverRenderedInApp(filename: String) -> Bool {
-        let ext = displayFilename(filename).lowercased().split(separator: ".").last.map(String.init) ?? ""
+        let ext = scannedFilename(filename).lowercased().split(separator: ".").last.map(String.init) ?? ""
         return neverRenderInApp.contains(ext)
     }
 
@@ -351,7 +398,16 @@ nonisolated enum MailWarnings {
 
     static func linkIssues(text rawText: String, href rawHref: String) -> [MailLinkIssue] {
         let href = sanitizeHref(rawHref).trimmingCharacters(in: .whitespacesAndNewlines)
-        let text = MailTextCleaner.clean(rawText).trimmingCharacters(in: .whitespacesAndNewlines)
+        // `visibleText`, not `clean`, and before BOTH branches below — Android's `checkLink`
+        // does the same. What is compared has to be what the reader sees, joined back up:
+        // `<a href="https://evil.example/login">ntust.edu.tw&#8288;</a>` renders as plain
+        // `ntust.edu.tw`, but the word joiner breaks `shownHostPattern`'s `^…$` anchor, so
+        // `hostShown` returns nil, the mismatch branch never runs, and the link is shown with
+        // no banner at all while `insecure`/`punycode` stay silent on an https host. The
+        // `mailto:` branch fails the same way through `firstEmail`. `clean` would not do: it
+        // collapses `\t`/`\n`/`\r` into a space to keep words apart for display, which is the
+        // opposite of what a host split across a line break needs.
+        let text = MailTextCleaner.visibleText(rawText).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if hasASCIICaseInsensitivePrefix(href, "mailto:") {
             let target = href.dropFirst("mailto:".count).split(separator: "?", maxSplits: 1).first.map(String.init) ?? ""

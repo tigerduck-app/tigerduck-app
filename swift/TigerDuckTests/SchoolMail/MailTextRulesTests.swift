@@ -93,6 +93,47 @@ struct MailTextRulesTests {
         #expect(MailTextCleaner.clean("課程公告") == "課程公告")
     }
 
+    @Test func stripsControlCharacters() {
+        #expect(MailTextCleaner.clean("setup.apk\u{0001}") == "setup.apk")
+        #expect(MailTextCleaner.clean("a\u{000B}\u{000C}\u{001F}\u{007F}b") == "ab")
+    }
+
+    /// Android's `CONTROLS` leaves `\t`, `\n` and `\r` out of the delete set on purpose, so the
+    /// whitespace collapse turns a run of them into a single space. Deleting them instead would
+    /// join two words the collapse keeps apart — `verify\naccount` would read as one token and
+    /// stop matching the keyword `verify your account` spelled with a line break in it.
+    @Test func collapsesTabsAndNewlinesInsteadOfDeletingThem() {
+        #expect(MailTextCleaner.clean("verify\tyour\naccount") == "verify your account")
+        #expect(MailTextCleaner.clean("a  \r\n\t b") == "a b")
+        #expect(MailTextCleaner.clean("  padded  ") == "padded")
+        #expect(MailTextCleaner.clean("") == "")
+    }
+
+    /// `clean` must leave U+200B alone. Java's `\s` is ASCII-only, but Foundation's
+    /// `CharacterSet.whitespaces` contains U+200B on Darwin, so collapsing with it would
+    /// rewrite `ntust.e<U+200B>du.tw` as `ntust.e du.tw` — one host broken into two words,
+    /// where Android keeps it whole. Removing it is `visibleText`'s job.
+    @Test func cleanLeavesZeroWidthSpacesForVisibleTextToRemove() {
+        #expect(MailTextCleaner.clean("ntust.e\u{200B}du.tw") == "ntust.e\u{200B}du.tw")
+        #expect(MailTextCleaner.visibleText("ntust.e\u{200B}du.tw") == "ntust.edu.tw")
+    }
+
+    /// U+200B is spelled out in `visibleText` rather than left to `generalCategory`, which
+    /// reports `.format` on this toolchain but answers from the platform's Unicode tables at
+    /// run time and has reported otherwise in earlier Unicode versions. This pins the
+    /// requirement whichever mechanism ends up satisfying it.
+    @Test(arguments: [
+        "\u{200B}", "\u{2060}", "\u{00AD}", "\u{FEFF}", "\u{001C}", "\u{0000}", "\u{007F}",
+        "\u{0090}", "\u{202E}", "\u{200F}", "\u{061C}", "\u{2069}", "\u{0009}", "\u{000A}",
+    ])
+    func visibleTextRemovesEveryInvisibleCharacter(invisible: String) {
+        #expect(MailTextCleaner.visibleText("a\(invisible)b") == "ab")
+    }
+
+    @Test func visibleTextKeepsCharactersTheReaderCanSee() {
+        #expect(MailTextCleaner.visibleText("課程 公告 a1.") == "課程 公告 a1.")
+    }
+
     // MARK: A.1 folders
 
     @Test func mapsMail2000FoldersByTheirIMAPNames() {
