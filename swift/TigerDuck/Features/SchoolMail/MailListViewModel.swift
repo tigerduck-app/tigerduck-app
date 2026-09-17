@@ -197,9 +197,11 @@ final class MailListViewModel {
         let seen = !summary.isSeen
         markSeenLocally(uid: summary.uid, seen: seen)
         let folder = selectedFolder
+        let validity = page?.uidValidity
         do {
             try await session.use { client in
-                try await client.setFlag(.seen, on: seen, folder: folder, uids: [summary.uid])
+                try await client.setFlag(.seen, on: seen, folder: folder, uids: [summary.uid],
+                                         expectedUIDValidity: validity)
             }
         } catch MailClientError.folderChanged {
             // A UID is only unique within its own folder — a same-UID row may already exist

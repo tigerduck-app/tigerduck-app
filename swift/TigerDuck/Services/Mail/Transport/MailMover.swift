@@ -34,6 +34,12 @@ nonisolated struct MailMoveResult: Equatable, Sendable {
 /// and retry. A `uids` argument of `[]` also runs no server command at all, and returns
 /// `previouslyFlagged` unchanged.
 ///
+/// That first check is not the guard, though — the five steps below are five separate commands
+/// with the connection released between them, and the app's own 60 s page poll shares the client.
+/// So every step that can change or destroy mail carries `previouslyFlagged.uidValidity` with it
+/// and has the client compare it against that command's own SELECT response. No step ever trusts
+/// a UIDVALIDITY read by some earlier command, this type's own opening check included.
+///
 /// Neither operation retries a command that may already have started on the server (COPY,
 /// STORE, EXPUNGE): a throw after that point is reported as-is, and `recoverAfterFailure`
 /// lets the caller find out, with a single fresh read, whether the flag actually took.
@@ -50,7 +56,7 @@ nonisolated enum MailMover {
     ) async throws -> MailMoveResult {
         guard !uids.isEmpty else { return MailMoveResult(expunged: false, stillPending: previouslyFlagged) }
         try await assertFolderUnchanged(folder: folder, previouslyFlagged: previouslyFlagged, client: client)
-        try await client.copy(folder: folder, uids: uids, to: target)
+        try await client.copy(folder: folder, uids: uids, to: target, expectedUIDValidity: previouslyFlagged.uidValidity)
         return try await flagAndMaybeExpunge(uids: uids, in: folder, client: client, previouslyFlagged: previouslyFlagged)
     }
 
@@ -78,21 +84,46 @@ nonisolated enum MailMover {
         serverConfirmsDeleted && !wasAlreadyDeleted
     }
 
-    /// Call from a `catch` around `move`/`deletePermanently`: a COPY + STORE may have partly
-    /// landed on the server before the throw. Never retries the failed command itself — asks the
-    /// server, once, whether the `\Deleted` flag actually took, and applies `shouldRecordAfterFailure`.
-    /// Returns `false` (nothing to record) if that check itself fails.
+    /// Whether a failed `move`/`deletePermanently` is worth asking the server about at all.
     ///
-    /// Never call this after a `MailClientError.authenticationFailed` or `.certificateRejected`
-    /// from the same operation: the credentials or connection that just failed are exactly what a
-    /// fresh `flags` read would need, so this would only trigger a second, doomed request/login
-    /// attempt against a server that already rejected them. (Android's equivalent, `runExpunging`,
-    /// skips this same probe for those same two error cases.)
+    /// The credentials or the connection that just failed are exactly what a fresh `flags` read
+    /// would need, so probing after an authentication rejection or a certificate failure would
+    /// only fire a second, doomed request against a server that already refused — and after a
+    /// `folderChanged` there is nothing to attribute, since the pin the probe would be read under
+    /// no longer describes the folder. (Android's equivalent, `runExpunging`, skips the same
+    /// probe for the same reasons.)
+    static func shouldProbeAfterFailure(_ error: any Error) -> Bool {
+        switch error as? MailClientError {
+        case .authenticationFailed, .certificateRejected, .folderChanged: false
+        default: true
+        }
+    }
+
+    /// Call from a `catch` around `move`/`deletePermanently`: a COPY + STORE may have partly
+    /// landed on the server before the throw, and a `\Deleted` UID this app flagged but does not
+    /// claim wedges `shouldExpunge` false in that folder for good — every later delete there
+    /// silently degrades to "hide", and 回收筒 stops deleting anything. Never retries the failed
+    /// command itself: it asks the server, once, whether the `\Deleted` flag actually took, and
+    /// applies `shouldRecordAfterFailure`.
+    ///
+    /// Returns the owned-deleted record to persist, or `nil` when there is nothing to claim —
+    /// including when the probe is skipped (`shouldProbeAfterFailure`) or itself fails. The
+    /// probe carries `previouslyFlagged.uidValidity` so a folder recreated between the failed
+    /// command and this read can never have one of *its* messages attributed to TigerDuck.
     static func recoverAfterFailure(
-        uid: UInt32, folder: String, client: any MailClient, wasAlreadyDeleted: Bool
-    ) async -> Bool {
-        guard let flags = try? await client.flags(folder: folder, uids: uid...uid)[uid] else { return false }
-        return shouldRecordAfterFailure(serverConfirmsDeleted: flags.deleted, wasAlreadyDeleted: wasAlreadyDeleted)
+        after error: any Error, uid: UInt32, previouslyFlagged: OwnedDeleted,
+        client: any MailClient, wasAlreadyDeleted: Bool
+    ) async -> OwnedDeleted? {
+        guard shouldProbeAfterFailure(error) else { return nil }
+        guard let flags = try? await client.flags(folder: previouslyFlagged.folder, uids: uid...uid,
+                                                  expectedUIDValidity: previouslyFlagged.uidValidity)[uid] else {
+            return nil
+        }
+        guard shouldRecordAfterFailure(serverConfirmsDeleted: flags.deleted, wasAlreadyDeleted: wasAlreadyDeleted) else {
+            return nil
+        }
+        return OwnedDeleted(folder: previouslyFlagged.folder, uidValidity: previouslyFlagged.uidValidity,
+                            uids: previouslyFlagged.uids.union([uid]))
     }
 
     /// Reads UIDVALIDITY fresh on the caller's connection and refuses before COPY/STORE run if
@@ -111,17 +142,18 @@ nonisolated enum MailMover {
         uids: [UInt32], in folder: String,
         client: any MailClient, previouslyFlagged: OwnedDeleted
     ) async throws -> MailMoveResult {
-        try await client.setFlag(.deleted, on: true, folder: folder, uids: uids)
+        let pin = previouslyFlagged.uidValidity
+        try await client.setFlag(.deleted, on: true, folder: folder, uids: uids, expectedUIDValidity: pin)
         let ours = previouslyFlagged.uids.union(uids)
-        let deleted = try await client.deletedUIDs(folder: folder)
+        let deleted = try await client.deletedUIDs(folder: folder, expectedUIDValidity: pin)
         guard shouldExpunge(deleted: deleted, ours: ours) else {
             return MailMoveResult(
                 expunged: false,
                 stillPending: OwnedDeleted(folder: folder, uidValidity: previouslyFlagged.uidValidity, uids: ours.intersection(deleted))
             )
         }
-        try await client.expunge(folder: folder)
-        return MailMoveResult(expunged: true, stillPending: OwnedDeleted(folder: folder, uidValidity: previouslyFlagged.uidValidity, uids: []))
+        try await client.expunge(folder: folder, expectedUIDValidity: pin)
+        return MailMoveResult(expunged: true, stillPending: OwnedDeleted(folder: folder, uidValidity: pin, uids: []))
     }
 }
 #endif

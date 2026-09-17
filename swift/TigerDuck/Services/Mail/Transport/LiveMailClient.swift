@@ -57,14 +57,6 @@ actor LiveMailClient: MailClient {
 
     private let imap: IMAPServer
     private var credentials: (studentID: String, password: String)?
-    /// The UIDVALIDITY the most recent `status(folder:)` call observed for each folder. `copy`,
-    /// `setFlag` and `expunge` compare this against the SELECT response on the connection that
-    /// is about to run them, and refuse before sending anything if the folder was recreated
-    /// server-side in between (rule d) — `status()`'s own EXAMINE and a mutating call's SELECT
-    /// can land on different reconnects of this actor's single held connection, so the value has
-    /// to be remembered here rather than trusted from whatever `MailMover.assertFolderUnchanged`
-    /// read moments earlier on a connection that may no longer be the one in use.
-    private var lastKnownUIDValidity: [String: UInt32] = [:]
     /// Bumped, together with clearing `credentials`, as the very first thing `logout()` does —
     /// before its first `await` — so both changes are visible atomically to anything that reads
     /// them afterward. `ensureLiveConnection()` captures this in the same synchronous step as
@@ -126,7 +118,6 @@ actor LiveMailClient: MailClient {
         credentials = nil
         try? await imap.logout()
         try? await imap.disconnect()
-        lastKnownUIDValidity.removeAll()
     }
 
     func listFolders() async throws -> [String] {
@@ -156,7 +147,6 @@ actor LiveMailClient: MailClient {
             // (the same source `page(folder:...)` already uses below), so that's the source
             // of truth here.
             let selection = try await self.imap.examineMailbox(folder)
-            self.lastKnownUIDValidity[folder] = selection.uidValidity.value
             return MailboxStatusInfo(
                 uidValidity: selection.uidValidity.value,
                 uidNext: selection.uidNext.value,
@@ -204,9 +194,10 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    func flags(folder: String, uids: ClosedRange<UInt32>) async throws -> [UInt32: MailFlags] {
+    func flags(folder: String, uids: ClosedRange<UInt32>, expectedUIDValidity: UInt32?) async throws -> [UInt32: MailFlags] {
         try await run {
-            _ = try await self.imap.examineMailbox(folder)
+            let selection = try await self.imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             let infos = try await self.imap.fetchMessageInfos(
                 uidRange: UID(uids.lowerBound)...UID(uids.upperBound), options: [.flags]
             )
@@ -297,42 +288,37 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32]) async throws {
+    func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws {
         guard !uids.isEmpty else { return }
         try await run {
             let selection = try await self.imap.selectMailbox(folder)
-            guard !Self.uidValidityChanged(remembered: self.lastKnownUIDValidity[folder], current: selection.uidValidity.value) else {
-                throw MailClientError.folderChanged
-            }
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             try await self.imap.store(flags: [flag.swiftMailFlag], on: Self.uidSet(uids), operation: on ? .add : .remove)
         }
     }
 
-    func copy(folder: String, uids: [UInt32], to target: String) async throws {
+    func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
         guard !uids.isEmpty else { return }
         try await run {
             let selection = try await self.imap.selectMailbox(folder)
-            guard !Self.uidValidityChanged(remembered: self.lastKnownUIDValidity[folder], current: selection.uidValidity.value) else {
-                throw MailClientError.folderChanged
-            }
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             try await self.imap.copy(messages: Self.uidSet(uids), to: target)
         }
     }
 
-    func deletedUIDs(folder: String) async throws -> Set<UInt32> {
+    func deletedUIDs(folder: String, expectedUIDValidity: UInt32) async throws -> Set<UInt32> {
         try await run {
-            _ = try await self.imap.examineMailbox(folder)
+            let selection = try await self.imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             let found = try await self.rawSearch(criteria: [.deleted])
             return Set(found.toArray().map(\.value))
         }
     }
 
-    func expunge(folder: String) async throws {
+    func expunge(folder: String, expectedUIDValidity: UInt32) async throws {
         try await run {
             let selection = try await self.imap.selectMailbox(folder)
-            guard !Self.uidValidityChanged(remembered: self.lastKnownUIDValidity[folder], current: selection.uidValidity.value) else {
-                throw MailClientError.folderChanged
-            }
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             try await self.imap.expunge()
         }
     }
@@ -399,8 +385,8 @@ actor LiveMailClient: MailClient {
     /// checking it here. A network or certificate failure closes the socket so the next call
     /// reconnects from scratch; every other error leaves it alone. Acquires `commandLock`
     /// directly with explicit `acquire()`/`release()` calls (not `withLock`) so `body` keeps
-    /// running with this actor's own isolation the whole time — it reads and writes
-    /// `self`-isolated state like `lastKnownUIDValidity` throughout.
+    /// running with this actor's own isolation the whole time — it reads `self`-isolated state
+    /// (`imap`, `credentials`, `connectionGeneration`) throughout.
     @discardableResult
     private func run<T>(_ body: () async throws -> T) async throws -> T {
         await commandLock.acquire()
@@ -477,14 +463,26 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    /// Whether the folder's connection-fresh UIDVALIDITY no longer matches the value the most
-    /// recent `status(folder:)` call recorded for that folder. `nil` (nothing recorded yet)
-    /// never counts as a mismatch — the caller relies on a different layer
-    /// (`MailMover.assertFolderUnchanged`, which always calls `status()` first) having already
-    /// checked in that case.
-    nonisolated static func uidValidityChanged(remembered: UInt32?, current: UInt32) -> Bool {
-        guard let remembered else { return false }
-        return remembered != current
+    /// Whether the UIDVALIDITY this command's own SELECT/EXAMINE just returned still matches the
+    /// generation the caller pinned its UIDs to. `nil` — a caller that holds no pin — is never a
+    /// mismatch.
+    ///
+    /// The expected value is always supplied by the caller and never read back out of state this
+    /// actor shares between commands. An earlier version compared against a dictionary that every
+    /// `status(folder:)` call rewrote, and the app's own 60 s page poll calls `status(INBOX)` on
+    /// this same client: a folder recreated server-side mid-move had its new UIDVALIDITY written
+    /// there by the poll, after which the guard compared the new value against itself and passed —
+    /// COPY, STORE `\Deleted` and EXPUNGE then ran against UIDs that addressed entirely different
+    /// messages. Passing the pin in as an argument makes that interleaving unrepresentable.
+    nonisolated static func uidValidityChanged(expected: UInt32?, current: UInt32) -> Bool {
+        guard let expected else { return false }
+        return expected != current
+    }
+
+    nonisolated static func assertUIDValidity(expected: UInt32?, current: UInt32) throws {
+        guard !uidValidityChanged(expected: expected, current: current) else {
+            throw MailClientError.folderChanged
+        }
     }
 
     nonisolated static func closesConnectionOnFailure(_ error: MailClientError) -> Bool {

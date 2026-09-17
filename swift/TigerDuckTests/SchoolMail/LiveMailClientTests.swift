@@ -53,12 +53,16 @@ struct LiveMailClientTests {
         #expect(!LiveMailClient.closesConnectionOnFailure(.protocolError("x")))
     }
 
-    @Test func uidValidityChangeDetection() {
-        // Nothing recorded yet for the folder: never a mismatch — a different layer
-        // (`MailMover.assertFolderUnchanged`) is relied on to have checked already.
-        #expect(!LiveMailClient.uidValidityChanged(remembered: nil, current: 5))
-        #expect(!LiveMailClient.uidValidityChanged(remembered: 5, current: 5))
-        #expect(LiveMailClient.uidValidityChanged(remembered: 5, current: 6))
+    @Test func uidValidityChangeDetection() throws {
+        // No pin — only the read-flag callers, whose worst case is a flag on the wrong message.
+        #expect(!LiveMailClient.uidValidityChanged(expected: nil, current: 5))
+        #expect(!LiveMailClient.uidValidityChanged(expected: 5, current: 5))
+        #expect(LiveMailClient.uidValidityChanged(expected: 5, current: 6))
+        try LiveMailClient.assertUIDValidity(expected: nil, current: 5)
+        try LiveMailClient.assertUIDValidity(expected: 5, current: 5)
+        #expect(throws: MailClientError.folderChanged) {
+            try LiveMailClient.assertUIDValidity(expected: 5, current: 6)
+        }
     }
 
     @Test(arguments: [

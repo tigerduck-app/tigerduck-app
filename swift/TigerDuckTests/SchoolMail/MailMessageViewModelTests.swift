@@ -11,6 +11,20 @@ struct MailMessageViewModelTests {
         let fake: FakeMailClient
         let prefs: InMemoryMailPreferences
         let center: RecordingNotificationCenter
+        let cache: MailCache
+        let session: MailPageSession
+        let folder: String
+
+        /// A second screen over the same fake server, cache, prefs and connection — what the user
+        /// gets by going back to the list and opening another mail.
+        @MainActor
+        func anotherMessage(uid: UInt32) -> MailMessageViewModel {
+            MailMessageViewModel(
+                route: MailMessageRoute(folder: folder, uid: uid), session: session,
+                folderRoles: [.inbox: "INBOX", .trash: MailMessageViewModelTests.trash],
+                cache: cache, prefs: prefs, notifier: MailNotifier(center: RecordingNotificationCenter())
+            )
+        }
     }
 
     static let trash = MailFolderRole.trash.imapName
@@ -20,17 +34,19 @@ struct MailMessageViewModelTests {
         folders[folder] = [message] + extra
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
-        cache.savePage(MailFolderPage(folder: folder, uidValidity: 1, messageCount: 1, summaries: [message.summary], oldestLoadedSequence: nil))
+        cache.savePage(MailFolderPage(folder: folder, uidValidity: 1, messageCount: 1 + extra.count,
+                                      summaries: ([message] + extra).map(\.summary), oldestLoadedSequence: nil))
         let prefs = InMemoryMailPreferences()
         prefs.inboxUIDValidity = 1
         let center = RecordingNotificationCenter()
+        let session = MailPageSession(idleClose: .milliseconds(10), open: { fake })
         let model = MailMessageViewModel(
             route: MailMessageRoute(folder: folder, uid: message.summary.uid),
-            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }),
+            session: session,
             folderRoles: [.inbox: "INBOX", .trash: Self.trash],
             cache: cache, prefs: prefs, notifier: MailNotifier(center: center)
         )
-        return Harness(model: model, fake: fake, prefs: prefs, center: center)
+        return Harness(model: model, fake: fake, prefs: prefs, center: center, cache: cache, session: session, folder: folder)
     }
 
     @Test func loadsSanitizedHTMLAndWarnings() async {
@@ -113,6 +129,68 @@ struct MailMessageViewModelTests {
         await h.model.load()
         #expect(await h.model.move(to: Self.trash))
         #expect(h.prefs.ownedDeleted(folder: "INBOX", uidValidity: 1).uids == [5])
+    }
+
+    /// A delete whose STORE lands but whose deleted-UID check then fails leaves a `\Deleted` UID
+    /// on the server. If the app does not claim it, `shouldExpunge` is false in that folder for
+    /// good: every later delete degrades to "hide", and 回收筒 stops actually deleting anything.
+    @Test func aPartlyFailedDeleteClaimsTheFlagItLandedInsteadOfWedgingTheFolder() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5), folder: Self.trash,
+                             extra: [FakeMailClient.message(uid: 6)])
+        await h.model.load()
+        await h.fake.update { $0.deletedUIDsError = .serverBusy }
+        #expect(await h.model.delete() == false)
+        #expect(h.model.actionError != nil)
+        // The STORE reached the server, so the flag is ours and has to be remembered.
+        #expect(await h.fake.folders[Self.trash]?.first(where: { $0.summary.uid == 5 })?.summary.isDeleted == true)
+        #expect(h.prefs.ownedDeleted(folder: Self.trash, uidValidity: 1).uids == [5])
+
+        // ...and because it is remembered, the next delete in that folder still expunges.
+        await h.fake.update { $0.deletedUIDsError = nil }
+        let second = h.anotherMessage(uid: 6)
+        await second.load()
+        #expect(await second.delete())
+        #expect(await h.fake.folders[Self.trash]?.isEmpty == true)
+    }
+
+    /// A message another client had already flagged `\Deleted` must never become ours just
+    /// because our own STORE also touched it.
+    @Test func aPartlyFailedDeleteNeverClaimsMailSomeoneElseHadAlreadyDeleted() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, deleted: true), folder: Self.trash)
+        await h.model.load()
+        await h.fake.update { $0.deletedUIDsError = .serverBusy }
+        #expect(await h.model.delete() == false)
+        #expect(h.prefs.ownedDeleted(folder: Self.trash, uidValidity: 1).uids.isEmpty)
+    }
+
+    /// The credentials or the connection that just failed are exactly what the ownership probe
+    /// would need, so it must not fire a second, doomed request after either.
+    @Test func aDeleteRejectedForAuthenticationNeverFiresTheOwnershipProbe() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5), folder: Self.trash)
+        await h.model.load()
+        await h.fake.update { $0.setFlagError = .authenticationFailed }
+        #expect(await h.model.delete() == false)
+        #expect(!(await h.fake.calls).contains { $0.hasPrefix("flags ") })
+    }
+
+    /// Move and delete are four to five round trips with no progress indication, so a second tap
+    /// is expected behaviour. It must not COPY the mail a second time — that files one message
+    /// into two folders — nor race the owned-deleted read-modify-write.
+    @Test func aSecondTapDuringAMoveIsIgnoredInsteadOfFilingTheMailTwice() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        await h.fake.hold("copy")
+        let first = Task { await h.model.move(to: Self.trash) }
+        // The first COPY is on the wire; the screen shows no progress, so the user taps again.
+        await h.fake.waitForArrival("copy")
+        let second = Task { await h.model.move(to: Self.trash) }
+        await Task.yield()
+        await h.fake.release("copy")
+        #expect(await first.value)
+        #expect(await second.value == false)
+        #expect(!h.model.isMoving)
+        #expect((await h.fake.calls).filter { $0.hasPrefix("copy ") }.count == 1)
+        #expect(await h.fake.folders[Self.trash]?.count == 1)
     }
 
     @Test func deletingInsideTrashIsPermanent() async {

@@ -69,6 +69,10 @@ final class MailComposeViewModel {
     /// itself and could never refuse (fix round 1, critical 1; mirrors
     /// `MailMessageViewModel.pageUIDValidity`).
     @ObservationIgnored private var draftPageUIDValidity: UInt32?
+    /// Whether the draft being edited was already `\Deleted` when it was loaded — a message
+    /// someone else deleted must never become one TigerDuck claims just because its own STORE
+    /// also touched it. Read once during `prepare()`, like `draftPageUIDValidity`.
+    @ObservationIgnored private var draftWasAlreadyDeleted = false
     /// Suppresses the `didSet` edit-tracking below while `runPrepare()` writes a freshly computed
     /// prefill value into a field -- that write must never be mistaken for something the user typed.
     @ObservationIgnored private var suppressEditTracking = false
@@ -159,6 +163,7 @@ final class MailComposeViewModel {
                     showCcBcc: !(draft.summary.cc ?? []).isEmpty,
                     newAttachments: downloaded
                 )
+                draftWasAlreadyDeleted = draft.summary.isDeleted
                 sourceLoaded = true
                 return
             }
@@ -321,6 +326,7 @@ final class MailComposeViewModel {
         let draftFolder = (sourceLoaded && context.mode == .draft) ? context.folder : nil
         let draftUID = (sourceLoaded && context.mode == .draft) ? context.uid : nil
         let pageUIDValidity = draftPageUIDValidity
+        let draftWasDeleted = draftWasAlreadyDeleted
         let sleepFn = sleep
         let prefsRef = prefs
 
@@ -338,7 +344,12 @@ final class MailComposeViewModel {
             try await session.use { client in
                 try await client.send(message, from: senderAddress, to: recipients)
                 if let replyFolder, let replyUID {
-                    try? await client.setFlag(.answered, on: true, folder: replyFolder, uids: [replyUID])
+                    // No pin: compose holds the *drafts* page's UIDVALIDITY, never the original's
+                    // folder's. The worst a recreated folder costs here is an `\Answered` flag on
+                    // the wrong message — cosmetic, and already best-effort — where the pinned
+                    // calls below would destroy mail, which is why only those require one.
+                    try? await client.setFlag(.answered, on: true, folder: replyFolder, uids: [replyUID],
+                                              expectedUIDValidity: nil)
                 }
                 if let sentFolder {
                     // Save a sent copy only if the server did not file one itself (§8.4).
@@ -349,7 +360,8 @@ final class MailComposeViewModel {
                     }
                 }
                 if let draftFolder, let draftUID {
-                    await Self.removeDraft(uid: draftUID, folder: draftFolder, client: client, prefs: prefsRef, pageUIDValidity: pageUIDValidity)
+                    await Self.removeDraft(uid: draftUID, folder: draftFolder, client: client, prefs: prefsRef,
+                                           pageUIDValidity: pageUIDValidity, wasAlreadyDeleted: draftWasDeleted)
                 }
             }
             didFinish = true
@@ -395,6 +407,7 @@ final class MailComposeViewModel {
         let saveDate = now()
         let draftUID = (sourceLoaded && context.mode == .draft && context.folder == drafts) ? context.uid : nil
         let pageUIDValidity = draftPageUIDValidity
+        let draftWasDeleted = draftWasAlreadyDeleted
         let prefsRef = prefs
 
         isSending = true
@@ -408,7 +421,8 @@ final class MailComposeViewModel {
             try await session.use { client in
                 try await client.append(message, to: drafts, flags: [.draft, .seen])
                 if let draftUID {
-                    await Self.removeDraft(uid: draftUID, folder: drafts, client: client, prefs: prefsRef, pageUIDValidity: pageUIDValidity)
+                    await Self.removeDraft(uid: draftUID, folder: drafts, client: client, prefs: prefsRef,
+                                           pageUIDValidity: pageUIDValidity, wasAlreadyDeleted: draftWasDeleted)
                 }
             }
             baseline = snapshot()
@@ -438,11 +452,22 @@ final class MailComposeViewModel {
     /// saved) when no cached page UIDVALIDITY is available to check against. `static` and taking
     /// every dependency as a parameter so it never captures `self` across the `session.use`
     /// closure it runs inside.
-    private static func removeDraft(uid: UInt32, folder: String, client: any MailClient, prefs: any MailPreferences, pageUIDValidity: UInt32?) async {
+    private static func removeDraft(uid: UInt32, folder: String, client: any MailClient, prefs: any MailPreferences,
+                                    pageUIDValidity: UInt32?, wasAlreadyDeleted: Bool) async {
         guard let pageUIDValidity else { return }
         let owned = prefs.ownedDeleted(folder: folder, uidValidity: pageUIDValidity)
-        guard let result = try? await MailMover.deletePermanently(uids: [uid], in: folder, client: client, previouslyFlagged: owned) else { return }
-        prefs.setOwnedDeleted(result.stillPending)
+        do {
+            let result = try await MailMover.deletePermanently(uids: [uid], in: folder, client: client, previouslyFlagged: owned)
+            prefs.setOwnedDeleted(result.stillPending)
+        } catch {
+            // The STORE may already have landed; an unclaimed `\Deleted` UID blocks every later
+            // EXPUNGE in 草稿匣 for good, so the same recovery the message screen runs applies here.
+            guard let claim = await MailMover.recoverAfterFailure(after: error, uid: uid, previouslyFlagged: owned,
+                                                                  client: client, wasAlreadyDeleted: wasAlreadyDeleted) else {
+                return
+            }
+            prefs.setOwnedDeleted(claim)
+        }
     }
 
     private func snapshot() -> String {

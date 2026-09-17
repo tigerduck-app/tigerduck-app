@@ -36,19 +36,34 @@ actor FakeMailClient: MailClient {
     /// never EXPUNGE, even though its own STORE may already have landed.
     var deletedUIDsError: MailClientError?
     var acceptedPassword: String?
-    var holdStatus = false
+    /// When set, `status` suspends until `releaseStatus()` is called. Kept as a named property
+    /// for the tests that already use it; it is the general command gate below under another name.
+    var holdStatus: Bool {
+        get { heldCommands.contains("status") }
+        set { if newValue { heldCommands.insert("status") } else { heldCommands.remove("status") } }
+    }
     /// When set, `search` suspends until `releaseSearch()` is called — used to land a folder
     /// switch (or any other state change) while a search is still in flight, deterministically
     /// rather than by racing wall-clock sleeps.
-    var holdSearch = false
+    var holdSearch: Bool {
+        get { heldCommands.contains("search") }
+        set { if newValue { heldCommands.insert("search") } else { heldCommands.remove("search") } }
+    }
     /// When set, `send` also files the message here, like a server that keeps sent copies.
     var autoSaveSentTo: String?
     /// Returned by `summaries(folder:fromUID:)` on top of the real range (the `n:*` quirk).
     var extraSummaries: [MailSummary] = []
     private(set) var calls: [String] = []
     private(set) var sent: [(message: Data, from: String, to: [String])] = []
-    private var statusGate: CheckedContinuation<Void, Never>?
-    private var searchGate: CheckedContinuation<Void, Never>?
+    /// Commands currently gated by `hold(_:)`.
+    private var heldCommands: Set<String> = []
+    /// One suspended, held command per name, waiting for `release(_:)`.
+    private var releaseGates: [String: CheckedContinuation<Void, Never>] = [:]
+    /// A test suspended in `waitForArrival(_:)`, waiting for that command to reach the gate.
+    private var arrivalGates: [String: CheckedContinuation<Void, Never>] = [:]
+    /// Commands that have reached the gate at least once, so a `waitForArrival(_:)` that runs
+    /// after the fact returns immediately instead of hanging.
+    private var arrivedCommands: Set<String> = []
 
     init(folders: [String: [Message]] = [:]) {
         self.folders = folders
@@ -58,16 +73,54 @@ actor FakeMailClient: MailClient {
         change(self)
     }
 
+    // MARK: Command gates
+    //
+    // Interleavings — not input/output behaviour — are what several of the mail bugs are made
+    // of: a poll landing between two of `MailMover`'s steps, a second Delete tap landing between
+    // the first one's COPY and its EXPUNGE. `hold(_:)`/`waitForArrival(_:)`/`release(_:)` let a
+    // test park one call inside the client, run whatever else it wants to interleave, and then
+    // let the parked call continue — deterministically, with no wall-clock sleeps anywhere.
+
+    /// Makes the named command (`"copy"`, `"setFlag"`, `"expunge"`, …) suspend when it arrives,
+    /// until `release(_:)`.
+    func hold(_ command: String) {
+        heldCommands.insert(command)
+    }
+
+    /// Lets a held command continue (and stops holding later ones).
+    func release(_ command: String) {
+        heldCommands.remove(command)
+        if let gate = releaseGates.removeValue(forKey: command) { gate.resume() }
+    }
+
+    /// Returns once the named command has reached its gate — i.e. the call really is in flight,
+    /// rather than the test merely hoping it is.
+    func waitForArrival(_ command: String) async {
+        if arrivedCommands.contains(command) { return }
+        await withCheckedContinuation { arrivalGates[command] = $0 }
+    }
+
+    private func gate(_ command: String) async {
+        arrivedCommands.insert(command)
+        if let waiter = arrivalGates.removeValue(forKey: command) { waiter.resume() }
+        guard heldCommands.contains(command) else { return }
+        await withCheckedContinuation { releaseGates[command] = $0 }
+    }
+
     func releaseStatus() {
-        holdStatus = false
-        statusGate?.resume()
-        statusGate = nil
+        release("status")
     }
 
     func releaseSearch() {
-        holdSearch = false
-        searchGate?.resume()
-        searchGate = nil
+        release("search")
+    }
+
+    /// Mirrors `LiveMailClient`'s own UIDVALIDITY guard so tests exercise the contract the real
+    /// client enforces rather than a fake that has no guard at all: a command compares the pin
+    /// its caller passed against the folder's current generation, and refuses if they differ.
+    /// `nil` — a caller with no pin — is not a mismatch.
+    private func assertUIDValidity(_ expected: UInt32?, folder: String) throws {
+        try LiveMailClient.assertUIDValidity(expected: expected, current: uidValidity[folder] ?? 1)
     }
 
     static func message(
@@ -110,7 +163,7 @@ actor FakeMailClient: MailClient {
 
     func status(folder: String) async throws -> MailboxStatusInfo {
         calls.append("status \(folder)")
-        if holdStatus { await withCheckedContinuation { statusGate = $0 } }
+        await gate("status")
         if let statusError { throw statusError }
         let messages = folders[folder] ?? []
         return MailboxStatusInfo(
@@ -145,8 +198,10 @@ actor FakeMailClient: MailClient {
         return (folders[folder] ?? []).map(\.summary).filter { uids.contains($0.uid) }
     }
 
-    func flags(folder: String, uids: ClosedRange<UInt32>) async throws -> [UInt32: MailFlags] {
+    func flags(folder: String, uids: ClosedRange<UInt32>, expectedUIDValidity: UInt32?) async throws -> [UInt32: MailFlags] {
         calls.append("flags \(folder) \(uids)")
+        await gate("flags")
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
         var result: [UInt32: MailFlags] = [:]
         for message in folders[folder] ?? [] where uids.contains(message.summary.uid) {
             let s = message.summary
@@ -180,7 +235,7 @@ actor FakeMailClient: MailClient {
 
     func search(folder: String, query: String) async throws -> [UInt32] {
         calls.append("search \(folder) \(query)")
-        if holdSearch { await withCheckedContinuation { searchGate = $0 } }
+        await gate("search")
         if let searchError { throw searchError }
         return (folders[folder] ?? []).map(\.summary).filter {
             ($0.subject ?? "").localizedCaseInsensitiveContains(query)
@@ -188,9 +243,11 @@ actor FakeMailClient: MailClient {
         }.map(\.uid)
     }
 
-    func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32]) async throws {
+    func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws {
         calls.append("setFlag \(flag.rawValue) \(on) \(uids)")
+        await gate("setFlag")
         if let setFlagError { throw setFlagError }
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
         guard var messages = folders[folder] else { return }
         for index in messages.indices where uids.contains(messages[index].summary.uid) {
             switch flag {
@@ -203,9 +260,11 @@ actor FakeMailClient: MailClient {
         folders[folder] = messages
     }
 
-    func copy(folder: String, uids: [UInt32], to target: String) async throws {
+    func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
         calls.append("copy \(uids) \(target)")
+        await gate("copy")
         if let copyError { throw copyError }
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
         var destination = folders[target] ?? []
         var next = (destination.map(\.summary.uid).max() ?? 0) + 1
         for message in (folders[folder] ?? []) where uids.contains(message.summary.uid) {
@@ -218,14 +277,18 @@ actor FakeMailClient: MailClient {
         folders[target] = destination
     }
 
-    func deletedUIDs(folder: String) async throws -> Set<UInt32> {
+    func deletedUIDs(folder: String, expectedUIDValidity: UInt32) async throws -> Set<UInt32> {
         calls.append("deletedUIDs \(folder)")
+        await gate("deletedUIDs")
         if let deletedUIDsError { throw deletedUIDsError }
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
         return Set((folders[folder] ?? []).filter(\.summary.isDeleted).map(\.summary.uid))
     }
 
-    func expunge(folder: String) async throws {
+    func expunge(folder: String, expectedUIDValidity: UInt32) async throws {
         calls.append("expunge \(folder)")
+        await gate("expunge")
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
         folders[folder]?.removeAll { $0.summary.isDeleted }
     }
 
@@ -246,6 +309,7 @@ actor FakeMailClient: MailClient {
 
     func send(_ message: Data, from sender: String, to recipients: [String]) async throws {
         calls.append("send")
+        await gate("send")
         if let sendError { throw sendError }
         sent.append((message, sender, recipients))
         if let autoSaveSentTo {

@@ -57,6 +57,11 @@ final class MailMessageViewModel {
     private(set) var sourceLoadFailed = false
     private(set) var allowRemoteImages = false
     private(set) var actionError: String?
+    /// True for the whole of a move or delete — four to five IMAP round trips with nothing on
+    /// screen to say so. The view disables every affordance that starts one while it is set;
+    /// `performMove` refuses as well, so a tap the view somehow lets through still cannot file
+    /// the same mail into two folders.
+    private(set) var isMoving = false
     var mode: ViewMode = .formatted
 
     @ObservationIgnored var onSeenChanged: ((UInt32, Bool) -> Void)?
@@ -138,7 +143,9 @@ final class MailMessageViewModel {
                 await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity) }.value
             }
             if !fresh.summary.isSeen {
-                try await session.use { client in try await client.setFlag(.seen, on: true, folder: folder, uids: [uid]) }
+                try await session.use { client in
+                    try await client.setFlag(.seen, on: true, folder: folder, uids: [uid], expectedUIDValidity: validity)
+                }
                 detail?.summary.isSeen = true
                 onSeenChanged?(uid, true)
                 if folder == MailConstants.inbox, let inboxValidity = prefs.inboxUIDValidity {
@@ -209,7 +216,10 @@ final class MailMessageViewModel {
         let folder = route.folder
         let uid = route.uid
         do {
-            try await session.use { client in try await client.setFlag(.seen, on: !seen, folder: folder, uids: [uid]) }
+            let validity = pageUIDValidity
+            try await session.use { client in
+                try await client.setFlag(.seen, on: !seen, folder: folder, uids: [uid], expectedUIDValidity: validity)
+            }
             detail?.summary.isSeen = !seen
             onSeenChanged?(uid, !seen)
         } catch MailClientError.folderChanged {
@@ -250,24 +260,47 @@ final class MailMessageViewModel {
     ///
     /// `MailClientError.folderChanged` reports the folder via `onFolderChanged` rather than
     /// touching the cache itself — see that property's doc (fix round 1, important 2).
+    ///
+    /// A failure part-way through is not just a failure: COPY and STORE may already have landed,
+    /// and a `\Deleted` UID this app flagged but does not claim makes `shouldExpunge` false in
+    /// that folder from then on — every later delete there degrades to "hide" and 回收筒 stops
+    /// deleting anything. So the `catch` asks the server once, through
+    /// `MailMover.recoverAfterFailure`, whether the flag actually took, and persists the claim.
     private func performMove(_ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult) async -> Bool {
+        // Move and delete are four to five round trips with no progress indication, so a second
+        // tap is expected behaviour. Without this the second COPYs the same mail again — it
+        // lands in both 回收筒 and the move target — and both calls read `ownedDeleted` before
+        // either writes it back, dropping one call's pending UID and wedging the folder exactly
+        // as above. Set before the first `await`, so the two can never both get past it.
+        guard !isMoving else { return false }
         let folder = route.folder
         guard let uidValidity = pageUIDValidity else {
             actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
             return false
         }
+        isMoving = true
+        defer { isMoving = false }
+        let uid = route.uid
+        let wasAlreadyDeleted = detail?.summary.isDeleted ?? false
+        let owned = prefs.ownedDeleted(folder: folder, uidValidity: uidValidity)
         do {
-            let owned = prefs.ownedDeleted(folder: folder, uidValidity: uidValidity)
             let result = try await session.use { client in try await operation(client, owned) }
             prefs.setOwnedDeleted(result.stillPending)
-            onRemoved?(route.uid)
+            onRemoved?(uid)
             return true
-        } catch MailClientError.folderChanged {
-            actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
-            onFolderChanged?(folder)
-            return false
         } catch {
+            // Checked before opening a session, not inside one: after an authentication or
+            // certificate rejection even resolving a client is another doomed attempt against a
+            // server that already refused.
+            if MailMover.shouldProbeAfterFailure(error) {
+                let recovered = try? await session.use { client in
+                    await MailMover.recoverAfterFailure(after: error, uid: uid, previouslyFlagged: owned,
+                                                        client: client, wasAlreadyDeleted: wasAlreadyDeleted)
+                }
+                if let claim = recovered ?? nil { prefs.setOwnedDeleted(claim) }
+            }
             actionError = MailAccountManager.LoginError(error).message
+            if (error as? MailClientError) == .folderChanged { onFolderChanged?(folder) }
             return false
         }
     }

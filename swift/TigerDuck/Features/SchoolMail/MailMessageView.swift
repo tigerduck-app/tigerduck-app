@@ -119,6 +119,7 @@ struct MailMessageView: View {
             Button(String(localized: "school_mail_delete"), role: .destructive) {
                 Task { if await viewModel.delete() { dismiss() } }
             }
+            .disabled(viewModel.isMoving)
         } message: {
             Text(String(localized: "school_mail_delete_forever_message"))
         }
@@ -289,9 +290,13 @@ struct MailMessageView: View {
                     Label(seen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
                           systemImage: seen ? "envelope.badge" : "envelope.open")
                 }
+                // A move or delete is four to five round trips with nothing on screen to say so,
+                // so both affordances (and the move sheet's rows) are disabled for the duration —
+                // a second tap would otherwise COPY the mail again and file it into two folders.
                 Button { showMoveSheet = true } label: {
                     Label(String(localized: "school_mail_move_to"), systemImage: "folder")
                 }
+                .disabled(viewModel.isMoving)
                 Button(role: .destructive) {
                     if viewModel.deleteIsPermanent {
                         confirmDelete = true
@@ -301,6 +306,7 @@ struct MailMessageView: View {
                 } label: {
                     Label(String(localized: "school_mail_delete"), systemImage: "trash")
                 }
+                .disabled(viewModel.isMoving)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -312,9 +318,11 @@ struct MailMessageView: View {
             List {
                 ForEach(MailFolderRole.allCases.filter { folderRoles[$0] != nil && folderRoles[$0] != viewModel.route.folder }, id: \.self) { role in
                     Button(role.title) { move(to: folderRoles[role]!) }
+                        .disabled(viewModel.isMoving)
                 }
                 ForEach(otherFolders.filter { $0 != viewModel.route.folder }, id: \.self) { folder in
                     Button(ModifiedUTF7.decode(folder)) { move(to: folder) }
+                        .disabled(viewModel.isMoving)
                 }
             }
             .navigationTitle(String(localized: "school_mail_move_to"))

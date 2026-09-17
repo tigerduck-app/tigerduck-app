@@ -114,7 +114,8 @@ actor DemoMailClient: MailClient {
         (folders[folder] ?? []).map(\.summary).filter { uids.contains($0.uid) }
     }
 
-    func flags(folder: String, uids: ClosedRange<UInt32>) async throws -> [UInt32: MailFlags] {
+    func flags(folder: String, uids: ClosedRange<UInt32>, expectedUIDValidity: UInt32?) async throws -> [UInt32: MailFlags] {
+        try assertUIDValidity(expectedUIDValidity)
         var result: [UInt32: MailFlags] = [:]
         for stored in folders[folder] ?? [] where uids.contains(stored.summary.uid) {
             let s = stored.summary
@@ -159,7 +160,8 @@ actor DemoMailClient: MailClient {
         }.map(\.summary.uid)
     }
 
-    func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32]) async throws {
+    func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws {
+        try assertUIDValidity(expectedUIDValidity)
         guard var messages = folders[folder] else { return }
         for index in messages.indices where uids.contains(messages[index].summary.uid) {
             switch flag {
@@ -172,7 +174,8 @@ actor DemoMailClient: MailClient {
         folders[folder] = messages
     }
 
-    func copy(folder: String, uids: [UInt32], to target: String) async throws {
+    func copy(folder: String, uids: [UInt32], to target: String, expectedUIDValidity: UInt32) async throws {
+        try assertUIDValidity(expectedUIDValidity)
         var destination = folders[target] ?? []
         var next = (destination.map(\.summary.uid).max() ?? 0) + 1
         for stored in folders[folder] ?? [] where uids.contains(stored.summary.uid) {
@@ -185,12 +188,22 @@ actor DemoMailClient: MailClient {
         folders[target] = destination
     }
 
-    func deletedUIDs(folder: String) async throws -> Set<UInt32> {
-        Set((folders[folder] ?? []).filter(\.summary.isDeleted).map(\.summary.uid))
+    func deletedUIDs(folder: String, expectedUIDValidity: UInt32) async throws -> Set<UInt32> {
+        try assertUIDValidity(expectedUIDValidity)
+        return Set((folders[folder] ?? []).filter(\.summary.isDeleted).map(\.summary.uid))
     }
 
-    func expunge(folder: String) async throws {
+    func expunge(folder: String, expectedUIDValidity: UInt32) async throws {
+        try assertUIDValidity(expectedUIDValidity)
         folders[folder]?.removeAll { $0.summary.isDeleted }
+    }
+
+    /// The demo mailbox has exactly one UIDVALIDITY generation and never recreates a folder, so
+    /// this only ever refuses a caller that pinned something else — it is here so the demo client
+    /// upholds the same contract the live one does rather than quietly accepting any pin.
+    private func assertUIDValidity(_ expected: UInt32?) throws {
+        guard let expected, expected != fixture.uidValidity else { return }
+        throw MailClientError.folderChanged
     }
 
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {
