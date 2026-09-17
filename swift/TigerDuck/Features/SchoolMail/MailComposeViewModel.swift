@@ -54,6 +54,7 @@ final class MailComposeViewModel {
     @ObservationIgnored private let sender: MailAddress
     @ObservationIgnored private let folderRoles: [MailFolderRole: String]
     @ObservationIgnored private let prefs: any MailPreferences
+    @ObservationIgnored private let cache: MailCache
     @ObservationIgnored private let sleep: (Duration) async -> Void
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var baseline = ""
@@ -62,6 +63,12 @@ final class MailComposeViewModel {
     /// the draft being edited -- gates marking an original "answered" and replacing/removing a
     /// draft, so a load that never finished (or failed) can never do either (dispatch addition 5).
     @ObservationIgnored private var sourceLoaded = false
+    /// The 草稿匣 page's UIDVALIDITY as cached by the list (`.draft` mode only), read once during
+    /// `prepare()`/`retryPrepare()`. `removeDraft` uses this -- never a value read fresh right
+    /// before `MailMover` runs, which would make its own freshness guard compare a value against
+    /// itself and could never refuse (fix round 1, critical 1; mirrors
+    /// `MailMessageViewModel.pageUIDValidity`).
+    @ObservationIgnored private var draftPageUIDValidity: UInt32?
     /// Suppresses the `didSet` edit-tracking below while `runPrepare()` writes a freshly computed
     /// prefill value into a field -- that write must never be mistaken for something the user typed.
     @ObservationIgnored private var suppressEditTracking = false
@@ -80,6 +87,7 @@ final class MailComposeViewModel {
         sender: MailAddress,
         folderRoles: [MailFolderRole: String],
         prefs: (any MailPreferences)? = nil,
+        cache: MailCache? = nil,
         sleep: @escaping (Duration) async -> Void = { try? await Task.sleep(for: $0) },
         now: @escaping () -> Date = { Date() }
     ) {
@@ -88,6 +96,7 @@ final class MailComposeViewModel {
         self.sender = sender
         self.folderRoles = folderRoles
         self.prefs = prefs ?? MailAccountManager.shared.prefs
+        self.cache = cache ?? MailAccountManager.shared.cache
         self.sleep = sleep
         self.now = now
     }
@@ -103,11 +112,11 @@ final class MailComposeViewModel {
         await runPrepare()
     }
 
-    /// Retries after a failed `prepare()`. Refuses to overlap a load already running, but is
-    /// otherwise unguarded -- the view only ever wires this to the Retry affordance it shows
-    /// while `loadError` is set.
+    /// Retries after a failed `prepare()`. Refuses to overlap a load already running, or a
+    /// send/save in flight (fix round 1, minor 6), but is otherwise unguarded -- the view only
+    /// ever wires this to the Retry affordance it shows while `loadError` is set.
     func retryPrepare() async {
-        guard !isLoading else { return }
+        guard !isLoading, !isSending else { return }
         await runPrepare()
     }
 
@@ -128,8 +137,11 @@ final class MailComposeViewModel {
             if mode == .draft {
                 guard let folder, let uid else {
                     loadError = String(localized: "school_mail_error_generic")
+                    baseline = snapshot()
                     return
                 }
+                let cache = self.cache
+                draftPageUIDValidity = await Task.detached { cache.loadPage(folder: folder)?.uidValidity }.value
                 let (draft, downloaded) = try await session.use { client -> (MailMessageDetail, [Attachment]) in
                     let draft = try await client.detail(folder: folder, uid: uid)
                     var files: [Attachment] = []
@@ -148,18 +160,23 @@ final class MailComposeViewModel {
                     newAttachments: downloaded
                 )
                 sourceLoaded = true
-                baseline = snapshot()
                 return
             }
 
-            guard let original = context.original else { return }
+            guard let original = context.original else {
+                baseline = snapshot()
+                return
+            }
             let dateText = original.date.map(MailDateFormatter.detailString(for:)) ?? ""
             switch mode {
             case .reply, .replyAll:
-                let replyTo: [MailAddress] = try await session.use { client in
-                    guard let folder, let uid else { return [] }
-                    let raw = try await client.rawSource(folder: folder, uid: uid)
-                    return MailRawHeaders.value(named: "Reply-To", in: raw).map(MailAddress.parseList) ?? []
+                // Best-effort: everything a reply prefill needs is already in `context.original`,
+                // so one failed Reply-To download must never empty the whole form or drop
+                // threading (fix round 1, important 4) -- it only means replies fall back to the
+                // sender's own address, same as no Reply-To header existing at all.
+                var replyTo: [MailAddress] = []
+                if let folder, let uid, let raw = try? await session.use({ client in try await client.rawSource(folder: folder, uid: uid) }) {
+                    replyTo = MailRawHeaders.value(named: "Reply-To", in: raw).map(MailAddress.parseList) ?? []
                 }
                 let recipients = MailReplyComposer.replyRecipients(to: original, replyTo: replyTo, me: sender.address,
                                                                    replyAll: mode == .replyAll)
@@ -172,7 +189,6 @@ final class MailComposeViewModel {
                     newAttachments: []
                 )
                 sourceLoaded = true
-                baseline = snapshot()
             case .forward:
                 let downloaded: [Attachment] = try await session.use { client in
                     guard let folder, let uid else { return [] }
@@ -191,7 +207,6 @@ final class MailComposeViewModel {
                     newAttachments: downloaded
                 )
                 sourceLoaded = true
-                baseline = snapshot()
             case .new, .draft:
                 break
             }
@@ -211,6 +226,14 @@ final class MailComposeViewModel {
     /// `nil` `to`/`cc` (forward, which never prefills recipients) leaves that field untouched
     /// either way. Newly downloaded attachments are always added alongside whatever the user
     /// already picked -- never replacing that list (dispatch addition 5).
+    ///
+    /// `baseline` is rebuilt from these fresh prefill values alone, never from the fields as
+    /// merged above -- a field the user already edited must keep contributing to `hasChanges`
+    /// even after a successful (re)prefill, or Cancel would silently discard it (fix round 1,
+    /// important 3). `bcc` is always "" in the baseline: a prefill never restores it, and a
+    /// draft never stored it either (Bcc is never written as a header). The attachment portion
+    /// is only this prefill's own `newAttachments` -- not the merged list -- so a file the user
+    /// picked before a retry stays "dirty" too, exactly like Android's baseline.
     private func applyPrefill(to: String?, cc: String?, subject: String, body: String, showCcBcc: Bool, newAttachments: [Attachment]) {
         suppressEditTracking = true
         if let to, !editedTo { self.to = to }
@@ -221,6 +244,8 @@ final class MailComposeViewModel {
         suppressEditTracking = false
         let existingIDs = Set(attachments.map(\.id))
         attachments += newAttachments.filter { !existingIDs.contains($0.id) }
+        baseline = Self.snapshotString(to: to ?? "", cc: cc ?? "", bcc: "", subject: subject, body: body,
+                                       attachmentIDs: newAttachments.map(\.id))
     }
 
     private func markEdited(_ flag: inout Bool) {
@@ -268,27 +293,40 @@ final class MailComposeViewModel {
         }
 
         let isReply = context.mode == .reply || context.mode == .replyAll
-        let threading = (sourceLoaded && isReply) ? context.original.map(MailReplyComposer.threadingHeaders(for:)) : nil
+        // Threading only needs `context.original` -- it's synchronous, in-memory data, never
+        // network-dependent -- so it must not be gated on `sourceLoaded` (fix round 1, important
+        // 4): a reply whose Reply-To fetch failed (now best-effort, see `runPrepare`) still goes
+        // out In-Reply-To the right message.
+        let threading = isReply ? context.original.map(MailReplyComposer.threadingHeaders(for:)) : nil
         let mail = outgoing(to: toList, cc: ccList, bcc: bccList, threading: threading)
-        let messageID = MailMessageBuilder.makeMessageID()
-        let message = MailMessageBuilder.build(mail, messageID: messageID, date: now())
-        guard message.count <= MailConstants.maxEncodedMessageBytes else {
+        let attachmentBytes = attachments.map(\.data.count)
+        guard MailMessageBuilder.estimateEncodedSize(body: body, attachmentByteCounts: attachmentBytes) <= MailConstants.maxEncodedMessageBytes else {
             error = String(localized: "school_mail_too_large")
             return
         }
 
-        let recipients = mail.envelopeRecipients
+        let messageID = MailMessageBuilder.makeMessageID()
+        let sendDate = now()
         let senderAddress = sender.address
         let sentFolder = folderRoles[.sent]
         let replyFolder = (sourceLoaded && isReply) ? context.folder : nil
         let replyUID = (sourceLoaded && isReply) ? context.uid : nil
         let draftFolder = (sourceLoaded && context.mode == .draft) ? context.folder : nil
         let draftUID = (sourceLoaded && context.mode == .draft) ? context.uid : nil
+        let pageUIDValidity = draftPageUIDValidity
         let sleepFn = sleep
         let prefsRef = prefs
 
+        // The busy state is set before the (now off-main) build so the sheet can't be dismissed
+        // or re-sent while a large message is still being assembled (fix round 1, important 1).
         isSending = true
         defer { isSending = false }
+        let message = await Task.detached { MailMessageBuilder.build(mail, messageID: messageID, date: sendDate) }.value
+        guard message.count <= MailConstants.maxEncodedMessageBytes else {
+            error = String(localized: "school_mail_too_large")
+            return
+        }
+        let recipients = mail.envelopeRecipients
         do {
             try await session.use { client in
                 try await client.send(message, from: senderAddress, to: recipients)
@@ -304,15 +342,13 @@ final class MailComposeViewModel {
                     }
                 }
                 if let draftFolder, let draftUID {
-                    await Self.removeDraft(uid: draftUID, folder: draftFolder, client: client, prefs: prefsRef)
+                    await Self.removeDraft(uid: draftUID, folder: draftFolder, client: client, prefs: prefsRef, pageUIDValidity: pageUIDValidity)
                 }
             }
             didFinish = true
-        } catch MailClientError.folderChanged {
-            // Shown as-is, never retried here -- the list recovers through its own path the next
-            // time the user opens it (dispatch addition 6).
-            self.error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError(MailClientError.folderChanged).message
         } catch {
+            // The mail is never retried here on any error, `folderChanged` included -- the list
+            // recovers through its own path the next time the user opens it (dispatch addition 6).
             self.error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError(error).message
         }
     }
@@ -324,7 +360,12 @@ final class MailComposeViewModel {
     @discardableResult
     func saveDraft() async -> Bool {
         guard !isSending else { return false }
-        guard let drafts = folderRoles[.drafts] else { return false }
+        guard let drafts = folderRoles[.drafts] else {
+            // Set an error rather than failing silently -- the confirmation dialog's Save
+            // button would otherwise do nothing with no explanation (fix round 1, minor 4).
+            error = String(localized: "school_mail_error_generic")
+            return false
+        }
         error = nil
         invalidRecipients = []
         let (toList, toInvalid) = Self.parseRecipients(to)
@@ -337,21 +378,30 @@ final class MailComposeViewModel {
             return false
         }
         let mail = outgoing(to: toList, cc: ccList, bcc: bccList, threading: nil)
-        let message = MailMessageBuilder.build(mail, messageID: MailMessageBuilder.makeMessageID(), date: now())
-        guard message.count <= MailConstants.maxEncodedMessageBytes else {
+        let attachmentBytes = attachments.map(\.data.count)
+        guard MailMessageBuilder.estimateEncodedSize(body: body, attachmentByteCounts: attachmentBytes) <= MailConstants.maxEncodedMessageBytes else {
             error = String(localized: "school_mail_too_large")
             return false
         }
 
+        let messageID = MailMessageBuilder.makeMessageID()
+        let saveDate = now()
         let draftUID = (sourceLoaded && context.mode == .draft && context.folder == drafts) ? context.uid : nil
+        let pageUIDValidity = draftPageUIDValidity
         let prefsRef = prefs
+
         isSending = true
         defer { isSending = false }
+        let message = await Task.detached { MailMessageBuilder.build(mail, messageID: messageID, date: saveDate) }.value
+        guard message.count <= MailConstants.maxEncodedMessageBytes else {
+            error = String(localized: "school_mail_too_large")
+            return false
+        }
         do {
             try await session.use { client in
                 try await client.append(message, to: drafts, flags: [.draft, .seen])
                 if let draftUID {
-                    await Self.removeDraft(uid: draftUID, folder: drafts, client: client, prefs: prefsRef)
+                    await Self.removeDraft(uid: draftUID, folder: drafts, client: client, prefs: prefsRef, pageUIDValidity: pageUIDValidity)
                 }
             }
             baseline = snapshot()
@@ -373,18 +423,27 @@ final class MailComposeViewModel {
         )
     }
 
-    /// Uses `prefs.ownedDeleted(folder:uidValidity:)`/`setOwnedDeleted(_:)` with the folder's fresh
-    /// UIDVALIDITY (dispatch addition 6) -- `static` and taking every dependency as a parameter so
-    /// it never captures `self` across the `session.use` closure it runs inside.
-    private static func removeDraft(uid: UInt32, folder: String, client: any MailClient, prefs: any MailPreferences) async {
-        guard let status = try? await client.status(folder: folder) else { return }
-        let owned = prefs.ownedDeleted(folder: folder, uidValidity: status.uidValidity)
+    /// Uses `prefs.ownedDeleted(folder:uidValidity:)`/`setOwnedDeleted(_:)` with the *page's*
+    /// UIDVALIDITY (dispatch addition 6) -- never one read fresh right here, which would make
+    /// `MailMover.deletePermanently`'s own freshness guard compare a value against itself and
+    /// could never refuse (fix round 1, critical 1; same shape as `MailMessageViewModel.performMove`).
+    /// Refuses (does nothing, leaving the old draft copy behind -- harmless, the new one already
+    /// saved) when no cached page UIDVALIDITY is available to check against. `static` and taking
+    /// every dependency as a parameter so it never captures `self` across the `session.use`
+    /// closure it runs inside.
+    private static func removeDraft(uid: UInt32, folder: String, client: any MailClient, prefs: any MailPreferences, pageUIDValidity: UInt32?) async {
+        guard let pageUIDValidity else { return }
+        let owned = prefs.ownedDeleted(folder: folder, uidValidity: pageUIDValidity)
         guard let result = try? await MailMover.deletePermanently(uids: [uid], in: folder, client: client, previouslyFlagged: owned) else { return }
         prefs.setOwnedDeleted(result.stillPending)
     }
 
     private func snapshot() -> String {
-        [to, cc, bcc, subject, body, attachments.map(\.id.uuidString).joined()].joined(separator: "\u{1F}")
+        Self.snapshotString(to: to, cc: cc, bcc: bcc, subject: subject, body: body, attachmentIDs: attachments.map(\.id))
+    }
+
+    private static func snapshotString(to: String, cc: String, bcc: String, subject: String, body: String, attachmentIDs: [Attachment.ID]) -> String {
+        [to, cc, bcc, subject, body, attachmentIDs.map(\.uuidString).joined()].joined(separator: "\u{1F}")
     }
 
     /// `Name <address>`, quoting names that contain a separator.
@@ -406,12 +465,11 @@ final class MailComposeViewModel {
     private static func parseRecipients(_ raw: String) -> (addresses: [MailAddress], invalid: [String]) {
         var addresses: [MailAddress] = []
         var invalid: [String] = []
-        var seen = Set<String>()
         for token in splitTopLevel(raw) {
             let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
             if let address = MailAddress.parseList(trimmed).first, address.address.unicodeScalars.allSatisfy(\.isASCII) {
-                if seen.insert(address.address.lowercased()).inserted { addresses.append(address) }
+                addresses.append(address)
             } else {
                 invalid.append(trimmed)
             }

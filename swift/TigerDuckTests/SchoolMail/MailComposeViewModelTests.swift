@@ -22,13 +22,15 @@ struct MailComposeViewModelTests {
         return message
     }
 
-    static func model(_ context: MailComposeContext, fake: FakeMailClient, prefs: InMemoryMailPreferences = InMemoryMailPreferences()) -> MailComposeViewModel {
+    static func model(_ context: MailComposeContext, fake: FakeMailClient, prefs: InMemoryMailPreferences = InMemoryMailPreferences(),
+                      cache: MailCache = SchoolMailTestDoubles.temporaryCache()) -> MailComposeViewModel {
         MailComposeViewModel(
             context: context,
             session: MailPageSession(idleClose: .milliseconds(10), open: { fake }),
             sender: Self.me,
             folderRoles: [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
             prefs: prefs,
+            cache: cache,
             sleep: { _ in }
         )
     }
@@ -146,13 +148,28 @@ struct MailComposeViewModelTests {
 
     @Test func editingADraftReplacesTheOldOne() async {
         let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
-        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake)
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: Self.drafts, uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake, cache: cache)
         await model.prepare()
         #expect(model.subject == "草稿")
         #expect(model.body == "舊內容")
         model.body = "新內容"
         #expect(await model.saveDraft())
         #expect(await fake.folders[Self.drafts]?.map(\.summary.uid) == [2])
+    }
+
+    @Test func reopeningADraftRestoresItsAttachments() async {
+        var draft = FakeMailClient.message(uid: 1, subject: "草稿", text: "附件在這")
+        let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
+                                filename: "附件.pdf", contentID: nil, size: 4, isAttachment: true)
+        draft.detail?.parts = [part]
+        draft.attachments = ["2": Data("%PDF".utf8)]
+        let fake = FakeMailClient(folders: [Self.drafts: [draft], Self.sent: []])
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake)
+        await model.prepare()
+        #expect(model.attachments.map(\.filename) == ["附件.pdf"])
+        #expect(model.attachments.first?.data == Data("%PDF".utf8))
     }
 
     @Test func aFailedSendKeepsEverything() async {
@@ -208,29 +225,24 @@ struct MailComposeViewModelTests {
     // MARK: Dispatch addition 5 — a failed prefill offers a retry that keeps what was typed,
     // never marks the original answered, and never discards/replaces a draft.
 
-    @Test func aFailedPrefillDoesNotMarkTheOriginalAnswered() async {
-        let fake = Self.fake()
-        await fake.update { $0.rawSourceError = .unreachable }
-        let model = Self.model(Self.originalContext(.reply), fake: fake)
-        await model.prepare()
-        #expect(model.loadError != nil)
-        model.to = "a@mail.ntust.edu.tw"
-        await model.send()
-        #expect(await !fake.calls.contains { $0.hasPrefix("setFlag answered") })
-    }
-
+    // A failed Reply-To fetch no longer fails the whole prefill (fix round 1, important 4 --
+    // see `replyToFetchFailureIsBestEffortAndStillMarksAnswered` below), so this now uses a
+    // draft load (`detail`) failure, the remaining realistic way `prepare()` can fail.
     @Test func retryPrepareKeepsTypedTextAndPickedAttachmentsAfterAFailure() async {
-        let fake = Self.fake()
-        await fake.update { $0.rawSourceError = .unreachable }
-        let model = Self.model(Self.originalContext(.reply), fake: fake)
+        let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
+        await fake.update { $0.detailError = .unreachable }
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: Self.drafts, uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake, cache: cache)
         await model.prepare()
         #expect(model.loadError != nil)
-        model.to = "custom@mail.ntust.edu.tw"
+        model.body = "還在寫"
         model.addAttachment(filename: "note.txt", mimeType: "text/plain", data: Data("hi".utf8))
-        await fake.update { $0.rawSourceError = nil }
+        await fake.update { $0.detailError = nil }
         await model.retryPrepare()
         #expect(model.loadError == nil)
-        #expect(model.to == "custom@mail.ntust.edu.tw")
+        #expect(model.subject == "草稿")
+        #expect(model.body == "還在寫")
         #expect(model.attachments.map(\.filename) == ["note.txt"])
     }
 
@@ -247,8 +259,65 @@ struct MailComposeViewModelTests {
         #expect(await fake.folders[Self.drafts]?.map(\.summary.uid).sorted() == [1, 2])
     }
 
+    // MARK: Fix round 1
+
+    // Important 4: everything a reply prefill needs is already in `context.original`, so a
+    // failed Reply-To download must fall back to the sender's own address rather than emptying
+    // the whole form, and threading/"mark answered" must still work.
+    @Test func replyToFetchFailureIsBestEffortAndStillMarksAnswered() async {
+        let fake = Self.fake()
+        await fake.update { $0.rawSourceError = .unreachable }
+        let model = Self.model(Self.originalContext(.reply), fake: fake)
+        await model.prepare()
+        #expect(model.loadError == nil)
+        #expect(model.to == "林老師 <teacher@mail.ntust.edu.tw>")
+        await model.send()
+        #expect(await fake.calls.contains("setFlag answered true [3]"))
+        let raw = String(decoding: await fake.sent.first?.message ?? Data(), as: UTF8.self)
+        #expect(raw.contains("In-Reply-To: <m3@mail.ntust.edu.tw>"))
+    }
+
+    // Important 3: after a successful retry, an edit made before it must still count as unsaved
+    // -- the baseline comes from the fresh prefill's own values, never from the fields as
+    // merged with the user's kept edit.
+    @Test func aSuccessfulRetryKeepsTheUsersEditCountingAsAnUnsavedChange() async {
+        let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
+        await fake.update { $0.detailError = .unreachable }
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: Self.drafts, uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake, cache: cache)
+        await model.prepare()
+        #expect(model.loadError != nil)
+        model.subject = "使用者改的主旨"
+        await fake.update { $0.detailError = nil }
+        await model.retryPrepare()
+        #expect(model.loadError == nil)
+        #expect(model.subject == "使用者改的主旨")
+        #expect(model.hasChanges)
+    }
+
+    // Critical 1: without a cached page UIDVALIDITY for the drafts folder, the old-draft removal
+    // must refuse outright -- never fall back to reading a fresh UIDVALIDITY right before
+    // `MailMover`, which would make its own freshness guard compare a value against itself and
+    // could never catch a folder recreated server-side. The refusal sends no command at all and
+    // simply leaves the old copy behind (harmless: the new one already saved).
+    @Test func draftReplacementRefusesWithoutACachedPageUIDValidity() async {
+        let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
+        // No cache.savePage(...): the model's own `SchoolMailTestDoubles.temporaryCache()` default
+        // has nothing cached for `drafts`, so `draftPageUIDValidity` stays nil.
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake)
+        await model.prepare()
+        model.body = "新內容"
+        #expect(await model.saveDraft())
+        #expect(await !fake.calls.contains {
+            $0.hasPrefix("status") || $0.hasPrefix("setFlag") || $0.hasPrefix("deletedUIDs") || $0.hasPrefix("expunge")
+        })
+        #expect(await fake.folders[Self.drafts]?.map(\.summary.uid).sorted() == [1, 2])
+    }
+
     // MARK: Dispatch addition 7 — the demo mailbox composes, saves, reopens, edits and sends
-    // entirely in memory, with no socket.
+    // entirely in memory, with no socket. Important 2 (fix round 1): a Chinese body and a
+    // recipient both survive DemoMailClient's own append → detail round trip.
 
     @Test func demoMailboxRoundTripsAComposedDraftAndSend() async throws {
         let sentFolder = MailFolderRole.sent.imapName
@@ -257,42 +326,45 @@ struct MailComposeViewModelTests {
                                       folders: [sentFolder: [], draftsFolder: []])
         let demo = DemoMailClient(fixture: fixture)
         let prefs = InMemoryMailPreferences()
+        let cache = SchoolMailTestDoubles.temporaryCache()
         let folderRoles: [MailFolderRole: String] = [.inbox: "INBOX", .sent: sentFolder, .drafts: draftsFolder]
         let sender = MailAddress(name: "王大明", address: "b99999999@mail.ntust.edu.tw")
 
         func model(_ context: MailComposeContext) -> MailComposeViewModel {
             MailComposeViewModel(context: context, session: MailPageSession(idleClose: .milliseconds(10), open: { demo }),
-                                 sender: sender, folderRoles: folderRoles, prefs: prefs, sleep: { _ in })
+                                 sender: sender, folderRoles: folderRoles, prefs: prefs, cache: cache, sleep: { _ in })
         }
 
-        // Plain ASCII subject/body throughout: DemoMailClient.append stores a draft's raw
-        // quoted-printable body verbatim (no decode step) -- printable ASCII passes through QP
-        // unchanged, so this exercises the compose/draft/send round trip without also depending
-        // on that unrelated encoding path.
         let first = model(MailComposeContext(mode: .new))
         await first.prepare()
-        first.subject = "Draft subject"
-        first.body = "still working on it"
+        first.to = "office@mail.ntust.edu.tw"
+        first.subject = "草稿主旨"
+        first.body = "還沒寫完，晚點再改"
         #expect(await first.saveDraft())
         let draftsAfterFirstSave = try await demo.page(folder: draftsFolder, olderThanSequence: nil, pageSize: 50)
         let draftUID = try #require(draftsAfterFirstSave.summaries.first?.uid)
+        // Mirrors the real list caching the page it just showed -- `removeDraft` needs this to
+        // ever act (fix round 1, critical 1).
+        cache.savePage(MailFolderPage(folder: draftsFolder, uidValidity: fixture.uidValidity, messageCount: 1,
+                                      summaries: draftsAfterFirstSave.summaries, oldestLoadedSequence: nil))
 
         let second = model(MailComposeContext(mode: .draft, folder: draftsFolder, uid: draftUID))
         await second.prepare()
-        #expect(second.subject == "Draft subject")
-        second.body = "done now"
+        #expect(second.subject == "草稿主旨")
+        #expect(second.body == "還沒寫完，晚點再改")
+        #expect(second.to == "office@mail.ntust.edu.tw")
+        second.body = "改好了，可以寄出"
         #expect(await second.saveDraft())
         let draftsAfterSecondSave = try await demo.page(folder: draftsFolder, olderThanSequence: nil, pageSize: 50)
         #expect(draftsAfterSecondSave.summaries.count == 1)
         #expect(draftsAfterSecondSave.summaries.first?.uid != draftUID)
+        cache.savePage(MailFolderPage(folder: draftsFolder, uidValidity: fixture.uidValidity, messageCount: 1,
+                                      summaries: draftsAfterSecondSave.summaries, oldestLoadedSequence: nil))
 
         let third = model(MailComposeContext(mode: .draft, folder: draftsFolder, uid: draftsAfterSecondSave.summaries[0].uid))
         await third.prepare()
-        // DemoMailClient.append's body extraction (splitting the raw message on the blank line)
-        // keeps the message's own trailing CRLF -- not a Task 17 concern, so this only checks the
-        // prefix rather than an exact match.
-        #expect(third.body.hasPrefix("done now"))
-        third.to = "office@mail.ntust.edu.tw"
+        #expect(third.body == "改好了，可以寄出")
+        #expect(third.to == "office@mail.ntust.edu.tw")
         await third.send()
         #expect(third.didFinish)
         let sentAfter = try await demo.page(folder: sentFolder, olderThanSequence: nil, pageSize: 50)

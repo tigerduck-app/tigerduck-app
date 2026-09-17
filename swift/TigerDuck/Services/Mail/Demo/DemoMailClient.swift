@@ -197,15 +197,103 @@ actor DemoMailClient: MailClient {
         var messages = folders[folder] ?? []
         let uid = (messages.map(\.summary.uid).max() ?? 0) + 1
         let from = MailRawHeaders.value(named: "From", in: message).flatMap { MailAddress.parseList($0).first }
+        let to = MailRawHeaders.value(named: "To", in: message).map { MailAddress.parseList($0).map(\.address) }
+        let cc = MailRawHeaders.value(named: "Cc", in: message).map { MailAddress.parseList($0).map(\.address) }
         let summary = MailSummary(
-            uid: uid, fromName: from?.name, fromAddress: from?.address, to: nil, cc: nil,
+            uid: uid, fromName: from?.name, fromAddress: from?.address, to: to, cc: cc,
             subject: MailRawHeaders.value(named: "Subject", in: message), date: Date(),
             isSeen: flags.contains(.seen), isAnswered: false, isDeleted: false, size: message.count,
             hasAttachments: false, isExternal: false
         )
-        let body = String(decoding: message, as: UTF8.self).components(separatedBy: "\r\n\r\n").dropFirst().joined(separator: "\r\n\r\n")
-        messages.append(Stored(summary: summary, text: body, html: nil, attachments: [:]))
+        messages.append(Stored(summary: summary, text: Self.decodedTextBody(from: message), html: nil, attachments: [:]))
         folders[folder] = messages
+    }
+
+    /// Re-derives the plain-text body TigerDuck itself built, decoded by its own
+    /// Content-Transfer-Encoding rather than stored as the raw wire bytes (fix round 1,
+    /// important 2) -- without this, a saved non-ASCII draft reopened as its literal
+    /// quoted-printable escapes (`=E9=82=84...`) instead of the original text. Never exposed to
+    /// real incoming mail (SwiftMail already decodes that before this app sees it) -- only to
+    /// messages this same app built with `MailMessageBuilder.build`, which always writes the
+    /// text/plain part first, whether the message is multipart or not, so locating the first
+    /// blank line -- and, for a multipart message, the text part's own header block right after
+    /// the opening boundary line -- is enough; nothing here needs a general MIME parser.
+    private static func decodedTextBody(from message: Data) -> String {
+        guard let firstBlank = message.range(of: Data("\r\n\r\n".utf8)) else { return "" }
+        let headerText = String(decoding: message[message.startIndex..<firstBlank.lowerBound], as: UTF8.self)
+        let rest = message[firstBlank.upperBound...]
+
+        guard headerText.range(of: "multipart/", options: .caseInsensitive) != nil else {
+            var body = rest
+            if body.suffix(2).elementsEqual(Data("\r\n".utf8)) { body = body.dropLast(2) }
+            return decodedBody(Data(body), encoding: headerValue(named: "Content-Transfer-Encoding", in: headerText))
+        }
+
+        // Multipart: skip the opening "--boundary\r\n" line, then read the text part's own
+        // header block (its Content-Transfer-Encoding), then its body up to the next boundary.
+        guard let boundaryLineEnd = rest.range(of: Data("\r\n".utf8)) else { return "" }
+        let afterBoundary = rest[boundaryLineEnd.upperBound...]
+        guard let partBlank = afterBoundary.range(of: Data("\r\n\r\n".utf8)) else { return "" }
+        let partHeaderText = String(decoding: afterBoundary[afterBoundary.startIndex..<partBlank.lowerBound], as: UTF8.self)
+        var body = afterBoundary[partBlank.upperBound...]
+        if let closing = body.range(of: Data("\r\n--".utf8)) {
+            body = body[body.startIndex..<closing.lowerBound]
+        }
+        return decodedBody(Data(body), encoding: headerValue(named: "Content-Transfer-Encoding", in: partHeaderText))
+    }
+
+    /// Reuses `MailRawHeaders.value` (which reads up to the first blank line) by handing it just
+    /// the header block with a synthetic blank line appended.
+    private static func headerValue(named name: String, in headerBlock: String) -> String? {
+        MailRawHeaders.value(named: name, in: Data((headerBlock + "\r\n\r\n").utf8))
+    }
+
+    private static func decodedBody(_ body: Data, encoding: String?) -> String {
+        switch encoding?.lowercased() {
+        case "quoted-printable":
+            return decodeQuotedPrintable(body)
+        case "base64":
+            let compact = Data(body.filter { $0 != 0x0D && $0 != 0x0A })
+            guard let decoded = Data(base64Encoded: compact) else { return String(decoding: body, as: UTF8.self) }
+            return String(decoding: decoded, as: UTF8.self)
+        default:
+            return String(decoding: body, as: UTF8.self)
+        }
+    }
+
+    /// A minimal RFC 2045 quoted-printable decoder: `=XX` is a literal byte, a trailing `=` at
+    /// the end of a line is a soft break (dropped along with the CRLF that follows it),
+    /// everything else passes through unchanged.
+    private static func decodeQuotedPrintable(_ data: Data) -> String {
+        var output = [UInt8]()
+        let bytes = Array(data)
+        var index = 0
+        while index < bytes.count {
+            let byte = bytes[index]
+            if byte == 0x3D {
+                if index + 2 < bytes.count, bytes[index + 1] == 0x0D, bytes[index + 2] == 0x0A {
+                    index += 3
+                    continue
+                }
+                if index + 2 < bytes.count, let high = hexValue(bytes[index + 1]), let low = hexValue(bytes[index + 2]) {
+                    output.append(UInt8(high * 16 + low))
+                    index += 3
+                    continue
+                }
+            }
+            output.append(byte)
+            index += 1
+        }
+        return String(decoding: output, as: UTF8.self)
+    }
+
+    private static func hexValue(_ byte: UInt8) -> Int? {
+        switch byte {
+        case 0x30...0x39: return Int(byte - 0x30)
+        case 0x41...0x46: return Int(byte - 0x41) + 10
+        case 0x61...0x66: return Int(byte - 0x61) + 10
+        default: return nil
+        }
     }
 
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool { false }

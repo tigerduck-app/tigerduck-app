@@ -33,6 +33,7 @@ struct MailComposeView: View {
                                 .foregroundStyle(.red)
                             Button(String(localized: "action_retry")) { Task { await viewModel.retryPrepare() } }
                                 .font(TigerDuckTheme.Typography.caption.weight(.semibold))
+                                .disabled(viewModel.isSending)
                         }
                     }
                 }
@@ -159,12 +160,14 @@ struct MailComposeView: View {
 
     /// The security-scoped access, the read and the UTType lookup all run off the main actor
     /// (dispatch addition 4) -- a failed read is reported the same way an over-budget attachment
-    /// is, never silently dropped (dispatch addition 3).
+    /// is, never silently dropped (dispatch addition 3). The read itself is bounded (fix round 1,
+    /// important 1): a multi-GB pick is rejected as soon as it has read past the server's encoded
+    /// limit, never materialized in full just to be rejected a moment later.
     private func addFile(_ url: URL) async {
         let picked = await Task.detached {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url) else { return nil as (Data, String, String)? }
+            guard let data = Self.readBounded(url) else { return nil as (Data, String, String)? }
             let mimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
             return (data, mimeType, url.lastPathComponent)
         }.value
@@ -173,6 +176,21 @@ struct MailComposeView: View {
             return
         }
         viewModel.addAttachment(filename: filename, mimeType: mimeType, data: data)
+    }
+
+    /// Reads `url` in bounded chunks, rejecting (`nil`) as soon as the running total exceeds the
+    /// server's encoded-message limit -- `nonisolated` so it genuinely runs on the `Task.detached`
+    /// executor above rather than hopping back to the main actor by virtue of being declared on a
+    /// (module-default-MainActor-isolated) `View` type.
+    private nonisolated static func readBounded(_ url: URL) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        var data = Data()
+        while let chunk = try? handle.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+            data.append(chunk)
+            guard data.count <= MailConstants.maxEncodedMessageBytes else { return nil }
+        }
+        return data
     }
 
     private func addPhotos(_ items: [PhotosPickerItem]) async {
