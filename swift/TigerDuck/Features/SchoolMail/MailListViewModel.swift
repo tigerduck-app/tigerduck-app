@@ -83,7 +83,12 @@ final class MailListViewModel {
             loadState = .loading
         }
         isRefreshing = true
-        defer { isRefreshing = false }
+        // Only clear the shared (not per-folder) `isRefreshing`/status-dot state if this call
+        // is still the one whose folder is on screen and whose in-flight claim on
+        // `loadingFolder` nothing newer has since taken over — otherwise a slow load for a
+        // folder the user has since left (or already superseded by a newer load) could stop
+        // the spinner or flip the dot red while a still-relevant load is genuinely in flight.
+        defer { if folder == selectedFolder, loadingFolder == folder { isRefreshing = false } }
         let needsFolders = folderRoles.isEmpty
         do {
             let (resolvedFolders, fresh) = try await session.use { client -> ([String]?, MailFolderPage) in
@@ -106,8 +111,8 @@ final class MailListViewModel {
             serverStatus = .ok
             loadState = .loaded
         } catch {
-            serverStatus = .failed
             guard folder == selectedFolder else { return }
+            serverStatus = .failed
             loadState = summaries.isEmpty ? .failed(MailAccountManager.LoginError(error).message) : .loaded
         }
     }
@@ -197,10 +202,13 @@ final class MailListViewModel {
                 try await client.setFlag(.seen, on: seen, folder: folder, uids: [summary.uid])
             }
         } catch MailClientError.folderChanged {
-            markSeenLocally(uid: summary.uid, seen: !seen)
+            // A UID is only unique within its own folder — a same-UID row may already exist
+            // in whatever the user switched to, and reverting here without this guard would
+            // flip *that* row instead of undoing this one.
+            if folder == selectedFolder { markSeenLocally(uid: summary.uid, seen: !seen) }
             await recoverFromFolderChange(folder)
         } catch {
-            markSeenLocally(uid: summary.uid, seen: !seen)
+            if folder == selectedFolder { markSeenLocally(uid: summary.uid, seen: !seen) }
         }
     }
 
@@ -257,25 +265,37 @@ final class MailListViewModel {
     /// Merges a freshly fetched first page into whatever's already loaded for its folder,
     /// instead of replacing it (a poll- or pull-to-refresh-triggered reload must never
     /// discard mail the user already paginated further in than the first page): every UID in
-    /// `fresh` wins (it's the more current copy — flags included), every UID only in the
-    /// existing list is kept, and the merged list is re-sorted newest first. The pagination
-    /// cursor (`oldestLoadedSequence`) is kept from the existing page when there was one for
-    /// the same folder, since a first-page refresh knows nothing about how much further the
-    /// user had already paginated; sequence numbers of messages that already existed are
-    /// stable across new mail arriving (IMAP only appends), so the old cursor still points to
-    /// the right place.
+    /// `fresh` wins (it's the more current copy — flags included). An existing entry survives
+    /// only when it's *older* than everything `fresh` covers (its UID is below
+    /// `fresh.summaries.last?.uid`, the bottom of the fresh page's window) — anything inside
+    /// that window that `fresh` no longer carries was expunged, moved or flagged `\Deleted`
+    /// server-side (webmail, another device) and must disappear here too, not be kept forever
+    /// and written back to the cache. An empty `fresh` page keeps nothing at all: the whole
+    /// window (everything previously loaded) was deleted, or this is a transient empty read —
+    /// either way nothing already loaded can be trusted to still exist.
+    ///
+    /// The pagination cursor (`oldestLoadedSequence`) mirrors the same rule: it's kept from
+    /// the existing page only when something from that existing page actually survived the
+    /// merge (a first-page refresh alone knows nothing about how much further the user had
+    /// paginated, and sequence numbers of messages that already existed are stable across new
+    /// mail arriving — IMAP only appends — so the old cursor still points to the right place
+    /// in that case); an empty fresh page instead takes fresh's own cursor (`nil`, since an
+    /// empty page has nothing left to paginate into).
     @discardableResult
     private func mergeFreshPage(_ fresh: MailFolderPage) -> MailFolderPage {
         let hadPreviousPage = page?.folder == fresh.folder
         let existing = hadPreviousPage ? summaries : []
-        var byUID: [UInt32: MailSummary] = [:]
-        for entry in existing { byUID[entry.uid] = entry }
-        for entry in fresh.summaries { byUID[entry.uid] = entry }
-        let merged = byUID.values.sorted { $0.uid > $1.uid }
-        // `nil` is a meaningful value here (fully paginated to the end) — `??` would wrongly
-        // treat that as "no preference" and fall back to fresh's shallower first-page cursor,
-        // making an already fully-loaded folder look like it has more to paginate.
-        let oldestLoadedSequence = hadPreviousPage ? page?.oldestLoadedSequence : fresh.oldestLoadedSequence
+        let windowFloor = fresh.summaries.last?.uid
+        let keptExisting = windowFloor.map { floor in existing.filter { $0.uid < floor } } ?? []
+        let merged = (fresh.summaries + keptExisting).sorted { $0.uid > $1.uid }
+        let oldestLoadedSequence: Int?
+        if fresh.summaries.isEmpty {
+            oldestLoadedSequence = fresh.oldestLoadedSequence
+        } else if hadPreviousPage {
+            oldestLoadedSequence = page?.oldestLoadedSequence
+        } else {
+            oldestLoadedSequence = fresh.oldestLoadedSequence
+        }
         let mergedPage = MailFolderPage(
             folder: fresh.folder, uidValidity: fresh.uidValidity, messageCount: fresh.messageCount,
             summaries: merged, oldestLoadedSequence: oldestLoadedSequence

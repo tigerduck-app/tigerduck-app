@@ -203,7 +203,10 @@ struct MailListViewModelTests {
 
     /// A poll-triggered (or pull-to-refresh-triggered) reload must merge the refreshed first
     /// page into what's loaded rather than replacing it — otherwise every automatic refresh
-    /// would silently throw away everything the user had paginated into.
+    /// would silently throw away everything the user had paginated into. This also covers fix
+    /// round 2's "an entry older than the fresh page's window survives a refresh": every one
+    /// of the 10 paginated-in messages below is below `fresh.summaries.last?.uid` on the
+    /// second, poll-triggered fetch, and all 10 are still there afterwards.
     @Test func pollingReloadDoesNotDiscardPaginatedOlderMail() async throws {
         let h = Self.harness()
         await h.model.load()
@@ -226,6 +229,34 @@ struct MailListViewModelTests {
         async let second: Void = h.model.load()
         _ = await (first, second)
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
+    }
+
+    // MARK: Fix round 2 (2026-09-18 scoped re-review)
+
+    /// A message expunged, moved or `\Deleted` elsewhere (webmail, another device) is inside
+    /// the fresh page's window (its UID is at or above `fresh.summaries.last?.uid`) but is no
+    /// longer in `fresh.summaries` — the merge must drop it, not keep it forever because it
+    /// was once loaded, and the drop must make it into the cache too.
+    @Test func aRefreshRemovesAMessageDeletedElsewhereWithinItsWindow() async throws {
+        let h = Self.harness(inboxCount: 5)
+        await h.model.load()
+        #expect(h.model.summaries.map(\.uid) == [5, 4, 3, 2, 1])
+        await h.fake.update { $0.folders["INBOX"]?.removeAll { $0.summary.uid == 3 } }
+        await h.model.load()
+        #expect(h.model.summaries.map(\.uid) == [5, 4, 2, 1])
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.map(\.uid) == [5, 4, 2, 1])
+    }
+
+    /// An empty fresh page (everything in the folder was deleted, or a transient empty read)
+    /// must empty the list rather than leaving stale entries behind indefinitely.
+    @Test func anEmptyFreshPageEmptiesTheList() async throws {
+        let h = Self.harness(inboxCount: 5)
+        await h.model.load()
+        #expect(h.model.summaries.count == 5)
+        await h.fake.update { $0.folders["INBOX"] = [] }
+        await h.model.load()
+        #expect(h.model.summaries.isEmpty)
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
     }
 }
 #endif
