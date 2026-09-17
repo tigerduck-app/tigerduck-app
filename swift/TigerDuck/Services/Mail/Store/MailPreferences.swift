@@ -20,6 +20,12 @@ nonisolated protocol MailPreferences: AnyObject, Sendable {
     var demoActive: Bool { get set }
     var lastCheckAt: Date? { get set }
     var diagnostics: [MailCheckRecord] { get set }
+    /// Set when sign-out starts wiping the on-disk caches, cleared when that wipe finishes.
+    /// The wipe is a directory delete running off the main actor, so killing the app in the
+    /// middle of it used to leave the signed-out student's mail on disk with nothing left in
+    /// the process to finish the job. Deliberately **not** cleared by `reset()`: it has to
+    /// outlive the sign-out that set it, and the next launch re-runs the wipe.
+    var cacheWipePending: Bool { get set }
 
     /// UIDs TigerDuck flagged `\Deleted` in `folder` and hasn't been able to expunge yet, still
     /// waiting from the UIDVALIDITY generation they were recorded under. Empty when nothing is
@@ -64,6 +70,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     /// including whatever separator a joined key would pick.
     private let ownedDeletedKey: Defaults.Key<Data?>
     private let diagnosticsKey: Defaults.Key<Data?>
+    private let cacheWipePendingKey: Defaults.Key<Bool>
 
     /// Guards the `ownedDeletedRecords` read-modify-write in `setOwnedDeleted`: two concurrent
     /// calls for different folders (e.g. a background check expunging one folder while the user
@@ -88,6 +95,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
         lastCheckAtKey = Defaults.Key<Date?>("school_mail_last_check_at", suite: defaults)
         ownedDeletedKey = Defaults.Key<Data?>("school_mail_owned_deleted", suite: defaults)
         diagnosticsKey = Defaults.Key<Data?>("school_mail_diagnostics", suite: defaults)
+        cacheWipePendingKey = Defaults.Key<Bool>("school_mail_cache_wipe_pending", default: false, suite: defaults)
     }
 
     var studentID: String? {
@@ -121,6 +129,10 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     var lastCheckAt: Date? {
         get { Defaults[lastCheckAtKey] }
         set { Defaults[lastCheckAtKey] = newValue }
+    }
+    var cacheWipePending: Bool {
+        get { Defaults[cacheWipePendingKey] }
+        set { Defaults[cacheWipePendingKey] = newValue }
     }
     var diagnostics: [MailCheckRecord] {
         get {

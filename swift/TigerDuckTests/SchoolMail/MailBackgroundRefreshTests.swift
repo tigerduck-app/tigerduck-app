@@ -41,15 +41,35 @@ struct MailBackgroundRefreshTests {
             featureEnabled: false, signedIn: true, notificationsEnabled: true, authFailed: false))
     }
 
+    /// Installs onto its own `MailAccountManager` and `MailNotifier` — never
+    /// `MailAccountManager.shared`, whose preferences are the app's real `UserDefaults` — and
+    /// then *runs* the hooks. The previous version only asserted the five closures were
+    /// non-nil, which held with every body replaced by `{}` or any two of them swapped.
     @MainActor
-    @Test func bootstrapWiresTheAccountHooks() {
-        SchoolMailBootstrap.install()
-        let account = MailAccountManager.shared
-        #expect(account.onSignedIn != nil)
-        #expect(account.onSignedOut != nil)
-        #expect(account.onAuthFailed != nil)
-        #expect(account.onNotificationsEnabled != nil)
-        #expect(account.onNotificationsDisabled != nil)
+    @Test func bootstrapWiresHooksThatDoTheRightThing() async {
+        let center = RecordingNotificationCenter()
+        let account = MailAccountManager(
+            prefs: InMemoryMailPreferences(),
+            credentials: MailCredentialStore(storage: InMemoryMailSecretStorage()),
+            cache: MailCache(directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)),
+            clearCache: {}
+        )
+        SchoolMailBootstrap.install(account: account, notifier: MailNotifier(center: center))
+
+        account.onSignedOut?()
+        while center.removedAll < 1 { await Task.yield() }
+        #expect(center.removedAll == 1)
+        #expect(center.requests.isEmpty) // sign-out clears; it never posts
+
+        account.onAuthFailed?()
+        while center.requests.isEmpty { await Task.yield() }
+        #expect(center.requests.count == 1) // the lock-out notice, not another clear
+        #expect(center.removedAll == 1)
+
+        account.onNotificationsDisabled?()
+        while center.removedAll < 2 { await Task.yield() }
+        #expect(center.removedAll == 2)
     }
 }
 #endif

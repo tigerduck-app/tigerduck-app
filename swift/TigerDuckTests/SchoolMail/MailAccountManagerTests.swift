@@ -222,6 +222,53 @@ struct MailAccountManagerTests {
         #expect(try await demo.attachment(folder: "INBOX", uid: 3, part: part) == Data(base64Encoded: "JVBERi0xLjQK"))
         #expect(!(try await demo.rawSource(folder: "INBOX", uid: 4)).isEmpty)
     }
+
+    /// §7.5: the sign-out cache wipe is a directory delete on a detached task, so a process
+    /// death part-way through used to leave the signed-out student's mail on disk with nothing
+    /// left to finish the job. The marker outlives `prefs.reset()` and the next launch resumes
+    /// the wipe through the same handle `login()` already waits on.
+    @Test func anInterruptedSignOutCacheWipeIsFinishedAtTheNextLaunch() async {
+        let prefs = InMemoryMailPreferences()
+        let cleared = Counter()
+
+        // Process 1: sign out, then "die" before the wipe returns.
+        let first = Self.manager(prefs: prefs, clearCache: { await cleared.increment() })
+        first.logout()
+        while prefs.cacheWipePending { await Task.yield() }
+        #expect(await cleared.value == 1)
+
+        // Process 2: nothing owed, so launch does not re-wipe.
+        let quiet = Self.manager(prefs: prefs, clearCache: { await cleared.increment() })
+        quiet.resumeInterruptedCacheWipe()
+        #expect(await cleared.value == 1)
+
+        // Process 3: the marker survived a kill, so launch finishes the job.
+        prefs.cacheWipePending = true
+        let second = Self.manager(prefs: prefs, clearCache: { await cleared.increment() })
+        second.resumeInterruptedCacheWipe()
+        while prefs.cacheWipePending { await Task.yield() }
+        #expect(await cleared.value == 2)
+    }
+
+    /// A wipe marker must not be cleared by the very `reset()` the sign-out runs first.
+    @Test func resettingPreferencesLeavesAPendingWipeMarkerAlone() {
+        let prefs = InMemoryMailPreferences()
+        prefs.cacheWipePending = true
+        prefs.reset()
+        #expect(prefs.cacheWipePending)
+    }
+
+    private static func manager(prefs: InMemoryMailPreferences,
+                                clearCache: @escaping @Sendable () async -> Void) -> MailAccountManager {
+        MailAccountManager(
+            prefs: prefs,
+            credentials: MailCredentialStore(storage: InMemoryMailSecretStorage()),
+            cache: SchoolMailTestDoubles.temporaryCache(),
+            isDemoLogin: { _, _ in false },
+            makeClient: { _ in FakeMailClient() },
+            clearCache: clearCache
+        )
+    }
 }
 
 /// Collects events from concurrent tasks without a data race — used only to assert ordering in

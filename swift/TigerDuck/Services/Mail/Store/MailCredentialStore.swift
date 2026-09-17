@@ -16,10 +16,16 @@ nonisolated protocol MailSecretStorage: Sendable {
 /// migrated to another device, never in iCloud Keychain, never tied to biometry. It holds
 /// the mail password and nothing else.
 nonisolated struct ValetMailSecretStorage: MailSecretStorage, @unchecked Sendable {
-    private let valet = Valet.valet(
-        with: Identifier(nonEmpty: MailConstants.valetIdentifier)!,
-        accessibility: .afterFirstUnlockThisDeviceOnly
-    )
+    private let valet: Valet
+
+    /// `identifier` exists so a test can round-trip a throwaway Keychain service instead of the
+    /// one the student's real mail password lives in. Production never passes it.
+    init(identifier: String = MailConstants.valetIdentifier) {
+        valet = Valet.valet(
+            with: Identifier(nonEmpty: identifier)!,
+            accessibility: .afterFirstUnlockThisDeviceOnly
+        )
+    }
 
     func save(_ value: String, forKey key: String) throws { try valet.setString(value, forKey: key) }
     func load(forKey key: String) -> String? { try? valet.string(forKey: key) }

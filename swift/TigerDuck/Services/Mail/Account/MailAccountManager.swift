@@ -187,15 +187,37 @@ final class MailAccountManager {
     /// the account/credential state (not the cache wipe finishing) don't need to `await`.
     func logout() {
         credentials.clear()
-        let performClear = clearCache
-        pendingCacheClear = Task.detached { await performClear() }
         prefs.reset()
+        startCacheWipe()
         studentID = nil
         loginError = nil
         authFailed = false
         displayName = nil
         notificationsEnabled = prefs.notificationsEnabled
         onSignedOut?()
+    }
+
+    /// Starts the sign-out cache wipe and records that it is owed, so it can be finished by a
+    /// later launch if this process does not survive it. The flag is set *after* `prefs.reset()`
+    /// (which deliberately leaves it alone) and cleared only once the wipe has actually returned.
+    private func startCacheWipe() {
+        let performClear = clearCache
+        let prefs = self.prefs
+        prefs.cacheWipePending = true
+        pendingCacheClear = Task.detached {
+            await performClear()
+            prefs.cacheWipePending = false
+        }
+    }
+
+    /// Re-runs a sign-out cache wipe that a process death interrupted (§7.5). Called at launch.
+    ///
+    /// It goes through the same `pendingCacheClear` handle the in-process wipe uses, so
+    /// `login()`'s existing wait covers it too: a student signing in seconds after launch can
+    /// never have their first cached page deleted by the previous student's unfinished wipe.
+    func resumeInterruptedCacheWipe() {
+        guard prefs.cacheWipePending, pendingCacheClear == nil else { return }
+        startCacheWipe()
     }
 
     private func establishBaseline(client: any MailClient) async {

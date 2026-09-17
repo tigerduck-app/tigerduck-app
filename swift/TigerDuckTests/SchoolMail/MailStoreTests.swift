@@ -25,8 +25,12 @@ struct MailStoreTests {
         #expect(store.password() == nil)
     }
 
+    /// Never `ValetMailSecretStorage()` — that is the production Keychain service holding the
+    /// student's own mail password, and `deleteAll()` here would wipe it. A per-run identifier
+    /// keeps the round trip honest (it is a real Keychain) without touching their credentials.
     @Test func valetStorageRoundTrips() throws {
-        let storage = ValetMailSecretStorage()
+        let storage = ValetMailSecretStorage(identifier: "org.ntust.app.TigerDuck.mail.tests.\(UUID().uuidString)")
+        defer { storage.deleteAll() }
         try storage.save("value", forKey: "school_mail_test_key")
         #expect(storage.load(forKey: "school_mail_test_key") == "value")
         storage.delete(forKey: "school_mail_test_key")
@@ -233,6 +237,41 @@ struct MailStoreTests {
         cache.dropFolder("INBOX")
         #expect(cache.loadPage(folder: "INBOX") == nil)
         #expect(cache.loadPage(folder: "&Vt5lNntS-") != nil)
+    }
+
+    /// Sign out, kill the app before the (detached) wipe finishes, sign in as someone else:
+    /// nothing in the envelope, the filename or the payload used to say whose mail this was, so
+    /// the next student's first paint was the previous student's INBOX — and on a colliding
+    /// UIDVALIDITY the two got merged and written back rather than dropped.
+    @Test func aPageCachedForOneStudentIsNotReadBackForAnother() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MailStoreTests-\(UUID().uuidString)", isDirectory: true)
+        let page = MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1,
+                                  summaries: [SchoolMailTestDoubles.summary(uid: 9)], oldestLoadedSequence: nil)
+        let first = MailCache(directory: directory, account: { "B10000001" })
+        defer { first.clearAll() }
+        first.savePage(page)
+        #expect(first.loadPage(folder: "INBOX")?.summaries.count == 1)
+
+        let second = MailCache(directory: directory, account: { "B10000002" })
+        #expect(second.loadPage(folder: "INBOX") == nil)
+        // Deleted on the mismatching read, not merely hidden — so it cannot be merged later.
+        #expect(first.loadPage(folder: "INBOX") == nil)
+    }
+
+    @Test func aCachedBodyIsAlsoKeyedToItsAccount() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MailStoreTests-\(UUID().uuidString)", isDirectory: true)
+        let detail = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 9), messageID: nil,
+                                       inReplyTo: nil, references: nil, parts: [], textBody: "secret",
+                                       htmlBody: nil, inlineImages: nil)
+        let first = MailCache(directory: directory, account: { "B10000001" })
+        defer { first.clearAll() }
+        first.saveDetail(detail, folder: "INBOX", uidValidity: 1)
+        #expect(first.loadDetail(folder: "INBOX", uidValidity: 1, uid: 9)?.textBody == "secret")
+
+        let second = MailCache(directory: directory, account: { "B10000002" })
+        #expect(second.loadDetail(folder: "INBOX", uidValidity: 1, uid: 9) == nil)
     }
 }
 #endif

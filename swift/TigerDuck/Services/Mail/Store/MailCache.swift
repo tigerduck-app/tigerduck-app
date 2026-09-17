@@ -13,24 +13,40 @@ import os
 /// loads on a background task) — every method here does synchronous disk I/O.
 nonisolated final class MailCache: @unchecked Sendable {
     static let formatVersion = 1
+    private static let sharedPreferences = DefaultsMailPreferences()
     static let shared = MailCache(
         directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("SchoolMail", isDirectory: true)
+            .appendingPathComponent("SchoolMail", isDirectory: true),
+        account: { MailCache.sharedPreferences.studentID }
     )
 
+    /// `account` is the student ID the file was written for. Nothing else on disk carries an
+    /// account identity — not the envelope, not the `pages/<hex folder name>.json` filename,
+    /// not the payload — so without it one student's cache is indistinguishable from another's
+    /// on a shared device: sign out, kill the app before the (detached) wipe finishes, and the
+    /// next student's first paint is the previous student's INBOX. A colliding UIDVALIDITY
+    /// would make it worse than transient, merging the two into one list and persisting that.
+    /// A mismatch is treated exactly like a format-version mismatch: delete and refetch.
     private struct Envelope<Payload: Codable>: Codable {
         var version: Int
         var payload: Payload
+        var account: String?
     }
 
     private let directory: URL
     private let bodyLimitBytes: Int
+    private let account: @Sendable () -> String?
     private let lock = NSLock()
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Cache")
 
-    init(directory: URL, bodyLimitBytes: Int = MailConstants.bodyCacheLimitBytes) {
+    init(
+        directory: URL,
+        bodyLimitBytes: Int = MailConstants.bodyCacheLimitBytes,
+        account: @escaping @Sendable () -> String? = { nil }
+    ) {
         self.directory = directory
         self.bodyLimitBytes = bodyLimitBytes
+        self.account = account
     }
 
     // MARK: Pages
@@ -126,7 +142,8 @@ nonisolated final class MailCache: @unchecked Sendable {
     private func read<T: Codable>(_ type: T.Type, at url: URL) -> T? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard let envelope = try? JSONDecoder().decode(Envelope<T>.self, from: data),
-              envelope.version == Self.formatVersion else {
+              envelope.version == Self.formatVersion,
+              envelope.account == account() else {
             try? FileManager.default.removeItem(at: url)
             return nil
         }
@@ -137,7 +154,8 @@ nonisolated final class MailCache: @unchecked Sendable {
     /// operation (the network round trip already succeeded; the cache is a convenience, not the
     /// source of truth). Only the failure kind is logged, never the payload.
     private func write<T: Codable>(_ value: T, to url: URL) {
-        guard let data = try? JSONEncoder().encode(Envelope(version: Self.formatVersion, payload: value)) else {
+        let envelope = Envelope(version: Self.formatVersion, payload: value, account: account())
+        guard let data = try? JSONEncoder().encode(envelope) else {
             logger.error("Mail cache encode failed, dropping write")
             return
         }

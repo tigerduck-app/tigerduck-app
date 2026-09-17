@@ -13,6 +13,7 @@ final class InMemoryMailPreferences: MailPreferences, @unchecked Sendable {
     private var _authFailed = false
     private var _demoActive = false
     private var _lastCheckAt: Date?
+    private var _cacheWipePending = false
     private var _diagnostics: [MailCheckRecord] = []
     /// Keyed by folder only (never a joined string key): a stored entry is returned by
     /// `ownedDeleted` only when its UIDVALIDITY also matches, mirroring the persisted store.
@@ -45,6 +46,10 @@ final class InMemoryMailPreferences: MailPreferences, @unchecked Sendable {
     var demoActive: Bool {
         get { lock.withLock { _demoActive } }
         set { lock.withLock { _demoActive = newValue } }
+    }
+    var cacheWipePending: Bool {
+        get { lock.withLock { _cacheWipePending } }
+        set { lock.withLock { _cacheWipePending = newValue } }
     }
     var lastCheckAt: Date? {
         get { lock.withLock { _lastCheckAt } }
