@@ -16,6 +16,10 @@ actor FakeMailClient: MailClient {
     var uidValidity: [String: UInt32] = [:]
     var loginError: MailClientError?
     var statusError: MailClientError?
+    /// Simulates a `page` the server refused (e.g. unreachable partway through a session) —
+    /// used to prove a caller's own state change (dropping a stale cache, say) survives even
+    /// when the reload that follows it doesn't succeed.
+    var pageError: MailClientError?
     var searchError: MailClientError?
     var sendError: MailClientError?
     var detailError: MailClientError?
@@ -30,6 +34,10 @@ actor FakeMailClient: MailClient {
     var deletedUIDsError: MailClientError?
     var acceptedPassword: String?
     var holdStatus = false
+    /// When set, `search` suspends until `releaseSearch()` is called — used to land a folder
+    /// switch (or any other state change) while a search is still in flight, deterministically
+    /// rather than by racing wall-clock sleeps.
+    var holdSearch = false
     /// When set, `send` also files the message here, like a server that keeps sent copies.
     var autoSaveSentTo: String?
     /// Returned by `summaries(folder:fromUID:)` on top of the real range (the `n:*` quirk).
@@ -37,6 +45,7 @@ actor FakeMailClient: MailClient {
     private(set) var calls: [String] = []
     private(set) var sent: [(message: Data, from: String, to: [String])] = []
     private var statusGate: CheckedContinuation<Void, Never>?
+    private var searchGate: CheckedContinuation<Void, Never>?
 
     init(folders: [String: [Message]] = [:]) {
         self.folders = folders
@@ -50,6 +59,12 @@ actor FakeMailClient: MailClient {
         holdStatus = false
         statusGate?.resume()
         statusGate = nil
+    }
+
+    func releaseSearch() {
+        holdSearch = false
+        searchGate?.resume()
+        searchGate = nil
     }
 
     static func message(
@@ -104,6 +119,7 @@ actor FakeMailClient: MailClient {
 
     func page(folder: String, olderThanSequence: Int?, pageSize: Int) async throws -> MailFolderPage {
         calls.append("page \(folder)")
+        if let pageError { throw pageError }
         let ordered = (folders[folder] ?? []).sorted { $0.summary.uid < $1.summary.uid }
         let total = ordered.count
         let upper = min((olderThanSequence ?? total + 1) - 1, total)
@@ -160,6 +176,7 @@ actor FakeMailClient: MailClient {
 
     func search(folder: String, query: String) async throws -> [UInt32] {
         calls.append("search \(folder) \(query)")
+        if holdSearch { await withCheckedContinuation { searchGate = $0 } }
         if let searchError { throw searchError }
         return (folders[folder] ?? []).map(\.summary).filter {
             ($0.subject ?? "").localizedCaseInsensitiveContains(query)

@@ -5,10 +5,12 @@ import Foundation
 /// by the list and the open message, closed ~30 s after the page goes away.
 ///
 /// Callers do their server work through `use(_:)`, which counts the whole call as in flight
-/// for as long as its body runs — so the idle-close timer can never act mid-command — and
-/// drops the connection on a network or certificate error so the next call reconnects.
-/// `client()` is kept only for a caller with no single async body to hand `use`; every other
-/// caller (`MailListViewModel` included) goes through `use(_:)`.
+/// for as long as its body runs — so the idle-close timer can never act mid-command, and a
+/// network/certificate error can only close the connection once every other concurrent
+/// `use(_:)` has also finished — and drops the connection on such an error so the next call
+/// reconnects. There's no bare `client()`: every caller (`MailListViewModel` included) goes
+/// through `use(_:)`, which is also what keeps `inFlight` an accurate count of every call that
+/// currently holds (or is still resolving) a client.
 @MainActor
 final class MailPageSession {
     private let open: () async throws -> any MailClient
@@ -20,20 +22,20 @@ final class MailPageSession {
     /// own arming was superseded can tell it's stale and do nothing — belt and suspenders
     /// alongside `Task.cancel()`, which a `Task.sleep` can race past by a tick.
     private var closeGeneration = 0
-    /// Number of `use(_:)` bodies currently running. The idle-close timer only ever fires
-    /// while this is zero.
+    /// Number of `use(_:)` bodies currently running (including the time spent resolving the
+    /// client, before `body` even starts). The idle-close timer only ever fires while this is
+    /// zero, and a network/certificate error only closes once this reaches zero.
     private var inFlight = 0
-    /// True from `releaseSoon()` until the next `client()`/`use(_:)` call (or an actual
-    /// close) cancels it. A `use(_:)` that ends while this is still true re-arms the close
-    /// it had to defer.
+    /// True from `releaseSoon()` until the next `use(_:)` call (or an actual close) cancels
+    /// it. A `use(_:)` that ends while this is still true re-arms the close it had to defer.
     private var isReleased = false
+    /// Set when a `use(_:)` body throws a network/certificate error while another `use(_:)`
+    /// is still in flight on the same connection: closing right away would pull the
+    /// connection out from under that other call, so the drop is deferred until `inFlight`
+    /// reaches zero instead.
+    private var pendingDrop = false
 
-    /// `nonisolated` so a `@MainActor` caller's own default-parameter value (e.g.
-    /// `MailListViewModel`'s `session: MailPageSession = MailPageSession()`) can construct one
-    /// without hopping actors — default-argument expressions are evaluated outside the
-    /// enclosing declaration's isolation, so a MainActor-isolated init can't be called from
-    /// one. Safe here because the body only assigns stored properties.
-    nonisolated init(
+    init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() }
     ) {
@@ -41,30 +43,29 @@ final class MailPageSession {
         self.open = open
     }
 
-    /// Obtains the session's client without counting it as in flight. Prefer `use(_:)`,
-    /// which wraps a whole operation so the idle-close timer can't fire in the middle of it;
-    /// call this directly only when there's no single async body to hand it.
-    func client() async throws -> any MailClient {
-        cancelClose()
-        return try await resolveClient()
-    }
-
-    /// Runs `body` with the session's client, counting the whole call as in flight so the
-    /// idle-close timer can't act until it's done. Drops the connection first on a network
-    /// or certificate error, so the next call reconnects; a `searchUnsupported`,
+    /// Runs `body` with the session's client, counting the whole call — including resolving
+    /// the client — as in flight so the idle-close timer can't act until every concurrent
+    /// `use(_:)` is done. A network or certificate error marks the connection for dropping;
+    /// the drop itself waits until `inFlight` reaches zero, so it can never yank the
+    /// connection out from under a sibling call still in progress. A `searchUnsupported`,
     /// `folderChanged` or other protocol error leaves the connection in place.
     func use<T>(_ body: (any MailClient) async throws -> T) async throws -> T {
         cancelClose()
         inFlight += 1
-        defer {
-            inFlight -= 1
-            if inFlight == 0, isReleased { armClose() }
-        }
-        let client = try await resolveClient()
+        let client: any MailClient
         do {
-            return try await body(client)
+            client = try await resolveClient()
         } catch {
-            if Self.dropsConnection(error) { await close() }
+            await endUse()
+            throw error
+        }
+        do {
+            let result = try await body(client)
+            await endUse()
+            return result
+        } catch {
+            if Self.dropsConnection(error) { pendingDrop = true }
+            await endUse()
             throw error
         }
     }
@@ -76,18 +77,34 @@ final class MailPageSession {
         if inFlight == 0 { armClose() }
     }
 
-    /// Drops the connection — also called after an error, so the next call reconnects.
+    /// Drops the connection — also called after every `use(_:)` finishes once `inFlight`
+    /// reaches zero, if any of them marked the connection for dropping.
     func close() async {
         closeTask?.cancel()
         closeTask = nil
         closeGeneration += 1
         isReleased = false
+        pendingDrop = false
         let current = client
         client = nil
         await current?.logout()
     }
 
     // MARK: Internals
+
+    /// Ends one `use(_:)` call's accounting. Once `inFlight` reaches zero, a connection some
+    /// concurrent call marked for dropping is closed (taking priority over a deferred
+    /// `releaseSoon()`, since there's no point re-arming a close for a connection that's
+    /// about to be dropped anyway); otherwise a deferred `releaseSoon()` is re-armed.
+    private func endUse() async {
+        inFlight -= 1
+        guard inFlight == 0 else { return }
+        if pendingDrop {
+            await close()
+        } else if isReleased {
+            armClose()
+        }
+    }
 
     private func resolveClient() async throws -> any MailClient {
         if let client { return client }

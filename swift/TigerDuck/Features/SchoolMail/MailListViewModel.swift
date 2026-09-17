@@ -28,14 +28,29 @@ final class MailListViewModel {
     @ObservationIgnored private let runPageCheck: (any MailClient) async -> MailCheckOutcome
     @ObservationIgnored private var page: MailFolderPage?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
+    /// The folder a `load()` call currently in flight is fetching, so a second call for that
+    /// same folder (e.g. a pull-to-refresh landing while the 60 s poll's own reload is still
+    /// running) doesn't issue a redundant `listFolders`/`page` pair on the one serialized
+    /// connection. A call for a *different* folder (the user switching chips mid-load) is
+    /// never blocked by this — it proceeds immediately, and whichever fetch turns out to be
+    /// stale by the time it returns is discarded by the `folder == selectedFolder` checks
+    /// below rather than by being refused up front.
+    @ObservationIgnored private var loadingFolder: String?
+    /// The tail of the cache-write chain — see `chainCacheWrite`.
+    @ObservationIgnored private var pendingCacheWrite: Task<Void, Never>?
 
     init(
-        session: MailPageSession = MailPageSession(),
-        cache: MailCache = MailAccountManager.shared.cache,
+        session: MailPageSession? = nil,
+        cache: MailCache? = nil,
         runPageCheck: @escaping (any MailClient) async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .page, using: $0) }
     ) {
-        self.session = session
-        self.cache = cache
+        // Both defaults are resolved here, in the init's own MainActor-isolated body, rather
+        // than in the default-parameter expressions above: a default-parameter expression is
+        // evaluated outside the initializer's own isolation, so `MailPageSession()` (a
+        // MainActor-isolated init) and `MailAccountManager.shared` (a MainActor-isolated
+        // static property) can't be reached from there without a warning under Swift 6 mode.
+        self.session = session ?? MailPageSession()
+        self.cache = cache ?? MailAccountManager.shared.cache
         self.runPageCheck = runPageCheck
     }
 
@@ -50,10 +65,18 @@ final class MailListViewModel {
 
     // MARK: Loading
 
-    /// Paints the cached list first, then refreshes the newest page from the server.
+    /// Paints the cached list first, then refreshes the newest page from the server, merging
+    /// the refresh into whatever's already loaded rather than replacing it (§ pagination):
+    /// new mail is added, and anything the user already paginated further in than this
+    /// first-page refresh covers is kept.
     func load() async {
+        let folder = selectedFolder
+        guard loadingFolder != folder else { return }
+        loadingFolder = folder
+        defer { if loadingFolder == folder { loadingFolder = nil } }
+
         let cache = self.cache
-        if page == nil, let cached = await Self.cachedPage(cache: cache, folder: selectedFolder) {
+        if page == nil, let cached = await Self.cachedPage(cache: cache, folder: folder) {
             apply(cached)
             loadState = .loaded
         } else if summaries.isEmpty {
@@ -61,7 +84,6 @@ final class MailListViewModel {
         }
         isRefreshing = true
         defer { isRefreshing = false }
-        let folder = selectedFolder
         let needsFolders = folderRoles.isEmpty
         do {
             let (resolvedFolders, fresh) = try await session.use { client -> ([String]?, MailFolderPage) in
@@ -73,21 +95,25 @@ final class MailListViewModel {
                 folderRoles = MailFolderMap.resolve(available: resolvedFolders)
                 otherFolders = MailFolderMap.otherFolders(available: resolvedFolders)
             }
+            guard folder == selectedFolder else { return }
             if let previous = page, previous.uidValidity != fresh.uidValidity {
-                await Self.dropFolder(folder, in: cache)
+                await dropFolder(folder)
+                page = nil
+                summaries = []
             }
-            apply(fresh)
-            await Self.save(fresh, to: cache)
+            let merged = mergeFreshPage(fresh)
+            await save(merged)
             serverStatus = .ok
             loadState = .loaded
         } catch {
             serverStatus = .failed
+            guard folder == selectedFolder else { return }
             loadState = summaries.isEmpty ? .failed(MailAccountManager.LoginError(error).message) : .loaded
         }
     }
 
     func loadMoreIfNeeded(after summary: MailSummary) async {
-        guard searchResults == nil, !isPaginating, summary.uid == summaries.last?.uid,
+        guard searchResults == nil, !isPaginating, summary.uid == displayedSummaries.last?.uid,
               let older = page?.oldestLoadedSequence else { return }
         isPaginating = true
         defer { isPaginating = false }
@@ -96,6 +122,7 @@ final class MailListViewModel {
             let next = try await session.use { client in
                 try await client.page(folder: folder, olderThanSequence: older, pageSize: MailConstants.pageSize)
             }
+            guard folder == selectedFolder else { return }
             let known = Set(summaries.map(\.uid))
             summaries += next.summaries.filter { !known.contains($0.uid) }
             page?.summaries = summaries
@@ -103,6 +130,7 @@ final class MailListViewModel {
         } catch MailClientError.folderChanged {
             await recoverFromFolderChange(folder)
         } catch {
+            guard folder == selectedFolder else { return }
             serverStatus = .failed
         }
     }
@@ -134,9 +162,11 @@ final class MailListViewModel {
                 let newest = Array(matches.sorted(by: >).prefix(MailConstants.pageSize))
                 return try await client.summaries(folder: folder, uids: newest)
             }
+            guard folder == selectedFolder else { return }
             searchResults = found.filter { !$0.isDeleted }.sorted { $0.uid > $1.uid }
             searchUsedLocalFallback = false
         } catch {
+            guard folder == selectedFolder else { return }
             if (error as? MailClientError) != .searchUnsupported {
                 serverStatus = .failed
             }
@@ -183,8 +213,10 @@ final class MailListViewModel {
 
     /// Called by the message screen after it moves or deletes a mail.
     func removeLocally(uid: UInt32) {
+        let removed = summaries.contains { $0.uid == uid }
         summaries.removeAll { $0.uid == uid }
         searchResults?.removeAll { $0.uid == uid }
+        if removed, let count = page?.messageCount { page?.messageCount = max(0, count - 1) }
         persistPage()
     }
 
@@ -222,24 +254,56 @@ final class MailListViewModel {
         summaries = page.summaries
     }
 
+    /// Merges a freshly fetched first page into whatever's already loaded for its folder,
+    /// instead of replacing it (a poll- or pull-to-refresh-triggered reload must never
+    /// discard mail the user already paginated further in than the first page): every UID in
+    /// `fresh` wins (it's the more current copy — flags included), every UID only in the
+    /// existing list is kept, and the merged list is re-sorted newest first. The pagination
+    /// cursor (`oldestLoadedSequence`) is kept from the existing page when there was one for
+    /// the same folder, since a first-page refresh knows nothing about how much further the
+    /// user had already paginated; sequence numbers of messages that already existed are
+    /// stable across new mail arriving (IMAP only appends), so the old cursor still points to
+    /// the right place.
+    @discardableResult
+    private func mergeFreshPage(_ fresh: MailFolderPage) -> MailFolderPage {
+        let hadPreviousPage = page?.folder == fresh.folder
+        let existing = hadPreviousPage ? summaries : []
+        var byUID: [UInt32: MailSummary] = [:]
+        for entry in existing { byUID[entry.uid] = entry }
+        for entry in fresh.summaries { byUID[entry.uid] = entry }
+        let merged = byUID.values.sorted { $0.uid > $1.uid }
+        // `nil` is a meaningful value here (fully paginated to the end) — `??` would wrongly
+        // treat that as "no preference" and fall back to fresh's shallower first-page cursor,
+        // making an already fully-loaded folder look like it has more to paginate.
+        let oldestLoadedSequence = hadPreviousPage ? page?.oldestLoadedSequence : fresh.oldestLoadedSequence
+        let mergedPage = MailFolderPage(
+            folder: fresh.folder, uidValidity: fresh.uidValidity, messageCount: fresh.messageCount,
+            summaries: merged, oldestLoadedSequence: oldestLoadedSequence
+        )
+        page = mergedPage
+        summaries = merged
+        return mergedPage
+    }
+
     /// A folder's UIDVALIDITY no longer matches what a list operation was built from (spec
     /// §8.3): its cached page — and any cached bodies — are meaningless now, so they're
     /// dropped, and the first page is reloaded fresh from the server.
     private func recoverFromFolderChange(_ folder: String) async {
-        await Self.dropFolder(folder, in: cache)
+        await dropFolder(folder)
         guard folder == selectedFolder else { return }
         page = nil
+        summaries = []
         await load()
     }
 
-    /// Fire-and-forget: `markSeenLocally`/`removeLocally` are synchronous (the message screen
-    /// calls them without awaiting), so the disk write can't be awaited here — it's kicked off
-    /// detached instead, off the main actor, same as every other cache write in this type.
+    /// `markSeenLocally`/`removeLocally` are synchronous (the message screen calls them
+    /// without awaiting), so the disk write can't be awaited here — it's queued through
+    /// `chainCacheWrite` instead, fire-and-forget.
     private func persistPage() {
         page?.summaries = summaries
         guard let page else { return }
         let cache = self.cache
-        Task.detached { cache.savePage(page) }
+        chainCacheWrite { cache.savePage(page) }
     }
 
     // MARK: Cache (off the main actor — `MailCache` does synchronous disk I/O)
@@ -248,12 +312,31 @@ final class MailListViewModel {
         await Task.detached { cache.loadPage(folder: folder) }.value
     }
 
-    nonisolated private static func save(_ page: MailFolderPage, to cache: MailCache) async {
-        await Task.detached { cache.savePage(page) }.value
+    private func save(_ page: MailFolderPage) async {
+        let cache = self.cache
+        await chainCacheWrite { cache.savePage(page) }.value
     }
 
-    nonisolated private static func dropFolder(_ folder: String, in cache: MailCache) async {
-        await Task.detached { cache.dropFolder(folder) }.value
+    private func dropFolder(_ folder: String) async {
+        let cache = self.cache
+        await chainCacheWrite { cache.dropFolder(folder) }.value
+    }
+
+    /// Every cache *write* in this type — `persistPage()`'s fire-and-forget save, `load()`'s
+    /// save of a freshly fetched page, `recoverFromFolderChange`'s drop — is queued through
+    /// here, in the exact order it was requested. Without this, an earlier write that happens
+    /// to take longer (e.g. a toggle's fire-and-forget persist) could still be running when a
+    /// later one starts (a drop that followed it moments later, say), and finish *after* it —
+    /// silently resurrecting on disk exactly what the later write meant to replace or remove.
+    @discardableResult
+    private func chainCacheWrite(_ operation: @escaping @Sendable () -> Void) -> Task<Void, Never> {
+        let previous = pendingCacheWrite
+        let task = Task.detached {
+            _ = await previous?.value
+            operation()
+        }
+        pendingCacheWrite = task
+        return task
     }
 }
 #endif

@@ -8,7 +8,6 @@ struct SchoolMailView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = MailListViewModel()
-    @State private var searchIsPresented = false
     @State private var showLoginSheet = false
     @State private var showGuide = false
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
@@ -77,7 +76,7 @@ struct SchoolMailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
-        .searchable(text: $viewModel.searchText, isPresented: $searchIsPresented, prompt: String(localized: "school_mail_search_prompt"))
+        .searchable(text: $viewModel.searchText, prompt: String(localized: "school_mail_search_prompt"))
         .onSubmit(of: .search) { Task { await viewModel.submitSearch() } }
         .onChange(of: viewModel.searchText) { _, text in
             if text.isEmpty { viewModel.clearSearch() }

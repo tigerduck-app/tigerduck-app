@@ -148,6 +148,26 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == h.model.summaries.count)
     }
 
+    /// Isolates the drop itself from the reload that follows it: a reload that *succeeds*
+    /// would re-save correct data over a stale cache regardless of whether the drop actually
+    /// ran, so this seeds a page the reload can never reproduce (wrong uidValidity, an extra
+    /// summary the fake server doesn't have) and then makes the recovery reload itself fail —
+    /// the only way that seeded page can be gone afterwards is that `recoverFromFolderChange`
+    /// really did delete the cache file.
+    @Test func aFolderChangeDropsTheCacheEvenWhenTheRecoveryReloadFails() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 999, messageCount: 1,
+                                        summaries: [SchoolMailTestDoubles.summary(uid: 777)], oldestLoadedSequence: nil))
+        let unread = try #require(h.model.summaries.first { !$0.isSeen })
+        await h.fake.update {
+            $0.setFlagError = .folderChanged
+            $0.pageError = .unreachable
+        }
+        await h.model.toggleRead(unread)
+        #expect(h.cache.loadPage(folder: "INBOX") == nil)
+    }
+
     /// While the account is auth-failed, `openSession()` throws `.authenticationFailed`
     /// without a LOGIN: the list shows the auth-failure state, and polling never even runs
     /// the page check (let alone loops retrying it).
@@ -157,6 +177,55 @@ struct MailListViewModelTests {
         #expect(h.model.loadState == .failed(MailAccountManager.LoginError.credentials.message))
         await h.model.pollOnce()
         #expect(h.script.calls == 0)
+    }
+
+    // MARK: Fix round 1 (2026-09-18 review)
+
+    /// Switching folders while a server search is still in flight must never let that stale
+    /// search land on top of the folder the user actually switched to. `search` is gated so the
+    /// folder switch deterministically lands while the search is still awaiting the server,
+    /// rather than racing wall-clock timing.
+    @Test func switchingFoldersWhileASearchIsInFlightDiscardsTheStaleResults() async throws {
+        let h = Self.harness()
+        await h.model.load()
+        h.model.searchText = "公告 7"
+        await h.fake.update { $0.holdSearch = true }
+        let searchTask = Task { await h.model.submitSearch() }
+        // Give `submitSearch` a chance to actually start and reach the gate before switching.
+        try await Task.sleep(for: .milliseconds(50))
+        await h.model.select(folder: MailFolderRole.trash.imapName)
+        await h.fake.releaseSearch()
+        await searchTask.value
+        #expect(h.model.searchResults == nil)
+        #expect(h.model.summaries.map(\.subject) == ["舊信"])
+        #expect(h.model.selectedFolder == MailFolderRole.trash.imapName)
+    }
+
+    /// A poll-triggered (or pull-to-refresh-triggered) reload must merge the refreshed first
+    /// page into what's loaded rather than replacing it — otherwise every automatic refresh
+    /// would silently throw away everything the user had paginated into.
+    @Test func pollingReloadDoesNotDiscardPaginatedOlderMail() async throws {
+        let h = Self.harness()
+        await h.model.load()
+        let last = try #require(h.model.summaries.last)
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.summaries.count == 60)
+        h.script.outcome = .newMail(1)
+        await h.model.pollOnce()
+        #expect(h.model.summaries.count == 60)
+        #expect(h.model.summaries.first?.uid == 60)
+        #expect(h.model.summaries.last?.uid == 1)
+    }
+
+    /// A second `load()` for the same folder while one is already running (a pull-to-refresh
+    /// landing during the 60 s poll's own reload, say) must not issue a redundant
+    /// `listFolders`/`page` pair on the one serialized connection.
+    @Test func aSecondLoadForTheSameFolderWhileOneIsInFlightIsANoOp() async throws {
+        let h = Self.harness()
+        async let first: Void = h.model.load()
+        async let second: Void = h.model.load()
+        _ = await (first, second)
+        #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
     }
 }
 #endif
