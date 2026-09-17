@@ -57,9 +57,39 @@ nonisolated enum MailWarnings {
     private static let emailPattern = try! NSRegularExpression(
         pattern: "[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", options: [.caseInsensitive]
     )
+
+    /// The text a link claims to point at (spec A.4 rule 2, link mismatch). Unicode-aware
+    /// (`\p{L}`/`\p{N}`) so a homograph host spelled in another script is still recognized as
+    /// host-shaped text and checked against the real host, instead of being silently skipped
+    /// (parity fix, mirrors Android's `HOST_LIKE`). `www.` is stripped afterwards by the
+    /// caller, not inside this pattern.
     private static let shownHostPattern = try! NSRegularExpression(
-        pattern: "^(?:[a-z][a-z0-9+.-]*://)?(?:www\\.)?((?:[a-z0-9-]+\\.)+[a-z]{2,})(?:[:/?#].*)?$",
+        pattern: "^(?:[a-z][a-z0-9+.-]*://)?((?:[\\p{L}\\p{N}-]+\\.)+[\\p{L}]{2,})(?::\\d+)?(?:[/?#].*)?$",
         options: [.caseInsensitive]
+    )
+
+    private static let schemePattern = try! NSRegularExpression(pattern: "^([a-zA-Z][a-zA-Z0-9+.-]*):")
+
+    /// Fallback host extraction for schemes other than http/https (mirrors Android's
+    /// `URL_HOST_LEGACY`): requires a literal `://`, then takes everything up to the first
+    /// `/ ? # :`, skipping one leading `userinfo@` if present.
+    private static let urlHostLegacyPattern = try! NSRegularExpression(
+        pattern: "^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^/?#@]*@)?([^/?#:]+)", options: [.caseInsensitive]
+    )
+
+    /// A whole href counts as a "plain" link ONLY in the form browsers would treat as
+    /// unambiguous: `http(s)://`, a host of ASCII letters/digits/-/. only, an optional
+    /// `:port`, then end of string or `/ ? #` (spec A.4 rule 3, password bait). Anything else
+    /// (userinfo, backslashes, missing or extra slashes, percent-escapes or non-ASCII in the
+    /// authority, whitespace) fails this and counts as an outside link.
+    ///
+    /// No `.caseInsensitive`: that option also turns on Unicode case folding, which makes
+    /// `[A-Za-z]` accept lookalikes such as the Kelvin sign (U+212A, folds to `k`), dotted and
+    /// dotless I (U+0130/U+0131), and Latin small letter long s (U+017F, folds to `s`, so it
+    /// could pass inside `https`) — letting a non-ASCII host or scheme pass as if it were
+    /// ASCII. The scheme is spelled out per letter instead so it stays exactly `http`/`https`.
+    private static let plainHttpLinkPattern = try! NSRegularExpression(
+        pattern: "^[Hh][Tt][Tt][Pp][Ss]?://([A-Za-z0-9.-]+)(?::[0-9]+)?(?:[/?#].*)?$"
     )
 
     // MARK: Domains
@@ -78,6 +108,100 @@ nonisolated enum MailWarnings {
     static func domain(ofAddress address: String) -> String {
         guard let at = address.lastIndex(of: "@") else { return "" }
         return normalizedDomain(String(address[address.index(after: at)...]))
+    }
+
+    // MARK: Browser-style host parsing
+
+    /// WHATWG URL pre-processing `MailWarnings` cannot assume a caller already did (spec A.4
+    /// rule 1): strip leading C0 controls and space, then remove ASCII tab/CR/LF wherever they
+    /// occur (not just at the ends), so a scheme or host split across a control character —
+    /// e.g. `ht\ttps://evil.example/` — can't dodge the scheme check or the host parsing below.
+    private static func sanitizeHref(_ href: String) -> String {
+        let dropped = href.unicodeScalars.drop { $0.value <= 0x1F || $0 == " " }
+        let filtered = dropped.filter { $0 != "\t" && $0 != "\r" && $0 != "\n" }
+        return String(String.UnicodeScalarView(filtered))
+    }
+
+    /// IDNA-to-ASCII, a no-op for a host that is already pure ASCII (so an IPv6 literal's
+    /// `[...]` brackets, ports already stripped by the caller, etc. pass through unchanged —
+    /// mirrors `java.net.IDN.toASCII`, which only transforms labels containing non-ASCII
+    /// characters). Falls back to the input unchanged if conversion fails.
+    private static func toASCII(_ host: String) -> String {
+        guard host.unicodeScalars.contains(where: { $0.value > 0x7F }) else { return host }
+        var components = URLComponents()
+        components.host = host
+        guard let converted = components.url?.host, !converted.isEmpty else { return host }
+        return converted.lowercased()
+    }
+
+    /// True only when [href] matches [plainHttpLinkPattern] and that host is a school domain
+    /// (spec A.4 rule 3, password bait).
+    private static func isPlainSchoolLink(_ href: String) -> Bool {
+        let range = NSRange(href.startIndex..., in: href)
+        guard let match = plainHttpLinkPattern.firstMatch(in: href, range: range),
+              let hostRange = Range(match.range(at: 1), in: href) else { return false }
+        return isSchoolDomain(String(href[hostRange]))
+    }
+
+    /// Browser-style host extraction (spec A.4 rule 2, link mismatch). For `http`/`https`
+    /// (scheme matched ASCII case-insensitively): after `scheme:`, skip any run (zero or more)
+    /// of `/` and `\`; the authority ends at the first `/`, `\`, `?` or `#`; userinfo ends at
+    /// the LAST `@` in the authority; if the host starts with `[`, it runs through the
+    /// matching `]` (IPv6), otherwise it ends before `:port`; then the existing normalization
+    /// and IDNA-to-ASCII. Other schemes fall back to [urlHostLegacyPattern].
+    private static func hostOf(_ href: String) -> String? {
+        let range = NSRange(href.startIndex..., in: href)
+        if let schemeMatch = schemePattern.firstMatch(in: href, range: range),
+           let fullRange = Range(schemeMatch.range, in: href),
+           let schemeRange = Range(schemeMatch.range(at: 1), in: href) {
+            let scheme = href[schemeRange].lowercased()
+            if scheme == "http" || scheme == "https" {
+                return browserHostOf(href, authorityStart: fullRange.upperBound)
+            }
+        }
+        guard let match = urlHostLegacyPattern.firstMatch(in: href, range: range),
+              let hostRange = Range(match.range(at: 1), in: href) else { return nil }
+        let host = String(href[hostRange])
+        guard !host.isEmpty else { return nil }
+        return toASCII(normalizedDomain(host))
+    }
+
+    private static func browserHostOf(_ href: String, authorityStart: String.Index) -> String? {
+        var start = authorityStart
+        while start < href.endIndex, href[start] == "/" || href[start] == "\\" {
+            start = href.index(after: start)
+        }
+        var end = href.endIndex
+        var cursor = start
+        while cursor < href.endIndex {
+            let c = href[cursor]
+            if c == "/" || c == "\\" || c == "?" || c == "#" {
+                end = cursor
+                break
+            }
+            cursor = href.index(after: cursor)
+        }
+        let authority = href[start..<end]
+        let afterUserinfo: Substring
+        if let lastAt = authority.range(of: "@", options: .backwards) {
+            afterUserinfo = authority[lastAt.upperBound...]
+        } else {
+            afterUserinfo = authority
+        }
+        let host: Substring
+        if afterUserinfo.hasPrefix("[") {
+            if let closing = afterUserinfo.firstIndex(of: "]") {
+                host = afterUserinfo[afterUserinfo.startIndex...closing]
+            } else {
+                host = afterUserinfo
+            }
+        } else if let colon = afterUserinfo.firstIndex(of: ":") {
+            host = afterUserinfo[afterUserinfo.startIndex..<colon]
+        } else {
+            host = afterUserinfo
+        }
+        guard !host.isEmpty else { return nil }
+        return toASCII(normalizedDomain(String(host)))
     }
 
     // MARK: Message warnings
@@ -101,10 +225,8 @@ nonisolated enum MailWarnings {
         let haystack = MailTextCleaner.clean(input.subject + "\n" + input.plainText).lowercased()
         let keywordHit = passwordKeywords.contains { haystack.contains($0.lowercased()) }
         let linksOutside = input.links.contains { link in
-            guard let url = URL(string: link.href),
-                  let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
-                  let host = url.host else { return false }
-            return !isSchoolDomain(host)
+            let href = sanitizeHref(link.href).trimmingCharacters(in: .whitespacesAndNewlines)
+            return href.lowercased().hasPrefix("http") && !isPlainSchoolLink(href)
         }
         if keywordHit && (external || linksOutside) {
             warnings.append(.passwordBait)
@@ -163,12 +285,12 @@ nonisolated enum MailWarnings {
 
     // MARK: Links
 
-    static func linkIssues(text rawText: String, href: String) -> [MailLinkIssue] {
-        guard let url = URL(string: href.trimmingCharacters(in: .whitespacesAndNewlines)) else { return [] }
+    static func linkIssues(text rawText: String, href rawHref: String) -> [MailLinkIssue] {
+        let href = sanitizeHref(rawHref).trimmingCharacters(in: .whitespacesAndNewlines)
         let text = MailTextCleaner.clean(rawText).trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if url.scheme?.lowercased() == "mailto" {
-            let target = href.dropFirst("mailto:".count).split(separator: "?").first.map(String.init) ?? ""
+        if href.lowercased().hasPrefix("mailto:") {
+            let target = href.dropFirst("mailto:".count).split(separator: "?", maxSplits: 1).first.map(String.init) ?? ""
             let real = (target.removingPercentEncoding ?? target).lowercased()
             if let shown = firstEmail(in: text), shown.lowercased() != real {
                 return [.mismatch(shownHost: shown.lowercased(), realHost: real)]
@@ -176,10 +298,10 @@ nonisolated enum MailWarnings {
             return []
         }
 
-        guard let rawHost = url.host else { return [] }
-        let realHost = stripWWW(normalizedDomain(rawHost))
+        guard let rawHost = hostOf(href) else { return [] }
+        let realHost = stripWWW(rawHost)
         var issues: [MailLinkIssue] = []
-        if url.scheme?.lowercased() == "http" {
+        if href.lowercased().hasPrefix("http://") {
             issues.append(.insecure)
         }
         if realHost.split(separator: ".").contains(where: { $0.hasPrefix("xn--") }) {
@@ -210,7 +332,7 @@ nonisolated enum MailWarnings {
         let range = NSRange(text.startIndex..., in: text)
         guard let match = shownHostPattern.firstMatch(in: text, range: range),
               let hostRange = Range(match.range(at: 1), in: text) else { return nil }
-        return stripWWW(normalizedDomain(String(text[hostRange])))
+        return stripWWW(toASCII(normalizedDomain(String(text[hostRange]))))
     }
 
     private static func stripWWW(_ host: String) -> String {

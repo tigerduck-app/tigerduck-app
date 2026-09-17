@@ -55,6 +55,28 @@ struct MailWarningsTests {
     func linkIssues(_ testCase: LinkCase) {
         #expect(MailWarnings.linkIssues(text: testCase.text, href: testCase.href).map(\.fixtureCode) == testCase.expect)
     }
+
+    // Parity gap (deferred iOS item, security-relevant, 2026-09-16): the shown-host
+    // pattern used to be ASCII-only, so Unicode homograph link text was never recognized
+    // as a host and never checked against the real href. These two are not fixture cases
+    // (the fixture stays byte-identical to Android's) but cover the same gap directly.
+    @Test
+    func linkIssuesHomographShownHostMismatchesRealHost() {
+        // "n\u{0442}u\u{0455}\u{0442}.\u{0435}du.\u{0442}w" reads as "ntust.edu.tw" with Cyrillic te/dze/ie
+        // (U+0442/U+0455/U+0435) standing in for t/s/e -- a Unicode homograph, not ASCII.
+        let homograph = "n\u{0442}u\u{0455}\u{0442}.\u{0435}du.\u{0442}w"
+        let issues = MailWarnings.linkIssues(text: homograph, href: "https://ntust.edu.tw/")
+        #expect(issues.contains(where: { issue in
+            if case .mismatch(_, let realHost) = issue { return realHost == "ntust.edu.tw" }
+            return false
+        }))
+    }
+
+    @Test
+    func linkIssuesPlainASCIIShownHostStillMatches() {
+        let issues = MailWarnings.linkIssues(text: "ntust.edu.tw", href: "https://ntust.edu.tw/")
+        #expect(issues.isEmpty)
+    }
 }
 
 private extension MailWarning {

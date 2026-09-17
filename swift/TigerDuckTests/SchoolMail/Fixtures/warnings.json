@@ -18,7 +18,18 @@
     {"name": "archive with a password hint", "from_address": "a@mail.ntust.edu.tw", "from_name": null, "subject": "資料", "text": "解壓縮密碼另行通知", "links": [], "attachments": [{"filename": "data.zip", "content_type": "application/zip"}], "expect": ["risky_attachment:data.zip:encrypted_archive"]},
     {"name": "archive without a hint", "from_address": "a@mail.ntust.edu.tw", "from_name": null, "subject": "資料", "text": "附件請查收", "links": [], "attachments": [{"filename": "data.zip", "content_type": "application/zip"}], "expect": []},
     {"name": "safe document", "from_address": "a@mail.ntust.edu.tw", "from_name": null, "subject": "課綱", "text": "", "links": [], "attachments": [{"filename": "syllabus.pdf", "content_type": "application/pdf"}], "expect": []},
-    {"name": "display name address ends a sentence", "from_address": "admin@mail.ntust.edu.tw", "from_name": "Contact admin@mail.ntust.edu.tw.", "subject": "x", "text": "", "links": [], "attachments": [], "expect": []}
+    {"name": "display name address ends a sentence", "from_address": "admin@mail.ntust.edu.tw", "from_name": "Contact admin@mail.ntust.edu.tw.", "subject": "x", "text": "", "links": [], "attachments": [], "expect": []},
+    {"name": "password bait: backslash before @ hides the real host", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https://evil.example\\@ntust.edu.tw"}], "attachments": [], "expect": ["password_bait"]},
+    {"name": "password bait: backslash before a dot hides the real host", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https://evil.example\\.ntust.edu.tw"}], "attachments": [], "expect": ["password_bait"]},
+    {"name": "password bait: userinfo with an extra @ hides the real host", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https://ntust.edu.tw:pa@ss@evil.example/"}], "attachments": [], "expect": ["password_bait"]},
+    {"name": "password bait: missing slashes after the scheme", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https:evil.example/login"}], "attachments": [], "expect": ["password_bait"]},
+    {"name": "password bait: percent-escape in the host", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https://%65vil.example/"}], "attachments": [], "expect": ["password_bait"]},
+    {"name": "password bait: plain school link is not outside", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https://www.ntust.edu.tw/login"}], "attachments": [], "expect": []},
+    {"name": "password bait: plain school link with port, upper case scheme", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "HTTPS://NTUST.EDU.TW:443/x"}], "attachments": [], "expect": []},
+    {"name": "password bait: userinfo on a school host is still outside", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https://user@ntust.edu.tw/"}], "attachments": [], "expect": ["password_bait"]},
+    {"name": "password bait: missing slashes on a school host is still outside", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https:ntust.edu.tw/"}], "attachments": [], "expect": ["password_bait"]},
+    {"name": "password bait: Kelvin sign is not ASCII K", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "https://\u212a.ntust.edu.tw/"}], "attachments": [], "expect": ["password_bait"]},
+    {"name": "password bait: a tab inside the scheme still reaches an outside host", "from_address": "cc@mail.ntust.edu.tw", "from_name": null, "subject": "Password expiry", "text": "Reset your password here", "links": [{"text": "here", "href": "ht\u0009tps://evil.example/"}], "attachments": [], "expect": ["password_bait"]}
   ],
   "links": [
     {"name": "matching host", "text": "https://www.ntust.edu.tw", "href": "https://www.ntust.edu.tw/home", "expect": []},
@@ -31,6 +42,9 @@
     {"name": "insecure mismatch", "text": "ntust.edu.tw", "href": "http://evil.example", "expect": ["insecure", "mismatch:ntust.edu.tw:evil.example"]},
     {"name": "mailto match", "text": "cc@mail.ntust.edu.tw", "href": "mailto:cc@mail.ntust.edu.tw", "expect": []},
     {"name": "mailto mismatch", "text": "cc@mail.ntust.edu.tw", "href": "mailto:phish@evil.example", "expect": ["mismatch:cc@mail.ntust.edu.tw:phish@evil.example"]},
-    {"name": "mailto text ends a sentence", "text": "admin@mail.ntust.edu.tw.", "href": "mailto:admin@mail.ntust.edu.tw", "expect": []}
+    {"name": "mailto text ends a sentence", "text": "admin@mail.ntust.edu.tw.", "href": "mailto:admin@mail.ntust.edu.tw", "expect": []},
+    {"name": "backslash before @ picks the real host", "text": "ntust.edu.tw", "href": "https://evil.example\\@ntust.edu.tw", "expect": ["mismatch:ntust.edu.tw:evil.example"]},
+    {"name": "userinfo with an extra @ still resolves to the real host", "text": "ntust.edu.tw", "href": "https://ntust.edu.tw:pa@ss@evil.example/", "expect": ["mismatch:ntust.edu.tw:evil.example"]},
+    {"name": "missing slashes still resolve to the real host", "text": "ntust.edu.tw", "href": "https:evil.example/login", "expect": ["mismatch:ntust.edu.tw:evil.example"]}
   ]
 }
