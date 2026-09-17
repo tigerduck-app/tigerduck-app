@@ -23,6 +23,9 @@ actor FakeMailClient: MailClient {
     var searchError: MailClientError?
     var sendError: MailClientError?
     var detailError: MailClientError?
+    /// Simulates a `BODY.PEEK[]` fetch failing — used to prove the message screen's source view
+    /// ends its spinner in a retryable failed state instead of spinning forever.
+    var rawSourceError: MailClientError?
     /// Simulates a COPY the server refused (e.g. the target folder is gone): `MailMover` must
     /// never reach STORE afterwards.
     var copyError: MailClientError?
@@ -166,6 +169,7 @@ actor FakeMailClient: MailClient {
 
     func rawSource(folder: String, uid: UInt32) async throws -> Data {
         calls.append("rawSource \(folder) \(uid)")
+        if let rawSourceError { throw rawSourceError }
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.raw ?? Data()
     }
 

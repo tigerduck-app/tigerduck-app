@@ -90,7 +90,8 @@ struct SchoolMailView: View {
                 folderRoles: viewModel.folderRoles,
                 otherFolders: viewModel.otherFolders,
                 onSeenChanged: { uid, seen in viewModel.markSeenLocally(uid: uid, seen: seen) },
-                onRemoved: { uid in viewModel.removeLocally(uid: uid) }
+                onRemoved: { uid in viewModel.removeLocally(uid: uid) },
+                onFolderChanged: { folder in Task { await viewModel.recoverFromFolderChange(folder) } }
             )
         }
         .onAppear { drainDeepLink() }

@@ -51,12 +51,23 @@ final class MailMessageViewModel {
     private(set) var parseFailed = false
     private(set) var source: String?
     private(set) var needsSourceConfirmation = false
+    /// Set when `loadSource` throws, cleared at the start of the next attempt — lets the
+    /// source view show a retryable failed state instead of spinning forever (fix round 1,
+    /// minor 6).
+    private(set) var sourceLoadFailed = false
     private(set) var allowRemoteImages = false
     private(set) var actionError: String?
     var mode: ViewMode = .formatted
 
     @ObservationIgnored var onSeenChanged: ((UInt32, Bool) -> Void)?
     @ObservationIgnored var onRemoved: ((UInt32) -> Void)?
+    /// A move/delete hit `MailClientError.folderChanged`: the folder's UIDVALIDITY moved
+    /// server-side. This view model no longer drops the folder's cache itself — that bare
+    /// `Task.detached` raced the list's own queued cache-write chain and could be undone by a
+    /// write already in flight (fix round 1, important 2) — it only reports the folder name so
+    /// the caller can route the recovery through `MailListViewModel.recoverFromFolderChange(_:)`,
+    /// which drops through that same chain.
+    @ObservationIgnored var onFolderChanged: ((String) -> Void)?
     @ObservationIgnored private let session: MailPageSession
     @ObservationIgnored private let folderRoles: [MailFolderRole: String]
     @ObservationIgnored private let cache: MailCache
@@ -114,11 +125,11 @@ final class MailMessageViewModel {
         pageUIDValidity = validity
         if detail == nil, let validity {
             let cached = await Task.detached { cache.loadDetail(folder: folder, uidValidity: validity, uid: uid) }.value
-            if let cached { apply(cached) }
+            if let cached { await apply(cached) }
         }
         do {
             let fresh = try await session.use { client in try await client.detail(folder: folder, uid: uid) }
-            apply(fresh)
+            await apply(fresh)
             if let validity {
                 await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity) }.value
             }
@@ -131,7 +142,14 @@ final class MailMessageViewModel {
                 }
             }
         } catch {
-            if detail == nil { loadState = .failed(MailAccountManager.LoginError(error).message) }
+            // A cached detail may already be showing (fix round 1, minor 7): a failed refresh
+            // or a failed mark-as-seen must still surface, not be silently swallowed just
+            // because there's something on screen already.
+            if detail == nil {
+                loadState = .failed(MailAccountManager.LoginError(error).message)
+            } else {
+                actionError = MailAccountManager.LoginError(error).message
+            }
         }
     }
 
@@ -150,6 +168,7 @@ final class MailMessageViewModel {
             return
         }
         needsSourceConfirmation = false
+        sourceLoadFailed = false
         do {
             let folder = route.folder
             let uid = route.uid
@@ -157,6 +176,7 @@ final class MailMessageViewModel {
             source = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
         } catch {
             actionError = MailAccountManager.LoginError(error).message
+            sourceLoadFailed = true
         }
     }
 
@@ -196,15 +216,25 @@ final class MailMessageViewModel {
         }
     }
 
-    /// Resolves the folder's current UIDVALIDITY (the cached page's, read in `load()`, falling
-    /// back to a fresh `STATUS` only when nothing was cached), builds the owned-deleted set for
-    /// it, runs `operation` through the shared page session (dispatch addition 7), and persists
-    /// whatever it reports still pending. `MailClientError.folderChanged` also drops this
-    /// folder's cache (dispatch addition 4) so a later list load never serves a stale page.
+    /// Uses the folder's cached page UIDVALIDITY (read once in `load()`) to build the
+    /// owned-deleted set, runs `operation` through the shared page session (dispatch addition
+    /// 7), and persists whatever it reports still pending.
+    ///
+    /// Without a cached page validity there is nothing honest to compare against — fetching one
+    /// fresh right here would make `MailMover`'s own freshness check compare a value against
+    /// itself, silently defeating it on (for instance) the deep-link-straight-into-a-folder
+    /// path. Refuses instead, with the same folder-changed error a real mismatch would show
+    /// (fix round 1, minor 8): the user is told to open the folder (from the list) first.
+    ///
+    /// `MailClientError.folderChanged` reports the folder via `onFolderChanged` rather than
+    /// touching the cache itself — see that property's doc (fix round 1, important 2).
     private func performMove(_ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult) async -> Bool {
         let folder = route.folder
+        guard let uidValidity = pageUIDValidity else {
+            actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
+            return false
+        }
         do {
-            let uidValidity = try await currentUIDValidity()
             let owned = prefs.ownedDeleted(folder: folder, uidValidity: uidValidity)
             let result = try await session.use { client in try await operation(client, owned) }
             prefs.setOwnedDeleted(result.stillPending)
@@ -212,19 +242,12 @@ final class MailMessageViewModel {
             return true
         } catch MailClientError.folderChanged {
             actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
-            let cache = self.cache
-            await Task.detached { cache.dropFolder(folder) }.value
+            onFolderChanged?(folder)
             return false
         } catch {
             actionError = MailAccountManager.LoginError(error).message
             return false
         }
-    }
-
-    private func currentUIDValidity() async throws -> UInt32 {
-        if let pageUIDValidity { return pageUIDValidity }
-        let folder = route.folder
-        return try await session.use { client in try await client.status(folder: folder).uidValidity }
     }
 
     // MARK: Attachments and links
@@ -250,14 +273,24 @@ final class MailMessageViewModel {
         }
     }
 
-    /// Risky, or HTML/SVG — never rendered in the app; opening OR saving goes through a
+    /// Risky, or never rendered in the app — either way, opening OR saving goes through a
     /// warning first (§9.5; dispatch addition 5: confirmation before either, not just open).
     func isRisky(_ part: MailBodyPart) -> Bool {
         let filename = part.filename ?? ""
         let context = (detail?.summary.subject ?? "") + "\n" + plainText
         if MailWarnings.attachmentRisk(filename: filename, contentType: part.contentType, subjectAndBody: context) != nil { return true }
+        return isNeverRenderedInApp(part)
+    }
+
+    /// HTML/SVG (by extension or by content type) is never rendered in the app at all (§9.5:
+    /// 「只能儲存或交給其他 App」) — unlike a merely risky file, "open" must always take the
+    /// share-sheet hand-off path regardless of what the user asked for, never Quick Look, which
+    /// renders HTML/SVG in-process with WebKit (JavaScript on, remote loads allowed) — exactly
+    /// what the locked-down message web view exists to prevent (fix round 1, critical 1).
+    func isNeverRenderedInApp(_ part: MailBodyPart) -> Bool {
+        let filename = part.filename ?? ""
         if MailWarnings.neverRenderedInApp(filename: filename) { return true }
-        let type = (part.contentType).lowercased()
+        let type = part.contentType.lowercased()
         return type == "text/html" || type == "image/svg+xml"
     }
 
@@ -292,12 +325,25 @@ final class MailMessageViewModel {
 
     // MARK: Internals
 
-    private func apply(_ detail: MailMessageDetail) {
+    /// `MailHTMLSanitizer.sanitize` + `.rewriteLinks` together run SwiftSoup's parser up to
+    /// three times (a parse, a rewrite-and-reserialize, and the rewrite's own reparse for its
+    /// lockstep check); doing that inline here would block the main actor on a large or complex
+    /// mail. Computed inside a detached task instead, then applied back as a handful of plain
+    /// property assignments (fix round 1, minor 9).
+    private func apply(_ detail: MailMessageDetail) async {
         self.detail = detail
-        let freshSanitized = detail.htmlBody.map { MailHTMLSanitizer.sanitize($0, allowRemoteImages: allowRemoteImages) }
+        let allowImages = allowRemoteImages
+        let computed = await Task.detached { () -> (SanitizedHTML?, LinkedHTML?, String) in
+            guard let html = detail.htmlBody else { return (nil, nil, detail.textBody ?? "") }
+            let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: allowImages)
+            let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
+            let plain = detail.textBody ?? MailHTMLSanitizer.plainText(fromHTML: html)
+            return (sanitized, linked, plain)
+        }.value
+        let (freshSanitized, freshLinked, freshPlainText) = computed
         sanitized = freshSanitized
-        linkedDocument = freshSanitized.map { MailHTMLSanitizer.rewriteLinks($0.html) }
-        plainText = detail.textBody ?? detail.htmlBody.map(MailHTMLSanitizer.plainText(fromHTML:)) ?? ""
+        linkedDocument = freshLinked
+        plainText = freshPlainText
         parseFailed = detail.textBody == nil && detail.htmlBody == nil && detail.attachments.isEmpty
         if parseFailed { mode = .source }
         let summary = detail.summary

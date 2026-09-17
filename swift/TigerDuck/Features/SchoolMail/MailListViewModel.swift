@@ -308,7 +308,13 @@ final class MailListViewModel {
     /// A folder's UIDVALIDITY no longer matches what a list operation was built from (spec
     /// §8.3): its cached page — and any cached bodies — are meaningless now, so they're
     /// dropped, and the first page is reloaded fresh from the server.
-    private func recoverFromFolderChange(_ folder: String) async {
+    ///
+    /// Not `private`: the message screen's own move/delete can hit the very same
+    /// `MailClientError.folderChanged` on the connection this list view model shares, and
+    /// routes its recovery through here too (via `onFolderChanged`) — never through a
+    /// `cache.dropFolder` call of its own, which could race and be undone by this type's queued
+    /// cache-write chain (`chainCacheWrite`) landing after it (fix round 1, important 2).
+    func recoverFromFolderChange(_ folder: String) async {
         await dropFolder(folder)
         guard folder == selectedFolder else { return }
         page = nil

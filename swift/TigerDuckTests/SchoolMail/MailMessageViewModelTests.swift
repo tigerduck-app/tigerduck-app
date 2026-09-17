@@ -79,6 +79,22 @@ struct MailMessageViewModelTests {
         #expect(h.model.source?.contains("Subject:") == true)
     }
 
+    /// A failed source load must end the spinner in a terminal, retryable state rather than
+    /// spinning forever (fix round 1, minor 6).
+    @Test func aFailedSourceLoadEndsTheSpinnerWithARetryableFailedState() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        await h.fake.update { $0.rawSourceError = .unreachable }
+        await h.model.loadSource()
+        #expect(h.model.source == nil)
+        #expect(h.model.sourceLoadFailed)
+        #expect(h.model.actionError != nil)
+        await h.fake.update { $0.rawSourceError = nil }
+        await h.model.loadSource()
+        #expect(h.model.source?.contains("Subject:") == true)
+        #expect(!h.model.sourceLoadFailed)
+    }
+
     @Test func movingToTrashRemovesItFromTheList() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         var removed: [UInt32] = []
@@ -105,17 +121,45 @@ struct MailMessageViewModelTests {
         #expect(h.model.deleteIsPermanent)
     }
 
-    /// A move that hits `folderChanged` shows the error and drops that folder's cache so a
-    /// later list load never serves the stale page (dispatch addition 4).
-    @Test func folderChangedShowsAnErrorAndDropsTheStaleCache() async {
+    /// A move that hits `folderChanged` shows the error and reports the folder through
+    /// `onFolderChanged` — never a bare `cache.dropFolder` of its own, which could race and be
+    /// undone by the list's queued cache-write chain (fix round 1, important 2).
+    @Test func folderChangedShowsAnErrorAndNotifiesTheListToRecover() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
         await h.fake.update { $0.uidValidity["INBOX"] = 2 }
         var removed: [UInt32] = []
+        var changedFolders: [String] = []
         h.model.onRemoved = { removed.append($0) }
+        h.model.onFolderChanged = { changedFolders.append($0) }
         #expect(await h.model.move(to: Self.trash) == false)
         #expect(h.model.actionError != nil)
         #expect(removed.isEmpty)
+        #expect(changedFolders == ["INBOX"])
+    }
+
+    /// Without a cached page UIDVALIDITY there is nothing honest to compare a move against —
+    /// fetching one fresh right there would make `MailMover`'s freshness check compare a value
+    /// against itself. Refuses instead, with no server call at all (fix round 1, minor 8).
+    @Test func movingWithNoCachedPageValidityRefusesInsteadOfGuessing() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        // No `load()` call: `pageUIDValidity` is never populated.
+        #expect(await h.model.move(to: Self.trash) == false)
+        #expect(h.model.actionError != nil)
+        #expect(await h.fake.calls.isEmpty)
+    }
+
+    /// A cached detail can already be on screen when a background refresh (or the mark-as-seen
+    /// that follows it) fails; that must still surface, not be silently swallowed just because
+    /// something is already showing (fix round 1, minor 7).
+    @Test func aFailedRefreshWhenAlreadyLoadedSetsAnActionError() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        #expect(h.model.actionError == nil)
+        await h.fake.update { $0.detailError = .unreachable }
+        await h.model.load()
+        #expect(h.model.actionError != nil)
+        #expect(h.model.detail != nil)
     }
 
     @Test func attachmentsAreWrittenToATemporaryFile() async throws {
@@ -133,8 +177,11 @@ struct MailMessageViewModelTests {
     }
 
     /// Mirrors Android's `SchoolMailMessageViewModel.needsConfirmation`: a `text/html` or
-    /// `image/svg+xml` attachment is risky regardless of its filename extension.
-    @Test func htmlContentTypeAttachmentIsAlwaysRisky() async {
+    /// `image/svg+xml` attachment is risky regardless of its filename extension — AND, unlike a
+    /// merely risky file, is one Quick Look must never render in-process (fix round 1, critical
+    /// 1: `isNeverRenderedInApp` is the predicate that forces the share-sheet path even for a
+    /// confirmed "open").
+    @Test func htmlContentTypeAttachmentIsRiskyAndNeverRenderedInApp() async {
         let part = MailBodyPart(section: "2", contentType: "text/html", charset: nil, transferEncoding: nil,
                                 filename: "notes.txt", contentID: nil, size: 4, isAttachment: true)
         var message = FakeMailClient.message(uid: 5)
@@ -142,6 +189,21 @@ struct MailMessageViewModelTests {
         let h = Self.harness(message)
         await h.model.load()
         #expect(h.model.isRisky(part))
+        #expect(h.model.isNeverRenderedInApp(part))
+    }
+
+    /// The other branch of critical 1: a merely risky attachment (a dangerous extension
+    /// disguised behind a decoy one) is NOT forced to the share sheet — "resume the requested
+    /// action" still applies to it, only never-rendered-in-app types are forced.
+    @Test func doubleExtensionAttachmentIsRiskyButNotForcedToShare() async {
+        let part = MailBodyPart(section: "2", contentType: "application/octet-stream", charset: nil, transferEncoding: nil,
+                                filename: "invoice.pdf.exe", contentID: nil, size: 4, isAttachment: true)
+        var message = FakeMailClient.message(uid: 5)
+        message.detail?.parts = [part]
+        let h = Self.harness(message)
+        await h.model.load()
+        #expect(h.model.isRisky(part))
+        #expect(!h.model.isNeverRenderedInApp(part))
     }
 
     // MARK: Links — index-based (message-screen dispatch, 2026-09-16 addition 1: links are
@@ -185,6 +247,25 @@ struct MailMessageViewModelTests {
             if case .mismatch(let shown, let real) = issue { return shown == "ntust.edu.tw" && real == "evil.example" }
             return false
         } == true)
+    }
+
+    /// Canonicalization never percent-decodes (fix round 1, important 3): a redirect/safelink
+    /// URL's own `%2F`/`%23`/nested-percent-encoded-URL shape must survive exactly, or the href
+    /// shown and opened stops meaning what the sender's href actually meant.
+    @Test func canonicalizationPreservesExistingPercentEncoding() async {
+        let h = Self.harness(FakeMailClient.message(
+            uid: 5,
+            html: "<a href=\"https://sso.example/go?u=https%3A%2F%2Fntust.edu.tw%2Fpath%23frag&amp;x=a%26b\">ntust.edu.tw</a>"
+        ))
+        await h.model.load()
+        let target = h.model.linkTarget(forIndex: 0)
+        #expect(target?.href == "https://sso.example/go?u=https%3A%2F%2Fntust.edu.tw%2Fpath%23frag&x=a%26b")
+    }
+
+    @Test func canonicalizationUppercasesAMixedCaseEscapeWithoutDecodingIt() async {
+        let h = Self.harness(Self.messageWithRawLinkHref("https://a.example/x%2fy"))
+        await h.model.load()
+        #expect(h.model.linkTarget(forIndex: 0)?.href == "https://a.example/x%2Fy")
     }
 
     @Test func linkTargetForPlainTextChecksTheURLDirectly() async {
@@ -236,6 +317,9 @@ struct MailMessageViewModelTests {
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/01", linkCount: 2) == nil)
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0?x=1", linkCount: 2) == nil)
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid.evil/0", linkCount: 2) == nil)
+        // Fix round 1, minor 10: ICU's `$` also matches immediately before a trailing line
+        // terminator, unlike a strict end-of-string anchor.
+        #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0\n", linkCount: 2) == nil)
     }
 
     // MARK: Helpers

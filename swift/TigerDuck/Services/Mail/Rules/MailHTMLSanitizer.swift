@@ -161,14 +161,23 @@ nonisolated enum MailHTMLSanitizer {
     /// written. If they don't, nothing is guessed: every `href` is stripped from every `<a>`,
     /// the list is empty, and no link in this mail can be tapped.
     ///
+    /// Every failure path here — the initial parse failing, the `a[href]` select failing, or
+    /// the reparse lockstep check failing — routes through the same fail-closed strip, never
+    /// returning `html` with a live `href` still on it while also claiming `links: []` (fix
+    /// round 1, minor 5: the two earlier early-returns did exactly that, contradicting this
+    /// type's own contract).
+    ///
     /// `.invalid` is IANA/RFC 2606-reserved and never resolves; the web view's navigation
     /// delegate answers a tap with the index alone, never a URL, so no WebKit
     /// canonicalization quirk can ever match a tap to the wrong entry.
     static func rewriteLinks(_ html: String) -> LinkedHTML {
-        guard let doc = try? SwiftSoup.parseBodyFragment(html) else { return LinkedHTML(html: html, links: []) }
+        guard let doc = try? SwiftSoup.parseBodyFragment(html) else {
+            return LinkedHTML(html: stripHrefsWithRegex(html), links: [])
+        }
         doc.outputSettings().prettyPrint(pretty: false)
         guard let anchors = try? doc.select("a[href]") else {
-            return LinkedHTML(html: (try? doc.body()?.html()) ?? html, links: [])
+            _ = try? doc.select("a").removeAttr("href")
+            return LinkedHTML(html: (try? doc.body()?.html()) ?? stripHrefsWithRegex(html), links: [])
         }
         var links: [MailLink] = []
         for (index, anchor) in anchors.array().enumerated() {
@@ -183,11 +192,23 @@ nonisolated enum MailHTMLSanitizer {
             return LinkedHTML(html: rewritten, links: links)
         }
         _ = try? anchors.removeAttr("href")
-        return LinkedHTML(html: (try? doc.body()?.html()) ?? rewritten, links: [])
+        return LinkedHTML(html: (try? doc.body()?.html()) ?? stripHrefsWithRegex(rewritten), links: [])
     }
 
     private static func hrefsAndTexts(_ anchors: Elements) -> [[String]] {
         anchors.array().map { [((try? $0.attr("href")) ?? ""), ((try? $0.text()) ?? "")] }
+    }
+
+    /// Last-resort fallback when there's no parsed `Document` left to strip `href` from
+    /// (`SwiftSoup.parseBodyFragment` itself failed): removes every `href="..."`/`href='...'`
+    /// occurrence textually, so even this defensive path never leaves a live link tappable.
+    private static let hrefAttributePattern = try! NSRegularExpression(
+        pattern: #"\s+href\s*=\s*("[^"]*"|'[^']*')"#, options: .caseInsensitive
+    )
+
+    private static func stripHrefsWithRegex(_ html: String) -> String {
+        let range = NSRange(html.startIndex..., in: html)
+        return hrefAttributePattern.stringByReplacingMatches(in: html, range: range, withTemplate: "")
     }
 
     private static func makeWhitelist() throws -> Whitelist {

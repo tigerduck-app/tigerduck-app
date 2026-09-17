@@ -36,11 +36,13 @@ struct MailMessageView: View {
         folderRoles: [MailFolderRole: String],
         otherFolders: [String],
         onSeenChanged: @escaping (UInt32, Bool) -> Void,
-        onRemoved: @escaping (UInt32) -> Void
+        onRemoved: @escaping (UInt32) -> Void,
+        onFolderChanged: @escaping (String) -> Void
     ) {
         let model = MailMessageViewModel(route: route, session: session, folderRoles: folderRoles)
         model.onSeenChanged = onSeenChanged
         model.onRemoved = onRemoved
+        model.onFolderChanged = onFolderChanged
         _viewModel = State(initialValue: model)
         self.folderRoles = folderRoles
         self.otherFolders = otherFolders
@@ -96,7 +98,11 @@ struct MailMessageView: View {
         .alert(String(localized: "school_mail_risky_title"), isPresented: Binding(
             get: { riskyAttachment != nil }, set: { if !$0 { riskyAttachment = nil } }), presenting: riskyAttachment
         ) { pending in
-            Button(pending.forSharing ? String(localized: "school_mail_attachment_share") : String(localized: "school_mail_open")) {
+            // HTML/SVG must never reach Quick Look (fix round 1, critical 1): whatever the user
+            // asked for, the confirm button — and what it does — is always "share" for those.
+            let forcedToShare = viewModel.isNeverRenderedInApp(pending.part)
+            Button((pending.forSharing || forcedToShare)
+                ? String(localized: "school_mail_attachment_share") : String(localized: "school_mail_open")) {
                 proceedWithRiskyAttachment(pending)
             }
             Button(String(localized: "action_cancel"), role: .cancel) {}
@@ -239,6 +245,13 @@ struct MailMessageView: View {
                                 .textSelection(.enabled)
                         }
                     }
+                } else if viewModel.sourceLoadFailed {
+                    MailWarningBanner(
+                        message: String(localized: "school_mail_source_failed"),
+                        systemImage: "exclamationmark.triangle",
+                        actionTitle: String(localized: "action_retry"),
+                        action: { Task { await viewModel.loadSource() } }
+                    )
                 } else if !viewModel.needsSourceConfirmation {
                     ProgressView().frame(maxWidth: .infinity)
                 }
@@ -322,12 +335,14 @@ struct MailMessageView: View {
         Task { if let url = await viewModel.prepareAttachment(part) { shareItem = MailFileItem(url: url) } }
     }
 
-    /// Resumes whichever action (open or share) the risky/HTML/SVG confirmation was raised for
-    /// (dispatch addition 5) — never defaults to one regardless of what was asked.
+    /// Resumes whichever action (open or share) the risky confirmation was raised for (dispatch
+    /// addition 5) — except an HTML/SVG part is always forced to the share sheet regardless of
+    /// what was asked, never Quick Look (fix round 1, critical 1).
     private func proceedWithRiskyAttachment(_ pending: RiskyAttachment) {
+        let forcedToShare = viewModel.isNeverRenderedInApp(pending.part)
         Task {
             guard let url = await viewModel.prepareAttachment(pending.part) else { return }
-            if pending.forSharing { shareItem = MailFileItem(url: url) } else { previewURL = url }
+            if pending.forSharing || forcedToShare { shareItem = MailFileItem(url: url) } else { previewURL = url }
         }
     }
 

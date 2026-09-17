@@ -430,8 +430,11 @@ nonisolated enum MailWarnings {
     /// `/` (WHATWG: `\` is a path/authority separator for a "special" scheme), the authority
     /// ends at the first unescaped `/`, `?` or `#`, userinfo ends at the LAST `@`, a host
     /// starting with `[` runs to the matching `]` (IPv6), the default port for the scheme is
-    /// dropped, and the path/query/fragment are percent-decoded then re-encoded so a raw and
-    /// a pre-encoded form of the same character converge on one string. Any other scheme
+    /// dropped, and any byte in the path/query/fragment outside a safe set is freshly
+    /// percent-encoded — an *existing* `%XX` escape is left exactly as it is (its hex digits
+    /// uppercased) rather than decoded, since decoding it would change what the href means: a
+    /// redirect/safelink URL's own `%2F`/`%23`/percent-encoded nested URL must survive intact.
+    /// Any other scheme
     /// (`mailto:`, etc.) is returned trimmed and otherwise unchanged — never canonicalized.
     /// `nil` only when the href claims `http`/`https` but doesn't parse as `scheme://host…`
     /// with a non-empty host; the caller then shows the href as written, without an Open
@@ -524,19 +527,45 @@ nonisolated enum MailWarnings {
         return BrowserURLParts(host: normalizedHost, port: port, path: pathPart, query: query, fragment: fragment)
     }
 
-    /// Percent-decodes `raw` (falling back to the original string on a malformed escape) and
-    /// re-encodes every byte outside `pathSafeBytes`, so a raw character and an
-    /// already-percent-encoded form of the same character converge on one canonical string.
+    private static func isHexDigit(_ byte: UInt8) -> Bool {
+        (byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9"))
+            || (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "f"))
+            || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "F"))
+    }
+
+    private static func hexDigitUppercased(_ byte: UInt8) -> UInt8 {
+        (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "f")) ? byte - 0x20 : byte
+    }
+
+    /// Never decodes (fix round 1, important 3: a decode-then-re-encode step here turned
+    /// `/a%2Fb` into `/a/b` and `?u=https%3A%2F%2Fx` into a nested URL — exactly the shape of a
+    /// redirect/safelink URL in real mail, so decoding changed what the href actually meant).
+    /// Walks `raw` byte by byte instead: an existing well-formed `%XX` escape passes through
+    /// unchanged except its hex is uppercased, and any other byte outside `pathSafeBytes` is
+    /// freshly percent-encoded. Mirrors what Android's own display/open path does (OkHttp's
+    /// `HttpUrl` preserves existing escapes) — the scalar-level parsing this type mirrors from
+    /// `browserHostOf` is only ever used by Android as a *comparison key*, never as what's shown
+    /// or opened.
     private static func canonicalPathComponent(_ raw: String) -> String {
         guard !raw.isEmpty else { return raw }
-        let decoded = raw.removingPercentEncoding ?? raw
+        let bytes = Array(raw.utf8)
         var result = ""
-        for byte in Array(decoded.utf8) {
+        var index = 0
+        while index < bytes.count {
+            let byte = bytes[index]
+            if byte == UInt8(ascii: "%"), index + 2 < bytes.count, isHexDigit(bytes[index + 1]), isHexDigit(bytes[index + 2]) {
+                result += "%"
+                result.unicodeScalars.append(Unicode.Scalar(hexDigitUppercased(bytes[index + 1])))
+                result.unicodeScalars.append(Unicode.Scalar(hexDigitUppercased(bytes[index + 2])))
+                index += 3
+                continue
+            }
             if pathSafeBytes.contains(byte) {
                 result.unicodeScalars.append(Unicode.Scalar(byte))
             } else {
                 result += String(format: "%%%02X", byte)
             }
+            index += 1
         }
         return result
     }

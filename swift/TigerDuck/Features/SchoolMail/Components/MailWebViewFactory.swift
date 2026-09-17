@@ -1,17 +1,22 @@
 #if os(iOS)
 import Foundation
 import WebKit
+import os
 
 /// The locked-down WKWebView of design doc §9.3: no JavaScript, a non-persistent store,
 /// every network load blocked by a content rule (images only after "載入圖片"), inline
 /// `cid:` images from a custom scheme, and a CSP as a second layer.
 @MainActor
 enum MailWebViewFactory {
+    private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.WebView")
+
     /// Exactly what `MailHTMLSanitizer.rewriteLinks` emits: `https://link.invalid/<decimal
     /// index>`, no leading zeros, no userinfo/port/query/fragment, nothing else. Anything that
     /// doesn't match this precisely fails closed rather than being treated as some link
-    /// (message-screen dispatch, 2026-09-16 addition 1).
-    private static let linkIndexPattern = try! NSRegularExpression(pattern: #"^https://link\.invalid/(0|[1-9][0-9]*)$"#)
+    /// (message-screen dispatch, 2026-09-16 addition 1). `\z` (absolute end), not `$` — ICU's
+    /// `$` also matches immediately before a trailing line terminator, which would let
+    /// `"https://link.invalid/0\n"` slip through as index 0 (fix round 1, minor 10).
+    private static let linkIndexPattern = try! NSRegularExpression(pattern: #"^https://link\.invalid/(0|[1-9][0-9]*)\z"#)
 
     /// Returns the link index only for the exact synthetic form, in range `[0, linkCount)`.
     static func parseLinkIndex(_ absoluteString: String, linkCount: Int) -> Int? {
@@ -45,15 +50,21 @@ enum MailWebViewFactory {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// Installed before every load. If compiling fails, the CSP still blocks remote loads.
+    /// Installed before every load. If compiling fails, the CSP still blocks remote loads; the
+    /// failure's type is logged (never mail content, mirroring `MailHTMLSanitizer`'s own logger
+    /// — fix round 1, minor 11) so a silently-degraded CSP-only mode is at least visible.
     static func installRules(on webView: WKWebView, allowRemoteImages: Bool) async {
         let controller = webView.configuration.userContentController
         controller.removeAllContentRuleLists()
         let identifier = allowRemoteImages ? "school-mail-images" : "school-mail-block-all"
-        if let list = try? await WKContentRuleListStore.default().compileContentRuleList(
-            forIdentifier: identifier, encodedContentRuleList: contentRules(allowRemoteImages: allowRemoteImages)
-        ) {
-            controller.add(list)
+        do {
+            if let list = try await WKContentRuleListStore.default().compileContentRuleList(
+                forIdentifier: identifier, encodedContentRuleList: contentRules(allowRemoteImages: allowRemoteImages)
+            ) {
+                controller.add(list)
+            }
+        } catch {
+            logger.error("Mail content rule compile failed, CSP still blocks remote loads: \(String(describing: type(of: error)), privacy: .public)")
         }
     }
 
