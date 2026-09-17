@@ -258,5 +258,48 @@ struct MailListViewModelTests {
         #expect(h.model.summaries.isEmpty)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
     }
+
+    /// A first page whose whole window is `\Deleted` — the state a partly failed delete
+    /// manufactures, and the one TigerDuck reaches on its own after 50 deletes while an expunge
+    /// is blocked — must not blank a list that is holding real mail, nor overwrite its cache with
+    /// an empty page. The folder still has hundreds of messages; the newest 50 just aren't
+    /// visible.
+    @Test func anAllDeletedWindowKeepsTheLoadedListInsteadOfBlankingIt() async throws {
+        let h = Self.harness(inboxCount: 60)
+        await h.model.load()
+        #expect(h.model.summaries.count == 50)
+        await h.fake.update { fake in
+            fake.folders["INBOX"] = (fake.folders["INBOX"] ?? []).map { message in
+                var message = message
+                if message.summary.uid >= 11 { message.summary.isDeleted = true }
+                return message
+            }
+        }
+        await h.model.load()
+        #expect(!h.model.summaries.isEmpty)
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == false)
+        // And pagination still reaches the mail the server does still serve.
+        let last = try #require(h.model.summaries.last)
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.summaries.contains { $0.uid == 10 })
+    }
+
+    /// The same window with nothing already loaded (a first open, or a reload after the folder's
+    /// cache was dropped): there is no last row for pagination to hang off, so the list has to
+    /// walk further back itself rather than settle on an empty mailbox the user cannot scroll
+    /// out of.
+    @Test func anAllDeletedWindowWalksBackToMailTheServerStillServes() async throws {
+        let h = Self.harness(inboxCount: 60)
+        await h.fake.update { fake in
+            fake.folders["INBOX"] = (fake.folders["INBOX"] ?? []).map { message in
+                var message = message
+                if message.summary.uid >= 11 { message.summary.isDeleted = true }
+                return message
+            }
+        }
+        await h.model.load()
+        #expect(h.model.summaries.map(\.uid) == [10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == 10)
+    }
 }
 #endif

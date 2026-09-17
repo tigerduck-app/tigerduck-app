@@ -106,7 +106,11 @@ final class MailListViewModel {
                 page = nil
                 summaries = []
             }
-            let merged = mergeFreshPage(fresh)
+            var merged = mergeFreshPage(fresh)
+            if merged.summaries.isEmpty, merged.messageCount > 0 {
+                merged = await walkBackToVisibleMail(from: merged, folder: folder)
+            }
+            guard folder == selectedFolder else { return }
             await save(merged)
             serverStatus = .ok
             loadState = .loaded
@@ -272,26 +276,45 @@ final class MailListViewModel {
     /// `fresh.summaries.last?.uid`, the bottom of the fresh page's window) — anything inside
     /// that window that `fresh` no longer carries was expunged, moved or flagged `\Deleted`
     /// server-side (webmail, another device) and must disappear here too, not be kept forever
-    /// and written back to the cache. An empty `fresh` page keeps nothing at all: the whole
-    /// window (everything previously loaded) was deleted, or this is a transient empty read —
-    /// either way nothing already loaded can be trusted to still exist.
+    /// and written back to the cache. An empty `fresh` page for a folder the server says is
+    /// genuinely empty (`messageCount == 0`) keeps nothing at all.
+    ///
+    /// An empty `fresh` page for a folder that is **not** empty is the exception, and the reason
+    /// this isn't simply "empty means empty": `page()` drops every `\Deleted` row, so a folder
+    /// whose newest 50 messages are all flagged returns no summaries while still holding
+    /// hundreds of messages. That is exactly the state a partly failed delete manufactures (an
+    /// unclaimed `\Deleted` UID blocks every later EXPUNGE, so flagged mail piles up), and it is
+    /// reachable on this app's own after 50 deletes. Dropping everything there blanks the list,
+    /// `load()` then persists that empty page over the cache, and with no rows left nothing
+    /// drives pagination — the user is left with an empty mailbox and no way back to mail the
+    /// server still has. A transient empty read has the same shape and the same cure. So the
+    /// existing rows are kept in that case (they may be stale, and the next refresh whose window
+    /// reaches them corrects them — the same self-healing the window floor already relies on),
+    /// and `load()` walks further back when there was nothing to keep.
     ///
     /// The pagination cursor (`oldestLoadedSequence`) mirrors the same rule: it's kept from
     /// the existing page only when something from that existing page actually survived the
     /// merge (a first-page refresh alone knows nothing about how much further the user had
     /// paginated, and sequence numbers of messages that already existed are stable across new
     /// mail arriving — IMAP only appends — so the old cursor still points to the right place
-    /// in that case); an empty fresh page instead takes fresh's own cursor (`nil`, since an
-    /// empty page has nothing left to paginate into).
+    /// in that case); an empty fresh page otherwise takes fresh's own cursor.
     @discardableResult
     private func mergeFreshPage(_ fresh: MailFolderPage) -> MailFolderPage {
         let hadPreviousPage = page?.folder == fresh.folder
         let existing = hadPreviousPage ? summaries : []
+        let windowHidEverything = fresh.summaries.isEmpty && fresh.messageCount > 0
         let windowFloor = fresh.summaries.last?.uid
-        let keptExisting = windowFloor.map { floor in existing.filter { $0.uid < floor } } ?? []
+        let keptExisting: [MailSummary]
+        if windowHidEverything {
+            keptExisting = existing
+        } else {
+            keptExisting = windowFloor.map { floor in existing.filter { $0.uid < floor } } ?? []
+        }
         let merged = (fresh.summaries + keptExisting).sorted { $0.uid > $1.uid }
         let oldestLoadedSequence: Int?
-        if fresh.summaries.isEmpty {
+        if windowHidEverything, hadPreviousPage, !keptExisting.isEmpty {
+            oldestLoadedSequence = page?.oldestLoadedSequence
+        } else if fresh.summaries.isEmpty {
             oldestLoadedSequence = fresh.oldestLoadedSequence
         } else if hadPreviousPage {
             oldestLoadedSequence = page?.oldestLoadedSequence
@@ -305,6 +328,34 @@ final class MailListViewModel {
         page = mergedPage
         summaries = merged
         return mergedPage
+    }
+
+    /// Pagination hangs off the last row's `.task` (`SchoolMailView`), so a list with no rows can
+    /// never fetch further back on its own — and `load()` always asks for the newest window, so
+    /// every refresh would come back just as empty. When the merge leaves nothing while the
+    /// server says the folder still holds mail, walk the cursor back here instead, a bounded
+    /// number of pages, until something the server still shows turns up.
+    private func walkBackToVisibleMail(from start: MailFolderPage, folder: String) async -> MailFolderPage {
+        var current = start
+        var fetched = 0
+        while current.summaries.isEmpty, let cursor = current.oldestLoadedSequence,
+              fetched < MailConstants.emptyWindowWalkbackPages {
+            fetched += 1
+            guard let older = try? await session.use({ client in
+                try await client.page(folder: folder, olderThanSequence: cursor, pageSize: MailConstants.pageSize)
+            }) else { break }
+            // A folder switch, or the folder being recreated under us: either way this walk has
+            // nothing left to say, and the load that follows recovers properly.
+            guard folder == selectedFolder, older.uidValidity == current.uidValidity else { break }
+            current = MailFolderPage(
+                folder: current.folder, uidValidity: current.uidValidity, messageCount: current.messageCount,
+                summaries: older.summaries.sorted { $0.uid > $1.uid },
+                oldestLoadedSequence: older.oldestLoadedSequence
+            )
+            page = current
+            summaries = current.summaries
+        }
+        return current
     }
 
     /// A folder's UIDVALIDITY no longer matches what a list operation was built from (spec
