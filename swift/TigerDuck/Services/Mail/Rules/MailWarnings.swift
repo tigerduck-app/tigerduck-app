@@ -63,8 +63,15 @@ nonisolated enum MailWarnings {
     /// host-shaped text and checked against the real host, instead of being silently skipped
     /// (parity fix, mirrors Android's `HOST_LIKE`). `www.` is stripped afterwards by the
     /// caller, not inside this pattern.
+    ///
+    /// ICU's `.` (used by `NSRegularExpression`) excludes more "line terminator" code points
+    /// than Java's `.` does — notably U+000B and U+000C, which Java's `.` matches like any
+    /// other character — and ICU's `\d` is Unicode-wide where Java's is ASCII-only. Both
+    /// patterns spell these out explicitly instead, so the two platforms agree:
+    /// `[^\n\r\u0085\u2028\u2029]` for "any character Java's `.` would match" (written with
+    /// ASCII regex escapes in the pattern string, not Swift's `\u{...}`) and `[0-9]` for `\d`.
     private static let shownHostPattern = try! NSRegularExpression(
-        pattern: "^(?:[a-z][a-z0-9+.-]*://)?((?:[\\p{L}\\p{N}-]+\\.)+[\\p{L}]{2,})(?::\\d+)?(?:[/?#].*)?$",
+        pattern: "^(?:[a-z][a-z0-9+.-]*://)?((?:[\\p{L}\\p{N}-]+\\.)+[\\p{L}]{2,})(?::[0-9]+)?(?:[/?#][^\\n\\r\\u0085\\u2028\\u2029]*)?$",
         options: [.caseInsensitive]
     )
 
@@ -88,8 +95,10 @@ nonisolated enum MailWarnings {
     /// dotless I (U+0130/U+0131), and Latin small letter long s (U+017F, folds to `s`, so it
     /// could pass inside `https`) — letting a non-ASCII host or scheme pass as if it were
     /// ASCII. The scheme is spelled out per letter instead so it stays exactly `http`/`https`.
+    /// (Same ICU-`.`-vs-Java-`.` note as `shownHostPattern` above applies to the trailing
+    /// `[/?#]...` group here.)
     private static let plainHttpLinkPattern = try! NSRegularExpression(
-        pattern: "^[Hh][Tt][Tt][Pp][Ss]?://([A-Za-z0-9.-]+)(?::[0-9]+)?(?:[/?#].*)?$"
+        pattern: "^[Hh][Tt][Tt][Pp][Ss]?://([A-Za-z0-9.-]+)(?::[0-9]+)?(?:[/?#][^\\n\\r\\u0085\\u2028\\u2029]*)?$"
     )
 
     // MARK: Domains
@@ -121,6 +130,56 @@ nonisolated enum MailWarnings {
         let filtered = dropped.filter { $0 != "\t" && $0 != "\r" && $0 != "\n" }
         return String(String.UnicodeScalarView(filtered))
     }
+
+    /// `A`-`Z` folds to `a`-`z`; every other scalar is returned unchanged. Deliberately not
+    /// `Unicode.Scalar.properties`-based or full Unicode case mapping: `String.lowercased()`
+    /// can expand a single character into several scalars (e.g. U+0130 LATIN CAPITAL LETTER I
+    /// WITH DOT ABOVE -> "i" + U+0307), which can shift where a fixed ASCII keyword like
+    /// `http` is found. Used instead of `String.lowercased()` for every scheme/prefix check
+    /// below.
+    private static func asciiLowercased(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
+        guard scalar.value >= 0x41, scalar.value <= 0x5A, let lowered = Unicode.Scalar(scalar.value + 0x20) else {
+            return scalar
+        }
+        return lowered
+    }
+
+    /// ASCII case-insensitive prefix check, scalar by scalar. Not `String.hasPrefix`, which
+    /// compares `Character`s (extended grapheme clusters): a combining mark attaches to
+    /// whatever scalar precedes it — including `/` or another scheme letter — merging it into
+    /// one `Character` that no longer equals the plain ASCII character `hasPrefix` is looking
+    /// for (spec A.4 rule 1/2/3 parity; this is the same class of bug `browserHostOf` guards
+    /// against below). `prefix` must itself be lowercase ASCII.
+    private static func hasASCIICaseInsensitivePrefix(_ text: String, _ prefix: String) -> Bool {
+        var iterator = text.unicodeScalars.makeIterator()
+        for expected in prefix.unicodeScalars {
+            guard let next = iterator.next(), asciiLowercased(next) == expected else { return false }
+        }
+        return true
+    }
+
+    /// ASCII case-insensitive whole-string equality, scalar by scalar (see
+    /// `hasASCIICaseInsensitivePrefix`). `other` must itself be lowercase ASCII.
+    private static func isASCIICaseInsensitiveEqual(_ text: some StringProtocol, _ other: String) -> Bool {
+        let textScalars = Array(text.unicodeScalars)
+        let otherScalars = Array(other.unicodeScalars)
+        guard textScalars.count == otherScalars.count else { return false }
+        return zip(textScalars, otherScalars).allSatisfy { asciiLowercased($0) == $1 }
+    }
+
+    // Minor, accepted parity differences from Android that never widen what counts as a
+    // school link (they never hide an outside link or suppress a real mismatch):
+    //  - the surrounding-whitespace trim (`.trimmingCharacters(in: .whitespacesAndNewlines)`,
+    //    applied after `sanitizeHref`) strips a broader Unicode whitespace set than WHATWG's
+    //    C0-control-and-space-only trim; `sanitizeHref`'s own leading trim already matches
+    //    WHATWG exactly, so this only ever trims *more*, never less.
+    //  - `toASCII` follows UTS46 (via `URLComponents`); Android's `java.net.IDN` follows the
+    //    older IDNA2003 mapping tables, which can disagree on a handful of deprecated
+    //    characters (e.g. German sharp s, Greek final sigma).
+    //  - a scheme with a combining mark spliced into the letters themselves, e.g.
+    //    `http\u{0307}s://...`, is not `http`/`https` per WHATWG either (no real browser
+    //    parses it as that scheme), so `schemePattern` failing to match it and `hostOf`
+    //    falling through is the same outcome a browser would reach.
 
     /// IDNA-to-ASCII, a no-op for a host that is already pure ASCII (so an IPv6 literal's
     /// `[...]` brackets, ports already stripped by the caller, etc. pass through unchanged —
@@ -154,8 +213,8 @@ nonisolated enum MailWarnings {
         if let schemeMatch = schemePattern.firstMatch(in: href, range: range),
            let fullRange = Range(schemeMatch.range, in: href),
            let schemeRange = Range(schemeMatch.range(at: 1), in: href) {
-            let scheme = href[schemeRange].lowercased()
-            if scheme == "http" || scheme == "https" {
+            let scheme = href[schemeRange]
+            if isASCIICaseInsensitiveEqual(scheme, "http") || isASCIICaseInsensitiveEqual(scheme, "https") {
                 return browserHostOf(href, authorityStart: fullRange.upperBound)
             }
         }
@@ -166,39 +225,41 @@ nonisolated enum MailWarnings {
         return toASCII(normalizedDomain(host))
     }
 
+    /// All scanning here is on `unicodeScalars`, never on `String`'s default `Character`
+    /// (extended grapheme cluster) view: a combining mark attaches to whatever scalar
+    /// precedes it, so `Character`-based comparison of `/`, `\`, `?`, `#`, `@`, `[`, `]` or
+    /// `:` can silently merge one of those separators into a bogus, non-matching cluster —
+    /// e.g. `/` immediately followed by a combining mark stops being `"/"` as a `Character` —
+    /// letting the scan run straight past a real terminator or the true last `@` to a
+    /// forged one further along (spec A.4 rule 2 parity).
     private static func browserHostOf(_ href: String, authorityStart: String.Index) -> String? {
+        let scalars = href.unicodeScalars
         var start = authorityStart
-        while start < href.endIndex, href[start] == "/" || href[start] == "\\" {
-            start = href.index(after: start)
+        while start < scalars.endIndex, scalars[start] == "/" || scalars[start] == "\\" {
+            start = scalars.index(after: start)
         }
-        var end = href.endIndex
+        var end = scalars.endIndex
         var cursor = start
-        while cursor < href.endIndex {
-            let c = href[cursor]
+        while cursor < scalars.endIndex {
+            let c = scalars[cursor]
             if c == "/" || c == "\\" || c == "?" || c == "#" {
                 end = cursor
                 break
             }
-            cursor = href.index(after: cursor)
+            cursor = scalars.index(after: cursor)
         }
-        let authority = href[start..<end]
-        let afterUserinfo: Substring
-        if let lastAt = authority.range(of: "@", options: .backwards) {
-            afterUserinfo = authority[lastAt.upperBound...]
-        } else {
-            afterUserinfo = authority
+        let authority = scalars[start..<end]
+        var afterUserinfo = authority
+        if let lastAt = authority.lastIndex(of: "@") {
+            afterUserinfo = authority[authority.index(after: lastAt)...]
         }
-        let host: Substring
-        if afterUserinfo.hasPrefix("[") {
+        var host = afterUserinfo
+        if afterUserinfo.first == "[" {
             if let closing = afterUserinfo.firstIndex(of: "]") {
                 host = afterUserinfo[afterUserinfo.startIndex...closing]
-            } else {
-                host = afterUserinfo
             }
         } else if let colon = afterUserinfo.firstIndex(of: ":") {
             host = afterUserinfo[afterUserinfo.startIndex..<colon]
-        } else {
-            host = afterUserinfo
         }
         guard !host.isEmpty else { return nil }
         return toASCII(normalizedDomain(String(host)))
@@ -226,7 +287,7 @@ nonisolated enum MailWarnings {
         let keywordHit = passwordKeywords.contains { haystack.contains($0.lowercased()) }
         let linksOutside = input.links.contains { link in
             let href = sanitizeHref(link.href).trimmingCharacters(in: .whitespacesAndNewlines)
-            return href.lowercased().hasPrefix("http") && !isPlainSchoolLink(href)
+            return hasASCIICaseInsensitivePrefix(href, "http") && !isPlainSchoolLink(href)
         }
         if keywordHit && (external || linksOutside) {
             warnings.append(.passwordBait)
@@ -289,7 +350,7 @@ nonisolated enum MailWarnings {
         let href = sanitizeHref(rawHref).trimmingCharacters(in: .whitespacesAndNewlines)
         let text = MailTextCleaner.clean(rawText).trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if href.lowercased().hasPrefix("mailto:") {
+        if hasASCIICaseInsensitivePrefix(href, "mailto:") {
             let target = href.dropFirst("mailto:".count).split(separator: "?", maxSplits: 1).first.map(String.init) ?? ""
             let real = (target.removingPercentEncoding ?? target).lowercased()
             if let shown = firstEmail(in: text), shown.lowercased() != real {
@@ -301,7 +362,7 @@ nonisolated enum MailWarnings {
         guard let rawHost = hostOf(href) else { return [] }
         let realHost = stripWWW(rawHost)
         var issues: [MailLinkIssue] = []
-        if href.lowercased().hasPrefix("http://") {
+        if hasASCIICaseInsensitivePrefix(href, "http://") {
             issues.append(.insecure)
         }
         if realHost.split(separator: ".").contains(where: { $0.hasPrefix("xn--") }) {
