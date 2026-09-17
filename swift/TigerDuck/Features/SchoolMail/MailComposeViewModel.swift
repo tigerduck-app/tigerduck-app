@@ -212,6 +212,13 @@ final class MailComposeViewModel {
             }
         } catch {
             loadError = MailAccountManager.LoginError(error).message
+            // The empty-form value, not `snapshot()` (current fields) -- a retry that fails again
+            // after the user already typed something must not fold that edit into the baseline
+            // the same way a successful `applyPrefill` must not (fix round 1, important 3); this
+            // only fixes the common case `snapshot()` would already match here anyway (nothing
+            // typed yet), without also reintroducing that bug for the rarer one (fix round 2,
+            // minor).
+            baseline = Self.snapshotString(to: "", cc: "", bcc: "", subject: "", body: "", attachmentIDs: [])
         }
     }
 

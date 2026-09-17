@@ -181,14 +181,34 @@ struct MailComposeView: View {
     /// Reads `url` in bounded chunks, rejecting (`nil`) as soon as the running total exceeds the
     /// server's encoded-message limit -- `nonisolated` so it genuinely runs on the `Task.detached`
     /// executor above rather than hopping back to the main actor by virtue of being declared on a
-    /// (module-default-MainActor-isolated) `View` type.
+    /// (module-default-MainActor-isolated) `View` type. A thin wrapper around `readBounded(read:)`
+    /// (below) supplying a real `FileHandle`'s `read(upToCount:)`.
     private nonisolated static func readBounded(_ url: URL) -> Data? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
+        return readBounded(read: handle.read(upToCount:))
+    }
+
+    /// The bounded-read loop itself, seamed on `read` (mirroring `FileHandle.read(upToCount:)`'s
+    /// own throw/`nil`-at-EOF/empty-`Data` contract exactly) so a test can inject a reader that
+    /// throws partway through without touching the filesystem -- not `private`, for that seam.
+    ///
+    /// `try?` on the read would flatten a thrown mid-read I/O error (a File Provider/iCloud URL
+    /// going unreachable partway through, say) to the same `nil` that a chunk at EOF's
+    /// `nil`-vs-empty-`Data` ambiguity already produces -- either way the loop would just end and
+    /// return whatever was read so far, silently mailing a truncated attachment at a
+    /// plausible-but-wrong size instead of failing (fix round 2, important). The explicit
+    /// `do`/`catch` below makes a throw end the whole read as a failure; only running out of bytes
+    /// to read (`nil` or empty `Data` from a call that didn't throw) ends the loop normally.
+    static func readBounded(read: (Int) throws -> Data?) -> Data? {
         var data = Data()
-        while let chunk = try? handle.read(upToCount: 1024 * 1024), !chunk.isEmpty {
-            data.append(chunk)
-            guard data.count <= MailConstants.maxEncodedMessageBytes else { return nil }
+        do {
+            while let chunk = try read(1024 * 1024), !chunk.isEmpty {
+                data.append(chunk)
+                guard data.count <= MailConstants.maxEncodedMessageBytes else { return nil }
+            }
+        } catch {
+            return nil
         }
         return data
     }

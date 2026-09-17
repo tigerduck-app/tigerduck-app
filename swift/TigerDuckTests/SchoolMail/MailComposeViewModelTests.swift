@@ -372,5 +372,55 @@ struct MailComposeViewModelTests {
         let draftsAfterSend = try await demo.page(folder: draftsFolder, olderThanSequence: nil, pageSize: 50)
         #expect(draftsAfterSend.summaries.isEmpty)
     }
+
+    // MARK: Fix round 2
+
+    // Minor: a load that fails before ever prefilling anything must not leave the empty sheet
+    // reporting unsaved changes.
+    @Test func aFailedPrepareLeavesAnEmptySheetWithoutUnsavedChanges() async {
+        let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
+        await fake.update { $0.detailError = .unreachable }
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake)
+        await model.prepare()
+        #expect(model.loadError != nil)
+        #expect(!model.hasChanges)
+    }
+
+    // Important: `readBounded(read:)` is `MailComposeView`'s bounded picked-file read (fix round
+    // 1), seamed on a `FileHandle.read(upToCount:)`-shaped closure so these run without touching
+    // the filesystem. A thrown mid-read error must fail the whole read, never silently return
+    // whatever was read so far as if it had cleanly reached EOF (fix round 2, important) --
+    // `Data(contentsOf:)`'s pre-round-1 behavior routed a failed read to `attachmentReadFailed()`
+    // this way, and the bounded read must keep doing the same.
+    @Test func readBoundedFailsOnAThrownMidReadErrorRatherThanTruncating() {
+        struct ReadFailure: Error {}
+        var calls = 0
+        let result = MailComposeView.readBounded { _ in
+            calls += 1
+            if calls == 1 { return Data("first chunk, then the read breaks".utf8) }
+            throw ReadFailure()
+        }
+        #expect(result == nil)
+    }
+
+    @Test func readBoundedReturnsEverythingReadThroughACleanEOF() {
+        let chunks: [Data?] = [Data("hello ".utf8), Data("world".utf8), nil]
+        var index = 0
+        let result = MailComposeView.readBounded { _ in
+            defer { index += 1 }
+            return index < chunks.count ? chunks[index] : nil
+        }
+        #expect(result == Data("hello world".utf8))
+    }
+
+    @Test func readBoundedRejectsOnceThePastLimitChunkArrivesEvenWithoutAThrow() {
+        let oversized = Data(count: MailConstants.maxEncodedMessageBytes + 1)
+        var served = false
+        let result = MailComposeView.readBounded { _ in
+            defer { served = true }
+            return served ? nil : oversized
+        }
+        #expect(result == nil)
+    }
 }
 #endif
