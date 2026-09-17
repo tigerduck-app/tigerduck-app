@@ -35,12 +35,17 @@ final class MailPageSession {
     /// reaches zero instead.
     private var pendingDrop = false
 
+    /// Reports an authentication rejection thrown by any command run through `use(_:)`.
+    private let onAuthFailure: @MainActor () -> Void
+
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
-        open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() }
+        open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
+        onAuthFailure: @escaping @MainActor () -> Void = { MailAccountManager.shared.handleAuthFailure() }
     ) {
         self.idleClose = idleClose
         self.open = open
+        self.onAuthFailure = onAuthFailure
     }
 
     /// Runs `body` with the session's client, counting the whole call — including resolving
@@ -56,6 +61,7 @@ final class MailPageSession {
         do {
             client = try await resolveClient()
         } catch {
+            reportIfAuthenticationRejected(error)
             await endUse()
             throw error
         }
@@ -65,9 +71,20 @@ final class MailPageSession {
             return result
         } catch {
             if Self.dropsConnection(error) { pendingDrop = true }
+            reportIfAuthenticationRejected(error)
             await endUse()
             throw error
         }
+    }
+
+    /// §7.4's choke point reaches everything the page does, not only the sign-in it opened the
+    /// connection with. SMTP `AUTH LOGIN` happens inside a `use(_:)` body and never goes near
+    /// `MailAccountManager.openSession()`, and so does the held connection's own relogin — both
+    /// used to leave `authFailed` unset, so the next tap sent the rejected password again. NTUST
+    /// locks the account (and its Wi-Fi) after repeated failures, so every layer reports here.
+    private func reportIfAuthenticationRejected(_ error: any Error) {
+        guard (error as? MailClientError) == .authenticationFailed else { return }
+        onAuthFailure()
     }
 
     /// Arms the ~30 s close. Deferred while a `use(_:)` is still in flight — its `defer`

@@ -287,6 +287,15 @@ final class MailComposeViewModel {
 
     func send() async {
         guard !isSending else { return }
+        // §7.4: once the server has rejected the saved password it is never sent again — repeated
+        // failures lock the school account and its Wi-Fi. SMTP `AUTH LOGIN` happens inside the
+        // send below, entirely outside `MailAccountManager.openSession()`, so without this the
+        // sheet staying open per §8.4 turns every further Send tap into another login attempt
+        // with a password the server already refused.
+        guard !prefs.authFailed else {
+            error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.credentials.message
+            return
+        }
         error = nil
         invalidRecipients = []
         let (toList, toInvalid) = Self.parseRecipients(to)
@@ -379,6 +388,11 @@ final class MailComposeViewModel {
     @discardableResult
     func saveDraft() async -> Bool {
         guard !isSending else { return false }
+        // Saving a draft is an IMAP APPEND, which needs the same rejected password (§7.4).
+        guard !prefs.authFailed else {
+            error = MailAccountManager.LoginError.credentials.message
+            return false
+        }
         guard let drafts = folderRoles[.drafts] else {
             // Set an error rather than failing silently -- the confirmation dialog's Save
             // button would otherwise do nothing with no explanation (fix round 1, minor 4).

@@ -103,5 +103,29 @@ struct MailPageSessionTests {
         try await Task.sleep(for: .milliseconds(80)) // give the now-deferred drop a moment to run
         #expect(await fake.calls.contains("logout"))
     }
+
+    /// §7.4: a rejected password is never sent again. `MailAccountManager.openSession()` is the
+    /// documented choke point for the IMAP sign-in, but SMTP `AUTH LOGIN` happens inside a
+    /// `use(_:)` body and never goes near it — so the session reports an authentication rejection
+    /// from *any* layer, not just the one it opened the connection with.
+    @Test func anAuthenticationRejectionFromInsideAUseIsReported() async throws {
+        let fake = FakeMailClient(folders: ["INBOX": []])
+        var failures = 0
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { failures += 1 })
+        await #expect(throws: MailClientError.self) {
+            try await session.use { _ in throw MailClientError.authenticationFailed }
+        }
+        #expect(failures == 1)
+    }
+
+    @Test func anOrdinaryFailureIsNotReportedAsAnAuthenticationRejection() async throws {
+        let fake = FakeMailClient(folders: ["INBOX": []])
+        var failures = 0
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, onAuthFailure: { failures += 1 })
+        await #expect(throws: MailClientError.self) {
+            try await session.use { _ in throw MailClientError.serverBusy }
+        }
+        #expect(failures == 0)
+    }
 }
 #endif

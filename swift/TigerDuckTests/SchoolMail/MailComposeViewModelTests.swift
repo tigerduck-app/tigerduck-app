@@ -26,7 +26,11 @@ struct MailComposeViewModelTests {
                       cache: MailCache = SchoolMailTestDoubles.temporaryCache()) -> MailComposeViewModel {
         MailComposeViewModel(
             context: context,
-            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }),
+            // The session's auth-failure choke point, wired to the same preferences the compose
+            // screen reads — in the app it is `MailAccountManager.handleAuthFailure()`, which
+            // writes exactly this flag.
+            session: MailPageSession(idleClose: .milliseconds(10), open: { fake },
+                                     onAuthFailure: { prefs.authFailed = true }),
             sender: Self.me,
             folderRoles: [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
             prefs: prefs,
@@ -183,6 +187,55 @@ struct MailComposeViewModelTests {
         #expect(model.error != nil)
         #expect(!model.didFinish)
         #expect(model.subject == "問題")
+    }
+
+    /// §7.4: a password the server has rejected is never sent again — repeated failures lock the
+    /// school account. SMTP `AUTH LOGIN` happens inside `send()`, entirely outside the sign-in
+    /// path, so without routing it through the same choke point every Send tap is another login
+    /// attempt with the rejected password.
+    @Test func aRejectedSMTPPasswordIsRecordedAndNeverRetried() async {
+        let fake = Self.fake()
+        await fake.update { $0.sendError = .authenticationFailed }
+        let prefs = InMemoryMailPreferences()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake, prefs: prefs)
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+        model.subject = "問題"
+
+        await model.send()
+        #expect(model.error != nil)
+        #expect(!model.didFinish)
+        #expect(prefs.authFailed)
+
+        // §8.4 keeps the sheet open with the content intact, so the next tap is expected — and
+        // must not reach the server.
+        await model.send()
+        #expect((await fake.calls).filter { $0 == "send" }.count == 1)
+        #expect(model.subject == "問題")
+    }
+
+    @Test func sendRefusesOutrightWhileTheSavedPasswordIsKnownRejected() async {
+        let fake = Self.fake()
+        let prefs = InMemoryMailPreferences()
+        prefs.authFailed = true
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake, prefs: prefs)
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+        await model.send()
+        #expect(model.error != nil)
+        #expect(await fake.calls.isEmpty)
+        #expect(!model.didFinish)
+    }
+
+    @Test func savingADraftAlsoRefusesWhileTheSavedPasswordIsKnownRejected() async {
+        let fake = Self.fake()
+        let prefs = InMemoryMailPreferences()
+        prefs.authFailed = true
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake, prefs: prefs)
+        await model.prepare()
+        model.body = "草稿"
+        #expect(await model.saveDraft() == false)
+        #expect(await fake.calls.isEmpty)
     }
 
     // MARK: Dispatch addition 1 — non-ASCII recipients rejected in compose only
