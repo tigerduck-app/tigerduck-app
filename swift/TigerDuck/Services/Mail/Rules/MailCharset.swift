@@ -21,13 +21,39 @@ nonisolated enum MailCharset {
 
     /// The labelled charset, else strict UTF-8, then Big5-HKSCS, then ISO-8859-1
     /// (which never fails, so no byte is lost).
+    ///
+    /// A *labelled* part is decoded leniently, matching Android, where `String(bytes, charset)`
+    /// substitutes U+FFFD for a malformed byte and always returns. `String(data:encoding:)` is
+    /// strict and returns nil instead, which used to send a correctly labelled body with one
+    /// truncated byte — an everyday shape in real mail — down the guess chain below, where
+    /// Big5-HKSCS accepts almost any byte string and the whole message rendered as mojibake.
+    /// The guess chain is for parts with no usable label, not for a label the server gave us.
     static func decode(_ data: Data, label: String?) -> String {
-        if let encoding = encoding(forLabel: label), let text = String(data: data, encoding: encoding) {
-            return text
+        if let encoding = encoding(forLabel: label) {
+            if let text = String(data: data, encoding: encoding) { return text }
+            if let text = lossilyDecoded(data, encoding: encoding) { return text }
         }
         if let text = String(data: data, encoding: .utf8) { return text }
         if let text = String(data: data, encoding: cf(.big5_HKSCS_1999)) { return text }
         return String(data: data, encoding: .isoLatin1) ?? ""
+    }
+
+    /// `encoding` with malformed bytes replaced rather than rejected. Foundation offers no
+    /// lossy `String(data:encoding:)`, but its encoding *detector* does the same substitution
+    /// when it is restricted to a single candidate and allowed to convert lossily. Returns nil
+    /// only if even that fails, leaving the caller's fallback chain in charge.
+    private static func lossilyDecoded(_ data: Data, encoding: String.Encoding) -> String? {
+        var converted: NSString?
+        var usedLossyConversion: ObjCBool = false
+        let options: [StringEncodingDetectionOptionsKey: Any] = [
+            .suggestedEncodingsKey: [encoding.rawValue],
+            .useOnlySuggestedEncodingsKey: true,
+            .allowLossyKey: true,
+        ]
+        guard NSString.stringEncoding(for: data, encodingOptions: options,
+                                      convertedString: &converted,
+                                      usedLossyConversion: &usedLossyConversion) != 0 else { return nil }
+        return converted as String?
     }
 
     private static func cf(_ encoding: CFStringEncodings) -> String.Encoding {

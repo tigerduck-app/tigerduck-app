@@ -185,5 +185,23 @@ struct MailTextRulesTests {
         #expect(MailRawHeaders.value(named: "reply-to", in: raw) == "\"Office\" <office@mail.ntust.edu.tw>")
         #expect(MailRawHeaders.value(named: "Cc", in: raw) == nil)
     }
+    /// Android's `String(bytes, charset)` substitutes U+FFFD and always returns; iOS's
+    /// `String(data:encoding:)` returns nil, so one truncated byte in a correctly labelled UTF-8
+    /// body used to fall through to the guess chain — where Big5-HKSCS accepts almost anything
+    /// and the whole message rendered as mojibake.
+    @Test func aLabelledBodyWithOneBadByteStillDecodesAsThatCharset() {
+        var bytes = Array("這是中文測試".utf8)
+        bytes.insert(0xE4, at: 6) // a stray UTF-8 lead byte between 是 and 中
+        let text = MailCharset.decode(Data(bytes), label: "utf-8")
+        #expect(text.contains("這是"))
+        #expect(text.contains("中文測試"))
+        #expect(text.contains("\u{FFFD}"))
+    }
+
+    @Test func anUnlabelledBodyStillUsesTheGuessChain() {
+        let big5 = MailCharset.encoding(forLabel: "big5")
+        let data = "中文".data(using: big5 ?? .utf8) ?? Data()
+        #expect(MailCharset.decode(data, label: nil) == "中文")
+    }
 }
 #endif
