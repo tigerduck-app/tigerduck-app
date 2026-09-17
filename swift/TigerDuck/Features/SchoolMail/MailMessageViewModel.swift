@@ -77,6 +77,10 @@ final class MailMessageViewModel {
     /// and reused by `move`/`delete` — never re-fetched right before a move, which would make
     /// `MailMover`'s own freshness check moot (dispatch addition 3).
     @ObservationIgnored private var pageUIDValidity: UInt32?
+    /// Bumped every time `apply`/`loadImages` starts an off-main HTML (re)computation, so a
+    /// slower, now-superseded one can't overwrite a result a later call already applied — e.g.
+    /// a retry `load()` racing a `loadImages()` tap, either order (fix round 2, minors 2–3).
+    @ObservationIgnored private var htmlGeneration = 0
 
     init(
         route: MailMessageRoute,
@@ -141,6 +145,16 @@ final class MailMessageViewModel {
                     notifier.removeNotification(uidValidity: inboxValidity, uid: uid)
                 }
             }
+        } catch MailClientError.folderChanged {
+            // Fix round 2, minor 4: the live fetch or the mark-as-seen `setFlag` above can also
+            // hit `folderChanged` — the list needs to recover the same way a move/delete would
+            // trigger.
+            onFolderChanged?(folder)
+            if detail == nil {
+                loadState = .failed(MailAccountManager.LoginError(MailClientError.folderChanged).message)
+            } else {
+                actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
+            }
         } catch {
             // A cached detail may already be showing (fix round 1, minor 7): a failed refresh
             // or a failed mark-as-seen must still surface, not be silently swallowed just
@@ -153,12 +167,15 @@ final class MailMessageViewModel {
         }
     }
 
-    func loadImages() {
+    /// Off the main actor, like `apply` (fix round 2, minor 3) — the same SwiftSoup work runs
+    /// here (a full re-sanitize plus a link rewrite), so it belongs on the same detached path,
+    /// guarded by the same generation token.
+    func loadImages() async {
         allowRemoteImages = true
         guard let html = detail?.htmlBody else { return }
-        let fresh = MailHTMLSanitizer.sanitize(html, allowRemoteImages: true)
-        sanitized = fresh
-        linkedDocument = MailHTMLSanitizer.rewriteLinks(fresh.html)
+        guard let computed = await recomputeSanitizedHTML(html: html, textBody: nil, allowImages: true) else { return }
+        sanitized = computed.0
+        linkedDocument = computed.1
     }
 
     /// `BODY.PEEK[]`: never marks the mail read. Asks first above 5 MB.
@@ -195,6 +212,11 @@ final class MailMessageViewModel {
             try await session.use { client in try await client.setFlag(.seen, on: !seen, folder: folder, uids: [uid]) }
             detail?.summary.isSeen = !seen
             onSeenChanged?(uid, !seen)
+        } catch MailClientError.folderChanged {
+            // Fix round 2, minor 4: `setFlag` can hit the same `folderChanged` a move/delete
+            // would — the list needs to recover here too, not only from `performMove`.
+            actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
+            onFolderChanged?(folder)
         } catch {
             actionError = MailAccountManager.LoginError(error).message
         }
@@ -290,7 +312,12 @@ final class MailMessageViewModel {
     func isNeverRenderedInApp(_ part: MailBodyPart) -> Bool {
         let filename = part.filename ?? ""
         if MailWarnings.neverRenderedInApp(filename: filename) { return true }
-        let type = part.contentType.lowercased()
+        // Real parts carry parameters (SwiftMail appends `; charset=…`) — comparing the whole
+        // string left this inert against them (fix round 2, critical 1 leftover): an HTML part
+        // declaring `text/html; charset=UTF-8` compared equal to neither branch below and went
+        // straight to Quick Look uncontested, the exact mislabeled-extension case this predicate
+        // exists for. `contentTypeWithoutParameters` is the same helper `attachmentRisk` uses.
+        let type = MailWarnings.contentTypeWithoutParameters(part.contentType) ?? ""
         return type == "text/html" || type == "image/svg+xml"
     }
 
@@ -328,18 +355,30 @@ final class MailMessageViewModel {
     /// `MailHTMLSanitizer.sanitize` + `.rewriteLinks` together run SwiftSoup's parser up to
     /// three times (a parse, a rewrite-and-reserialize, and the rewrite's own reparse for its
     /// lockstep check); doing that inline here would block the main actor on a large or complex
-    /// mail. Computed inside a detached task instead, then applied back as a handful of plain
-    /// property assignments (fix round 1, minor 9).
-    private func apply(_ detail: MailMessageDetail) async {
-        self.detail = detail
-        let allowImages = allowRemoteImages
+    /// mail. Computed inside a detached task instead (fix round 1, minor 9).
+    ///
+    /// Bumps and captures `htmlGeneration` before the detached work starts, and only returns a
+    /// result (instead of `nil`) if that generation is still the current one once the work
+    /// finishes — so whichever of `apply`/`loadImages` started *last* is the only one whose
+    /// result a caller ever applies, regardless of completion order (fix round 2, minors 2–3).
+    private func recomputeSanitizedHTML(html: String?, textBody: String?, allowImages: Bool) async -> (SanitizedHTML?, LinkedHTML?, String)? {
+        htmlGeneration += 1
+        let generation = htmlGeneration
         let computed = await Task.detached { () -> (SanitizedHTML?, LinkedHTML?, String) in
-            guard let html = detail.htmlBody else { return (nil, nil, detail.textBody ?? "") }
+            guard let html else { return (nil, nil, textBody ?? "") }
             let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: allowImages)
             let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
-            let plain = detail.textBody ?? MailHTMLSanitizer.plainText(fromHTML: html)
+            let plain = textBody ?? MailHTMLSanitizer.plainText(fromHTML: html)
             return (sanitized, linked, plain)
         }.value
+        return generation == htmlGeneration ? computed : nil
+    }
+
+    private func apply(_ detail: MailMessageDetail) async {
+        guard let computed = await recomputeSanitizedHTML(html: detail.htmlBody, textBody: detail.textBody, allowImages: allowRemoteImages) else {
+            return
+        }
+        self.detail = detail
         let (freshSanitized, freshLinked, freshPlainText) = computed
         sanitized = freshSanitized
         linkedDocument = freshLinked

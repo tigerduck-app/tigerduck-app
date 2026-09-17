@@ -200,10 +200,12 @@ nonisolated enum MailHTMLSanitizer {
     }
 
     /// Last-resort fallback when there's no parsed `Document` left to strip `href` from
-    /// (`SwiftSoup.parseBodyFragment` itself failed): removes every `href="..."`/`href='...'`
-    /// occurrence textually, so even this defensive path never leaves a live link tappable.
+    /// (`SwiftSoup.parseBodyFragment` itself failed): removes every `href="..."`, `href='...'`
+    /// AND unquoted `href=value` occurrence textually (HTML5 allows an unquoted attribute value
+    /// — fix round 2, minor 5: the quoted-only pattern left that form untouched, so this
+    /// defensive path could still leave a live link tappable), so nothing survives this path.
     private static let hrefAttributePattern = try! NSRegularExpression(
-        pattern: #"\s+href\s*=\s*("[^"]*"|'[^']*')"#, options: .caseInsensitive
+        pattern: #"\s+href\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)"#, options: .caseInsensitive
     )
 
     private static func stripHrefsWithRegex(_ html: String) -> String {

@@ -332,8 +332,11 @@ nonisolated enum MailWarnings {
         return nil
     }
 
-    /// `"Application/PDF; name=x.pdf"` -> `"application/pdf"`.
-    private static func contentTypeWithoutParameters(_ raw: String?) -> String? {
+    /// `"Application/PDF; name=x.pdf"` -> `"application/pdf"`. Not `private`: the message
+    /// screen's `isNeverRenderedInApp(_:)` compares a content type the same parameter-stripped
+    /// way this uses internally for `attachmentRisk` (fix round 2, critical 1 leftover) — a raw
+    /// equality check against a real part's `type/subtype; charset=…` value never matches.
+    static func contentTypeWithoutParameters(_ raw: String?) -> String? {
         guard let raw else { return nil }
         return raw.lowercased().split(separator: ";", maxSplits: 1).first
             .map { $0.trimmingCharacters(in: .whitespaces) }

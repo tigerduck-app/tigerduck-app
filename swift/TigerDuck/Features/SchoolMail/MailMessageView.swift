@@ -184,7 +184,7 @@ struct MailMessageView: View {
                 message: String(localized: "school_mail_remote_images_blocked"),
                 systemImage: "photo",
                 actionTitle: String(localized: "school_mail_load_images"),
-                action: { viewModel.loadImages() }
+                action: { Task { await viewModel.loadImages() } }
             )
         }
         if viewModel.parseFailed {

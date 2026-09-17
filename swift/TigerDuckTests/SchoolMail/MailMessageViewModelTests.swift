@@ -138,6 +138,34 @@ struct MailMessageViewModelTests {
         #expect(changedFolders == ["INBOX"])
     }
 
+    /// `setFlag` (not just `MailMover`) can also hit `folderChanged`; `toggleSeen` must notify
+    /// the list the same way `performMove` does (fix round 2, minor 4).
+    @Test func toggleSeenFolderChangedNotifiesTheListToRecover() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        await h.fake.update { $0.setFlagError = .folderChanged }
+        var changedFolders: [String] = []
+        h.model.onFolderChanged = { changedFolders.append($0) }
+        await h.model.toggleSeen()
+        #expect(h.model.actionError != nil)
+        #expect(changedFolders == ["INBOX"])
+    }
+
+    /// The mark-as-seen `setFlag` inside `load()` can also hit `folderChanged` (fix round 2,
+    /// minor 4); the detail fetch itself already succeeded by then, so this exercises the
+    /// "cached/fresh detail already showing" branch of the catch (fix round 1, minor 7) with a
+    /// `folderChanged` specifically, not a generic error.
+    @Test func loadFolderChangedFromMarkAsSeenNotifiesTheListToRecover() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, seen: false))
+        var changedFolders: [String] = []
+        h.model.onFolderChanged = { changedFolders.append($0) }
+        await h.fake.update { $0.setFlagError = .folderChanged }
+        await h.model.load()
+        #expect(changedFolders == ["INBOX"])
+        #expect(h.model.detail != nil)
+        #expect(h.model.actionError != nil)
+    }
+
     /// Without a cached page UIDVALIDITY there is nothing honest to compare a move against —
     /// fetching one fresh right there would make `MailMover`'s freshness check compare a value
     /// against itself. Refuses instead, with no server call at all (fix round 1, minor 8).
@@ -180,10 +208,23 @@ struct MailMessageViewModelTests {
     /// `image/svg+xml` attachment is risky regardless of its filename extension — AND, unlike a
     /// merely risky file, is one Quick Look must never render in-process (fix round 1, critical
     /// 1: `isNeverRenderedInApp` is the predicate that forces the share-sheet path even for a
-    /// confirmed "open").
+    /// confirmed "open"). A real part's content type carries parameters (`; charset=…`) —
+    /// fix round 2's leftover: comparing the whole string was inert against exactly this shape,
+    /// so the fixture must carry one too, not a bare `"text/html"` the round-1 test used.
     @Test func htmlContentTypeAttachmentIsRiskyAndNeverRenderedInApp() async {
-        let part = MailBodyPart(section: "2", contentType: "text/html", charset: nil, transferEncoding: nil,
+        let part = MailBodyPart(section: "2", contentType: "text/html; charset=utf-8", charset: nil, transferEncoding: nil,
                                 filename: "notes.txt", contentID: nil, size: 4, isAttachment: true)
+        var message = FakeMailClient.message(uid: 5)
+        message.detail?.parts = [part]
+        let h = Self.harness(message)
+        await h.model.load()
+        #expect(h.model.isRisky(part))
+        #expect(h.model.isNeverRenderedInApp(part))
+    }
+
+    @Test func svgContentTypeWithParametersIsAlsoNeverRenderedInApp() async {
+        let part = MailBodyPart(section: "2", contentType: "image/svg+xml; charset=utf-8", charset: nil, transferEncoding: nil,
+                                filename: "diagram", contentID: nil, size: 4, isAttachment: true)
         var message = FakeMailClient.message(uid: 5)
         message.detail?.parts = [part]
         let h = Self.harness(message)
@@ -281,9 +322,24 @@ struct MailMessageViewModelTests {
         let h = Self.harness(FakeMailClient.message(uid: 5, html: "<img src=\"https://x.example/a.png\">"))
         await h.model.load()
         #expect(h.model.sanitized?.blockedRemoteImages == 1)
-        h.model.loadImages()
+        await h.model.loadImages()
         #expect(h.model.allowRemoteImages)
         #expect(h.model.sanitized?.blockedRemoteImages == 0)
+    }
+
+    /// `loadImages` moved off the main actor alongside `apply` (fix round 2, minor 3), both now
+    /// guarded by the same generation token (minor 2) so neither can clobber a result the other
+    /// already applied. Concurrent calls must never leave `allowRemoteImages` and
+    /// `sanitized.blockedRemoteImages` disagreeing with each other.
+    @Test func concurrentLoadAndLoadImagesNeverLeaveInconsistentState() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: "<img src=\"https://x.example/a.png\">"))
+        await h.model.load()
+        #expect(h.model.sanitized?.blockedRemoteImages == 1)
+        async let reload: Void = h.model.load()
+        async let images: Void = h.model.loadImages()
+        _ = await (reload, images)
+        #expect(h.model.allowRemoteImages)
+        #expect(h.model.sanitized != nil)
     }
 
     // MARK: Web view lockdown (§9.3)
