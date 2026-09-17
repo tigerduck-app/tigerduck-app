@@ -608,23 +608,30 @@ final class AppState {
 
     // MARK: - Tab Configuration
 
-    var configuredTabs: [AppFeature] = {
-        if let data = Defaults[.configuredTabsData],
-           let rawValues = try? JSONDecoder().decode([String].self, from: data) {
-            // `.filter(\.isImplemented)` drops both unknown raw values (an
-            // older build's saved/synced config replayed on a build that
-            // predates a case — `compactMap` above already turns those into
-            // nils) and features this build hides behind a gate, e.g. a
-            // `.schoolMail` tab pinned on a DEBUG build and then carried
-            // over (shared container, device restore) to a build where
-            // `SchoolMailAvailability.isEnabled` is false. Nothing
-            // legitimately reaches `configuredTabs` while unimplemented —
-            // `pinnableFeatures`, what `TabEditorView` offers, is filtered
-            // the same way — so this only ever catches stale data.
-            let features = rawValues.compactMap { AppFeature(rawValue: $0) }.filter(\.isImplemented)
-            return features.isEmpty ? AppFeature.defaultTabs : features
+    /// Pure decode step for `configuredTabs`: `Data → [String] → [AppFeature]`, filtered by
+    /// `isShown` (default: `isImplemented`) so the result never contains a raw value this build
+    /// doesn't recognise (an older build's saved/synced config replayed on a build that predates
+    /// a case — `compactMap` drops those) or a feature this build hides behind a gate (e.g. a
+    /// `.schoolMail` tab pinned on a DEBUG build and then carried over — shared container, device
+    /// restore — to a build where `SchoolMailAvailability.isEnabled` is false). Nothing
+    /// legitimately reaches `configuredTabs` while unimplemented already — `pinnableFeatures`,
+    /// what `TabEditorView` offers, is filtered the same way — so this only ever catches stale
+    /// data. Returns `nil` for missing/undecodable `data` or a result that filters down to
+    /// nothing, so callers can substitute their own default tabs; kept free of `Defaults` so it's
+    /// testable without touching UserDefaults.
+    nonisolated static func decodeConfiguredTabs(
+        _ data: Data?,
+        isShown: (AppFeature) -> Bool = { $0.isImplemented }
+    ) -> [AppFeature]? {
+        guard let data, let rawValues = try? JSONDecoder().decode([String].self, from: data) else {
+            return nil
         }
-        return AppFeature.defaultTabs
+        let features = rawValues.compactMap { AppFeature(rawValue: $0) }.filter(isShown)
+        return features.isEmpty ? nil : features
+    }
+
+    var configuredTabs: [AppFeature] = {
+        AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) ?? AppFeature.defaultTabs
     }() {
         didSet {
             do {
