@@ -163,5 +163,87 @@ struct MailHTMLSanitizerTests {
         let links = text.runs.compactMap(\.link)
         #expect(links == [URL(string: "https://www.ntust.edu.tw")!])
     }
+
+
+    // MARK: rewriteLinks and its fail-closed strip
+    //
+    // `rewriteLinks` is what stands between the web view and a live sender-supplied URL: every
+    // `<a href>` becomes `https://link.invalid/<n>` and the real href is handed back out of
+    // band, so a tap is answered by index and WebKit never holds the attacker's URL. When the
+    // anchors can't be kept in lockstep with that list, nothing is guessed — every `href` is
+    // stripped. Until now only the happy path had any coverage at all.
+
+    @Test func rewriteLinksReplacesEveryHrefAndReportsTheOriginals() {
+        let result = MailHTMLSanitizer.rewriteLinks(
+            "<p><a href=\"https://evil.example/login\">ntust.edu.tw</a> and <a href=\"mailto:cc@mail.ntust.edu.tw\">mail</a></p>"
+        )
+        #expect(result.links == [
+            MailLink(text: "ntust.edu.tw", href: "https://evil.example/login"),
+            MailLink(text: "mail", href: "mailto:cc@mail.ntust.edu.tw"),
+        ])
+        #expect(result.html.contains("https://link.invalid/0"))
+        #expect(result.html.contains("https://link.invalid/1"))
+        #expect(!result.html.contains("evil.example"))
+        #expect(!result.html.contains("mailto:"))
+    }
+
+    /// The form the `\s+`-only pattern walked past: HTML5's "before attribute name" state
+    /// treats `/` as a separator, so this `href` is real and live, and the tokenizer needs no
+    /// separator at all after a quoted value.
+    @Test(arguments: [
+        "<a/href=\"https://evil.example\">x</a>",
+        "<a//href='https://evil.example'>x</a>",
+        "<a/href=https://evil.example>x</a>",
+        "<a href=\"https://ok.example\"href=\"https://evil.example\">x</a>",
+        "<a\nhref=\"https://evil.example\">x</a>",
+        "<a href = \"https://evil.example\" >x</a>",
+        "<a HREF=\"https://evil.example\">x</a>",
+    ])
+    func failClosedStripLeavesNoLiveHref(markup: String) {
+        let stripped = MailHTMLSanitizer.stripHrefsWithRegex(markup)
+        #expect(!stripped.lowercased().contains("href"))
+        #expect(!stripped.contains("evil.example"))
+    }
+
+    /// The strip must not eat the rest of the tag, or the fallback would render as gibberish.
+    @Test func failClosedStripKeepsEverythingThatIsNotAnHref() {
+        let stripped = MailHTMLSanitizer.stripHrefsWithRegex(
+            "<p>hi <a/href=\"https://evil.example\" title=\"open\">ntust.edu.tw</a></p>"
+        )
+        #expect(stripped == "<p>hi <a title=\"open\">ntust.edu.tw</a></p>")
+    }
+
+    /// `LinkedHTML`'s contract in one assertion: the html it carries never holds a live href
+    /// while `links` claims there is nothing to tap. Run over the whole XSS corpus plus the
+    /// anchor shapes above, so a future change to either branch has to keep it true.
+    @Test func rewriteLinksNeverLeavesALiveHrefBehind() {
+        let extra = [
+            "<a/href=\"https://evil.example\">x</a>",
+            "<a href=\"https://ok.example\"href=\"https://evil.example\">x</a>",
+            "<a href=\"https://evil.example\">x<div>y</div></a>",
+            "<a href=\"https://evil.example\"><a href=\"https://evil2.example\">y</a></a>",
+            "<table><a href=\"https://evil.example\">x</a></table>",
+            "<a href=\"https://evil.example\">x\u{0000}y</a>",
+        ]
+        for vector in Self.corpus + extra {
+            let result = MailHTMLSanitizer.rewriteLinks(MailHTMLSanitizer.sanitize(vector, allowRemoteImages: false).html)
+            for href in Self.hrefValues(in: result.html) {
+                #expect(href.hasPrefix("https://link.invalid/"), "live href '\(href)' survived: \(vector)")
+            }
+            if result.links.isEmpty {
+                #expect(!result.html.lowercased().contains("href"), "empty links but an href remains: \(vector)")
+            }
+        }
+    }
+
+    private static let hrefValuePattern = try! NSRegularExpression(
+        pattern: #"href\s*=\s*"([^"]*)""#, options: .caseInsensitive
+    )
+
+    private static func hrefValues(in html: String) -> [String] {
+        hrefValuePattern.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap {
+            Range($0.range(at: 1), in: html).map { range in String(html[range]) }
+        }
+    }
 }
 #endif

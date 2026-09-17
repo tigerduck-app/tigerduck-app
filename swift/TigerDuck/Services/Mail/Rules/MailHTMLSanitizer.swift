@@ -204,11 +204,26 @@ nonisolated enum MailHTMLSanitizer {
     /// AND unquoted `href=value` occurrence textually (HTML5 allows an unquoted attribute value
     /// — fix round 2, minor 5: the quoted-only pattern left that form untouched, so this
     /// defensive path could still leave a live link tappable), so nothing survives this path.
-    private static let hrefAttributePattern = try! NSRegularExpression(
-        pattern: #"\s+href\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)"#, options: .caseInsensitive
+    ///
+    /// Whitespace is not the only thing that can precede an attribute name. HTML5's
+    /// "before attribute name" state treats `/` as a separator too, so `<a/href="…">` carries
+    /// a real, live `href` that a `\s+`-only pattern walked straight past — under-stripping on
+    /// the one path whose entire job is that nothing survives it. After a quoted value the
+    /// tokenizer needs no separator at all (`<a href="a"href="b">` is two attributes), so a
+    /// quote is a valid start boundary as well; it is matched with a zero-width lookbehind so
+    /// the previous attribute's closing quote is not swallowed along with it.
+    ///
+    /// Over-stripping is deliberately the safe side here: this path's output is markup with no
+    /// live links, so removing an `href=` that was only ever text costs a few characters of a
+    /// mail that already failed to parse, while leaving one costs a tappable phishing link.
+    ///
+    /// Not `private`: this is the last line of defence for link addressing and is unit-tested
+    /// directly, because there is no input that makes SwiftSoup's own parser fail on demand.
+    static let hrefAttributePattern = try! NSRegularExpression(
+        pattern: #"(?:[\s/]+|(?<=["']))href\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)"#, options: .caseInsensitive
     )
 
-    private static func stripHrefsWithRegex(_ html: String) -> String {
+    static func stripHrefsWithRegex(_ html: String) -> String {
         let range = NSRange(html.startIndex..., in: html)
         return hrefAttributePattern.stringByReplacingMatches(in: html, range: range, withTemplate: "")
     }
