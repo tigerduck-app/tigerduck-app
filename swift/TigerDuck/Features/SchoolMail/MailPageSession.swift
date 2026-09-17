@@ -38,14 +38,21 @@ final class MailPageSession {
     /// Reports an authentication rejection thrown by any command run through `use(_:)`.
     private let onAuthFailure: @MainActor () -> Void
 
+    /// The idle-close wait, injectable so a test can drive the timer instead of waiting for it
+    /// — the same seam `MailComposeViewModel` takes for its sent-copy dedupe delay. Nothing in
+    /// this type's tests then depends on wall-clock scheduling.
+    private let sleep: @Sendable (Duration) async -> Void
+
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
-        onAuthFailure: @escaping @MainActor () -> Void = { MailAccountManager.shared.handleAuthFailure() }
+        onAuthFailure: @escaping @MainActor () -> Void = { MailAccountManager.shared.handleAuthFailure() },
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.idleClose = idleClose
         self.open = open
         self.onAuthFailure = onAuthFailure
+        self.sleep = sleep
     }
 
     /// Runs `body` with the session's client, counting the whole call — including resolving
@@ -146,8 +153,9 @@ final class MailPageSession {
         closeGeneration += 1
         let generation = closeGeneration
         let delay = idleClose
+        let sleep = self.sleep
         closeTask = Task { [weak self] in
-            try? await Task.sleep(for: delay)
+            await sleep(delay)
             guard !Task.isCancelled else { return }
             await self?.fireClose(generation: generation)
         }

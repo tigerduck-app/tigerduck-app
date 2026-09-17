@@ -226,14 +226,11 @@ struct MailMoverTests {
         #expect(!MailMover.shouldRecordAfterFailure(serverConfirmsDeleted: false, wasAlreadyDeleted: false))
     }
 
-    // MARK: user search contract (no client-side fallback)
-
-    @Test func aRejectedSearchSurfacesAsSearchUnsupported() async throws {
-        let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 1, subject: "hello")]])
-        await fake.update { $0.searchError = .searchUnsupported }
-        await #expect(throws: MailClientError.searchUnsupported) {
-            _ = try await fake.search(folder: "INBOX", query: "hello")
-        }
-    }
+    // The "user search contract (no client-side fallback)" test that used to sit here only
+    // asserted that `FakeMailClient.search` throws the error the test had just assigned to
+    // `fake.searchError`: no `MailMover`, `LiveMailClient` or view-model code was involved, and
+    // it passed with all three deleted. The real contract — the list falling back to loaded mail
+    // when the server refuses SEARCH — is covered by
+    // `MailListViewModelTests.searchFallsBackToLoadedMailWhenTheServerRefuses`.
 }
 #endif

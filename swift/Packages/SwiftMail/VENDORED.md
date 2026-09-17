@@ -28,6 +28,13 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    in with the stored credentials instead of failing as no-longer-authenticated
    (`IMAP/IMAPServer+Connection.swift`).
 
+   This change invalidates an upstream test: `IMAPPlaintextIntegrationTests`'
+   `reconnectsBeforeResolvingExamineMailboxPath` asserted exactly the silent re-login it
+   removes, and so could not pass here. It is kept, renamed
+   `resolvesExamineMailboxPathAndDoesNotSilentlyReLogInAfterDisconnect`, asserting the
+   namespace-prefix resolution it was really about *before* the disconnect, and the new
+   contract — a command after `disconnect()` fails — after it.
+
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.

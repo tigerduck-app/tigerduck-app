@@ -53,8 +53,14 @@ import Testing
             }
         }
 
+        /// Upstream, this test disconnected and then relied on `examineMailbox` silently
+        /// reconnecting and logging back in. TigerDuck change 4 (see `VENDORED.md`) deliberately
+        /// removes that: `closeAllConnections()` clears the stored `authentication`, so the next
+        /// command fails as no-longer-authenticated instead. The namespace-prefix resolution the
+        /// test's name refers to is still asserted — before the disconnect, where it belongs —
+        /// and the disconnect half now asserts the new contract.
         @Test(.timeLimit(.minutes(1)))
-        func reconnectsBeforeResolvingExamineMailboxPath() async throws {
+        func resolvesExamineMailboxPathAndDoesNotSilentlyReLogInAfterDisconnect() async throws {
             let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             let maildir = tempRoot.appendingPathComponent("Maildir")
             try FileManager.default.createDirectory(at: maildir, withIntermediateDirectories: true)
@@ -77,13 +83,15 @@ import Testing
                 let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
                 try await server.connect()
                 try await server.login(username: "testuser", password: "testpass")
-                try await server.disconnect()
 
                 let status = try await server.examineMailbox("Sent")
-
                 #expect(status.isReadOnly)
                 #expect(testServer.lastExaminedMailbox == "INBOX.Sent")
+
                 try await server.disconnect()
+                await #expect(throws: (any Error).self) {
+                    _ = try await server.examineMailbox("Sent")
+                }
             }
         }
     }

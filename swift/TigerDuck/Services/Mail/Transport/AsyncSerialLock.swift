@@ -19,6 +19,12 @@ actor AsyncSerialLock {
 
     init() {}
 
+    /// How many callers are queued behind the current holder. Exists for the FIFO test, which
+    /// has to know that waiter *n* has actually enqueued before it spawns waiter *n+1* — the
+    /// only alternative being a sleep between spawns, which is a guess about scheduling rather
+    /// than a fact about this queue, and the reason that test used to flake.
+    var waiterCount: Int { waiters.count }
+
     /// Acquires the lock, queuing FIFO behind whoever already holds it. Every caller must pair
     /// this with a later `release()` (in both the success and failure paths) — `withLock` below
     /// does that automatically and is the safer choice for callers that don't have a specific

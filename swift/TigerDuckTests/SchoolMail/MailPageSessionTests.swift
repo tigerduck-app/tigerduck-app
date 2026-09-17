@@ -8,41 +8,87 @@ import Testing
 /// and a network/certificate error must drop the connection so the next call reconnects —
 /// but only once every concurrent `use(_:)` is done with it (fix round 1).
 ///
-/// `idleClose` is a generous 200 ms in every test here, with margins at least 50 ms clear of
-/// it in both directions, specifically so these don't flake under CI scheduling jitter the
-/// way the original 10/15/25 ms margins did.
+/// Nothing here waits on a clock. An in-flight `use(_:)` is parked inside the client on
+/// `FakeMailClient`'s command gate, and the idle-close timer is the injected `sleep:` below,
+/// which the test fires by hand — so "the delay has passed" and "the call is still in flight"
+/// are facts the test establishes rather than margins it hopes for. These two tests raced
+/// 300 ms of sleeps against a 350 ms body before, and flaked accordingly.
 @MainActor
 struct MailPageSessionTests {
     private static let idleClose: Duration = .milliseconds(200)
 
+    /// Stands in for the idle-close `Task.sleep`. Each call reports that the timer is armed and
+    /// then suspends until the test fires it.
+    private actor CloseTimer {
+        private var sleepers: [CheckedContinuation<Void, Never>] = []
+        private var armings = 0
+        private var armWaiters: [CheckedContinuation<Void, Never>] = []
+
+        /// One armed idle-close wait.
+        func sleep() async {
+            armings += 1
+            for waiter in armWaiters { waiter.resume() }
+            armWaiters = []
+            await withCheckedContinuation { sleepers.append($0) }
+        }
+
+        /// Returns once the session has armed a close at least `count` times.
+        func waitUntilArmed(atLeast count: Int = 1) async {
+            while armings < count {
+                await withCheckedContinuation { armWaiters.append($0) }
+            }
+        }
+
+        var armedCount: Int { armings }
+
+        /// Lets every armed timer's wait finish, as if the idle delay had elapsed.
+        func fire() {
+            let waiting = sleepers
+            sleepers = []
+            for sleeper in waiting { sleeper.resume() }
+        }
+    }
+
     @Test func closeIsDeferredWhileAUseIsInFlightAndHappensAfterItEnds() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
-        let session = MailPageSession(idleClose: Self.idleClose, open: { fake })
+        let timer = CloseTimer()
+        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { _ in await timer.sleep() })
         _ = try await session.use { _ in }
 
+        await fake.update { $0.hold("status") }
         let useTask = Task {
-            try await session.use { _ in try? await Task.sleep(for: .milliseconds(350)) }
+            try await session.use { client in _ = try await client.status(folder: "INBOX") }
         }
-        try await Task.sleep(for: .milliseconds(20)) // let the use above actually start first
-        session.releaseSoon() // requested while that use is still in flight
+        await fake.waitForArrival("status") // the use really is in flight, not merely spawned
 
-        // The idle-close delay (200 ms) has long since passed, but the use is still running —
-        // the close must not have happened yet.
-        try await Task.sleep(for: .milliseconds(280))
+        session.releaseSoon() // requested while that use is still in flight
+        // Nothing may even be armed yet: an in-flight call defers the close entirely.
+        #expect(await timer.armedCount == 0)
         #expect(await fake.calls.contains("logout") == false)
 
-        _ = try await useTask.value // let the use finish
-        try await Task.sleep(for: .milliseconds(280))
+        await fake.release("status")
+        _ = try await useTask.value // the use is done; the deferred close is armed now
+
+        await timer.waitUntilArmed()
+        await timer.fire() // the whole idle delay, with no clock
+        await fake.waitForArrival("logout")
         #expect(await fake.calls.contains("logout"))
     }
 
     @Test func aStaleTimerDoesNothing() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
-        let session = MailPageSession(idleClose: Self.idleClose, open: { fake })
+        let timer = CloseTimer()
+        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { _ in await timer.sleep() })
         _ = try await session.use { _ in }
         session.releaseSoon() // arms a close at generation N
+        await timer.waitUntilArmed()
         _ = try await session.use { _ in } // cancels it and bumps the generation; nothing re-arms it
-        try await Task.sleep(for: .milliseconds(280))
+
+        // Fire the superseded timer anyway, exactly as a real `Task.sleep` that raced past its
+        // own `cancel()` by a tick would: whichever of the cancellation check or the generation
+        // guard catches it, no close may happen.
+        await timer.fire()
+        await Task.yield()
         #expect(await fake.calls.contains("logout") == false)
     }
 
@@ -87,10 +133,11 @@ struct MailPageSessionTests {
         let session = MailPageSession(idleClose: .seconds(30), open: { fake })
         _ = try await session.use { _ in }
 
+        await fake.update { $0.hold("status") }
         let longUseTask = Task {
-            try await session.use { _ in try? await Task.sleep(for: .milliseconds(300)) }
+            try await session.use { client in _ = try await client.status(folder: "INBOX") }
         }
-        try await Task.sleep(for: .milliseconds(50)) // let the long use actually start first
+        await fake.waitForArrival("status") // parked inside the client, genuinely in flight
 
         await #expect(throws: MailClientError.self) {
             try await session.use { _ in throw MailClientError.unreachable }
@@ -99,8 +146,10 @@ struct MailPageSessionTests {
         // drop it asked for must be deferred, not acted on immediately.
         #expect(await fake.calls.contains("logout") == false)
 
-        _ = try await longUseTask.value // let the long use finish
-        try await Task.sleep(for: .milliseconds(80)) // give the now-deferred drop a moment to run
+        await fake.release("status")
+        // `use` only returns once its own `endUse()` has run, and that is what performs the
+        // deferred drop — so there is nothing left to wait for after this line.
+        _ = try await longUseTask.value
         #expect(await fake.calls.contains("logout"))
     }
 

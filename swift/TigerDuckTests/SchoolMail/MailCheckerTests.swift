@@ -218,11 +218,20 @@ struct MailCheckerTests {
         #expect(await h.checker.check(trigger: .foreground) == .skippedSignedOut)
     }
 
+    /// Alternating triggers, so "newest first" is actually pinned: with twelve identical records
+    /// the ordering assertion held for any permutation, including the ring buffer keeping the ten
+    /// *oldest*. Call 1 (no marker yet) is the baseline reset and calls 2–12 are `noNewMail`, so
+    /// the surviving ten are calls 3–12: newest is call 12 (`page`), oldest kept is call 3
+    /// (`foreground`), and the baseline reset must have been evicted.
     @Test func diagnosticsKeepTheTenNewest() async {
         let h = Self.harness(inbox: [], marker: nil)
-        for _ in 0..<12 { _ = await h.checker.check(trigger: .foreground) }
+        for index in 0..<12 {
+            _ = await h.checker.check(trigger: index.isMultiple(of: 2) ? .foreground : .page)
+        }
         #expect(h.prefs.diagnostics.count == 10)
-        #expect(h.prefs.diagnostics.first?.trigger == "foreground")
+        #expect(h.prefs.diagnostics.first?.trigger == "page")
+        #expect(h.prefs.diagnostics.last?.trigger == "foreground")
+        #expect(!h.prefs.diagnostics.contains { $0.result == MailCheckOutcome.baselineReset.diagnosticText })
         #expect(h.prefs.lastCheckAt != nil)
     }
 

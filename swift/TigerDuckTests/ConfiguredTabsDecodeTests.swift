@@ -17,10 +17,16 @@ struct ConfiguredTabsDecodeTests {
         #expect(AppState.decodeConfiguredTabs(data, isShown: { $0 != .schoolMail }) == [.home, .classTable])
     }
 
+    /// iOS-only: the default predicate is `\.isImplemented`, and `.schoolMail`'s is
+    /// `SchoolMailAvailability.isEnabled`, which is false on macOS — the `TigerDuckTests`
+    /// target builds for macOS too, where this decodes to `[.home]`. The rest of this file is
+    /// platform-independent and stays that way, so it keeps running on both.
+    #if os(iOS)
     @Test func theDefaultPredicateKeepsSchoolMailInThisDebugBuild() throws {
         let data = try JSONEncoder().encode(["home", "schoolMail"])
         #expect(AppState.decodeConfiguredTabs(data) == [.home, .schoolMail])
     }
+    #endif
 
     @Test func nilOrGarbageDataFallsBackLikeBefore() {
         #expect(AppState.decodeConfiguredTabs(nil) == nil)

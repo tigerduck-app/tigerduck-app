@@ -38,36 +38,32 @@ struct AsyncSerialLockTests {
         // queues behind it.
         await lock.acquire()
 
-        let taskA = Task {
-            await lock.acquire()
-            await recorder.record("A")
-            await lock.release()
+        // Each waiter is spawned only once the previous one has actually enqueued, which
+        // `waiterCount` reports as a fact instead of a sleep guessing at it. A `Task {}` is not
+        // guaranteed to reach its `acquire()` inside any fixed number of milliseconds, so the
+        // old 10 ms staggers could put B in the queue before A and fail a correct lock.
+        var tasks: [Task<Void, Never>] = []
+        for name in ["A", "B", "C"] {
+            tasks.append(Task {
+                await lock.acquire()
+                await recorder.record(name)
+                await lock.release()
+            })
+            while await lock.waiterCount < tasks.count { await Task.yield() }
         }
-        // Stagger each spawn so every waiter has enqueued behind the held lock before the next
-        // one is even created — this is what makes the arrival order (and so the expected FIFO
-        // order) deterministic.
-        try await Task.sleep(for: .milliseconds(10))
-        let taskB = Task {
-            await lock.acquire()
-            await recorder.record("B")
-            await lock.release()
-        }
-        try await Task.sleep(for: .milliseconds(10))
-        let taskC = Task {
-            await lock.acquire()
-            await recorder.record("C")
-            await lock.release()
-        }
-        try await Task.sleep(for: .milliseconds(10))
 
         await lock.release() // let the queue start draining
 
-        _ = await (taskA.value, taskB.value, taskC.value)
+        for task in tasks { await task.value }
         let events = await recorder.events
         #expect(events == ["A", "B", "C"])
     }
 
-    @Test func aThrowingBodyStillReleasesTheLock() async throws {
+    /// `.timeLimit` because the failure mode this covers is a **hang**, not a wrong value: a
+    /// `withLock` that stopped releasing on the error path would leave the second `withLock`
+    /// below waiting forever, and Swift Testing applies no default limit.
+    @Test(.timeLimit(.minutes(1)))
+    func aThrowingBodyStillReleasesTheLock() async throws {
         let lock = AsyncSerialLock()
         struct TestError: Error {}
 

@@ -127,13 +127,16 @@ actor FakeMailClient: MailClient {
         uid: UInt32,
         from: String = "office@mail.ntust.edu.tw",
         name: String? = nil,
-        subject: String = "subject \(Int.random(in: 0...9))",
+        // nil means "subject <uid>": deterministic, because `search` matches on subject and
+        // `append`/`send`'s auto-saved copy both mint messages with this default.
+        subject: String? = nil,
         seen: Bool = false,
         deleted: Bool = false,
         text: String? = "body",
         html: String? = nil,
         messageID: String? = nil
     ) -> Message {
+        let subject = subject ?? "subject \(uid)"
         let summary = MailSummary(
             uid: uid, fromName: name, fromAddress: from, to: ["b10000000@mail.ntust.edu.tw"], cc: nil,
             subject: subject, date: Date(timeIntervalSince1970: 1_789_000_000 + TimeInterval(uid)),
@@ -154,7 +157,12 @@ actor FakeMailClient: MailClient {
         if let acceptedPassword, acceptedPassword != password { throw MailClientError.authenticationFailed }
     }
 
-    func logout() async { calls.append("logout") }
+    /// Gated like every other command so a test can wait for a close that happens on a task it
+    /// does not hold — `MailPageSession`'s idle-close timer, for one.
+    func logout() async {
+        calls.append("logout")
+        await gate("logout")
+    }
 
     func listFolders() async throws -> [String] {
         calls.append("listFolders")
@@ -294,6 +302,7 @@ actor FakeMailClient: MailClient {
 
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {
         calls.append("append \(folder) \(flags.map(\.rawValue))")
+        await gate("append")
         var messages = folders[folder] ?? []
         let uid = (messages.map(\.summary.uid).max() ?? 0) + 1
         var appended = Self.message(uid: uid, seen: flags.contains(.seen), messageID: MailRawHeaders.value(named: "Message-ID", in: message))
