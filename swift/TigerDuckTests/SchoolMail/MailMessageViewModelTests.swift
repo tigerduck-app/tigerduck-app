@@ -75,11 +75,12 @@ struct MailMessageViewModelTests {
 
     @Test func openingUnreadMailMarksItReadAndClearsItsNotification() async {
         let h = Self.harness(FakeMailClient.message(uid: 7, seen: false))
-        var seenChanges: [(UInt32, Bool)] = []
-        h.model.onSeenChanged = { seenChanges.append(($0, $1)) }
+        var seenChanges: [(String, UInt32, Bool)] = []
+        h.model.onSeenChanged = { seenChanges.append(($0, $1, $2)) }
         await h.model.load()
         #expect(await h.fake.calls.contains("setFlag seen true [7]"))
-        #expect(seenChanges.map(\.0) == [7])
+        #expect(seenChanges.map(\.0) == ["INBOX"])
+        #expect(seenChanges.map(\.1) == [7])
         #expect(h.center.removed == ["school-mail-1-7"])
     }
 
@@ -113,12 +114,13 @@ struct MailMessageViewModelTests {
 
     @Test func movingToTrashRemovesItFromTheList() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
-        var removed: [UInt32] = []
-        h.model.onRemoved = { removed.append($0) }
+        var removed: [(String, UInt32)] = []
+        h.model.onRemoved = { removed.append(($0, $1)) }
         await h.model.load()
         #expect(!h.model.deleteIsPermanent)
         #expect(await h.model.delete())
-        #expect(removed == [5])
+        #expect(removed.map(\.0) == ["INBOX"])
+        #expect(removed.map(\.1) == [5])
         #expect(await h.fake.folders[Self.trash]?.count == 1)
     }
 
@@ -206,9 +208,9 @@ struct MailMessageViewModelTests {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
         await h.fake.update { $0.uidValidity["INBOX"] = 2 }
-        var removed: [UInt32] = []
+        var removed: [(String, UInt32)] = []
         var changedFolders: [String] = []
-        h.model.onRemoved = { removed.append($0) }
+        h.model.onRemoved = { removed.append(($0, $1)) }
         h.model.onFolderChanged = { changedFolders.append($0) }
         #expect(await h.model.move(to: Self.trash) == false)
         #expect(h.model.actionError != nil)
@@ -463,6 +465,19 @@ struct MailMessageViewModelTests {
     /// interpolation inside an HTML literal (backslashes, etc.).
     private static func messageWithRawLinkHref(_ href: String) -> FakeMailClient.Message {
         FakeMailClient.message(uid: 5, html: "<a href=\"\(href)\">ntust.edu.tw</a>")
+    }
+    /// Android builds the plain view from the sanitized document; iOS built it from the raw
+    /// body, so text the sanitizer drops with its container was invisible in the formatted view
+    /// and visible — and linkified — in the plain one. Two views of one mail saying different
+    /// things is a usable bait-and-switch, and the hidden text also fed the password-bait
+    /// keyword haystack.
+    @Test func thePlainViewIsBuiltFromTheSanitizedDocumentNotTheRawBody() async {
+        let html = "<p>正常內容</p><noscript>您的信箱容量已滿，請立即驗證 https://evil.example/login</noscript>"
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: html))
+        await h.model.load()
+        #expect(h.model.plainText.contains("正常內容"))
+        #expect(!h.model.plainText.contains("evil.example"))
+        #expect(!h.model.plainText.contains("信箱容量已滿"))
     }
 }
 #endif

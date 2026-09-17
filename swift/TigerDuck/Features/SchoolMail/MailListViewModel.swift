@@ -199,8 +199,8 @@ final class MailListViewModel {
 
     func toggleRead(_ summary: MailSummary) async {
         let seen = !summary.isSeen
-        markSeenLocally(uid: summary.uid, seen: seen)
         let folder = selectedFolder
+        markSeenLocally(folder: folder, uid: summary.uid, seen: seen)
         let validity = page?.uidValidity
         do {
             try await session.use { client in
@@ -208,25 +208,32 @@ final class MailListViewModel {
                                          expectedUIDValidity: validity)
             }
         } catch MailClientError.folderChanged {
-            // A UID is only unique within its own folder — a same-UID row may already exist
-            // in whatever the user switched to, and reverting here without this guard would
-            // flip *that* row instead of undoing this one.
-            if folder == selectedFolder { markSeenLocally(uid: summary.uid, seen: !seen) }
+            markSeenLocally(folder: folder, uid: summary.uid, seen: !seen)
             await recoverFromFolderChange(folder)
         } catch {
-            if folder == selectedFolder { markSeenLocally(uid: summary.uid, seen: !seen) }
+            markSeenLocally(folder: folder, uid: summary.uid, seen: !seen)
         }
     }
 
-    /// Called by the message screen after it marks a mail read or unread.
-    func markSeenLocally(uid: UInt32, seen: Bool = true) {
+    /// Called by the message screen after it marks a mail read or unread, and by `toggleRead`
+    /// for its own optimistic update and revert.
+    ///
+    /// `folder` is not decoration: a UID is only unique within its own folder, so a call that
+    /// started against one folder must not touch the list once the user (or a deep link) has
+    /// switched to another. Without the guard a same-UID row of a *different* message gets
+    /// flipped here and written to that folder's cache by `persistPage()`.
+    func markSeenLocally(folder: String, uid: UInt32, seen: Bool = true) {
+        guard folder == selectedFolder else { return }
         if let index = summaries.firstIndex(where: { $0.uid == uid }) { summaries[index].isSeen = seen }
         if let index = searchResults?.firstIndex(where: { $0.uid == uid }) { searchResults?[index].isSeen = seen }
         persistPage()
     }
 
-    /// Called by the message screen after it moves or deletes a mail.
-    func removeLocally(uid: UInt32) {
+    /// Called by the message screen after it moves or deletes a mail. Guarded on `folder` for
+    /// the same reason `markSeenLocally` is — here the stale call would remove a different
+    /// folder's row outright and decrement that folder's `messageCount`.
+    func removeLocally(folder: String, uid: UInt32) {
+        guard folder == selectedFolder else { return }
         let removed = summaries.contains { $0.uid == uid }
         summaries.removeAll { $0.uid == uid }
         searchResults?.removeAll { $0.uid == uid }
@@ -256,8 +263,16 @@ final class MailListViewModel {
     func pollOnce() async {
         let check = runPageCheck
         guard let outcome = try? await session.use({ client in await check(client) }) else { return }
-        if case .newMail = outcome, selectedFolder == MailConstants.inbox, searchResults == nil {
+        // `.baselineReset` reloads for the same reason `.newMail` does: INBOX's UIDVALIDITY
+        // changed, so every UID on screen belongs to a generation the server has thrown away.
+        // Without this the list keeps painting the old generation (and answering taps with
+        // `folderChanged`) until something else happens to force a reload.
+        switch outcome {
+        case .newMail, .baselineReset:
+            guard selectedFolder == MailConstants.inbox, searchResults == nil else { return }
             await load()
+        default:
+            return
         }
     }
 

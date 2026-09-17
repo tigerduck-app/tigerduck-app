@@ -90,8 +90,8 @@ struct SchoolMailView: View {
                 session: viewModel.session,
                 folderRoles: viewModel.folderRoles,
                 otherFolders: viewModel.otherFolders,
-                onSeenChanged: { uid, seen in viewModel.markSeenLocally(uid: uid, seen: seen) },
-                onRemoved: { uid in viewModel.removeLocally(uid: uid) },
+                onSeenChanged: { folder, uid, seen in viewModel.markSeenLocally(folder: folder, uid: uid, seen: seen) },
+                onRemoved: { folder, uid in viewModel.removeLocally(folder: folder, uid: uid) },
                 onFolderChanged: { folder in Task { await viewModel.recoverFromFolderChange(folder) } }
             )
         }

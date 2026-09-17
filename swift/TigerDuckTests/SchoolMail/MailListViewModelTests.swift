@@ -301,5 +301,42 @@ struct MailListViewModelTests {
         #expect(h.model.summaries.map(\.uid) == [10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == 10)
     }
+    /// A UID is only unique within its folder. `removeLocally`/`markSeenLocally` are called by
+    /// the *message* screen, which can still be reporting on INBOX after a deep link switched
+    /// the list to another folder — matching on UID alone stripped a same-UID row of a different
+    /// message and wrote that to the other folder's cache.
+    @Test func changesReportedForAFolderTheListNoLongerShowsAreIgnored() async {
+        let h = Self.harness(inboxCount: 4)
+        await h.model.load()
+        let trash = MailFolderRole.trash.imapName
+        #expect(h.model.selectedFolder == "INBOX")
+
+        h.model.removeLocally(folder: trash, uid: 4)
+        #expect(h.model.summaries.map(\.uid) == [4, 3, 2, 1])
+        h.model.markSeenLocally(folder: trash, uid: 3, seen: true)
+        #expect(h.model.summaries.first { $0.uid == 3 }?.isSeen == false)
+
+        // The same calls for the folder actually on screen still act.
+        h.model.markSeenLocally(folder: "INBOX", uid: 3, seen: true)
+        #expect(h.model.summaries.first { $0.uid == 3 }?.isSeen == true)
+        h.model.removeLocally(folder: "INBOX", uid: 4)
+        #expect(h.model.summaries.map(\.uid) == [3, 2, 1])
+    }
+
+    /// The 60 s poll used to act on `.newMail` only, so after a UIDVALIDITY change the list kept
+    /// painting a generation the server had thrown away until something else forced a reload.
+    @Test func aBaselineResetFromThePollReloadsTheList() async {
+        let h = Self.harness(inboxCount: 4)
+        await h.model.load()
+        let before = await h.fake.calls.filter { $0.hasPrefix("page INBOX") }.count
+
+        h.script.outcome = .noNewMail
+        await h.model.pollOnce()
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page INBOX") }.count == before)
+
+        h.script.outcome = .baselineReset
+        await h.model.pollOnce()
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page INBOX") }.count > before)
+    }
 }
 #endif

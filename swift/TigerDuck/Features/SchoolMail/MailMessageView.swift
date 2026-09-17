@@ -37,8 +37,8 @@ struct MailMessageView: View {
         session: MailPageSession,
         folderRoles: [MailFolderRole: String],
         otherFolders: [String],
-        onSeenChanged: @escaping (UInt32, Bool) -> Void,
-        onRemoved: @escaping (UInt32) -> Void,
+        onSeenChanged: @escaping (String, UInt32, Bool) -> Void,
+        onRemoved: @escaping (String, UInt32) -> Void,
         onFolderChanged: @escaping (String) -> Void
     ) {
         let model = MailMessageViewModel(route: route, session: session, folderRoles: folderRoles)

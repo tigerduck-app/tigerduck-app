@@ -64,8 +64,11 @@ final class MailMessageViewModel {
     private(set) var isMoving = false
     var mode: ViewMode = .formatted
 
-    @ObservationIgnored var onSeenChanged: ((UInt32, Bool) -> Void)?
-    @ObservationIgnored var onRemoved: ((UInt32) -> Void)?
+    /// `(folder, uid, seen)` — the folder is part of the identity being reported, not
+    /// context: a UID means nothing without it, and the list must be able to tell that this
+    /// callback is about a folder it is no longer showing.
+    @ObservationIgnored var onSeenChanged: ((String, UInt32, Bool) -> Void)?
+    @ObservationIgnored var onRemoved: ((String, UInt32) -> Void)?
     /// A move/delete hit `MailClientError.folderChanged`: the folder's UIDVALIDITY moved
     /// server-side. This view model no longer drops the folder's cache itself — that bare
     /// `Task.detached` raced the list's own queued cache-write chain and could be undone by a
@@ -147,7 +150,7 @@ final class MailMessageViewModel {
                     try await client.setFlag(.seen, on: true, folder: folder, uids: [uid], expectedUIDValidity: validity)
                 }
                 detail?.summary.isSeen = true
-                onSeenChanged?(uid, true)
+                onSeenChanged?(folder, uid, true)
                 if folder == MailConstants.inbox, let inboxValidity = prefs.inboxUIDValidity {
                     notifier.removeNotification(uidValidity: inboxValidity, uid: uid)
                 }
@@ -221,7 +224,7 @@ final class MailMessageViewModel {
                 try await client.setFlag(.seen, on: !seen, folder: folder, uids: [uid], expectedUIDValidity: validity)
             }
             detail?.summary.isSeen = !seen
-            onSeenChanged?(uid, !seen)
+            onSeenChanged?(folder, uid, !seen)
         } catch MailClientError.folderChanged {
             // Fix round 2, minor 4: `setFlag` can hit the same `folderChanged` a move/delete
             // would — the list needs to recover here too, not only from `performMove`.
@@ -286,7 +289,7 @@ final class MailMessageViewModel {
         do {
             let result = try await session.use { client in try await operation(client, owned) }
             prefs.setOwnedDeleted(result.stillPending)
-            onRemoved?(uid)
+            onRemoved?(folder, uid)
             return true
         } catch {
             // Checked before opening a session, not inside one: after an authentication or
@@ -401,7 +404,15 @@ final class MailMessageViewModel {
             guard let html else { return (nil, nil, textBody ?? "") }
             let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: allowImages)
             let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
-            let plain = textBody ?? MailHTMLSanitizer.plainText(fromHTML: html)
+            // The *sanitized* document, matching Android's
+            // `SchoolMailMessageViewModel` — never the raw body. Text the sanitizer drops
+            // with its container (`<noscript>`, `<form>`, `<script>`) is invisible in the
+            // formatted view, so building the plain view from the raw html would show it
+            // (and linkify URLs inside it) only in the plain view: two views of one mail
+            // saying different things, which is exactly the bait-and-switch shape the
+            // warning layer exists to catch. It also feeds the password-bait keyword
+            // haystack, which would otherwise fire on text the user is never shown.
+            let plain = textBody ?? MailHTMLSanitizer.plainText(fromHTML: sanitized.html)
             return (sanitized, linked, plain)
         }.value
         return generation == htmlGeneration ? computed : nil
