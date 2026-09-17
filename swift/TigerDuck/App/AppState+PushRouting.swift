@@ -18,6 +18,19 @@ extension AppState {
     /// and clears the value once it has acted on it.
     enum DeepLink: Equatable {
         case bulletin(Int)
+        /// A School Mail notification. `uid == nil` (the "N 封新郵件" summary, the sign-in
+        /// failure notice) opens the folder list.
+        case schoolMail(folder: String, uid: UInt32?)
+    }
+
+    /// Parses a School Mail notification tap into a `DeepLink`. Returns `nil` for any
+    /// other `kind` (bulletin, popup, or unrecognized) so callers can chain it after
+    /// their own routing without misclassifying unrelated pushes.
+    static func schoolMailDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
+        guard userInfo["kind"] as? String == MailConstants.notificationKind else { return nil }
+        let folder = userInfo["folder"] as? String ?? MailConstants.inbox
+        let uid = (userInfo["uid"] as? Int).map { UInt32(truncatingIfNeeded: $0) }
+        return .schoolMail(folder: folder, uid: uid)
     }
 
     /// Payload for an operator-issued popup push. `id` is the server-side

@@ -611,7 +611,17 @@ final class AppState {
     var configuredTabs: [AppFeature] = {
         if let data = Defaults[.configuredTabsData],
            let rawValues = try? JSONDecoder().decode([String].self, from: data) {
-            let features = rawValues.compactMap { AppFeature(rawValue: $0) }
+            // `.filter(\.isImplemented)` drops both unknown raw values (an
+            // older build's saved/synced config replayed on a build that
+            // predates a case — `compactMap` above already turns those into
+            // nils) and features this build hides behind a gate, e.g. a
+            // `.schoolMail` tab pinned on a DEBUG build and then carried
+            // over (shared container, device restore) to a build where
+            // `SchoolMailAvailability.isEnabled` is false. Nothing
+            // legitimately reaches `configuredTabs` while unimplemented —
+            // `pinnableFeatures`, what `TabEditorView` offers, is filtered
+            // the same way — so this only ever catches stale data.
+            let features = rawValues.compactMap { AppFeature(rawValue: $0) }.filter(\.isImplemented)
             return features.isEmpty ? AppFeature.defaultTabs : features
         }
         return AppFeature.defaultTabs

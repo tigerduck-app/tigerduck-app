@@ -249,6 +249,8 @@ struct TigerDuckApp: App {
             } else {
                 appState.pendingServerPopup = payload
             }
+        case MailConstants.notificationKind:
+            appState.pendingDeepLink = AppState.schoolMailDeepLink(from: info)
         default:
             // Unknown / legacy kinds fall through to the OS default open
             // behaviour — no-op here so we don't accidentally swallow them.
