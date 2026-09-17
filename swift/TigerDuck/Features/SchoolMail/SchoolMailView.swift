@@ -11,6 +11,7 @@ struct SchoolMailView: View {
     @State private var showLoginSheet = false
     @State private var showGuide = false
     @State private var route: MailMessageRoute?
+    @State private var compose: MailComposeContext?
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
     private let account = MailAccountManager.shared
 
@@ -116,6 +117,13 @@ struct SchoolMailView: View {
                 Button { showGuide = true } label: { Image(systemName: "questionmark.circle") }
                     .accessibilityLabel(String(localized: "school_mail_use_other_app"))
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { compose = MailComposeContext(mode: .new) } label: { Image(systemName: "square.and.pencil") }
+                    .accessibilityLabel(String(localized: "school_mail_compose"))
+            }
+        }
+        .sheet(item: $compose, onDismiss: { Task { await viewModel.load() } }) { context in
+            MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles)
         }
         .task {
             await viewModel.load()
@@ -169,7 +177,11 @@ struct SchoolMailView: View {
 
     private func row(_ summary: MailSummary) -> some View {
         Button {
-            route = MailMessageRoute(folder: viewModel.selectedFolder, uid: summary.uid)
+            if viewModel.selectedFolder == viewModel.folderRoles[.drafts] {
+                compose = MailComposeContext(mode: .draft, folder: viewModel.selectedFolder, uid: summary.uid)
+            } else {
+                route = MailMessageRoute(folder: viewModel.selectedFolder, uid: summary.uid)
+            }
         } label: {
             MailRowView(summary: summary)
         }

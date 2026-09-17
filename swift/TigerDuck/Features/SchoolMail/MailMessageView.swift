@@ -5,6 +5,7 @@ import UIKit
 
 struct MailMessageView: View {
     @State private var viewModel: MailMessageViewModel
+    private let session: MailPageSession
     private let folderRoles: [MailFolderRole: String]
     private let otherFolders: [String]
 
@@ -20,6 +21,7 @@ struct MailMessageView: View {
     @State private var showDetails = false
     @State private var showMoveSheet = false
     @State private var confirmDelete = false
+    @State private var compose: MailComposeContext?
 
     /// A risky (or HTML/SVG) attachment the user asked to open or share, waiting on the
     /// confirmation dialog — `forSharing` remembers which action to resume once confirmed
@@ -44,6 +46,7 @@ struct MailMessageView: View {
         model.onRemoved = onRemoved
         model.onFolderChanged = onFolderChanged
         _viewModel = State(initialValue: model)
+        self.session = session
         self.folderRoles = folderRoles
         self.otherFolders = otherFolders
     }
@@ -86,6 +89,9 @@ struct MailMessageView: View {
         .sheet(item: $shareItem) { item in MailShareSheet(url: item.url) }
         .quickLookPreview($previewURL)
         .sheet(isPresented: $showMoveSheet) { moveSheet }
+        .sheet(item: $compose) { context in
+            MailComposeView(context: context, session: session, folderRoles: folderRoles)
+        }
         .alert(String(localized: "school_mail_source_large_title"), isPresented: Binding(
             get: { viewModel.needsSourceConfirmation }, set: { _ in })
         ) {
@@ -263,6 +269,16 @@ struct MailMessageView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
+                Button { startCompose(.reply) } label: { Label(String(localized: "school_mail_reply"), systemImage: "arrowshape.turn.up.left") }
+                Button { startCompose(.replyAll) } label: { Label(String(localized: "school_mail_reply_all"), systemImage: "arrowshape.turn.up.left.2") }
+                Button { startCompose(.forward) } label: { Label(String(localized: "school_mail_forward"), systemImage: "arrowshape.turn.up.right") }
+            } label: {
+                Image(systemName: "arrowshape.turn.up.left")
+            }
+            .disabled(viewModel.detail == nil)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
                 Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
                     ForEach(MailMessageViewModel.ViewMode.allCases) { mode in
                         Text(mode.title).tag(mode)
@@ -346,9 +362,19 @@ struct MailMessageView: View {
         }
     }
 
+    private func startCompose(_ mode: MailComposeMode) {
+        compose = MailComposeContext(
+            mode: mode, folder: viewModel.route.folder, uid: viewModel.route.uid, original: viewModel.original,
+            attachments: mode == .forward ? viewModel.detail?.attachments ?? [] : []
+        )
+    }
+
     private func openLink(_ href: String) {
         guard let url = URL(string: href) else { return }
-        if url.scheme?.lowercased() != "mailto", appState.browserPreference == .inApp {
+        if url.scheme?.lowercased() == "mailto" {
+            let target = url.absoluteString.dropFirst("mailto:".count).split(separator: "?").first.map(String.init) ?? ""
+            compose = MailComposeContext(mode: .new, to: MailAddress.parseList(target.removingPercentEncoding ?? target))
+        } else if appState.browserPreference == .inApp {
             inAppURL = MailFileItem(url: url)
         } else {
             openURL(url)
