@@ -117,6 +117,30 @@ struct MailStoreTests {
         #expect(lost.isEmpty, "lost \(lost.count)/\(folderCount): \(lost.prefix(10))")
     }
 
+    /// Task 11 dispatch addition: `MailChecker.shared` and `MailAccountManager.shared` each
+    /// construct their own `DefaultsMailPreferences()` instance over the same underlying
+    /// `UserDefaults` keys, so the lock guarding `setOwnedDeleted`'s read-modify-write must be
+    /// shared across every instance, not just within one — otherwise two instances racing over
+    /// the same suite lose entries the same way a single unlocked instance did (see
+    /// `concurrentSetOwnedDeletedCallsForDifferentFoldersLoseNoEntry` above).
+    @Test func concurrentSetOwnedDeletedCallsAcrossTwoInstancesLoseNoEntry() {
+        let suiteName = "MailStoreTests.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+        let prefsA = DefaultsMailPreferences(defaults: suite)
+        let prefsB = DefaultsMailPreferences(defaults: suite)
+        let folderCount = 200
+        DispatchQueue.concurrentPerform(iterations: folderCount) { index in
+            let prefs = index.isMultiple(of: 2) ? prefsA : prefsB
+            prefs.setOwnedDeleted(OwnedDeleted(folder: "folder-\(index)", uidValidity: 1, uids: [UInt32(index)]))
+        }
+        var lost: [Int] = []
+        for index in 0..<folderCount {
+            if prefsA.ownedDeleted(folder: "folder-\(index)", uidValidity: 1).uids != [UInt32(index)] { lost.append(index) }
+        }
+        #expect(lost.isEmpty, "lost \(lost.count)/\(folderCount): \(lost.prefix(10))")
+    }
+
     @Test func inMemoryOwnedDeletedMatchesTheSameContract() {
         let prefs = InMemoryMailPreferences()
         #expect(prefs.ownedDeleted(folder: "INBOX", uidValidity: 7).uids.isEmpty)

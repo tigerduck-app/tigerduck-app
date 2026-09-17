@@ -70,7 +70,12 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     /// deletes mail in another) must not read the same snapshot and each write back a list
     /// missing the other's entry. Mirrors `MailCache`'s lock. The scalar properties below don't
     /// need it — each is a single `Defaults[key]` get/set, not a compound operation.
-    private let lock = NSLock()
+    ///
+    /// `static` — not per-instance — because `MailChecker.shared` and `MailAccountManager.shared`
+    /// each construct their own `DefaultsMailPreferences()` over the same underlying
+    /// `UserDefaults` keys. A per-instance lock would let their concurrent `setOwnedDeleted`
+    /// calls race the same way a single instance's calls used to before this lock existed.
+    private static let lock = NSLock()
 
     init(defaults: UserDefaults = .standard) {
         studentIDKey = Defaults.Key<String?>("school_mail_student_id", suite: defaults)
@@ -135,7 +140,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     }
 
     func ownedDeleted(folder: String, uidValidity: UInt32) -> OwnedDeleted {
-        lock.withLock {
+        Self.lock.withLock {
             guard let record = ownedDeletedRecords.first(where: { $0.folder == folder && $0.uidValidity == uidValidity }) else {
                 return OwnedDeleted(folder: folder, uidValidity: uidValidity, uids: [])
             }
@@ -144,7 +149,7 @@ nonisolated final class DefaultsMailPreferences: MailPreferences, @unchecked Sen
     }
 
     func setOwnedDeleted(_ owned: OwnedDeleted) {
-        lock.withLock {
+        Self.lock.withLock {
             var records = ownedDeletedRecords.filter { $0.folder != owned.folder }
             if !owned.uids.isEmpty {
                 records.append(OwnedDeletedRecord(folder: owned.folder, uidValidity: owned.uidValidity, uids: owned.uids))
