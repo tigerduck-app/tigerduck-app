@@ -14,6 +14,16 @@ nonisolated struct SanitizedHTML: Equatable, Sendable {
     var links: [MailLink]
 }
 
+/// HTML for the web view in which every `<a href>` is `https://link.invalid/<n>`, `links[n]`
+/// being the text and href that anchor had (message-screen dispatch, 2026-09-16 addition 1;
+/// mirrors Android's `LinkedHtml`/`MailHtmlDocument.rewriteLinks`). `links` is empty — and no
+/// `href` is left on any anchor at all — when the anchors couldn't be kept in lockstep with it;
+/// see `MailHTMLSanitizer.rewriteLinks`.
+nonisolated struct LinkedHTML: Equatable, Sendable {
+    var html: String
+    var links: [MailLink]
+}
+
 /// Appendix A.2. The sanitizer is the second line of defence; the first is the web view
 /// with JavaScript off and network loads blocked (`MailWebViewFactory`).
 nonisolated enum MailHTMLSanitizer {
@@ -136,6 +146,48 @@ nonisolated enum MailHTMLSanitizer {
                 .replacingOccurrences(of: ">", with: "&gt;")
             return SanitizedHTML(html: "<pre>\(escaped)</pre>", blockedRemoteImages: 0, links: [])
         }
+    }
+
+    /// Replaces every `<a href>` in already-sanitized `html` with `https://link.invalid/<n>`
+    /// and returns, as `LinkedHTML.links`, the text and original href of anchor `n` — both
+    /// read off the very tree this walks and rewrites, never off `SanitizedHTML.links`. Those
+    /// two lists can disagree: the sanitizer's cleaner can drop elements while keeping their
+    /// children, building a tree the HTML parser never would from scratch, so parsing its
+    /// output again can shift an anchor's index (message-screen dispatch, 2026-09-16 addition
+    /// 1; mirrors Android's `MailHtmlDocument.rewriteLinks`).
+    ///
+    /// The web view parses this rewritten markup once more, so it is parsed here once more
+    /// too, and its anchors (synthetic href and text, in order) must equal the ones just
+    /// written. If they don't, nothing is guessed: every `href` is stripped from every `<a>`,
+    /// the list is empty, and no link in this mail can be tapped.
+    ///
+    /// `.invalid` is IANA/RFC 2606-reserved and never resolves; the web view's navigation
+    /// delegate answers a tap with the index alone, never a URL, so no WebKit
+    /// canonicalization quirk can ever match a tap to the wrong entry.
+    static func rewriteLinks(_ html: String) -> LinkedHTML {
+        guard let doc = try? SwiftSoup.parseBodyFragment(html) else { return LinkedHTML(html: html, links: []) }
+        doc.outputSettings().prettyPrint(pretty: false)
+        guard let anchors = try? doc.select("a[href]") else {
+            return LinkedHTML(html: (try? doc.body()?.html()) ?? html, links: [])
+        }
+        var links: [MailLink] = []
+        for (index, anchor) in anchors.array().enumerated() {
+            let text = (try? anchor.text()) ?? ""
+            let href = (try? anchor.attr("href")) ?? ""
+            links.append(MailLink(text: MailTextCleaner.clean(text), href: href))
+            _ = try? anchor.attr("href", "https://link.invalid/\(index)")
+        }
+        let rewritten = (try? doc.body()?.html()) ?? html
+        if let reparsed = try? SwiftSoup.parseBodyFragment(rewritten), let reanchors = try? reparsed.select("a[href]"),
+           Self.hrefsAndTexts(reanchors) == Self.hrefsAndTexts(anchors) {
+            return LinkedHTML(html: rewritten, links: links)
+        }
+        _ = try? anchors.removeAttr("href")
+        return LinkedHTML(html: (try? doc.body()?.html()) ?? rewritten, links: [])
+    }
+
+    private static func hrefsAndTexts(_ anchors: Elements) -> [[String]] {
+        anchors.array().map { [((try? $0.attr("href")) ?? ""), ((try? $0.text()) ?? "")] }
     }
 
     private static func makeWhitelist() throws -> Whitelist {

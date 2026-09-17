@@ -399,5 +399,146 @@ nonisolated enum MailWarnings {
     private static func stripWWW(_ host: String) -> String {
         host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
+
+    // MARK: Canonicalization (message-screen dispatch addition 2)
+
+    private struct BrowserURLParts {
+        var host: String
+        var port: Int?
+        var path: String
+        var query: String?
+        var fragment: String?
+    }
+
+    /// Characters a path/query/fragment carries literally after canonicalization —
+    /// unreserved (RFC 3986) plus sub-delims and the structural characters `:@/?#`. Mirrors
+    /// Android's `PATH_SAFE` constant; anything else (space, control characters, quotes,
+    /// brackets, any non-ASCII byte) is percent-encoded the way a browser's own
+    /// canonicalization would.
+    private static let pathSafeBytes: Set<UInt8> = {
+        var set = Set<UInt8>()
+        for scalar in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@/?#".unicodeScalars {
+            set.insert(UInt8(scalar.value))
+        }
+        return set
+    }()
+
+    /// The href judged, shown and opened for a tapped link (message-screen dispatch,
+    /// 2026-09-16 addition 2). For `http`/`https` (scheme matched ASCII case-insensitively),
+    /// canonicalized once the way a browser would, using the same scalar-level authority
+    /// parsing `browserHostOf` uses above: a backslash anywhere after the scheme folds to
+    /// `/` (WHATWG: `\` is a path/authority separator for a "special" scheme), the authority
+    /// ends at the first unescaped `/`, `?` or `#`, userinfo ends at the LAST `@`, a host
+    /// starting with `[` runs to the matching `]` (IPv6), the default port for the scheme is
+    /// dropped, and the path/query/fragment are percent-decoded then re-encoded so a raw and
+    /// a pre-encoded form of the same character converge on one string. Any other scheme
+    /// (`mailto:`, etc.) is returned trimmed and otherwise unchanged — never canonicalized.
+    /// `nil` only when the href claims `http`/`https` but doesn't parse as `scheme://host…`
+    /// with a non-empty host; the caller then shows the href as written, without an Open
+    /// action, rather than guessing.
+    static func canonicalHref(_ rawHref: String) -> String? {
+        let href = sanitizeHref(rawHref).trimmingCharacters(in: .whitespacesAndNewlines)
+        let range = NSRange(href.startIndex..., in: href)
+        guard let schemeMatch = schemePattern.firstMatch(in: href, range: range),
+              let fullRange = Range(schemeMatch.range, in: href),
+              let schemeRange = Range(schemeMatch.range(at: 1), in: href) else { return href }
+        let scheme = href[schemeRange]
+        let isHTTPS = isASCIICaseInsensitiveEqual(scheme, "https")
+        guard isHTTPS || isASCIICaseInsensitiveEqual(scheme, "http") else { return href }
+        let lowerScheme = isHTTPS ? "https" : "http"
+        let rest = String(href[fullRange.upperBound...]).replacingOccurrences(of: "\\", with: "/")
+        guard let parts = browserURLParts(rest) else { return nil }
+        var result = "\(lowerScheme)://\(parts.host)"
+        let defaultPort = isHTTPS ? 443 : 80
+        if let port = parts.port, port != defaultPort { result += ":\(port)" }
+        result += canonicalPathComponent(parts.path.isEmpty ? "/" : parts.path)
+        if let query = parts.query { result += "?" + canonicalPathComponent(query) }
+        if let fragment = parts.fragment { result += "#" + canonicalPathComponent(fragment) }
+        return result
+    }
+
+    /// Parses `rest` (everything right after `scheme:`, backslashes already folded to `/`)
+    /// the same tolerant, scalar-by-scalar way `browserHostOf` reads an authority (so a
+    /// combining mark can't hide a separator), then splits whatever follows the authority
+    /// into path/query/fragment. `nil` when the host ends up empty or a `:port` suffix isn't
+    /// all-decimal.
+    private static func browserURLParts(_ rest: String) -> BrowserURLParts? {
+        let scalars = rest.unicodeScalars
+        var start = scalars.startIndex
+        while start < scalars.endIndex, scalars[start] == "/" {
+            start = scalars.index(after: start)
+        }
+        var end = scalars.endIndex
+        var cursor = start
+        while cursor < scalars.endIndex {
+            let c = scalars[cursor]
+            if c == "/" || c == "?" || c == "#" {
+                end = cursor
+                break
+            }
+            cursor = scalars.index(after: cursor)
+        }
+        let authority = scalars[start..<end]
+        var afterUserinfo = authority
+        if let lastAt = authority.lastIndex(of: "@") {
+            afterUserinfo = authority[authority.index(after: lastAt)...]
+        }
+        var host = afterUserinfo
+        var portString = ""
+        var hasPort = false
+        if afterUserinfo.first == "[" {
+            if let closing = afterUserinfo.firstIndex(of: "]") {
+                host = afterUserinfo[afterUserinfo.startIndex...closing]
+                let afterBracket = afterUserinfo[afterUserinfo.index(after: closing)...]
+                if afterBracket.first == ":" {
+                    hasPort = true
+                    portString = String(afterBracket[afterBracket.index(after: afterBracket.startIndex)...])
+                }
+            }
+        } else if let colon = afterUserinfo.firstIndex(of: ":") {
+            host = afterUserinfo[afterUserinfo.startIndex..<colon]
+            hasPort = true
+            portString = String(afterUserinfo[afterUserinfo.index(after: colon)...])
+        }
+        guard !host.isEmpty else { return nil }
+        let normalizedHost = toASCII(normalizedDomain(String(host)))
+        var port: Int?
+        if hasPort {
+            guard !portString.isEmpty,
+                  portString.unicodeScalars.allSatisfy({ $0.value >= 0x30 && $0.value <= 0x39 }),
+                  let value = Int(portString) else { return nil }
+            port = value
+        }
+        let tail = String(rest[end...])
+        var pathPart = tail
+        var fragment: String?
+        if let hash = pathPart.firstIndex(of: "#") {
+            fragment = String(pathPart[pathPart.index(after: hash)...])
+            pathPart = String(pathPart[..<hash])
+        }
+        var query: String?
+        if let question = pathPart.firstIndex(of: "?") {
+            query = String(pathPart[pathPart.index(after: question)...])
+            pathPart = String(pathPart[..<question])
+        }
+        return BrowserURLParts(host: normalizedHost, port: port, path: pathPart, query: query, fragment: fragment)
+    }
+
+    /// Percent-decodes `raw` (falling back to the original string on a malformed escape) and
+    /// re-encodes every byte outside `pathSafeBytes`, so a raw character and an
+    /// already-percent-encoded form of the same character converge on one canonical string.
+    private static func canonicalPathComponent(_ raw: String) -> String {
+        guard !raw.isEmpty else { return raw }
+        let decoded = raw.removingPercentEncoding ?? raw
+        var result = ""
+        for byte in Array(decoded.utf8) {
+            if pathSafeBytes.contains(byte) {
+                result.unicodeScalars.append(Unicode.Scalar(byte))
+            } else {
+                result += String(format: "%%%02X", byte)
+            }
+        }
+        return result
+    }
 }
 #endif

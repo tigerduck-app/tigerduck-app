@@ -1,0 +1,250 @@
+#if os(iOS)
+import Foundation
+import Testing
+import WebKit
+@testable import TigerDuck
+
+@MainActor
+struct MailMessageViewModelTests {
+    struct Harness {
+        let model: MailMessageViewModel
+        let fake: FakeMailClient
+        let prefs: InMemoryMailPreferences
+        let center: RecordingNotificationCenter
+    }
+
+    static let trash = MailFolderRole.trash.imapName
+
+    static func harness(_ message: FakeMailClient.Message, folder: String = "INBOX", extra: [FakeMailClient.Message] = []) -> Harness {
+        var folders: [String: [FakeMailClient.Message]] = [Self.trash: []]
+        folders[folder] = [message] + extra
+        let fake = FakeMailClient(folders: folders)
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: folder, uidValidity: 1, messageCount: 1, summaries: [message.summary], oldestLoadedSequence: nil))
+        let prefs = InMemoryMailPreferences()
+        prefs.inboxUIDValidity = 1
+        let center = RecordingNotificationCenter()
+        let model = MailMessageViewModel(
+            route: MailMessageRoute(folder: folder, uid: message.summary.uid),
+            session: MailPageSession(idleClose: .milliseconds(10), open: { fake }),
+            folderRoles: [.inbox: "INBOX", .trash: Self.trash],
+            cache: cache, prefs: prefs, notifier: MailNotifier(center: center)
+        )
+        return Harness(model: model, fake: fake, prefs: prefs, center: center)
+    }
+
+    @Test func loadsSanitizedHTMLAndWarnings() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, from: "admin@evil.example", subject: "您的信箱容量已滿",
+                                                    text: "請立即驗證", html: "<p>hi</p><script>x()</script>"))
+        await h.model.load()
+        #expect(h.model.loadState == .loaded)
+        #expect(h.model.sanitized?.html.contains("<script") == false)
+        #expect(h.model.plainText == "請立即驗證")
+        #expect(h.model.warnings.contains(.externalSender(address: "admin@evil.example")))
+        #expect(h.model.warnings.contains(.passwordBait))
+    }
+
+    @Test func htmlOnlyMailGetsAPlainTextView() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: "<p>a</p><p>b</p>"))
+        await h.model.load()
+        #expect(h.model.plainText == "a\nb")
+    }
+
+    @Test func unreadableMailFallsBackToSource() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: nil))
+        await h.model.load()
+        #expect(h.model.parseFailed)
+        #expect(h.model.mode == .source)
+    }
+
+    @Test func openingUnreadMailMarksItReadAndClearsItsNotification() async {
+        let h = Self.harness(FakeMailClient.message(uid: 7, seen: false))
+        var seenChanges: [(UInt32, Bool)] = []
+        h.model.onSeenChanged = { seenChanges.append(($0, $1)) }
+        await h.model.load()
+        #expect(await h.fake.calls.contains("setFlag seen true [7]"))
+        #expect(seenChanges.map(\.0) == [7])
+        #expect(h.center.removed == ["school-mail-1-7"])
+    }
+
+    @Test func largeSourceAsksFirst() async {
+        var message = FakeMailClient.message(uid: 5)
+        message.summary.size = MailConstants.sourceConfirmBytes + 1
+        let h = Self.harness(message)
+        await h.model.load()
+        await h.model.loadSource()
+        #expect(h.model.needsSourceConfirmation)
+        #expect(h.model.source == nil)
+        await h.model.loadSource(confirmed: true)
+        #expect(h.model.source?.contains("Subject:") == true)
+    }
+
+    @Test func movingToTrashRemovesItFromTheList() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        var removed: [UInt32] = []
+        h.model.onRemoved = { removed.append($0) }
+        await h.model.load()
+        #expect(!h.model.deleteIsPermanent)
+        #expect(await h.model.delete())
+        #expect(removed == [5])
+        #expect(await h.fake.folders[Self.trash]?.count == 1)
+    }
+
+    // `MailPreferences` has no `ownDeletedUIDs` (message-screen dispatch, 2026-09-16 addition
+    // 3): the owned-deleted set is keyed by folder AND the UIDVALIDITY the page was built from.
+    @Test func pendingDeletionsAreRememberedWhenOthersFlaggedMailToo() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5), extra: [FakeMailClient.message(uid: 9, deleted: true)])
+        await h.model.load()
+        #expect(await h.model.move(to: Self.trash))
+        #expect(h.prefs.ownedDeleted(folder: "INBOX", uidValidity: 1).uids == [5])
+    }
+
+    @Test func deletingInsideTrashIsPermanent() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5), folder: Self.trash)
+        await h.model.load()
+        #expect(h.model.deleteIsPermanent)
+    }
+
+    /// A move that hits `folderChanged` shows the error and drops that folder's cache so a
+    /// later list load never serves the stale page (dispatch addition 4).
+    @Test func folderChangedShowsAnErrorAndDropsTheStaleCache() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        var removed: [UInt32] = []
+        h.model.onRemoved = { removed.append($0) }
+        #expect(await h.model.move(to: Self.trash) == false)
+        #expect(h.model.actionError != nil)
+        #expect(removed.isEmpty)
+    }
+
+    @Test func attachmentsAreWrittenToATemporaryFile() async throws {
+        let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
+                                filename: "課程.pdf", contentID: nil, size: 4, isAttachment: true)
+        var message = FakeMailClient.message(uid: 5)
+        message.detail?.parts = [part]
+        message.attachments = ["2": Data("%PDF".utf8)]
+        let h = Self.harness(message)
+        await h.model.load()
+        let url = try #require(await h.model.prepareAttachment(part))
+        #expect(url.lastPathComponent == "課程.pdf")
+        #expect(try Data(contentsOf: url) == Data("%PDF".utf8))
+        #expect(!h.model.isRisky(part))
+    }
+
+    /// Mirrors Android's `SchoolMailMessageViewModel.needsConfirmation`: a `text/html` or
+    /// `image/svg+xml` attachment is risky regardless of its filename extension.
+    @Test func htmlContentTypeAttachmentIsAlwaysRisky() async {
+        let part = MailBodyPart(section: "2", contentType: "text/html", charset: nil, transferEncoding: nil,
+                                filename: "notes.txt", contentID: nil, size: 4, isAttachment: true)
+        var message = FakeMailClient.message(uid: 5)
+        message.detail?.parts = [part]
+        let h = Self.harness(message)
+        await h.model.load()
+        #expect(h.model.isRisky(part))
+    }
+
+    // MARK: Links — index-based (message-screen dispatch, 2026-09-16 addition 1: links are
+    // addressed by index into the rewritten document's own anchors, never by URL matching).
+
+    @Test func linkChecksUseTheAnchorTextAndCanonicalizeTheHref() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: "<a href=\"https://ntust-login.xyz/r\">ntust.edu.tw</a>"))
+        await h.model.load()
+        let target = h.model.linkTarget(forIndex: 0)
+        #expect(target?.href == "https://ntust-login.xyz/r")
+        #expect(target?.canOpen == true)
+        #expect(target?.issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "ntust-login.xyz")])
+    }
+
+    @Test func theRewrittenDocumentAddressesLinksByIndexNotURL() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: "<a href=\"https://a.example\">a</a><a href=\"https://b.example\">b</a>"))
+        await h.model.load()
+        #expect(h.model.linkedDocument?.html.contains(#"href="https://link.invalid/0""#) == true)
+        #expect(h.model.linkedDocument?.html.contains(#"href="https://link.invalid/1""#) == true)
+        #expect(h.model.linkedDocument?.html.contains("a.example") == false)
+        #expect(h.model.linkTarget(forIndex: 1)?.href == "https://b.example/")
+    }
+
+    @Test func anOutOfRangeLinkIndexReturnsNil() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: "<a href=\"https://a.example\">a</a>"))
+        await h.model.load()
+        #expect(h.model.linkTarget(forIndex: 1) == nil)
+        #expect(h.model.linkTarget(forIndex: -1) == nil)
+    }
+
+    /// The href judged, shown and opened is canonicalized once the way a browser would
+    /// (dispatch addition 2): a backslash after the scheme is a separator, so the authority
+    /// ends at "evil.example" and the "last `@` ends userinfo" rule never even reaches
+    /// "ntust.edu.tw" hiding after it.
+    @Test func canonicalizationFoldsABackslashBeforeReadingUserinfo() async {
+        let h = Self.harness(Self.messageWithRawLinkHref(#"https://evil.example\@ntust.edu.tw/login"#))
+        await h.model.load()
+        let target = h.model.linkTarget(forIndex: 0)
+        #expect(target?.href == "https://evil.example/@ntust.edu.tw/login")
+        #expect(target?.issues.contains { issue in
+            if case .mismatch(let shown, let real) = issue { return shown == "ntust.edu.tw" && real == "evil.example" }
+            return false
+        } == true)
+    }
+
+    @Test func linkTargetForPlainTextChecksTheURLDirectly() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "See http://evil.example/", html: nil))
+        await h.model.load()
+        let target = h.model.linkTarget(forPlainText: URL(string: "http://evil.example/")!)
+        #expect(target.href == "http://evil.example/")
+        #expect(target.canOpen)
+        #expect(target.issues == [.insecure])
+    }
+
+    @Test func loadingImagesReSanitizes() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: "<img src=\"https://x.example/a.png\">"))
+        await h.model.load()
+        #expect(h.model.sanitized?.blockedRemoteImages == 1)
+        h.model.loadImages()
+        #expect(h.model.allowRemoteImages)
+        #expect(h.model.sanitized?.blockedRemoteImages == 0)
+    }
+
+    // MARK: Web view lockdown (§9.3)
+
+    @Test func theWebViewIsLockedDown() {
+        let configuration = MailWebViewFactory.makeConfiguration(inlineImages: [:])
+        #expect(configuration.defaultWebpagePreferences.allowsContentJavaScript == false)
+        #expect(!configuration.websiteDataStore.isPersistent)
+        #expect(configuration.urlSchemeHandler(forURLScheme: MailHTMLSanitizer.cidScheme) != nil)
+        #expect(configuration.dataDetectorTypes == [])
+    }
+
+    @Test func contentRulesBlockEverythingButInlineImages() {
+        let blocked = MailWebViewFactory.contentRules(allowRemoteImages: false)
+        #expect(blocked.contains("\"type\":\"block\""))
+        #expect(blocked.contains("^tdcid:"))
+        #expect(!blocked.contains("\"resource-type\""))
+        #expect(MailWebViewFactory.contentRules(allowRemoteImages: true).contains("\"resource-type\":[\"image\"]"))
+    }
+
+    @Test func theDocumentCarriesACSP() {
+        let blocked = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false)
+        #expect(blocked.contains("default-src 'none'; img-src tdcid: data:; style-src 'unsafe-inline'"))
+        #expect(MailWebViewFactory.document(for: "", allowRemoteImages: true).contains("img-src tdcid: data: https: http:"))
+    }
+
+    @Test func linkIndexParsingAcceptsOnlyTheExactSyntheticForm() {
+        #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0", linkCount: 2) == 0)
+        #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/1", linkCount: 2) == 1)
+        #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/2", linkCount: 2) == nil)
+        #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/01", linkCount: 2) == nil)
+        #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0?x=1", linkCount: 2) == nil)
+        #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid.evil/0", linkCount: 2) == nil)
+    }
+
+    // MARK: Helpers
+
+    /// A message whose HTML body's single anchor carries `href` verbatim — used for
+    /// canonicalization test cases whose href isn't representable as a normal Swift string
+    /// interpolation inside an HTML literal (backslashes, etc.).
+    private static func messageWithRawLinkHref(_ href: String) -> FakeMailClient.Message {
+        FakeMailClient.message(uid: 5, html: "<a href=\"\(href)\">ntust.edu.tw</a>")
+    }
+}
+#endif

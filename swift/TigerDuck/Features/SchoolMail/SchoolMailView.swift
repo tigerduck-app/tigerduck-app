@@ -10,6 +10,7 @@ struct SchoolMailView: View {
     @State private var viewModel = MailListViewModel()
     @State private var showLoginSheet = false
     @State private var showGuide = false
+    @State private var route: MailMessageRoute?
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
     private let account = MailAccountManager.shared
 
@@ -82,6 +83,18 @@ struct SchoolMailView: View {
             if text.isEmpty { viewModel.clearSearch() }
         }
         .refreshable { await viewModel.load() }
+        .navigationDestination(item: $route) { route in
+            MailMessageView(
+                route: route,
+                session: viewModel.session,
+                folderRoles: viewModel.folderRoles,
+                otherFolders: viewModel.otherFolders,
+                onSeenChanged: { uid, seen in viewModel.markSeenLocally(uid: uid, seen: seen) },
+                onRemoved: { uid in viewModel.removeLocally(uid: uid) }
+            )
+        }
+        .onAppear { drainDeepLink() }
+        .onChange(of: appState.pendingDeepLink) { _, _ in drainDeepLink() }
         .toolbar {
             if #available(iOS 26, *) {
                 ToolbarItem(placement: .topBarTrailing) { statusDot }
@@ -154,24 +167,29 @@ struct SchoolMailView: View {
     }
 
     private func row(_ summary: MailSummary) -> some View {
-        MailRowView(summary: summary)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(
-                top: TigerDuckTheme.Spacing.xs, leading: TigerDuckTheme.Spacing.lg,
-                bottom: TigerDuckTheme.Spacing.xs, trailing: TigerDuckTheme.Spacing.lg
-            ))
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button { Task { await viewModel.toggleRead(summary) } } label: {
-                    Label(
-                        summary.isSeen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
-                        systemImage: summary.isSeen ? "envelope.badge" : "envelope.open"
-                    )
-                    .labelStyle(.iconOnly)
-                }
-                .tint(appState.accentColor)
+        Button {
+            route = MailMessageRoute(folder: viewModel.selectedFolder, uid: summary.uid)
+        } label: {
+            MailRowView(summary: summary)
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(
+            top: TigerDuckTheme.Spacing.xs, leading: TigerDuckTheme.Spacing.lg,
+            bottom: TigerDuckTheme.Spacing.xs, trailing: TigerDuckTheme.Spacing.lg
+        ))
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button { Task { await viewModel.toggleRead(summary) } } label: {
+                Label(
+                    summary.isSeen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
+                    systemImage: summary.isSeen ? "envelope.badge" : "envelope.open"
+                )
+                .labelStyle(.iconOnly)
             }
-            .task { await viewModel.loadMoreIfNeeded(after: summary) }
+            .tint(appState.accentColor)
+        }
+        .task { await viewModel.loadMoreIfNeeded(after: summary) }
     }
 
     private func centered<V: View>(@ViewBuilder _ content: () -> V) -> some View {
@@ -180,6 +198,16 @@ struct SchoolMailView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets())
+    }
+
+    /// A tapped mail notification (Task 13): switch folder, then open the message.
+    private func drainDeepLink() {
+        guard case .schoolMail(let folder, let uid) = appState.pendingDeepLink, account.isLoggedIn else { return }
+        appState.pendingDeepLink = nil
+        Task {
+            await viewModel.select(folder: folder)
+            if let uid { route = MailMessageRoute(folder: folder, uid: uid) }
+        }
     }
 
     private func failure(_ message: String) -> some View {
