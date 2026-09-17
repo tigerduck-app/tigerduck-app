@@ -11,12 +11,21 @@ struct MailSettingsView: View {
     @State private var records: [MailCheckRecord] = []
     private let account = MailAccountManager.shared
 
+    /// Turning notifications on schedules a background refresh. After a rejected password
+    /// `MailBackgroundRefresh.shouldRescheduleAfterHandling` refuses to reschedule, and §7.4
+    /// forbids retrying the password at all — so offering the switch there is offering
+    /// something the app will not do. Signed out, there is nothing to check either.
+    static func notificationsToggleIsEnabled(isLoggedIn: Bool, authFailed: Bool) -> Bool {
+        isLoggedIn && !authFailed
+    }
+
     var body: some View {
         @Bindable var account = account
         List {
             Section {
                 Toggle(String(localized: "school_mail_settings_notifications"), isOn: $account.notificationsEnabled)
-                    .disabled(!account.isLoggedIn)
+                    .disabled(!Self.notificationsToggleIsEnabled(
+                        isLoggedIn: account.isLoggedIn, authFailed: account.authFailed))
                 if notificationsDenied {
                     Button {
                         if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
