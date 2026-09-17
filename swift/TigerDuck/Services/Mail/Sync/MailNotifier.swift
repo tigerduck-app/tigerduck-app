@@ -38,17 +38,31 @@ nonisolated struct MailNotifier: Sendable {
         "school-mail-\(uidValidity)-\(uid)"
     }
 
-    func notify(_ messages: [MailSummary], uidValidity: UInt32) async {
-        guard !messages.isEmpty else { return }
+    /// Returns the UIDs whose notification the system refused. The caller holds its seen-UID
+    /// marker at the lowest of them: §8.5's contract is notify, *then* advance, and a refused
+    /// `add` is as much a failure to notify as a process death is — swallowing it while the
+    /// marker moves on means that mail is never notified and never reconsidered by any trigger.
+    /// (`add` with `trigger: nil` throws on invalid content and when the notification service is
+    /// unavailable; it is not a never-happens path.)
+    @discardableResult
+    func notify(_ messages: [MailSummary], uidValidity: UInt32) async -> Set<UInt32> {
+        guard !messages.isEmpty else { return [] }
         if messages.count > MailConstants.notificationCollapseThreshold {
             let content = Self.content(
                 title: String(localized: "school_mail_account_title"),
                 body: String(format: String(localized: "school_mail_new_mail_count"), String(messages.count)),
                 userInfo: ["kind": MailConstants.notificationKind, "folder": MailConstants.inbox]
             )
-            try? await center.add(UNNotificationRequest(identifier: Self.summaryIdentifier, content: content, trigger: nil))
-            return
+            do {
+                try await center.add(UNNotificationRequest(identifier: Self.summaryIdentifier, content: content, trigger: nil))
+                return []
+            } catch {
+                // The one collapsed notification stands for every message in the batch, so a
+                // refusal loses all of them.
+                return Set(messages.map(\.uid))
+            }
         }
+        var failed: Set<UInt32> = []
         for message in messages {
             let sender = message.fromName?.mailNonEmpty ?? message.fromAddress?.mailNonEmpty
                 ?? String(localized: "school_mail_no_sender")
@@ -59,8 +73,13 @@ nonisolated struct MailNotifier: Sendable {
                 userInfo: ["kind": MailConstants.notificationKind, "folder": MailConstants.inbox, "uid": Int(message.uid)]
             )
             let identifier = Self.identifier(uidValidity: uidValidity, uid: message.uid)
-            try? await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+            do {
+                try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
+            } catch {
+                failed.insert(message.uid)
+            }
         }
+        return failed
     }
 
     func notifyAuthFailure() async {

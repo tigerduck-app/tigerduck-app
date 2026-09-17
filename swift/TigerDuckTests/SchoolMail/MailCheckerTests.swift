@@ -43,6 +43,34 @@ final class OrderingNotificationCenter: MailNotificationCenter, @unchecked Senda
     func removeAllMailNotifications() async {}
 }
 
+/// Rejects the named notification identifiers the way `UNUserNotificationCenter.add` does when
+/// the content is invalid or the notification service is unavailable, and accepts the rest.
+final class RejectingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var rejected: Set<String>
+    private var _accepted: [String] = []
+    var accepted: [String] { lock.withLock { _accepted } }
+
+    init(rejecting: Set<String>) {
+        rejected = rejecting
+    }
+
+    /// Lets a previously rejected identifier through, so a test can show the next check delivers it.
+    func stopRejecting() {
+        lock.withLock { rejected = [] }
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        try lock.withLock {
+            guard !rejected.contains(request.identifier) else { throw MailClientError.protocolError("add refused") }
+            _accepted.append(request.identifier)
+        }
+    }
+
+    func removeDelivered(withIdentifiers identifiers: [String]) {}
+    func removeAllMailNotifications() async {}
+}
+
 struct MailCheckerTests {
     struct Harness {
         let checker: MailChecker
@@ -196,6 +224,49 @@ struct MailCheckerTests {
         #expect(h.prefs.diagnostics.count == 10)
         #expect(h.prefs.diagnostics.first?.trigger == "foreground")
         #expect(h.prefs.lastCheckAt != nil)
+    }
+
+    /// §8.5's contract is notify, *then* advance. A notification the system refuses is a failure
+    /// the marker must respect too: advancing past it means that mail is never notified and never
+    /// reconsidered by any trigger.
+    @Test func aRefusedNotificationHoldsTheMarkerSoTheMailIsReconsidered() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 10
+        let fake = FakeMailClient(folders: ["INBOX": [
+            FakeMailClient.message(uid: 10), FakeMailClient.message(uid: 11), FakeMailClient.message(uid: 12),
+        ]])
+        let center = RejectingNotificationCenter(rejecting: ["school-mail-1-11"])
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: {})
+
+        #expect(await checker.check(trigger: .backgroundTask) == .newMail(3))
+        #expect(center.accepted == ["school-mail-1-10", "school-mail-1-12"])
+        // Held at the refused UID, not advanced past it.
+        #expect(prefs.inboxNextUID == 11)
+
+        center.stopRejecting()
+        #expect(await checker.check(trigger: .backgroundTask) == .newMail(2))
+        #expect(center.accepted.suffix(2) == ["school-mail-1-11", "school-mail-1-12"])
+        #expect(prefs.inboxNextUID == 13)
+    }
+
+    /// The collapsed "more than five" notification stands for every message in the batch, so if
+    /// that single `add` is refused the marker may not move past any of them.
+    @Test func aRefusedSummaryNotificationHoldsTheMarkerForTheWholeBatch() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 1
+        let inbox = (UInt32(1)...6).map { FakeMailClient.message(uid: $0) }
+        let center = RejectingNotificationCenter(rejecting: [MailNotifier.summaryIdentifier])
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { FakeMailClient(folders: ["INBOX": inbox]) }, onAuthFailure: {})
+
+        #expect(await checker.check(trigger: .backgroundTask) == .newMail(6))
+        #expect(center.accepted.isEmpty)
+        #expect(prefs.inboxNextUID == 1)
     }
 
     @Test func notifierHelpers() async {
