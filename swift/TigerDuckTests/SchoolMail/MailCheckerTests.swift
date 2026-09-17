@@ -20,6 +20,29 @@ actor Counter {
     func increment() { value += 1 }
 }
 
+/// Records the inbox marker's value at the moment `notify` is awaited, to prove the checker
+/// notifies before it persists the marker (fix round 1: a background-task expiration or process
+/// kill during the awaited notify must never lose those notifications).
+final class OrderingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var wasCalled = false
+    private(set) var markerWhenCalled: UInt32?
+    private let prefs: any MailPreferences
+
+    init(prefs: any MailPreferences) {
+        self.prefs = prefs
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        lock.withLock {
+            wasCalled = true
+            markerWhenCalled = prefs.inboxNextUID
+        }
+    }
+    func removeDelivered(withIdentifiers identifiers: [String]) {}
+    func removeAllMailNotifications() async {}
+}
+
 struct MailCheckerTests {
     struct Harness {
         let checker: MailChecker
@@ -80,6 +103,25 @@ struct MailCheckerTests {
         #expect(first.userInfo["kind"] as? String == "school_mail")
         #expect(first.userInfo["uid"] as? Int == 3)
         #expect(h.center.requests[1].content.title == "office@mail.ntust.edu.tw")
+    }
+
+    @Test func theMarkerIsNotAdvancedUntilNotifyHasCompleted() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 3
+        let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3)]])
+        let center = OrderingNotificationCenter(prefs: prefs)
+        let checker = MailChecker(
+            prefs: prefs,
+            notifier: MailNotifier(center: center),
+            openSession: { fake },
+            onAuthFailure: { prefs.authFailed = true }
+        )
+        #expect(await checker.check(trigger: .backgroundTask) == .newMail(1))
+        #expect(center.wasCalled)
+        #expect(center.markerWhenCalled == 3)
+        #expect(prefs.inboxNextUID == 4)
     }
 
     @Test func seenOrDeletedArrivalsMoveTheMarkerWithoutNotifying() async {

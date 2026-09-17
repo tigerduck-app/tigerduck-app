@@ -122,13 +122,18 @@ actor MailChecker {
         // `marker:*` always includes the last message, even when its UID is below marker.
         let fetched = try await client.summaries(folder: MailConstants.inbox, fromUID: marker)
             .filter { $0.uid >= marker }
-        // Advance past what was actually fetched, not STATUS's UIDNEXT, so a message that
-        // arrived between the two commands is neither skipped nor notified twice.
-        prefs.inboxNextUID = fetched.map(\.uid).max().map { $0 + 1 } ?? status.uidNext
         let fresh = fetched.filter { !$0.isSeen && !$0.isDeleted }.sorted { $0.uid < $1.uid }
+        // Notify before persisting the marker (design doc §8.5: notify, then advance). If a
+        // BGAppRefreshTask expires or the process is killed while this await is in flight, the
+        // marker is untouched, so the next check re-fetches and re-notifies these same messages
+        // instead of losing them for good — safe because notification identifiers are stable
+        // per (UIDVALIDITY, UID), so a repeat delivery just replaces the same notification.
         if notify {
             await notifier.notify(fresh, uidValidity: status.uidValidity)
         }
+        // Advance past what was actually fetched, not STATUS's UIDNEXT, so a message that
+        // arrived between the two commands is neither skipped nor notified twice.
+        prefs.inboxNextUID = fetched.map(\.uid).max().map { $0 + 1 } ?? status.uidNext
         return fresh.isEmpty ? .noNewMail : .newMail(fresh.count)
     }
 
