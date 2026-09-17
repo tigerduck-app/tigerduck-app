@@ -267,12 +267,20 @@ final class MailComposeViewModel {
 
     // MARK: Attachments
 
+    /// Refused while a send or save is in flight: `send()`/`saveDraft()` snapshot the
+    /// attachments into the message before their round trip, so accepting one here would leave
+    /// a file listed on screen that was never in the mail the server got — and the sheet then
+    /// dismisses. The view keeps this unreachable from the UI (the form is disabled for the
+    /// duration, and Send stays disabled while any pick is still being read off the main
+    /// actor); this is the last line of that defence, not the first.
     func addAttachment(filename: String, mimeType: String, data: Data) {
+        guard !isSending else { return }
         attachments.append(Attachment(filename: filename, mimeType: mimeType, data: data))
         error = nil
     }
 
     func removeAttachment(_ id: Attachment.ID) {
+        guard !isSending else { return }
         attachments.removeAll { $0.id == id }
     }
 
@@ -411,6 +419,12 @@ final class MailComposeViewModel {
             return false
         }
         let mail = outgoing(to: toList, cc: ccList, bcc: bccList, threading: nil)
+        // The baseline this save is entitled to claim, taken from the same reading of the fields
+        // that just went into `mail` — never `snapshot()` after the append returns, which reads
+        // them as they are *then*. Anything added in between is content the server does not have,
+        // and folding it in here would make `hasChanges` report clean and let the leave dialog
+        // dismiss the sheet over it.
+        let savedBaseline = snapshot()
         let attachmentBytes = attachments.map(\.data.count)
         guard MailMessageBuilder.estimateEncodedSize(body: body, attachmentByteCounts: attachmentBytes) <= MailConstants.maxEncodedMessageBytes else {
             error = String(localized: "school_mail_too_large")
@@ -439,7 +453,7 @@ final class MailComposeViewModel {
                                            pageUIDValidity: pageUIDValidity, wasAlreadyDeleted: draftWasDeleted)
                 }
             }
-            baseline = snapshot()
+            baseline = savedBaseline
             return true
         } catch {
             self.error = MailAccountManager.LoginError(error).message

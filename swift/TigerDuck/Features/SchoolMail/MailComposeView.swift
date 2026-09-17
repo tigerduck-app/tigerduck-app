@@ -13,6 +13,11 @@ struct MailComposeView: View {
     @State private var showLeaveDialog = false
     @State private var showFileImporter = false
     @State private var photoItems: [PhotosPickerItem] = []
+    /// Attachment picks whose bytes are still being read off the main actor. Send stays
+    /// disabled while any is outstanding: `send()` snapshots the attachments into the message
+    /// before its round trip, so a read that finished a moment later would leave a file on
+    /// screen that was never in the mail.
+    @State private var pendingPicks = 0
     @FocusState private var focused: Field?
 
     init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String]) {
@@ -90,6 +95,12 @@ struct MailComposeView: View {
                     }
                 }
             }
+            // Every field, picker and swipe action, in one place: `send()`/`saveDraft()` read the
+            // fields into the message *before* the round trip starts, so a keystroke or an
+            // attachment added while the spinner runs would silently not be in what the server
+            // got — and the sheet then dismisses, with nothing left to recover it from. The
+            // toolbar's Cancel and Send are disabled separately (they live outside this `Form`).
+            .disabled(viewModel.isSending)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -105,7 +116,7 @@ struct MailComposeView: View {
                             Text(String(localized: "school_mail_send")).fontWeight(.semibold)
                         }
                     }
-                    .disabled(viewModel.isSending || viewModel.isLoading)
+                    .disabled(viewModel.isSending || viewModel.isLoading || pendingPicks > 0)
                 }
             }
             .confirmationDialog(String(localized: "school_mail_leave_title"), isPresented: $showLeaveDialog, titleVisibility: .visible) {
@@ -117,10 +128,19 @@ struct MailComposeView: View {
             }
             .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 guard case .success(let urls) = result else { return }
-                Task { for url in urls { await addFile(url) } }
+                pendingPicks += 1
+                Task {
+                    for url in urls { await addFile(url) }
+                    pendingPicks -= 1
+                }
             }
             .onChange(of: photoItems) { _, items in
-                Task { await addPhotos(items) }
+                guard !items.isEmpty else { return }
+                pendingPicks += 1
+                Task {
+                    await addPhotos(items)
+                    pendingPicks -= 1
+                }
             }
             .onChange(of: viewModel.didFinish) { _, finished in
                 if finished { dismiss() }

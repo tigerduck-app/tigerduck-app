@@ -475,5 +475,58 @@ struct MailComposeViewModelTests {
         }
         #expect(result == nil)
     }
+    // MARK: Edits made while a send or save is in flight
+
+    /// `saveDraft` used to set `baseline = snapshot()` *after* the APPEND returned, reading the
+    /// fields as they were then — so anything typed during the round trip was folded into the
+    /// baseline, `hasChanges` reported clean for content the server does not have, and the leave
+    /// dialog dismissed over it.
+    @Test func textTypedWhileADraftIsSavingStaysUnsavedChanges() async {
+        let fake = Self.fake()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+        model.body = "第一段"
+
+        await fake.update { $0.hold("append") }
+        let save = Task { await model.saveDraft() }
+        await fake.waitForArrival("append")
+        model.body = "第一段\n第二段"   // typed while the APPEND is still in flight
+        await fake.release("append")
+
+        #expect(await save.value)
+        #expect(model.hasChanges) // the second line is not in what was appended
+    }
+
+    /// The same save with nothing typed during it must still come out clean, or the dialog would
+    /// nag forever.
+    @Test func aDraftSavedWithNoConcurrentEditsIsClean() async {
+        let fake = Self.fake()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+        model.body = "第一段"
+        #expect(await model.saveDraft())
+        #expect(!model.hasChanges)
+    }
+
+    /// An attachment whose off-main read finishes after Send has already snapshotted the message
+    /// would be listed on screen but in no mail the server ever saw. The view keeps this
+    /// unreachable (Send is disabled while a pick is outstanding); the model refuses it anyway.
+    @Test func anAttachmentArrivingDuringASendIsRefused() async {
+        let fake = Self.fake()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+
+        await fake.update { $0.hold("send") }
+        let send = Task { await model.send() }
+        await fake.waitForArrival("send")
+        model.addAttachment(filename: "late.pdf", mimeType: "application/pdf", data: Data("%PDF".utf8))
+        #expect(model.attachments.isEmpty)
+        await fake.release("send")
+        await send.value
+        #expect(model.didFinish)
+    }
 }
 #endif
