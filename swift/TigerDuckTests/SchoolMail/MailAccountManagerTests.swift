@@ -104,10 +104,35 @@ struct MailAccountManagerTests {
         await h.manager.login(studentID: "B10000000", password: "pw")
         await h.fake.update { $0.acceptedPassword = "changed" }
         await #expect(throws: MailClientError.authenticationFailed) { _ = try await h.manager.openSession() }
+        let loginCallsAfterFirstRejection = await h.fake.calls.filter { $0.hasPrefix("login") }.count
         await #expect(throws: MailClientError.authenticationFailed) { _ = try await h.manager.openSession() }
         #expect(h.manager.authFailed)
         #expect(h.prefs.authFailed)
         #expect(h.hooks.authFailed == 1)
+        // Spec §7.4: a rejected password is never retried. The second `openSession()` throws
+        // without creating a client or sending another LOGIN — the fake's login call count
+        // must not grow past what the first rejection already left it at.
+        #expect(await h.fake.calls.filter { $0.hasPrefix("login") }.count == loginCallsAfterFirstRejection)
+    }
+
+    @Test func aSuccessfulLoginAfterAnAuthFailureLetsOpenSessionLogInAgain() async throws {
+        let h = Self.harness()
+        await h.manager.login(studentID: "B10000000", password: "pw")
+        await h.fake.update { $0.acceptedPassword = "changed" }
+        await #expect(throws: MailClientError.authenticationFailed) { _ = try await h.manager.openSession() }
+        #expect(h.manager.authFailed)
+        let loginCallsAfterRejection = await h.fake.calls.filter { $0.hasPrefix("login") }.count
+
+        // The user re-enters the (now correct) password: only a successful `login(...)` may
+        // clear `authFailed`, and once it does, `openSession()` is allowed to send LOGIN again.
+        await h.fake.update { $0.acceptedPassword = nil }
+        await h.manager.login(studentID: "B10000000", password: "changed")
+        #expect(!h.manager.authFailed)
+        #expect(!h.prefs.authFailed)
+
+        let client = try await h.manager.openSession()
+        await client.logout()
+        #expect(await h.fake.calls.filter { $0.hasPrefix("login") }.count > loginCallsAfterRejection)
     }
 
     @Test func aMissingPasswordIsNotAnAuthFailure() async {

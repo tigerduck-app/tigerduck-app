@@ -142,7 +142,15 @@ final class MailAccountManager {
     }
 
     /// A logged-in client for one unit of work. The caller logs it out.
+    ///
+    /// Once the server has rejected the saved password, this throws without creating a
+    /// client or sending another LOGIN — never retried, even once, until the user re-enters
+    /// the password through `login(studentID:password:)` (spec §7.4: repeated failures can
+    /// lock the school account and Wi-Fi). Every caller (the page poll, pull-to-refresh,
+    /// background refresh) goes through this one choke point, so nothing else needs its own
+    /// `authFailed` check.
     func openSession() async throws -> any MailClient {
+        guard !authFailed else { throw MailClientError.authenticationFailed }
         guard let id = prefs.studentID, let password = credentials.password() else {
             throw MailClientError.protocolError("credentials unavailable")
         }
