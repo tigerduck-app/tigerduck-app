@@ -52,21 +52,7 @@ struct MailMessageView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
-                header
-                banners
-                Divider().background(Color.textSecondary)
-                bodyContent
-                if let attachments = viewModel.detail?.attachments, !attachments.isEmpty {
-                    MailAttachmentList(parts: attachments, isRisky: viewModel.isRisky, onOpen: open, onShare: share)
-                }
-            }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            .padding(.top, TigerDuckTheme.Spacing.xl)
-            .padding(.bottom, TigerDuckTheme.Spacing.xxl)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        page
         .background(Color.backgroundPrimary)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
@@ -126,6 +112,38 @@ struct MailMessageView: View {
     }
 
     // MARK: Sections
+
+    /// `MailSourceTextView` scrolls itself — that is the whole point of it, since nothing
+    /// else can show a multi-megabyte document without laying all of it out. So when the
+    /// source is on screen the page is a plain `VStack` and the text view takes the height
+    /// that is left, rather than a scroll view nested inside another one. Every other mode
+    /// keeps the scrolling page it has always had.
+    @ViewBuilder
+    private var page: some View {
+        if showsSource {
+            sections
+        } else {
+            ScrollView { sections }
+        }
+    }
+
+    private var showsSource: Bool { viewModel.mode == .source && viewModel.source != nil }
+
+    private var sections: some View {
+        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+            header
+            banners
+            Divider().background(Color.textSecondary)
+            bodyContent
+            if !showsSource, let attachments = viewModel.detail?.attachments, !attachments.isEmpty {
+                MailAttachmentList(parts: attachments, isRisky: viewModel.isRisky, onOpen: open, onShare: share)
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.top, TigerDuckTheme.Spacing.xl)
+        .padding(.bottom, showsSource ? TigerDuckTheme.Spacing.lg : TigerDuckTheme.Spacing.xxl)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
     @ViewBuilder
     private var header: some View {
@@ -245,12 +263,8 @@ struct MailMessageView: View {
                     VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
                         Button(String(localized: "school_mail_copy_all")) { UIPasteboard.general.string = source }
                             .font(.caption.weight(.semibold))
-                        ScrollView(.horizontal) {
-                            Text(source)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(Color.textPrimary)
-                                .textSelection(.enabled)
-                        }
+                        MailSourceTextView(text: source)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
                 } else if viewModel.sourceLoadFailed {
                     MailWarningBanner(

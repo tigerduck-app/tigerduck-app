@@ -261,6 +261,7 @@ MailHTMLView.swift
 MailLoginCard.swift
 MailLoginSheet.swift
 MailRowView.swift
+MailSourceTextView.swift
 MailWarningBanner.swift
 MailWebViewFactory.swift
 
