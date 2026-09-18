@@ -57,6 +57,10 @@ nonisolated enum MailReplyComposer {
     /// `MailAddress.parseList`. Matches Android's `ComposeRules.formatOne`.
     static func formatted(_ address: MailAddress) -> String {
         guard let name = address.name?.mailNonEmpty else { return address.address }
+        // A sender kept for its name alone has no address (`MailAddress.parseSender`), and
+        // a forward header block reading `From: Mail Deliver System <>` would be worse than
+        // the bare name.
+        guard !address.address.isEmpty else { return name }
         guard name.unicodeScalars.contains(where: nameSpecials.contains) else {
             return "\(name) <\(address.address)>"
         }
@@ -74,17 +78,26 @@ nonisolated enum MailReplyComposer {
 
     /// Reply goes to Reply-To (else From). Reply all also copies the original To and Cc,
     /// minus my own address and anything already addressed (case-insensitive).
+    ///
+    /// A sender the From header only named — `"Mail Deliver System" <MAILER-DAEMON>`, kept
+    /// for its display name by `MailAddress.parseSender` and so carrying no address — is
+    /// dropped here rather than prefilled as `Mail Deliver System <>`. The reply opens with
+    /// an empty 收件者 and compose refuses to send it (`school_mail_no_recipient`); nothing
+    /// downstream ever sees a recipient this app could not parse.
     static func replyRecipients(
         to original: MailOriginal,
         replyTo: [MailAddress],
         me: String,
         replyAll: Bool
     ) -> (to: [MailAddress], cc: [MailAddress]) {
-        let primary = !replyTo.isEmpty ? replyTo : (original.from.map { [$0] } ?? [])
+        let from = original.from.map { [$0] } ?? []
+        let primary = (!replyTo.isEmpty ? replyTo : from).filter { !$0.address.isEmpty }
         var seen = Set(primary.map { $0.address.lowercased() })
         seen.insert(me.lowercased())
         guard replyAll else { return (primary, []) }
-        let cc = (original.to + original.cc).filter { seen.insert($0.address.lowercased()).inserted }
+        let cc = (original.to + original.cc)
+            .filter { !$0.address.isEmpty }
+            .filter { seen.insert($0.address.lowercased()).inserted }
         return (primary, cc)
     }
 

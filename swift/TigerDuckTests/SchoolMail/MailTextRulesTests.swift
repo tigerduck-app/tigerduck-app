@@ -218,6 +218,32 @@ struct MailTextRulesTests {
         #expect(!MailAddress(name: nil, address: "a@x.tw\r\nBcc: b@y.tw").isPlausible)
     }
 
+    /// `From: "Mail Deliver System" <MAILER-DAEMON>` — a bare local part with no `@domain`,
+    /// which is what Mail2000 puts on every delivery-failure notice. The strict list parser
+    /// still drops it (it may never become a recipient), but `parseSender` keeps the display
+    /// name the header plainly gave, with **no** address: the raw `MAILER-DAEMON` token is
+    /// not passed through, and the empty address keeps `isPlausible` false.
+    @Test func keepsTheDisplayNameOfASenderWithNoParsableAddress() {
+        let raw = "\"Mail Deliver System\" <MAILER-DAEMON>"
+        #expect(MailAddress.parseList(raw) == [])
+        let sender = MailAddress.parseSender(raw)
+        #expect(sender == MailAddress(name: "Mail Deliver System", address: ""))
+        #expect(sender?.displayName == "Mail Deliver System")
+        #expect(sender?.isPlausible == false)
+    }
+
+    /// `parseSender` only rescues a name. A From that is nothing but a malformed address,
+    /// or one carrying a smuggled CR/LF, stays dropped exactly as before, and a well-formed
+    /// From is unaffected.
+    @Test func senderParsingRescuesNamesOnlyAndNeverInventsAnAddress() {
+        #expect(MailAddress.parseSender("MAILER-DAEMON") == nil)
+        #expect(MailAddress.parseSender("<MAILER-DAEMON>") == nil)
+        #expect(MailAddress.parseSender("") == nil)
+        #expect(MailAddress.parseSender("\"Office\" <a@x.tw\r\nBcc: b@y.tw>")?.address == "")
+        #expect(MailAddress.parseSender("教務處 <office@mail.ntust.edu.tw>")
+            == MailAddress(name: "教務處", address: "office@mail.ntust.edu.tw"))
+    }
+
     @Test func findsFoldedHeadersInRawSource() {
         let raw = Data("From: a@b.c\r\nReply-To: \"Office\"\r\n <office@mail.ntust.edu.tw>\r\nSubject: x\r\n\r\nReply-To: body@not.header\r\n".utf8)
         #expect(MailRawHeaders.value(named: "reply-to", in: raw) == "\"Office\" <office@mail.ntust.edu.tw>")

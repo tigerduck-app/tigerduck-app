@@ -220,6 +220,61 @@ struct MailWarningsTests {
         ])
     }
 
+    /// A Mail2000 delivery-failure notice keeps its display name and no address at all
+    /// (`MailAddress.parseSender`). `domain(ofAddress: "")` is `""`, which is not a school
+    /// domain, so the naive reading would badge every bounce 「外部寄件者」 with nothing after
+    /// it — a banner that names no address, on the most routine mail the school sends. It is
+    /// suppressed, and `MailSummary.isExternal` already agreed (it is false with no address).
+    @Test
+    func anEmptySenderAddressRaisesNoExternalBanner() {
+        let input = MailWarningInput(
+            fromAddress: "",
+            fromName: "Mail Deliver System",
+            subject: "Returned Mail: Hostname cannot be resolved",
+            plainText: "The following addresses had delivery errors",
+            links: [],
+            attachments: []
+        )
+        #expect(MailWarnings.evaluate(input).isEmpty)
+        #expect(MailWarnings.domain(ofAddress: "") == "")
+        #expect(!MailWarnings.isSchoolDomain(""))
+    }
+
+    /// The other half of the same rule, and the reason the suppression above is safe: keeping
+    /// the display name means a *claimed* address now reaches the screen, so a From the parser
+    /// could not read must not also silence the mismatch check. `"教務處 office@ntust.edu.tw"
+    /// <GARBAGE>` still warns.
+    @Test
+    func anEmptySenderAddressStillFailsTheDisplayNameCheck() {
+        let input = MailWarningInput(
+            fromAddress: "",
+            fromName: "教務處 office@ntust.edu.tw",
+            subject: "x",
+            plainText: "",
+            links: [],
+            attachments: []
+        )
+        #expect(MailWarnings.evaluate(input) == [.displayNameMismatch(address: "")])
+        // And the banner it renders does not trail off into an address that isn't there.
+        #expect(MailMessageView.text(for: .displayNameMismatch(address: ""))
+            == String(localized: "school_mail_warning_display_name"))
+    }
+
+    /// Password bait is still gated on "not from a school address", and an unreadable From is
+    /// certainly not one — suppressing the banner must not have opened that door.
+    @Test
+    func anEmptySenderAddressStillCountsAsOutsideForPasswordBait() {
+        let input = MailWarningInput(
+            fromAddress: "",
+            fromName: "信箱管理員",
+            subject: "您的信箱容量已滿",
+            plainText: "請立即驗證",
+            links: [],
+            attachments: []
+        )
+        #expect(MailWarnings.evaluate(input) == [.passwordBait])
+    }
+
     /// `isRisky == false` is not just a missing banner: it makes the message screen skip the
     /// confirmation dialog and hand the file straight to Quick Look or the share sheet.
     @Test(arguments: [

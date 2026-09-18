@@ -241,6 +241,33 @@ struct MailComposeRulesTests {
         #expect(noReplyTo.to == [from])
     }
 
+    /// A Mail2000 bounce's sender survives as a display name with no address
+    /// (`MailAddress.parseSender`). Reply, reply-all and forward must all refuse to address
+    /// anything to it: never a `MAILER-DAEMON` recipient, never a `Mail Deliver System <>`
+    /// token in the 收件者 field. The reply simply opens with no recipient — which compose
+    /// then blocks on — while the forward's header block still prints the name.
+    @Test func aSenderWithNoAddressNeverBecomesARecipient() {
+        let daemon = MailAddress(name: "Mail Deliver System", address: "")
+        let original = MailOriginal(
+            from: daemon,
+            to: [MailAddress(name: nil, address: "B10000000@mail.ntust.edu.tw"), daemon],
+            cc: [daemon],
+            subject: "Returned Mail", date: nil, messageID: nil, references: [], bodyText: "x"
+        )
+        let reply = MailReplyComposer.replyRecipients(to: original, replyTo: [], me: Self.me.address, replyAll: false)
+        #expect(reply.to.isEmpty)
+        #expect(reply.cc.isEmpty)
+        let all = MailReplyComposer.replyRecipients(to: original, replyTo: [], me: Self.me.address, replyAll: true)
+        #expect(all.to.isEmpty)
+        #expect(all.cc.isEmpty)
+
+        // Nothing addressable anywhere in either result, and no empty `<>` token either.
+        #expect(MailReplyComposer.formatted(all.to + all.cc).isEmpty)
+        #expect(MailReplyComposer.formatted(daemon) == "Mail Deliver System")
+        #expect(!MailReplyComposer.forwardBody(of: original, dateText: "2026/09/18").contains("<>"))
+        #expect(MailReplyComposer.forwardBody(of: original, dateText: "2026/09/18").contains("Mail Deliver System"))
+    }
+
     @Test func threadingHeadersExtendReferences() {
         let original = MailOriginal(from: nil, to: [], cc: [], subject: "", date: nil,
                                     messageID: "<m1@x>", references: ["<m0@x>"], bodyText: "")

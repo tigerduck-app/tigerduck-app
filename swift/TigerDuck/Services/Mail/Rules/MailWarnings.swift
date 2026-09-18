@@ -286,7 +286,15 @@ nonisolated enum MailWarnings {
         // which is the safe direction.
         let address = MailTextCleaner.clean(input.fromAddress)
         let external = !isSchoolDomain(domain(ofAddress: address))
-        if external {
+        // An empty address means the From header gave none this app will route to
+        // (`MailAddress.parseSender`) — a Mail2000 bounce's `<MAILER-DAEMON>`, say. It still
+        // counts as "outside" for the password-bait gate below, because it is certainly not
+        // a school address, but it gets no external-sender banner of its own: that banner
+        // names the address, and naming nothing on every delivery-failure notice is how a
+        // warning stops being read. The case that matters — a display name that *claims* an
+        // address the header cannot back up — is caught by the mismatch check just below,
+        // which compares against this same empty string and so still fires.
+        if external, !address.isEmpty {
             warnings.append(.externalSender(address: address))
         }
         // The display name is the opposite case: it is the *claim*, so it is read the way the

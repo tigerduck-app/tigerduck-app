@@ -209,11 +209,11 @@ actor DemoMailClient: MailClient {
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {
         var messages = folders[folder] ?? []
         let uid = (messages.map(\.summary.uid).max() ?? 0) + 1
-        let from = MailRawHeaders.value(named: "From", in: message).flatMap { MailAddress.parseList($0).first }
+        let from = MailRawHeaders.value(named: "From", in: message).flatMap { MailAddress.parseSender($0) }
         let to = MailRawHeaders.value(named: "To", in: message).map { MailAddress.parseList($0).map(\.address) }
         let cc = MailRawHeaders.value(named: "Cc", in: message).map { MailAddress.parseList($0).map(\.address) }
         let summary = MailSummary(
-            uid: uid, fromName: from?.name, fromAddress: from?.address, to: to, cc: cc,
+            uid: uid, fromName: from?.name, fromAddress: from?.address.mailNonEmpty, to: to, cc: cc,
             subject: MailRawHeaders.value(named: "Subject", in: message), date: Date(),
             isSeen: flags.contains(.seen), isAnswered: false, isDeleted: false, size: message.count,
             hasAttachments: false, isExternal: false

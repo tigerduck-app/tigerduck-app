@@ -655,8 +655,13 @@ actor LiveMailClient: MailClient {
 
     nonisolated static func summary(from info: MessageInfo) -> MailSummary? {
         guard let uid = info.uid?.value else { return nil }
-        let sender = info.from.flatMap { MailAddress.parseList($0).first }
-        let fromAddress = sender.map { MailTextCleaner.clean($0.address) }
+        // `parseSender`, not `parseList().first`: a From whose address has no domain
+        // (`"Mail Deliver System" <MAILER-DAEMON>`, every Mail2000 bounce) still yields its
+        // display name, with an empty address. `mailNonEmpty` then stores that as `nil`
+        // rather than `""`, so `isExternal` below stays false — there is no domain to call
+        // outside — instead of badging every delivery-failure notice as an outside sender.
+        let sender = info.from.flatMap { MailAddress.parseSender($0) }
+        let fromAddress = sender.flatMap { MailTextCleaner.clean($0.address).mailNonEmpty }
         let clean: (String) -> String = { MailTextCleaner.clean(RFC2047.decode($0)) }
         return MailSummary(
             uid: uid,

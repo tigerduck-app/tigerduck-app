@@ -178,6 +178,34 @@ struct MailStoreTests {
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 8, uid: 2) == nil)
     }
 
+    /// A bounce is kept by its display name alone — `fromAddress` is nil, not `""`
+    /// (`LiveMailClient.summary`). Both the folder list and the opened-mail body go through
+    /// the cache before they are shown again, so if either half dropped the name on the way
+    /// back the row would read 「（沒有寄件者）」 the moment the app was reopened, which is the
+    /// bug all over again one launch later.
+    @Test func aSenderWithOnlyADisplayNameSurvivesTheCache() {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        defer { cache.clearAll() }
+        var bounce = SchoolMailTestDoubles.summary(uid: 9)
+        bounce.fromName = "Mail Deliver System"
+        bounce.fromAddress = nil
+        bounce.subject = "Returned Mail: Hostname cannot be resolved"
+        bounce.isExternal = false
+
+        cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 7, messageCount: 1,
+                                      summaries: [bounce], oldestLoadedSequence: nil))
+        let reloaded = cache.loadPage(folder: "INBOX")?.summaries.first
+        #expect(reloaded?.fromName == "Mail Deliver System")
+        #expect(reloaded?.fromAddress == nil)
+        #expect(reloaded?.isExternal == false)
+
+        let detail = MailMessageDetail(summary: bounce, messageID: nil, inReplyTo: nil, references: nil,
+                                       parts: [], textBody: "delivery errors", htmlBody: nil, inlineImages: nil)
+        cache.saveDetail(detail, folder: "INBOX", uidValidity: 7)
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 7, uid: 9)?.summary.fromName == "Mail Deliver System")
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 7, uid: 9)?.summary.fromAddress == nil)
+    }
+
     @Test func unreadableFilesAreDeleted() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }

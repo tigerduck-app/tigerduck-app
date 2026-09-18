@@ -4,6 +4,10 @@ import Foundation
 /// A sender or recipient. `name` is RFC 2047-decoded and bidi-cleaned by the producer.
 nonisolated struct MailAddress: Codable, Hashable, Sendable {
     var name: String?
+    /// Empty when the header gave no address this app is willing to route to — see
+    /// `parseSender`. Never a raw, unvalidated token: everything that decides something
+    /// (external-sender classification, the display-name mismatch check, reply and forward
+    /// recipients) reads this field.
     var address: String
 
     var displayName: String { name?.mailNonEmpty ?? address }
@@ -31,6 +35,47 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
     /// after it (matching `MailReplyComposer.formatted`'s escaping of `"` and `\`), so an
     /// escaped quote never closes the quoted span early.
     static func parseList(_ raw: String) -> [MailAddress] {
+        splitTopLevel(raw).compactMap(parseOne)
+    }
+
+    /// The `From:` of an incoming mail, where the display name is worth keeping even when
+    /// the address beside it is not usable.
+    ///
+    /// `From: "Mail Deliver System" <MAILER-DAEMON>` — the shape Mail2000 puts on every
+    /// delivery-failure notice — has a bare local part and no domain, so `parseOne` drops
+    /// the whole token and the list row and the message header fall back to
+    /// 「（沒有寄件者）」, throwing away a name that was never in doubt. Here the name
+    /// survives and the address comes back **empty**: the raw token is deliberately not
+    /// carried through, because `address` is what `MailWarnings` classifies and what a
+    /// reply is addressed to, and `MAILER-DAEMON` is not routable. An empty address makes
+    /// `isPlausible` false, which is what keeps such a sender out of a reply's recipients
+    /// (`MailReplyComposer.replyRecipients`) and out of compose validation.
+    ///
+    /// Only the `From` header uses this. `Reply-To`, `To`, `Cc`, a `mailto:` target and the
+    /// compose fields stay on the strict `parseList`, because those all become recipients.
+    static func parseSender(_ raw: String) -> MailAddress? {
+        if let parsed = parseList(raw).first { return parsed }
+        return splitTopLevel(raw).lazy.compactMap(nameOnly).first
+    }
+
+    /// The display name of a token whose bracketed address `parseOne` refused, as a
+    /// `MailAddress` with no address at all. `nil` when there is no name to keep — a token
+    /// that is only a malformed address stays dropped, exactly as before.
+    private static func nameOnly(_ raw: String) -> MailAddress? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let open = trimmed.lastIndex(of: "<"), let close = trimmed.lastIndex(of: ">"), open < close else {
+            return nil
+        }
+        var name = trimmed[..<open].trimmingCharacters(in: .whitespaces)
+        if name.count >= 2, name.hasPrefix("\""), name.hasSuffix("\"") {
+            name = unescaped(String(name.dropFirst().dropLast()))
+        }
+        guard let kept = name.mailNonEmpty else { return nil }
+        return MailAddress(name: kept, address: "")
+    }
+
+    /// Commas and semicolons separate, except inside quotes or angle brackets.
+    private static func splitTopLevel(_ raw: String) -> [String] {
         var pieces: [String] = []
         var current = ""
         var inQuotes = false
@@ -58,7 +103,7 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
             }
         }
         pieces.append(current)
-        return pieces.compactMap(parseOne)
+        return pieces
     }
 
     /// A token whose address portion doesn't have a plain `local@domain` shape (an

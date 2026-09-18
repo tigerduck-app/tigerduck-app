@@ -57,6 +57,24 @@ struct LiveMailClientParsingTests {
         #expect(inline.decodedData() == Data(base64Encoded: "iVBORw0KGgo="))
     }
 
+    /// A reduced Mail2000 delivery-failure notice (the real one the author received, with
+    /// the student's own address replaced by this corpus's `b10000001` and the returned
+    /// message stripped out). Its `From` is a display name over a bare local part with no
+    /// `@domain`, which the strict list parser drops whole — name and all — leaving the row
+    /// reading 「（沒有寄件者）」. `parseSender` keeps the name and no address.
+    @Test func keepsTheSenderNameOfAMail2000Bounce() throws {
+        let data = try SchoolMailFixtures.rawEML("bounce-no-domain")
+        let from = try #require(MailRawHeaders.value(named: "from", in: data))
+        #expect(from == "\"Mail Deliver System\" <MAILER-DAEMON>")
+        #expect(MailAddress.parseList(from).isEmpty)
+
+        let sender = try #require(MailAddress.parseSender(from))
+        #expect(sender.name == "Mail Deliver System")
+        #expect(sender.address.isEmpty)
+        #expect(!sender.isPlausible)
+        #expect(sender.displayName == "Mail Deliver System")
+    }
+
     @Test func decodesTheMail2000Shape() throws {
         let data = try SchoolMailFixtures.rawEML("mail2000-sample")
         let message = try EMLParser.parse(data)

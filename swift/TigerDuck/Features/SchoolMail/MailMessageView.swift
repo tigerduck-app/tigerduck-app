@@ -405,11 +405,20 @@ struct MailMessageView: View {
 
     static func text(for warning: MailWarning) -> String {
         switch warning {
-        case .externalSender(let address): "\(String(localized: "school_mail_warning_external")) \(address)"
-        case .displayNameMismatch(let address): "\(String(localized: "school_mail_warning_display_name")) \(address)"
+        case .externalSender(let address): appending(address, to: "school_mail_warning_external")
+        case .displayNameMismatch(let address): appending(address, to: "school_mail_warning_display_name")
         case .passwordBait: String(localized: "school_mail_warning_password")
         case .riskyAttachment(let filename, _): String(format: String(localized: "school_mail_warning_attachment"), filename)
         }
+    }
+
+    /// A sender whose address the header never gave in a usable form carries an empty
+    /// `address` (`MailAddress.parseSender`), and a banner must not end in a dangling
+    /// space where the address would have been.
+    private static func appending(_ address: String, to key: String.LocalizationValue) -> String {
+        let title = String(localized: key)
+        guard let address = address.mailNonEmpty else { return title }
+        return "\(title) \(address)"
     }
 }
 #endif

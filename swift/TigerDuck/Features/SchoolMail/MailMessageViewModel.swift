@@ -116,7 +116,12 @@ final class MailMessageViewModel {
         guard let detail else { return nil }
         let summary = detail.summary
         return MailOriginal(
-            from: summary.fromAddress.map { MailAddress(name: summary.fromName, address: $0) },
+            // A cached bounce has a name and no address (`MailAddress.parseSender`), and the
+            // name is still what a forward's header block and a reply's 「…寫道：」 line
+            // should print — so `from` is built whenever either half survives, not only when
+            // there is an address. The empty address is what stops `replyRecipients` from
+            // turning it into a recipient.
+            from: sender(of: summary),
             to: (summary.to ?? []).flatMap(MailAddress.parseList),
             cc: (summary.cc ?? []).flatMap(MailAddress.parseList),
             subject: summary.subject ?? "",
@@ -125,6 +130,13 @@ final class MailMessageViewModel {
             references: detail.references ?? [],
             bodyText: plainText
         )
+    }
+
+    private func sender(of summary: MailSummary) -> MailAddress? {
+        let address = summary.fromAddress?.mailNonEmpty
+        let name = summary.fromName?.mailNonEmpty
+        guard address != nil || name != nil else { return nil }
+        return MailAddress(name: name, address: address ?? "")
     }
 
     // MARK: Loading
