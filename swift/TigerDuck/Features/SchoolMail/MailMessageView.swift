@@ -20,8 +20,14 @@ struct MailMessageView: View {
     @State private var riskyAttachment: RiskyAttachment?
     @State private var showDetails = false
     @State private var showMoveSheet = false
-    @State private var confirmDelete = false
+    @State private var pendingDelete: PendingDelete?
     @State private var compose: MailComposeContext?
+
+    /// Which of the two delete confirmations the Delete button raised. One optional backs both
+    /// dialogs, so exactly one of them can ever be up: deleting in 回收筒 asks whether to destroy
+    /// the mail for good, and deleting anywhere else asks before moving it to 回收筒 — a delete
+    /// never happens on a single tap either way.
+    private enum PendingDelete { case toTrash, permanent }
 
     /// A risky (or HTML/SVG) attachment the user asked to open or share, waiting on the
     /// confirmation dialog — `forSharing` remembers which action to resume once confirmed
@@ -101,7 +107,8 @@ struct MailMessageView: View {
         } message: { pending in
             Text(String(format: String(localized: "school_mail_risky_message"), pending.part.filename ?? ""))
         }
-        .confirmationDialog(String(localized: "school_mail_delete_forever_title"), isPresented: $confirmDelete, titleVisibility: .visible) {
+        .confirmationDialog(String(localized: "school_mail_delete_forever_title"),
+                            isPresented: confirming(.permanent), titleVisibility: .visible) {
             Button(String(localized: "school_mail_delete"), role: .destructive) {
                 Task { if await viewModel.delete() { dismiss() } }
             }
@@ -109,6 +116,20 @@ struct MailMessageView: View {
         } message: {
             Text(String(localized: "school_mail_delete_forever_message"))
         }
+        .confirmationDialog(String(localized: "school_mail_delete_confirm_title"),
+                            isPresented: confirming(.toTrash), titleVisibility: .visible) {
+            Button(String(localized: "school_mail_delete"), role: .destructive) {
+                Task { if await viewModel.delete() { dismiss() } }
+            }
+            .disabled(viewModel.isMoving)
+            Button(String(localized: "action_cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "school_mail_delete_confirm_message"))
+        }
+    }
+
+    private func confirming(_ kind: PendingDelete) -> Binding<Bool> {
+        Binding(get: { pendingDelete == kind }, set: { if !$0 { pendingDelete = nil } })
     }
 
     // MARK: Sections
@@ -293,34 +314,39 @@ struct MailMessageView: View {
             .disabled(viewModel.detail == nil)
         }
         ToolbarItem(placement: .topBarTrailing) {
+            // Three groups, matching Android: the view modes, then the two reversible actions,
+            // then 刪除 on its own — the one entry here that loses mail sits behind a divider of
+            // its own rather than a thumb's width below 移動到….
             Menu {
-                Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
-                    ForEach(MailMessageViewModel.ViewMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
+                Section {
+                    Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
+                        ForEach(MailMessageViewModel.ViewMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
                     }
                 }
-                Button { Task { await viewModel.toggleSeen() } } label: {
-                    let seen = viewModel.detail?.summary.isSeen ?? true
-                    Label(seen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
-                          systemImage: seen ? "envelope.badge" : "envelope.open")
-                }
-                // A move or delete is four to five round trips with nothing on screen to say so,
-                // so both affordances (and the move sheet's rows) are disabled for the duration —
-                // a second tap would otherwise COPY the mail again and file it into two folders.
-                Button { showMoveSheet = true } label: {
-                    Label(String(localized: "school_mail_move_to"), systemImage: "folder")
-                }
-                .disabled(viewModel.isMoving)
-                Button(role: .destructive) {
-                    if viewModel.deleteIsPermanent {
-                        confirmDelete = true
-                    } else {
-                        Task { if await viewModel.delete() { dismiss() } }
+                Section {
+                    Button { Task { await viewModel.toggleSeen() } } label: {
+                        let seen = viewModel.detail?.summary.isSeen ?? true
+                        Label(seen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
+                              systemImage: seen ? "envelope.badge" : "envelope.open")
                     }
-                } label: {
-                    Label(String(localized: "school_mail_delete"), systemImage: "trash")
+                    // A move or delete is four to five round trips with nothing on screen to say so,
+                    // so both affordances (and the move sheet's rows) are disabled for the duration —
+                    // a second tap would otherwise COPY the mail again and file it into two folders.
+                    Button { showMoveSheet = true } label: {
+                        Label(String(localized: "school_mail_move_to"), systemImage: "folder")
+                    }
+                    .disabled(viewModel.isMoving)
                 }
-                .disabled(viewModel.isMoving)
+                Section {
+                    Button(role: .destructive) {
+                        pendingDelete = viewModel.deleteIsPermanent ? .permanent : .toTrash
+                    } label: {
+                        Label(String(localized: "school_mail_delete"), systemImage: "trash")
+                    }
+                    .disabled(viewModel.isMoving)
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
