@@ -124,6 +124,22 @@ struct MailMessageViewModelTests {
         #expect(h.center.removed == ["school-mail-1-7"])
     }
 
+    /// End to end for a Mail2000 delivery failure: the `Return-Path: <>` the detail fetch
+    /// carries reaches the warning rules, so the screen asks about the typo and raises nothing
+    /// about an outside sender. The list badge is separate — `MailSummary.isExternal`, which is
+    /// already false for a sender with no address at all.
+    @Test func aBounceAsksAboutTheTypoAndIsNotBadgedAsOutsideMail() async {
+        let h = Self.harness(FakeMailClient.message(
+            uid: 5, from: "", name: "Mail Deliver System",
+            subject: "Returned Mail: Hostname cannot be resolved",
+            text: "B10000001@mail.ntust.edj.tw [Hostname cannot be resolved]",
+            returnPath: "<>"
+        ))
+        await h.model.load()
+        #expect(h.model.warnings == [.mistypedRecipient])
+        #expect(h.model.summary?.isExternal == false)
+    }
+
     /// A large source is loaded without asking: `MailSourceTextView` lays out only what is on
     /// screen, so the prompt the old view needed no longer buys anything.
     @Test func largeSourceLoadsWithoutAsking() async {

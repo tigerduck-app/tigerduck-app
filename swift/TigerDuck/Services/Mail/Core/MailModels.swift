@@ -192,6 +192,15 @@ nonisolated struct MailMessageDetail: Codable, Sendable {
     var messageID: String?
     var inReplyTo: String?
     var references: [String]?
+    /// The `Return-Path` header, or nil where the fetch carried no header section and for mail
+    /// that has none. A null reverse-path (`<>`) marks a delivery status notification — see
+    /// `MailWarnings.isBounce`. Written by the receiving server, so unlike the `From` display
+    /// name it is not the sender's to choose.
+    ///
+    /// Optional, and defaulted, so a body cached by a build that predates it still decodes (it
+    /// simply reads back nil, and the mail is judged exactly as it was before) and so the
+    /// existing call sites need no change.
+    var returnPath: String? = nil
     var parts: [MailBodyPart]
     var textBody: String?
     var htmlBody: String?

@@ -429,6 +429,7 @@ struct MailMessageView: View {
         case .displayNameMismatch(let address): appending(address, to: "school_mail_warning_display_name")
         case .passwordBait: String(localized: "school_mail_warning_password")
         case .riskyAttachment(let filename, _): String(format: String(localized: "school_mail_warning_attachment"), filename)
+        case .mistypedRecipient: String(localized: "school_mail_bounce_warning")
         }
     }
 

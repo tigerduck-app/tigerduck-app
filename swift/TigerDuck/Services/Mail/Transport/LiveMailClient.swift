@@ -263,6 +263,7 @@ actor LiveMailClient: MailClient {
                 messageID: info.messageId.map(Self.angleBracketed),
                 inReplyTo: info.inReplyTo.map(Self.angleBracketed),
                 references: info.references?.map(Self.angleBracketed),
+                returnPath: Self.returnPath(from: info),
                 parts: info.parts.map(Self.bodyPart(from:)),
                 textBody: textBody,
                 htmlBody: htmlBody,
@@ -660,6 +661,12 @@ actor LiveMailClient: MailClient {
         // display name, with an empty address. `mailNonEmpty` then stores that as `nil`
         // rather than `""`, so `isExternal` below stays false — there is no domain to call
         // outside — instead of badging every delivery-failure notice as an outside sender.
+        //
+        // This is also the whole of what the *list* can know: it is built from ENVELOPE, which
+        // carries no `Return-Path`, so "no domain at all" is the weaker signal it decides the
+        // badge on. The opened message reads the real one — see `MailWarnings.isBounce`, which
+        // records why the two sites differ and why asking the server for named header fields is
+        // not an option here.
         let sender = info.from.flatMap { MailAddress.parseSender($0) }
         let fromAddress = sender.flatMap { MailTextCleaner.clean($0.address).mailNonEmpty }
         let clean: (String) -> String = { MailTextCleaner.clean(RFC2047.decode($0)) }
@@ -678,6 +685,19 @@ actor LiveMailClient: MailClient {
             hasAttachments: info.parts.contains(where: isAttachment),
             isExternal: fromAddress.map { !MailWarnings.isSchoolDomain(MailWarnings.domain(ofAddress: $0)) } ?? false
         )
+    }
+
+    /// `Return-Path` off the full header section `detailOptions` already fetches — nil when the
+    /// fetch fell back to the summary attributes (`detailInfo`), which carry no headers at all.
+    ///
+    /// The **first** one, not the last. The final delivery agent prepends its `Return-Path`
+    /// above everything the sender wrote, so a message carrying extra copies lower down is one
+    /// where the top line is the server's and the rest are the sender's. `additionalFields` is
+    /// the same headers as a dictionary and keeps the *last* value for a repeated name, which is
+    /// the wrong end; this reads the ordered list instead.
+    nonisolated static func returnPath(from info: MessageInfo) -> String? {
+        info.additionalHeaderFields?.first { $0.name.lowercased() == "return-path" }?.value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     nonisolated static func isAttachment(_ part: MessagePart) -> Bool {

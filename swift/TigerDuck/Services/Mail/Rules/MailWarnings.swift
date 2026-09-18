@@ -10,6 +10,9 @@ nonisolated enum MailWarning: Equatable, Sendable {
     case displayNameMismatch(address: String)
     case passwordBait
     case riskyAttachment(filename: String, reason: MailRiskReason)
+    /// A delivery failure naming an address one or two keystrokes away from the school's own
+    /// mail domain — see `isMistypedSchoolMailDomain`.
+    case mistypedRecipient
 }
 
 nonisolated enum MailLinkIssue: Equatable, Sendable {
@@ -30,6 +33,10 @@ nonisolated struct MailWarningInput: Sendable {
     var plainText: String
     var links: [MailLink]
     var attachments: [MailAttachmentInfo]
+    /// The mail's `Return-Path` header where one was fetched, otherwise nil — see
+    /// `MailWarnings.isBounce`. Defaulted, because only the opened-message path has it: the
+    /// folder list fetches ENVELOPE alone and has no headers to read it from.
+    var returnPath: String? = nil
 }
 
 /// Appendix A.4, word for word. Identical on Android (shared fixture `warnings.json`).
@@ -128,6 +135,87 @@ nonisolated enum MailWarnings {
     static func domain(ofAddress address: String) -> String {
         guard let at = address.lastIndex(of: "@") else { return "" }
         return normalizedDomain(String(address[address.index(after: at)...]))
+    }
+
+    // MARK: Delivery failures (Mail2000 bounces)
+
+    /// The one mailbox domain every student address lives on, and the yardstick
+    /// `isMistypedSchoolMailDomain` measures against. Android keeps its own copy of this in its
+    /// `MailWarnings`; here it is the value the rest of the app already agrees on.
+    static var schoolMailDomain: String { MailConstants.addressDomain }
+
+    /// Two, not one, so a transposition (`ntsut`) counts — plain Levenshtein scores that as two.
+    private static let maxDomainTypoEdits = 2
+
+    /// RFC 5321 §4.5.5: a delivery status notification is sent with the null reverse-path, and
+    /// the **receiving** server writes that down as `Return-Path: <>`. The header therefore comes
+    /// from our own side of the delivery, unlike the `From` display name ("Mail Deliver System"),
+    /// which any sender can type — so it is the only signal here worth treating as a bounce
+    /// marker.
+    ///
+    /// What can read it, per site, and why the two differ:
+    ///
+    /// - The **opened message** can. `LiveMailClient.detailOptions` already fetches the whole
+    ///   header section (`BODY.PEEK[HEADER]`), so `Return-Path` is already on the wire; it costs
+    ///   nothing to read and rides into the cached body on `MailMessageDetail`.
+    /// - The **folder list** cannot, and is deliberately left as it is. Its fetch is ENVELOPE
+    ///   only, which carries no `Return-Path`, and the one way to ask for just that field —
+    ///   `BODY.PEEK[HEADER.FIELDS (…)]` — is exactly the request Mail2000 mangles (it echoes the
+    ///   section back with the field name double-quoted, which no IMAP parser can read; see
+    ///   `detailOptions`). The remaining option, a full header for all 50 rows of every page, is
+    ///   a real download for a badge that is already right: `LiveMailClient.summary` sets
+    ///   `MailSummary.isExternal` from the parsed address, and a Mail2000 bounce has no address
+    ///   at all, so it is already false. The list therefore decides on the weaker signal — a
+    ///   sender with no domain — and the opened message on this one. They agree on the mail that
+    ///   prompted this; where they could differ is a *forged* bounce whose `From` names a real
+    ///   outside domain, and both call that external, because the exemption below only ever
+    ///   applies when there is no domain at all.
+    static func isBounce(returnPath: String?) -> Bool {
+        guard let returnPath else { return false }
+        return returnPath.filter { !$0.isWhitespace } == "<>"
+    }
+
+    /// True for a domain that reads as a mistyped `schoolMailDomain`: within
+    /// `maxDomainTypoEdits` single-character edits of it, but neither it nor any other real
+    /// school domain.
+    ///
+    /// The length check is not only a shortcut — it keeps a sender-supplied token out of the
+    /// quadratic distance loop entirely.
+    static func isMistypedSchoolMailDomain(_ domain: String) -> Bool {
+        let host = toASCII(normalizedDomain(domain))
+        guard !host.isEmpty, !isSchoolDomain(host) else { return false }
+        guard abs(host.count - schoolMailDomain.count) <= maxDomainTypoEdits else { return false }
+        return editDistance(host, schoolMailDomain) <= maxDomainTypoEdits
+    }
+
+    /// Whether `text` names an email address whose domain is a near miss of the school's. This
+    /// is what turns a delivery failure into 「你剛剛寄信是不是填錯電子信箱？」: a bounce from
+    /// `gmail.com` says nothing about a typo, so it earns no such claim.
+    static func mentionsMistypedSchoolAddress(_ text: String) -> Bool {
+        let range = NSRange(text.startIndex..., in: text)
+        return emailPattern.matches(in: text, range: range).contains { match in
+            guard let matchRange = Range(match.range, in: text) else { return false }
+            return isMistypedSchoolMailDomain(domain(ofAddress: String(text[matchRange])))
+        }
+    }
+
+    /// Levenshtein, two rows at a time.
+    private static func editDistance(_ a: String, _ b: String) -> Int {
+        if a == b { return 0 }
+        let left = Array(a), right = Array(b)
+        guard !left.isEmpty else { return right.count }
+        guard !right.isEmpty else { return left.count }
+        var previous = Array(0...right.count)
+        var current = [Int](repeating: 0, count: right.count + 1)
+        for i in 1...left.count {
+            current[0] = i
+            for j in 1...right.count {
+                let substitution = previous[j - 1] + (left[i - 1] == right[j - 1] ? 0 : 1)
+                current[j] = min(current[j - 1] + 1, previous[j] + 1, substitution)
+            }
+            swap(&previous, &current)
+        }
+        return previous[right.count]
     }
 
     // MARK: Browser-style host parsing
@@ -285,7 +373,23 @@ nonisolated enum MailWarnings {
         // domain and suppress the external-sender banner. `clean` alone leaves it external,
         // which is the safe direction.
         let address = MailTextCleaner.clean(input.fromAddress)
-        let external = !isSchoolDomain(domain(ofAddress: address))
+        let senderDomain = domain(ofAddress: address)
+        // A sender with no domain at all is the one case a confirmed bounce is exempted from,
+        // and that exemption deliberately reverses what this used to assume. A Mail2000
+        // delivery failure arrives as `From: "Mail Deliver System" <MAILER-DAEMON>` — a bare
+        // local part — so "no domain, therefore outside" called the school's own mail system an
+        // outside sender, which is wrong on its face and teaches people to ignore the warning.
+        // The exemption is read from `Return-Path: <>`, which the receiving server writes, never
+        // from the display name, which anyone can set.
+        //
+        // It stays safe. `external` feeds the banner below and the password-bait gate, and that
+        // gate fires on `keywordHit && (external || linksOutside)` — so a forged "bounce"
+        // carrying a phishing link to a non-school host is still caught through the link. What
+        // is left is a forged, link-free bounce (anyone may send `MAIL FROM:<>`, so this is not
+        // proof of origin), which has nothing to click. And the exemption is narrow: a bounce
+        // whose `From` does name a real outside domain stays external exactly as before.
+        let bounce = isBounce(returnPath: input.returnPath)
+        let external = senderDomain.isEmpty ? !bounce : !isSchoolDomain(senderDomain)
         // An empty address means the From header gave none this app will route to
         // (`MailAddress.parseSender`) — a Mail2000 bounce's `<MAILER-DAEMON>`, say. It still
         // counts as "outside" for the password-bait gate below, because it is certainly not
@@ -330,6 +434,11 @@ nonisolated enum MailWarnings {
             if let reason = attachmentRisk(filename: attachment.filename, contentType: attachment.contentType, subjectAndBody: haystack) {
                 warnings.append(.riskyAttachment(filename: displayFilename(attachment.filename), reason: reason))
             }
+        }
+        // Only when the failure really looks like a mistyped school address. A bounce from
+        // somewhere unrelated gives us no basis for claiming the sender typed one wrong.
+        if bounce, mentionsMistypedSchoolAddress(haystack) {
+            warnings.append(.mistypedRecipient)
         }
         return warnings
     }

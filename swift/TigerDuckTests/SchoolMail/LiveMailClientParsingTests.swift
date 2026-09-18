@@ -75,6 +75,33 @@ struct LiveMailClientParsingTests {
         #expect(sender.displayName == "Mail Deliver System")
     }
 
+    /// The same fixture's `Return-Path: <>`. That header, written by the receiving server, is
+    /// the only thing the app treats as a bounce marker — never "Mail Deliver System", which is
+    /// a display name anyone can type.
+    @Test func readsTheNullReversePathOfAMail2000Bounce() throws {
+        let data = try SchoolMailFixtures.rawEML("bounce-no-domain")
+        let returnPath = MailRawHeaders.value(named: "return-path", in: data)
+        #expect(returnPath == "<>")
+        #expect(MailWarnings.isBounce(returnPath: returnPath))
+    }
+
+    /// `Return-Path` comes off the full header section the detail fetch already asks for, and
+    /// the *first* one wins: the delivering server prepends its own above anything the sender
+    /// wrote, so extra copies further down must not be believed over it.
+    @Test func theDetailFetchReadsTheServersReturnPathAndNotALaterOne() {
+        let info = MessageInfo(
+            sequenceNumber: SequenceNumber(1),
+            additionalHeaderFields: [
+                HeaderField(name: "Return-Path", value: "<>"),
+                HeaderField(name: "Received", value: "by mail.ntust.edu.tw"),
+                HeaderField(name: "Return-Path", value: "<attacker@evil.example>"),
+            ]
+        )
+        #expect(LiveMailClient.returnPath(from: info) == "<>")
+        // The fallback fetch (`detailInfo`) carries no header section at all.
+        #expect(LiveMailClient.returnPath(from: MessageInfo(sequenceNumber: SequenceNumber(1))) == nil)
+    }
+
     @Test func decodesTheMail2000Shape() throws {
         let data = try SchoolMailFixtures.rawEML("mail2000-sample")
         let message = try EMLParser.parse(data)

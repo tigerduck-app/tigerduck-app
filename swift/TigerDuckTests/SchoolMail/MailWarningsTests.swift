@@ -240,6 +240,100 @@ struct MailWarningsTests {
         #expect(!MailWarnings.isSchoolDomain(""))
     }
 
+    // MARK: Delivery failures (Mail2000 bounces)
+
+    @Test
+    func onlyANullReversePathMarksABounce() {
+        #expect(MailWarnings.isBounce(returnPath: "<>"))
+        #expect(MailWarnings.isBounce(returnPath: "  <> "), "folding whitespace is not part of the value")
+        #expect(!MailWarnings.isBounce(returnPath: nil))
+        #expect(!MailWarnings.isBounce(returnPath: ""))
+        #expect(!MailWarnings.isBounce(returnPath: "<postmaster@mail.ntust.edu.tw>"))
+        // Never the display name: anyone can set one, and the whole point of reading
+        // `Return-Path` is that the receiving server writes it.
+        #expect(!MailWarnings.isBounce(returnPath: "Mail Deliver System"))
+    }
+
+    /// The real notice the author received (`Fixtures/bounce-no-domain.eml`): it came from the
+    /// school's own mail system, so nothing about it may count as an outside sender — and with
+    /// the address it names being one keystroke off, it asks about the typo.
+    @Test
+    func aMail2000BounceIsNotTreatedAsOutsideMailAndAsksAboutTheTypo() {
+        let input = MailWarningInput(
+            fromAddress: "",
+            fromName: "Mail Deliver System",
+            subject: "Returned Mail: Hostname cannot be resolved",
+            plainText: """
+            The original message was received from b10000001@mail.ntust.edu.tw
+            ---The following addresses had delivery errors---
+            B10000001@mail.ntust.edj.tw [Hostname cannot be resolved]
+            """,
+            links: [],
+            attachments: [],
+            returnPath: "<>"
+        )
+        #expect(MailWarnings.evaluate(input) == [.mistypedRecipient])
+        #expect(MailMessageView.text(for: .mistypedRecipient) == String(localized: "school_mail_bounce_warning"))
+    }
+
+    /// The bounce exemption covers only a sender with no domain at all. A forged "bounce" whose
+    /// `From` names a real outside domain is external exactly as before — and its link still
+    /// trips password bait, which is why suppressing the flag for a true bounce costs nothing.
+    @Test
+    func theBounceExemptionIsNarrowAndPasswordBaitStillFires() {
+        func evaluate(from: String, links: [MailLink] = []) -> [MailWarning] {
+            MailWarnings.evaluate(MailWarningInput(
+                fromAddress: from, fromName: "Mail Deliver System", subject: "Returned Mail: 帳號停用",
+                plainText: "verify", links: links, attachments: [], returnPath: "<>"
+            ))
+        }
+        #expect(evaluate(from: "daemon@evil.example").contains(.externalSender(address: "daemon@evil.example")))
+        #expect(evaluate(from: "daemon@mail.ntust.edu.tw").isEmpty)
+        // No domain, so the flag is suppressed — and the outside link catches the bait anyway.
+        #expect(evaluate(from: "").isEmpty)
+        #expect(evaluate(from: "", links: [MailLink(text: "verify", href: "https://evil.example/login")])
+            .contains(.passwordBait))
+    }
+
+    /// Without the header nothing has changed: a sender with no domain is still judged the way
+    /// it was before this rule existed.
+    @Test
+    func withoutAReturnPathABounceShapedMailIsJudgedExactlyAsBefore() {
+        let input = MailWarningInput(
+            fromAddress: "", fromName: "Mail Deliver System", subject: "Returned Mail: 帳號停用",
+            plainText: "please verify <B10000001@mail.ntust.edj.tw>", links: [], attachments: []
+        )
+        #expect(MailWarnings.evaluate(input) == [.passwordBait])
+    }
+
+    @Test
+    func aNearMissOfTheSchoolMailDomainIsATypoAndAnExactOrUnrelatedOneIsNot() {
+        #expect(MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edj.tw"), "edj for edu")
+        #expect(MailWarnings.isMistypedSchoolMailDomain("mail.ntsut.edu.tw"), "a transposition is two edits")
+        #expect(MailWarnings.isMistypedSchoolMailDomain("MAIL.NTUST.EDU.TW2"))
+        #expect(!MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edu.tw"), "not a typo of itself")
+        #expect(!MailWarnings.isMistypedSchoolMailDomain("ntust.edu.tw"), "nor is another real school domain")
+        #expect(!MailWarnings.isMistypedSchoolMailDomain("gmail.com"))
+        #expect(!MailWarnings.isMistypedSchoolMailDomain("mail.ntust.edu.tw.evil.example"))
+        #expect(!MailWarnings.isMistypedSchoolMailDomain(""))
+    }
+
+    @Test
+    func onlyABounceNamingANearMissAsksAboutATypo() {
+        func bounce(_ text: String) -> [MailWarning] {
+            MailWarnings.evaluate(MailWarningInput(
+                fromAddress: "", fromName: "Mail Deliver System",
+                subject: "Returned Mail: Hostname cannot be resolved",
+                plainText: text, links: [], attachments: [], returnPath: "<>"
+            ))
+        }
+        #expect(bounce("<B10000001@mail.ntust.edj.tw>: Hostname cannot be resolved").contains(.mistypedRecipient))
+        #expect(!bounce("<someone@gmail.com>: user unknown").contains(.mistypedRecipient),
+                "nothing says a gmail address was meant to be ours")
+        #expect(!bounce("<B10000001@mail.ntust.edu.tw>: mailbox full").contains(.mistypedRecipient))
+        #expect(!bounce("no address at all here").contains(.mistypedRecipient))
+    }
+
     /// The other half of the same rule, and the reason the suppression above is safe: keeping
     /// the display name means a *claimed* address now reaches the screen, so a From the parser
     /// could not read must not also silence the mismatch check. `"教務處 office@ntust.edu.tw"
@@ -404,6 +498,10 @@ private extension MailWarning {
         case .displayNameMismatch(let address): "display_name_mismatch:\(address)"
         case .passwordBait: "password_bait"
         case .riskyAttachment(let filename, let reason): "risky_attachment:\(filename):\(reason.fixtureCode)"
+        // No row in the shared `warnings.json` carries a Return-Path, so this never fires today.
+        // It is spelled out so the code is already agreed if that fixture ever grows one — the
+        // fixture itself is byte-for-byte shared with Android and is not touched here.
+        case .mistypedRecipient: "mistyped_recipient"
         }
     }
 }

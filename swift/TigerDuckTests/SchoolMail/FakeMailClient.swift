@@ -134,16 +134,24 @@ actor FakeMailClient: MailClient {
         deleted: Bool = false,
         text: String? = "body",
         html: String? = nil,
-        messageID: String? = nil
+        messageID: String? = nil,
+        /// Only the detail fetch carries headers, so this reaches `MailMessageDetail` and never
+        /// the summary — the same split the real client has.
+        returnPath: String? = nil
     ) -> Message {
         let subject = subject ?? "subject \(uid)"
+        // Mirrors `LiveMailClient.summary`: a From with no usable address (a Mail2000 bounce's
+        // `<MAILER-DAEMON>`) stores nil, not "", and gets no 校外 badge — there is no domain to
+        // call outside. Identical to the old behaviour for every non-empty address.
+        let address = from.mailNonEmpty
         let summary = MailSummary(
-            uid: uid, fromName: name, fromAddress: from, to: ["b10000000@mail.ntust.edu.tw"], cc: nil,
+            uid: uid, fromName: name, fromAddress: address, to: ["b10000000@mail.ntust.edu.tw"], cc: nil,
             subject: subject, date: Date(timeIntervalSince1970: 1_789_000_000 + TimeInterval(uid)),
             isSeen: seen, isAnswered: false, isDeleted: deleted, size: 100, hasAttachments: false,
-            isExternal: !MailWarnings.isSchoolDomain(MailWarnings.domain(ofAddress: from))
+            isExternal: address.map { !MailWarnings.isSchoolDomain(MailWarnings.domain(ofAddress: $0)) } ?? false
         )
         let detail = MailMessageDetail(summary: summary, messageID: messageID, inReplyTo: nil, references: nil,
+                                       returnPath: returnPath,
                                        parts: [], textBody: text, htmlBody: html, inlineImages: nil)
         let raw = Data("From: \(from)\r\nSubject: \(subject)\r\nMessage-ID: \(messageID ?? "<\(uid)@fake>")\r\n\r\n\(text ?? "")\r\n".utf8)
         return Message(summary: summary, detail: detail, raw: raw, attachments: [:], messageID: messageID)

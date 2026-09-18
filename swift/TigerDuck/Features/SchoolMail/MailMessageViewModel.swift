@@ -491,7 +491,10 @@ final class MailMessageViewModel {
             subject: summary.subject ?? "",
             plainText: plainText,
             links: freshSanitized?.links ?? [],
-            attachments: detail.attachments.map { MailAttachmentInfo(filename: $0.filename ?? "", contentType: $0.contentType) }
+            attachments: detail.attachments.map { MailAttachmentInfo(filename: $0.filename ?? "", contentType: $0.contentType) },
+            // Only the opened message has this — the folder list fetches ENVELOPE alone. See
+            // `MailWarnings.isBounce` for why the two sites read different signals.
+            returnPath: detail.returnPath
         ))
         loadState = .loaded
     }
