@@ -312,6 +312,26 @@ struct MailWarningsTests {
         #expect(!MailWarnings.neverRenderedInApp(filename: "report.ht\u{0301}ml"))
     }
 
+    // MARK: A host split across a line break
+    //
+    // The sanitizer hands link text on already `clean`ed, and SwiftSoup's own `text()` has
+    // normalized the anchor's whitespace before that, so a host wrapped across a line arrives
+    // here joined by a space that `visibleText` cannot remove.
+
+    @Test(arguments: ["ntust.\nedu.tw", "ntust\n.edu.tw", "ntust.\u{00A0}edu.tw", "ntust.  edu.tw"])
+    func aHostSplitAcrossALineBreakIsStillComparedAsOneHost(rawText: String) {
+        let asTheSanitizerHandsItOn = MailTextCleaner.clean(rawText)
+        let issues = MailWarnings.linkIssues(text: asTheSanitizerHandsItOn, href: "https://evil.example/login")
+        #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
+    }
+
+    /// Only whitespace touching a dot is rejoined, so ordinary prose around a link is still
+    /// prose and not a host-shaped claim about where the link goes.
+    @Test(arguments: ["按這裡 看公告", "Reset your password here", "請見 ntust.edu.tw 公告", "點我 立即 驗證"])
+    func ordinaryWordsAroundALinkAreStillNotAHost(text: String) {
+        #expect(MailWarnings.linkIssues(text: text, href: "https://evil.example/login").isEmpty)
+    }
+
     /// The archive hint is read from the subject and body the same way, so it dodges the same way.
     @Test
     func encryptedArchiveHintSurvivesAnInvisibleCharacterInTheKeyword() {

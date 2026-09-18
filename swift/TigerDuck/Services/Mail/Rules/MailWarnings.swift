@@ -448,11 +448,53 @@ nonisolated enum MailWarnings {
         return email
     }
 
+    /// `visibleText` joins a host back up when what split it is invisible, but it cannot join
+    /// one that a *space* splits — and by the time link text reaches here a line break has
+    /// already become a space twice over: SwiftSoup's `Element.text()` normalizes an anchor's
+    /// whitespace, and `MailTextCleaner.clean` collapses what is left, both on purpose, so that
+    /// displayed text keeps its word boundaries. A host wrapped across a line in the source
+    /// therefore arrives as `ntust. edu.tw`, matches no host pattern, and a link pointing
+    /// somewhere else was reported as having nothing to compare rather than as a mismatch.
+    ///
+    /// So the host pattern is tried a second time with the whitespace that touches a dot taken
+    /// out. Only whitespace touching a dot: `請見 ntust.edu.tw 公告` is prose with a host in it,
+    /// not a claim that the whole line is one host, and joining it wholesale would invent a
+    /// shown host out of the words around the link.
     private static func hostShown(in text: String) -> String? {
+        if let host = matchedHost(in: text) { return host }
+        let rejoined = joiningWhitespaceTouchingADot(text)
+        guard rejoined != text else { return nil }
+        return matchedHost(in: rejoined)
+    }
+
+    private static func matchedHost(in text: String) -> String? {
         let range = NSRange(text.startIndex..., in: text)
         guard let match = shownHostPattern.firstMatch(in: text, range: range),
               let hostRange = Range(match.range(at: 1), in: text) else { return nil }
         return stripWWW(toASCII(normalizedDomain(String(text[hostRange]))))
+    }
+
+    /// `"ntust. edu.tw"` -> `"ntust.edu.tw"`; `"請見 ntust.edu.tw 公告"` unchanged. Every
+    /// Unicode whitespace character counts, so a no-break space or an ideographic space splits
+    /// a host no more successfully than a plain one does.
+    private static func joiningWhitespaceTouchingADot(_ text: String) -> String {
+        let dot = Unicode.Scalar(".")
+        let scalars = Array(text.unicodeScalars)
+        var kept = String.UnicodeScalarView()
+        var index = 0
+        while index < scalars.count {
+            guard scalars[index].properties.isWhitespace else {
+                kept.append(scalars[index])
+                index += 1
+                continue
+            }
+            var end = index
+            while end < scalars.count, scalars[end].properties.isWhitespace { end += 1 }
+            let touchesADot = (index > 0 && scalars[index - 1] == dot) || (end < scalars.count && scalars[end] == dot)
+            if !touchesADot { kept.append(contentsOf: scalars[index..<end]) }
+            index = end
+        }
+        return String(kept)
     }
 
     private static func stripWWW(_ host: String) -> String {
