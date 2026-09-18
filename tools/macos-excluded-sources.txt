@@ -236,3 +236,84 @@ BulletinPushOptOutMigration.swift
 # outside `AppState+NotificationSettings.swift`, itself excluded above.
 NotificationSettingsDocument.swift
 SettingsDocumentClient.swift
+
+# Features/SchoolMail — the School Mail feature (design doc §6.2). Every file
+# here is wrapped in `#if os(iOS)`; `SchoolMailAvailability.isEnabled`
+# returns false off iOS, and `.schoolMail` is listed in
+# `MacFeatureFiltering.macHiddenFeatures`, so macOS never reaches any of it.
+MailComposeView.swift
+MailComposeViewModel.swift
+MailDateFormatter.swift
+MailGuideView.swift
+MailListViewModel.swift
+MailMessageView.swift
+MailMessageViewModel.swift
+MailNotificationSettingsView.swift
+MailPageSession.swift
+MailSettingsView.swift
+SchoolMailView.swift
+
+# Features/SchoolMail/Components — School Mail's UI components; iOS-only,
+# see Features/SchoolMail above
+MailAttachmentList.swift
+MailFolderChipBar.swift
+MailHTMLView.swift
+MailLoginCard.swift
+MailLoginSheet.swift
+MailRowView.swift
+MailWarningBanner.swift
+MailWebViewFactory.swift
+
+# Services/Mail/Account — School Mail's credential/session management;
+# iOS-only, see Features/SchoolMail above
+MailAccountManager.swift
+
+# Services/Mail/Compose — School Mail's outgoing-message building; iOS-only,
+# see Features/SchoolMail above
+MailMessageBuilder.swift
+MailReplyComposer.swift
+
+# Services/Mail/Core — School Mail's client protocol, constants and models;
+# iOS-only, see Features/SchoolMail above
+MailClient.swift
+MailConstants.swift
+MailModels.swift
+
+# Services/Mail/Demo — the School Mail demo/preview client; iOS-only, see
+# Features/SchoolMail above
+DemoMailClient.swift
+
+# Services/Mail/Rules — School Mail's IMAP/MIME parsing and sanitization
+# rules; iOS-only, see Features/SchoolMail above
+MailCSSFilter.swift
+MailCharset.swift
+MailFolderMap.swift
+MailHTMLSanitizer.swift
+MailRawHeaders.swift
+MailTextCleaner.swift
+MailTextLinkifier.swift
+MailWarnings.swift
+ModifiedUTF7.swift
+
+# Services/Mail — School Mail's startup wiring; iOS-only, see
+# Features/SchoolMail above
+SchoolMailBootstrap.swift
+
+# Services/Mail/Store — School Mail's local cache, credential and preference
+# storage; iOS-only, see Features/SchoolMail above
+MailCache.swift
+MailCredentialStore.swift
+MailPreferences.swift
+
+# Services/Mail/Sync — School Mail's background refresh and new-mail
+# notification; iOS-only, see Features/SchoolMail above
+MailBackgroundRefresh.swift
+MailChecker.swift
+MailNotifier.swift
+
+# Services/Mail/Transport — School Mail's IMAP/SMTP transport; iOS-only, see
+# Features/SchoolMail above
+AsyncSerialLock.swift
+LiveMailClient.swift
+MailMover.swift
+MailTLSVerifier.swift
