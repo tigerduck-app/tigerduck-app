@@ -258,6 +258,60 @@ struct MailWarningsTests {
         #expect(MailWarnings.evaluate(input) == [.externalSender(address: "admin@evil.example"), .passwordBait])
     }
 
+    // MARK: Invisible characters outside `Cf`/`Cc`
+    //
+    // The cases above all use a format or control character. Those are not the whole invisible
+    // table: the combining grapheme joiner, the variation selectors, the reserved
+    // default-ignorables, the Hangul fillers and the blank braille pattern are none of them,
+    // and every one of them reached the same surfaces with the same effect.
+
+    static let invisibleMarks = [
+        "\u{034F}", "\u{FE0F}", "\u{FE00}", "\u{E0100}", "\u{2065}", "\u{3164}", "\u{2800}",
+    ]
+
+    @Test(arguments: invisibleMarks)
+    func linkMismatchSurvivesAnInvisibleMarkInsideTheShownHost(mark: String) {
+        let issues = MailWarnings.linkIssues(text: "ntust.e\(mark)du.tw", href: "https://evil.example/login")
+        #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
+    }
+
+    /// `report.ht<U+FE0F>ml` was the concrete §9.5 defeat left open: the extension is not `html`,
+    /// so the message screen falls back to the attacker's own Content-Type and renders in-process.
+    @Test(arguments: invisibleMarks)
+    func neverRenderedInAppSurvivesAnInvisibleMarkInTheExtension(mark: String) {
+        #expect(MailWarnings.neverRenderedInApp(filename: "report.ht\(mark)ml"))
+    }
+
+    /// `payload.ex<U+034F>e` was the other one: no risky-attachment warning, so no confirmation
+    /// dialog before the file is handed to Quick Look or the share sheet.
+    @Test(arguments: invisibleMarks)
+    func attachmentRiskSurvivesAnInvisibleMarkInTheExtension(mark: String) {
+        #expect(
+            MailWarnings.attachmentRisk(filename: "payload.ex\(mark)e", contentType: nil, subjectAndBody: "")
+                == .dangerousExtension
+        )
+    }
+
+    @Test(arguments: invisibleMarks)
+    func passwordBaitSurvivesAnInvisibleMarkInTheKeyword(mark: String) {
+        let input = MailWarningInput(
+            fromAddress: "admin@evil.example",
+            fromName: nil,
+            subject: "請重新驗\(mark)證您的帳戶",
+            plainText: "",
+            links: [],
+            attachments: []
+        )
+        #expect(MailWarnings.evaluate(input) == [.externalSender(address: "admin@evil.example"), .passwordBait])
+    }
+
+    /// The other direction: a mark the reader *can* see must not be dropped, or an ordinary
+    /// accented or Vietnamese filename would start matching extensions it does not have.
+    @Test func aVisibleCombiningMarkIsNotTreatedAsInvisible() {
+        #expect(MailWarnings.attachmentRisk(filename: "payload.ex\u{0301}e", contentType: nil, subjectAndBody: "") == nil)
+        #expect(!MailWarnings.neverRenderedInApp(filename: "report.ht\u{0301}ml"))
+    }
+
     /// The archive hint is read from the subject and body the same way, so it dodges the same way.
     @Test
     func encryptedArchiveHintSurvivesAnInvisibleCharacterInTheKeyword() {

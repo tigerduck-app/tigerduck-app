@@ -65,9 +65,12 @@ nonisolated enum MailTextCleaner {
         return String(scalars).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// What the reader actually sees: every Unicode format character (`Cf` — the bidi marks,
-    /// word joiner U+2060, soft hyphen U+00AD, BOM U+FEFF) and every control character
-    /// (`Cc`, C0 and C1) removed outright. Android's `MailWarnings.INVISIBLE`.
+    /// What the reader actually sees: every character that draws nothing removed outright —
+    /// every Unicode format character (`Cf` — the bidi marks, word joiner U+2060, soft hyphen
+    /// U+00AD, BOM U+FEFF), every control character (`Cc`, C0 and C1), and everything Unicode
+    /// itself marks `Default_Ignorable_Code_Point`. Android's `MailWarnings.INVISIBLE` is the
+    /// `Cf`/`Cc` half only, so the wider class is still open there — a cross-platform
+    /// follow-up, not something this side should match by weakening.
     ///
     /// This is deliberately *not* folded into `clean`. `clean` produces text that is shown to
     /// the user, so it keeps word boundaries: `\t`/`\n`/`\r` become a space. The warning rules
@@ -83,12 +86,31 @@ nonisolated enum MailTextCleaner {
         String(String.UnicodeScalarView(text.unicodeScalars.filter { !isInvisible($0) }))
     }
 
-    /// U+200B is spelled out instead of being left to `generalCategory`. It reports `.format`
-    /// on this toolchain, but the property is answered from the platform's Unicode tables at
-    /// run time, and this character's category has moved between Unicode versions — which is
-    /// exactly why Android spells it out too. `MailTextRulesTests` pins the behaviour.
+    /// Named character by character rather than by attack, because enumerating attacks is how
+    /// this check kept failing open: `Cf`/`Cc` alone left the combining grapheme joiner
+    /// (U+034F), every variation selector (U+FE00–FE0F, U+E0100–), the reserved
+    /// default-ignorables (U+2065) and the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0)
+    /// able to hide inside a host, a file extension or a keyword. They are all
+    /// `Default_Ignorable_Code_Point`, which is Unicode's own name for "renders as nothing",
+    /// and which excludes `White_Space`, so an ordinary space still separates two words here.
+    ///
+    /// Two are spelled out because the property does not cover them:
+    ///
+    /// - **U+200B** reports `.format` on this toolchain, but the property is answered from the
+    ///   platform's Unicode tables at run time and this character's category has moved between
+    ///   Unicode versions — which is exactly why Android spells it out too.
+    /// - **U+2800 BRAILLE PATTERN BLANK** is not default-ignorable and is not meant to be: it
+    ///   is a printing character (`So`), a real braille cell that happens to have no raised
+    ///   dots. Unicode is right and it is still invisible to someone reading a filename or a
+    ///   host, which is the only question this function answers, so it is removed here and
+    ///   nowhere else. `clean` — the display path — leaves it alone, so braille text still
+    ///   renders with its blank cells intact; it is dropped only when deciding whether to warn,
+    ///   where removing a cell can add a warning but never take one away.
+    ///
+    /// `MailTextRulesTests` pins all of it.
     private static func isInvisible(_ scalar: Unicode.Scalar) -> Bool {
-        if scalar.value == 0x200B { return true }
+        if scalar.value == 0x200B || scalar.value == 0x2800 { return true }
+        if scalar.properties.isDefaultIgnorableCodePoint { return true }
         switch scalar.properties.generalCategory {
         case .format, .control: return true
         default: return false

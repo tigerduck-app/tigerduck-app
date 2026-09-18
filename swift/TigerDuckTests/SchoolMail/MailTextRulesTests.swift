@@ -147,8 +147,29 @@ struct MailTextRulesTests {
         #expect(MailTextCleaner.visibleText("a\(invisible)b") == "ab")
     }
 
+    /// `Cf`/`Cc` is not the whole invisible table. Unicode's own `Default_Ignorable_Code_Point`
+    /// is, and it covers the combining grapheme joiner, every variation selector, the reserved
+    /// default-ignorables and the Hangul fillers — none of which is `Cf` or `Cc`.
+    @Test(arguments: [
+        "\u{034F}", "\u{FE00}", "\u{FE0F}", "\u{E0100}", "\u{2065}",
+        "\u{115F}", "\u{1160}", "\u{3164}", "\u{FFA0}", "\u{17B4}", "\u{180B}",
+    ])
+    func visibleTextRemovesDefaultIgnorableCharactersToo(invisible: String) {
+        #expect(MailTextCleaner.visibleText("a\(invisible)b") == "ab")
+    }
+
+    /// U+2800 is a printing character (`So`) that every font draws as nothing, so Unicode does
+    /// not call it default-ignorable but a reader cannot see it either. Named on its own line.
+    @Test func visibleTextRemovesTheBlankBraillePattern() {
+        #expect(MailTextCleaner.visibleText("a\u{2800}b") == "ab")
+    }
+
     @Test func visibleTextKeepsCharactersTheReaderCanSee() {
         #expect(MailTextCleaner.visibleText("課程 公告 a1.") == "課程 公告 a1.")
+        // A combining mark that changes what the reader sees is not invisible: stripping every
+        // `Mn` would rewrite accented Latin, Vietnamese and Indic text.
+        #expect(MailTextCleaner.visibleText("cafe\u{0301}.pdf") == "cafe\u{0301}.pdf")
+        #expect(MailTextCleaner.visibleText("中\u{3000}文") == "中\u{3000}文")
     }
 
     // MARK: A.1 folders
