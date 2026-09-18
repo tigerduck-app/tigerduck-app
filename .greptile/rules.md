@@ -104,6 +104,46 @@ set (`["zh", "yue", "nan", "hak", "wuu", "lzh"]`) mirrors
 `LanguageManager.chineseLanguageCodes` and is the source of truth for
 which tags get the Traditional fallback.
 
+## `imaplib` capabilities are `str`, every other IMAP response is `bytes`
+
+**Rule:** Do not flag the `SPECIAL-USE` capability check in
+`api-poc/api/ntust/webmail.py` (`probe_imap`) as a bytes/str type
+mismatch. Comparing `imap.capabilities` entries against the *string*
+`"SPECIAL-USE"` is correct; `b"SPECIAL-USE"` would be the bug.
+
+**Why:** `imaplib.IMAP4.capabilities` is the one response the stdlib
+decodes for the caller. There is exactly one assignment to it in the
+whole module, and it decodes first:
+
+```python
+def _get_capabilities(self):
+    typ, dat = self.capability()
+    if dat == [None]:
+        raise self.error('no CAPABILITY response from server')
+    dat = str(dat[-1], self._encoding)   # decoded here
+    dat = dat.upper()
+    self.capabilities = tuple(dat.split())
+```
+
+Nothing else writes to it — `login()` does not refresh it, and an
+untagged `CAPABILITY` sent at login lands in `untagged_responses` as
+raw bytes without touching `capabilities`. So there is no execution
+path on which the comparison sees bytes, and no `TypeError` to raise.
+Verified against CPython 3.14's `imaplib`.
+
+Changing it to a bytes comparison would be an actual regression: the
+`in` test could never match, and `has_special_use` would report `False`
+unconditionally — which defeats the point of recording it, since the
+field exists so that a future server upgrade is *visible* rather than
+assumed.
+
+**How to apply:** In this repo, `imap.capabilities` is `tuple[str, ...]`
+and every other `imaplib` response (`list()`, `uid()`, `fetch()`,
+`select()`) hands back bytes that the surrounding code decodes
+explicitly. The line above the check already says so. Flag a missing
+decode on the *other* responses; never on `capabilities`. This finding
+was raised twice on PR #199 and rejected both times.
+
 ## Greptile review
 
 **Rule:** For every review, please update confidence score as well as giving the suggestions (if any).
