@@ -66,6 +66,28 @@ struct MailMessageViewModelTests {
         #expect(h.model.plainText == "a\nb")
     }
 
+    /// Fetching, parsing and sanitizing the body is the slow half of opening a mail, while the
+    /// sender, subject and date are already on disk in the folder's cached page. The header is
+    /// built from `summary`, so it is ready before the body is — and stays up even when the body
+    /// never arrives at all, which is the case that proves it does not depend on `detail`.
+    @Test func theHeaderComesFromTheCachedPageWithoutWaitingForTheBody() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, name: "教務處", subject: "期末考公告"))
+        await h.fake.update { $0.detailError = .unreachable }
+        await h.model.load()
+        #expect(h.model.detail == nil)
+        #expect(h.model.summary?.subject == "期末考公告")
+        #expect(h.model.summary?.fromName == "教務處")
+        #expect(h.model.loadState == .failed(MailAccountManager.LoginError(MailClientError.unreachable).message))
+    }
+
+    /// Once the message itself lands, that is what the header reads — the row the list cached can
+    /// be staler than the fetch (its `\Seen` flag, for one, which this very screen just set).
+    @Test func theLoadedMessageSupersedesTheCachedRow() async {
+        let h = Self.harness(FakeMailClient.message(uid: 7, seen: false))
+        await h.model.load()
+        #expect(h.model.summary?.isSeen == true)
+    }
+
     /// 格式化 renders the sanitized HTML document, so a plain-text-only mail must not offer it —
     /// picking it would show nothing. The selection has to move off it at the same moment, or the
     /// picker is left pointing at an entry that is no longer in the menu.

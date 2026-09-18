@@ -166,9 +166,12 @@ struct MailMessageView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Drawn from `viewModel.summary`, which the folder's cached page supplies while the body is
+    /// still being fetched — one header view, shown the moment anything is known about the mail
+    /// rather than only once the whole message has landed.
     @ViewBuilder
     private var header: some View {
-        if let summary = viewModel.detail?.summary {
+        if let summary = viewModel.summary {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
                 HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
                     Text(summary.fromName?.mailNonEmpty ?? summary.fromAddress ?? String(localized: "school_mail_no_sender"))

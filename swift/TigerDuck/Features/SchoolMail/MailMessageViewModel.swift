@@ -41,6 +41,11 @@ final class MailMessageViewModel {
 
     let route: MailMessageRoute
     private(set) var detail: MailMessageDetail?
+    /// This mail's row as the folder's cached page has it, read in `load()` before the body is
+    /// asked for. The list page is on disk long before the (much slower) body fetch returns, so
+    /// the sender, subject and date are knowable straight away even when no body has ever been
+    /// cached — see `summary`.
+    private(set) var cachedSummary: MailSummary?
     private(set) var loadState: LoadState = .loading
     private(set) var sanitized: SanitizedHTML?
     /// `sanitized.html`, with every `<a href>` rewritten to an index into `linkedDocument.links`
@@ -106,6 +111,13 @@ final class MailMessageViewModel {
         self.notifier = notifier
     }
 
+    /// What the header should show. The body is the slow half of opening a mail — a fetch, a
+    /// parse and a sanitize — while the sender, subject and date are already in the folder page
+    /// the list cached, so the screen has no reason to withhold the whole header behind a
+    /// spinner until the body lands. Prefers the loaded message, since a summary can have been
+    /// refreshed by the fetch.
+    var summary: MailSummary? { detail?.summary ?? cachedSummary }
+
     /// The modes worth offering for this mail. 格式化 renders the sanitized HTML document, so a
     /// mail that carries no HTML part has nothing to show there — Android hides the mode outright
     /// rather than letting the user pick a view that renders nothing, and so do we. Until a
@@ -156,8 +168,15 @@ final class MailMessageViewModel {
         let cache = self.cache
         let folder = route.folder
         let uid = route.uid
-        let validity = await Task.detached { cache.loadPage(folder: folder)?.uidValidity }.value
+        let page = await Task.detached { cache.loadPage(folder: folder) }.value
+        let validity = page?.uidValidity
         pageUIDValidity = validity
+        if detail == nil {
+            // The header can be drawn from this alone, so it goes up before the body is even
+            // asked for rather than after — the row is already on disk, the body may be seconds
+            // away or may fail outright.
+            cachedSummary = page?.summaries.first { $0.uid == uid }
+        }
         if detail == nil, let validity {
             let cached = await Task.detached { cache.loadDetail(folder: folder, uidValidity: validity, uid: uid) }.value
             if let cached { await apply(cached) }
