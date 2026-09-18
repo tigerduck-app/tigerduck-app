@@ -38,23 +38,22 @@ struct MoodleEnrolledCourse: Sendable {
     let startDate: Date?
     let endDate: Date?
 
-    /// NTUST course number stripped of 4-digit semester prefix.
+    /// NTUST course number stripped of the semester prefix.
     /// e.g. "1142PE139B022" → "PE139B022". Empty if idnumber is empty or format unknown.
     var courseNo: String {
-        guard hasSemesterPrefix else { return "" }
+        guard semester.isEmpty == false else { return "" }
         return String(idnumber.dropFirst(4))
     }
 
-    /// 4-digit semester code extracted from idnumber prefix.
-    /// e.g. "1142PE139B022" → "1142". Empty if idnumber doesn't start with 4 digits.
+    /// Semester code extracted from the idnumber prefix, spelled the way
+    /// NTUST's own catalogue spells it — see
+    /// ``SDCourse/semesterPrefix(ofMoodleId:)``. e.g. "1142PE139B022" →
+    /// "1142", "114hGD3115301" → "114H". Empty if the idnumber carries no
+    /// recognisable prefix.
     var semester: String {
-        guard hasSemesterPrefix else { return "" }
-        return String(idnumber.prefix(4))
+        SDCourse.semesterPrefix(ofMoodleId: idnumber) ?? ""
     }
 
-    private var hasSemesterPrefix: Bool {
-        idnumber.count > 4 && idnumber.prefix(4).allSatisfy(\.isNumber)
-    }
 }
 
 // MARK: - Assignments (mod_assign_get_assignments)

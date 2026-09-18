@@ -191,12 +191,43 @@ final class SDCourse: Identifiable {
         TigerDuckTheme.courseColor(for: courseNo)
     }
 
+    /// The 4-character term prefix of a Moodle `idnumber`, normalised, or
+    /// `nil` when the id carries none.
+    ///
+    /// A regular term is four digits (`1151`). A summer term's fourth
+    /// character is a letter — and the two systems disagree on its case:
+    /// NTUST's own `api/semestersinfo` publishes `114H`, while Moodle's
+    /// `idnumber` spells it `114h`. Every term check downstream is a string
+    /// comparison against NTUST's spelling, so the prefix is upper-cased
+    /// here, once, instead of at each comparison. Requiring all four digits
+    /// is what used to drop summer courses on the floor: `courseNo` and
+    /// `semester` both came back empty and the assignment pipeline filtered
+    /// the course out three times over.
+    static func semesterPrefix(ofMoodleId moodleId: String) -> String? {
+        guard moodleId.count > 4 else { return nil }
+        let prefix = moodleId.prefix(4)
+        guard prefix.dropLast().allSatisfy(\.isNumber),
+              let term = prefix.last,
+              term.isNumber || term.isLetter else { return nil }
+        return prefix.uppercased()
+    }
+
     static func courseNoFromMoodleId(_ moodleId: String) -> String {
-        if moodleId.count > 4,
-           moodleId.prefix(4).allSatisfy(\.isNumber) {
-            return String(moodleId.dropFirst(4))
-        }
-        return moodleId
+        guard semesterPrefix(ofMoodleId: moodleId) != nil else { return moodleId }
+        return String(moodleId.dropFirst(4))
+    }
+
+    /// A Moodle `idnumber` with its term prefix normalised, so an id spelled
+    /// by one system is found under a key written by the other:
+    /// `"114hGD3115301"` and `"114HGD3115301"` both become the latter. An id
+    /// with no term prefix is returned unchanged, and a regular all-digit
+    /// term is already its own normal form.
+    ///
+    /// Used on both sides of the Moodle course-id map, which is the only
+    /// thing standing between a course row and its "open in Moodle" button.
+    static func normalizedMoodleId(_ moodleId: String) -> String {
+        guard let prefix = semesterPrefix(ofMoodleId: moodleId) else { return moodleId }
+        return prefix + moodleId.dropFirst(4)
     }
 
     /// Returns the formatted time range string for this course on the given weekday, e.g. "08:10 - 12:10"

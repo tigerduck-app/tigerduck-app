@@ -85,6 +85,41 @@ struct MoodleHomeworkRegressionTests {
         #expect(course.courseNo == "")
     }
 
+    /// A summer term's fourth character is a letter, and Moodle lower-cases
+    /// it while NTUST's catalogue upper-cases it. The old four-digit check
+    /// left `courseNo` and `semester` both empty, which filtered summer
+    /// courses out of the assignment pipeline entirely.
+    @Test func moodleEnrolledCourse_summerTermIsParsedAndNormalised() {
+        let summer = MoodleEnrolledCourse(
+            id: 3,
+            fullname: "114.h【設計系】GD3115301 工程整合設計專題",
+            shortname: "[TaiwanTech] 工程整合設計專題 (114hGD3115301)",
+            idnumber: "114hGD3115301",
+            startDate: nil,
+            endDate: nil
+        )
+
+        // Normalised for term comparisons, which run against NTUST's "114H".
+        #expect(summer.semester == "114H")
+        #expect(summer.courseNo == "GD3115301")
+        #expect(SDCourse.normalizedMoodleId("114hGD3115301") == "114HGD3115301")
+        #expect(SDCourse.normalizedMoodleId("1151AS5140701") == "1151AS5140701")
+        #expect(SDCourse.normalizedMoodleId("moodle:42") == "moodle:42")
+        #expect(SDCourse.courseNoFromMoodleId("114hGD3115301") == "GD3115301")
+    }
+
+    @Test func semesterPrefix_acceptsTermCodesAndRejectsEverythingElse() {
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "1151AS5140701") == "1151")
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "114hGD3115301") == "114H")
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "114HGD3115301") == "114H")
+        // Not a term prefix: letters in the year, too short, nothing at all.
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "moodle:42") == nil)
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "1151") == nil)
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "") == nil)
+        // An unparseable id is handed back whole rather than silently truncated.
+        #expect(SDCourse.courseNoFromMoodleId("moodle:42") == "moodle:42")
+    }
+
     @Test func moodleSubmissionStatus_isSubmittedReflectsServerStatus() {
         let submitted = MoodleSubmissionStatus(assignId: 1, submissionStatus: "submitted", gradingStatus: "graded", submittedAt: nil)
         let draft = MoodleSubmissionStatus(assignId: 2, submissionStatus: "draft", gradingStatus: nil, submittedAt: nil)

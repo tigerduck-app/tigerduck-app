@@ -183,9 +183,11 @@ extension AppState {
     static func isFiled(_ row: [String: Any], under semester: String) -> Bool {
         guard semester.count == 4,
               let moodleId = row["moodle_id"] as? String,
-              moodleId.count > 4,
-              moodleId.prefix(3).allSatisfy(\.isNumber) else { return true }
-        return moodleId.prefix(4) == semester
+              let prefix = SDCourse.semesterPrefix(ofMoodleId: moodleId) else { return true }
+        // Both sides normalised: a summer term reaches us as "114H" from
+        // NTUST and "114h" from Moodle, and a raw compare filed every
+        // summer row under "another term".
+        return prefix == semester.uppercased()
     }
 
     private static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?) -> SDCourse {
