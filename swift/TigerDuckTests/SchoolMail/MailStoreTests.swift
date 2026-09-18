@@ -231,6 +231,58 @@ struct MailStoreTests {
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 1) == nil)
     }
 
+    /// The source is cached beside the body, keyed and invalidated the same way, and the two
+    /// never land on the same file despite sharing the directory.
+    @Test func sourcesRoundTripBesideBodiesAndAreKeyedTheSameWay() {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        defer { cache.clearAll() }
+        let detail = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 2), messageID: nil, inReplyTo: nil,
+                                       references: nil, parts: [], textBody: "body", htmlBody: nil, inlineImages: nil)
+        cache.saveDetail(detail, folder: "INBOX", uidValidity: 7)
+        cache.saveSource("Subject: x\r\n\r\nraw", folder: "INBOX", uidValidity: 7, uid: 2)
+
+        #expect(cache.loadSource(folder: "INBOX", uidValidity: 7, uid: 2) == "Subject: x\r\n\r\nraw")
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 7, uid: 2)?.textBody == "body")
+        // A new UIDVALIDITY generation means a different mail under the same UID.
+        #expect(cache.loadSource(folder: "INBOX", uidValidity: 8, uid: 2) == nil)
+        #expect(cache.loadSource(folder: "INBOX", uidValidity: 7, uid: 3) == nil)
+
+        cache.dropFolder("INBOX")
+        #expect(cache.loadSource(folder: "INBOX", uidValidity: 7, uid: 2) == nil)
+    }
+
+    /// The bug the size check exists for: `saveSource` used to write first and let `pruneBodies`
+    /// tidy up, so one 28 MB bounce sorted newest, evicted every other cached body to get under
+    /// the limit, and was then evicted itself — the whole cache wiped, nothing gained, on every
+    /// visit. Anything over half the shared budget is now never written at all.
+    @Test func anOversizedSourceIsNotCachedAndLeavesTheCacheAlone() {
+        let cache = SchoolMailTestDoubles.temporaryCache(bodyLimitBytes: 4_000)
+        defer { cache.clearAll() }
+        let detail = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 1), messageID: nil, inReplyTo: nil,
+                                       references: nil, parts: [], textBody: "keep me", htmlBody: nil, inlineImages: nil)
+        cache.saveDetail(detail, folder: "INBOX", uidValidity: 1)
+        let before = cache.bodyBytes()
+
+        cache.saveSource(String(repeating: "s", count: 5_000), folder: "INBOX", uidValidity: 1, uid: 2)
+        #expect(cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 2) == nil)
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 1)?.textBody == "keep me")
+        #expect(cache.bodyBytes() == before)
+    }
+
+    /// `saveDetail` has the identical exposure — a body carrying large inline images — so it
+    /// takes the identical guard, not just the source path.
+    @Test func anOversizedBodyIsNotCachedEither() {
+        let cache = SchoolMailTestDoubles.temporaryCache(bodyLimitBytes: 4_000)
+        defer { cache.clearAll() }
+        cache.saveSource("small source", folder: "INBOX", uidValidity: 1, uid: 1)
+        let huge = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 2), messageID: nil, inReplyTo: nil,
+                                     references: nil, parts: [], textBody: String(repeating: "x", count: 5_000),
+                                     htmlBody: nil, inlineImages: nil)
+        cache.saveDetail(huge, folder: "INBOX", uidValidity: 1)
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 2) == nil)
+        #expect(cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 1) == "small source")
+    }
+
     @Test func clearAllRemovesPagesBodiesAndTemporaryFiles() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 0, summaries: [], oldestLoadedSequence: nil))

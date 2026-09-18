@@ -232,13 +232,31 @@ final class MailMessageViewModel {
     /// `BODY.PEEK[]`: never marks the mail read. No size prompt — `MailSourceTextView` lays out
     /// only the visible viewport, so a multi-megabyte source costs a download, not a frozen
     /// screen, and asking about it was only ever a way to apologise for the freeze.
+    ///
+    /// Cache-first, exactly like the body in `load()` and keyed the same way (folder, this
+    /// folder's cached-page UIDVALIDITY, UID), into the same directory and the same LRU budget.
+    /// Dropping the prompt without this would have been a straight downgrade: the source was
+    /// re-downloaded whole on every visit, which on cellular is precisely what the prompt was
+    /// apologising for. Without a cached page there is no UIDVALIDITY to key by, so the fetch
+    /// still works and simply isn't saved — the same rule `load()` applies to a body.
     func loadSource() async {
         sourceLoadFailed = false
+        let cache = self.cache
+        let folder = route.folder
+        let uid = route.uid
+        let validity = pageUIDValidity
+        if let validity,
+           let cached = await Task.detached(operation: { cache.loadSource(folder: folder, uidValidity: validity, uid: uid) }).value {
+            source = cached
+            return
+        }
         do {
-            let folder = route.folder
-            let uid = route.uid
             let data = try await session.use { client in try await client.rawSource(folder: folder, uid: uid) }
-            source = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
+            let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
+            source = text
+            if let validity {
+                await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid) }.value
+            }
         } catch {
             actionError = MailAccountManager.LoginError(error).message
             sourceLoadFailed = true

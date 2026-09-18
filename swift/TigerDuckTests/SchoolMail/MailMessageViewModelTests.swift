@@ -135,6 +135,24 @@ struct MailMessageViewModelTests {
         #expect(h.model.source?.contains("Subject:") == true)
     }
 
+    /// And the reason it can be loaded without asking: it is cached, so revisiting the mail
+    /// costs nothing. The second screen over the same cache reads it back without a second
+    /// `rawSource` round trip.
+    @Test func aLoadedSourceIsCachedAndServedFromTheCacheNextTime() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        await h.model.loadSource()
+        let first = h.model.source
+        #expect(first?.contains("Subject:") == true)
+        #expect(await h.fake.calls.filter { $0 == "rawSource INBOX 5" }.count == 1)
+
+        let again = h.anotherMessage(uid: 5)
+        await again.load()
+        await again.loadSource()
+        #expect(again.source == first)
+        #expect(await h.fake.calls.filter { $0 == "rawSource INBOX 5" }.count == 1)
+    }
+
     /// A failed source load must end the spinner in a terminal, retryable state rather than
     /// spinning forever (fix round 1, minor 6).
     @Test func aFailedSourceLoadEndsTheSpinnerWithARetryableFailedState() async {

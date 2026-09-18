@@ -12,6 +12,12 @@ import os
 /// keeping their own use of it off the main actor (background refresh, view model
 /// loads on a background task) — every method here does synchronous disk I/O.
 nonisolated final class MailCache: @unchecked Sendable {
+    /// Still 1 with raw sources added, deliberately. A source lands under a filename no earlier
+    /// build ever wrote (`…-source.json`), so no old file is reinterpreted and nothing a new
+    /// build writes is handed to an older one as a body: an older build only ever sees these
+    /// files through `bodyFiles()`, which reads their size and modification date and may evict
+    /// them, and never decodes one. Bumping the version instead would throw away every cached
+    /// page and body on upgrade for no gain.
     static let formatVersion = 1
     private static let sharedPreferences = DefaultsMailPreferences()
     static let shared = MailCache(
@@ -35,6 +41,13 @@ nonisolated final class MailCache: @unchecked Sendable {
 
     private let directory: URL
     private let bodyLimitBytes: Int
+    /// A single body or source larger than this is not cached at all. Bodies and sources share
+    /// the one `bodyLimitBytes` LRU budget (see `saveSource`), and an entry anywhere near the
+    /// whole budget is nearly as bad as one over it: caching it evicts almost everything else
+    /// just to make room for the one item. Capping a single entry at half the budget means
+    /// caching one thing can never evict more than half of what is already there, so the cache
+    /// always holds more than whatever was written most recently.
+    private var maxEntryBytes: Int { bodyLimitBytes / 2 }
     private let account: @Sendable () -> String?
     private let lock = NSLock()
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Cache")
@@ -85,8 +98,7 @@ nonisolated final class MailCache: @unchecked Sendable {
 
     func saveDetail(_ detail: MailMessageDetail, folder: String, uidValidity: UInt32) {
         lock.withLock {
-            write(detail, to: bodyURL(folder: folder, uidValidity: uidValidity, uid: detail.summary.uid))
-            pruneBodies()
+            writeBounded(detail, to: bodyURL(folder: folder, uidValidity: uidValidity, uid: detail.summary.uid))
         }
     }
 
@@ -94,7 +106,35 @@ nonisolated final class MailCache: @unchecked Sendable {
         lock.withLock { bodyFiles().reduce(0) { $0 + $1.size } }
     }
 
-    /// `UIDVALIDITY` changed: this folder's list and bodies are meaningless now.
+    // MARK: Raw source
+
+    /// Kept beside the body, in the same directory and keyed the same way, so the one
+    /// `bodyLimitBytes` budget and the one `pruneBodies()` sweep cover bodies and sources
+    /// together. The `-source` suffix cannot collide with a body's name: a body file is
+    /// `<hex folder>-<uidValidity>-<uid>.json` and none of those three pieces can contain a `-`.
+    private func sourceURL(folder: String, uidValidity: UInt32, uid: UInt32) -> URL {
+        bodiesDirectory.appendingPathComponent("\(Self.fileKey(folder))-\(uidValidity)-\(uid)-source.json")
+    }
+
+    func loadSource(folder: String, uidValidity: UInt32, uid: UInt32) -> String? {
+        lock.withLock {
+            let url = sourceURL(folder: folder, uidValidity: uidValidity, uid: uid)
+            let source = read(String.self, at: url)
+            if source != nil {
+                try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+            }
+            return source
+        }
+    }
+
+    func saveSource(_ source: String, folder: String, uidValidity: UInt32, uid: UInt32) {
+        lock.withLock {
+            writeBounded(source, to: sourceURL(folder: folder, uidValidity: uidValidity, uid: uid))
+        }
+    }
+
+    /// `UIDVALIDITY` changed: this folder's list, bodies and sources are meaningless now. The
+    /// prefix match covers a source file too — it is named from the same folder key.
     func dropFolder(_ folder: String) {
         lock.withLock {
             try? FileManager.default.removeItem(at: pageURL(folder: folder))
@@ -154,11 +194,40 @@ nonisolated final class MailCache: @unchecked Sendable {
     /// operation (the network round trip already succeeded; the cache is a convenience, not the
     /// source of truth). Only the failure kind is logged, never the payload.
     private func write<T: Codable>(_ value: T, to url: URL) {
+        guard let data = encoded(value) else { return }
+        persist(data, to: url)
+    }
+
+    /// The bodies/sources write path: an entry over `maxEntryBytes` is skipped outright instead
+    /// of being written and then swept up by `pruneBodies()`.
+    ///
+    /// Writing first and pruning after is what makes one huge entry destructive. It lands as the
+    /// newest file, so the sweep walks the whole cache oldest-first evicting everything else to
+    /// get under the limit, and then — still over it — evicts the new entry too. A 28 MB
+    /// delivery-failure notice returning a base64 attachment (a real one the author received)
+    /// therefore emptied the entire cache and cached nothing, on every visit. Checking the
+    /// encoded size up front means an oversized entry never touches disk and never disturbs the
+    /// LRU order of what is already there.
+    private func writeBounded<T: Codable>(_ value: T, to url: URL) {
+        guard let data = encoded(value) else { return }
+        guard data.count <= maxEntryBytes else {
+            logger.notice("Mail cache entry larger than half the body budget, not cached")
+            return
+        }
+        persist(data, to: url)
+        pruneBodies()
+    }
+
+    private func encoded<T: Codable>(_ value: T) -> Data? {
         let envelope = Envelope(version: Self.formatVersion, payload: value, account: account())
         guard let data = try? JSONEncoder().encode(envelope) else {
             logger.error("Mail cache encode failed, dropping write")
-            return
+            return nil
         }
+        return data
+    }
+
+    private func persist(_ data: Data, to url: URL) {
         do {
             try createDirectory(url.deletingLastPathComponent())
             try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
