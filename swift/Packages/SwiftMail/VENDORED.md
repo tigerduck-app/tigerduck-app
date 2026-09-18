@@ -35,6 +35,16 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    namespace-prefix resolution it was really about *before* the disconnect, and the new
    contract — a command after `disconnect()` fails — after it.
 
+5. `FetchMessageInfoRequest.wireCommand(options:headerFields:uid:tag:)` — renders the `UID FETCH`
+   command `fetchMessageInfo(for:options:headerFields:)` encodes for a given set of arguments
+   (`IMAP/IMAP/Commands/FetchMessageInfoRequest.swift`, new file). A caller picks options and
+   header-field names; the `BODY.PEEK[...]` section specifier they turn into is otherwise
+   invisible to it, and that section's shape decides whether a non-conforming server's *response*
+   can be parsed at all — `headerFields:` sends the field name quoted, and Mail2000 echoes the
+   section back with quoting of its own added, producing `BODY[HEADER.FIELDS (""NAME"")]`, which
+   no IMAP parser can read. TigerDuck pins the request shape its message screen sends against
+   this. Additive: no upstream file is modified and no upstream behaviour changes.
+
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.

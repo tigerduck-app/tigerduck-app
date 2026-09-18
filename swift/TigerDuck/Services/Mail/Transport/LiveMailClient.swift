@@ -53,7 +53,29 @@ nonisolated enum SchoolMailCharsetHook {
 /// the page session, not to this type — this file does not implement or expose an idle-close
 /// primitive.
 actor LiveMailClient: MailClient {
-    nonisolated private static let summaryOptions: FetchMessageInfoOptions = [.envelope, .internalDate, .flags, .size, .bodyStructure]
+    nonisolated static let summaryOptions: FetchMessageInfoOptions = [.envelope, .internalDate, .flags, .size, .bodyStructure]
+
+    /// The message screen's fetch: the summary attributes plus the **full** header section.
+    ///
+    /// ENVELOPE carries `In-Reply-To` but never `References`, and SwiftMail fills
+    /// `MessageInfo.references` only from a fetched header section, so the detail fetch has to
+    /// ask for one or every reply loses its thread chain. It asks with `.fullHeader`
+    /// (`BODY.PEEK[HEADER]`) and never with a named field list. `headerFields: ["References"]`
+    /// encodes as `BODY.PEEK[HEADER.FIELDS ("References")]` — well-formed IMAP, with the field
+    /// name quoted as an `astring` — but Mail2000 echoes that section back uppercased *and*
+    /// quoted a second time: `BODY[HEADER.FIELDS (""REFERENCES"")]`. NIOIMAP reads the leading
+    /// `""` as an empty quoted string, then meets a bare `REFERENCES` where the closing `)`
+    /// belongs, and the entire FETCH response fails to decode. On a real device that made every
+    /// message open fail while the list — which never asked for a header section — loaded fine.
+    /// `HEADER` has no parenthesised list in it for a server to mangle.
+    ///
+    /// `MailFetchSectionTests` pins the encoded request, and reproduces the server's echo
+    /// through NIOIMAP's own client pipeline.
+    nonisolated static let detailOptions: FetchMessageInfoOptions = summaryOptions.union(.fullHeader)
+
+    /// Always `nil` — see `detailOptions`. A named constant rather than an omitted argument so
+    /// the shape of the request the message screen sends is pinned by a test.
+    nonisolated static let detailHeaderFields: [String]? = nil
 
     private let imap: IMAPServer
     private var credentials: (studentID: String, password: String)?
@@ -215,12 +237,7 @@ actor LiveMailClient: MailClient {
     func detail(folder: String, uid: UInt32) async throws -> MailMessageDetail {
         try await run {
             _ = try await self.imap.examineMailbox(folder)
-            // ENVELOPE never carries References (only In-Reply-To); SwiftMail only fills
-            // `MessageInfo.references` from a fetched header section, so it has to be requested
-            // explicitly here or every reply loses the thread chain.
-            guard let info = try await self.imap.fetchMessageInfo(
-                    for: UID(uid), options: Self.summaryOptions, headerFields: ["References"]
-                  ),
+            guard let info = try await self.detailInfo(folder: folder, uid: uid),
                   let summary = Self.summary(from: info) else {
                 throw MailClientError.protocolError("message \(uid) not found")
             }
@@ -252,6 +269,40 @@ actor LiveMailClient: MailClient {
                 inlineImages: inlineImages.isEmpty ? nil : inlineImages
             )
         }
+    }
+
+    /// The detail fetch, best-effort about the header section that carries `References`.
+    ///
+    /// Threading is worth a header section; it is not worth the message. If the fetch that asks
+    /// for one comes back as a protocol error — including a response this client could not
+    /// decode, which is exactly what a server that mangles the section it echoes back produces —
+    /// this retries with the plain summary attributes the message list already fetches
+    /// successfully every time, and the message opens without its thread chain instead of not
+    /// opening at all. The same shape as the server-side search falling back when Mail2000
+    /// refuses the query, and the compose screen's best-effort Reply-To lookup.
+    ///
+    /// Network, TLS, authentication, busy-server and UIDVALIDITY failures are *not* retried: a
+    /// second fetch cannot fix any of them, and hiding them behind a partial message would be
+    /// wrong. A decode failure makes SwiftMail recycle the connection, so the retry re-EXAMINEs
+    /// the folder first — the reconnect that follows has no mailbox selected.
+    private func detailInfo(folder: String, uid: UInt32) async throws -> MessageInfo? {
+        do {
+            return try await imap.fetchMessageInfo(
+                for: UID(uid), options: Self.detailOptions, headerFields: Self.detailHeaderFields
+            )
+        } catch {
+            guard Self.detailRetriesWithoutHeaderSection(after: error) else { throw error }
+            _ = try await imap.examineMailbox(folder)
+            return try await imap.fetchMessageInfo(for: UID(uid), options: Self.summaryOptions)
+        }
+    }
+
+    /// Whether a failed detail fetch is worth retrying without the header section. Only a
+    /// protocol error is — every other `MailClientError` names something a second fetch cannot
+    /// change.
+    nonisolated static func detailRetriesWithoutHeaderSection(after error: any Error) -> Bool {
+        if case .protocolError = map(error) { return true }
+        return false
     }
 
     func rawSource(folder: String, uid: UInt32) async throws -> Data {
