@@ -6,8 +6,7 @@ import UIKit
 ///
 /// SwiftUI's `Text` lays a string out eagerly and in full, on the main thread, with no
 /// virtualization — and `.textSelection(.enabled)` on top of that costs more again. Raw
-/// source is routinely hundreds of KB (the view only asks for confirmation above
-/// `MailConstants.sourceConfirmBytes`, 5 MB), so the old
+/// source is routinely hundreds of KB and occasionally megabytes, so the old
 /// `ScrollView(.horizontal) { Text(source) }` froze the screen for as long as that layout
 /// took. The horizontal scroll made it worse in two ways: the `Text` was handed an
 /// unbounded width, so every line had to be measured whole and nothing ever wrapped, and

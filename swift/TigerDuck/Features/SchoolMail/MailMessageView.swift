@@ -84,15 +84,6 @@ struct MailMessageView: View {
         .sheet(item: $compose) { context in
             MailComposeView(context: context, session: session, folderRoles: folderRoles)
         }
-        .alert(String(localized: "school_mail_source_large_title"), isPresented: Binding(
-            get: { viewModel.needsSourceConfirmation }, set: { _ in })
-        ) {
-            Button(String(localized: "school_mail_open")) { Task { await viewModel.loadSource(confirmed: true) } }
-            Button(String(localized: "action_cancel"), role: .cancel) { viewModel.cancelSource() }
-        } message: {
-            Text(String(format: String(localized: "school_mail_source_large_message"),
-                        ByteCountFormatter.string(fromByteCount: Int64(viewModel.detail?.summary.size ?? 0), countStyle: .file)))
-        }
         .alert(String(localized: "school_mail_risky_title"), isPresented: Binding(
             get: { riskyAttachment != nil }, set: { if !$0 { riskyAttachment = nil } }), presenting: riskyAttachment
         ) { pending in
@@ -297,7 +288,7 @@ struct MailMessageView: View {
                         actionTitle: String(localized: "action_retry"),
                         action: { Task { await viewModel.loadSource() } }
                     )
-                } else if !viewModel.needsSourceConfirmation {
+                } else {
                     ProgressView().frame(maxWidth: .infinity)
                 }
             }

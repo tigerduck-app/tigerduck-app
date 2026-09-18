@@ -15,7 +15,6 @@ nonisolated enum MailConstants {
     static let foregroundCheckThrottle: TimeInterval = 60
     static let pageSize = 50
     static let bodyCacheLimitBytes = 20 * 1024 * 1024
-    static let sourceConfirmBytes = 5 * 1024 * 1024
     static let maxEncodedMessageBytes = 50 * 1024 * 1024
     static let maxInlineImageBytes = 5 * 1024 * 1024
     static let notificationCollapseThreshold = 5

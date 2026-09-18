@@ -124,15 +124,14 @@ struct MailMessageViewModelTests {
         #expect(h.center.removed == ["school-mail-1-7"])
     }
 
-    @Test func largeSourceAsksFirst() async {
+    /// A large source is loaded without asking: `MailSourceTextView` lays out only what is on
+    /// screen, so the prompt the old view needed no longer buys anything.
+    @Test func largeSourceLoadsWithoutAsking() async {
         var message = FakeMailClient.message(uid: 5)
-        message.summary.size = MailConstants.sourceConfirmBytes + 1
+        message.summary.size = 10 * 1024 * 1024
         let h = Self.harness(message)
         await h.model.load()
         await h.model.loadSource()
-        #expect(h.model.needsSourceConfirmation)
-        #expect(h.model.source == nil)
-        await h.model.loadSource(confirmed: true)
         #expect(h.model.source?.contains("Subject:") == true)
     }
 

@@ -55,7 +55,6 @@ final class MailMessageViewModel {
     private(set) var warnings: [MailWarning] = []
     private(set) var parseFailed = false
     private(set) var source: String?
-    private(set) var needsSourceConfirmation = false
     /// Set when `loadSource` throws, cleared at the start of the next attempt — lets the
     /// source view show a retryable failed state instead of spinning forever (fix round 1,
     /// minor 6).
@@ -230,13 +229,10 @@ final class MailMessageViewModel {
         linkedDocument = computed.1
     }
 
-    /// `BODY.PEEK[]`: never marks the mail read. Asks first above 5 MB.
-    func loadSource(confirmed: Bool = false) async {
-        if !confirmed, let size = detail?.summary.size, size > MailConstants.sourceConfirmBytes {
-            needsSourceConfirmation = true
-            return
-        }
-        needsSourceConfirmation = false
+    /// `BODY.PEEK[]`: never marks the mail read. No size prompt — `MailSourceTextView` lays out
+    /// only the visible viewport, so a multi-megabyte source costs a download, not a frozen
+    /// screen, and asking about it was only ever a way to apologise for the freeze.
+    func loadSource() async {
         sourceLoadFailed = false
         do {
             let folder = route.folder
@@ -247,11 +243,6 @@ final class MailMessageViewModel {
             actionError = MailAccountManager.LoginError(error).message
             sourceLoadFailed = true
         }
-    }
-
-    func cancelSource() {
-        needsSourceConfirmation = false
-        mode = .formatted
     }
 
     // MARK: Actions
