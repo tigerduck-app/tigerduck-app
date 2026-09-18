@@ -72,6 +72,130 @@ struct MoodleHomeworkRegressionTests {
         #expect(course.courseNo == "EC1013701")
     }
 
+    /// 合開: Moodle gives the course one idnumber (the first-listed
+    /// department's) and buries the second department's code in `fullname`.
+    /// A student enrolled through that second code must still resolve to the
+    /// same Moodle course, or the class table's "open in Moodle" button and
+    /// the assignment→course join both fall through.
+    @Test func moodleEnrolledCourse_coListedCourseAnswersToBothCodes() {
+        let course = MoodleEnrolledCourse(
+            id: 19739,
+            fullname: "115.1【半導體研究所】AS5140701 電腦輔助晶片系統設計"
+                + " / 【資工系】CS5140701 電腦輔助晶片系統設計",
+            shortname: "[TaiwanTech] 電腦輔助晶片系統設計 (1151AS5140701)",
+            idnumber: "1151AS5140701",
+            startDate: nil,
+            endDate: nil
+        )
+
+        #expect(course.courseNos == ["AS5140701", "CS5140701"])
+        #expect(course.idnumbers == ["1151AS5140701", "1151CS5140701"])
+        #expect(AppServiceBridge.moodleCourseIdMap([course]) == [
+            "1151AS5140701": 19739,
+            "1151CS5140701": 19739,
+        ])
+    }
+
+    /// The alias scan must not read an all-caps word out of a bilingual
+    /// course title as a course number.
+    @Test func moodleEnrolledCourse_ordinaryCourseHasNoAliases() {
+        let course = MoodleEnrolledCourse(
+            id: 1,
+            fullname: "114.2【資工系】CS5164701 隱私資訊安全 Data Privacy and Security",
+            shortname: "",
+            idnumber: "1142CS5164701",
+            startDate: nil,
+            endDate: nil
+        )
+        #expect(course.courseNos == ["CS5164701"])
+
+        // All-caps tokens, including digit-bearing ones of course-number
+        // length, must not be read as course numbers.
+        let acronyms = MoodleEnrolledCourse(
+            id: 2,
+            fullname: "115.1【電機系】EE5428701 VLSI CAD FPGA ASIC HTML5 SQL92 Design",
+            shortname: "",
+            idnumber: "1151EE5428701",
+            startDate: nil,
+            endDate: nil
+        )
+        #expect(acronyms.courseNos == ["EE5428701"])
+    }
+
+    /// 進修部 course numbers carry a leading `3`, which the rest of the
+    /// codebase already accepts. Scanning the fullname instead of matching
+    /// whole tokens found `CS3003302` *inside* `3CS3003302` and minted an
+    /// alias for a course number that does not exist — which would have
+    /// pointed an ordinary course's Moodle button at a different course.
+    @Test func moodleEnrolledCourse_leadingThreeCourseNoIsNotTruncated() {
+        let nightSchool = MoodleEnrolledCourse(
+            id: 4,
+            fullname: "114.1【資工系(進修)】3CS3003302 離散數學",
+            shortname: "",
+            idnumber: "11413CS3003302",
+            startDate: nil,
+            endDate: nil
+        )
+
+        #expect(nightSchool.courseNo == "3CS3003302")
+        #expect(nightSchool.courseNos == ["3CS3003302"])
+        #expect(nightSchool.idnumbers == ["11413CS3003302"])
+    }
+
+    /// An assignment is filed under the code the class table holds, so a 合開
+    /// course reached through the student's own department still joins to
+    /// their row. With nothing local known, the course's own code wins.
+    @Test func assignmentCourseNo_prefersTheLocallyKnownCode() {
+        let coListed = MoodleEnrolledCourse(
+            id: 19739,
+            fullname: "115.1【半導體研究所】AS5140701 電腦輔助晶片系統設計"
+                + " / 【資工系】CS5140701 電腦輔助晶片系統設計",
+            shortname: "",
+            idnumber: "1151AS5140701",
+            startDate: nil,
+            endDate: nil
+        )
+
+        #expect(
+            AppServiceBridge.assignmentCourseNo(
+                for: coListed, localCourseNos: ["CS5140701", "CS3025301"]
+            ) == "CS5140701"
+        )
+        #expect(
+            AppServiceBridge.assignmentCourseNo(
+                for: coListed, localCourseNos: ["AS5140701"]
+            ) == "AS5140701"
+        )
+        // Cold launch: course cache empty → the authoritative code.
+        #expect(
+            AppServiceBridge.assignmentCourseNo(for: coListed, localCourseNos: []) == "AS5140701"
+        )
+    }
+
+    /// A course's own idnumber outranks another course's fullname alias when
+    /// the two collide, whichever order they arrive in.
+    @Test func moodleCourseIdMap_realIdnumberBeatsAlias() {
+        let coListed = MoodleEnrolledCourse(
+            id: 100,
+            fullname: "115.1【甲系】AA1111701 X / 【乙系】BB2222701 X",
+            shortname: "",
+            idnumber: "1151AA1111701",
+            startDate: nil,
+            endDate: nil
+        )
+        let ownsTheAlias = MoodleEnrolledCourse(
+            id: 200,
+            fullname: "115.1【乙系】BB2222701 X",
+            shortname: "",
+            idnumber: "1151BB2222701",
+            startDate: nil,
+            endDate: nil
+        )
+
+        #expect(AppServiceBridge.moodleCourseIdMap([coListed, ownsTheAlias])["1151BB2222701"] == 200)
+        #expect(AppServiceBridge.moodleCourseIdMap([ownsTheAlias, coListed])["1151BB2222701"] == 200)
+    }
+
     @Test func moodleEnrolledCourse_emptyIdnumberYieldsEmptyDerivedFields() {
         let course = MoodleEnrolledCourse(
             id: 1,
@@ -83,6 +207,46 @@ struct MoodleHomeworkRegressionTests {
         )
         #expect(course.semester == "")
         #expect(course.courseNo == "")
+    }
+
+    /// A summer term's fourth character is a letter, and Moodle lower-cases
+    /// it while NTUST's catalogue upper-cases it. The old four-digit check
+    /// left `courseNo` and `semester` both empty, which filtered summer
+    /// courses out of the assignment pipeline entirely.
+    @Test func moodleEnrolledCourse_summerTermIsParsedAndNormalised() {
+        let summer = MoodleEnrolledCourse(
+            id: 3,
+            fullname: "114.h【設計系】GD3115301 工程整合設計專題",
+            shortname: "[TaiwanTech] 工程整合設計專題 (114hGD3115301)",
+            idnumber: "114hGD3115301",
+            startDate: nil,
+            endDate: nil
+        )
+
+        // Normalised for term comparisons, which run against NTUST's "114H".
+        #expect(summer.semester == "114H")
+        #expect(summer.courseNo == "GD3115301")
+        // Rebuilt ids keep Moodle's own spelling so they match a real idnumber.
+        #expect(summer.idnumbers == ["114hGD3115301"])
+        // The map key is normalised so a row holding NTUST's "114H" spelling
+        // still resolves; `lookupMoodleCourseId` normalises the same way.
+        #expect(AppServiceBridge.moodleCourseIdMap([summer]) == ["114HGD3115301": 3])
+        #expect(SDCourse.normalizedMoodleId("114hGD3115301") == "114HGD3115301")
+        #expect(SDCourse.normalizedMoodleId("1151AS5140701") == "1151AS5140701")
+        #expect(SDCourse.normalizedMoodleId("moodle:42") == "moodle:42")
+        #expect(SDCourse.courseNoFromMoodleId("114hGD3115301") == "GD3115301")
+    }
+
+    @Test func semesterPrefix_acceptsTermCodesAndRejectsEverythingElse() {
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "1151AS5140701") == "1151")
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "114hGD3115301") == "114H")
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "114HGD3115301") == "114H")
+        // Not a term prefix: letters in the year, too short, nothing at all.
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "moodle:42") == nil)
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "1151") == nil)
+        #expect(SDCourse.semesterPrefix(ofMoodleId: "") == nil)
+        // An unparseable id is handed back whole rather than silently truncated.
+        #expect(SDCourse.courseNoFromMoodleId("moodle:42") == "moodle:42")
     }
 
     @Test func moodleSubmissionStatus_isSubmittedReflectsServerStatus() {

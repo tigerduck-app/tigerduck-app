@@ -621,7 +621,9 @@ final class DataCache {
 
     func lookupMoodleCourseId(idnumber: String) -> Int? {
         guard !idnumber.isEmpty else { return nil }
-        return loadMoodleCourseIdMap()[idnumber]
+        // Normalised on both sides: Moodle spells a summer term "114h" and
+        // NTUST "114H", and a course row can hold either spelling.
+        return loadMoodleCourseIdMap()[SDCourse.normalizedMoodleId(idnumber)]
     }
 
     // MARK: - Private helpers

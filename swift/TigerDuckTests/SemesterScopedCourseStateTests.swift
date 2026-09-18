@@ -69,6 +69,10 @@ struct MisfiledServerRowTests {
         #expect(!AppState.isFiled(["moodle_id": "1151CS1"], under: "1142"))
         #expect(AppState.isFiled(["moodle_id": "1142CS1"], under: "1142"))
         #expect(AppState.isFiled(["moodle_id": "114HCS1"], under: "114H"))
+        // Moodle spells a summer term "114h", NTUST spells it "114H"; the
+        // raw compare this replaced filed every summer row under another term.
+        #expect(AppState.isFiled(["moodle_id": "114hCS1"], under: "114H"))
+        #expect(!AppState.isFiled(["moodle_id": "113hCS1"], under: "114H"))
         // No semester-shaped Moodle id → nothing to contradict the filing.
         #expect(AppState.isFiled(["moodle_id": "moodle:42"], under: "1142"))
         #expect(AppState.isFiled([:], under: "1142"))
