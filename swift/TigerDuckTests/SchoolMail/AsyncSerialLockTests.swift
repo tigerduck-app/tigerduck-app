@@ -3,8 +3,12 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+/// Every test here can fail by hanging rather than by producing a wrong value — a lock that
+/// stops handing the queue on leaves its waiters parked for ever — and Swift Testing applies no
+/// default limit, so each one carries its own `.timeLimit`.
 struct AsyncSerialLockTests {
-    @Test func neverInterleavesTwoBodies() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func neverInterleavesTwoBodies() async throws {
         let lock = AsyncSerialLock()
         let recorder = LockOrderRecorder()
 
@@ -30,7 +34,11 @@ struct AsyncSerialLockTests {
         #expect(events == ["A-start", "A-end", "B-start", "B-end"] || events == ["B-start", "B-end", "A-start", "A-end"])
     }
 
-    @Test func grantsStrictFIFOOrder() async throws {
+    /// The `while … waiterCount` spin below never ends if a waiter stops enqueuing, and the
+    /// `task.value` awaits never end if the queue stops draining, so a regression here is a
+    /// hang, not a failed expectation.
+    @Test(.timeLimit(.minutes(1)))
+    func grantsStrictFIFOOrder() async throws {
         let lock = AsyncSerialLock()
         let recorder = LockOrderRecorder()
 
