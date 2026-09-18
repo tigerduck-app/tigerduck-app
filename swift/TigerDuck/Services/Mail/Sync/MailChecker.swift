@@ -135,11 +135,15 @@ actor MailChecker {
         // Advance past what was actually fetched, not STATUS's UIDNEXT, so a message that
         // arrived between the two commands is neither skipped nor notified twice...
         let ceiling = fetched.map(\.uid).max().map { $0 + 1 } ?? status.uidNext
-        // ...but never past a message the notification centre refused: the design's own safety
-        // argument is "notify, then advance, so a process death re-notifies", and a refused `add`
-        // is a failure to notify that is not a process death. Holding the marker at the lowest
-        // such UID makes the next check reconsider it. Still monotonic: every fetched UID is at
-        // or above the marker this check started from, so this can only hold or advance it.
+        // ...but never past a message the notification centre refused in a way it might not
+        // refuse again: the design's own safety argument is "notify, then advance, so a process
+        // death re-notifies", and a refused `add` is a failure to notify that is not a process
+        // death. Holding the marker at the lowest such UID makes the next check reconsider it.
+        // A refusal that will be repeated for the same reason — permission off, content the
+        // system will not take — is not in `unnotified` at all, because holding for one of those
+        // would re-report the same mail as new on every poll for ever (`MailNotifier.isTransient`).
+        // Still monotonic: every fetched UID is at or above the marker this check started from,
+        // so this can only hold or advance it.
         prefs.inboxNextUID = unnotified.min().map { min($0, ceiling) } ?? ceiling
         return fresh.isEmpty ? .noNewMail : .newMail(fresh.count)
     }

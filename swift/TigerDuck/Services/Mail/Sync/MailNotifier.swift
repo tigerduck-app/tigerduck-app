@@ -38,12 +38,42 @@ nonisolated struct MailNotifier: Sendable {
         "school-mail-\(uidValidity)-\(uid)"
     }
 
-    /// Returns the UIDs whose notification the system refused. The caller holds its seen-UID
-    /// marker at the lowest of them: §8.5's contract is notify, *then* advance, and a refused
-    /// `add` is as much a failure to notify as a process death is — swallowing it while the
-    /// marker moves on means that mail is never notified and never reconsidered by any trigger.
-    /// (`add` with `trigger: nil` throws on invalid content and when the notification service is
-    /// unavailable; it is not a never-happens path.)
+    /// Whether a refusal from `add` is worth waiting for, which is what decides whether the
+    /// caller holds its marker.
+    ///
+    /// Notification permission being off, and content the system will not accept, are answers
+    /// that do not change between one poll and the next: the same `add` refuses the same way
+    /// every 60 s. Everything else — an unavailable notification service, a failed XPC hop, an
+    /// error this app has never seen — might not refuse next time, so it is treated as
+    /// transient and the mail is reconsidered.
+    static func isTransient(_ error: any Error) -> Bool {
+        let error = error as NSError
+        guard error.domain == UNErrorDomain, let code = UNError.Code(rawValue: error.code) else { return true }
+        switch code {
+        case .notificationsNotAllowed,
+             .attachmentInvalidURL, .attachmentUnrecognizedType, .attachmentInvalidFileSize,
+             .attachmentNotInDataStore, .attachmentMoveIntoDataStoreFailed, .attachmentCorrupt,
+             .notificationInvalidNoDate, .notificationInvalidNoContent,
+             .contentProvidingObjectNotAllowed, .contentProvidingInvalid,
+             .badgeInputInvalid:
+            return false
+        @unknown default:
+            return true
+        }
+    }
+
+    /// Returns the UIDs whose notification the system refused *and might yet accept*. The caller
+    /// holds its seen-UID marker at the lowest of them: §8.5's contract is notify, *then*
+    /// advance, and a refused `add` is as much a failure to notify as a process death is —
+    /// swallowing it while the marker moves on means that mail is never notified and never
+    /// reconsidered by any trigger. (`add` with `trigger: nil` throws on invalid content and
+    /// when the notification service is unavailable; it is not a never-happens path.)
+    ///
+    /// A refusal that will be made again for the same reason is left out of the set. Holding the
+    /// marker for one of those never delivers the notification and never stops trying: the mail
+    /// is re-fetched and re-reported as new on every poll for as long as the student leaves
+    /// notification permission off, and every mail behind it waits in the same queue. Reporting
+    /// it once and moving on is the lesser loss, and the mail itself is still in the list.
     @discardableResult
     func notify(_ messages: [MailSummary], uidValidity: UInt32) async -> Set<UInt32> {
         guard !messages.isEmpty else { return [] }
@@ -58,8 +88,8 @@ nonisolated struct MailNotifier: Sendable {
                 return []
             } catch {
                 // The one collapsed notification stands for every message in the batch, so a
-                // refusal loses all of them.
-                return Set(messages.map(\.uid))
+                // refusal loses all of them — but only a refusal worth retrying holds the batch.
+                return Self.isTransient(error) ? Set(messages.map(\.uid)) : []
             }
         }
         var failed: Set<UInt32> = []
@@ -76,7 +106,7 @@ nonisolated struct MailNotifier: Sendable {
             do {
                 try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
             } catch {
-                failed.insert(message.uid)
+                if Self.isTransient(error) { failed.insert(message.uid) }
             }
         }
         return failed

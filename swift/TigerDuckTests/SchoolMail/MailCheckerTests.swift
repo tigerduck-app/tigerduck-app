@@ -49,10 +49,14 @@ final class RejectingNotificationCenter: MailNotificationCenter, @unchecked Send
     private let lock = NSLock()
     private var rejected: Set<String>
     private var _accepted: [String] = []
+    private let error: any Error
     var accepted: [String] { lock.withLock { _accepted } }
 
-    init(rejecting: Set<String>) {
+    /// `error` defaults to the shape of a refusal that might not happen again — a service that
+    /// was unavailable for a moment. Pass a `UNError` to model one that certainly will.
+    init(rejecting: Set<String>, error: any Error = MailClientError.protocolError("add refused")) {
         rejected = rejecting
+        self.error = error
     }
 
     /// Lets a previously rejected identifier through, so a test can show the next check delivers it.
@@ -62,7 +66,7 @@ final class RejectingNotificationCenter: MailNotificationCenter, @unchecked Send
 
     func add(_ request: UNNotificationRequest) async throws {
         try lock.withLock {
-            guard !rejected.contains(request.identifier) else { throw MailClientError.protocolError("add refused") }
+            guard !rejected.contains(request.identifier) else { throw error }
             _accepted.append(request.identifier)
         }
     }
@@ -259,6 +263,47 @@ struct MailCheckerTests {
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(2))
         #expect(center.accepted.suffix(2) == ["school-mail-1-11", "school-mail-1-12"])
         #expect(prefs.inboxNextUID == 13)
+    }
+
+    /// Holding the marker is only right while there is something to wait for. When the system
+    /// refuses because the student turned notification permission off, it will refuse the same
+    /// way on every 60 s poll, so a held marker re-fetches and re-reports the same mail as new
+    /// forever. A refusal that cannot change advances the marker like a delivered notification.
+    @Test func aPermanentlyRefusedNotificationDoesNotWedgeTheMarker() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 10
+        let fake = FakeMailClient(folders: ["INBOX": [
+            FakeMailClient.message(uid: 10), FakeMailClient.message(uid: 11), FakeMailClient.message(uid: 12),
+        ]])
+        let center = RejectingNotificationCenter(rejecting: ["school-mail-1-11"],
+                                                 error: UNError(.notificationsNotAllowed))
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: {})
+
+        #expect(await checker.check(trigger: .backgroundTask) == .newMail(3))
+        #expect(prefs.inboxNextUID == 13)
+        // And the next poll finds nothing, instead of re-reporting UID 11 for ever.
+        #expect(await checker.check(trigger: .backgroundTask) == .noNewMail)
+        #expect(center.accepted == ["school-mail-1-10", "school-mail-1-12"])
+    }
+
+    /// The same for the collapsed batch: a permanent refusal of the one summary notification
+    /// must not pin the marker to the bottom of the batch for ever.
+    @Test func aPermanentlyRefusedSummaryDoesNotWedgeTheMarker() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 1
+        let inbox = (UInt32(1)...6).map { FakeMailClient.message(uid: $0) }
+        let center = RejectingNotificationCenter(rejecting: [MailNotifier.summaryIdentifier],
+                                                 error: UNError(.notificationsNotAllowed))
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { FakeMailClient(folders: ["INBOX": inbox]) }, onAuthFailure: {})
+
+        #expect(await checker.check(trigger: .backgroundTask) == .newMail(6))
+        #expect(prefs.inboxNextUID == 7)
     }
 
     /// The collapsed "more than five" notification stands for every message in the batch, so if
