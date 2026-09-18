@@ -161,19 +161,21 @@ enum AppServiceBridge {
             // was in flight, `clearUserScopedData` may have already wiped
             // the map, and resuming this write would resurrect the
             // previous user's enrolled-course ids on disk.
-            let moodleIdMap = Dictionary(
-                moodleAll.compactMap { entry -> (String, Int)? in
-                    guard !entry.idnumber.isEmpty else { return nil }
-                    return (entry.idnumber, entry.id)
-                },
-                uniquingKeysWith: { _, latest in latest }
-            )
+            let moodleIdMap = moodleCourseIdMap(moodleAll)
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveMoodleCourseIdMap(moodleIdMap)
             }
 
             let moodleForSemester = moodleAll.filter { $0.semester == semester }
+            // Deliberately keyed by the course's own number only, not by its
+            // co-listed aliases. Widening this would re-point the persisted
+            // `moodleIdNumber` of a 合開 course at the other department's id,
+            // and the cloud colour/rename overrides are keyed on that value
+            // (`AppState+BackendSync.applyCourseOverrides`) — existing rows
+            // would stop matching. The deep link does not need it: the
+            // synthesized `"\(Semester)\(CourseNo)"` fallback in
+            // `buildSDCourse` is already a key in `moodleCourseIdMap`.
             let moodleByNo = Dictionary(
                 moodleForSemester.compactMap { course -> (String, MoodleEnrolledCourse)? in
                     guard !course.courseNo.isEmpty else { return nil }
@@ -351,6 +353,46 @@ enum AppServiceBridge {
         }
         var seen = Set<String>()
         return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    /// `idnumber` → Moodle's numeric course id, for every code a course
+    /// answers to. A 合開 course's second department code lives only in its
+    /// `fullname` (see ``MoodleEnrolledCourse/courseNos``), so a student who
+    /// enrolled through that code would otherwise find no numeric id here and
+    /// lose the "open in Moodle" button.
+    ///
+    /// Aliases are laid down first and real `idnumber`s overwrite them, so a
+    /// course's own code always beats another course's fullname alias when
+    /// the two collide. Within the alias pass the first course wins; within
+    /// the primary pass the last does, as before.
+    static func moodleCourseIdMap(_ courses: [MoodleEnrolledCourse]) -> [String: Int] {
+        var map: [String: Int] = [:]
+        for course in courses {
+            for alias in course.idnumbers.dropFirst() {
+                let key = SDCourse.normalizedMoodleId(alias)
+                if map[key] == nil { map[key] = course.id }
+            }
+        }
+        for course in courses where !course.idnumber.isEmpty {
+            map[SDCourse.normalizedMoodleId(course.idnumber)] = course.id
+        }
+        return map
+    }
+
+    /// Which of a Moodle course's numbers an assignment should be filed
+    /// under. A 合開 course's `courseNo` is whichever department Moodle listed
+    /// first, which need not be the one the student enrolled through, so the
+    /// code the class table actually holds wins. Course colour, the Live
+    /// Activity's course lookup and the backend upload all join on this.
+    ///
+    /// Falls back to the course's own number when the class table has neither
+    /// — a cold launch before the course cache lands, where filing it under
+    /// the authoritative code is the best available answer.
+    static func assignmentCourseNo(
+        for course: MoodleEnrolledCourse,
+        localCourseNos: Set<String>
+    ) -> String {
+        course.courseNos.first(where: localCourseNos.contains) ?? course.courseNo
     }
 
     /// The courses 選課 has stopped listing for one term, updated from one
@@ -649,13 +691,7 @@ enum AppServiceBridge {
             // login-generation + cancellation checks as the assignments
             // cache write below: a fetch in flight when the user logs out
             // must not resurrect that user's enrolled-course ids on disk.
-            let moodleIdMapForAssignments = Dictionary(
-                moodleEnrolled.compactMap { entry -> (String, Int)? in
-                    guard !entry.idnumber.isEmpty else { return nil }
-                    return (entry.idnumber, entry.id)
-                },
-                uniquingKeysWith: { _, latest in latest }
-            )
+            let moodleIdMapForAssignments = moodleCourseIdMap(moodleEnrolled)
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
@@ -668,6 +704,13 @@ enum AppServiceBridge {
             // stay blank until a second launch. Prefer filtering to the
             // current course roster when it exists (handles drops), else
             // use the semester prefix on Moodle's idnumber.
+            // Kept separate from the widened set below: this is what the class
+            // table actually holds — portal rows plus the manually-added and
+            // cross-device-merged ones — and it is what decides which of a
+            // 合開 course's codes an assignment gets filed under.
+            let localCourseNos = Set(currentCourses.map(\.courseNo)).union(
+                DataCache.shared.loadUserAddedCourses(semester: currentSemester).map(\.courseNo)
+            )
             var currentCourseNos = Set(currentCourses.map(\.courseNo))
             for mc in moodleEnrolled where mc.semester == currentSemester && !mc.courseNo.isEmpty {
                 currentCourseNos.insert(mc.courseNo)
@@ -688,6 +731,13 @@ enum AppServiceBridge {
             )
             let moodleCoursesById = Dictionary(
                 uniqueKeysWithValues: relevantCourses.map { ($0.id, $0) }
+            )
+            // Resolved once per course rather than once per assignment: the
+            // scan over `courseNos` runs a regex across the course fullname.
+            let courseNoByMoodleId = Dictionary(
+                uniqueKeysWithValues: relevantCourses.map {
+                    ($0.id, assignmentCourseNo(for: $0, localCourseNos: localCourseNos))
+                }
             )
 
             let statuses: [Int: MoodleSubmissionStatus] = await withTaskGroup(
@@ -726,7 +776,7 @@ enum AppServiceBridge {
                 let assignmentId = String(record.assignId)
                 return SDAssignment(
                     assignmentId: assignmentId,
-                    courseNo: moodleCourse?.courseNo ?? "",
+                    courseNo: moodleCourse.flatMap { courseNoByMoodleId[$0.id] } ?? "",
                     courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
                     title: record.name,
                     dueDate: dueDate,
