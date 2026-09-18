@@ -63,6 +63,23 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    behaviour changes. `InvalidBodyStructureTests` pins it, driving the real
    `FetchMessageInfoHandler` behind `IMAPClientHandler`.
 
+7. `IMAPCommand` refines `SendableMetatype` (`IMAP/IMAP/Commands/IMAPCommand.swift`). Every
+   command is forwarded down to `IMAPConnection`, whose `nonisolated` `async` execution path
+   runs on the concurrent executor; a generic conformance that *may* be actor-isolated cannot
+   cross into one, so both forwarding sites
+   (`IMAPNamedConnection.executeCommand`, `IMAPServer.executeCommand`) drew
+   `conformance of 'CommandType' to protocol 'IMAPCommand' may be isolated and cannot be passed
+   to @concurrent context` — a warning today, an error in the Swift 6 language mode. Stating the
+   requirement once on the protocol is the narrowest fix that works: adding `SendableMetatype` to
+   the two generic parameters instead does **not** silence it (verified against Swift 6.4), and
+   the only other thing that does is making `IMAPConnection.executeCommand`
+   `nonisolated(nonsending)`, which would relocate where every IMAP command body runs. Additive
+   and behaviour-neutral: `SendableMetatype` is a marker protocol with no runtime representation,
+   and every conformer in the package is already a non-isolated `struct` — `IMAPCommand` is
+   internal, so no other module can add an isolated conformance. It does raise the minimum
+   compiler to Swift 6.2, which first shipped `SendableMetatype`; TigerDuck builds with Xcode 27
+   (Swift 6.4).
+
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.

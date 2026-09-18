@@ -7,7 +7,16 @@ import NIOIMAP
 import NIOIMAPCore
 
 /// A protocol for all IMAP commands that know their handler type.
-protocol IMAPCommand where ResultType: Sendable {
+///
+/// Refines `SendableMetatype` so a conformance can never be actor-isolated. Every command is
+/// handed down to `IMAPConnection`, whose `nonisolated` `async` execution path runs on the
+/// concurrent executor, and a conformance that *may* be isolated cannot cross into one — which
+/// is what the compiler warns about at each `executeCommand` forwarding site otherwise. Stating
+/// the requirement on the protocol rather than at those call sites is the narrower change: it is
+/// a marker protocol with no runtime representation, it matches what every conformer here
+/// already is (plain non-isolated `struct`s in this module — `IMAPCommand` is internal, so no
+/// other module can add an isolated one), and it changes nothing about where commands execute.
+protocol IMAPCommand: SendableMetatype where ResultType: Sendable {
     /// The result type this command produces
     associatedtype ResultType
 
