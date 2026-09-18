@@ -60,8 +60,9 @@ struct SchoolMailView: View {
             MailFolderChipBar(
                 roles: viewModel.folderRoles,
                 others: viewModel.otherFolders,
-                selected: viewModel.selectedFolder,
-                onSelect: { folder in Task { await viewModel.select(folder: folder) } }
+                showsAllMail: viewModel.showsAllMailChip,
+                selected: viewModel.selection,
+                onSelect: { selection in Task { await viewModel.select(selection) } }
             )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
@@ -148,7 +149,7 @@ struct SchoolMailView: View {
 
     @ViewBuilder
     private var rows: some View {
-        let items = viewModel.displayedSummaries
+        let items = viewModel.displayedRows
         if items.isEmpty {
             switch viewModel.loadState {
             case .idle, .loading:
@@ -166,8 +167,8 @@ struct SchoolMailView: View {
                 }
             }
         } else {
-            ForEach(items) { summary in
-                row(summary)
+            ForEach(items) { item in
+                row(item)
             }
             if viewModel.isPaginating {
                 centered { ProgressView().padding(.vertical, TigerDuckTheme.Spacing.md) }
@@ -175,15 +176,18 @@ struct SchoolMailView: View {
         }
     }
 
-    private func row(_ summary: MailSummary) -> some View {
+    /// The row's own folder decides everything, never the selected chip: opened from 所有信件,
+    /// a 寄件備份 mail has to behave exactly as it would had the user opened 寄件備份 itself —
+    /// and the chip is not a folder there at all.
+    private func row(_ row: MailListRow) -> some View {
         Button {
-            if viewModel.selectedFolder == viewModel.folderRoles[.drafts] {
-                compose = MailComposeContext(mode: .draft, folder: viewModel.selectedFolder, uid: summary.uid)
+            if row.folder == viewModel.folderRoles[.drafts] {
+                compose = MailComposeContext(mode: .draft, folder: row.folder, uid: row.uid)
             } else {
-                route = MailMessageRoute(folder: viewModel.selectedFolder, uid: summary.uid)
+                route = MailMessageRoute(folder: row.folder, uid: row.uid)
             }
         } label: {
-            MailRowView(summary: summary)
+            MailRowView(summary: row.summary)
         }
         .buttonStyle(.plain)
         .listRowBackground(Color.clear)
@@ -193,16 +197,16 @@ struct SchoolMailView: View {
             bottom: TigerDuckTheme.Spacing.xs, trailing: TigerDuckTheme.Spacing.lg
         ))
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button { Task { await viewModel.toggleRead(summary) } } label: {
+            Button { Task { await viewModel.toggleRead(row) } } label: {
                 Label(
-                    summary.isSeen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
-                    systemImage: summary.isSeen ? "envelope.badge" : "envelope.open"
+                    row.summary.isSeen ? String(localized: "school_mail_mark_unread") : String(localized: "school_mail_mark_read"),
+                    systemImage: row.summary.isSeen ? "envelope.badge" : "envelope.open"
                 )
                 .labelStyle(.iconOnly)
             }
             .tint(appState.accentColor)
         }
-        .task { await viewModel.loadMoreIfNeeded(after: summary) }
+        .task { await viewModel.loadMoreIfNeeded(after: row) }
     }
 
     private func centered<V: View>(@ViewBuilder _ content: () -> V) -> some View {
@@ -218,7 +222,9 @@ struct SchoolMailView: View {
         guard case .schoolMail(let folder, let uid) = appState.pendingDeepLink, account.isLoggedIn else { return }
         appState.pendingDeepLink = nil
         Task {
-            await viewModel.select(folder: folder)
+            // A notification names a real folder (only INBOX ever posts one), so the list goes
+            // to that folder itself rather than to the merged view.
+            await viewModel.select(.real(folder))
             if let uid { route = MailMessageRoute(folder: folder, uid: uid) }
         }
     }

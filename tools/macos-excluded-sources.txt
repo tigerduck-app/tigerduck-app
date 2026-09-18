@@ -278,6 +278,7 @@ MailReplyComposer.swift
 # iOS-only, see Features/SchoolMail above
 MailClient.swift
 MailConstants.swift
+MailFolderSelection.swift
 MailModels.swift
 
 # Services/Mail/Demo — the School Mail demo/preview client; iOS-only, see

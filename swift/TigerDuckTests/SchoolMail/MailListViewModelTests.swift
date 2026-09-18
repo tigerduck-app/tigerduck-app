@@ -17,13 +17,27 @@ struct MailListViewModelTests {
         let script: CheckScript
     }
 
-    static func harness(inboxCount: UInt32 = 60, open: (() async throws -> any MailClient)? = nil) -> Harness {
+    static let sent = MailFolderRole.sent.imapName
+
+    /// `sentUIDs` seeds 寄件備份, which 所有信件 merges with the inbox. The folder itself always
+    /// exists (the server has it whether or not the student has sent anything), so the 所有信件
+    /// chip is offered in every harness; only the merged tests put mail in it.
+    static func harness(
+        inboxCount: UInt32 = 60,
+        sentUIDs: [UInt32] = [],
+        includeSent: Bool = true,
+        open: (() async throws -> any MailClient)? = nil
+    ) -> Harness {
         let inbox = (UInt32(1)...inboxCount).map { FakeMailClient.message(uid: $0, subject: "公告 \($0)", seen: $0 % 2 == 0) }
-        let fake = FakeMailClient(folders: [
+        var folders: [String: [FakeMailClient.Message]] = [
             "INBOX": inbox,
             MailFolderRole.trash.imapName: [FakeMailClient.message(uid: 1, subject: "舊信")],
             "Moodle &irJ6C4oOitZTQA-": [],
-        ])
+        ]
+        if includeSent {
+            folders[sent] = sentUIDs.map { FakeMailClient.message(uid: $0, subject: "寄件 \($0)") }
+        }
+        let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
         let script = CheckScript()
         let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake })
@@ -38,8 +52,8 @@ struct MailListViewModelTests {
         let h = Self.harness()
         await h.model.load()
         #expect(h.model.loadState == .loaded)
-        #expect(h.model.summaries.count == 50)
-        #expect(h.model.summaries.first?.uid == 60)
+        #expect(h.model.rows.count == 50)
+        #expect(h.model.rows.first?.uid == 60)
         #expect(h.model.folderRoles[.trash] == MailFolderRole.trash.imapName)
         #expect(h.model.otherFolders == ["Moodle &irJ6C4oOitZTQA-"])
         #expect(h.model.serverStatus == .ok)
@@ -49,17 +63,17 @@ struct MailListViewModelTests {
     @Test func loadsOlderMailAtTheEnd() async throws {
         let h = Self.harness()
         await h.model.load()
-        let last = try #require(h.model.summaries.last)
+        let last = try #require(h.model.rows.last)
         await h.model.loadMoreIfNeeded(after: last)
-        #expect(h.model.summaries.count == 60)
-        #expect(h.model.summaries.last?.uid == 1)
+        #expect(h.model.rows.count == 60)
+        #expect(h.model.rows.last?.uid == 1)
     }
 
     @Test func unreadOnlyFiltersTheList() async {
         let h = Self.harness(inboxCount: 4)
         await h.model.load()
         h.model.unreadOnly = true
-        #expect(h.model.displayedSummaries.map(\.uid) == [3, 1])
+        #expect(h.model.displayedRows.map(\.uid) == [3, 1])
     }
 
     @Test func theCachedListStaysUpWhenOffline() async {
@@ -68,7 +82,7 @@ struct MailListViewModelTests {
                                         summaries: [SchoolMailTestDoubles.summary(uid: 9)], oldestLoadedSequence: nil))
         await h.model.load()
         #expect(h.model.loadState == .loaded)
-        #expect(h.model.summaries.map(\.uid) == [9])
+        #expect(h.model.rows.map(\.uid) == [9])
         #expect(h.model.serverStatus == .failed)
     }
 
@@ -84,7 +98,7 @@ struct MailListViewModelTests {
         h.model.searchText = "公告 7"
         await h.model.submitSearch()
         #expect(h.model.searchUsedLocalFallback == false)
-        #expect(h.model.displayedSummaries.map(\.uid).contains(7))
+        #expect(h.model.displayedRows.map(\.uid).contains(7))
         #expect(await h.fake.calls.contains("search INBOX 公告 7"))
     }
 
@@ -95,17 +109,17 @@ struct MailListViewModelTests {
         h.model.searchText = "公告 60"
         await h.model.submitSearch()
         #expect(h.model.searchUsedLocalFallback)
-        #expect(h.model.displayedSummaries.map(\.uid) == [60])
+        #expect(h.model.displayedRows.map(\.uid) == [60])
         h.model.clearSearch()
-        #expect(h.model.displayedSummaries.count == 50)
+        #expect(h.model.displayedRows.count == 50)
     }
 
     @Test func togglingReadUpdatesLocallyAndOnTheServer() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
-        let unread = try #require(h.model.summaries.first { !$0.isSeen })
+        let unread = try #require(h.model.rows.first { !$0.summary.isSeen })
         await h.model.toggleRead(unread)
-        #expect(h.model.summaries.first { $0.uid == unread.uid }?.isSeen == true)
+        #expect(h.model.rows.first { $0.uid == unread.uid }?.summary.isSeen == true)
         #expect(await h.fake.calls.contains("setFlag seen true [\(unread.uid)]"))
     }
 
@@ -121,9 +135,9 @@ struct MailListViewModelTests {
     @Test func switchingFoldersLoadsThatFolder() async {
         let h = Self.harness()
         await h.model.load()
-        await h.model.select(folder: MailFolderRole.trash.imapName)
-        #expect(h.model.summaries.map(\.subject) == ["舊信"])
-        #expect(h.model.selectedFolder == MailFolderRole.trash.imapName)
+        await h.model.select(.real(MailFolderRole.trash.imapName))
+        #expect(h.model.rows.map(\.summary.subject) == ["舊信"])
+        #expect(h.model.selection == .real(MailFolderRole.trash.imapName))
     }
 
     @Test func listDatesShowTheTimeTodayAndTheDateOtherwise() {
@@ -140,12 +154,12 @@ struct MailListViewModelTests {
     @Test func settingFlagsAfterAFolderChangeDropsTheCacheAndReloads() async throws {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
-        let unread = try #require(h.model.summaries.first { !$0.isSeen })
+        let unread = try #require(h.model.rows.first { !$0.summary.isSeen })
         await h.fake.update { $0.setFlagError = .folderChanged }
         await h.model.toggleRead(unread)
-        #expect(h.model.summaries.first { $0.uid == unread.uid }?.isSeen == unread.isSeen)
+        #expect(h.model.rows.first { $0.uid == unread.uid }?.summary.isSeen == unread.summary.isSeen)
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 2)
-        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == h.model.summaries.count)
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == h.model.rows.count)
     }
 
     /// Isolates the drop itself from the reload that follows it: a reload that *succeeds*
@@ -159,7 +173,7 @@ struct MailListViewModelTests {
         await h.model.load()
         h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 999, messageCount: 1,
                                         summaries: [SchoolMailTestDoubles.summary(uid: 777)], oldestLoadedSequence: nil))
-        let unread = try #require(h.model.summaries.first { !$0.isSeen })
+        let unread = try #require(h.model.rows.first { !$0.summary.isSeen })
         await h.fake.update {
             $0.setFlagError = .folderChanged
             $0.pageError = .unreachable
@@ -193,12 +207,12 @@ struct MailListViewModelTests {
         let searchTask = Task { await h.model.submitSearch() }
         // Give `submitSearch` a chance to actually start and reach the gate before switching.
         try await Task.sleep(for: .milliseconds(50))
-        await h.model.select(folder: MailFolderRole.trash.imapName)
+        await h.model.select(.real(MailFolderRole.trash.imapName))
         await h.fake.releaseSearch()
         await searchTask.value
         #expect(h.model.searchResults == nil)
-        #expect(h.model.summaries.map(\.subject) == ["舊信"])
-        #expect(h.model.selectedFolder == MailFolderRole.trash.imapName)
+        #expect(h.model.rows.map(\.summary.subject) == ["舊信"])
+        #expect(h.model.selection == .real(MailFolderRole.trash.imapName))
     }
 
     /// A poll-triggered (or pull-to-refresh-triggered) reload must merge the refreshed first
@@ -210,14 +224,14 @@ struct MailListViewModelTests {
     @Test func pollingReloadDoesNotDiscardPaginatedOlderMail() async throws {
         let h = Self.harness()
         await h.model.load()
-        let last = try #require(h.model.summaries.last)
+        let last = try #require(h.model.rows.last)
         await h.model.loadMoreIfNeeded(after: last)
-        #expect(h.model.summaries.count == 60)
+        #expect(h.model.rows.count == 60)
         h.script.outcome = .newMail(1)
         await h.model.pollOnce()
-        #expect(h.model.summaries.count == 60)
-        #expect(h.model.summaries.first?.uid == 60)
-        #expect(h.model.summaries.last?.uid == 1)
+        #expect(h.model.rows.count == 60)
+        #expect(h.model.rows.first?.uid == 60)
+        #expect(h.model.rows.last?.uid == 1)
     }
 
     /// A second `load()` for the same folder while one is already running (a pull-to-refresh
@@ -240,10 +254,10 @@ struct MailListViewModelTests {
     @Test func aRefreshRemovesAMessageDeletedElsewhereWithinItsWindow() async throws {
         let h = Self.harness(inboxCount: 5)
         await h.model.load()
-        #expect(h.model.summaries.map(\.uid) == [5, 4, 3, 2, 1])
+        #expect(h.model.rows.map(\.uid) == [5, 4, 3, 2, 1])
         await h.fake.update { $0.folders["INBOX"]?.removeAll { $0.summary.uid == 3 } }
         await h.model.load()
-        #expect(h.model.summaries.map(\.uid) == [5, 4, 2, 1])
+        #expect(h.model.rows.map(\.uid) == [5, 4, 2, 1])
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.map(\.uid) == [5, 4, 2, 1])
     }
 
@@ -252,10 +266,10 @@ struct MailListViewModelTests {
     @Test func anEmptyFreshPageEmptiesTheList() async throws {
         let h = Self.harness(inboxCount: 5)
         await h.model.load()
-        #expect(h.model.summaries.count == 5)
+        #expect(h.model.rows.count == 5)
         await h.fake.update { $0.folders["INBOX"] = [] }
         await h.model.load()
-        #expect(h.model.summaries.isEmpty)
+        #expect(h.model.rows.isEmpty)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
     }
 
@@ -267,7 +281,7 @@ struct MailListViewModelTests {
     @Test func anAllDeletedWindowKeepsTheLoadedListInsteadOfBlankingIt() async throws {
         let h = Self.harness(inboxCount: 60)
         await h.model.load()
-        #expect(h.model.summaries.count == 50)
+        #expect(h.model.rows.count == 50)
         await h.fake.update { fake in
             fake.folders["INBOX"] = (fake.folders["INBOX"] ?? []).map { message in
                 var message = message
@@ -276,12 +290,12 @@ struct MailListViewModelTests {
             }
         }
         await h.model.load()
-        #expect(!h.model.summaries.isEmpty)
+        #expect(!h.model.rows.isEmpty)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == false)
         // And pagination still reaches the mail the server does still serve.
-        let last = try #require(h.model.summaries.last)
+        let last = try #require(h.model.rows.last)
         await h.model.loadMoreIfNeeded(after: last)
-        #expect(h.model.summaries.contains { $0.uid == 10 })
+        #expect(h.model.rows.contains { $0.uid == 10 })
     }
 
     /// The same window with nothing already loaded (a first open, or a reload after the folder's
@@ -298,7 +312,7 @@ struct MailListViewModelTests {
             }
         }
         await h.model.load()
-        #expect(h.model.summaries.map(\.uid) == [10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
+        #expect(h.model.rows.map(\.uid) == [10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == 10)
     }
     /// A UID is only unique within its folder. `removeLocally`/`markSeenLocally` are called by
@@ -309,18 +323,18 @@ struct MailListViewModelTests {
         let h = Self.harness(inboxCount: 4)
         await h.model.load()
         let trash = MailFolderRole.trash.imapName
-        #expect(h.model.selectedFolder == "INBOX")
+        #expect(h.model.selection == .real("INBOX"))
 
         h.model.removeLocally(folder: trash, uid: 4)
-        #expect(h.model.summaries.map(\.uid) == [4, 3, 2, 1])
+        #expect(h.model.rows.map(\.uid) == [4, 3, 2, 1])
         h.model.markSeenLocally(folder: trash, uid: 3, seen: true)
-        #expect(h.model.summaries.first { $0.uid == 3 }?.isSeen == false)
+        #expect(h.model.rows.first { $0.uid == 3 }?.summary.isSeen == false)
 
         // The same calls for the folder actually on screen still act.
         h.model.markSeenLocally(folder: "INBOX", uid: 3, seen: true)
-        #expect(h.model.summaries.first { $0.uid == 3 }?.isSeen == true)
+        #expect(h.model.rows.first { $0.uid == 3 }?.summary.isSeen == true)
         h.model.removeLocally(folder: "INBOX", uid: 4)
-        #expect(h.model.summaries.map(\.uid) == [3, 2, 1])
+        #expect(h.model.rows.map(\.uid) == [3, 2, 1])
     }
 
     /// The 60 s poll used to act on `.newMail` only, so after a UIDVALIDITY change the list kept
@@ -337,6 +351,222 @@ struct MailListViewModelTests {
         h.script.outcome = .baselineReset
         await h.model.pollOnce()
         #expect(await h.fake.calls.filter { $0.hasPrefix("page INBOX") }.count > before)
+    }
+
+    // MARK: 所有信件 — the client-side merge of 收件匣 and 寄件備份
+
+    /// 寄件備份's UIDs deliberately collide with the inbox's: that is the normal case, not an
+    /// edge one — a UID means something only inside its own folder. Its dates are nudged half a
+    /// second later than the inbox mail of the same number, so the merged order has something to
+    /// interleave by and the assertions below read as a genuine interleave rather than one
+    /// folder after the other.
+    static func mergedHarness(inboxCount: UInt32 = 5, sentUIDs: [UInt32] = [1, 2, 3]) async -> Harness {
+        let h = harness(inboxCount: inboxCount, sentUIDs: sentUIDs)
+        await h.fake.update { fake in
+            fake.folders[sent] = (fake.folders[sent] ?? []).map { message in
+                var message = message
+                message.summary.date = message.summary.date?.addingTimeInterval(0.5)
+                return message
+            }
+        }
+        return h
+    }
+
+    /// `收3` / `寄3` — the folder and the UID, which is the only honest name for a merged row.
+    static func labels(_ rows: [MailListRow]) -> [String] {
+        rows.map { "\($0.folder == "INBOX" ? "收" : "寄")\($0.uid)" }
+    }
+
+    @Test func theAllMailChipAppearsOnlyWhenBothFoldersResolve() async {
+        let h = Self.harness()
+        #expect(h.model.showsAllMailChip == false)
+        await h.model.load()
+        #expect(h.model.showsAllMailChip)
+
+        let withoutSent = Self.harness(includeSent: false)
+        await withoutSent.model.load()
+        #expect(withoutSent.model.showsAllMailChip == false)
+    }
+
+    @Test func theMergedFolderInterleavesTheInboxAndSentMailByDate() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.allMail)
+        #expect(h.model.selection == .allMail)
+        #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
+        // One page per folder, and the inbox's own chip did its own single page before that.
+        #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 2)
+        #expect(await h.fake.calls.filter { $0 == "page \(Self.sent)" }.count == 1)
+    }
+
+    /// A UID alone names two different mails here. The row identity the list keys on — and that
+    /// the swipe gesture and the in-place update after an action find a row again by — has to be
+    /// the folder and the UID together.
+    @Test func aMergedRowIsIdentifiedByItsFolderAndUIDTogether() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.allMail)
+        let colliding = h.model.rows.filter { $0.uid == 3 }
+        #expect(colliding.count == 2)
+        #expect(Set(colliding.map(\.folder)) == ["INBOX", Self.sent])
+        #expect(Set(colliding.map(\.id)).count == 2)
+        #expect(Set(h.model.rows.map(\.id)).count == h.model.rows.count)
+    }
+
+    /// The governing rule, and the one the UIDVALIDITY pin makes testable: each folder is given
+    /// its own generation here, so an action that pinned the *selected* view's idea of a folder
+    /// rather than the row's own would be refused by the server as `folderChanged` and revert.
+    @Test func markingAMergedRowReadActsOnItsOwnFolderWithThatFoldersPin() async throws {
+        let h = await Self.mergedHarness()
+        await h.fake.update { $0.uidValidity = ["INBOX": 11, Self.sent: 22] }
+        await h.model.load()
+        await h.model.select(.allMail)
+
+        let inboxRow = try #require(h.model.rows.first { $0.folder == "INBOX" && $0.uid == 3 })
+        #expect(inboxRow.summary.isSeen == false)
+        await h.model.toggleRead(inboxRow)
+        #expect(h.model.rows.first { $0.id == inboxRow.id }?.summary.isSeen == true)
+        // The 寄件備份 mail that shares the number is untouched — in the list and on the server.
+        #expect(h.model.rows.first { $0.folder == Self.sent && $0.uid == 3 }?.summary.isSeen == false)
+        #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 3 }?.summary.isSeen == true)
+        #expect(await h.fake.folders[Self.sent]?.first { $0.summary.uid == 3 }?.summary.isSeen == false)
+
+        let sentRow = try #require(h.model.rows.first { $0.folder == Self.sent && $0.uid == 1 })
+        await h.model.toggleRead(sentRow)
+        #expect(h.model.rows.first { $0.id == sentRow.id }?.summary.isSeen == true)
+        #expect(await h.fake.folders[Self.sent]?.first { $0.summary.uid == 1 }?.summary.isSeen == true)
+        #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 1 }?.summary.isSeen == false)
+    }
+
+    /// No new persisted model and no migration: the merge is composed at read time from the two
+    /// folders' existing cache entries, each still keyed by its own folder and carrying its own
+    /// UIDVALIDITY — which is exactly what the message screen reads to pin a move or a delete.
+    @Test func theMergedViewLeavesEachFolderItsOwnCachedPage() async {
+        let h = await Self.mergedHarness()
+        await h.fake.update { $0.uidValidity = ["INBOX": 11, Self.sent: 22] }
+        await h.model.load()
+        await h.model.select(.allMail)
+        #expect(h.cache.loadPage(folder: "INBOX")?.uidValidity == 11)
+        #expect(h.cache.loadPage(folder: Self.sent)?.uidValidity == 22)
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.allSatisfy { $0.subject?.hasPrefix("公告") == true } == true)
+        #expect(h.cache.loadPage(folder: Self.sent)?.summaries.allSatisfy { $0.subject?.hasPrefix("寄件") == true } == true)
+    }
+
+    /// One cursor per folder: the merged list ends only once *both* folders genuinely have,
+    /// never merely because the sparser of the two did. Note the sentinel row load-more hangs
+    /// off here belongs to 寄件備份, which ran out first — the inbox still advances.
+    @Test func theMergedListEndsOnlyWhenBothFoldersAreExhausted() async throws {
+        let h = await Self.mergedHarness(inboxCount: 60, sentUIDs: [1, 2, 3])
+        await h.model.load()
+        await h.model.select(.allMail)
+        #expect(h.model.rows.count == 53)
+        var last = try #require(h.model.rows.last)
+        #expect(last.folder == Self.sent)
+
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.rows.count == 63)
+        #expect(Self.labels(h.model.rows).last == "收1")
+
+        // Both are exhausted now, so a further load-more asks the server nothing at all.
+        last = try #require(h.model.rows.last)
+        let before = await h.fake.calls.count
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(await h.fake.calls.count == before)
+    }
+
+    /// Two round trips per refresh however far the merged list has been scrolled — Mail2000 caps
+    /// connections and starts answering 「伺服器忙線中」 under load — and the refresh keeps what
+    /// was paginated in rather than replacing it.
+    @Test func refreshingTheMergedViewCostsOnePagePerFolderHoweverFarItIsScrolled() async throws {
+        let h = await Self.mergedHarness(inboxCount: 60, sentUIDs: [1, 2, 3])
+        await h.model.load()
+        await h.model.select(.allMail)
+        let last = try #require(h.model.rows.last)
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.rows.count == 63)
+
+        let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
+        await h.model.load()
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count - before == 2)
+        #expect(h.model.rows.count == 63)
+    }
+
+    /// 所有信件 is not a folder name and must never become one: everything the merged view asks
+    /// the server names a folder the server actually has.
+    @Test func theMergedViewNeverNamesASyntheticFolderToTheServer() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.allMail)
+        h.model.searchText = "件 3"
+        await h.model.submitSearch()
+        let named = await h.fake.calls.filter {
+            $0.hasPrefix("page ") || $0.hasPrefix("search ") || $0.hasPrefix("status ") || $0.hasPrefix("summaries ")
+        }
+        #expect(!named.isEmpty)
+        #expect(named.allSatisfy { $0.contains("INBOX") || $0.contains(Self.sent) })
+    }
+
+    /// One SEARCH per folder, merged the same way the list is, and each result keeps the folder
+    /// it was found in so opening it still goes to the right place.
+    @Test func searchingTheMergedViewAsksBothFoldersAndKeepsTheirFolders() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.allMail)
+        h.model.searchText = "件 3"
+        await h.model.submitSearch()
+        #expect(await h.fake.calls.contains("search INBOX 件 3"))
+        #expect(await h.fake.calls.contains("search \(Self.sent) 件 3"))
+        #expect(h.model.searchUsedLocalFallback == false)
+        #expect(Self.labels(h.model.displayedRows) == ["寄3"])
+    }
+
+    /// A folder whose server refused the search still contributes its locally matched mail, and
+    /// the note appears as soon as any one of them fell back.
+    @Test func aRefusedSearchInOneMergedFolderFallsBackForThatFolderOnly() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.allMail)
+        await h.fake.update { $0.searchError = .searchUnsupported }
+        h.model.searchText = "3"
+        await h.model.submitSearch()
+        #expect(h.model.searchUsedLocalFallback)
+        #expect(Self.labels(h.model.displayedRows) == ["寄3", "收3"])
+    }
+
+    /// A change reported for one of the merged folders finds its row inside that folder's own
+    /// page, never by UID across the merged list; a folder 所有信件 does not merge is ignored
+    /// outright, exactly as it is for a single-folder selection.
+    @Test func changesReportedForAMergedFolderActOnThatFolderAlone() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.allMail)
+
+        h.model.markSeenLocally(folder: Self.sent, uid: 3, seen: true)
+        #expect(h.model.rows.first { $0.folder == Self.sent && $0.uid == 3 }?.summary.isSeen == true)
+        #expect(h.model.rows.first { $0.folder == "INBOX" && $0.uid == 3 }?.summary.isSeen == false)
+
+        h.model.removeLocally(folder: Self.sent, uid: 3)
+        #expect(!h.model.rows.contains { $0.folder == Self.sent && $0.uid == 3 })
+        #expect(h.model.rows.contains { $0.folder == "INBOX" && $0.uid == 3 })
+
+        let trash = MailFolderRole.trash.imapName
+        let before = Self.labels(h.model.rows)
+        h.model.markSeenLocally(folder: trash, uid: 1, seen: true)
+        h.model.removeLocally(folder: trash, uid: 1)
+        #expect(Self.labels(h.model.rows) == before)
+    }
+
+    /// The 60 s poll stays inbox-only: 所有信件 refreshes on pull-to-refresh like every other
+    /// non-inbox selection, which is what keeps the merged view out of the new-mail path.
+    @Test func thePollNeverReloadsTheMergedView() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.allMail)
+        let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
+        h.script.outcome = .newMail(1)
+        await h.model.pollOnce()
+        #expect(h.script.calls == 1)
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before)
     }
 }
 #endif

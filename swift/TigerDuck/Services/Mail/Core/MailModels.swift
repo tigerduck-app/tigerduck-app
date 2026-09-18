@@ -143,7 +143,11 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
 
 /// One row of a folder list. Every field is optional or primitive, so a cache file
 /// written by an older build still decodes; anything else is deleted and refetched.
-nonisolated struct MailSummary: Codable, Hashable, Sendable, Identifiable {
+///
+/// Deliberately **not** `Identifiable`: `uid` is unique only inside one folder, so a summary
+/// on its own cannot identify a row in a list that merges two of them (所有信件). Anything
+/// that needs a list identity carries the folder with it — see `MailListRow`.
+nonisolated struct MailSummary: Codable, Hashable, Sendable {
     var uid: UInt32
     var fromName: String?
     var fromAddress: String?
@@ -157,8 +161,6 @@ nonisolated struct MailSummary: Codable, Hashable, Sendable, Identifiable {
     var size: Int?
     var hasAttachments: Bool
     var isExternal: Bool
-
-    var id: UInt32 { uid }
 }
 
 nonisolated struct MailFlags: Equatable, Sendable {
