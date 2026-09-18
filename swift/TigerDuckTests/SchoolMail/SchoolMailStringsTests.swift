@@ -45,6 +45,8 @@ struct SchoolMailStringsTests {
         "school_mail_settings_background_refresh_hint",
         "school_mail_forwarded_header", "school_mail_forward_from",
         "school_mail_forward_date", "school_mail_forward_subject",
+        // Not School Mail's own, but compose's error dialog dismisses with it.
+        "settings_acknowledged",
     ]
 
     @Test(arguments: ["en", "zh-Hant"])

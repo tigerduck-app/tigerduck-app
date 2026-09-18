@@ -528,5 +528,43 @@ struct MailComposeViewModelTests {
         await send.value
         #expect(model.didFinish)
     }
+
+    // MARK: The error dialog
+
+    /// Dismissing the dialog must not take the inline message with it, and the *same* failure
+    /// happening again must raise the dialog again: tap 儲存草稿 with an unfinished 收件人,
+    /// dismiss, change nothing, tap it again. `error` is a `String?`, so the second failure is
+    /// character-for-character the first — anything that decided by comparing error values would
+    /// see no change and leave the second tap looking like it did nothing at all.
+    @Test func repeatingTheSameFailureRaisesTheDialogAgain() async {
+        let model = Self.model(MailComposeContext(mode: .new), fake: Self.fake())
+        await model.prepare()
+        model.to = "收件人還沒打完"
+        model.body = "草稿"
+
+        #expect(await !model.saveDraft())
+        let first = model.error
+        #expect(first != nil)
+        #expect(model.errorNeedsAcknowledging)
+
+        model.acknowledgeError()
+        #expect(!model.errorNeedsAcknowledging)
+        #expect(model.error == first)
+
+        #expect(await !model.saveDraft())
+        #expect(model.error == first)
+        #expect(model.errorNeedsAcknowledging)
+    }
+
+    /// A send that succeeds leaves nothing to acknowledge.
+    @Test func aSuccessfulSendRaisesNoDialog() async {
+        let model = Self.model(MailComposeContext(mode: .new), fake: Self.fake())
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+        await model.send()
+        #expect(model.didFinish)
+        #expect(model.error == nil)
+        #expect(!model.errorNeedsAcknowledging)
+    }
 }
 #endif

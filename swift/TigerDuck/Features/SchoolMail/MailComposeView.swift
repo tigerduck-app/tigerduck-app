@@ -119,6 +119,19 @@ struct MailComposeView: View {
                     .disabled(viewModel.isSending || viewModel.isLoading || pendingPicks > 0)
                 }
             }
+            // The inline message stays where it is; this is the same text again, in front of the
+            // user, because a failed 傳送 or 儲存草稿 otherwise announces itself only as a line of
+            // small red text at the bottom of a form they are looking at the top of. Dismissing
+            // acknowledges the dialog and nothing more — the inline copy survives it, and the
+            // next identical failure raises this again (`errorNeedsAcknowledging`).
+            .alert(String(localized: "feature_school_mail"), isPresented: Binding(
+                get: { viewModel.errorNeedsAcknowledging },
+                set: { if !$0 { viewModel.acknowledgeError() } })
+            ) {
+                Button(String(localized: "settings_acknowledged")) {}
+            } message: {
+                Text(viewModel.error ?? "")
+            }
             .confirmationDialog(String(localized: "school_mail_leave_title"), isPresented: $showLeaveDialog, titleVisibility: .visible) {
                 Button(String(localized: "school_mail_save_draft")) {
                     Task { if await viewModel.saveDraft() { dismiss() } }

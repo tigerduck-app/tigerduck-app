@@ -41,7 +41,21 @@ final class MailComposeViewModel {
     private(set) var attachments: [Attachment] = []
     private(set) var isSending = false
     private(set) var isLoading = false
-    private(set) var error: String?
+    /// Every assignment raises `errorNeedsAcknowledging` — see that property for why this is a
+    /// `didSet` rather than something each of the half-dozen assignment sites remembers to do.
+    private(set) var error: String? {
+        didSet { errorNeedsAcknowledging = error != nil }
+    }
+    /// A send or save failure the user has not dismissed yet: small red text under a long form is
+    /// easy to scroll past, so the same message is also put in a dialog they have to acknowledge.
+    ///
+    /// This is a flag rather than something derived from `error`, because `error` is a `String?`
+    /// — a value. Tap 傳送, dismiss 「信件太大」, change nothing, tap 傳送 again, and the second
+    /// failure is character-for-character the first: anything that compared error values (a
+    /// `.alert(item:)`, an `onChange(of:)`) would see no change and swallow the second dialog,
+    /// leaving a tap that visibly did nothing. Raised unconditionally on every assignment to
+    /// `error` instead, and lowered only by `acknowledgeError()`.
+    private(set) var errorNeedsAcknowledging = false
     /// A failed `prepare()`/`retryPrepare()`, kept entirely separate from `error`: an attachment
     /// change or a send/save validation error or failure must never clear the Retry action this
     /// drives, and a successful load is the only thing that clears it (dispatch addition 5).
@@ -289,6 +303,13 @@ final class MailComposeViewModel {
     /// treated as a 0-byte attachment).
     func attachmentReadFailed() {
         error = String(localized: "school_mail_too_large")
+    }
+
+    /// The user dismissed the error dialog. Deliberately leaves `error` alone: the inline message
+    /// under the form is the copy they can go back and read, and clearing it here would make
+    /// dismissing the dialog erase the only lasting record of what went wrong.
+    func acknowledgeError() {
+        errorNeedsAcknowledging = false
     }
 
     // MARK: Sending
