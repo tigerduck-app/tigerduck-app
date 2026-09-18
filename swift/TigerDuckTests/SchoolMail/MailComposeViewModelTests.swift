@@ -529,6 +529,59 @@ struct MailComposeViewModelTests {
         #expect(model.didFinish)
     }
 
+    // MARK: The send confirmation
+
+    /// Validation runs first and confirmation second: a form 傳送 would reject gets the error it
+    /// always got and no "要傳送這封信嗎？" — nobody is asked to confirm a send that was never
+    /// going to happen. Fix the form and the question is worth asking.
+    @Test func aFormThatFailsValidationIsNeverConfirmed() async {
+        let model = Self.model(MailComposeContext(mode: .new), fake: Self.fake())
+        await model.prepare()
+
+        #expect(!model.confirmationIsWarranted())
+        #expect(model.error != nil)
+        #expect(model.errorNeedsAcknowledging)
+
+        model.to = "沒有位址"
+        #expect(!model.confirmationIsWarranted())
+        #expect(model.invalidRecipients == ["沒有位址"])
+
+        model.to = "a@mail.ntust.edu.tw"
+        #expect(model.confirmationIsWarranted())
+        #expect(model.error == nil)
+    }
+
+    /// Cancelling the confirmation sends nothing and leaves the form intact — the model is only
+    /// asked; nothing runs until the send itself is confirmed.
+    @Test func cancellingTheConfirmationSendsNothing() async {
+        let fake = Self.fake()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+        model.body = "還沒寫完"
+
+        #expect(model.confirmationIsWarranted())
+        #expect(await fake.sent.isEmpty)
+        #expect(model.body == "還沒寫完")
+        #expect(!model.didFinish)
+    }
+
+    /// A send already in flight can never have the question put over it a second time.
+    @Test func aSendInFlightCannotBeConfirmedAgain() async {
+        let fake = Self.fake()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        await model.prepare()
+        model.to = "a@mail.ntust.edu.tw"
+
+        await fake.update { $0.hold("send") }
+        let send = Task { await model.send() }
+        await fake.waitForArrival("send")
+        #expect(!model.confirmationIsWarranted())
+        await fake.release("send")
+        await send.value
+        #expect(model.didFinish)
+    }
+
     // MARK: The error dialog
 
     /// Dismissing the dialog must not take the inline message with it, and the *same* failure

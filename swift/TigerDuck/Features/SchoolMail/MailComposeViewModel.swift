@@ -314,8 +314,14 @@ final class MailComposeViewModel {
 
     // MARK: Sending
 
-    func send() async {
-        guard !isSending else { return }
+    /// Everything that can refuse a send before a byte leaves the phone, reporting the refusal
+    /// exactly as `send()` always has and handing back the parsed recipients when there is none.
+    ///
+    /// Split out so 傳送 can ask "確定要傳送嗎？" *after* the form has been judged rather than
+    /// before: a mail that would only fail validation anyway gets the error it would have got,
+    /// and the confirmation is reserved for a mail that really is about to go out. `send()` runs
+    /// it again for itself, so the check is never something a caller can skip.
+    private func validate() -> (to: [MailAddress], cc: [MailAddress], bcc: [MailAddress])? {
         // §7.4: once the server has rejected the saved password it is never sent again — repeated
         // failures lock the school account and its Wi-Fi. SMTP `AUTH LOGIN` happens inside the
         // send below, entirely outside `MailAccountManager.openSession()`, so without this the
@@ -323,7 +329,7 @@ final class MailComposeViewModel {
         // with a password the server already refused.
         guard !prefs.authFailed else {
             error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.credentials.message
-            return
+            return nil
         }
         error = nil
         invalidRecipients = []
@@ -334,13 +340,33 @@ final class MailComposeViewModel {
         guard invalid.isEmpty else {
             invalidRecipients = invalid
             error = String(format: String(localized: "school_mail_invalid_recipients"), invalid.joined(separator: ", "))
-            return
+            return nil
         }
-        let everyone = toList + ccList + bccList
-        guard !everyone.isEmpty else {
+        guard !(toList + ccList + bccList).isEmpty else {
             error = String(localized: "school_mail_no_recipient")
-            return
+            return nil
         }
+        let attachmentBytes = attachments.map(\.data.count)
+        guard MailMessageBuilder.estimateEncodedSize(body: body, attachmentByteCounts: attachmentBytes) <= MailConstants.maxEncodedMessageBytes else {
+            error = String(localized: "school_mail_too_large")
+            return nil
+        }
+        return (toList, ccList, bccList)
+    }
+
+    /// Run when 傳送 is tapped, before the "要傳送這封信嗎？" confirmation: `true` means the mail
+    /// would actually send and the confirmation is worth raising. A refusal has already set
+    /// `error` (and raised the dialog that goes with it), and no confirmation follows — the user
+    /// is never asked to confirm a send that was never going to happen. Refuses outright while a
+    /// send is in flight, so the question cannot be put a second time over one already running.
+    func confirmationIsWarranted() -> Bool {
+        guard !isSending else { return false }
+        return validate() != nil
+    }
+
+    func send() async {
+        guard !isSending else { return }
+        guard let (toList, ccList, bccList) = validate() else { return }
 
         let isReply = context.mode == .reply || context.mode == .replyAll
         // Threading only needs `context.original` -- it's synchronous, in-memory data, never
@@ -349,11 +375,6 @@ final class MailComposeViewModel {
         // out In-Reply-To the right message.
         let threading = isReply ? context.original.map(MailReplyComposer.threadingHeaders(for:)) : nil
         let mail = outgoing(to: toList, cc: ccList, bcc: bccList, threading: threading)
-        let attachmentBytes = attachments.map(\.data.count)
-        guard MailMessageBuilder.estimateEncodedSize(body: body, attachmentByteCounts: attachmentBytes) <= MailConstants.maxEncodedMessageBytes else {
-            error = String(localized: "school_mail_too_large")
-            return
-        }
 
         let messageID = MailMessageBuilder.makeMessageID()
         let sendDate = now()
