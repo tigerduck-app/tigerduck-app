@@ -223,7 +223,22 @@ struct SettingsView: View {
                     // screen has nothing to take effect either.
                     .disabled(!cloudSyncEnabled)
                 }
-                // Owner's ruling, 2026-09-12 (spec §6, item 4): third row,
+                #if os(iOS)
+                if SchoolMailAvailability.isEnabled {
+                    // The School Mail switch and its check log live here, not
+                    // in 信箱設定 — one screen owns them. Dimmed and inert while
+                    // School Mail is signed out: there is no mailbox to be
+                    // notified about, and the 校園信箱 account row above already
+                    // says so, so this row carries no subtitle of its own.
+                    NavigationLink(String(localized: "school_mail_notification_settings_title")) {
+                        MailNotificationSettingsView()
+                    }
+                    .disabled(!MailNotificationSettingsView.settingsRowIsEnabled(
+                        isLoggedIn: MailAccountManager.shared.isLoggedIn))
+                }
+                #endif
+
+                // Owner's ruling, 2026-09-12 (spec §6, item 4): the last row,
                 // always enabled — it reads OS-level permission state
                 // directly, which stays meaningful whether or not course
                 // sync is on. iPhone/iPad only; macOS has no equivalent.
