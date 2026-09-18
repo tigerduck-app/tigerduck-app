@@ -45,6 +45,24 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    no IMAP parser can read. TigerDuck pins the request shape its message screen sends against
    this. Additive: no upstream file is modified and no upstream behaviour changes.
 
+6. `MessageInfo.bodyStructureUnusable` — set when the server answers the `BODYSTRUCTURE`
+   request with a structure NIOIMAP cannot parse (`IMAP/Models/MessageInfo.swift`,
+   `IMAP/IMAP/Handler/FetchMessageInfoHandler.swift`). NIOIMAP deliberately does not fail the
+   whole FETCH over a bad body structure — it hands back
+   `MessageAttribute.BodyStructure.invalid`, whose own doc comment says the wrapper exists so a
+   client can tell valid from invalid `BODYSTRUCTURE` data. `FetchMessageInfoHandler` matched
+   only `.valid` and dropped `.invalid` into `default: break`, so that distinction died one layer
+   above the parser: `parts` came back empty with no error and no log, identical to a message
+   that genuinely has no parts. Without this, a Mail2000 message whose structure the server
+   botches renders as nothing at all on iOS — `LiveMailClient.detail` iterates zero parts, every
+   body is nil, and the message screen falls back to 原始碼 — while Android, which parses the
+   MIME itself instead of trusting the server's description, opens the same message fine.
+   `LiveMailClient` reads this flag to decide whether to fetch the message whole and parse it
+   locally. Additive: one new `case` in an existing `switch`, one new property with a default,
+   decoded with `decodeIfPresent ?? false` so an older encoding still reads back; no upstream
+   behaviour changes. `InvalidBodyStructureTests` pins it, driving the real
+   `FetchMessageInfoHandler` behind `IMAPClientHandler`.
+
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.

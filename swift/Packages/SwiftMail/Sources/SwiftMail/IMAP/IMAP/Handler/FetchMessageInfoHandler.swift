@@ -221,6 +221,12 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 header.flags = flags.map(self.convertFlag)
             case .body(.valid(let structure), _):
                 header.parts = [MessagePart](structure)
+            case .body(.invalid, _):
+                // The parser could not read the structure the server sent, and said so rather
+                // than failing the whole FETCH. Record that: without it `parts` is left empty
+                // and the caller cannot tell a server that described its own message badly from
+                // a message that has no parts. See `MessageInfo.bodyStructureUnusable`.
+                header.bodyStructureUnusable = true
             case .rfc822Size(let size):
                 header.size = size
             default:

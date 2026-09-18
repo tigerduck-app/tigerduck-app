@@ -47,6 +47,16 @@ public struct MessageInfo: Codable, Sendable {
     /// The message parts
     public var parts: [MessagePart]
 
+    /// `true` when the server answered the `BODYSTRUCTURE`/`BODY` request with a structure this
+    /// client could not parse (`MessageAttribute.BodyStructure.invalid`).
+    ///
+    /// `parts` is necessarily empty in that case — there is nothing to build it from — which on
+    /// its own is indistinguishable from a message that genuinely has no parts. This flag is the
+    /// difference, so a caller can fall back to fetching the message whole and parsing its MIME
+    /// locally instead of showing the user an empty body. Always `false` when the fetch did not
+    /// ask for a body structure at all.
+    public var bodyStructureUnusable: Bool = false
+
     /// Additional header fields (last-value-wins dictionary, source-compatible).
     public var additionalFields: [String: String]?
 
@@ -72,6 +82,7 @@ public struct MessageInfo: Codable, Sendable {
         case references
         case flags
         case parts
+        case bodyStructureUnusable
         case additionalFields
         case additionalHeaderFields
         case size
@@ -90,6 +101,7 @@ public struct MessageInfo: Codable, Sendable {
     ///   - messageId: The message ID
     ///   - flags: The flags of the message
     ///   - parts: The message parts
+    ///   - bodyStructureUnusable: Whether the server's body structure could not be parsed
     ///   - additionalFields: Additional header fields (last-value-wins dictionary)
     ///   - additionalHeaderFields: Additional header fields in wire order, preserving repeated instances
     ///   - size: The total size of the message in bytes (RFC822.SIZE)
@@ -108,6 +120,7 @@ public struct MessageInfo: Codable, Sendable {
         references: [MessageID]? = nil,
         flags: [Flag] = [],
         parts: [MessagePart] = [],
+        bodyStructureUnusable: Bool = false,
         additionalFields: [String: String]? = nil,
         additionalHeaderFields: [HeaderField]? = nil,
         size: Int? = nil
@@ -126,6 +139,7 @@ public struct MessageInfo: Codable, Sendable {
         self.references = references
         self.flags = flags
         self.parts = parts
+        self.bodyStructureUnusable = bodyStructureUnusable
         self.additionalFields = additionalFields
         self.additionalHeaderFields = additionalHeaderFields
         self.size = size
@@ -151,6 +165,7 @@ public extension MessageInfo {
             references: try Self.decodeReferences(from: container),
             flags: try container.decodeIfPresent([Flag].self, forKey: .flags) ?? [],
             parts: try container.decodeIfPresent([MessagePart].self, forKey: .parts) ?? [],
+            bodyStructureUnusable: try container.decodeIfPresent(Bool.self, forKey: .bodyStructureUnusable) ?? false,
             additionalFields: try container.decodeIfPresent([String: String].self, forKey: .additionalFields),
             additionalHeaderFields: try container.decodeIfPresent([HeaderField].self, forKey: .additionalHeaderFields),
             size: try container.decodeIfPresent(Int.self, forKey: .size)
