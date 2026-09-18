@@ -97,6 +97,41 @@ struct MailSettingsTests {
         }
     }
 
+    /// 快取大小 has to account for the whole cache root — folder pages, bodies, sources and a
+    /// downloaded attachment alike — because that is what is actually on disk. Driven through
+    /// the screen's own measure/clear path, not through `MailCache` directly, so a row wired to
+    /// the narrower `bodyBytes()` or to a second clear-all of its own fails here.
+    @Test func theCacheRowMeasuresEverythingAndClearingEmptiesIt() async throws {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        defer { cache.clearAll() }
+        cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1,
+                                      summaries: [SchoolMailTestDoubles.summary(uid: 1)], oldestLoadedSequence: nil))
+        let detail = MailMessageDetail(summary: SchoolMailTestDoubles.summary(uid: 1), messageID: nil, inReplyTo: nil,
+                                       references: nil, parts: [], textBody: String(repeating: "x", count: 500),
+                                       htmlBody: nil, inlineImages: nil)
+        cache.saveDetail(detail, folder: "INBOX", uidValidity: 1)
+        cache.saveSource(String(repeating: "s", count: 400), folder: "INBOX", uidValidity: 1, uid: 1)
+        let attachment = try cache.temporaryFileURL(filename: "課程.pdf")
+        try Data(repeating: 0, count: 700).write(to: attachment)
+
+        let measured = await MailSettingsView.measureCache(cache)
+        // Bigger than the bodies alone: the page and the attachment count too.
+        #expect(measured > cache.bodyBytes())
+        #expect(measured > 700)
+
+        let afterClear = await MailSettingsView.clearCache(cache)
+        #expect(afterClear == 0)
+        #expect(cache.loadPage(folder: "INBOX") == nil)
+        #expect(!FileManager.default.fileExists(atPath: attachment.path))
+    }
+
+    /// The figure is formatted by the platform, so it needs no string of its own — and it is
+    /// never the raw byte count.
+    @Test func theCacheSizeIsFormattedAsAFileSize() {
+        #expect(MailSettingsView.cacheSizeText(bytes: 0) == ByteCountFormatter.string(fromByteCount: 0, countStyle: .file))
+        #expect(MailSettingsView.cacheSizeText(bytes: 5_242_880) != "5242880")
+    }
+
     @Test func eachLoginErrorHasItsOwnCopy() {
         let keys = [MailAccountManager.LoginError.credentials, .network, .certificate, .busy, .generic].map(\.message)
         #expect(Set(keys).count == 5)

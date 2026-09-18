@@ -39,6 +39,7 @@ struct SchoolMailStringsTests {
         "school_mail_risky_message", "school_mail_settings_notifications",
         "school_mail_settings_notifications_hint", "school_mail_settings_display_name",
         "school_mail_settings_display_name_hint", "school_mail_settings_diagnostics",
+        "school_mail_cache_size", "school_mail_clear_cache",
         "school_mail_notification_settings_title",
         "school_mail_settings_no_checks", "school_mail_guide_placeholder", "school_mail_saved",
         "school_mail_guide_apple_mail_title", "school_mail_guide_mail2000_title",

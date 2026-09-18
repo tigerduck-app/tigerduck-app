@@ -169,6 +169,33 @@ nonisolated final class MailCache: @unchecked Sendable {
         return nonEmpty
     }
 
+    // MARK: Whole cache
+
+    /// Every byte under the cache root — folder pages, bodies, sources and the files an opened
+    /// attachment leaves behind — because that is what actually occupies the disk, and what the
+    /// settings screen's 快取大小 has to account for. `bodyBytes()` is the narrower figure the
+    /// LRU budget is measured against and is not a substitute.
+    ///
+    /// Walking a tree is real I/O, like everything else on this type: callers keep it off the
+    /// main actor. Unreadable entries are skipped rather than thrown — a size that is a little
+    /// low is better than a settings row that fails.
+    func totalBytes() -> Int {
+        lock.withLock {
+            let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey]
+            guard let files = FileManager.default.enumerator(
+                at: directory, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }
+            ) else { return 0 }
+            var total = 0
+            for case let url as URL in files {
+                guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isRegularFile == true else {
+                    continue
+                }
+                total += values.fileSize ?? 0
+            }
+            return total
+        }
+    }
+
     func clearAll() {
         lock.withLock { _ = try? FileManager.default.removeItem(at: directory) }
     }
