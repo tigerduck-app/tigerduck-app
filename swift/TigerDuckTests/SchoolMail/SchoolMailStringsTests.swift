@@ -12,7 +12,7 @@ struct SchoolMailStringsTests {
         "school_mail_error_auth", "school_mail_error_network", "school_mail_error_certificate",
         "school_mail_error_busy", "school_mail_error_generic", "school_mail_auth_failed_banner",
         "school_mail_auth_failed_notification_title", "school_mail_auth_failed_notification_text",
-        "school_mail_new_mail_count", "school_mail_no_sender", "school_mail_no_subject",
+        "school_mail_new_mail_count", "school_mail_notification_title", "school_mail_no_sender", "school_mail_no_subject",
         "school_mail_folder_inbox", "school_mail_folder_sent", "school_mail_folder_drafts",
         "school_mail_folder_junk", "school_mail_folder_trash", "school_mail_folder_more",
         "school_mail_search_prompt", "school_mail_search_local_only", "school_mail_unread_only",

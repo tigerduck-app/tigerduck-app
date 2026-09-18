@@ -26,8 +26,10 @@ nonisolated struct SystemMailNotificationCenter: MailNotificationCenter {
     }
 }
 
-/// New-mail notifications (design doc §8.6): title = sender, body = subject, both as
-/// cleaned plain text; more than five at once collapse into one.
+/// New-mail notifications: title = `Email:` + subject, body = sender, both as cleaned plain
+/// text; more than five at once collapse into one. Design doc §8.6 has this reversed (title =
+/// sender, body = subject) — the ordering here is a deliberate, product-directed override of
+/// the spec, not a bug, and matches what the Android app produces for the same mail.
 nonisolated struct MailNotifier: Sendable {
     static let summaryIdentifier = "school-mail-summary"
     static let authFailureIdentifier = "school-mail-auth-failed"
@@ -98,8 +100,8 @@ nonisolated struct MailNotifier: Sendable {
                 ?? String(localized: "school_mail_no_sender")
             let subject = message.subject?.mailNonEmpty ?? String(localized: "school_mail_no_subject")
             let content = Self.content(
-                title: sender,
-                body: subject,
+                title: String(format: String(localized: "school_mail_notification_title"), subject),
+                body: sender,
                 userInfo: ["kind": MailConstants.notificationKind, "folder": MailConstants.inbox, "uid": Int(message.uid)]
             )
             let identifier = Self.identifier(uidValidity: uidValidity, uid: message.uid)
