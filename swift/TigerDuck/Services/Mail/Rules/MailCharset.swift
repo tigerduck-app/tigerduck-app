@@ -22,18 +22,26 @@ nonisolated enum MailCharset {
     /// The labelled charset, else strict UTF-8, then Big5-HKSCS, then ISO-8859-1
     /// (which never fails, so no byte is lost).
     ///
-    /// A *labelled* part is decoded leniently, matching Android, where `String(bytes, charset)`
-    /// substitutes U+FFFD for a malformed byte and always returns. `String(data:encoding:)` is
-    /// strict and returns nil instead, which used to send a correctly labelled body with one
-    /// truncated byte — an everyday shape in real mail — down the guess chain below, where
-    /// Big5-HKSCS accepts almost any byte string and the whole message rendered as mojibake.
-    /// The guess chain is for parts with no usable label, not for a label the server gave us.
+    /// A *labelled* part that its own charset cannot read strictly is decoded leniently,
+    /// matching Android, where `String(bytes, charset)` substitutes U+FFFD for a malformed byte
+    /// and always returns. `String(data:encoding:)` is strict and returns nil instead, which
+    /// used to send a correctly labelled body with one truncated byte — an everyday shape in
+    /// real mail — down the guess chain below, where Big5-HKSCS accepts almost any byte string
+    /// and the whole message rendered as mojibake.
+    ///
+    /// The lenient decode comes *after* strict UTF-8, not straight after the strict labelled
+    /// one, because the other everyday shape is a part labelled `us-ascii` that carries UTF-8:
+    /// Mail2000 sends them constantly. Strict ASCII fails on those bytes, and a lenient ASCII
+    /// decode then succeeds on every one of them — turning 親愛的同學您好 into `è¦ªæ„›çš„…`,
+    /// which is the whole message lost. A body that is valid UTF-8 is UTF-8 whatever the header
+    /// claims, so that possibility is settled before any byte is replaced. Android has no
+    /// fallback at all for a resolvable label and so still has the mojibake; this side is
+    /// deliberately not matching it there.
     static func decode(_ data: Data, label: String?) -> String {
-        if let encoding = encoding(forLabel: label) {
-            if let text = String(data: data, encoding: encoding) { return text }
-            if let text = lossilyDecoded(data, encoding: encoding) { return text }
-        }
+        let labelled = encoding(forLabel: label)
+        if let labelled, let text = String(data: data, encoding: labelled) { return text }
         if let text = String(data: data, encoding: .utf8) { return text }
+        if let labelled, let text = lossilyDecoded(data, encoding: labelled) { return text }
         if let text = String(data: data, encoding: cf(.big5_HKSCS_1999)) { return text }
         return String(data: data, encoding: .isoLatin1) ?? ""
     }

@@ -44,6 +44,23 @@ struct MailTextRulesTests {
         #expect(MailCharset.decode(Data(bytes), label: nil).unicodeScalars.map(\.value) == [0xFF, 0x80, 0xFF])
     }
 
+    /// Mail2000 routinely labels a part `us-ascii` and then puts UTF-8 bytes in it. The label
+    /// resolves, so decoding it leniently succeeds on every byte and turns 親愛的同學您好 into
+    /// `è¦ªæ„›çš„…`. Strict UTF-8 therefore runs before the lenient path: a body that is valid
+    /// UTF-8 is UTF-8, whatever the header claims.
+    @Test(arguments: ["us-ascii", "US-ASCII", "ascii", "\"us-ascii\""])
+    func aBodyMislabelledASCIIButWrittenInUTF8StillReadsAsUTF8(label: String) {
+        #expect(MailCharset.decode(Data("親愛的同學您好".utf8), label: label) == "親愛的同學您好")
+        #expect(MailCharset.decode(Data("hello 🎓 世界".utf8), label: label) == "hello 🎓 世界")
+    }
+
+    /// The other direction, which the UTF-8 fallback above must not cost: a body that really is
+    /// in its labelled charset is decoded with that charset, not guessed at.
+    @Test func aGenuinelyBig5BodyStillDecodesAsBig5() {
+        #expect(MailCharset.decode(Self.big5("親愛的同學您好"), label: "big5") == "親愛的同學您好")
+        #expect(MailCharset.decode(Self.big5("課程公告"), label: "Big5") == "課程公告")
+    }
+
     // MARK: RFC 2047
 
     @Test func decodesUTF8Base64Words() {
