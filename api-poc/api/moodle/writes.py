@@ -224,6 +224,12 @@ def main() -> int:
         if isinstance(result, dict) and result.get("status") is False:
             print(f"[WARN] {name} returned status=false", file=sys.stderr)
             return 3
+        # Some functions answer with a bare boolean rather than a status dict
+        # (core_message_mark_all_notifications_as_read is one). Identity, not
+        # truthiness: an empty list or dict is a legitimate success above.
+        if result is False:
+            print(f"[WARN] {name} returned false", file=sys.stderr)
+            return 3
     return 0
 
 

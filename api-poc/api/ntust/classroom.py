@@ -60,6 +60,7 @@ import re
 import sys
 from datetime import UTC, date, datetime
 from typing import Any
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
@@ -275,7 +276,14 @@ class ClassroomClient:
             logger.info("No authorization-code form; the SSO session expired.")
             return None
         action, fields = bridge
-        posted = self._http.post(action, data=fields, headers={"Referer": QUERY_URL})
+        # ssoam2 writes the bridge form's action as a site-relative path
+        # ("/signin-oidc"). The client carries no base_url, so posting it raw
+        # raises httpx.UnsupportedProtocol and the handshake dies one hop from
+        # the end. Same resolution the SSO bridge itself uses.
+        posted = self._http.post(
+            urljoin(str(resp.url), action), data=fields,
+            headers={"Referer": QUERY_URL},
+        )
         if is_query_page(posted.text):
             return posted.text
         # signin-oidc's 302 usually lands back on the page that started the
@@ -479,6 +487,12 @@ def _self_check() -> None:
         "<form action='/signin-oidc'><input name='code' value='C'>"
         "<input name='state' value='S'></form>"
     ) == ("/signin-oidc", {"code": "C", "state": "S"})
+
+    # A site-relative bridge action has to resolve against the page it came
+    # from; posting "/signin-oidc" as-is is not a URL httpx will accept.
+    assert urljoin(
+        "https://cour01.ntust.edu.tw/classroom_usecondition.aspx", "/signin-oidc"
+    ) == "https://cour01.ntust.edu.tw/signin-oidc"
 
     # Unchecked boxes and submit buttons stay out of the payload.
     fields = form_fields(
