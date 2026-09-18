@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.1.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.0)
+[![Version](https://img.shields.io/badge/Version-v2.1.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.1)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -111,6 +111,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v2.1.1`** | 2026-09-18 | 📚 **Fixed cross-listed classes breaking the Moodle and assignment links** |
 | **`v2.1.0`** | 2026-09-12 | 🔔 **Assignment reminders move to the server** — iOS no longer depends on local scheduling, so a reminder arrives on time even when the app is closed; assignments already submitted on Moodle stop reminding; notification settings sync across devices; the expired-Moodle-login notification finally carries text and translations instead of arriving blank; the TigerSync settings screen is reorganised on all three platforms |
 | **`v2.0.3`** | 2026-09-11 | The class table can pin every period, redraws the moment a period is toggled, and the evening period clock is corrected; the Dynamic Island uses the app icon, names the end state instead of showing a dash, and registers its end time against the real clock; widgets stop painting opaque surfaces outside full-colour rendering, and Now and Today share the class table's capsule; TigerSync is listed properly in sync status and among the calendar's sync sources; a sign-in made on the Library screen is visible in Settings right away |
 | **`v2.0.2`** | 2026-09-10 | 📅 **Academic calendar** — the school's published term dates, holidays and make-up days, on iOS and Mac; Live Activities now start from a server push, so a class appears on time even from the background; a semester reset on another device empties this one and refills it from the portal; class table gains per-period start/end times, period 10 and A/B/C display options; the custom API endpoint is a supported, validated setting |

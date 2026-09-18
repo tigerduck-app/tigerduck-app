@@ -144,5 +144,23 @@
         "Turning off \"Sync course information\" now also turns off assignment reminders on this device."
       ]
     }
+  },
+  "2.1.1": {
+    "zh-TW": {
+      "title": "2.1.1 更新內容",
+      "highlights": [
+        "修復跨系合開的課程無法關聯至 Moodle 的問題",
+        "修復跨系合開的課程無法顯示作業的問題",
+        "修復暑期課程的作業顯示問題"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.1.1",
+      "highlights": [
+        "Fixed cross-listed courses not linking to Moodle",
+        "Fixed assignments not showing for cross-listed courses",
+        "Fixed assignment display for summer-session courses"
+      ]
+    }
   }
 }
