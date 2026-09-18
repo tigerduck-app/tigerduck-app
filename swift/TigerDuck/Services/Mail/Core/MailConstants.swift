@@ -17,6 +17,19 @@ nonisolated enum MailConstants {
     static let bodyCacheLimitBytes = 20 * 1024 * 1024
     static let maxEncodedMessageBytes = 50 * 1024 * 1024
     static let maxInlineImageBytes = 5 * 1024 * 1024
+    /// The largest message `LiveMailClient` will download whole in order to parse its MIME
+    /// locally, when the server's own `BODYSTRUCTURE` came back unreadable and the normal
+    /// part-by-part fetch therefore has nothing to work from.
+    ///
+    /// Not an Appendix A.6 value — a bound on an added recovery. Deliberately the same number as
+    /// `MailCache`'s per-entry ceiling (`bodyCacheLimitBytes / 2`), which is already this app's
+    /// answer to "how big is too big to hold on to for one message". Above it the recovery is
+    /// skipped and the message screen keeps the behaviour it has today: no body, the
+    /// 「無法解析這封信的格式」 banner, and 原始碼. That costs the user nothing extra, because the
+    /// forced 原始碼 mode downloads the whole message anyway (`MailMessageView` starts
+    /// `loadSource()` the moment the mode changes) — so either way exactly one whole-message
+    /// download happens, and under the ceiling it buys a readable mail instead of a hex-ish dump.
+    static let maxLocalParseBytes = bodyCacheLimitBytes / 2
     static let notificationCollapseThreshold = 5
     static let connectionIdleClose: TimeInterval = 30
     static let sentCopyDedupeDelay: Duration = .seconds(3)

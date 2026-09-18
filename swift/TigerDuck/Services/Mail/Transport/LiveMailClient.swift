@@ -241,6 +241,17 @@ actor LiveMailClient: MailClient {
                   let summary = Self.summary(from: info) else {
                 throw MailClientError.protocolError("message \(uid) not found")
             }
+            // The server described its own message in a way no IMAP parser can read, so there
+            // are no parts to fetch and every branch below would be skipped. Fetch the message
+            // whole and parse the MIME here instead — what Android has always done, and the only
+            // thing left that can tell this mail from an empty one. Not `self.rawSource(...)`:
+            // that takes `commandLock`, which this call already holds.
+            if Self.recoversByLocalParse(info) {
+                let raw = try await self.imap.fetchRawMessage(identifier: UID(uid))
+                if let local = Self.localDetail(summary: summary, info: info, raw: raw) { return local }
+                // The local parse found no more than the server's structure did. Fall through:
+                // the message really does have nothing to show, and the screen says so.
+            }
             var textBody: String?
             var htmlBody: String?
             var inlineImages: [String: MailInlineImage] = [:]
@@ -306,6 +317,79 @@ actor LiveMailClient: MailClient {
         return false
     }
 
+    /// Whether this fetch's answer is one only a local MIME parse can rescue, and whether the
+    /// message is small enough to be worth downloading whole for it.
+    ///
+    /// **Only on the unusable-structure path.** A message that genuinely has no parts — the same
+    /// empty `parts` seen from the outside — must never start a whole-message download, so this
+    /// keys off `MessageInfo.bodyStructureUnusable` (vendored patch 6) and nothing weaker. The
+    /// normal path stays exactly as fast as it was.
+    ///
+    /// The ceiling is `MailConstants.maxLocalParseBytes`, measured against `RFC822.SIZE`, which
+    /// both `detailOptions` and the `summaryOptions` fallback already ask for — so it is known
+    /// before a single body byte is fetched. A server that answers no size at all is *not*
+    /// treated as oversized: an absent attribute is not evidence of a large message, and reading
+    /// it that way would let a server switch the whole recovery off by omitting one field, which
+    /// is precisely the class of server this exists for.
+    nonisolated static func recoversByLocalParse(_ info: MessageInfo) -> Bool {
+        guard info.bodyStructureUnusable else { return false }
+        guard let size = info.size else { return true }
+        return size <= MailConstants.maxLocalParseBytes
+    }
+
+    /// A `MailMessageDetail` built from the message's own bytes rather than the server's
+    /// description of them, via SwiftMail's offline `EMLParser` — the same parser
+    /// `LiveMailClientParsingTests` runs the shared `.eml` corpus through.
+    ///
+    /// Everything that does not come from the structure — summary, Message-ID, thread chain,
+    /// `Return-Path` — still comes from the fetch, which succeeded; only the body did not.
+    /// `hasAttachments` is recomputed, because the summary was built from the empty part list.
+    ///
+    /// Returns nil when the parse yields nothing to show either: the caller then falls through
+    /// to the ordinary (empty) result, so "the server's structure was unusable" never turns into
+    /// a claim that a body was recovered.
+    nonisolated static func localDetail(summary: MailSummary, info: MessageInfo, raw: Data) -> MailMessageDetail? {
+        guard let message = try? EMLParser.parse(raw) else { return nil }
+        var textBody: String?
+        var htmlBody: String?
+        var inlineImages: [String: MailInlineImage] = [:]
+        for part in message.parts where !isAttachment(part) {
+            let type = part.contentType.lowercased()
+            if type.hasPrefix("text/plain"), textBody == nil {
+                textBody = decodedText(of: part)
+            } else if type.hasPrefix("text/html"), htmlBody == nil {
+                htmlBody = decodedText(of: part)
+            } else if type.hasPrefix("image/"), let cid = part.contentId,
+                      (part.data?.count ?? 0) <= MailConstants.maxInlineImageBytes,
+                      let data = part.decodedData() {
+                inlineImages[bareContentID(cid)] = MailInlineImage(mimeType: type, data: data)
+            }
+        }
+        let hasAttachments = message.parts.contains(where: isAttachment)
+        guard textBody != nil || htmlBody != nil || hasAttachments else { return nil }
+        var summary = summary
+        summary.hasAttachments = hasAttachments
+        return MailMessageDetail(
+            summary: summary,
+            messageID: info.messageId.map(angleBracketed),
+            inReplyTo: info.inReplyTo.map(angleBracketed),
+            references: info.references?.map(angleBracketed),
+            returnPath: returnPath(from: info),
+            parts: message.parts.map(bodyPart(from:)),
+            textBody: textBody,
+            htmlBody: htmlBody,
+            inlineImages: inlineImages.isEmpty ? nil : inlineImages
+        )
+    }
+
+    /// Transfer-decode a locally parsed part, then apply the app's Appendix A.5 charset rules —
+    /// the same two steps `detail` applies to a part fetched from the server
+    /// (`fetchAndDecodeMessagePartData` + `MailCharset.decode`), in the same order.
+    nonisolated static func decodedText(of part: MessagePart) -> String? {
+        guard let data = part.decodedData() else { return nil }
+        return MailCharset.decode(data, label: part.declaredCharset)
+    }
+
     func rawSource(folder: String, uid: UInt32) async throws -> Data {
         try await run {
             _ = try await self.imap.examineMailbox(folder)
@@ -313,14 +397,33 @@ actor LiveMailClient: MailClient {
         }
     }
 
+    /// One part's bytes, by the section the attachment list was built from.
+    ///
+    /// Asks for `.size` as well as `.bodyStructure` only so `recoversByLocalParse`'s ceiling can
+    /// be evaluated on the fallback below; it costs one integer per message.
     func attachment(folder: String, uid: UInt32, part: MailBodyPart) async throws -> Data {
         try await run {
             _ = try await self.imap.examineMailbox(folder)
-            guard let info = try await self.imap.fetchMessageInfo(for: UID(uid), options: [.bodyStructure]),
-                  let found = info.parts.first(where: { $0.section.description == part.section }) else {
+            guard let info = try await self.imap.fetchMessageInfo(for: UID(uid), options: [.bodyStructure, .size]) else {
+                throw MailClientError.protocolError("message \(uid) not found")
+            }
+            if let found = info.parts.first(where: { $0.section.description == part.section }) {
+                return try await self.imap.fetchAndDecodeMessagePartData(messageInfo: info, part: found)
+            }
+            // The sections this attachment list was built from came from a local parse, because
+            // the server's structure was unreadable (`detail`). There is nothing to fetch a
+            // section *of*, so the same parse has to serve the bytes too — otherwise the fix
+            // above would put attachments on screen that no tap could ever open.
+            guard Self.recoversByLocalParse(info) else {
                 throw MailClientError.protocolError("part \(part.section) not found")
             }
-            return try await self.imap.fetchAndDecodeMessagePartData(messageInfo: info, part: found)
+            let raw = try await self.imap.fetchRawMessage(identifier: UID(uid))
+            guard let message = try? EMLParser.parse(raw),
+                  let found = message.parts.first(where: { $0.section.description == part.section }),
+                  let data = found.decodedData() else {
+                throw MailClientError.protocolError("part \(part.section) not found")
+            }
+            return data
         }
     }
 
@@ -717,7 +820,9 @@ actor LiveMailClient: MailClient {
             transferEncoding: part.encoding,
             filename: part.filename.map { MailTextCleaner.clean(RFC2047.decode($0)) },
             contentID: part.contentId.map(bareContentID),
-            size: part.size,
+            // `size` is BODYSTRUCTURE's octet count, which a part from a local parse
+            // (`localDetail`) has none of — its own still-encoded bytes are the same measure.
+            size: part.size ?? part.data?.count,
             isAttachment: isAttachment(part)
         )
     }

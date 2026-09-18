@@ -53,6 +53,17 @@ final class MailMessageViewModel {
     private(set) var linkedDocument: LinkedHTML?
     private(set) var plainText = ""
     private(set) var warnings: [MailWarning] = []
+    /// Nothing this screen can render: no text body, no HTML body, no attachments. Drives the
+    /// 「無法解析這封信的格式，改為原始碼」 banner and the forced 原始碼 mode below.
+    ///
+    /// Still a statement about what there is to show, not about why — deliberately. It used to
+    /// fire for any message whose `BODYSTRUCTURE` Mail2000 botched, because the client believed
+    /// the server's description of the message and that description was empty; `LiveMailClient`
+    /// now parses such a message's MIME itself, so those open normally and this stays false.
+    /// What is left under it is the honest residue: a message that really carries nothing, and
+    /// one whose structure was unusable *and* which was too large to download whole for a local
+    /// parse (`MailConstants.maxLocalParseBytes`). Both cases put the user in the same place —
+    /// the raw source, which is all there is — so they read the same banner.
     private(set) var parseFailed = false
     private(set) var source: String?
     /// Set when `loadSource` throws, cleared at the start of the next attempt — lets the
