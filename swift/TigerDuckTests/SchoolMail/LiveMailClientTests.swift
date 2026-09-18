@@ -24,8 +24,28 @@ struct LiveMailClientTests {
         #expect(LiveMailClient.map(MailClientError.searchUnsupported) == .searchUnsupported)
     }
 
-    @Test func unknownErrorsCountAsUnreachable() {
+    @Test func networkShapedErrorsCountAsUnreachable() {
         #expect(LiveMailClient.map(URLError(.timedOut)) == .unreachable)
+        #expect(LiveMailClient.map(NSError(domain: NSPOSIXErrorDomain, code: 61)) == .unreachable)
+    }
+
+    /// `.unreachable` is not the fallback for an unrecognized error any more. It used to be, and
+    /// that is how a FETCH response TigerDuck could not parse reached the user as
+    /// 「無法連線到郵件伺服器」 on a device whose network was fine. An error that is neither
+    /// recognized nor network-shaped says a protocol error went wrong, not the network.
+    @Test func unknownErrorsThatAreNotNetworkShapedCountAsProtocolErrors() {
+        struct SomethingElse: Error {}
+        let error = SomethingElse()
+        #expect(LiveMailClient.map(error) == .protocolError(String(describing: error)))
+    }
+
+    @Test func decoderAndParserFailuresCountAsProtocolErrors() {
+        struct StandInParserError: Error {}
+        // Named-matched the way SwiftMail's own connection recycling recognizes these, since the
+        // real `IMAPDecoderError` type is not re-exported. `MailFetchSectionTests` runs the real
+        // one, produced by NIOIMAP's own pipeline from the bytes Mail2000 sent.
+        #expect(LiveMailClient.isDecodeFailure(StandInParserError()))
+        #expect(!LiveMailClient.isDecodeFailure(URLError(.timedOut)))
     }
 
     @Test func mapsSMTPSendErrorsToProtocolErrorCarryingTheDescription() {

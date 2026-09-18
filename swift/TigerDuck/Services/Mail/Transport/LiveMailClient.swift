@@ -523,7 +523,42 @@ actor LiveMailClient: MailClient {
             // since most of these are not network failures.
             return classify(String(describing: sendError), fallback: .protocolError(String(describing: sendError)))
         }
-        return classify(String(describing: error), fallback: .unreachable)
+        // A response this client could not read. Checked before the text heuristics below so a
+        // decoder error can never be bucketed by whatever happens to appear in its buffer dump.
+        if isDecodeFailure(error) { return .protocolError(String(describing: error)) }
+        // Nothing above recognized this error. `.unreachable` used to be the fallback here, and
+        // that is why a parser bug looked like a network outage: an `IMAPDecoderError` arrives
+        // as a type this module cannot even name, became `.unreachable` → `LoginError.network`
+        // → 「無法連線到郵件伺服器」, and the device's mail was unreadable with a working network.
+        // Errors that genuinely mean "couldn't reach the server" are named above
+        // (`IMAPError.timeout`, `connectionFailed`) or are network-shaped in the sense
+        // `isNetworkShaped` describes; an unknown error that is neither is far likelier to be a
+        // protocol problem, so it says so instead of blaming the network.
+        let described = String(describing: error)
+        return classify(described, fallback: isNetworkShaped(error) ? .unreachable : .protocolError(described))
+    }
+
+    /// A failure of the IMAP/SMTP response decoder or its parser — the server sent something
+    /// this client cannot read.
+    ///
+    /// NIOIMAP surfaces these as `IMAPDecoderError` (wrapping a `ParserError`) straight from the
+    /// channel and SwiftMail rethrows them untouched, but SwiftMail does not re-export NIOIMAP,
+    /// so the type cannot be named here. Matched by name instead — the same way SwiftMail's own
+    /// `shouldRecycleConnection` recognizes it.
+    nonisolated static func isDecodeFailure(_ error: any Error) -> Bool {
+        let text = (String(describing: type(of: error)) + " " + String(describing: error)).lowercased()
+        return text.contains("decodererror") || text.contains("parsererror")
+    }
+
+    /// Errors that really do mean the server could not be reached, for the shapes that reach
+    /// `map(_:)` unrecognized: Foundation's URL and POSIX transport errors, and NIO's own
+    /// connection/channel/IO failures. `.unreachable` is reserved for these — it is also the
+    /// only classification besides `.certificateRejected` that tears the connection down.
+    nonisolated static func isNetworkShaped(_ error: any Error) -> Bool {
+        let domain = (error as NSError).domain
+        if domain == NSURLErrorDomain || domain == NSPOSIXErrorDomain { return true }
+        let name = String(describing: type(of: error)).lowercased()
+        return name.contains("connectionerror") || name.contains("channelerror") || name.contains("ioerror")
     }
 
     /// `.commandFailed`/`.commandNotSupported` from a server-issued SEARCH means the server
