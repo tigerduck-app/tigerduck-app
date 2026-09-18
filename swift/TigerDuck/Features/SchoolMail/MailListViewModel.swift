@@ -59,10 +59,6 @@ final class MailListViewModel {
         return unreadOnly ? base.filter { !$0.isSeen } : base
     }
 
-    var title: String {
-        folderRoles.first { $0.value == selectedFolder }?.key.title ?? ModifiedUTF7.decode(selectedFolder)
-    }
-
     // MARK: Loading
 
     /// Paints the cached list first, then refreshes the newest page from the server, merging

@@ -123,7 +123,7 @@ struct MailListViewModelTests {
         await h.model.load()
         await h.model.select(folder: MailFolderRole.trash.imapName)
         #expect(h.model.summaries.map(\.subject) == ["舊信"])
-        #expect(h.model.title == MailFolderRole.trash.title)
+        #expect(h.model.selectedFolder == MailFolderRole.trash.imapName)
     }
 
     @Test func listDatesShowTheTimeTodayAndTheDateOtherwise() {

@@ -29,7 +29,7 @@ struct SchoolMailView: View {
         Group {
             if account.isLoggedIn { mailList } else { signedOut }
         }
-        .navigationTitle(account.isLoggedIn ? viewModel.title : String(localized: "feature_school_mail"))
+        .navigationTitle(String(localized: "feature_school_mail"))
         .navigationDestination(isPresented: $showGuide) { MailGuideView() }
         .sheet(isPresented: $showLoginSheet) { MailLoginSheet(isPresented: $showLoginSheet) }
     }
@@ -118,7 +118,7 @@ struct SchoolMailView: View {
                     .accessibilityLabel(String(localized: "school_mail_use_other_app"))
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { compose = MailComposeContext(mode: .new) } label: { Image(systemName: "square.and.pencil") }
+                Button { compose = MailComposeContext(mode: .new) } label: { Image(systemName: "square.and.pencil.circle") }
                     .accessibilityLabel(String(localized: "school_mail_compose"))
             }
         }

@@ -120,8 +120,8 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     var category: FeatureCategory? {
         switch self {
-        case .home, .classTable, .calendar: .page
-        case .gpa, .courseSelection, .graduationRequirements, .schoolMail: .academic
+        case .home, .classTable, .calendar, .schoolMail: .page
+        case .gpa, .courseSelection, .graduationRequirements: .academic
         case .library, .discussionRoom, .libraryLecture: .library
         case .announcements, .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
         case .englishVocab: .language

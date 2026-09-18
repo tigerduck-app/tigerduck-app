@@ -5,14 +5,20 @@ import Testing
 
 @MainActor
 struct SchoolMailFeatureTests {
-    @Test func schoolMailIsAnAcademicFeature() {
+    @Test func schoolMailIsAPageFeature() {
         #expect(AppFeature(rawValue: "schoolMail") == .schoolMail)
-        #expect(AppFeature.schoolMail.category == .academic)
+        #expect(AppFeature.schoolMail.category == .page)
         #expect(AppFeature.schoolMail.iconName == "envelope.fill")
         #expect(AppFeature.schoolMail.isImplemented)  // DEBUG build
         #expect(AppFeature.moreFeatures.contains(.schoolMail))
         #expect(AppFeature.pinnableFeatures.contains(.schoolMail))
         #expect(!AppFeature.defaultTabs.contains(.schoolMail))
+    }
+
+    @Test func schoolMailIsLastInThePageSection() {
+        let pageFeatures = AppFeature.moreFeatures.filter { $0.category == .page }
+        #expect(pageFeatures.last == .schoolMail)
+        #expect(pageFeatures == [.home, .classTable, .calendar, .schoolMail])
     }
 
     @Test func storedTabsWithSchoolMailDecode() throws {
