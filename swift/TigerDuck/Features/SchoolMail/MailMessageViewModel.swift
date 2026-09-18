@@ -105,19 +105,28 @@ final class MailMessageViewModel {
     /// a retry `load()` racing a `loadImages()` tap, either order (fix round 2, minors 2–3).
     @ObservationIgnored private var htmlGeneration = 0
 
+    /// `cache` and `prefs` are injectable purely so a test can drive throwaway storage instead
+    /// of the app's real singleton (which reaches the real `UserDefaults` and cache directory).
+    ///
+    /// Both are optionals defaulted to `nil` rather than `= MailAccountManager.shared.…`: a
+    /// default argument expression is type-checked in a nonisolated context, and
+    /// `MailAccountManager.shared` is main-actor isolated, so spelling the singleton there is an
+    /// isolation violation in the Swift 6 language mode. Resolving them in this (main-actor)
+    /// body keeps the seam identical — a caller that passes a value still gets that value, and
+    /// one that doesn't still gets the singleton's.
     init(
         route: MailMessageRoute,
         session: MailPageSession,
         folderRoles: [MailFolderRole: String],
-        cache: MailCache = MailAccountManager.shared.cache,
-        prefs: any MailPreferences = MailAccountManager.shared.prefs,
+        cache: MailCache? = nil,
+        prefs: (any MailPreferences)? = nil,
         notifier: MailNotifier = MailChecker.shared.notifier
     ) {
         self.route = route
         self.session = session
         self.folderRoles = folderRoles
-        self.cache = cache
-        self.prefs = prefs
+        self.cache = cache ?? MailAccountManager.shared.cache
+        self.prefs = prefs ?? MailAccountManager.shared.prefs
         self.notifier = notifier
     }
 

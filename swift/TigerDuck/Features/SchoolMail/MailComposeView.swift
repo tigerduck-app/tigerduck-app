@@ -245,7 +245,15 @@ struct MailComposeView: View {
     /// plausible-but-wrong size instead of failing (fix round 2, important). The explicit
     /// `do`/`catch` below makes a throw end the whole read as a failure; only running out of bytes
     /// to read (`nil` or empty `Data` from a call that didn't throw) ends the loop normally.
-    static func readBounded(read: (Int) throws -> Data?) -> Data? {
+    ///
+    /// `nonisolated` for the same reason its caller above is: without it the module default
+    /// (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`) puts it on the main actor, and the
+    /// `nonisolated` wrapper would be calling a main-actor method from off the main actor —
+    /// which the Swift 6 language mode rejects outright, and which today only "works" because
+    /// a synchronous call cannot hop, so the loop runs off-main in defiance of its own declared
+    /// isolation. Declaring it `nonisolated` makes running off the main actor the contract
+    /// rather than an accident; it reads nothing but its `read` parameter.
+    nonisolated static func readBounded(read: (Int) throws -> Data?) -> Data? {
         var data = Data()
         do {
             while let chunk = try read(1024 * 1024), !chunk.isEmpty {

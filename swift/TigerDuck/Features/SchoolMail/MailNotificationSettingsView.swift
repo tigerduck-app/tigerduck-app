@@ -18,8 +18,13 @@ struct MailNotificationSettingsView: View {
     /// Injectable purely so tests can drive a throwaway account instead of the app's real
     /// singleton (which reaches the real `UserDefaults`). Every caller in the app uses the
     /// default.
-    init(account: MailAccountManager = .shared) {
-        self.account = account
+    ///
+    /// Optional-defaulted-to-`nil` rather than `= .shared`: a default argument expression is
+    /// type-checked in a nonisolated context, and `MailAccountManager.shared` is main-actor
+    /// isolated, so spelling the singleton there is an isolation violation in the Swift 6
+    /// language mode. Resolving it in this (main-actor) body keeps the seam identical.
+    init(account: MailAccountManager? = nil) {
+        self.account = account ?? .shared
     }
 
     /// Turning notifications on schedules a background refresh. After a rejected password

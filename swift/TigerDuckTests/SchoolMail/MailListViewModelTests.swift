@@ -17,7 +17,11 @@ struct MailListViewModelTests {
         let script: CheckScript
     }
 
-    static let sent = MailFolderRole.sent.imapName
+    /// `nonisolated` because the fake-server `update` closures below are nonisolated, and the
+    /// suite is `@MainActor` — without it this constant is main-actor isolated and reading it
+    /// from one of those closures is an error in the Swift 6 language mode. `MailFolderRole` is
+    /// `nonisolated` already, so the value has nothing main-actor about it.
+    nonisolated static let sent = MailFolderRole.sent.imapName
 
     /// `sentUIDs` seeds 寄件備份, which 所有信件 merges with the inbox. The folder itself always
     /// exists (the server has it whether or not the student has sent anything), so the 所有信件

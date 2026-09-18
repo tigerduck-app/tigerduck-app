@@ -106,7 +106,15 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    var isImplemented: Bool {
+    /// `nonisolated` so the pure-decode seam that filters on it —
+    /// `AppState.decodeConfiguredTabs(_:isShown:)`, itself deliberately `nonisolated` and
+    /// testable without `Defaults` — can keep `{ $0.isImplemented }` as its default argument.
+    /// A default argument expression is type-checked in a nonisolated context, and the module
+    /// builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, which would otherwise put this
+    /// property on the main actor. Nothing here needs it: the switch reads only `self`, and the
+    /// one case that consults anything external reads `SchoolMailAvailability.isEnabled`, which
+    /// is already `nonisolated` (a compile-time flag, no state).
+    nonisolated var isImplemented: Bool {
         switch self {
         case .home, .classTable, .calendar, .library, .announcements, .gpa:
             return true
