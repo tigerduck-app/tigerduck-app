@@ -320,7 +320,7 @@ struct MailMessageView: View {
             Menu {
                 Section {
                     Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
-                        ForEach(MailMessageViewModel.ViewMode.allCases) { mode in
+                        ForEach(viewModel.availableModes) { mode in
                             Text(mode.title).tag(mode)
                         }
                     }

@@ -106,6 +106,17 @@ final class MailMessageViewModel {
         self.notifier = notifier
     }
 
+    /// The modes worth offering for this mail. 格式化 renders the sanitized HTML document, so a
+    /// mail that carries no HTML part has nothing to show there — Android hides the mode outright
+    /// rather than letting the user pick a view that renders nothing, and so do we. Until a
+    /// message has loaded the answer is not known yet, so all three stay on offer; `apply` moves
+    /// the selection off 格式化 at the moment a mail turns out to be plain-text only, so the
+    /// picker is never left selecting a mode that has just disappeared.
+    var availableModes: [ViewMode] {
+        guard detail != nil else { return ViewMode.allCases }
+        return linkedDocument == nil ? [.plain, .source] : ViewMode.allCases
+    }
+
     /// Delete means "move to 回收筒"; inside 回收筒 (or with no 回收筒) it is permanent (§8.3).
     var deleteIsPermanent: Bool {
         guard let trash = folderRoles[.trash] else { return true }
@@ -439,6 +450,10 @@ final class MailMessageViewModel {
         sanitized = freshSanitized
         linkedDocument = freshLinked
         plainText = freshPlainText
+        // 格式化 is about to stop being offered for a mail with no HTML part (`availableModes`),
+        // so a selection resting on it has to move now rather than leave the picker pointing at
+        // an entry that is no longer in the menu.
+        if freshLinked == nil, mode == .formatted { mode = .plain }
         parseFailed = detail.textBody == nil && detail.htmlBody == nil && detail.attachments.isEmpty
         if parseFailed { mode = .source }
         let summary = detail.summary

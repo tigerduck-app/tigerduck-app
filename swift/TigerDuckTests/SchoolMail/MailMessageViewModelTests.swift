@@ -66,6 +66,24 @@ struct MailMessageViewModelTests {
         #expect(h.model.plainText == "a\nb")
     }
 
+    /// 格式化 renders the sanitized HTML document, so a plain-text-only mail must not offer it —
+    /// picking it would show nothing. The selection has to move off it at the same moment, or the
+    /// picker is left pointing at an entry that is no longer in the menu.
+    @Test func aMailWithNoHTMLDoesNotOfferTheFormattedMode() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "只有純文字", html: nil))
+        #expect(h.model.availableModes == MailMessageViewModel.ViewMode.allCases)
+        await h.model.load()
+        #expect(h.model.availableModes == [.plain, .source])
+        #expect(h.model.mode == .plain)
+    }
+
+    @Test func aMailWithHTMLKeepsTheFormattedMode() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
+        await h.model.load()
+        #expect(h.model.availableModes == MailMessageViewModel.ViewMode.allCases)
+        #expect(h.model.mode == .formatted)
+    }
+
     @Test func unreadableMailFallsBackToSource() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: nil))
         await h.model.load()
