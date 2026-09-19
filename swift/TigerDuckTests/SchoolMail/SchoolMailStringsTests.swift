@@ -58,6 +58,10 @@ struct SchoolMailStringsTests {
         "school_mail_check_trigger_background",
         // Spoken, never drawn: the two icon-only controls on the message screen.
         "school_mail_reply_menu", "school_mail_message_actions",
+        // The sent copy's three outcomes: no folder, the APPEND failed, or the dedupe
+        // probe went unanswered so nothing was filed.
+        "school_mail_sent_copy_no_folder", "school_mail_sent_copy_failed",
+        "school_mail_sent_copy_unknown",
         // Not School Mail's own, but compose's error dialog dismisses with it.
         "settings_acknowledged",
     ]

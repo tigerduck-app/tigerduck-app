@@ -128,16 +128,16 @@ struct MailCheckerTests {
         #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(2))
         #expect(h.prefs.inboxNextUID == 5)
         #expect(h.center.requests.map(\.identifier) == ["school-mail-1-3", "school-mail-1-4"])
-        // Title = "Email:" + subject, body = sender (design doc §8.6 has this reversed; the
+        // Title = "Email: " + subject, body = sender (design doc §8.6 has this reversed; the
         // ordering here is a deliberate override — see MailNotifier).
         let first = try #require(h.center.requests.first?.content)
-        #expect(first.title == "Email:Hi")
+        #expect(first.title == "Email: Hi")
         #expect(first.body == "Someone")
         #expect(first.threadIdentifier == "schoolMail")
         #expect(first.userInfo["kind"] as? String == "school_mail")
         #expect(first.userInfo["uid"] as? Int == 3)
-        // No subject: the fallback text still lands inside the "Email:" prefix.
-        #expect(h.center.requests[1].content.title == "Email:(No subject)")
+        // No subject: the fallback text still lands inside the "Email: " prefix.
+        #expect(h.center.requests[1].content.title == "Email: (No subject)")
         #expect(h.center.requests[1].content.body == "office@mail.ntust.edu.tw")
     }
 
