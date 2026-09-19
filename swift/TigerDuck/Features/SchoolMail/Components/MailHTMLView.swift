@@ -21,7 +21,11 @@ struct MailHTMLView: UIViewRepresentable {
     /// a lower bound. A message could therefore ask for an arbitrarily tall view. 50 000 points
     /// is far past any real mail (roughly sixty screens) and far short of a size that costs
     /// anything to lay out.
-    static let maximumContentHeight: CGFloat = 50_000
+    ///
+    /// `nonisolated` because `clampedHeight` is: the project defaults every declaration to
+    /// `@MainActor`, so an unannotated `static let` here cannot be read from the nonisolated
+    /// helper that exists precisely so the clamp can be unit-tested off the main actor.
+    nonisolated static let maximumContentHeight: CGFloat = 50_000
 
     /// The observed content size, made safe to put in a frame: clamped at both ends, and with
     /// a non-finite value (which `contentSize` can carry mid-layout) treated as "nothing known
