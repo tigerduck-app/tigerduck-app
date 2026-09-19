@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Modal detail for a single course row. Visual structure:
 ///   1. Color bar + course title (with optional Moodle jump button)
@@ -19,6 +24,12 @@ struct CourseDetailSheet: View {
     let assignments: [SDAssignment]
     var timeRange: String? = nil
     var weekday: Int? = nil
+
+    /// Drives the copy row's glyph; flipped back after a beat so the sheet
+    /// does not sit in a "copied" state for as long as it stays open.
+    @State private var codeCopied = false
+    /// Bumped on every copy so the haptic fires again on a repeat tap.
+    @State private var copyFeedback = 0
 
     var body: some View {
         NavigationStack {
@@ -125,7 +136,9 @@ struct CourseDetailSheet: View {
             )
             InfoRow(
                 label: String(localized: "course_detail_code_label"),
-                value: course.courseNo
+                value: course.courseNo,
+                copied: codeCopied,
+                onTap: copyCourseCode
             )
             // Only general-education courses carry a dimension; for every
             // other course the portal sends an empty string and the row
@@ -152,6 +165,7 @@ struct CourseDetailSheet: View {
             )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .sensoryFeedback(.success, trigger: copyFeedback)
     }
 
     /// QueryCourse spells `AllYear` as "F" (spans the academic year) or "H"
@@ -220,6 +234,23 @@ struct CourseDetailSheet: View {
         guard let url = course.moodleOpenURL else { return }
         openURL(url)
     }
+
+    /// The course code is what students paste into 加退選, the portal search
+    /// and group chats, so the row that shows it also hands it over.
+    private func copyCourseCode() {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = course.courseNo
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(course.courseNo, forType: .string)
+        #endif
+        copyFeedback += 1
+        withAnimation { codeCopied = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation { codeCopied = false }
+        }
+    }
 }
 
 // MARK: - Emphasis card
@@ -264,8 +295,24 @@ private struct EmphasisCard: View {
 private struct InfoRow: View {
     let label: String
     let value: String
+    /// Shows the copy glyph as a checkmark right after a successful copy.
+    var copied: Bool = false
+    /// Non-nil turns the whole row into a button; the trailing glyph is
+    /// what tells the reader the row is tappable at all.
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
+        if let onTap {
+            Button(action: onTap) { content }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("\(label), \(value)"))
+                .accessibilityHint(Text(String(localized: "course_detail_copy_code")))
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         HStack(alignment: .top) {
             Text(label)
                 .font(TigerDuckTheme.Typography.body)
@@ -275,6 +322,20 @@ private struct InfoRow: View {
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textPrimary)
                 .multilineTextAlignment(.trailing)
+            if onTap != nil {
+                if copied {
+                    Image(systemName: "checkmark")
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(.tint)
+                } else {
+                    Image(systemName: "doc.on.doc")
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(Color.textSecondary)
+                }
+            }
         }
+        // Without this the button only reacts on the label and value text,
+        // not on the gap between them — which is most of the row.
+        .contentShape(Rectangle())
     }
 }
