@@ -60,7 +60,7 @@ nonisolated extension MailServerConfig {
     ///
     /// Off, incomplete, or unparseable resolves to `school` — so "the override is on" and "the
     /// app is pointed somewhere else" are the same fact, and `isOverridden` can be trusted by
-    /// the page banner and by `MailFolderProvisioner`.
+    /// the page banner.
     ///
     /// `organizationDomain` becomes the overridden address domain itself: on a test mailbox
     /// there is no wider organization to speak of, and `user@gmail.com` writing to

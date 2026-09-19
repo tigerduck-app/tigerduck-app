@@ -53,8 +53,8 @@ nonisolated struct MailServerConfig: Equatable, Sendable {
     var smtpPort: Int
     var smtpScheme: MailTransportScheme
     /// True only for a configuration a developer override produced. Read by the School Mail
-    /// page's debug banner, and by `MailFolderProvisioner`, which does not create Mail2000's
-    /// Chinese-named role folders on someone else's mailbox.
+    /// page's debug banner. Nothing about how mail is filed turns on it: `MailFolderProvisioner`
+    /// creates Mail2000's role folders on whatever server is in force.
     var isOverridden: Bool
 
     /// Design doc §1.1 and Appendix A.6, unchanged: IMAP 993 and SMTP 465, both implicit TLS.

@@ -65,38 +65,30 @@ struct MailFolderProvisionerTests {
         #expect(await fake.folders.isEmpty)
     }
 
-    /// Nothing is created while the DEBUG developer server override is on.
+    /// Creation is not the school server's privilege: a mailbox on any other server — the one a
+    /// developer reaches through the Email override — gets the same three folders.
     ///
-    /// The names this type creates are Mail2000's own — modified UTF-7 for `寄件備份匣`,
-    /// `草稿匣`, `回收筒` — and match nothing on any other account. Against the developer's real
-    /// personal mailbox the first send, draft or delete would otherwise create Chinese-named
-    /// folders in it, which is both a visible write to an account this feature exists to keep
-    /// out of the way and a half-working Sent that the account's own web UI does not use.
+    /// This is the case the decision was made for. The account already has `Sent`, `Sent Items`
+    /// and `Sent Messages` left behind by other clients; resolution matches by name and never by
+    /// a SPECIAL-USE attribute, so none of them is a role and there is no honest way to pick one
+    /// of the three to file into. One unambiguous app-owned set, spelled the same everywhere,
+    /// beats that guess — so the app creates its own and leaves theirs alone.
     @Test(arguments: [MailFolderRole.sent, .drafts, .trash])
-    func aMissingRoleFolderIsNotCreatedUnderTheDeveloperOverride(role: MailFolderRole) async {
-        #if DEBUG
-        let overridden = MailServerConfig.resolve(
-            override: MailServerOverrideSettings(
-                isEnabled: true, addressDomain: "example.com",
-                imapHost: "imap.example.com", imapPort: 993, imapScheme: .implicitTLS,
-                smtpHost: "smtp.example.com", smtpPort: 465, smtpScheme: .implicitTLS
-            )
-        )
-        #expect(overridden.isOverridden)
-        #expect(!MailFolderProvisioner.createsMissingFolders(under: overridden))
-        let fake = FakeMailClient(folders: ["INBOX": []])
-        #expect(await MailFolderProvisioner.ensure(role, in: [.inbox: "INBOX"], client: fake,
-                                                   config: overridden) == nil)
-        #expect(await fake.calls.isEmpty)
-        #expect(await fake.folders.keys.sorted() == ["INBOX"])
-        #endif
-    }
+    func aMailboxHoldingOtherClientsFoldersStillGetsTheAppsOwnOne(role: MailFolderRole) async throws {
+        let others = ["Sent", "Sent Items", "Sent Messages", "Drafts", "Trash"]
+        let fake = FakeMailClient(folders: Dictionary(uniqueKeysWithValues:
+            (["INBOX"] + others).map { ($0, [FakeMailClient.Message]()) }))
+        // None of the account's own folders is a role, so the role map is just the inbox.
+        let known = MailFolderMap.resolve(available: try await fake.listFolders())
+        #expect(known == [.inbox: "INBOX"])
 
-    /// And the real school path is untouched: creation is on for the school configuration, which
-    /// is what `ensure`'s default argument resolves to in every build.
-    @Test func theSchoolConfigurationStillCreatesMissingFolders() {
-        #expect(MailFolderProvisioner.createsMissingFolders(under: .school))
-        #expect(MailFolderProvisioner.createsMissingFolders(under: MailServerConfig.effective))
+        let ensured = try #require(await MailFolderProvisioner.ensure(role, in: known, client: fake))
+        #expect(ensured.name == role.imapName)
+        #expect(ensured.roles[role] == role.imapName)
+        #expect(await fake.calls.contains("createFolder \(role.imapName)"))
+        // Theirs are still there, still unresolved, and still not written to.
+        #expect(await fake.folders.keys.sorted() == (["INBOX"] + others + [role.imapName]).sorted())
+        for other in others { #expect(ensured.roles.values.contains(other) == false) }
     }
 
     /// A folder that is already resolved costs nothing at all — no `CREATE`, and no `LIST` either.
