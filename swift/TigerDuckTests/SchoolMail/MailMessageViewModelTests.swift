@@ -319,6 +319,39 @@ struct MailMessageViewModelTests {
         #expect(h.model.actionError != nil)
     }
 
+    /// The detail fetch is pinned to the cached page's generation, like every other command this
+    /// screen sends. A folder recreated server-side reuses its UIDs, so the same folder+UID names
+    /// a different message: it must never be rendered on the screen that was opened for the old
+    /// one, nor cached under the old generation's key — it goes through the list's folder-change
+    /// recovery instead.
+    @Test func aDetailFetchAfterAFolderRecreationRecoversInsteadOfShowingAnotherMessage() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, subject: "原信"))
+        var changedFolders: [String] = []
+        h.model.onFolderChanged = { changedFolders.append($0) }
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        await h.model.load()
+
+        #expect(h.model.detail == nil)
+        #expect(changedFolders == ["INBOX"])
+        #expect(h.model.loadState == .failed(MailAccountManager.LoginError(MailClientError.folderChanged).message))
+        #expect(h.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
+    }
+
+    /// The gap this closes precisely: the mark-as-seen `setFlag` in `load()` was already pinned,
+    /// but it only runs for an unread mail. Opening one that is already `\Seen` sent no pinned
+    /// command at all, so nothing ever compared generations — and the reused UID's message was
+    /// shown and cached without a single check.
+    @Test func anAlreadySeenMailIsPinnedTooEvenThoughItSetsNoFlag() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, subject: "原信", seen: true))
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        await h.model.load()
+
+        let calls = await h.fake.calls
+        #expect(h.model.detail == nil)
+        #expect(!calls.contains { $0.hasPrefix("setFlag") })
+        #expect(h.model.loadState == .failed(MailAccountManager.LoginError(MailClientError.folderChanged).message))
+    }
+
     /// Without a cached page UIDVALIDITY there is nothing honest to compare a move against —
     /// fetching one fresh right there would make `MailMover`'s freshness check compare a value
     /// against itself. Refuses instead, with no server call at all (fix round 1, minor 8).

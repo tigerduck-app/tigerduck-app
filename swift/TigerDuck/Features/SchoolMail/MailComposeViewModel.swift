@@ -175,8 +175,12 @@ final class MailComposeViewModel {
                 }
                 let cache = self.cache
                 draftPageUIDValidity = await Task.detached { cache.loadPage(folder: folder)?.uidValidity }.value
+                // The generation this draft's UID was read under — the same pin `removeDraft`
+                // uses. A folder recreated since would make this UID someone else's message, and
+                // the compose form would open on it (and go on to delete it after sending).
+                let pin = draftPageUIDValidity
                 let (draft, downloaded) = try await session.use { client -> (MailMessageDetail, [Attachment]) in
-                    let draft = try await client.detail(folder: folder, uid: uid)
+                    let draft = try await client.detail(folder: folder, uid: uid, expectedUIDValidity: pin)
                     var files: [Attachment] = []
                     for part in draft.attachments {
                         let data = try await client.attachment(folder: folder, uid: uid, part: part)

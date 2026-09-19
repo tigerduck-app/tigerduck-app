@@ -252,10 +252,11 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    func detail(folder: String, uid: UInt32) async throws -> MailMessageDetail {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
         try await run {
-            _ = try await self.imap.examineMailbox(folder)
-            guard let info = try await self.detailInfo(folder: folder, uid: uid),
+            let selection = try await self.imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
+            guard let info = try await self.detailInfo(folder: folder, uid: uid, expectedUIDValidity: expectedUIDValidity),
                   let summary = Self.summary(from: info) else {
                 throw MailClientError.protocolError("message \(uid) not found")
             }
@@ -315,14 +316,18 @@ actor LiveMailClient: MailClient {
     /// second fetch cannot fix any of them, and hiding them behind a partial message would be
     /// wrong. A decode failure makes SwiftMail recycle the connection, so the retry re-EXAMINEs
     /// the folder first — the reconnect that follows has no mailbox selected.
-    private func detailInfo(folder: String, uid: UInt32) async throws -> MessageInfo? {
+    private func detailInfo(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MessageInfo? {
         do {
             return try await imap.fetchMessageInfo(
                 for: UID(uid), options: Self.detailOptions, headerFields: Self.detailHeaderFields
             )
         } catch {
             guard Self.detailRetriesWithoutHeaderSection(after: error) else { throw error }
-            _ = try await imap.examineMailbox(folder)
+            // The retry re-EXAMINEs, so it gets its own SELECT response and is pinned against it
+            // like the first one: the reconnect this path exists for is exactly where a folder
+            // recreated server-side would first become visible.
+            let selection = try await imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             return try await imap.fetchMessageInfo(for: UID(uid), options: Self.summaryOptions)
         }
     }

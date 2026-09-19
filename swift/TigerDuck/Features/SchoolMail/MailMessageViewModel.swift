@@ -254,7 +254,15 @@ final class MailMessageViewModel {
             if let cached { await apply(cached) }
         }
         do {
-            let fresh = try await session.use { client in try await client.detail(folder: folder, uid: uid) }
+            // Pinned to the cached page's generation, the same one `move`/`delete`/`toggleSeen`
+            // pin their commands to. Without it the folder+UID this screen was opened for can
+            // name a *different* message after the folder was recreated server-side — and that
+            // message would be rendered here and written into the cache under the old
+            // generation's key. The mark-as-seen `setFlag` below is pinned already, but it only
+            // runs for an unread mail, so an already-read one had nothing checking it at all.
+            let fresh = try await session.use { client in
+                try await client.detail(folder: folder, uid: uid, expectedUIDValidity: validity)
+            }
             await apply(fresh)
             if let validity {
                 await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity) }.value

@@ -40,7 +40,13 @@ protocol MailClient: Actor {
     /// `setFlag`. The result of this read decides whether a `\Deleted` UID is recorded as one
     /// TigerDuck owns, so it is part of the chain that ends in EXPUNGE and is pinned the same way.
     func flags(folder: String, uids: ClosedRange<UInt32>, expectedUIDValidity: UInt32?) async throws -> [UInt32: MailFlags]
-    func detail(folder: String, uid: UInt32) async throws -> MailMessageDetail
+    /// `expectedUIDValidity` as in `setFlag`: the generation the caller read `uid` under, compared
+    /// against **this call's own** SELECT/EXAMINE response before a single byte of the message is
+    /// fetched. A folder recreated server-side reuses its UIDs, so the same folder+UID then names
+    /// a different message — one that would be shown on the screen the caller opened for the old
+    /// one, and cached under the old generation's key. A caller that holds no pin passes `nil` and
+    /// gets no check, exactly as `setFlag` allows.
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail
     /// `BODY.PEEK[]` — does not mark the message read.
     func rawSource(folder: String, uid: UInt32) async throws -> Data
     func attachment(folder: String, uid: UInt32, part: MailBodyPart) async throws -> Data

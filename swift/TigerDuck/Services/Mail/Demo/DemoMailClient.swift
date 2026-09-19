@@ -128,7 +128,8 @@ actor DemoMailClient: MailClient {
         return result
     }
 
-    func detail(folder: String, uid: UInt32) async throws -> MailMessageDetail {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
+        try assertUIDValidity(expectedUIDValidity)
         let stored = try find(folder: folder, uid: uid)
         var parts = [MailBodyPart(section: "1", contentType: "text/plain", charset: "utf-8", transferEncoding: "8bit",
                                   filename: nil, contentID: nil, size: stored.text.utf8.count, isAttachment: false)]
