@@ -33,6 +33,8 @@ struct CourseRoomHintTests {
             "Gongguan Track and Field Ground",
             "系上自行安排",            // "ask the department" — no room number
             "林一",                   // a plot of forest, not a room
+            "體育-游泳池",             // reads like AA-999 only if \w is Unicode
+            "綜合-大講堂",             // same shape, same reason
             "綜合大講堂",              // facility name, no number to anchor on
             "115研討室",              // number first, then prose
             "IB-1006",               // four-digit room

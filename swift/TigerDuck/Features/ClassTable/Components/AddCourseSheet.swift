@@ -621,8 +621,10 @@ struct AddCourseSheet: View {
                     maxCount: existing.maxCount,
                     schedule: merged,
                     nodeDisplay: nodeStr,
-                    dimension: existing.dimension,
-                    allYear: existing.allYear
+                    // Same first-non-empty rule as `buildSDCourse`: the row
+                    // that names the dimension may not be the one seen first.
+                    dimension: existing.dimension.isEmpty ? (result.Dimension ?? "") : existing.dimension,
+                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear
                 )
                 seen[key] = existing
             } else {

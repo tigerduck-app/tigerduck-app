@@ -674,8 +674,10 @@ enum AppServiceBridge {
             moodleIdNumber: fallbackMoodleIdNumber ?? "\(first.Semester)\(first.CourseNo)",
             semester: semester,
             classroomMap: classroomMap,
-            dimension: first.Dimension ?? "",
-            allYear: first.AllYear ?? ""
+            // First *non-empty* rather than first row: a course split across
+            // rows only carries its dimension on some of them.
+            dimension: results.compactMap(\.Dimension).first { !$0.isEmpty } ?? "",
+            allYear: results.compactMap(\.AllYear).first { !$0.isEmpty } ?? ""
         )
     }
 

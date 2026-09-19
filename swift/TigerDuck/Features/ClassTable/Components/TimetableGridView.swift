@@ -201,7 +201,10 @@ struct TimetableGridView: View {
                                 format: String(localized: "a11y_timetable_cell"),
                                 weekdayDisplayName(weekday),
                                 viewModel.activePeriods.first { $0.id == periodId }?.displayLabel ?? periodId,
-                                course.displayName
+                                // The visible hint is `accessibilityHidden`;
+                                // it rides the cell's own label instead so it
+                                // is announced once, in place.
+                                roomHint.map { "\(course.displayName), \($0)" } ?? course.displayName
                             ))
                         )
                         .contextMenu {

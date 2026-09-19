@@ -19,8 +19,13 @@ enum CourseRoomHint {
     /// the placeholders and facility names out: "系上自行安排" and "林一"
     /// are rooms in the same field but nothing a student can walk to by
     /// reading four characters off a grid cell.
+    ///
+    /// The Latin branches spell the character class out instead of using
+    /// `\w`, which ICU reads as *any* Unicode word character — "體育-游泳池"
+    /// and "綜合-大講堂" both matched `\w\w-\w\w\w`, which is the prose
+    /// this type exists to reject.
     private static let shortRoomCode = try! NSRegularExpression(
-        pattern: #"^(\w\w-\w\w\w(-\w)?|\w\w \w \w\w\w|\p{Han}{1,3}[A-Za-z]?\d{2,4}(-\d)?)$"#
+        pattern: #"^([A-Za-z0-9]{2}-[A-Za-z0-9]{3}(-[A-Za-z0-9])?|[A-Za-z0-9]{2} [A-Za-z0-9] [A-Za-z0-9]{3}|\p{Han}{1,3}[A-Za-z]?\d{2,4}(-\d)?)$"#
     )
 
     /// The hint for one timetable slot, or `nil` when the slot has no room

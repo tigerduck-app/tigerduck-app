@@ -245,9 +245,14 @@ struct CourseDetailSheet: View {
         NSPasteboard.general.setString(course.courseNo, forType: .string)
         #endif
         copyFeedback += 1
+        let generation = copyFeedback
         withAnimation { codeCopied = true }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
+            // A second copy inside the window owns the checkmark now, and
+            // this timer would otherwise clear it a beat early — which reads
+            // as the repeat tap having done nothing.
+            guard copyFeedback == generation else { return }
             withAnimation { codeCopied = false }
         }
     }
