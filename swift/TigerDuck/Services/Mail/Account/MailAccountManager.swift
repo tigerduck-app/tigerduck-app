@@ -93,6 +93,23 @@ final class MailAccountManager {
     /// Exposed (not `private`) only so tests can await it directly instead of guessing a
     /// delay; production callers never touch it.
     @ObservationIgnored private(set) var pendingCacheClear: Task<Void, Never>?
+    /// Which sign-in the account state belongs to. `logout()` bumps it; `login()` captures it
+    /// once and re-checks it after every suspension point, so a login still in flight when the
+    /// user signs out cannot write the session it was establishing back over the sign-out
+    /// (AGENTS.md: "do not write previous-user data back after logout").
+    ///
+    /// The same class of bug as `pendingCacheClear` above, one layer up: that one stops a
+    /// logout's *cache wipe* landing after a login, this one stops a login's *state writes*
+    /// landing after a logout. `logout()` is synchronous and this type is `@MainActor`, so it can
+    /// only interleave at an `await` — which is exactly what each check below sits after.
+    ///
+    /// The boundary is deliberate. Resource cleanup (`client.logout()`) still runs for a stale
+    /// login, because the alternative is an IMAP connection nothing will ever close. So does the
+    /// failure path's `lastRejectedPassword`, whose own documentation says a sign-out does not
+    /// clear it — suppressing it would re-offer a password §7.4 exists to stop being re-sent.
+    /// Everything that touches `credentials`, `prefs`, `studentID`, `displayName` or
+    /// `onSignedIn` is state, and only the current sign-in may write it.
+    @ObservationIgnored private var loginGeneration = 0
 
     init(
         prefs: any MailPreferences = DefaultsMailPreferences(),
@@ -121,17 +138,36 @@ final class MailAccountManager {
         isLoggingIn = true
         loginError = nil
         defer { isLoggingIn = false }
+        // The sign-in this call is establishing. Captured before the first `await`, so every
+        // check below is against the generation the user actually asked for.
+        let generation = loginGeneration
 
         // A logout just before this login may still be clearing the cache in the
         // background (see `logout()`); wait for it to finish before this call writes
         // anything, so its clear can never land after (and wipe) this session's data.
         await pendingCacheClear?.value
+        // A logout during that wait started a wipe of its own, and `pendingCacheClear` now
+        // holds *that* task. Bailing out before the line below leaves its handle in place:
+        // clearing it here would leave the new wipe with nothing awaiting it, and the next
+        // login would race the very clear this field exists to be waited on. No LOGIN is sent
+        // either — the account it would sign into has just been signed out of.
+        guard generation == loginGeneration else { return }
         pendingCacheClear = nil
 
         let demo = isDemoLogin(id, password)
         let client = makeClient(demo)
         do {
             try await client.login(studentID: id, password: password)
+            // LOGIN is a round trip, and a sign-out can land inside it. `logout()` has already
+            // run `credentials.clear()` by then, so saving here would put the password of an
+            // account the user just signed out of back into the Keychain — with nothing left
+            // that would ever clear it again. The connection is still closed: that is cleanup,
+            // not state. Nothing between here and `establishBaseline` suspends, so this one
+            // check also covers the `prefs` writes below it.
+            guard generation == loginGeneration else {
+                await client.logout()
+                return
+            }
             try credentials.savePassword(password)
         } catch {
             await client.logout()
@@ -148,12 +184,22 @@ final class MailAccountManager {
         prefs.studentID = id
         prefs.demoActive = demo
         prefs.authFailed = false
-        await establishBaseline(client: client)
+        await establishBaseline(client: client, generation: generation)
         if prefs.displayName == nil {
-            displayName = await discoverDisplayName(client: client, address: MailConstants.address(forStudentID: id))
+            let discovered = await discoverDisplayName(client: client, address: MailConstants.address(forStudentID: id))
+            // `displayName`'s `didSet` writes straight through to `prefs`, so this is a state
+            // write like any other and belongs to the sign-in that asked for it.
+            if generation == loginGeneration { displayName = discovered }
         }
+        // Unconditional: closing the connection this call opened is cleanup that has to happen
+        // whether or not the sign-in it belonged to is still the current one.
         await client.logout()
 
+        // The writes that make the app look signed in. A logout at any point above has already
+        // cleared the credentials these would be claiming to go with, so a stale login stops
+        // here — silently, because the user asked to be signed out and there is nothing to
+        // report. `isLoggingIn` is still lowered by the `defer`.
+        guard generation == loginGeneration else { return }
         authFailed = false
         studentID = id
         onSignedIn?()
@@ -221,6 +267,9 @@ final class MailAccountManager {
     /// state. This method's own signature stays synchronous: callers that only care about
     /// the account/credential state (not the cache wipe finishing) don't need to `await`.
     func logout() {
+        // Before anything is cleared, so a `login()` suspended anywhere in its tail sees the
+        // bump the moment it resumes and writes none of the session it was establishing.
+        loginGeneration += 1
         credentials.clear()
         prefs.reset()
         startCacheWipe()
@@ -255,8 +304,14 @@ final class MailAccountManager {
         startCacheWipe()
     }
 
-    private func establishBaseline(client: any MailClient) async {
+    /// `generation` is `login()`'s, re-checked *after* the STATUS round trip rather than before
+    /// it: the markers written here are what the background checker treats as "everything up to
+    /// UID n has been seen", and `prefs.reset()` is supposed to have taken them away. Writing
+    /// them back after a sign-out leaves the next student's INBOX silently starting from the
+    /// previous one's UID.
+    private func establishBaseline(client: any MailClient, generation: Int) async {
         guard let status = try? await client.status(folder: MailConstants.inbox) else { return }
+        guard generation == loginGeneration else { return }
         prefs.inboxUIDValidity = status.uidValidity
         prefs.inboxNextUID = status.uidNext
     }

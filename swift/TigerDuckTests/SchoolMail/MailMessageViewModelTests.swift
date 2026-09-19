@@ -388,6 +388,28 @@ struct MailMessageViewModelTests {
         #expect(url.lastPathComponent == "課程.pdf")
         #expect(try Data(contentsOf: url) == Data("%PDF".utf8))
         #expect(!h.model.isRisky(part))
+        // Pinned to the same cached page generation `load()` fetched the part list under, not nil.
+        #expect(await h.fake.attachmentPins == [1])
+    }
+
+    /// `prepareAttachment` is where a mail's bytes leave the app — into a temp file, then Quick
+    /// Look or the share sheet. `load()` pins its `detail`, but the part fetch that follows used
+    /// to carry no pin at all, so a folder recreated between opening the mail and tapping the
+    /// attachment would write the reused UID's file to disk under the filename still on screen.
+    /// Refuse instead: no temp file, and the failure is reported like any other.
+    @Test func anAttachmentDownloadRefusesAfterTheFolderWasRecreated() async {
+        let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
+                                filename: "課程.pdf", contentID: nil, size: 4, isAttachment: true)
+        var message = FakeMailClient.message(uid: 5)
+        message.detail?.parts = [part]
+        message.attachments = ["2": Data("%PDF".utf8)]
+        let h = Self.harness(message)
+        await h.model.load()
+        // The recreation lands between opening the mail and tapping its attachment.
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        #expect(await h.model.prepareAttachment(part) == nil)
+        #expect(h.model.actionError == MailAccountManager.LoginError(MailClientError.folderChanged).message)
+        #expect(await h.fake.attachmentPins == [1])
     }
 
     /// Mirrors Android's `SchoolMailMessageViewModel.needsConfirmation`: a `text/html` or

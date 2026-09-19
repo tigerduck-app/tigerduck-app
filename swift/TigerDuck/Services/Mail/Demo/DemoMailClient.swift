@@ -151,7 +151,8 @@ actor DemoMailClient: MailClient {
                                         date: stored.summary.date ?? Date(), boundary: "demo-\(uid)")
     }
 
-    func attachment(folder: String, uid: UInt32, part: MailBodyPart) async throws -> Data {
+    func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data {
+        try assertUIDValidity(expectedUIDValidity)
         let stored = try find(folder: folder, uid: uid)
         return stored.attachments.first { $0.key.section == part.section }?.value ?? Data()
     }

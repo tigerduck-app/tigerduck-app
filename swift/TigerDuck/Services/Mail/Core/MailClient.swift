@@ -49,7 +49,15 @@ protocol MailClient: Actor {
     func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail
     /// `BODY.PEEK[]` — does not mark the message read.
     func rawSource(folder: String, uid: UInt32) async throws -> Data
-    func attachment(folder: String, uid: UInt32, part: MailBodyPart) async throws -> Data
+    /// `expectedUIDValidity` as in `detail`, one step further along the same chain: this returns
+    /// the *bytes* of a part, and unlike a body they do not stay on the screen they were fetched
+    /// for — a forward carries them into a new message, a draft re-attaches them to the one being
+    /// edited, and both are then sent. A caller that pinned its `detail` and left this call
+    /// unpinned has checked the generation only for the part *list*; a folder recreated between
+    /// the two fetches reuses the UID, and the bytes that come back are a different message's,
+    /// filed under the filename the screen is already showing. Checked against **this call's own**
+    /// EXAMINE response. A caller that holds no pin passes `nil`, exactly as `setFlag` allows.
+    func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data
     /// Throws `.searchUnsupported` when the server rejects the search. Never falls back to
     /// downloading messages to search them locally — a caller that wants that behavior does it
     /// itself against already-loaded/cached mail.

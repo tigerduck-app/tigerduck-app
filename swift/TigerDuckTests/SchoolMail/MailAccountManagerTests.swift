@@ -226,6 +226,85 @@ struct MailAccountManagerTests {
         #expect(prefs.studentID == "B10000000")
     }
 
+    /// `logout()` is synchronous and `login()` is not, so a sign-out can land in any of the gaps
+    /// between `login()`'s round trips. Resuming from one of them, `login()` used to write the
+    /// whole session it had been establishing — student ID, demo flag, INBOX markers, display
+    /// name — back over a `prefs.reset()` that had just removed them, and then fire
+    /// `onSignedIn`. The app was left looking signed in to an account whose password had been
+    /// wiped from the Keychain, so every later fetch failed with nothing to re-authenticate with.
+    /// AGENTS.md: do not write previous-user data back after logout.
+    @Test func aSignOutWhileLoginIsInFlightIsNotUndoneWhenItResumes() async {
+        let h = Self.harness()
+        // Parked inside `establishBaseline`: the password is already saved and the `prefs` writes
+        // have already happened, which is what makes this the interleaving worth proving.
+        await h.fake.hold("status")
+        let login = Task { await h.manager.login(studentID: "B10000000", password: "pw") }
+        await h.fake.waitForArrival("status")
+
+        h.manager.logout()
+        await h.fake.release("status")
+        await login.value
+        await h.manager.pendingCacheClear?.value
+
+        #expect(!h.manager.isLoggedIn)
+        #expect(h.manager.studentID == nil)
+        #expect(h.manager.displayName == nil)
+        #expect(h.prefs.studentID == nil)
+        #expect(h.prefs.inboxUIDValidity == nil)
+        #expect(h.prefs.inboxNextUID == nil)
+        #expect(h.secrets.load(forKey: MailCredentialStore.passwordKey) == nil)
+        #expect(h.hooks.signedIn == 0)
+        #expect(h.hooks.signedOut == 1)
+    }
+
+    /// The narrower window: the sign-out lands inside the LOGIN round trip itself, before
+    /// `savePassword`. `logout()` has already run `credentials.clear()`, so saving the password
+    /// there puts a signed-out account's credential back into the Keychain with nothing left
+    /// that would ever remove it. The connection this call opened is still closed — cleanup is
+    /// not state, and a stale login that skipped it would leak an IMAP session.
+    @Test func aSignOutDuringTheLoginRoundTripLeavesNoStoredPassword() async {
+        let h = Self.harness()
+        await h.fake.hold("login")
+        let login = Task { await h.manager.login(studentID: "B10000000", password: "pw") }
+        await h.fake.waitForArrival("login")
+
+        h.manager.logout()
+        await h.fake.release("login")
+        await login.value
+        await h.manager.pendingCacheClear?.value
+
+        #expect(h.secrets.load(forKey: MailCredentialStore.passwordKey) == nil)
+        #expect(!h.manager.isLoggedIn)
+        #expect(h.prefs.studentID == nil)
+        #expect(h.hooks.signedIn == 0)
+        #expect(await h.fake.calls == ["login B10000000", "logout"])
+    }
+
+    /// `pendingCacheClear` always names the *latest* sign-out's wipe. A login resuming from
+    /// `await pendingCacheClear?.value` used to clear the field unconditionally — throwing away
+    /// the handle for a wipe a sign-out had started while it was waiting, so the next login had
+    /// nothing to wait on and its first cached page could be deleted by the previous student's
+    /// clear. The generation check bails before that line rather than after it.
+    @Test func aSignOutDuringTheWaitForAPendingWipeKeepsThatWipeAwaitable() async {
+        let prefs = InMemoryMailPreferences()
+        let clear = ParkedCacheClear()
+        let manager = Self.manager(prefs: prefs, clearCache: { await clear.run() })
+
+        manager.logout()
+        let login = Task { await manager.login(studentID: "B10000000", password: "pw") }
+        while !manager.isLoggingIn { await Task.yield() }
+
+        // The second sign-out starts a wipe of its own while the login is parked on the first.
+        manager.logout()
+        await clear.open()
+        await login.value
+
+        #expect(!manager.isLoggedIn)
+        #expect(manager.pendingCacheClear != nil)
+        await manager.pendingCacheClear?.value
+        #expect(await clear.started == 2)
+    }
+
     @Test func theNotificationToggleCallsItsHooksOnlyWhenSignedIn() async {
         let h = Self.harness()
         h.manager.notificationsEnabled = false
@@ -249,7 +328,8 @@ struct MailAccountManagerTests {
         #expect(bait.htmlBody?.contains("mailbox-quota.example") == true)
         let withAttachment = try await demo.detail(folder: "INBOX", uid: 3, expectedUIDValidity: page.uidValidity)
         let part = try #require(withAttachment.attachments.first)
-        #expect(try await demo.attachment(folder: "INBOX", uid: 3, part: part) == Data(base64Encoded: "JVBERi0xLjQK"))
+        #expect(try await demo.attachment(folder: "INBOX", uid: 3, part: part,
+                                          expectedUIDValidity: page.uidValidity) == Data(base64Encoded: "JVBERi0xLjQK"))
         #expect(!(try await demo.rawSource(folder: "INBOX", uid: 4)).isEmpty)
     }
 
@@ -307,5 +387,27 @@ struct MailAccountManagerTests {
 private actor CacheClearOrderRecorder {
     private(set) var events: [String] = []
     func record(_ event: String) { events.append(event) }
+}
+
+/// A `clearCache` stand-in a test can park and then let go, so a sign-out's wipe can be held in
+/// flight deterministically instead of by racing a sleep against it. `open()` also releases
+/// every *later* run: a wipe started after it must not park with nothing left to resume it,
+/// which would leak a checked continuation when the test ends.
+private actor ParkedCacheClear {
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var isOpen = false
+    private(set) var started = 0
+
+    func run() async {
+        started += 1
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        for waiter in waiters { waiter.resume() }
+        waiters.removeAll()
+    }
 }
 #endif

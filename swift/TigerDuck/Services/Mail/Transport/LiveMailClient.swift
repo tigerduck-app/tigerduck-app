@@ -424,9 +424,17 @@ actor LiveMailClient: MailClient {
     ///
     /// Asks for `.size` as well as `.bodyStructure` only so `recoversByLocalParse`'s ceiling can
     /// be evaluated on the fallback below; it costs one integer per message.
-    func attachment(folder: String, uid: UInt32, part: MailBodyPart) async throws -> Data {
+    ///
+    /// Pinned against this call's own EXAMINE response, like `detail` — the caller's pinned
+    /// detail fetch says nothing about the generation *this* connection is looking at by the time
+    /// the parts are asked for. The local-parse fallback further down re-fetches the whole
+    /// message but never re-EXAMINEs, so it reads the very selection this assert checked and
+    /// needs no second one; `detailInfo`'s retry does need its own only because the decode
+    /// failure it recovers from makes SwiftMail reconnect with no mailbox selected.
+    func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data {
         try await run {
-            _ = try await self.imap.examineMailbox(folder)
+            let selection = try await self.imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             guard let info = try await self.imap.fetchMessageInfo(for: UID(uid), options: [.bodyStructure, .size]) else {
                 throw MailClientError.protocolError("message \(uid) not found")
             }

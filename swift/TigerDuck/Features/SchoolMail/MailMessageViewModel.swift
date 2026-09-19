@@ -507,8 +507,15 @@ final class MailMessageViewModel {
     func prepareAttachment(_ part: MailBodyPart) async -> URL? {
         let folder = route.folder
         let uid = route.uid
+        // The same pin `load()` fetched `part` itself under. Without it the download that follows
+        // a folder recreated server-side returns a different message's bytes, and this method
+        // hands them straight to Quick Look or the share sheet under the filename on screen —
+        // the one place in this screen where the wrong mail leaves the app entirely.
+        let validity = pageUIDValidity
         do {
-            let data = try await session.use { client in try await client.attachment(folder: folder, uid: uid, part: part) }
+            let data = try await session.use { client in
+                try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: validity)
+            }
             let cache = self.cache
             let filename = MailWarnings.displayFilename(part.filename ?? "attachment")
             return try await Task.detached {

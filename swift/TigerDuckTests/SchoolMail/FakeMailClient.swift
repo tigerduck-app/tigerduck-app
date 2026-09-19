@@ -72,6 +72,12 @@ actor FakeMailClient: MailClient {
     /// Returned by `summaries(folder:fromUID:)` on top of the real range (the `n:*` quirk).
     var extraSummaries: [MailSummary] = []
     private(set) var calls: [String] = []
+    /// The `expectedUIDValidity` of every `attachment` call, in order — the value, not just the
+    /// fact of the call. A part fetch that silently drops the pin its `detail` was made with
+    /// still succeeds here (and against a real server), so `calls` alone cannot tell a threaded
+    /// pin from a `nil` one; only the recorded argument can. Tests assert this rather than
+    /// hoping a generation mismatch happens to be arranged.
+    private(set) var attachmentPins: [UInt32?] = []
     private(set) var sent: [(message: Data, from: String, to: [String])] = []
     /// Commands currently gated by `hold(_:)`.
     private var heldCommands: Set<String> = []
@@ -177,8 +183,12 @@ actor FakeMailClient: MailClient {
 
     // MARK: MailClient
 
+    /// Gated so a test can land a `logout()` *inside* the LOGIN round trip — the window in which
+    /// `MailAccountManager.login` would otherwise save the password of an account the user has
+    /// just signed out of.
     func login(studentID: String, password: String) async throws {
         calls.append("login \(studentID)")
+        await gate("login")
         if let loginError { throw loginError }
         if let acceptedPassword, acceptedPassword != password { throw MailClientError.authenticationFailed }
     }
@@ -264,8 +274,10 @@ actor FakeMailClient: MailClient {
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.raw ?? Data()
     }
 
-    func attachment(folder: String, uid: UInt32, part: MailBodyPart) async throws -> Data {
+    func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data {
         calls.append("attachment \(uid) \(part.section)")
+        attachmentPins.append(expectedUIDValidity)
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.attachments[part.section] ?? Data()
     }
 

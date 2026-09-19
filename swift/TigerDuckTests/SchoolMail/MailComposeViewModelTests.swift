@@ -77,11 +77,59 @@ struct MailComposeViewModelTests {
     }
 
     @Test func forwardCarriesTheAttachments() async {
-        let model = Self.model(Self.originalContext(.forward), fake: Self.fake())
+        let fake = Self.fake()
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(Self.originalContext(.forward), fake: fake, cache: cache)
         await model.prepare()
         #expect(model.subject == "Fwd: 作業")
         #expect(model.attachments.map(\.filename) == ["作業說明.pdf"])
         #expect(model.to.isEmpty)
+        // The part fetch carries the generation the part list was read under, not nil — see
+        // `forwardRefusesAttachmentsFromARecreatedFolder` for what that pin is worth.
+        #expect(await fake.attachmentPins == [1])
+    }
+
+    /// A forward downloads the original's parts and then *sends* them. `MailComposeContext`
+    /// carries the original's folder and UID but no generation, so before the pin was threaded
+    /// here the download was the one fetch on this path with nothing checking that the UID still
+    /// names the mail the user tapped Forward on. A folder recreated server-side reuses its UIDs:
+    /// the attachment list would keep the filenames from the message on screen while the bytes
+    /// came from a stranger's mail, and the Send that follows would post them.
+    @Test func forwardRefusesAttachmentsFromARecreatedFolder() async {
+        let fake = Self.fake()
+        await fake.update { $0.uidValidity["INBOX"] = 2 }
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        // What the list cached before the recreation — the generation the forwarded part list
+        // was itself read under.
+        cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(Self.originalContext(.forward), fake: fake, cache: cache)
+        await model.prepare()
+        #expect(await fake.attachmentPins == [1])
+        #expect(model.loadError == MailAccountManager.LoginError(MailClientError.folderChanged).message)
+        #expect(model.attachments.isEmpty)
+    }
+
+    /// The draft path pinned its `detail` and then dropped the pin on the very next line. The
+    /// files it downloads are re-attached to the draft and go out with it, so they are pinned to
+    /// the same generation the detail was — the cached Drafts page's, not a fresh read.
+    @Test func aDraftsAttachmentsAreFetchedUnderTheSamePinAsItsDetail() async {
+        var draft = FakeMailClient.message(uid: 1, subject: "草稿", text: "附件在這")
+        let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
+                                filename: "附件.pdf", contentID: nil, size: 4, isAttachment: true)
+        draft.detail?.parts = [part]
+        draft.attachments = ["2": Data("%PDF".utf8)]
+        let drafts = Self.drafts
+        let fake = FakeMailClient(folders: [drafts: [draft], Self.sent: []])
+        await fake.update { $0.uidValidity[drafts] = 7 }
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: Self.drafts, uidValidity: 7, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        let model = Self.model(MailComposeContext(mode: .draft, folder: Self.drafts, uid: 1), fake: fake, cache: cache)
+        await model.prepare()
+        #expect(model.attachments.map(\.filename) == ["附件.pdf"])
+        // The value, not just that a call happened: a dropped pin is a successful download here
+        // too, because the fake's generation is the one the detail matched.
+        #expect(await fake.attachmentPins == [7])
     }
 
     @Test func sendingUsesTheEnvelopeAndSavesOneSentCopy() async throws {

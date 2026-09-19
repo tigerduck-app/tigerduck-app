@@ -173,8 +173,7 @@ final class MailComposeViewModel {
                     baseline = snapshot()
                     return
                 }
-                let cache = self.cache
-                draftPageUIDValidity = await Task.detached { cache.loadPage(folder: folder)?.uidValidity }.value
+                draftPageUIDValidity = await cachedPageUIDValidity(of: folder)
                 // The generation this draft's UID was read under — the same pin `removeDraft`
                 // uses. A folder recreated since would make this UID someone else's message, and
                 // the compose form would open on it (and go on to delete it after sending).
@@ -183,7 +182,10 @@ final class MailComposeViewModel {
                     let draft = try await client.detail(folder: folder, uid: uid, expectedUIDValidity: pin)
                     var files: [Attachment] = []
                     for part in draft.attachments {
-                        let data = try await client.attachment(folder: folder, uid: uid, part: part)
+                        // The same pin as the `detail` above, not none: the part list was read
+                        // under that generation, and a recreation between the two fetches would
+                        // hand this form another message's files to re-attach and send.
+                        let data = try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: pin)
                         files.append(Attachment(filename: part.filename ?? "attachment", mimeType: part.contentType, data: data))
                     }
                     return (draft, files)
@@ -228,11 +230,21 @@ final class MailComposeViewModel {
                 )
                 sourceLoaded = true
             case .forward:
+                // `MailComposeContext` carries no generation, and giving it one would mean every
+                // screen that can present this sheet (the list, the message screen) had to hand
+                // over a pin it keeps privately. The cached page is where this screen already
+                // learns the generation — the draft branch above reads exactly this — and it is
+                // the same value the message screen pinned its own `detail` to, since that screen
+                // reads `pageUIDValidity` from this very page. So the parts being forwarded and
+                // the pin they are fetched under come from one generation, with nothing threaded
+                // through a third type to fall out of step.
+                var pin: UInt32?
+                if let folder { pin = await cachedPageUIDValidity(of: folder) }
                 let downloaded: [Attachment] = try await session.use { client in
                     guard let folder, let uid else { return [] }
                     var files: [Attachment] = []
                     for part in forwardParts {
-                        let data = try await client.attachment(folder: folder, uid: uid, part: part)
+                        let data = try await client.attachment(folder: folder, uid: uid, part: part, expectedUIDValidity: pin)
                         files.append(Attachment(filename: part.filename ?? "attachment", mimeType: part.contentType, data: data))
                     }
                     return files
@@ -258,6 +270,18 @@ final class MailComposeViewModel {
             // minor).
             baseline = Self.snapshotString(to: "", cc: "", bcc: "", subject: "", body: "", attachmentIDs: [])
         }
+    }
+
+    /// The UIDVALIDITY generation the list cached this folder's page under — the only generation
+    /// this screen ever knows, and the one every UID it was handed was read under. Detached
+    /// because `MailCache` does synchronous disk I/O and this type is `@MainActor`.
+    ///
+    /// Read fresh from the cache rather than from the server: a value fetched from the server
+    /// right before the command that needs it would be compared against itself and could never
+    /// refuse (the same reasoning as `draftPageUIDValidity` and `MailMessageViewModel.pageUIDValidity`).
+    private func cachedPageUIDValidity(of folder: String) async -> UInt32? {
+        let cache = self.cache
+        return await Task.detached { cache.loadPage(folder: folder)?.uidValidity }.value
     }
 
     private func applyMailtoPrefillIfNeeded(_ formatted: String) {
