@@ -149,6 +149,11 @@ struct TimetableGridView: View {
         case .solo(let course, let spanCount):
             let hasBadge = viewModel.hasAssignment(for: course.courseNo)
             let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
+            // A 衝堂 cell never reaches this branch, so the hint is absent
+            // there by construction — a split cell has no free corner.
+            let roomHint = appState.showClassroomInClassTable
+                ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
+                : nil
 
             Color.clear
                 .overlay(alignment: .top) {
@@ -165,15 +170,14 @@ struct TimetableGridView: View {
                                 .minimumScaleFactor(0.7)
                                 .multilineTextAlignment(.center)
                                 .padding(2)
+                                // Hand the hint's line back to it. Without
+                                // this the centred name keeps the whole cell
+                                // and a two-line name in a one-period cell
+                                // prints straight through the room.
+                                .padding(.bottom, roomHint == nil ? 0 : roomHintSize + 2)
                         }
                         .overlay(alignment: .bottomLeading) {
-                            // A 衝堂 cell never reaches this branch, so the
-                            // hint is absent there by construction — a split
-                            // cell has no free corner to print it in.
-                            if appState.showClassroomInClassTable,
-                               let room = CourseRoomHint.room(
-                                   for: course, weekday: weekday, periodId: periodId
-                               ) {
+                            if let room = roomHint {
                                 Text(room)
                                     .font(.system(size: roomHintSize))
                                     .foregroundStyle(Color.textSecondary)

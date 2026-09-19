@@ -16,14 +16,25 @@ struct CourseRoomHintTests {
         }
     }
 
+    /// The co-listed NTU / NTNU rooms write the same thing in Chinese.
+    @Test("Chinese building-and-number rooms are previewable")
+    func acceptsChineseCodes() {
+        for room in ["共101", "博雅205", "管二304", "人文B106", "電二143",
+                     "霖研一1501", "人文B114-1", "農化二B10-1", "文16"] {
+            #expect(CourseRoomHint.isShortCode(room), "expected \(room) to be previewable")
+        }
+    }
+
     @Test("rooms that would not fit the cell are dropped")
     func rejectsEverythingElse() {
         for room in [
             "",                      // no room recorded
             "Heping Cheng 101",      // NTNU prose form
             "Gongguan Track and Field Ground",
-            "系上自行安排",            // "ask the department"
-            "博雅205",                // Chinese building + number
+            "系上自行安排",            // "ask the department" — no room number
+            "林一",                   // a plot of forest, not a room
+            "綜合大講堂",              // facility name, no number to anchor on
+            "115研討室",              // number first, then prose
             "IB-1006",               // four-digit room
             "TR-313, TR-409",        // two rooms in one slot
         ] {

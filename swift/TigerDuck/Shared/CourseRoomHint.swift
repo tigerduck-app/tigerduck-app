@@ -4,15 +4,23 @@ import Foundation
 ///
 /// A cell is ~50pt wide and already spends its space on the course name, so
 /// only a short room *code* can be shown there: the building-and-number
-/// forms NTUST's portal reports ("TR-313", "IB-409-1") and the spaced form
-/// the classroom-display toggle produces. Everything else the portal calls a
-/// classroom is prose — "Heping Cheng 101", "Gongguan Track and Field
-/// Ground", "系上自行安排" — and would shrink past legibility or truncate,
-/// so no hint is drawn for those. The detail sheet still shows the full room.
+/// forms NTUST's portal reports ("TR-313", "IB-409-1"), the spaced form the
+/// classroom-display toggle produces, and the Chinese building-and-number
+/// form the co-listed NTU / NTNU rooms use ("共101", "人文B106"). Everything
+/// else the portal calls a classroom is prose — "Heping Cheng 101",
+/// "Gongguan Track and Field Ground", "綜合大講堂", "系上自行安排" — and
+/// would shrink past legibility or truncate, so no hint is drawn for those.
+/// The detail sheet still shows the full room.
 enum CourseRoomHint {
-    /// `AA-999`, `AA-999-9`, or `AA 9 999`.
+    /// `AA-999`, `AA-999-9`, `AA 9 999`, or a Chinese building name followed
+    /// by a room number (`共101`, `博雅205`, `人文B106`, `農化二B10-1`).
+    ///
+    /// The Chinese branch insists on trailing digits, which is what keeps
+    /// the placeholders and facility names out: "系上自行安排" and "林一"
+    /// are rooms in the same field but nothing a student can walk to by
+    /// reading four characters off a grid cell.
     private static let shortRoomCode = try! NSRegularExpression(
-        pattern: #"^(\w\w-\w\w\w(-\w)?|\w\w \w \w\w\w)$"#
+        pattern: #"^(\w\w-\w\w\w(-\w)?|\w\w \w \w\w\w|\p{Han}{1,3}[A-Za-z]?\d{2,4}(-\d)?)$"#
     )
 
     /// The hint for one timetable slot, or `nil` when the slot has no room
