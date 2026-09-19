@@ -145,7 +145,8 @@ extension AppState {
                       let row = rows.first(where: { $0["course_no"] as? String == existing.courseNo }),
                       !((row["schedule_json"] as? [String: [String]]) ?? [:]).isEmpty else { continue }
                 userAdded[index] = Self.course(fromServerRow: row, courseNo: existing.courseNo,
-                                               semester: existing.semester, name: existing.courseName)
+                                               semester: existing.semester, name: existing.courseName,
+                                               dimension: existing.dimension, allYear: existing.allYear)
                 mergedSemesters.insert(semester)
             }
             for row in rows {
@@ -195,7 +196,13 @@ extension AppState {
     /// sheet hides those two rows. The next QueryCourse refresh fills them
     /// in for a current term; for a term the portal no longer serves they
     /// stay empty until the backend starts sending them.
-    private static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?) -> SDCourse {
+    ///
+    /// Callers rebuilding a row they already hold must pass the values that
+    /// row already carries — a local record that once saw QueryCourse knows
+    /// its dimension, and the server row does not, so defaulting here would
+    /// spend a schedule merge to erase metadata this device had.
+    static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?,
+                               dimension: String = "", allYear: String = "") -> SDCourse {
         var schedule: [Int: [String]] = [:]
         for (key, periods) in (row["schedule_json"] as? [String: [String]]) ?? [:] {
             if let weekday = Int(key) { schedule[weekday] = periods }
@@ -211,7 +218,9 @@ extension AppState {
             schedule: schedule,
             moodleIdNumber: row["moodle_id"] as? String,
             semester: semester,
-            classroomMap: row["classroom_map"] as? [String: String] ?? [:]
+            classroomMap: row["classroom_map"] as? [String: String] ?? [:],
+            dimension: dimension,
+            allYear: allYear
         )
     }
 }
