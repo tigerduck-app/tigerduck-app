@@ -677,6 +677,14 @@ struct SettingsView: View {
         // The mail password lives in its own Valet, which `SecureStore.removeAll` does
         // not reach; logging out wipes it with the mail caches and markers.
         MailAccountManager.shared.logout()
+        // The developer mail-server override lives in `UserDefaults`, so the persistent
+        // domain removal further down takes it with everything else — but the resolved
+        // copy this process is holding is cached in memory and would outlive it, leaving
+        // the app still talking to the overridden server with nothing on disk saying so.
+        // Putting it back explicitly makes storage and memory agree now rather than at
+        // the next launch. (Unlike the API endpoint, this is not preserved across a
+        // reset: that one survives because it lives in the Keychain on purpose.)
+        DevMailServerSettings.shared.resetToSchoolServer()
         #endif
 
         DataCache.shared.clearEverything()
