@@ -139,3 +139,36 @@ them fails loudly rather than quietly.
   the next re-vendor would take two patches with it unnoticed.
 - `Tests/SwiftIMAPTests/InvalidBodyStructureTests.swift` — pins **patch 6**, driving the real
   `FetchMessageInfoHandler` behind `IMAPClientHandler`.
+
+## Re-vendoring
+
+The package's own test targets run in CI (`.github/workflows/tests.yaml`, job `vendored-package`),
+so the patches are pinned by tests rather than by comments in the source. That is deliberate: an
+in-file `// patch N` marker on every hunk was considered and rejected, because a marker only helps
+someone who already knows to look, while a failing test finds them.
+
+What each patch is protected by:
+
+| Patch | Protected by |
+|---|---|
+| 1 (TLS `.custom` policy) | `TigerDuckPatchTests` |
+| 2 (charset resolver) | `CharsetResolverCoverageTests` — asserts `String.Encoding(ianaCharsetName:)` appears **exactly once** under `Sources/`, so a new upstream call site that bypasses the resolver fails the build |
+| 3 (`CHARSET UTF-8` on SEARCH) | `TigerDuckPatchTests` |
+| 4 (disconnect semantics) | the modified upstream `IMAPPlaintextIntegrationTests` |
+| 5 (`FetchMessageInfoRequest`) | app-level `MailFetchSectionTests` |
+| 6 (`bodyStructureUnusable`) | `InvalidBodyStructureTests`, plus app-level `MailBodyStructureFallbackTests` |
+| 7 (`SendableMetatype`) | compile-time — dropping it fails to build |
+| 8 (`Package.swift` trimming) | compile-time |
+| 9 (`search` deprecation) | compile-time |
+
+To move to a newer upstream:
+
+1. Clone upstream and diff the trees against the tag this was vendored from (1.11.0). A `git diff`
+   inside this repo will **not** show the delta — the whole package was vendored in one commit, so
+   every file reads as new.
+2. Re-apply the patches that still apply, and run `swift test`.
+3. **Patch 3 has already landed upstream** (`0cc6f1e`, PR #222) and can simply be dropped.
+4. Watch patch 2 specifically: upstream `main` commit `124e3cc` adds
+   `Sources/SwiftMail/MIME/EMLParser+RFC2231.swift`, a **new** `ianaCharsetName` call site that does
+   not exist in 1.11.0. `CharsetResolverCoverageTests` will fail on it — that failure is the patch
+   telling you it has a new site to cover, not a broken test.
