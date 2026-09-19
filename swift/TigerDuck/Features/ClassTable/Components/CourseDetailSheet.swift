@@ -313,15 +313,16 @@ private struct InfoRow: View {
     }
 
     private var content: some View {
-        HStack(alignment: .top) {
+        // Baseline-aligned rather than top-aligned so the smaller glyph sits
+        // on the value's first line instead of floating above it.
+        HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
             Spacer()
-            Text(value)
-                .font(TigerDuckTheme.Typography.body)
-                .foregroundStyle(Color.textPrimary)
-                .multilineTextAlignment(.trailing)
+            // Leading the value, not trailing it: the value is the thing
+            // being copied, so the glyph reads as a marker on it rather
+            // than as a separate control parked at the row's edge.
             if onTap != nil {
                 if copied {
                     Image(systemName: "checkmark")
@@ -333,6 +334,10 @@ private struct InfoRow: View {
                         .foregroundStyle(Color.textSecondary)
                 }
             }
+            Text(value)
+                .font(TigerDuckTheme.Typography.body)
+                .foregroundStyle(Color.textPrimary)
+                .multilineTextAlignment(.trailing)
         }
         // Without this the button only reacts on the label and value text,
         // not on the gap between them — which is most of the row.
