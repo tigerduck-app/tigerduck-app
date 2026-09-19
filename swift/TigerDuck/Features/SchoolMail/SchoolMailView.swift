@@ -25,11 +25,15 @@ struct SchoolMailView: View {
         }
     }
 
+    /// The title is deliberately *not* here. Attached to this `Group` — which wraps a
+    /// conditional, so it is not itself the scroll view — the navigation bar has nothing to
+    /// track, and the page loses the large title and the collapse-on-scroll every other page
+    /// has. It goes on the scrolling view of each branch instead, exactly as `BulletinsView`
+    /// puts it on its `List`.
     private var content: some View {
         Group {
             if account.isLoggedIn { mailList } else { signedOut }
         }
-        .navigationTitle(String(localized: "feature_school_mail"))
         .navigationDestination(isPresented: $showGuide) { MailGuideView() }
         .sheet(isPresented: $showLoginSheet) { MailLoginSheet(isPresented: $showLoginSheet) }
     }
@@ -44,6 +48,7 @@ struct SchoolMailView: View {
             .padding(.vertical, TigerDuckTheme.Spacing.xl)
         }
         .background(Color.backgroundPrimary)
+        .navigationTitle(String(localized: "feature_school_mail"))
     }
 
     private var mailList: some View {
@@ -79,6 +84,7 @@ struct SchoolMailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
+        .navigationTitle(String(localized: "feature_school_mail"))
         .searchable(text: $viewModel.searchText, prompt: String(localized: "school_mail_search_prompt"))
         .onSubmit(of: .search) { Task { await viewModel.submitSearch() } }
         .onChange(of: viewModel.searchText) { _, text in
