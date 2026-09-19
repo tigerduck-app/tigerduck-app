@@ -21,6 +21,13 @@ actor FakeMailClient: MailClient {
     /// when the reload that follows it doesn't succeed.
     var pageError: MailClientError?
     var searchError: MailClientError?
+    /// Simulates a server that refuses `SEARCH HEADER "Message-ID"` — nothing in Mail2000's
+    /// CAPABILITY banner promises it is honoured, and a refusal is what makes the sent-copy
+    /// dedupe probe unanswerable.
+    var containsMessageIDError: MailClientError?
+    /// Simulates an `APPEND` the server refused: the mail has already gone out, so the send must
+    /// still be reported as successful with only the copy missing.
+    var appendError: MailClientError?
     var sendError: MailClientError?
     var detailError: MailClientError?
     /// Simulates a `BODY.PEEK[]` fetch failing — used to prove the message screen's source view
@@ -336,6 +343,7 @@ actor FakeMailClient: MailClient {
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {
         calls.append("append \(folder) \(flags.map(\.rawValue))")
         await gate("append")
+        if let appendError { throw appendError }
         var messages = folders[folder] ?? []
         let uid = (messages.map(\.summary.uid).max() ?? 0) + 1
         var appended = Self.message(uid: uid, seen: flags.contains(.seen), messageID: MailRawHeaders.value(named: "Message-ID", in: message))
@@ -346,6 +354,7 @@ actor FakeMailClient: MailClient {
 
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool {
         calls.append("containsMessageID \(folder)")
+        if let containsMessageIDError { throw containsMessageIDError }
         return (folders[folder] ?? []).contains { $0.messageID == messageID }
     }
 

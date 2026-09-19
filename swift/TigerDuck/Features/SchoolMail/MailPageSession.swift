@@ -91,6 +91,20 @@ final class MailPageSession {
     /// locks the account (and its Wi-Fi) after repeated failures, so every layer reports here.
     private func reportIfAuthenticationRejected(_ error: any Error) {
         guard (error as? MailClientError) == .authenticationFailed else { return }
+        reportAuthenticationRejection()
+    }
+
+    /// Reports a rejected password a `use(_:)` body caught and deliberately did not rethrow.
+    ///
+    /// `use(_:)` only hears about an authentication rejection that travels as a thrown error, and
+    /// one step of the page's work is best-effort by design: filing the sent copy must never fail
+    /// a send that already succeeded (`SentCopyFiler`), so its `.authenticationFailed` is caught
+    /// and turned into an outcome. §7.4 still has to hear about it — NTUST locks the account (and
+    /// its Wi-Fi) after repeated failures — so that caller reports it here instead, reaching the
+    /// same choke point a thrown one would have. Nothing else about `use(_:)`'s error path is
+    /// skipped by doing so: an authentication failure never drops the connection either way
+    /// (`dropsConnection`).
+    func reportAuthenticationRejection() {
         onAuthFailure()
     }
 

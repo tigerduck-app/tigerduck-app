@@ -27,7 +27,8 @@ struct MailComposeViewModelTests {
     }
 
     static func model(_ context: MailComposeContext, fake: FakeMailClient, prefs: InMemoryMailPreferences = InMemoryMailPreferences(),
-                      cache: MailCache = SchoolMailTestDoubles.temporaryCache()) -> MailComposeViewModel {
+                      cache: MailCache = SchoolMailTestDoubles.temporaryCache(),
+                      roles: [MailFolderRole: String]? = nil) -> MailComposeViewModel {
         MailComposeViewModel(
             context: context,
             // The session's auth-failure choke point, wired to the same preferences the compose
@@ -36,7 +37,7 @@ struct MailComposeViewModelTests {
             session: MailPageSession(idleClose: .milliseconds(10), open: { fake },
                                      onAuthFailure: { prefs.authFailed = true }),
             sender: Self.me,
-            folderRoles: [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
+            folderRoles: roles ?? [.inbox: "INBOX", .sent: Self.sent, .drafts: Self.drafts],
             prefs: prefs,
             cache: cache,
             sleep: { _ in }
@@ -109,6 +110,7 @@ struct MailComposeViewModelTests {
         await model.send()
         #expect(await fake.folders[Self.sent]?.count == 1)
         #expect(await !fake.calls.contains { $0.hasPrefix("append") })
+        #expect(model.sentCopy == .serverFiledItself)
     }
 
     @Test func replyingMarksTheOriginalAnswered() async {
@@ -622,6 +624,166 @@ struct MailComposeViewModelTests {
         #expect(model.didFinish)
         #expect(model.error == nil)
         #expect(!model.errorNeedsAcknowledging)
+    }
+
+    // MARK: The sent copy (§8.4)
+    //
+    // The mail is gone before any of this runs, so none of these outcomes may fail the send —
+    // but none of them may be silent either, and the one that used to file a *second* copy of
+    // every mail is the reason this section exists.
+
+    /// Sends the given form and returns the notice the sheet handed to the screen that presented
+    /// it (nil when the copy was filed and there is nothing to say).
+    @discardableResult
+    static func sendCollectingNotice(_ model: MailComposeViewModel, to: String = "a@mail.ntust.edu.tw") async -> String? {
+        var notice: String?
+        model.onSentCopyNotice = { notice = $0 }
+        await model.prepare()
+        model.to = to
+        await model.send()
+        return notice
+    }
+
+    /// The three answers the probe can actually give. The old code could only express two, which
+    /// is the whole defect: a refused SEARCH was indistinguishable from "the copy isn't there".
+    @Test func theProbeTellsFoundNotFoundAndUnknownApart() async throws {
+        let fake = Self.fake()
+        let messageID = "<probe@mail.ntust.edu.tw>"
+        #expect(await SentCopyFiler.probe(messageID, in: Self.sent, client: fake).result == .notFound)
+
+        try await fake.append(Data("Message-ID: \(messageID)\r\n\r\ncopy\r\n".utf8), to: Self.sent, flags: [.seen])
+        #expect(await SentCopyFiler.probe(messageID, in: Self.sent, client: fake).result == .found)
+
+        await fake.update { $0.containsMessageIDError = .searchUnsupported }
+        let refused = await SentCopyFiler.probe(messageID, in: Self.sent, client: fake)
+        #expect(refused.result == .unknown)
+        #expect(refused.failure == .searchUnsupported)
+    }
+
+    /// The duplicate bug. Mail2000's CAPABILITY banner promises no SEARCH keys at all, so a
+    /// server that refuses `SEARCH HEADER "Message-ID"` refuses it on *every* send — and
+    /// `(try? …) ?? false` then appended a copy the server had very likely already filed, every
+    /// single time. Nothing may be appended on an answer the server would not give.
+    @Test func aProbeTheServerRefusesFilesNothingRatherThanADuplicate() async {
+        let fake = Self.fake()
+        await fake.update {
+            $0.containsMessageIDError = .searchUnsupported
+            // The server kept its own copy, as it has all along — the app just can't find out.
+            $0.autoSaveSentTo = Self.sent
+        }
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        let notice = await Self.sendCollectingNotice(model)
+
+        #expect(model.didFinish)
+        #expect(model.error == nil)
+        #expect(model.sentCopy == .unknown)
+        #expect(await !fake.calls.contains { $0.hasPrefix("append") })
+        #expect(await fake.folders[Self.sent]?.count == 1)
+        #expect(notice == MailComposeViewModel.notice(for: .unknown))
+    }
+
+    /// The copy failing to save is a notice, never a failed send: the mail is with the server and
+    /// cannot be recalled, so reporting failure here would invite a second send of the same mail.
+    @Test func aFailedAppendStillReportsTheSendAsSuccessful() async {
+        let fake = Self.fake()
+        await fake.update { $0.appendError = .unreachable }
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        let notice = await Self.sendCollectingNotice(model)
+
+        #expect(model.didFinish)
+        #expect(model.error == nil)
+        #expect(!model.errorNeedsAcknowledging)
+        #expect(model.sentCopy == .failed(.unreachable))
+        #expect(await fake.sent.count == 1)
+        #expect(notice != nil)
+    }
+
+    /// §7.4: the APPEND runs on the same connection with the same password, so a rejection there
+    /// is the same rejected password the sign-in path reports — and `try?` used to eat it, which
+    /// left the next Send tap free to offer it to the server again.
+    @Test func aRejectedPasswordFromTheSentCopyAppendReachesTheAccount() async {
+        let fake = Self.fake()
+        await fake.update { $0.appendError = .authenticationFailed }
+        let prefs = InMemoryMailPreferences()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake, prefs: prefs)
+        await Self.sendCollectingNotice(model)
+
+        #expect(model.didFinish)
+        #expect(model.sentCopy == .failed(.authenticationFailed))
+        #expect(prefs.authFailed)
+    }
+
+    /// The same, one command earlier: a probe can need a relogin too, and its rejection is just
+    /// as much §7.4's business even though the outcome it produces is only `.unknown`.
+    @Test func aRejectedPasswordFromTheDedupeProbeAlsoReachesTheAccount() async {
+        let fake = Self.fake()
+        await fake.update { $0.containsMessageIDError = .authenticationFailed }
+        let prefs = InMemoryMailPreferences()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake, prefs: prefs)
+        await Self.sendCollectingNotice(model)
+
+        #expect(model.didFinish)
+        #expect(model.sentCopy == .unknown)
+        #expect(prefs.authFailed)
+    }
+
+    /// `MailFolderProvisioner.ensure` never throws, so "the CREATE was refused" arrives as the
+    /// same `nil` as "no folder was needed". That used to be the end of it; now the user is told
+    /// the one thing they can act on — this account keeps no sent copies.
+    @Test func aSendWithNoSentFolderToFileIntoSaysSoWithoutFailing() async {
+        let fake = FakeMailClient(folders: ["INBOX": [Self.original()], Self.drafts: []])
+        await fake.update { $0.createFolderError = .protocolError("refused") }
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake,
+                               roles: [.inbox: "INBOX", .drafts: Self.drafts])
+        let notice = await Self.sendCollectingNotice(model)
+
+        #expect(model.didFinish)
+        #expect(model.error == nil)
+        #expect(model.sentCopy == .notAttempted)
+        #expect(await fake.sent.count == 1)
+        #expect(notice == MailComposeViewModel.notice(for: .notAttempted))
+    }
+
+    /// The three notices are distinct text, because what the user can do about them differs; a
+    /// copy that was filed — by either side — says nothing at all.
+    @Test func onlyAnUnkeptCopyIsWorthANotice() {
+        #expect(MailComposeViewModel.notice(for: .filed) == nil)
+        #expect(MailComposeViewModel.notice(for: .serverFiledItself) == nil)
+        let notices = [
+            MailComposeViewModel.notice(for: .notAttempted),
+            MailComposeViewModel.notice(for: .failed(.unreachable)),
+            MailComposeViewModel.notice(for: .unknown),
+        ]
+        #expect(notices.allSatisfy { $0?.isEmpty == false })
+        #expect(Set(notices.compactMap { $0 }).count == 3)
+    }
+
+    /// A copy TigerDuck filed itself is the ordinary case and raises nothing.
+    @Test func aFiledCopyRaisesNoNotice() async {
+        let fake = Self.fake()
+        let model = Self.model(MailComposeContext(mode: .new), fake: fake)
+        let notice = await Self.sendCollectingNotice(model)
+        #expect(model.sentCopy == .filed)
+        #expect(notice == nil)
+    }
+
+    /// `DemoMailClient.containsMessageID` used to answer `false` unconditionally, so the demo
+    /// mailbox — the only place this path runs without a socket — always took the append branch
+    /// and proved nothing about the decision.
+    @Test func theDemoMailboxAnswersTheProbeFromItsOwnContents() async throws {
+        let sentFolder = MailFolderRole.sent.imapName
+        let fixture = MailDemoFixture(studentId: "B99999999", password: "tigerduck-review", uidValidity: 1,
+                                      folders: [sentFolder: []])
+        let demo = DemoMailClient(fixture: fixture)
+        let messageID = "<demo-probe@mail.ntust.edu.tw>"
+        #expect(await SentCopyFiler.probe(messageID, in: sentFolder, client: demo).result == .notFound)
+
+        let mail = OutgoingMail(from: Self.me, to: [MailAddress(name: nil, address: "a@mail.ntust.edu.tw")], cc: [],
+                                bcc: [], subject: "備份", body: "內容", inReplyTo: nil, references: [], attachments: [])
+        try await demo.append(MailMessageBuilder.build(mail, messageID: messageID, date: Date()),
+                              to: sentFolder, flags: [.seen])
+        #expect(await SentCopyFiler.probe(messageID, in: sentFolder, client: demo).result == .found)
+        #expect(await SentCopyFiler.probe("<someone-else@mail.ntust.edu.tw>", in: sentFolder, client: demo).result == .notFound)
     }
 }
 #endif

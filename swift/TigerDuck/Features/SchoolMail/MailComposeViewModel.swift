@@ -62,6 +62,9 @@ final class MailComposeViewModel {
     private(set) var loadError: String?
     private(set) var invalidRecipients: [String] = []
     private(set) var didFinish = false
+    /// What became of the copy of the mail this sheet sent — `nil` until a send has finished.
+    /// Never `error`: the mail went out, and none of these outcomes is a failed send.
+    private(set) var sentCopy: SentCopy?
 
     @ObservationIgnored private let context: MailComposeContext
     @ObservationIgnored private let session: MailPageSession
@@ -74,6 +77,11 @@ final class MailComposeViewModel {
     /// presented this sheet — and through it the list, which resolves its own map once per
     /// session — stops believing the folder does not exist.
     @ObservationIgnored var onFolderRolesChanged: (([MailFolderRole: String]) -> Void)?
+    /// Reports a sent copy that was not kept, to the screen that presented this sheet — this one
+    /// dismisses the moment the send succeeds, so it is not somewhere a notice can be read. Only
+    /// ever called for an outcome worth telling the user about; a copy that was filed (by either
+    /// side) says nothing.
+    @ObservationIgnored var onSentCopyNotice: ((String) -> Void)?
     @ObservationIgnored private let prefs: any MailPreferences
     @ObservationIgnored private let cache: MailCache
     @ObservationIgnored private let sleep: (Duration) async -> Void
@@ -407,7 +415,7 @@ final class MailComposeViewModel {
         }
         let recipients = mail.envelopeRecipients
         do {
-            let refreshedRoles = try await session.use { client -> [MailFolderRole: String]? in
+            let filing = try await session.use { client -> SentCopyFiler.Filing in
                 try await client.send(message, from: senderAddress, to: recipients)
                 if let replyFolder, let replyUID {
                     // No pin: compose holds the *drafts* page's UIDVALIDITY, never the original's
@@ -417,33 +425,52 @@ final class MailComposeViewModel {
                     try? await client.setFlag(.answered, on: true, folder: replyFolder, uids: [replyUID],
                                               expectedUIDValidity: nil)
                 }
-                // The mail has gone out, so there is now a copy worth filing — and only now may a
-                // missing Sent folder be created for it. An account without one used to lose the
-                // copy silently. If the CREATE fails the mail still went, which is the part worth
-                // protecting: sending is the point, filing the copy is not worth failing it for.
-                let sent = await MailFolderProvisioner.ensure(.sent, in: knownRoles, client: client)
-                if let sent {
-                    // Save a sent copy only if the server did not file one itself (§8.4). Still
-                    // asked even for a folder just created, because the server files its own copy
-                    // on its own schedule and may well have made the same folder first.
-                    await sleepFn(MailConstants.sentCopyDedupeDelay)
-                    let alreadySaved = (try? await client.containsMessageID(messageID, in: sent.name)) ?? false
-                    if !alreadySaved {
-                        try? await client.append(message, to: sent.name, flags: [.seen])
-                    }
-                }
+                let filing = await SentCopyFiler.file(message, messageID: messageID, in: knownRoles, client: client,
+                                                      dedupeDelay: MailConstants.sentCopyDedupeDelay, sleep: sleepFn)
                 if let draftFolder, let draftUID {
                     await Self.removeDraft(uid: draftUID, folder: draftFolder, client: client, prefs: prefsRef,
                                            pageUIDValidity: pageUIDValidity, wasAlreadyDeleted: draftWasDeleted)
                 }
-                return sent?.roles
+                return filing
             }
-            if let refreshedRoles { adoptFolderRoles(refreshedRoles) }
+            if let refreshedRoles = filing.roles { adoptFolderRoles(refreshedRoles) }
+            // §7.4 again: an APPEND (or a probe) the server answered with a rejected password is
+            // the same rejected password the sign-in path reports, and it has to reach the same
+            // choke point. It cannot get there by being thrown — filing the copy is best-effort
+            // and must not fail a send that already succeeded — so it is reported explicitly.
+            // `try?` used to eat it entirely, and the next Send tap sent that password again.
+            if filing.rejectedPassword { session.reportAuthenticationRejection() }
+            // The copy is a notice, never a failure: the mail went out either way, so `send()`
+            // reports success and the screen that presented this sheet shows what became of the
+            // copy. Raised before `didFinish`, which is what dismisses the sheet.
+            sentCopy = filing.outcome
+            if let notice = Self.notice(for: filing.outcome) { onSentCopyNotice?(notice) }
             didFinish = true
         } catch {
             // The mail is never retried here on any error, `folderChanged` included -- the list
             // recovers through its own path the next time the user opens it (dispatch addition 6).
             self.error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError(error).message
+        }
+    }
+
+    /// The one line the user sees about a sent copy, or `nil` when there is nothing to say.
+    ///
+    /// The three that do say something are deliberately distinct, because what the user can do
+    /// about them is: "no Sent folder" is actionable (make one in the webmail, or accept that
+    /// this account keeps no copies), "the copy couldn't be saved" is retryable (the mail is in
+    /// the list it was sent from, and the next send may well work), and "couldn't tell" is
+    /// neither — it is an honest admission that TigerDuck declined to guess rather than risk
+    /// filing the mail twice.
+    static func notice(for outcome: SentCopy) -> String? {
+        switch outcome {
+        case .filed, .serverFiledItself:
+            nil
+        case .notAttempted:
+            String(localized: "school_mail_sent_copy_no_folder")
+        case .failed(let error):
+            String(localized: "school_mail_sent_copy_failed") + "\n" + MailAccountManager.LoginError(error).message
+        case .unknown:
+            String(localized: "school_mail_sent_copy_unknown")
         }
     }
 
