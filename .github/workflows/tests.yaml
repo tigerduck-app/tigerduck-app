@@ -180,3 +180,28 @@ jobs:
           name: xcresults-${{ matrix.leg }}
           path: Tests.xcresult
           retention-days: 7
+
+  # The vendored SwiftMail carries nine local patches on top of upstream 1.11.0
+  # (see swift/Packages/SwiftMail/VENDORED.md). Its own SwiftPM test targets are
+  # in no Xcode scheme, so `xcodebuild -scheme TigerDuck` never compiled them and
+  # the tests pinning those patches ran only when someone typed `swift test` by
+  # hand. Patches 2, 5 and 6 happen to have cover in TigerDuckTests; patches 3
+  # (send CHARSET only for non-ASCII SEARCH criteria) and 4 had none at all, so a
+  # re-vendor could have dropped either with nothing going red.
+  #
+  # No simulator and no timezone step: these are pure SwiftPM tests against a
+  # loopback IMAP/SMTP server, so they need neither a device nor Asia/Taipei.
+  vendored-package:
+    name: vendored SwiftMail
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        # No submodules: this package does not read app-translation.
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Package tests
+        working-directory: swift/Packages/SwiftMail
+        run: swift test

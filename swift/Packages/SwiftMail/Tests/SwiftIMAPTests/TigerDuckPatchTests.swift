@@ -169,3 +169,44 @@ private final class Recorder: @unchecked Sendable {
         }
     }
 }
+
+/// Guards patch 2's invariant rather than its behaviour.
+///
+/// Patch 2 routes every charset lookup through `MailCharsetResolver`, because
+/// `String.Encoding(ianaCharsetName:)` does not know Big5 — the charset most Mail2000 mail
+/// arrives in. The patch is only as good as its coverage: one upstream call site the patch
+/// does not catch is one body that silently decodes as mojibake, with nothing failing.
+///
+/// This is the case to worry about at the next re-vendor. Upstream `main` already adds a new
+/// call site (`EMLParser+RFC2231.swift`, commit 124e3cc) that does not exist in 1.11.0, so
+/// bumping the pin will introduce exactly the miss this test exists to catch.
+@Suite("TigerDuck patch 2 invariant")
+struct CharsetResolverCoverageTests {
+    @Test("Only the resolver itself looks up an IANA charset name")
+    func resolverIsTheOnlyIANALookup() throws {
+        // …/Tests/SwiftIMAPTests/ThisFile.swift -> …/ (the package root)
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let sources = packageRoot.appendingPathComponent("Sources")
+
+        var offenders: [String] = []
+        let files = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil)
+        while let url = files?.nextObject() as? URL {
+            guard url.pathExtension == "swift" else { continue }
+            guard url.lastPathComponent != "MailCharsetResolver.swift" else { continue }
+            let text = try String(contentsOf: url, encoding: .utf8)
+            if text.contains("ianaCharsetName") {
+                offenders.append(url.lastPathComponent)
+            }
+        }
+
+        #expect(
+            offenders.isEmpty,
+            """
+            \(offenders) call String.Encoding(ianaCharsetName:) directly, bypassing \
+            MailCharsetResolver. Route them through the resolver (TigerDuck patch 2, \
+            see VENDORED.md) or Big5 mail will decode as mojibake with nothing failing.
+            """
+        )
+    }
+}
