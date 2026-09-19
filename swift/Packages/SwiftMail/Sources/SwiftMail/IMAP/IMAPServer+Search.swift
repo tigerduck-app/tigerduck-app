@@ -28,11 +28,14 @@ extension IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs search operations at debug level with criteria count and results count
      */
-    @available(
-        *,
-        deprecated,
-        message: "Use extendedSearch(...) for structured results or search(..., sortCriteria:) for ordered results."
-    )
+    /// - Note: Upstream deprecates this in favour of `extendedSearch(...)` and
+    ///   `search(..., sortCriteria:)`. **In this fork it is the supported API and is not
+    ///   deprecated** — see VENDORED.md entry 9. Mail2000, the only server TigerDuck talks to,
+    ///   advertises `IMAP4 IMAP4rev1 AUTH=LOGIN LITERAL+ ID NAMESPACE STARTTLS`: neither ESEARCH
+    ///   nor SORT, so `sortCriteria:` throws before sending and `extendedSearch` would reach the
+    ///   server through a response handler never exercised against it. This variant is also the
+    ///   one vendored patch 3 teaches to send `CHARSET UTF-8`, so moving off it would silently
+    ///   regress search for Chinese queries.
     public func search<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],

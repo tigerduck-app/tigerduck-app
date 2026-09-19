@@ -548,10 +548,11 @@ actor LiveMailClient: MailClient {
 
     // MARK: Helpers
 
-    /// The one place `IMAPServer.search(criteria:)` is actually called, so the build shows a
-    /// single deprecation warning instead of one per call site.
+    /// The one place `IMAPServer.search(criteria:)` is actually called.
     ///
-    /// **The deprecation is knowingly left in place.** SwiftMail suggests `extendedSearch(...)`
+    /// **This call is deliberate, and the vendored copy no longer marks it deprecated**
+    /// (VENDORED.md entry 9) — the reasoning below is why, and it is the reason the annotation
+    /// was dropped rather than the warning simply tolerated. SwiftMail suggests `extendedSearch(...)`
     /// (ESEARCH, RFC 4731) or `search(..., sortCriteria:)` (SORT), and Mail2000 advertises
     /// neither — its measured banner is
     /// `IMAP4 IMAP4rev1 AUTH=LOGIN LITERAL+ ID NAMESPACE STARTTLS` (design doc §1.2, taken from
@@ -566,9 +567,9 @@ actor LiveMailClient: MailClient {
     ///   `containsMessageID` below are load-bearing (the §8.3 pre-EXPUNGE check and the
     ///   sent-copy dedupe), so "probably equivalent" is not a good enough reason to move them.
     ///
-    /// The deprecated `SearchCommand` is also the variant vendored patch 3 teaches to send
-    /// `CHARSET UTF-8` for Chinese queries. Revisit only if the server's CAPABILITY banner
-    /// changes.
+    /// `SearchCommand` is also the variant vendored patch 3 teaches to send `CHARSET UTF-8` for
+    /// Chinese queries, so moving off it would silently regress those searches. Revisit only if
+    /// the server's CAPABILITY banner changes.
     private func rawSearch(criteria: [SearchCriteria]) async throws -> MessageIdentifierSet<UID> {
         try await imap.search(criteria: criteria)
     }

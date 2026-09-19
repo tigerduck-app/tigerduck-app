@@ -2,11 +2,11 @@ import Foundation
 
 extension IMAPNamedConnection {
     /// Search within the selected mailbox.
-    @available(
-        *,
-        deprecated,
-        message: "Use extendedSearch(...) for structured results or search(..., sortCriteria:) for ordered results."
-    )
+    ///
+    /// - Note: Not deprecated in this fork, for the reasons given on
+    ///   `IMAPServer.search(identifierSet:criteria:calendar:)` and in VENDORED.md entry 9. The
+    ///   two declarations are kept consistent so neither spelling of the same call carries a
+    ///   warning this fork cannot act on.
     public func search<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],

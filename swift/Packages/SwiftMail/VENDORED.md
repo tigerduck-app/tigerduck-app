@@ -55,7 +55,7 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    above the parser: `parts` came back empty with no error and no log, identical to a message
    that genuinely has no parts. Without this, a Mail2000 message whose structure the server
    botches renders as nothing at all on iOS — `LiveMailClient.detail` iterates zero parts, every
-   body is nil, and the message screen falls back to 原始碼 — while Android, which parses the
+   body is nil, and the message screen falls back to the source view — while Android, which parses the
    MIME itself instead of trusting the server's description, opens the same message fine.
    `LiveMailClient` reads this flag to decide whether to fetch the message whole and parse it
    locally. Additive: one new `case` in an existing `switch`, one new property with a default,
@@ -92,6 +92,19 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    CPU**. Verified that a `swift-tools-version:5.9` manifest — which this is — resolves the
    toolchain's Testing without the dependency; all three test targets still pass (380/57,
    110/3, 21/4), as does the app suite (714/77).
+
+9. `search(identifierSet:criteria:calendar:)` is **not deprecated** in this fork, on both
+   `IMAPServer` (`IMAP/IMAPServer+Search.swift`) and `IMAPNamedConnection`
+   (`IMAP/IMAPNamedConnection+Search.swift`). Upstream marks it deprecated in favour of
+   `extendedSearch(...)` and `search(..., sortCriteria:)`. Neither replacement is usable here:
+   Mail2000's CAPABILITY banner, captured from a real logged-in session, is
+   `IMAP4 IMAP4rev1 AUTH=LOGIN LITERAL+ ID NAMESPACE STARTTLS` — no ESEARCH, no SORT, no WITHIN —
+   so `sortCriteria:` throws before sending a byte and `extendedSearch` would reach the server
+   through a command and response handler never exercised against it, on a path whose callers
+   include the §8.3 pre-EXPUNGE ownership check. This variant is also the one **patch 3** teaches
+   to send `CHARSET UTF-8`, so moving off it would silently regress search for Chinese queries.
+   Keeping the annotation meant one permanent, un-actionable warning in every build; the method
+   body is untouched, and a re-vendor that restores the annotation restores only the warning.
 
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
