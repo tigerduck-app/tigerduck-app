@@ -53,7 +53,7 @@ struct ScoreCourseDetailSheet: View {
                 Text(course.code)
                     .font(TigerDuckTheme.Typography.caption.monospaced())
                     .foregroundStyle(Color.textSecondary)
-                Text(String(format: String(localized: "score_course_credits_meta"), displayTerm, course.credits ?? 0))
+                Text(String(format: String(localized: "score_course_credits_meta"), displayTerm, (course.credits ?? 0).creditsText))
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
             }

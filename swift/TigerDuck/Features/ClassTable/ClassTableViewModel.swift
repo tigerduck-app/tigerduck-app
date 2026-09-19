@@ -322,7 +322,7 @@ final class ClassTableViewModel {
         TigerDuckTheme.ensureAssignments(courseNos: Array(courseNos))
     }
 
-    var totalCredits: Int {
+    var totalCredits: Double {
         courses.reduce(0) { $0 + $1.credits }
     }
 

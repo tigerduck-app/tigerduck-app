@@ -190,6 +190,11 @@ extension AppState {
         return prefix == semester.uppercased()
     }
 
+    /// Known gap: the sync payload carries no `dimension` / `all_year`, so a
+    /// row merged from another device leaves both empty and the detail
+    /// sheet hides those two rows. The next QueryCourse refresh fills them
+    /// in for a current term; for a term the portal no longer serves they
+    /// stay empty until the backend starts sending them.
     private static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?) -> SDCourse {
         var schedule: [Int: [String]] = [:]
         for (key, periods) in (row["schedule_json"] as? [String: [String]]) ?? [:] {
@@ -199,7 +204,7 @@ extension AppState {
             courseNo: courseNo,
             courseName: name ?? row["course_name"] as? String ?? courseNo,
             instructor: (row["instructors"] as? [String])?.joined(separator: ", ") ?? "",
-            credits: Int(row["credits"] as? Double ?? 0),
+            credits: row["credits"] as? Double ?? 0,
             classroom: row["classroom"] as? String ?? "",
             enrolledCount: row["enrolled_count"] as? Int ?? 0,
             maxCount: row["max_count"] as? Int ?? 0,

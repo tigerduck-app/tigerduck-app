@@ -713,7 +713,9 @@ private struct CachedCourse: Codable {
     let courseNo: String
     let courseName: String
     let instructor: String
-    let credits: Int
+    /// Fractional since half-credit courses exist. A cache written while
+    /// this was an `Int` decodes unchanged — JSON has one number type.
+    let credits: Double
     let classroom: String
     let enrolledCount: Int
     let maxCount: Int
@@ -725,6 +727,11 @@ private struct CachedCourse: Codable {
     /// written before this field existed continue to decode cleanly; falls
     /// back to "[]" (no skipped dates) when absent.
     let skippedDatesJSON: String?
+    /// GE dimension / term span from QueryCourse. Optional for the same
+    /// back-compat reason as `skippedDatesJSON`; the next portal refresh
+    /// fills them in for a cache written before they existed.
+    let dimension: String?
+    let allYear: String?
 
     init(from course: SDCourse) {
         courseNo = course.courseNo
@@ -739,6 +746,8 @@ private struct CachedCourse: Codable {
         semester = course.semester.isEmpty ? nil : course.semester
         classroomMapJSON = course.classroomMapJSON
         skippedDatesJSON = course.skippedDatesJSON
+        dimension = course.dimension.isEmpty ? nil : course.dimension
+        allYear = course.allYear.isEmpty ? nil : course.allYear
     }
 
     func toSDCourse() -> SDCourse {
@@ -774,7 +783,9 @@ private struct CachedCourse: Codable {
             schedule: schedule,
             moodleIdNumber: moodleIdNumber,
             semester: semester ?? CourseSelectionService.currentSemesterCode(),
-            classroomMap: classroomMap
+            classroomMap: classroomMap,
+            dimension: dimension ?? "",
+            allYear: allYear ?? ""
         )
         course.skippedDatesJSON = skippedDatesJSON ?? "[]"
         return course

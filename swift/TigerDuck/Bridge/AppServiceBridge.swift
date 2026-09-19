@@ -5,13 +5,15 @@ private struct CourseData: Sendable {
     let courseNo: String
     var courseName: String
     let instructor: String
-    let credits: Int
+    let credits: Double
     var classroom: String
     let enrolledCount: Int
     let maxCount: Int
     let schedule: [Int: [String]]
     let moodleIdNumber: String?
     var classroomMap: [String: String]
+    let dimension: String
+    let allYear: String
 }
 
 enum AppServiceBridge {
@@ -270,7 +272,9 @@ enum AppServiceBridge {
                     schedule: course.schedule,
                     moodleIdNumber: course.moodleIdNumber,
                     semester: semester,
-                    classroomMap: course.classroomMap
+                    classroomMap: course.classroomMap,
+                    dimension: course.dimension,
+                    allYear: course.allYear
                 )
             }
 
@@ -292,7 +296,7 @@ enum AppServiceBridge {
                             courseName: c.courseName,
                             courseNameEn: nil,
                             moodleId: c.moodleIdNumber,
-                            credits: c.credits > 0 ? Double(c.credits) : nil,
+                            credits: c.credits > 0 ? c.credits : nil,
                             classroom: c.classroom.isEmpty ? nil : c.classroom,
                             instructors: c.instructor.isEmpty ? nil : [c.instructor],
                             scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),
@@ -462,7 +466,9 @@ enum AppServiceBridge {
             maxCount: course.maxCount,
             schedule: course.schedule,
             moodleIdNumber: course.moodleIdNumber,
-            classroomMap: course.classroomMap
+            classroomMap: course.classroomMap,
+            dimension: course.dimension,
+            allYear: course.allYear
         )
         // Cache the raw API name so abbreviation toggles can re-derive
         // without a network round-trip.
@@ -598,7 +604,9 @@ enum AppServiceBridge {
                 maxCount: 0,
                 schedule: [:],
                 moodleIdNumber: moodle.idnumber,
-                classroomMap: [:]
+                classroomMap: [:],
+                dimension: "",
+                allYear: ""
             )
         }
         if let grade {
@@ -612,7 +620,9 @@ enum AppServiceBridge {
                 maxCount: 0,
                 schedule: [:],
                 moodleIdNumber: nil,
-                classroomMap: [:]
+                classroomMap: [:],
+                dimension: "",
+                allYear: ""
             )
         }
         return nil
@@ -656,14 +666,18 @@ enum AppServiceBridge {
             courseNo: first.CourseNo,
             courseName: first.CourseName,
             instructor: first.CourseTeacher,
-            credits: Int(first.CreditPoint) ?? 0,
+            credits: Double(first.CreditPoint) ?? 0,
             classroom: allClassrooms.joined(separator: ", "),
             enrolledCount: first.ChooseStudent ?? 0,
             maxCount: Int(first.Restrict2 ?? "0") ?? 0,
             schedule: mergedSchedule,
             moodleIdNumber: fallbackMoodleIdNumber ?? "\(first.Semester)\(first.CourseNo)",
             semester: semester,
-            classroomMap: classroomMap
+            classroomMap: classroomMap,
+            // First *non-empty* rather than first row: a course split across
+            // rows only carries its dimension on some of them.
+            dimension: results.compactMap(\.Dimension).first { !$0.isEmpty } ?? "",
+            allYear: results.compactMap(\.AllYear).first { !$0.isEmpty } ?? ""
         )
     }
 
@@ -911,7 +925,9 @@ private extension SDCourse {
             schedule: data.schedule,
             moodleIdNumber: moodleIdNumber,
             semester: semester,
-            classroomMap: data.classroomMap
+            classroomMap: data.classroomMap,
+            dimension: data.dimension,
+            allYear: data.allYear
         )
     }
 }

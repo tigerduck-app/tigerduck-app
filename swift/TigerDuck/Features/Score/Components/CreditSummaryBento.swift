@@ -43,7 +43,7 @@ struct CreditSummaryBento: View {
                 .foregroundStyle(Color.textSecondary)
 
             HStack(alignment: .lastTextBaseline, spacing: 4) {
-                Text("\(breakdown.total)")
+                Text(breakdown.total.creditsText)
                     .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)

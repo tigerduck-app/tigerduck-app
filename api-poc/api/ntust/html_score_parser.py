@@ -35,12 +35,14 @@ from bs4 import BeautifulSoup, Tag
 
 # 學分欄的特殊標記 → credit_type
 # 比對順序會影響結果，請勿隨意調整
+# 小數部分是可選的：台科大有 0.5 學分的課，只寫 \d+ 會整個比對失敗，
+# 學分變成 None、類型退成 unknown。
 _CREDIT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"^\[\s*(\d+)\s*]$"),  "education_program"),  # [3]
-    (re.compile(r"^<\s*(\d+)\s*>$"),   "not_counted"),        # <3>
-    (re.compile(r"^#\s*(\d+)\s*$"),    "not_required"),       # #3
-    (re.compile(r"^\(\s*(\d+)\s*\)$"), "not_earned"),         # (3) - 不及格
-    (re.compile(r"^(\d+)$"),           "normal"),             # 3
+    (re.compile(r"^\[\s*(\d+(?:\.\d+)?)\s*]$"),  "education_program"),  # [3] / [0.5]
+    (re.compile(r"^<\s*(\d+(?:\.\d+)?)\s*>$"),   "not_counted"),        # <3>
+    (re.compile(r"^#\s*(\d+(?:\.\d+)?)\s*$"),    "not_required"),       # #3
+    (re.compile(r"^\(\s*(\d+(?:\.\d+)?)\s*\)$"), "not_earned"),         # (3) - 不及格
+    (re.compile(r"^(\d+(?:\.\d+)?)$"),           "normal"),             # 3
 ]
 
 
@@ -69,21 +71,34 @@ def _to_float(value: str) -> float | None:
         return None
 
 
-def _parse_credits(raw: str) -> tuple[int | None, str]:
+def _parse_credits(raw: str) -> tuple[float | None, str]:
     """
     解析學分欄位字串，回傳 (學分數, 類型)。
 
-    >>> _parse_credits("3")     # ('normal', 3)
-    >>> _parse_credits("[3]")   # ('education_program', 3)
-    >>> _parse_credits("<3>")   # ('not_counted', 3)
-    >>> _parse_credits("#3")    # ('not_required', 3)
-    >>> _parse_credits("(4)")   # ('not_earned', 4)
+    學分是浮點數：台科大有 0.5 學分的課。
+
+    >>> _parse_credits("3")
+    (3.0, 'normal')
+    >>> _parse_credits("0.5")
+    (0.5, 'normal')
+    >>> _parse_credits("[3]")
+    (3.0, 'education_program')
+    >>> _parse_credits("[0.5]")
+    (0.5, 'education_program')
+    >>> _parse_credits("<3>")
+    (3.0, 'not_counted')
+    >>> _parse_credits("#3")
+    (3.0, 'not_required')
+    >>> _parse_credits("(4)")
+    (4.0, 'not_earned')
+    >>> _parse_credits("自行安排")
+    (None, 'unknown')
     """
     text = raw.strip()
     for pattern, credit_type in _CREDIT_PATTERNS:
         m = pattern.match(text)
         if m:
-            return int(m.group(1)), credit_type
+            return float(m.group(1)), credit_type
     return None, "unknown"
 
 
@@ -277,9 +292,10 @@ def _parse_credit_summary(soup: BeautifulSoup) -> dict[str, Any]:
         if key is None:
             continue
         summary[key] = {
-            "in_person": _to_int(_text(cells[1])) or 0,
-            "distance":  _to_int(_text(cells[2])) or 0,
-            "total":     _to_int(_text(cells[3])) or 0,
+            # 浮點數，理由同 _parse_credits：半學分會加總進這張表。
+            "in_person": _to_float(_text(cells[1])) or 0.0,
+            "distance":  _to_float(_text(cells[2])) or 0.0,
+            "total":     _to_float(_text(cells[3])) or 0.0,
         }
 
     return summary

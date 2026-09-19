@@ -18,12 +18,15 @@ nonisolated enum NTUSTScoreParser {
     //
     // Order matters — `^(\d+)$` matches everything else so it must run last.
     private static let creditPatterns: [(Regex<AnyRegexOutput>, CreditType)] = {
+        // The fraction is optional and matters: NTUST issues half credits,
+        // and `\d+` alone matched nothing for "0.5", which fell through to
+        // `.unknown` with no credit at all.
         let raw: [(String, CreditType)] = [
-            (#"^\[\s*(\d+)\s*\]$"#, .educationProgram),   // [3]
-            (#"^<\s*(\d+)\s*>$"#,   .notCounted),         // <3>
-            (#"^#\s*(\d+)\s*$"#,    .notRequired),        // #3
-            (#"^\(\s*(\d+)\s*\)$"#, .notEarned),          // (3) 不及格
-            (#"^(\d+)$"#,           .normal),             // 3
+            (#"^\[\s*(\d+(?:\.\d+)?)\s*\]$"#, .educationProgram),   // [3] / [0.5]
+            (#"^<\s*(\d+(?:\.\d+)?)\s*>$"#,   .notCounted),         // <3>
+            (#"^#\s*(\d+(?:\.\d+)?)\s*$"#,    .notRequired),        // #3
+            (#"^\(\s*(\d+(?:\.\d+)?)\s*\)$"#, .notEarned),          // (3) 不及格
+            (#"^(\d+(?:\.\d+)?)$"#,           .normal),             // 3
         ]
         return raw.compactMap { pattern, type in
             guard let regex = try? Regex(pattern) else { return nil }
@@ -172,9 +175,9 @@ nonisolated enum NTUSTScoreParser {
             guard cells.count >= 4 else { continue }
             let label = cleanText(cells[0])
             let breakdown = CreditBreakdown(
-                inPerson: toInt(cleanText(cells[1])) ?? 0,
-                distance: toInt(cleanText(cells[2])) ?? 0,
-                total: toInt(cleanText(cells[3])) ?? 0
+                inPerson: toDouble(cleanText(cells[1])) ?? 0,
+                distance: toDouble(cleanText(cells[2])) ?? 0,
+                total: toDouble(cleanText(cells[3])) ?? 0
             )
             switch label {
             case "已實得學分數": earned = breakdown
@@ -204,13 +207,13 @@ nonisolated enum NTUSTScoreParser {
         Double(value.trimmingCharacters(in: .whitespaces))
     }
 
-    private static func parseCredits(_ raw: String) -> (credits: Int?, type: CreditType) {
+    private static func parseCredits(_ raw: String) -> (credits: Double?, type: CreditType) {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         for (regex, type) in creditPatterns {
             guard let match = try? regex.firstMatch(in: trimmed),
                   match.count >= 2,
                   let sub = match[1].substring,
-                  let value = Int(sub) else {
+                  let value = Double(sub) else {
                 continue
             }
             return (value, type)
