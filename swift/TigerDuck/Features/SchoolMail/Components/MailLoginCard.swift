@@ -15,6 +15,31 @@ struct MailLoginCard: View {
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
     private let account = MailAccountManager.shared
 
+    /// The configured address domain, prefilled into the empty field as `@domain` so the form
+    /// says what it expects instead of leaving it to be guessed.
+    ///
+    /// On the school server a bare `B10000000` is right, because the app knows the domain and
+    /// supplies it. Under an override the app *also* knows the domain — it is typed on the
+    /// Developer → Email screen — but used to ask for a whole address with a placeholder that
+    /// still said "student ID", so a bare local part looked equally plausible and was silently
+    /// rejected by the server as a wrong password. Seeding the suffix makes the expected shape
+    /// visible; it is ordinary editable text, so a server that wants a bare username still works
+    /// by deleting it.
+    private var prefilledDomainSuffix: String {
+        #if DEBUG
+        let config = MailServerConfig.effective
+        return config.isOverridden ? "@\(config.addressDomain)" : ""
+        #else
+        return ""
+        #endif
+    }
+
+    private var usernamePlaceholder: String {
+        prefilledDomainSuffix.isEmpty
+            ? String(localized: "sign_in_student_id")
+            : "you\(prefilledDomainSuffix)"
+    }
+
     /// Whether the username this field collects is an email address rather than a student ID.
     ///
     /// Only the DEBUG developer override can point the app at a server whose usernames are
@@ -40,7 +65,7 @@ struct MailLoginCard: View {
                 .multilineTextAlignment(.center)
 
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                TextField(String(localized: "sign_in_student_id"), text: $studentID)
+                TextField(usernamePlaceholder, text: $studentID)
                     .textContentType(usernameIsAnAddress ? .emailAddress : .username)
                     .autocorrectionDisabled()
                     // `.characters` is right for a Mail2000 student ID (`B10000000`) and wrong for
@@ -91,6 +116,15 @@ struct MailLoginCard: View {
         .sheet(isPresented: $showWebmail) {
             InAppBrowserView(url: MailConstants.webmailURL).ignoresSafeArea()
         }
+        // Only ever seeds an empty field, so it cannot overwrite something half-typed when the
+        // view re-appears, and re-runs if the override changes while this screen is up.
+        .onAppear { seedDomainSuffix() }
+        .onChange(of: prefilledDomainSuffix) { _, _ in seedDomainSuffix() }
+    }
+
+    private func seedDomainSuffix() {
+        guard studentID.isEmpty, !prefilledDomainSuffix.isEmpty else { return }
+        studentID = prefilledDomainSuffix
     }
 
     @ViewBuilder

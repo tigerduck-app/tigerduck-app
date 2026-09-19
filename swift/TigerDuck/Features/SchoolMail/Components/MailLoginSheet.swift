@@ -23,6 +23,18 @@ struct MailLoginSheet: View {
         #endif
     }
 
+    /// `@domain` for an overridden server, so the sheet starts with the shape it expects rather
+    /// than an empty field labelled "student ID". Empty against the school, where a bare ID is
+    /// correct and the app supplies the domain itself. See `MailLoginCard.prefilledDomainSuffix`.
+    static var initialUsername: String {
+        #if DEBUG
+        let config = MailServerConfig.effective
+        return config.isOverridden ? "@\(config.addressDomain)" : ""
+        #else
+        return ""
+        #endif
+    }
+
     @Binding var isPresented: Bool
     private let account = MailAccountManager.shared
 
@@ -30,8 +42,11 @@ struct MailLoginSheet: View {
         LoginSheet(
             title: String(localized: "school_mail_account_title"),
             subtitle: String(localized: "school_mail_sign_in_note"),
-            usernamePlaceholder: String(localized: "sign_in_student_id"),
+            usernamePlaceholder: Self.usernameIsAnAddress
+                ? "you\(Self.initialUsername)"
+                : String(localized: "sign_in_student_id"),
             passwordPlaceholder: String(localized: "sign_in_password"),
+            initialUsername: Self.initialUsername,
             isLoggingIn: account.isLoggingIn,
             loginError: account.loginError?.message,
             footerLink: Self.resetPasswordLink,
