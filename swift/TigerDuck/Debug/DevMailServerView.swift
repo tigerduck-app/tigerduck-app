@@ -1,5 +1,6 @@
 #if DEBUG && os(iOS)
 import SwiftUI
+import UIKit
 
 /// Developer-only screen for pointing School Mail at a mail server that is not the school's.
 /// Reached from `Settings → Developer → Email`; the row, this file and the store behind it are
@@ -13,6 +14,16 @@ struct DevMailServerView: View {
     @State private var status: String?
     @State private var probeOutput: String?
     @State private var probeTask: Task<Void, Never>?
+
+    /// Credentials typed for a test run, held in memory for as long as this screen is on screen
+    /// and **never** written to the Keychain, `MailAccountManager` or anywhere else.
+    ///
+    /// Without these the diagnostic could not answer the question it exists for. AUTH reads the
+    /// *saved* password, and a sign-in that fails never saves one — so the very situation that
+    /// sends someone to this screen ("it says wrong password") is the one situation where the
+    /// stage that would explain it is skipped for want of a password to try.
+    @State private var testUsername = ""
+    @State private var testPassword = ""
 
     var body: some View {
         @Bindable var settings = settings
@@ -61,6 +72,22 @@ struct DevMailServerView: View {
                     )
                     .font(.caption)
                 }
+            }
+
+            Section {
+                TextField("Username for the test", text: $testUsername)
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                SecureField("Password for the test", text: $testPassword)
+                    .textFieldStyle(.plain)
+                    .textContentType(.password)
+            } header: {
+                Text("Test credentials")
+            } footer: {
+                Text("Only for Test connection. Nothing here is saved anywhere — not the Keychain, not the account — and leaving them blank falls back to the signed-in account's saved password, which is offered only to the host it was typed for.\n\nFill these in when sign-in is what is failing: a failed sign-in never saves a password, so without them the LOGIN stage has nothing to try and reports that instead of the answer.")
             }
 
             Section {
@@ -113,6 +140,18 @@ struct DevMailServerView: View {
             }
         }
         .navigationTitle("Email")
+        // Two ways out of the keyboard, because one is not enough here. Swiping the form down
+        // dismisses interactively, which is the gesture people reach for first; the Done button
+        // is the one that is actually required, because the port fields use `.numberPad` and a
+        // number pad has no return key at all — without it a tap into a port field traps the
+        // keyboard open with no way to close it.
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { UIApplication.dismissKeyboard() }
+            }
+        }
         .onDisappear { probeTask?.cancel() }
     }
 
@@ -187,11 +226,22 @@ struct DevMailServerView: View {
             return
         }
         let config = MailServerConfig.resolve(override: settings.draft)
-        let credentials = DevMailConnectionProbe.credentials(
-            username: MailAccountManager.shared.studentID,
-            password: MailCredentialStore().password(),
-            appliedIsOverridden: settings.effectiveConfig.isOverridden
-        )
+        // Typed credentials win outright, and bypass the "only the host it was typed for" rule:
+        // that rule exists to stop the *saved* school password reaching a third-party server by
+        // accident, and a password typed into this screen for this test is neither saved nor an
+        // accident. Blank falls back to the account's own, still scoped.
+        let typedName = testUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        let credentials: DevMailProbeCredentials = if !testPassword.isEmpty, !typedName.isEmpty {
+            .use(username: typedName, password: testPassword)
+        } else if !testPassword.isEmpty {
+            .unavailable("a password was typed for the test but no username — fill both in")
+        } else {
+            DevMailConnectionProbe.credentials(
+                username: MailAccountManager.shared.studentID,
+                password: MailCredentialStore().password(),
+                appliedIsOverridden: settings.effectiveConfig.isOverridden
+            )
+        }
         probeOutput = "IMAP \(config.imapHost):\(config.imapPort) · SMTP \(config.smtpHost):\(config.smtpPort)"
         probeTask = Task {
             let reports = await DevMailConnectionProbe.run(config: config, credentials: credentials)
