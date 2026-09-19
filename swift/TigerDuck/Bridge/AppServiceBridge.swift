@@ -12,6 +12,8 @@ private struct CourseData: Sendable {
     let schedule: [Int: [String]]
     let moodleIdNumber: String?
     var classroomMap: [String: String]
+    let dimension: String
+    let allYear: String
 }
 
 enum AppServiceBridge {
@@ -270,7 +272,9 @@ enum AppServiceBridge {
                     schedule: course.schedule,
                     moodleIdNumber: course.moodleIdNumber,
                     semester: semester,
-                    classroomMap: course.classroomMap
+                    classroomMap: course.classroomMap,
+                    dimension: course.dimension,
+                    allYear: course.allYear
                 )
             }
 
@@ -462,7 +466,9 @@ enum AppServiceBridge {
             maxCount: course.maxCount,
             schedule: course.schedule,
             moodleIdNumber: course.moodleIdNumber,
-            classroomMap: course.classroomMap
+            classroomMap: course.classroomMap,
+            dimension: course.dimension,
+            allYear: course.allYear
         )
         // Cache the raw API name so abbreviation toggles can re-derive
         // without a network round-trip.
@@ -598,7 +604,9 @@ enum AppServiceBridge {
                 maxCount: 0,
                 schedule: [:],
                 moodleIdNumber: moodle.idnumber,
-                classroomMap: [:]
+                classroomMap: [:],
+                dimension: "",
+                allYear: ""
             )
         }
         if let grade {
@@ -612,7 +620,9 @@ enum AppServiceBridge {
                 maxCount: 0,
                 schedule: [:],
                 moodleIdNumber: nil,
-                classroomMap: [:]
+                classroomMap: [:],
+                dimension: "",
+                allYear: ""
             )
         }
         return nil
@@ -663,7 +673,9 @@ enum AppServiceBridge {
             schedule: mergedSchedule,
             moodleIdNumber: fallbackMoodleIdNumber ?? "\(first.Semester)\(first.CourseNo)",
             semester: semester,
-            classroomMap: classroomMap
+            classroomMap: classroomMap,
+            dimension: first.Dimension ?? "",
+            allYear: first.AllYear ?? ""
         )
     }
 
@@ -911,7 +923,9 @@ private extension SDCourse {
             schedule: data.schedule,
             moodleIdNumber: moodleIdNumber,
             semester: semester,
-            classroomMap: data.classroomMap
+            classroomMap: data.classroomMap,
+            dimension: data.dimension,
+            allYear: data.allYear
         )
     }
 }

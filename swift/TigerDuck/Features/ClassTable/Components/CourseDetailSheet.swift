@@ -3,7 +3,8 @@ import SwiftUI
 /// Modal detail for a single course row. Visual structure:
 ///   1. Color bar + course title (with optional Moodle jump button)
 ///   2. Two emphasis cards side-by-side: 教室 (classroom) | 時間 (time)
-///   3. Flat InfoRow list: instructor / code / credits / enrollment
+///   3. Flat InfoRow list: instructor / code / dimension / duration /
+///      credits / enrollment
 ///   4. Outstanding assignments (unchanged)
 ///
 /// The emphasis cards exist because classroom & time are the two fields users
@@ -126,6 +127,21 @@ struct CourseDetailSheet: View {
                 label: String(localized: "course_detail_code_label"),
                 value: course.courseNo
             )
+            // Only general-education courses carry a dimension; for every
+            // other course the portal sends an empty string and the row
+            // would be a label with nothing beside it.
+            if !course.dimension.isEmpty {
+                InfoRow(
+                    label: String(localized: "course_detail_dimension_label"),
+                    value: course.dimension
+                )
+            }
+            if let duration = durationText {
+                InfoRow(
+                    label: String(localized: "course_detail_duration_label"),
+                    value: duration
+                )
+            }
             InfoRow(
                 label: String(localized: "course_detail_credits_label"),
                 value: "\(course.credits)"
@@ -136,6 +152,18 @@ struct CourseDetailSheet: View {
             )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    /// QueryCourse spells `AllYear` as "F" (spans the academic year) or "H"
+    /// (a single semester). Anything else — including the empty string a row
+    /// cached before this field existed carries — says nothing, so the row
+    /// is left out rather than shown blank.
+    private var durationText: String? {
+        switch course.allYear.uppercased() {
+        case "F": return String(localized: "course_detail_duration_full_year")
+        case "H": return String(localized: "course_detail_duration_one_semester")
+        default: return nil
+        }
     }
 
     // MARK: - Assignments (preserved exactly as before)

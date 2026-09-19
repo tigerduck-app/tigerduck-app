@@ -556,6 +556,10 @@ struct AddCourseSheet: View {
         let maxCount: Int
         let schedule: [Int: [String]]
         let nodeDisplay: String
+        /// Carried straight from QueryCourse so a course added by hand shows
+        /// its dimension / term span without waiting for the next refresh.
+        let dimension: String
+        let allYear: String
 
         var displayName: String {
             guard let secondary = secondaryName,
@@ -616,7 +620,9 @@ struct AddCourseSheet: View {
                     enrolledCount: existing.enrolledCount,
                     maxCount: existing.maxCount,
                     schedule: merged,
-                    nodeDisplay: nodeStr
+                    nodeDisplay: nodeStr,
+                    dimension: existing.dimension,
+                    allYear: existing.allYear
                 )
                 seen[key] = existing
             } else {
@@ -640,7 +646,9 @@ struct AddCourseSheet: View {
                     enrolledCount: result.ChooseStudent ?? 0,
                     maxCount: Int(result.Restrict2 ?? "0") ?? 0,
                     schedule: partial,
-                    nodeDisplay: result.Node ?? ""
+                    nodeDisplay: result.Node ?? "",
+                    dimension: result.Dimension ?? "",
+                    allYear: result.AllYear ?? ""
                 )
             }
         }
@@ -660,7 +668,9 @@ struct AddCourseSheet: View {
             schedule: group.schedule,
             moodleIdNumber: nil,
             semester: semester,
-            classroomMap: group.classroomMap
+            classroomMap: group.classroomMap,
+            dimension: group.dimension,
+            allYear: group.allYear
         )
         if onAdd(course) {
             sessionAddedCourseNos.insert(group.courseNo)

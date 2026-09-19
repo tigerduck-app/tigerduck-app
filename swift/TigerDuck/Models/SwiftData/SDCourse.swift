@@ -41,6 +41,15 @@ final class SDCourse: Identifiable {
     /// Moodle course ID number (e.g. "1142EC1013701")
     var moodleIdNumber: String?
 
+    /// General-education dimension from QueryCourse (`Dimension`), e.g. "C".
+    /// Empty for every course that carries none — which is most of them.
+    var dimension: String = ""
+
+    /// Term span from QueryCourse (`AllYear`): "F" = full academic year,
+    /// "H" = a single semester. Empty when the portal reported neither,
+    /// which is how a row cached before this field existed reads.
+    var allYear: String = ""
+
     /// Semester code for which this course was enrolled (e.g. "1142").
     /// Empty string = unknown / pre-feature cache; treated as current semester.
     var semester: String = ""
@@ -63,7 +72,9 @@ final class SDCourse: Identifiable {
         schedule: [Int: [String]] = [:],
         moodleIdNumber: String? = nil,
         semester: String = "",
-        classroomMap: [String: String] = [:]
+        classroomMap: [String: String] = [:],
+        dimension: String = "",
+        allYear: String = ""
     ) {
         self.courseNo = courseNo
         self.courseName = courseName
@@ -79,6 +90,8 @@ final class SDCourse: Identifiable {
         self.semester = semester
         self.classroomMapJSON = (try? JSONEncoder().encode(classroomMap))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        self.dimension = dimension
+        self.allYear = allYear
     }
 
     var schedule: [Int: [String]] {
