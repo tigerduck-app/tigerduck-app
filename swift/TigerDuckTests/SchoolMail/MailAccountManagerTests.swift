@@ -161,6 +161,36 @@ struct MailAccountManagerTests {
         #expect(h.hooks.signedOut == 1)
     }
 
+    /// What signing out does to the §7.4 lockout, and why pointing the app at a different mail
+    /// server goes through a sign-out rather than around one.
+    ///
+    /// `authFailed` records that *one particular account's* password was rejected, and nothing
+    /// about it names the account. Carried across a server change it would lock out a server
+    /// that never rejected anything; cleared on its own it would let the rejected password be
+    /// retried against the account that did reject it, which is exactly what §7.4 forbids
+    /// because repeated failures lock the school account and its Wi-Fi. Signing out settles
+    /// both at once: the flag goes and so does the password it applied to.
+    @Test func signingOutClearsTheAuthFailureLockoutTogetherWithThePasswordItApplied() async {
+        let h = Self.harness()
+        await h.manager.login(studentID: "B10000000", password: "pw")
+        await h.fake.update { $0.acceptedPassword = "changed" }
+        await #expect(throws: MailClientError.authenticationFailed) { _ = try await h.manager.openSession() }
+        #expect(h.manager.authFailed)
+
+        h.manager.logout()
+        await h.manager.pendingCacheClear?.value
+
+        #expect(!h.manager.authFailed)
+        #expect(!h.prefs.authFailed)
+        // The lockout is gone, but so is everything it could have been retried with: there is
+        // no stored password and no student ID left to send.
+        #expect(h.secrets.load(forKey: MailCredentialStore.passwordKey) == nil)
+        #expect(h.prefs.studentID == nil)
+        await #expect(throws: MailClientError.protocolError("credentials unavailable")) {
+            _ = try await h.manager.openSession()
+        }
+    }
+
     /// Deviation from the brief (controller-directed): `logout()`'s cache wipe runs off the
     /// main actor in a detached task instead of inline, so a logout immediately followed by a
     /// login must not let the new session's state get written while the old logout's clear is

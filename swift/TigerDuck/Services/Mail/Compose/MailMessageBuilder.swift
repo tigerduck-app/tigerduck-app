@@ -29,8 +29,11 @@ nonisolated struct OutgoingMail: Sendable {
 /// Builds the 7-bit RFC 5322 message TigerDuck sends (design doc §8.4): UTF-8 plain text
 /// in quoted-printable, RFC 2047 headers, RFC 2231 attachment names.
 nonisolated enum MailMessageBuilder {
+    /// The effective domain, not the school constant: the sent-copy dedupe searches Sent for
+    /// this exact Message-ID, so it has to be a value that makes sense on whichever server the
+    /// message was actually submitted to.
     static func makeMessageID() -> String {
-        "<\(UUID().uuidString.lowercased())@\(MailConstants.addressDomain)>"
+        "<\(UUID().uuidString.lowercased())@\(MailServerConfig.effective.addressDomain)>"
     }
 
     static func build(

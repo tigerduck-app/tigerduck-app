@@ -2,6 +2,12 @@
 import Foundation
 
 /// Server values (design doc §1.1) and the fixed values of Appendix A.6.
+///
+/// `host`, `imapPort`, `smtpPort` and `addressDomain` are the school's own values and stay
+/// exactly what §1.1 says. Nothing reads them directly to open a connection or build an
+/// address any more — they are the inputs to `MailServerConfig.school`, and every read site
+/// goes through `MailServerConfig.effective` so that a DEBUG-only override has one place to
+/// take effect rather than several.
 nonisolated enum MailConstants {
     static let host = "mail.ntust.edu.tw"
     static let imapPort = 993
@@ -56,8 +62,18 @@ nonisolated enum MailConstants {
     static let notificationKind = "school_mail"
 
     /// `B10000000` → `b10000000@mail.ntust.edu.tw` (Mail2000 writes the address lowercase).
+    ///
+    /// The domain is the effective one, so a DEBUG override reaches the `From` address the
+    /// compose screen sends with and the address `MailAccountManager` shows in Settings.
+    ///
+    /// A username that already carries a domain is returned as it stands rather than having a
+    /// second one appended. A school student ID never contains `@`, so this changes nothing on
+    /// the real path; it is what lets the override sign in to a server whose username *is* an
+    /// email address without producing `user@example.com@example.com`.
     static func address(forStudentID studentID: String) -> String {
-        "\(studentID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())@\(addressDomain)"
+        let identifier = studentID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !identifier.contains("@") else { return identifier }
+        return "\(identifier)@\(MailServerConfig.effective.addressDomain)"
     }
 }
 #endif

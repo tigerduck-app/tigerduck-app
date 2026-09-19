@@ -339,6 +339,10 @@ struct SettingsView: View {
                 NavigationLink("TigerSync status") {
                     TigerSyncStatusView()
                 }
+                // School Mail is iOS-only, so its server override is too.
+                NavigationLink("Email") {
+                    DevMailServerView()
+                }
                 #endif
                 // Bypass `.screenCaptureProtected(...)` system-wide for
                 // demo recordings / layout debugging. Backed by

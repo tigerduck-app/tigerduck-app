@@ -127,9 +127,27 @@ nonisolated enum MailWarnings {
         return domain
     }
 
+    /// Whether `raw` is inside the organization whose mail this is — `ntust.edu.tw` and its
+    /// subdomains on the real path, and the overridden address domain (and its subdomains)
+    /// under the DEBUG developer override.
+    ///
+    /// The rule has to follow the override or the whole warning layer reads as noise on a test
+    /// mailbox: left hard-coded, every single message in a Gmail account is badged External,
+    /// including the ones the developer sent themselves. `MailServerConfig.school`'s
+    /// `organizationDomain` is `ntust.edu.tw`, so with no override in force this is exactly the
+    /// comparison it has always been, character for character — which is what keeps the shared
+    /// `warnings.json` fixture agreeing with Android.
+    ///
+    /// The `config:` overload is the real rule; the no-argument form is the effective
+    /// configuration applied to it. Callers that already know which configuration they mean
+    /// (tests, and `evaluate` below, which resolves it once per message) pass it explicitly
+    /// rather than each rule re-reading the global.
     static func isSchoolDomain(_ raw: String) -> Bool {
-        let domain = normalizedDomain(raw)
-        return domain == "ntust.edu.tw" || domain.hasSuffix(".ntust.edu.tw")
+        isSchoolDomain(raw, config: MailServerConfig.effective)
+    }
+
+    static func isSchoolDomain(_ raw: String, config: MailServerConfig) -> Bool {
+        config.isOwnDomain(normalizedDomain(raw))
     }
 
     static func domain(ofAddress address: String) -> String {
@@ -141,8 +159,10 @@ nonisolated enum MailWarnings {
 
     /// The one mailbox domain every student address lives on, and the yardstick
     /// `isMistypedSchoolMailDomain` measures against. Android keeps its own copy of this in its
-    /// `MailWarnings`; here it is the value the rest of the app already agrees on.
-    static var schoolMailDomain: String { MailConstants.addressDomain }
+    /// `MailWarnings`; here it is the value the rest of the app already agrees on — which under
+    /// the DEBUG developer override is the overridden domain, so the bounce rule measures
+    /// near-misses of the mailbox the developer is actually using.
+    static var schoolMailDomain: String { MailServerConfig.effective.addressDomain }
 
     /// Two, not one, so a transposition (`ntsut`) counts — plain Levenshtein scores that as two.
     private static let maxDomainTypoEdits = 2
@@ -181,21 +201,22 @@ nonisolated enum MailWarnings {
     ///
     /// The length check is not only a shortcut — it keeps a sender-supplied token out of the
     /// quadratic distance loop entirely.
-    static func isMistypedSchoolMailDomain(_ domain: String) -> Bool {
+    static func isMistypedSchoolMailDomain(_ domain: String, config: MailServerConfig = .effective) -> Bool {
         let host = toASCII(normalizedDomain(domain))
-        guard !host.isEmpty, !isSchoolDomain(host) else { return false }
-        guard abs(host.count - schoolMailDomain.count) <= maxDomainTypoEdits else { return false }
-        return editDistance(host, schoolMailDomain) <= maxDomainTypoEdits
+        let mailDomain = config.addressDomain
+        guard !host.isEmpty, !isSchoolDomain(host, config: config) else { return false }
+        guard abs(host.count - mailDomain.count) <= maxDomainTypoEdits else { return false }
+        return editDistance(host, mailDomain) <= maxDomainTypoEdits
     }
 
     /// Whether `text` names an email address whose domain is a near miss of the school's. This
     /// is what turns a delivery failure into "Did you mistype an address in the mail you just
     /// sent?": a bounce from `gmail.com` says nothing about a typo, so it earns no such claim.
-    static func mentionsMistypedSchoolAddress(_ text: String) -> Bool {
+    static func mentionsMistypedSchoolAddress(_ text: String, config: MailServerConfig = .effective) -> Bool {
         let range = NSRange(text.startIndex..., in: text)
         return emailPattern.matches(in: text, range: range).contains { match in
             guard let matchRange = Range(match.range, in: text) else { return false }
-            return isMistypedSchoolMailDomain(domain(ofAddress: String(text[matchRange])))
+            return isMistypedSchoolMailDomain(domain(ofAddress: String(text[matchRange])), config: config)
         }
     }
 
@@ -294,11 +315,11 @@ nonisolated enum MailWarnings {
 
     /// True only when [href] matches [plainHttpLinkPattern] and that host is a school domain
     /// (spec A.4 rule 3, password bait).
-    private static func isPlainSchoolLink(_ href: String) -> Bool {
+    private static func isPlainSchoolLink(_ href: String, config: MailServerConfig) -> Bool {
         let range = NSRange(href.startIndex..., in: href)
         guard let match = plainHttpLinkPattern.firstMatch(in: href, range: range),
               let hostRange = Range(match.range(at: 1), in: href) else { return false }
-        return isSchoolDomain(String(href[hostRange]))
+        return isSchoolDomain(String(href[hostRange]), config: config)
     }
 
     /// Browser-style host extraction (spec A.4 rule 2, link mismatch). For `http`/`https`
@@ -366,7 +387,10 @@ nonisolated enum MailWarnings {
 
     // MARK: Message warnings
 
-    static func evaluate(_ input: MailWarningInput) -> [MailWarning] {
+    /// `config` is resolved once here and threaded through every domain-sensitive rule below,
+    /// so one message is always judged against one configuration even if the developer changes
+    /// the override while it is being evaluated.
+    static func evaluate(_ input: MailWarningInput, config: MailServerConfig = .effective) -> [MailWarning] {
         var warnings: [MailWarning] = []
         // The real sender address is deliberately NOT run through `visibleText`: removing an
         // invisible character here could turn `x@mail.ntust.e<U+200B>du.tw` into a school
@@ -389,7 +413,7 @@ nonisolated enum MailWarnings {
         // proof of origin), which has nothing to click. And the exemption is narrow: a bounce
         // whose `From` does name a real outside domain stays external exactly as before.
         let bounce = isBounce(returnPath: input.returnPath)
-        let external = senderDomain.isEmpty ? !bounce : !isSchoolDomain(senderDomain)
+        let external = senderDomain.isEmpty ? !bounce : !isSchoolDomain(senderDomain, config: config)
         // An empty address means the From header gave none this app will route to
         // (`MailAddress.parseSender`) — a Mail2000 bounce's `<MAILER-DAEMON>`, say. It still
         // counts as "outside" for the password-bait gate below, because it is certainly not
@@ -424,7 +448,7 @@ nonisolated enum MailWarnings {
         let keywordHit = passwordKeywords.contains { haystack.contains($0.lowercased()) }
         let linksOutside = input.links.contains { link in
             let href = sanitizeHref(link.href).trimmingCharacters(in: .whitespacesAndNewlines)
-            return hasASCIICaseInsensitivePrefix(href, "http") && !isPlainSchoolLink(href)
+            return hasASCIICaseInsensitivePrefix(href, "http") && !isPlainSchoolLink(href, config: config)
         }
         if keywordHit && (external || linksOutside) {
             warnings.append(.passwordBait)
@@ -437,7 +461,7 @@ nonisolated enum MailWarnings {
         }
         // Only when the failure really looks like a mistyped school address. A bounce from
         // somewhere unrelated gives us no basis for claiming the sender typed one wrong.
-        if bounce, mentionsMistypedSchoolAddress(haystack) {
+        if bounce, mentionsMistypedSchoolAddress(haystack, config: config) {
             warnings.append(.mistypedRecipient)
         }
         return warnings

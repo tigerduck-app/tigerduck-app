@@ -100,7 +100,7 @@ final class MailAccountManager {
 
     /// Checks the credentials with an IMAP LOGIN and saves them only if it succeeds (§7.1).
     func login(studentID rawID: String, password: String) async {
-        let id = rawID.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let id = Self.normalizedUsername(rawID)
         guard !id.isEmpty, !password.isEmpty, !isLoggingIn else { return }
         isLoggingIn = true
         loginError = nil
@@ -135,6 +135,19 @@ final class MailAccountManager {
         authFailed = false
         studentID = id
         onSignedIn?()
+    }
+
+    /// The username as it goes to `LOGIN`: trimmed, and upper-cased — Mail2000 wants
+    /// `B10000000`, which is also how the student ID is printed everywhere else in the app.
+    ///
+    /// A username that is an email address keeps the case it was typed in. RFC 5321 §2.3.11
+    /// makes the local part case-*sensitive* and leaves the choice to the receiving server, so
+    /// folding it is the one thing this must not do to an address; a school student ID never
+    /// contains `@`, so the real path is upper-cased exactly as before. This exists so the
+    /// DEBUG developer override can sign in to a server whose usernames are addresses.
+    static func normalizedUsername(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.contains("@") ? trimmed : trimmed.uppercased()
     }
 
     func clearLoginError() {

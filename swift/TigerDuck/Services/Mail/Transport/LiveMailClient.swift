@@ -26,6 +26,11 @@ nonisolated enum SchoolMailCharsetHook {
 /// held for the actor's lifetime; SMTP connects per send. Both verify TLS through
 /// `MailTLSVerifier`.
 ///
+/// Which host, port and transport each of those uses comes from `MailServerConfig`, captured
+/// once at `init`. That is the school's §1.1 configuration in every Release build; a DEBUG
+/// build can point it elsewhere from Settings → Developer → Email, and everything below this
+/// line is written for Mail2000 regardless.
+///
 /// Mail2000 has no MOVE, UIDPLUS, IDLE or SPECIAL-USE, so none of SwiftMail's helpers for
 /// those are used; `MailMover` composes COPY/STORE/EXPUNGE itself.
 ///
@@ -101,11 +106,24 @@ actor LiveMailClient: MailClient {
     /// properties (FIFO order, no interleaving, releases after a throw).
     private let commandLock = AsyncSerialLock()
 
-    init() {
+    /// The server this client talks to, resolved once at construction so the IMAP connection
+    /// and the SMTP connections `send` opens can never disagree about it — and so a
+    /// configuration change that arrives mid-session cannot move a live connection out from
+    /// under a command. A change signs out (`DevMailServerSettings`), which discards the
+    /// client, and the next one is built against the new configuration.
+    private let config: MailServerConfig
+
+    init(config: MailServerConfig = .effective) {
+        self.config = config
         imap = IMAPServer(
-            host: MailConstants.host,
-            port: MailConstants.imapPort,
-            transportSecurity: .implicitTLS,
+            host: config.imapHost,
+            port: config.imapPort,
+            // `.custom` is kept whatever the scheme is. NIOSSL only consults a verification
+            // callback when there is a TLS handler to consult it from, so this is the pinning
+            // check on an implicit-TLS or STARTTLS connection and simply unreachable on a
+            // plaintext one — there is no branch here that could drop the check on a
+            // connection that does have TLS.
+            transportSecurity: config.imapScheme.swiftMailTransportSecurity,
             certificateVerificationPolicy: .custom(MailTLSVerifier.swiftMailVerifier),
             minimumTLSVersion: .tlsv12
         )
@@ -510,9 +528,9 @@ actor LiveMailClient: MailClient {
     func send(_ message: Data, from sender: String, to recipients: [String]) async throws {
         guard let credentials else { throw MailClientError.authenticationFailed }
         let smtp = SMTPServer(
-            host: MailConstants.host,
-            port: MailConstants.smtpPort,
-            transportSecurity: .implicitTLS,
+            host: config.smtpHost,
+            port: config.smtpPort,
+            transportSecurity: config.smtpScheme.swiftMailTransportSecurity,
             certificateVerificationPolicy: .custom(MailTLSVerifier.swiftMailVerifier),
             minimumTLSVersion: .tlsv12
         )
@@ -860,6 +878,29 @@ actor LiveMailClient: MailClient {
     nonisolated static func angleBracketed(_ id: MessageID) -> String {
         let text = String(describing: id)
         return text.hasPrefix("<") ? text : "<\(text)>"
+    }
+}
+
+/// The app's transport scheme in SwiftMail's own terms. Internal rather than private so
+/// `MailServerConfigTests` can pin the mapping — this is the one step between what the
+/// developer override says and what actually goes on the wire, and `.startTLS` mapping to
+/// SwiftMail's
+/// `.startTLS` (which resolves to `startTLSRequired`, not `startTLSIfAvailable`) is the part
+/// worth holding still: a server that does not advertise STARTTLS fails the connection instead
+/// of quietly continuing in the clear.
+extension MailTransportScheme {
+    nonisolated var swiftMailTransportSecurity: MailTransportSecurity {
+        switch self {
+        case .implicitTLS: .implicitTLS
+        case .startTLS: .startTLS
+        case .plaintext: .plainText
+        }
+    }
+
+    /// The mapping as a string, so a test can pin it without importing SwiftMail — the same
+    /// reason `SchoolMailCharsetHook.decodeHeader` exists. Nothing in the app reads this.
+    nonisolated var swiftMailTransportSecurityName: String {
+        String(describing: swiftMailTransportSecurity)
     }
 }
 

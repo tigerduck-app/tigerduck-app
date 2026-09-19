@@ -27,6 +27,8 @@ ContentView.swift
 DebugServerFailureView.swift
 DebugSettingsView.swift
 DebugSettingsViewModel.swift
+DevMailServerOverride.swift
+DevMailServerView.swift
 TigerSyncStatusView.swift
 TriggersDebugView.swift
 
@@ -281,6 +283,7 @@ MailConstants.swift
 MailFolderProvisioner.swift
 MailFolderSelection.swift
 MailModels.swift
+MailServerConfig.swift
 
 # Services/Mail/Demo — the School Mail demo/preview client; iOS-only, see
 # Features/SchoolMail above
