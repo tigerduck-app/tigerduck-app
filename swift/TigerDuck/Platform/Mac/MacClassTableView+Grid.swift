@@ -121,9 +121,7 @@ extension MacClassTableView {
         case let .solo(course, spanCount):
             // Only the solo case gets the room hint: a 衝堂 cluster splits
             // the cell into columns with no room left for a third line.
-            courseCell(course, roomHint: CourseRoomHint.room(
-                for: course, weekday: weekday, periodId: periodId
-            ))
+            courseCell(course, roomHint: roomHint(course, weekday: weekday, periodId: periodId))
                 .frame(height: blockHeight(spanCount))
                 .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
         case let .conflictStart(a, spanA, offsetA, b, spanB, offsetB, combinedSpan):
@@ -159,6 +157,13 @@ extension MacClassTableView {
         case .skip:
             EmptyView()
         }
+    }
+
+    /// `nil` unless the user asked for room hints and this slot's room is
+    /// one of the short codes that survives a grid cell — see `CourseRoomHint`.
+    private func roomHint(_ course: SDCourse, weekday: Int, periodId: String) -> String? {
+        guard appState.showClassroomInClassTable else { return nil }
+        return CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
     }
 
     private func blockHeight(_ span: Int) -> CGFloat {

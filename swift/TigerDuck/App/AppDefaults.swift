@@ -48,6 +48,15 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.alwaysShowAllPeriods,
         default: false
     )
+    /// Print each course's room in the corner of its class-table cell.
+    /// Off by default: the grid's job is which course, not where, and the
+    /// cell is narrow enough that a second line is a deliberate trade.
+    /// Device-local — display preferences are not part of the settings
+    /// document the backend syncs.
+    static let showClassroomInClassTable = Key<Bool>(
+        AppConstants.UserDefaultsKeys.showClassroomInClassTable,
+        default: false
+    )
     static let configuredTabsData = Key<Data?>(
         AppConstants.UserDefaultsKeys.configuredTabs
     )

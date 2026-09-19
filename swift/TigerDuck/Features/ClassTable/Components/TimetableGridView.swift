@@ -170,9 +170,10 @@ struct TimetableGridView: View {
                             // A 衝堂 cell never reaches this branch, so the
                             // hint is absent there by construction — a split
                             // cell has no free corner to print it in.
-                            if let room = CourseRoomHint.room(
-                                for: course, weekday: weekday, periodId: periodId
-                            ) {
+                            if appState.showClassroomInClassTable,
+                               let room = CourseRoomHint.room(
+                                   for: course, weekday: weekday, periodId: periodId
+                               ) {
                                 Text(room)
                                     .font(.system(size: roomHintSize))
                                     .foregroundStyle(Color.textSecondary)

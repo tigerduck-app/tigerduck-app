@@ -493,6 +493,11 @@ final class AppState {
         didSet { Defaults[.alwaysShowAllPeriods] = alwaysShowAllPeriods }
     }
 
+    /// Show each course's room under its name in the class table.
+    var showClassroomInClassTable: Bool = Defaults[.showClassroomInClassTable] {
+        didSet { Defaults[.showClassroomInClassTable] = showClassroomInClassTable }
+    }
+
     /// Whether library-related features are enabled (requires explicit user consent)
     var libraryFeatureEnabled: Bool = Defaults[.libraryFeatureEnabled] {
         didSet { Defaults[.libraryFeatureEnabled] = libraryFeatureEnabled }
