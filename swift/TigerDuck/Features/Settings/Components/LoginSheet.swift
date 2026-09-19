@@ -120,6 +120,9 @@ struct LoginSheet: View {
                     .disabled(username.isEmpty || password.isEmpty || isLoggingIn)
                 }
             }
+            // Shared by the NTUST, library and School Mail sign-ins, so all three get the
+            // drag-to-dismiss gesture rather than only whichever one prompted it.
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

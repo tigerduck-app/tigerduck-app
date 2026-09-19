@@ -109,6 +109,10 @@ struct MailComposeView: View {
             // got — and the sheet then dismisses, with nothing left to recover it from. The
             // toolbar's Cancel and Send are disabled separately (they live outside this `Form`).
             .disabled(viewModel.isSending)
+            // Dragging the form down dismisses the keyboard. The body field is tall and the
+            // recipient fields are above it, so without this there is no way back to the
+            // toolbar's Send without first tapping something that steals focus.
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

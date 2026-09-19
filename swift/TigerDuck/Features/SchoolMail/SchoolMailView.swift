@@ -111,6 +111,8 @@ struct SchoolMailView: View {
             .padding(.bottom, TigerDuckTheme.Spacing.xl)
         }
         .background(Color.backgroundPrimary)
+        // The sign-in card lives in here, so this is what dismisses its keyboard on a drag.
+        .scrollDismissesKeyboard(.interactively)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
     }
 
