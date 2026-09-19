@@ -219,7 +219,7 @@ struct MacScoreView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(course.credits.map { "\($0)" } ?? "—")
+            Text(course.credits.map(\.creditsText) ?? "—")
                 .font(.callout.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(width: 64, alignment: .trailing)

@@ -32,7 +32,7 @@ struct ScoreCourseRow: View {
                         Text("·")
                             .foregroundStyle(Color.textSecondary)
                         if let credits = course.credits {
-                            Text(String(format: String(localized: "score_course_credits"), credits))
+                            Text(String(format: String(localized: "score_course_credits"), credits.creditsText))
                                 .font(TigerDuckTheme.Typography.caption)
                                 .foregroundStyle(Color.textSecondary)
                         } else {

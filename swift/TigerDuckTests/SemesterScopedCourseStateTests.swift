@@ -78,3 +78,36 @@ struct MisfiledServerRowTests {
         #expect(AppState.isFiled([:], under: "1142"))
     }
 }
+
+struct ServerRowCourseMetadataTests {
+    private static let row: [String: Any] = [
+        "course_no": "GE1001",
+        "course_name": "通識課",
+        "credits": 0.5,
+        "schedule_json": ["1": ["2", "3"]],
+    ]
+
+    /// A manual row that already saw QueryCourse keeps its dimension and
+    /// duration when reconciliation rebuilds it to pick up a schedule. The
+    /// sync payload carries neither, so defaulting would erase what this
+    /// device knew — and for a term the portal no longer serves, nothing
+    /// would ever fill it back in.
+    @Test func rebuildingAnExistingRowKeepsItsDimensionAndDuration() {
+        let course = AppState.course(fromServerRow: Self.row, courseNo: "GE1001",
+                                     semester: "1151", name: "通識課",
+                                     dimension: "C", allYear: "全學年")
+        #expect(course.dimension == "C")
+        #expect(course.allYear == "全學年")
+        #expect(course.credits == 0.5)
+        #expect(course.schedule[1] == ["2", "3"])
+    }
+
+    /// A row this device has never seen has no metadata to preserve: the
+    /// backend does not send it, so both stay empty until QueryCourse runs.
+    @Test func aFreshServerRowLeavesTheMetadataEmpty() {
+        let course = AppState.course(fromServerRow: Self.row, courseNo: "GE1001",
+                                     semester: "1151", name: nil)
+        #expect(course.dimension.isEmpty)
+        #expect(course.allYear.isEmpty)
+    }
+}

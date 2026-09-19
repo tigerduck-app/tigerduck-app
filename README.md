@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.1.1-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.1)
+[![Version](https://img.shields.io/badge/Version-v2.1.2-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.2)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -112,6 +112,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點                                                                                                                                                                                                                                                                                                                                                                                                                              |
 |:---:|:---:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`v2.1.2`** | 2026-09-19 | 📋 **課表格子直接預覽教室** — 可在設定開關；課程詳情補上通識向度與課程期間，點一下即可複製課程代碼；0.5 學分的課程不再被算成 0，學分統計、成績單與 GPA 都會正確計入 |
 | **`v2.1.1`** | 2026-09-18 | 📚 **修復合班上課造成 Moodle 與作業無法關聯的問題**                                                                                                                                                                                                                                                                                                                                                                               |
 | **`v2.1.0`** | 2026-09-12 | 🔔 **作業提醒改由伺服器送出** — iOS 不再依賴本地排程，App 沒開著也會準時提醒；已在 Moodle 繳交的作業自動停止提醒；通知設定跨裝置同步，一台改完其他裝置跟上；Moodle 登入過期的通知補上文字與翻譯，不再是空白橫幅；TigerSync 設定頁三平台重整，同步與通知分開陳列                                                                                                                                                                   |
 | **`v2.0.3`** | 2026-09-11 | 課表可以固定顯示全部節次，切換節次顯示時會立刻重畫，晚間節次的上下課時間也修正了；動態島改用 App 圖示，課程結束後顯示結束狀態而不是破折號，結束時間改以真實時鐘註冊；小工具在單色渲染下不再蓋上多餘的不透明底色，Now 與 Today 沿用課表那組膠囊樣式；TigerSync 在同步狀態與行事曆的同步來源中都會正確列出；在圖書館畫面登入後，設定頁立刻看得到登入狀態                                                                            |

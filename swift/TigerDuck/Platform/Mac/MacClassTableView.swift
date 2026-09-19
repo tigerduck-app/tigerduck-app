@@ -365,7 +365,7 @@ struct MacClassTableView: View {
                     format: String(localized: "desktop_class_table_subtitle_value"),
                     displayLabel(for: selectedSemester),
                     courses.count,
-                    totalCredits
+                    totalCredits.creditsText
                 ))
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -406,7 +406,7 @@ struct MacClassTableView: View {
 
     // MARK: - Helpers
 
-    private var totalCredits: Int {
+    private var totalCredits: Double {
         courses.reduce(0) { $0 + $1.credits }
     }
 

@@ -296,7 +296,7 @@ struct AddCourseSheet: View {
                         Text(group.displayName)
                             .font(TigerDuckTheme.Typography.headline)
                             .foregroundStyle(Color.textPrimary)
-                        Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits))
+                        Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits.creditsText))
                             .font(TigerDuckTheme.Typography.caption)
                             .foregroundStyle(Color.textSecondary)
                         if !group.classroom.isEmpty {
@@ -543,7 +543,7 @@ struct AddCourseSheet: View {
         let primaryName: String
         let secondaryName: String?
         let instructor: String
-        let credits: Int
+        let credits: Double
         let classroom: String
         /// Per-(weekday, period) classroom map, mirroring the structure that
         /// ``AppServiceBridge.buildSDCourse`` produces for the normal fetch
@@ -556,6 +556,10 @@ struct AddCourseSheet: View {
         let maxCount: Int
         let schedule: [Int: [String]]
         let nodeDisplay: String
+        /// Carried straight from QueryCourse so a course added by hand shows
+        /// its dimension / term span without waiting for the next refresh.
+        let dimension: String
+        let allYear: String
 
         var displayName: String {
             guard let secondary = secondaryName,
@@ -616,7 +620,11 @@ struct AddCourseSheet: View {
                     enrolledCount: existing.enrolledCount,
                     maxCount: existing.maxCount,
                     schedule: merged,
-                    nodeDisplay: nodeStr
+                    nodeDisplay: nodeStr,
+                    // Same first-non-empty rule as `buildSDCourse`: the row
+                    // that names the dimension may not be the one seen first.
+                    dimension: existing.dimension.isEmpty ? (result.Dimension ?? "") : existing.dimension,
+                    allYear: existing.allYear.isEmpty ? (result.AllYear ?? "") : existing.allYear
                 )
                 seen[key] = existing
             } else {
@@ -634,13 +642,15 @@ struct AddCourseSheet: View {
                     primaryName: result.CourseName,
                     secondaryName: secondaryNamesByNo[result.CourseNo],
                     instructor: result.CourseTeacher,
-                    credits: Int(result.CreditPoint) ?? 0,
+                    credits: Double(result.CreditPoint) ?? 0,
                     classroom: result.ClassRoomNo ?? "",
                     classroomMap: initialMap,
                     enrolledCount: result.ChooseStudent ?? 0,
                     maxCount: Int(result.Restrict2 ?? "0") ?? 0,
                     schedule: partial,
-                    nodeDisplay: result.Node ?? ""
+                    nodeDisplay: result.Node ?? "",
+                    dimension: result.Dimension ?? "",
+                    allYear: result.AllYear ?? ""
                 )
             }
         }
@@ -660,7 +670,9 @@ struct AddCourseSheet: View {
             schedule: group.schedule,
             moodleIdNumber: nil,
             semester: semester,
-            classroomMap: group.classroomMap
+            classroomMap: group.classroomMap,
+            dimension: group.dimension,
+            allYear: group.allYear
         )
         if onAdd(course) {
             sessionAddedCourseNos.insert(group.courseNo)

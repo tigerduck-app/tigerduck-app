@@ -465,7 +465,7 @@ extension AppState {
                 courseName: c.courseName,
                 courseNameEn: nil,
                 moodleId: c.moodleIdNumber,
-                credits: c.credits > 0 ? Double(c.credits) : nil,
+                credits: c.credits > 0 ? c.credits : nil,
                 classroom: c.classroom.isEmpty ? nil : c.classroom,
                 instructors: c.instructor.isEmpty ? [] : [c.instructor],
                 scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),

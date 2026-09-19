@@ -108,18 +108,20 @@ extension MacClassTableView {
                     keyOf: { $0.courseNo },
                     scheduleOf: { $0.schedule }
                 )
-                cellView(role: role, weekday: weekday)
+                cellView(role: role, weekday: weekday, periodId: periods[index])
             }
         }
     }
 
     @ViewBuilder
-    private func cellView(role: ClassTableCellRole<SDCourse>, weekday: Int) -> some View {
+    private func cellView(role: ClassTableCellRole<SDCourse>, weekday: Int, periodId: String) -> some View {
         switch role {
         case .empty:
             emptyCell.frame(height: cellHeight)
         case let .solo(course, spanCount):
-            courseCell(course)
+            // Only the solo case gets the room hint: a 衝堂 cluster splits
+            // the cell into columns with no room left for a third line.
+            courseCell(course, roomHint: roomHint(course, weekday: weekday, periodId: periodId))
                 .frame(height: blockHeight(spanCount))
                 .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
         case let .conflictStart(a, spanA, offsetA, b, spanB, offsetB, combinedSpan):
@@ -157,6 +159,13 @@ extension MacClassTableView {
         }
     }
 
+    /// `nil` unless the user asked for room hints and this slot's room is
+    /// one of the short codes that survives a grid cell — see `CourseRoomHint`.
+    private func roomHint(_ course: SDCourse, weekday: Int, periodId: String) -> String? {
+        guard appState.showClassroomInClassTable else { return nil }
+        return CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
+    }
+
     private func blockHeight(_ span: Int) -> CGFloat {
         CGFloat(span) * cellHeight + CGFloat(max(span - 1, 0)) * rowSpacing
     }
@@ -190,7 +199,7 @@ extension MacClassTableView {
             )
     }
 
-    private func courseCell(_ course: SDCourse) -> some View {
+    private func courseCell(_ course: SDCourse, roomHint: String? = nil) -> some View {
         let color = TigerDuckTheme.courseColor(for: course.courseNo)
         return VStack(alignment: .leading, spacing: 3) {
             Text(course.displayName)
@@ -205,6 +214,12 @@ extension MacClassTableView {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            if let roomHint {
+                Text(roomHint)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

@@ -50,12 +50,16 @@ struct MacGeneralSettingsView: View {
                 .buttonStyle(.plain)
             }
 
-            // The same two toggles in the same order as the iPhone's
-            // Display section. The Mac had one of them filed under
-            // Appearance > Schedule, alone, and the other nowhere at all —
-            // even though `MacClassTableView` has always read it.
+            // The same toggles in the same order as the iPhone's Display
+            // section. The Mac had one of them filed under Appearance >
+            // Schedule, alone, and the other nowhere at all — even though
+            // `MacClassTableView` has always read it.
             Section(String(localized: "settings_section_display")) {
                 Toggle(String(localized: "settings_show_absolute_assignment_time"), isOn: $state.showAbsoluteAssignmentTime)
+                Toggle(
+                    String(localized: "settings_show_classroom_on_class_table"),
+                    isOn: $state.showClassroomInClassTable
+                )
                 Toggle(String(localized: "settings_always_show_periods_abc"), isOn: $state.alwaysShowAllPeriods)
             }
 

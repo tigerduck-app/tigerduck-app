@@ -138,6 +138,7 @@ nonisolated enum AppConstants {
         /// Stored name predates the rename from "always show A/B/C" to
         /// "always show every period" — keeping it carries the setting over.
         static let alwaysShowAllPeriods = "alwaysShowPeriodsABC"
+        static let showClassroomInClassTable = "showClassroomInClassTable"
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"

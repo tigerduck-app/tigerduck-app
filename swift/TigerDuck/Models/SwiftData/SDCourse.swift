@@ -8,7 +8,8 @@ final class SDCourse: Identifiable {
     @Attribute(.unique) var courseNo: String
     var courseName: String
     var instructor: String
-    var credits: Int
+    /// NTUST issues half credits, so this is fractional. See `creditsText`.
+    var credits: Double
     var classroom: String
     var enrolledCount: Int
     var maxCount: Int
@@ -41,6 +42,15 @@ final class SDCourse: Identifiable {
     /// Moodle course ID number (e.g. "1142EC1013701")
     var moodleIdNumber: String?
 
+    /// General-education dimension from QueryCourse (`Dimension`), e.g. "C".
+    /// Empty for every course that carries none — which is most of them.
+    var dimension: String = ""
+
+    /// Term span from QueryCourse (`AllYear`): "F" = full academic year,
+    /// "H" = a single semester. Empty when the portal reported neither,
+    /// which is how a row cached before this field existed reads.
+    var allYear: String = ""
+
     /// Semester code for which this course was enrolled (e.g. "1142").
     /// Empty string = unknown / pre-feature cache; treated as current semester.
     var semester: String = ""
@@ -56,14 +66,16 @@ final class SDCourse: Identifiable {
         courseNo: String,
         courseName: String,
         instructor: String = "",
-        credits: Int = 0,
+        credits: Double = 0,
         classroom: String = "",
         enrolledCount: Int = 0,
         maxCount: Int = 0,
         schedule: [Int: [String]] = [:],
         moodleIdNumber: String? = nil,
         semester: String = "",
-        classroomMap: [String: String] = [:]
+        classroomMap: [String: String] = [:],
+        dimension: String = "",
+        allYear: String = ""
     ) {
         self.courseNo = courseNo
         self.courseName = courseName
@@ -79,6 +91,8 @@ final class SDCourse: Identifiable {
         self.semester = semester
         self.classroomMapJSON = (try? JSONEncoder().encode(classroomMap))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        self.dimension = dimension
+        self.allYear = allYear
     }
 
     var schedule: [Int: [String]] {
@@ -165,6 +179,14 @@ final class SDCourse: Identifiable {
             }
         }
         return rooms.isEmpty ? Self.dedup(classroom) : rooms.joined(separator: ", ")
+    }
+
+    /// The room recorded for exactly one `(weekday, period)` slot, or ""
+    /// when the map holds none. Unlike ``classroom(for:)`` this never joins
+    /// a day's rooms into a list, so a course that meets twice in one day
+    /// in two different rooms still reports one room per block.
+    func classroom(weekday: Int, period: String) -> String {
+        classroomMap["\(weekday)-\(period)"] ?? ""
     }
 
     private static let roomSeparators = CharacterSet(charactersIn: "、，,")

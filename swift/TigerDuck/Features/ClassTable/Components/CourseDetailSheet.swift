@@ -1,9 +1,15 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Modal detail for a single course row. Visual structure:
 ///   1. Color bar + course title (with optional Moodle jump button)
 ///   2. Two emphasis cards side-by-side: 教室 (classroom) | 時間 (time)
-///   3. Flat InfoRow list: instructor / code / credits / enrollment
+///   3. Flat InfoRow list: instructor / code / dimension / duration /
+///      credits / enrollment
 ///   4. Outstanding assignments (unchanged)
 ///
 /// The emphasis cards exist because classroom & time are the two fields users
@@ -18,6 +24,12 @@ struct CourseDetailSheet: View {
     let assignments: [SDAssignment]
     var timeRange: String? = nil
     var weekday: Int? = nil
+
+    /// Drives the copy row's glyph; flipped back after a beat so the sheet
+    /// does not sit in a "copied" state for as long as it stays open.
+    @State private var codeCopied = false
+    /// Bumped on every copy so the haptic fires again on a repeat tap.
+    @State private var copyFeedback = 0
 
     var body: some View {
         NavigationStack {
@@ -124,11 +136,28 @@ struct CourseDetailSheet: View {
             )
             InfoRow(
                 label: String(localized: "course_detail_code_label"),
-                value: course.courseNo
+                value: course.courseNo,
+                copied: codeCopied,
+                onTap: copyCourseCode
             )
+            // Only general-education courses carry a dimension; for every
+            // other course the portal sends an empty string and the row
+            // would be a label with nothing beside it.
+            if !course.dimension.isEmpty {
+                InfoRow(
+                    label: String(localized: "course_detail_dimension_label"),
+                    value: course.dimension
+                )
+            }
+            if let duration = durationText {
+                InfoRow(
+                    label: String(localized: "course_detail_duration_label"),
+                    value: duration
+                )
+            }
             InfoRow(
                 label: String(localized: "course_detail_credits_label"),
-                value: "\(course.credits)"
+                value: course.credits.creditsText
             )
             InfoRow(
                 label: String(localized: "course_detail_enrollment_label"),
@@ -136,6 +165,19 @@ struct CourseDetailSheet: View {
             )
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .sensoryFeedback(.success, trigger: copyFeedback)
+    }
+
+    /// QueryCourse spells `AllYear` as "F" (spans the academic year) or "H"
+    /// (a single semester). Anything else — including the empty string a row
+    /// cached before this field existed carries — says nothing, so the row
+    /// is left out rather than shown blank.
+    private var durationText: String? {
+        switch course.allYear.uppercased() {
+        case "F": return String(localized: "course_detail_duration_full_year")
+        case "H": return String(localized: "course_detail_duration_one_semester")
+        default: return nil
+        }
     }
 
     // MARK: - Assignments (preserved exactly as before)
@@ -192,6 +234,34 @@ struct CourseDetailSheet: View {
         guard let url = course.moodleOpenURL else { return }
         openURL(url)
     }
+
+    /// The course code is what students paste into 加退選, the portal search
+    /// and group chats, so the row that shows it also hands it over.
+    private func copyCourseCode() {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = course.courseNo
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(course.courseNo, forType: .string)
+        #endif
+        copyFeedback += 1
+        // The checkmark and the haptic are both invisible to VoiceOver, so
+        // without this the row gives a screen-reader user no sign the copy
+        // happened at all.
+        AccessibilityNotification.Announcement(
+            String(localized: "course_detail_code_copied")
+        ).post()
+        let generation = copyFeedback
+        withAnimation { codeCopied = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            // A second copy inside the window owns the checkmark now, and
+            // this timer would otherwise clear it a beat early — which reads
+            // as the repeat tap having done nothing.
+            guard copyFeedback == generation else { return }
+            withAnimation { codeCopied = false }
+        }
+    }
 }
 
 // MARK: - Emphasis card
@@ -236,17 +306,52 @@ private struct EmphasisCard: View {
 private struct InfoRow: View {
     let label: String
     let value: String
+    /// Shows the copy glyph as a checkmark right after a successful copy.
+    var copied: Bool = false
+    /// Non-nil turns the whole row into a button; the trailing glyph is
+    /// what tells the reader the row is tappable at all.
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
-        HStack(alignment: .top) {
+        if let onTap {
+            Button(action: onTap) { content }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("\(label), \(value)"))
+                .accessibilityHint(Text(String(localized: "course_detail_copy_code")))
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        // Baseline-aligned rather than top-aligned so the smaller glyph sits
+        // on the value's first line instead of floating above it.
+        HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textSecondary)
             Spacer()
+            // Leading the value, not trailing it: the value is the thing
+            // being copied, so the glyph reads as a marker on it rather
+            // than as a separate control parked at the row's edge.
+            if onTap != nil {
+                if copied {
+                    Image(systemName: "checkmark")
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(.tint)
+                } else {
+                    Image(systemName: "doc.on.doc")
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(Color.textSecondary)
+                }
+            }
             Text(value)
                 .font(TigerDuckTheme.Typography.body)
                 .foregroundStyle(Color.textPrimary)
                 .multilineTextAlignment(.trailing)
         }
+        // Without this the button only reacts on the label and value text,
+        // not on the gap between them — which is most of the row.
+        .contentShape(Rectangle())
     }
 }

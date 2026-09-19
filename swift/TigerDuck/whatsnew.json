@@ -162,5 +162,25 @@
         "Fixed assignment display for summer-session courses"
       ]
     }
+  },
+  "2.1.2": {
+    "zh-TW": {
+      "title": "2.1.2 更新內容",
+      "highlights": [
+        "可於設定中調整，是否於課表頁面顯示教室位置",
+        "課程詳情新增通識向度與課程期間",
+        "允許複製課程代碼",
+        "相容具有小數點學分"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.1.2",
+      "highlights": [
+        "The class table previews the classroom right in the course cell, and you can turn it off in Settings",
+        "Course details now show the GE dimension and the course duration",
+        "Tap a course code to copy it",
+        "Half-credit courses no longer count as zero — credit totals, the transcript and your GPA all include them"
+      ]
+    }
   }
 }
