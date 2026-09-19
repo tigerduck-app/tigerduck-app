@@ -245,6 +245,12 @@ struct CourseDetailSheet: View {
         NSPasteboard.general.setString(course.courseNo, forType: .string)
         #endif
         copyFeedback += 1
+        // The checkmark and the haptic are both invisible to VoiceOver, so
+        // without this the row gives a screen-reader user no sign the copy
+        // happened at all.
+        AccessibilityNotification.Announcement(
+            String(localized: "course_detail_code_copied")
+        ).post()
         let generation = copyFeedback
         withAnimation { codeCopied = true }
         Task { @MainActor in

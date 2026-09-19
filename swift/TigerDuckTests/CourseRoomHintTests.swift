@@ -62,4 +62,33 @@ struct CourseRoomHintTests {
         // Nothing mapped for this slot, and the flat fallback is two rooms.
         #expect(CourseRoomHint.room(for: course, weekday: 5, periodId: "2") == nil)
     }
+
+    /// A slot the map skips is a slot whose room the portal never gave. The
+    /// day's other block must not lend it one — labelling a block with the
+    /// wrong room is worse than labelling it with nothing.
+    @Test("an unmapped slot does not borrow the other block's room")
+    func doesNotBorrowAnotherBlocksRoom() {
+        let course = SDCourse(
+            courseNo: "TEST0002",
+            courseName: "Test",
+            classroom: "TR-313",
+            schedule: [1: ["3", "4", "6", "7"]],
+            classroomMap: ["1-3": "TR-313", "1-4": "TR-313"]
+        )
+        #expect(CourseRoomHint.room(for: course, weekday: 1, periodId: "3") == "TR-313")
+        #expect(CourseRoomHint.room(for: course, weekday: 1, periodId: "6") == nil)
+    }
+
+    /// A course with no per-slot map at all — a cloud-restored row, say —
+    /// still falls back to the flat classroom, which is all it has.
+    @Test("a course with no map falls back to its flat classroom")
+    func fallsBackWhenNoMapExists() {
+        let course = SDCourse(
+            courseNo: "TEST0003",
+            courseName: "Test",
+            classroom: "TR-313",
+            schedule: [1: ["3"]]
+        )
+        #expect(CourseRoomHint.room(for: course, weekday: 1, periodId: "3") == "TR-313")
+    }
 }

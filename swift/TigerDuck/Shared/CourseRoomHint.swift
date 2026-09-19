@@ -31,11 +31,18 @@ enum CourseRoomHint {
     /// The hint for one timetable slot, or `nil` when the slot has no room
     /// or its room is not one of the short codes above.
     ///
+    /// The whole-day value is only a fallback for a course with no per-slot
+    /// map at all. Once a course has one, a slot missing from it is a slot
+    /// whose room the portal did not give — falling back there would label
+    /// the block with the *other* block's room, which is worse than saying
+    /// nothing.
+    ///
     /// Callers must not ask for a slot inside a 衝堂 cluster: the cell is
     /// then split between courses and there is no corner left to print in.
     static func room(for course: SDCourse, weekday: Int, periodId: String) -> String? {
-        let slotRoom = course.classroom(weekday: weekday, period: periodId)
-        let room = slotRoom.isEmpty ? course.classroom(for: weekday) : slotRoom
+        let room = course.classroomMap.isEmpty
+            ? course.classroom(for: weekday)
+            : course.classroom(weekday: weekday, period: periodId)
         return isShortCode(room) ? room : nil
     }
 
