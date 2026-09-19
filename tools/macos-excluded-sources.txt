@@ -27,6 +27,7 @@ ContentView.swift
 DebugServerFailureView.swift
 DebugSettingsView.swift
 DebugSettingsViewModel.swift
+DevMailConnectionProbe.swift
 DevMailServerOverride.swift
 DevMailServerView.swift
 TigerSyncStatusView.swift

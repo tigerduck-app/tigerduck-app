@@ -11,6 +11,8 @@ import SwiftUI
 struct DevMailServerView: View {
     private let settings = DevMailServerSettings.shared
     @State private var status: String?
+    @State private var probeOutput: String?
+    @State private var probeTask: Task<Void, Never>?
 
     var body: some View {
         @Bindable var settings = settings
@@ -63,11 +65,16 @@ struct DevMailServerView: View {
 
             Section {
                 Button("Apply") { apply() }
-                    .disabled(!canApply)
+                    .disabled(!canApply || isTesting)
+                if isTesting {
+                    Button("Cancel test", role: .cancel) { cancelTest() }
+                } else {
+                    Button("Test connection") { test() }
+                }
                 Button("Reset to the school server", role: .destructive) { reset() }
-                    .disabled(!settings.stored.isEnabled)
+                    .disabled(!settings.stored.isEnabled || isTesting)
             } footer: {
-                Text("Applying a change signs School Mail out, wipes its cached mail, folder list, unread markers and notifications, and clears the saved password — none of that state records which server it came from, so it cannot be kept. While the override is on, TigerDuck will not create the Mail2000 folders 寄件備份匣 / 草稿匣 / 回收筒 on your test account; saving a draft fails instead, and sent copies and deletes fall back.")
+                Text("Applying a change signs School Mail out, wipes its cached mail, folder list, unread markers and notifications, and clears the saved password — none of that state records which server it came from, so it cannot be kept. While the override is on, TigerDuck will not create the Mail2000 folders 寄件備份匣 / 草稿匣 / 回收筒 on your test account; saving a draft fails instead, and sent copies and deletes fall back.\n\nTest connection changes nothing and applies nothing: it dials what is on screen right now and reports DNS, TCP, TLS, the client's own handshake and LOGIN separately, each with the error that was actually thrown rather than the five sentences the app shows elsewhere.")
             }
 
             Section("In force now") {
@@ -75,6 +82,26 @@ struct DevMailServerView: View {
                 LabeledContent("IMAP", value: "\(active.imapHost):\(active.imapPort) · \(active.imapScheme.title)")
                 LabeledContent("SMTP", value: "\(active.smtpHost):\(active.smtpPort) · \(active.smtpScheme.title)")
                 LabeledContent("Overridden", value: active.isOverridden ? "Yes" : "No")
+            }
+
+            if let probeOutput {
+                Section {
+                    if isTesting {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Testing…")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    // Selectable and monospaced: the whole point of this output is that it can be
+                    // copied somewhere else, column-aligned, exactly as it reads here.
+                    Text(probeOutput)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                } header: {
+                    Text("Test connection")
+                }
             }
 
             if let status {
@@ -86,6 +113,7 @@ struct DevMailServerView: View {
             }
         }
         .navigationTitle("Email")
+        .onDisappear { probeTask?.cancel() }
     }
 
     private var active: MailServerConfig { settings.effectiveConfig }
@@ -139,6 +167,46 @@ struct DevMailServerView: View {
         } else {
             status = "Saved — the effective configuration did not change, so nothing was signed out."
         }
+    }
+
+    private var isTesting: Bool { probeTask != nil }
+
+    /// Tests the **draft** — what is on screen — rather than what is applied. Diagnosing a server
+    /// before committing to it is the point: applying signs the account out, so a developer who
+    /// has to apply first in order to find out why a server will not connect has already paid for
+    /// the answer before getting it.
+    ///
+    /// The credentials are read here, at the call site, so nothing below the UI reaches into
+    /// `MailAccountManager` or the Keychain on its own. Both reads are reads: this button does not
+    /// sign in, sign out, clear anything or write anything.
+    private func test() {
+        probeTask?.cancel()
+        probeTask = nil
+        if let refusal = DevMailConnectionProbe.refusal(for: settings.draft) {
+            probeOutput = refusal
+            return
+        }
+        let config = MailServerConfig.resolve(override: settings.draft)
+        let credentials = DevMailConnectionProbe.credentials(
+            username: MailAccountManager.shared.studentID,
+            password: MailCredentialStore().password(),
+            appliedIsOverridden: settings.effectiveConfig.isOverridden
+        )
+        probeOutput = "IMAP \(config.imapHost):\(config.imapPort) · SMTP \(config.smtpHost):\(config.smtpPort)"
+        probeTask = Task {
+            let reports = await DevMailConnectionProbe.run(config: config, credentials: credentials)
+            guard !Task.isCancelled else { return }
+            probeOutput = DevMailConnectionProbe.text(of: reports)
+            probeTask = nil
+        }
+    }
+
+    /// Stops waiting. A stage already in flight is bounded by its own timeout and ends on its own
+    /// — SwiftMail's commands ignore cancellation — but nothing reads its result once this ran.
+    private func cancelTest() {
+        probeTask?.cancel()
+        probeTask = nil
+        probeOutput = [probeOutput, "Cancelled."].compactMap { $0 }.joined(separator: "\n")
     }
 
     private func reset() {
