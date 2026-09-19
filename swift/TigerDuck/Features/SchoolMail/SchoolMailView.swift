@@ -156,12 +156,17 @@ struct SchoolMailView: View {
         }
     }
 
+    /// The row reports the mail server's state, in the same three words every other source in
+    /// this popover uses — not `MailConstants.host`, which is a constant and says the same
+    /// thing whether the server is answering or down. The library page keeps its own wording
+    /// because signed-in / not-signed-in genuinely is a different distinction; a mail server
+    /// has no equivalent.
     private var statusDot: some View {
         SyncStatusDot(
             status: viewModel.serverStatus,
             label: String(localized: "feature_school_mail"),
             icon: "envelope.fill",
-            text: MailConstants.host,
+            text: SyncStatusDot.statusText(viewModel.serverStatus),
             isLoading: viewModel.isRefreshing
         )
     }
