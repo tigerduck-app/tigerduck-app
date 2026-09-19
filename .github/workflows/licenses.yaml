@@ -1,0 +1,21 @@
+name: Licences up to date
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          # No submodules: this only reads Package.resolved, project.pbxproj,
+          # LICENSE and the committed swift/TigerDuck/licenses.json.
+
+      # Offline on purpose: comparing the list with Package.resolved needs no
+      # package checkouts, so a package added, removed or bumped without
+      # regenerating the list fails here instead of shipping unlisted.
+      - name: Check the licence list matches the linked packages
+        run: python3 tools/generate_licenses.py --check
