@@ -29,7 +29,7 @@ struct SchoolMailStringsTests {
         "school_mail_delete", "school_mail_delete_forever_title", "school_mail_delete_forever_message",
         "school_mail_delete_confirm_title", "school_mail_delete_confirm_message",
         "school_mail_view_mode", "school_mail_view_formatted", "school_mail_view_plain",
-        "school_mail_view_source", "school_mail_source_large_title", "school_mail_source_large_message",
+        "school_mail_view_source",
         "school_mail_source_failed", "school_mail_copy_all", "school_mail_parse_failed",
         "school_mail_quote_header",
         "school_mail_attachments", "school_mail_open", "school_mail_details_to", "school_mail_details_cc",
