@@ -1,7 +1,14 @@
 #if os(iOS)
 import SwiftUI
 
-/// The School Mail page (design doc §6.2), modelled on `BulletinsView`.
+/// The School Mail page (design doc §6.2).
+///
+/// The page header follows `HomeView` / `ClassTableView`, not the navigation-bar title
+/// `BulletinsView` uses: the title is the first row of the scrolling content, in
+/// `Typography.title`, with the status dot and the action buttons on the same row. That is
+/// what puts School Mail's title and its buttons at the same height as every other page —
+/// a `.navigationTitle` plus `.toolbar` items sits a navigation bar higher and one type
+/// size larger, which is the difference users were seeing.
 struct SchoolMailView: View {
     var embedded: Bool = false
 
@@ -13,8 +20,9 @@ struct SchoolMailView: View {
     @State private var route: MailMessageRoute?
     @State private var compose: MailComposeContext?
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
-    /// See the compose toolbar button: the glyph's own vertical bias, measured at the default
-    /// text size, and scaled here because the symbol itself grows with the text size.
+    /// See the compose button in the header row: the glyph's own vertical bias, measured at
+    /// the default text size, and scaled here because the symbol itself grows with the text
+    /// size.
     @ScaledMetric(relativeTo: .body) private var composeGlyphLift: CGFloat = 1.5
     private let account = MailAccountManager.shared
 
@@ -28,11 +36,6 @@ struct SchoolMailView: View {
         }
     }
 
-    /// The title is deliberately *not* here. Attached to this `Group` — which wraps a
-    /// conditional, so it is not itself the scroll view — the navigation bar has nothing to
-    /// track, and the page loses the large title and the collapse-on-scroll every other page
-    /// has. It goes on the scrolling view of each branch instead, exactly as `BulletinsView`
-    /// puts it on its `List`.
     private var content: some View {
         Group {
             if account.isLoggedIn { mailList } else { signedOut }
@@ -44,18 +47,155 @@ struct SchoolMailView: View {
     private var signedOut: some View {
         ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                titleBar
                 MailLoginCard()
+                    .padding(.top, TigerDuckTheme.Spacing.sm)
                 Button(String(localized: "school_mail_use_other_app")) { showGuide = true }
                     .font(TigerDuckTheme.Typography.caption)
             }
-            .padding(.vertical, TigerDuckTheme.Spacing.xl)
+            .padding(.bottom, TigerDuckTheme.Spacing.xl)
         }
         .background(Color.backgroundPrimary)
-        .navigationTitle(String(localized: "feature_school_mail"))
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+    }
+
+    /// The page header, in the shape `HomeView` and `ClassTableView` use: title text as
+    /// scroll content, everything else trailing on the same row.
+    ///
+    /// Signed out the row is the title alone — the same rule `ClassTableView` applies when
+    /// the page has nothing to act on yet. The row keeps `headerActionHeight` either way, so
+    /// the title does not hop when the buttons arrive on sign-in.
+    private var titleBar: some View {
+        HStack {
+            Text(String(localized: "feature_school_mail"))
+                .font(TigerDuckTheme.Typography.title)
+                .foregroundStyle(Color.textPrimary)
+            Spacer()
+            if account.isLoggedIn {
+                HStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    statusDot
+                    headerActions
+                }
+            }
+        }
+        .frame(minHeight: Self.headerActionHeight)
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.top, TigerDuckTheme.Spacing.md)
+    }
+
+    /// Matches `ClassTableView.headerActionHeight`, and for the same reason: the header row
+    /// is as tall as its controls, so two pages whose controls differ in height put their
+    /// titles at different heights. The glyphs inside stay the size they were in the toolbar
+    /// — only the box around them is pinned.
+    private static var headerActionHeight: CGFloat {
+        if #available(iOS 26, *) { 36 } else { 40 }
+    }
+    /// Wider than tall, so three adjacent cells read as one capsule rather than three circles.
+    private static let headerActionWidth: CGFloat = 44
+
+    /// Unread-only filter, guide and compose, sharing one capsule — the backing the toolbar
+    /// used to supply on iOS 26. The status dot stays outside it: it reports on the server,
+    /// it does not act on the mailbox.
+    ///
+    /// Each button is `.borderless` because the row is a `List` row now: the default style
+    /// there gives the whole row one tap target and drops the tint, so three `.automatic`
+    /// buttons would render untinted and fire as one. `MailFolderChipBar` and `SyncStatusDot`
+    /// take `.plain` in the same situation, for the same reason.
+    @ViewBuilder
+    private var headerActions: some View {
+        let row = HStack(spacing: 0) {
+            Button { viewModel.unreadOnly.toggle() } label: {
+                headerIcon(viewModel.unreadOnly
+                    ? "line.3.horizontal.decrease.circle.fill"
+                    : "line.3.horizontal.decrease.circle")
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(String(localized: "school_mail_unread_only"))
+            Button { showGuide = true } label: {
+                headerIcon("questionmark.circle")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(String(localized: "school_mail_use_other_app"))
+            Button { compose = MailComposeContext(mode: .new) } label: {
+                headerIcon("square.and.pencil")
+                    // Optical centring, not a stray layout tweak — please leave it in.
+                    // `square.and.pencil` is drawn with its rounded square 1.5pt *below*
+                    // the centre of its own 21pt layout box (the room above belongs to the
+                    // pencil), while the two circled glyphs beside it sit dead centre in
+                    // theirs. Centred by frame it therefore reads as hanging low next to
+                    // them; lifted by that 1.5pt the three line up. Horizontally the square
+                    // is already centred, so there is nothing to correct on x.
+                    .offset(y: -composeGlyphLift)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(String(localized: "school_mail_compose"))
+        }
+        if #available(iOS 26, *) {
+            row.glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            // Below 26 nothing supplies a backing, and three bare glyphs over the list read
+            // as part of it rather than as controls acting on it. `.secondarySystemFill` is
+            // what `.bordered` fills with, which is what `ClassTableView` matches there too.
+            row.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
+        }
+    }
+
+    /// Search, in the list's own content rather than `.searchable`.
+    ///
+    /// `.searchable` puts its field in the navigation bar, and the bar only hides that field
+    /// at rest when the page has a large `.navigationTitle` to collapse it under. This page
+    /// deliberately has no navigation title — the title is content now, so that it and the
+    /// buttons sit where Home's and Class table's do — which left the search field alone in
+    /// the bar, holding the header a full bar's height lower than those two pages: the very
+    /// mismatch this page was reported for. As a row it scrolls with everything else.
+    private var searchField: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Color.textSecondary)
+            TextField(String(localized: "school_mail_search_prompt"), text: $viewModel.searchText)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.search)
+                .onSubmit { Task { await viewModel.submitSearch() } }
+            if !viewModel.searchText.isEmpty {
+                Button { viewModel.searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "action_clear_text"))
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.md)
+        .padding(.vertical, TigerDuckTheme.Spacing.sm)
+        .background(Capsule().fill(Color(uiColor: .tertiarySystemFill)))
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+
+    /// `contentShape` is explicit because the glyph is smaller than its cell: without it the
+    /// tappable area is the symbol's own bounds, not the padding that shapes the capsule.
+    private func headerIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.body)
+            .frame(width: Self.headerActionWidth, height: Self.headerActionHeight)
+            .contentShape(.rect)
     }
 
     private var mailList: some View {
         List {
+            titleBar
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets())
+            searchField
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: TigerDuckTheme.Spacing.md, leading: 0,
+                    bottom: 0, trailing: 0
+                ))
             if account.authFailed {
                 NTUSTReauthErrorBanner(
                     message: String(localized: "school_mail_auth_failed_banner"),
@@ -87,9 +227,8 @@ struct SchoolMailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
-        .navigationTitle(String(localized: "feature_school_mail"))
-        .searchable(text: $viewModel.searchText, prompt: String(localized: "school_mail_search_prompt"))
-        .onSubmit(of: .search) { Task { await viewModel.submitSearch() } }
+        .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+        .scrollDismissesKeyboard(.immediately)
         .onChange(of: viewModel.searchText) { _, text in
             if text.isEmpty { viewModel.clearSearch() }
         }
@@ -108,41 +247,6 @@ struct SchoolMailView: View {
         }
         .onAppear { drainDeepLink() }
         .onChange(of: appState.pendingDeepLink) { _, _ in drainDeepLink() }
-        .toolbar {
-            if #available(iOS 26, *) {
-                ToolbarItem(placement: .topBarTrailing) { statusDot }
-                    .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .topBarTrailing) { statusDot }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { viewModel.unreadOnly.toggle() } label: {
-                    Image(systemName: viewModel.unreadOnly
-                        ? "line.3.horizontal.decrease.circle.fill"
-                        : "line.3.horizontal.decrease.circle")
-                        .symbolRenderingMode(.hierarchical)
-                }
-                .accessibilityLabel(String(localized: "school_mail_unread_only"))
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showGuide = true } label: { Image(systemName: "questionmark.circle") }
-                    .accessibilityLabel(String(localized: "school_mail_use_other_app"))
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { compose = MailComposeContext(mode: .new) } label: {
-                    Image(systemName: "square.and.pencil")
-                        // Optical centring, not a stray layout tweak — please leave it in.
-                        // `square.and.pencil` is drawn with its rounded square 1.5pt *below*
-                        // the centre of its own 21pt layout box (the room above belongs to the
-                        // pencil), while the two circled glyphs beside it sit dead centre in
-                        // theirs. Centred by frame it therefore reads as hanging low next to
-                        // them; lifted by that 1.5pt the three line up. Horizontally the square
-                        // is already centred, so there is nothing to correct on x.
-                        .offset(y: -composeGlyphLift)
-                }
-                .accessibilityLabel(String(localized: "school_mail_compose"))
-            }
-        }
         .sheet(item: $compose, onDismiss: { Task { await viewModel.load() } }) { context in
             MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles,
                             onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) })
