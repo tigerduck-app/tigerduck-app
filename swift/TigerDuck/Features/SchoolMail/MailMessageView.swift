@@ -304,7 +304,11 @@ struct MailMessageView: View {
                 Button { startCompose(.replyAll) } label: { Label(String(localized: "school_mail_reply_all"), systemImage: "arrowshape.turn.up.left.2") }
                 Button { startCompose(.forward) } label: { Label(String(localized: "school_mail_forward"), systemImage: "arrowshape.turn.up.right") }
             } label: {
+                // Labelled, like every other icon-only control in the feature: without this
+                // VoiceOver reads the SF Symbol's name, and these two menus are the message
+                // screen's only action affordances.
                 Image(systemName: "arrowshape.turn.up.left")
+                    .accessibilityLabel(String(localized: "school_mail_reply_menu"))
             }
             .disabled(viewModel.detail == nil)
         }
@@ -350,6 +354,7 @@ struct MailMessageView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
+                    .accessibilityLabel(String(localized: "school_mail_message_actions"))
             }
         }
     }
