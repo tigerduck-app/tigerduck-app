@@ -106,6 +106,7 @@ StudentHeaderCard.swift
 ScoreView.swift
 
 # Features/Settings — iOS settings screens; macOS uses MacSettingsScene
+AboutOthersView.swift
 AssignmentReminderSettingsView.swift
 CloudSyncSettingsView.swift
 FontSizeSettingsView.swift
