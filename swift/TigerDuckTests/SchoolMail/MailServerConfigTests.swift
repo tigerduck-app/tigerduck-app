@@ -333,6 +333,39 @@ struct MailServerConfigTests {
         #expect(DevMailServerOverride(defaults: suite).effectiveConfig == .school)
     }
 
+    // MARK: An override may not name a school host
+
+    /// The premise `DevMailConnectionProbe.credentials(appliedIsOverridden:)` reasons from —
+    /// "the applied configuration is an override, so the saved password is not the school's" —
+    /// was not enforced anywhere. `resolve(override:)` only clamps a school host's TLS scheme;
+    /// it never refuses one, so the override could be applied pointing at the school server.
+    @Test func anOverrideNamingASchoolHostIsRefused() {
+        #expect(DevMailServerSettings.applyRefusal(for: Self.settings()) == nil)
+        #expect(DevMailServerSettings.applyRefusal(for: Self.settings(imapHost: "mail.ntust.edu.tw")) != nil)
+        #expect(DevMailServerSettings.applyRefusal(for: Self.settings(smtpHost: "MAIL.NTUST.EDU.TW")) != nil)
+        #expect(DevMailServerSettings.applyRefusal(for: Self.settings(imapHost: "imap.ntust.edu.tw")) != nil)
+        // Switching the override off is how you go back to the school server, and must stay
+        // possible — the refusal is about *naming* a school host under an enabled override.
+        #expect(DevMailServerSettings.applyRefusal(for: MailServerOverrideSettings()) == nil)
+        #expect(DevMailServerSettings.applyRefusal(for: Self.settings(enabled: false, imapHost: "mail.ntust.edu.tw")) == nil)
+    }
+
+    /// The rule is the commit's, not the button's: a refused draft changes nothing and signs
+    /// nobody out, however it was reached.
+    @Test func applyingARefusedDraftCommitsNothing() {
+        let h = Self.harness()
+        h.settings.draft = Self.settings(imapHost: "mail.ntust.edu.tw")
+        #expect(!h.settings.apply())
+        #expect(h.settings.effectiveConfig == .school)
+        #expect(!h.settings.effectiveConfig.isOverridden)
+        #expect(h.resets.count == 0)
+
+        h.settings.draft = Self.settings()
+        #expect(h.settings.apply())
+        #expect(h.settings.effectiveConfig.isOverridden)
+        #expect(h.resets.count == 1)
+    }
+
     /// The override's key is deliberately not one of the `school_mail_*` keys
     /// `DefaultsMailPreferences.reset()` clears — applying an override signs out, so an
     /// override stored under one of those would erase itself on the way in.

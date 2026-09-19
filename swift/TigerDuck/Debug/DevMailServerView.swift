@@ -64,7 +64,12 @@ struct DevMailServerView: View {
                 placeholder: "smtp.example.com"
             )
 
-            if let clamped = clampedHosts {
+            if let refusal = applyRefusal {
+                Section {
+                    Label(refusal, systemImage: "lock.fill")
+                        .font(.caption)
+                }
+            } else if let clamped = clampedHosts {
                 Section {
                     Label(
                         "\(clamped) is a pinned NTUST host, so it stays on implicit TLS whatever this screen says. The school connection cannot be downgraded from here.",
@@ -157,13 +162,18 @@ struct DevMailServerView: View {
 
     private var active: MailServerConfig { settings.effectiveConfig }
 
-    /// Apply is offered only for a configuration that is both complete and actually different
-    /// from the one in force — a disabled button says "nothing would happen" more clearly than
-    /// a button that does nothing.
+    /// Apply is offered only for a configuration that is complete, actually different from the
+    /// one in force, and allowed — a disabled button says "nothing would happen" more clearly
+    /// than a button that does nothing. The refusal itself is shown above the buttons, since a
+    /// disabled Apply with no explanation reads as a bug.
     private var canApply: Bool {
-        guard settings.draft != settings.stored else { return false }
+        guard settings.draft != settings.stored, applyRefusal == nil else { return false }
         return !settings.draft.isEnabled || settings.draft.normalized != nil
     }
+
+    /// Why this draft may not be applied. `DevMailServerSettings` owns the rule and refuses the
+    /// commit as well, so this is only how the screen says so.
+    private var applyRefusal: String? { DevMailServerSettings.applyRefusal(for: settings.draft) }
 
     /// The hosts on this screen that `MailServerConfig.transportScheme(for:requested:)` will
     /// hold at implicit TLS however the pickers are set.

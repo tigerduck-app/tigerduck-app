@@ -186,6 +186,34 @@ final class DevMailServerSettings {
     var stored: MailServerOverrideSettings { store.settings }
     var effectiveConfig: MailServerConfig { store.effectiveConfig }
 
+    /// Why `draft` may not be applied, or nil when it may.
+    ///
+    /// One rule, and it closes the residual hole in the probe's invariant.
+    /// `DevMailConnectionProbe.credentials(username:password:appliedIsOverridden:)` reasons
+    /// that if the *applied* configuration is an override then the saved password cannot be the
+    /// school's — but nothing enforced the premise. `MailServerConfig.resolve(override:)` never
+    /// refuses a school host, it only clamps its TLS scheme, so an override naming
+    /// `mail.ntust.edu.tw` resolved to the school server with `isOverridden` true. Sign in to it
+    /// with the real school credentials, edit the draft to a third-party host, tap Test
+    /// connection, and the premise is false and the real mail password goes out.
+    ///
+    /// Refusing to apply such an override makes "applied override" and "not the school account"
+    /// the same fact again. `transportScheme(for:requested:)` keeps clamping regardless — it
+    /// guards the draft `Test connection` resolves, which never reaches this.
+    static func applyRefusal(for draft: MailServerOverrideSettings) -> String? {
+        guard draft.isEnabled, let settings = draft.normalized else { return nil }
+        let school = [settings.imapHost, settings.smtpHost].filter(DevMailConnectionProbe.isSchoolHost)
+        guard !school.isEmpty else { return nil }
+        return """
+        \(Array(Set(school)).sorted().joined(separator: ", ")) is an NTUST host, and an override \
+        may not name one. Applying it would point the app at the school server while still \
+        counting as an override, which is exactly the state the saved-password rules assume \
+        cannot happen: sign in under it and the real mail password becomes something Test \
+        connection would offer to whatever host this screen is edited to next. Use the override \
+        off (the button below) to go back to the school server.
+        """
+    }
+
     /// Commits `draft`. Returns whether the effective configuration actually changed.
     @discardableResult
     func apply() -> Bool {
@@ -201,6 +229,9 @@ final class DevMailServerSettings {
     }
 
     private func commit(_ settings: MailServerOverrideSettings) -> Bool {
+        // The screen already disables Apply for a refused draft; this is the rule itself rather
+        // than a restatement of it, so nothing can commit one by another route.
+        guard Self.applyRefusal(for: settings) == nil else { return false }
         let before = store.effectiveConfig
         store.save(settings)
         guard store.effectiveConfig != before else { return false }
