@@ -35,13 +35,22 @@ struct MailLoginSheet: View {
         #endif
     }
 
-    /// The password this sheet opens with: the NTUST one, unless the override is on (it is not
-    /// the school's server's to have) or the mail server has already rejected it (§7.4 — see
-    /// `MailAccountManager.lastRejectedPassword`). A stored function rather than an expression
-    /// inside `body` so the rule is testable without standing the sheet up.
-    static func initialPassword(stored: String?, lastRejected: String?) -> String {
-        guard !usernameIsAnAddress, let stored, !stored.isEmpty, stored != lastRejected else { return "" }
-        return stored
+    /// The two fields this sheet opens with, from the same decision the signed-out card uses.
+    ///
+    /// `currentID`/`currentPassword` are empty because that is the literal truth here: the sheet
+    /// is rebuilt from scratch every time it is presented, which is exactly why the rejected
+    /// password had to be remembered somewhere that outlives it.
+    static func initialFields(storedID: String?, storedPassword: String?, lastRejected: String?)
+        -> MailCredentialPrefill.Fields {
+        MailCredentialPrefill.fields(
+            storedID: storedID,
+            storedPassword: storedPassword,
+            currentID: "",
+            currentPassword: "",
+            isOverridden: usernameIsAnAddress,
+            lastRejectedPassword: lastRejected,
+            domainSuffix: initialUsername
+        )
     }
 
     @Binding var isPresented: Bool
@@ -49,27 +58,24 @@ struct MailLoginSheet: View {
     private let account = MailAccountManager.shared
 
     var body: some View {
-        LoginSheet(
+        // Prefilled from the NTUST sign-in for the user to submit or correct, never submitted
+        // automatically, never the school's password while the developer override is on, and
+        // never a password this server has already rejected — `MailCredentialPrefill` owns all
+        // of that and explains why.
+        let prefill = Self.initialFields(
+            storedID: appState.authService.storedStudentId,
+            storedPassword: appState.authService.storedPassword,
+            lastRejected: account.lastRejectedPassword
+        )
+        return LoginSheet(
             title: String(localized: "school_mail_account_title"),
             subtitle: String(localized: "school_mail_sign_in_note"),
             usernamePlaceholder: Self.usernameIsAnAddress
                 ? "you\(Self.initialUsername)"
                 : String(localized: "sign_in_student_id"),
             passwordPlaceholder: String(localized: "sign_in_password"),
-            initialUsername: Self.initialUsername.isEmpty
-                ? (appState.authService.storedStudentId ?? "")
-                : Self.initialUsername,
-            // Prefilled from the NTUST sign-in for the user to submit or correct, never
-            // submitted automatically — see `MailLoginCard.seedFromNTUSTAccount`. Skipped while
-            // the developer override is on, because the school's password is not for someone
-            // else's server, and skipped once the server has rejected it: dismissing and
-            // reopening this sheet builds a fresh `LoginSheet` every time, so without that a
-            // rejected password came straight back and another rejected `LOGIN` was one tap
-            // away — see `MailAccountManager.lastRejectedPassword` and §7.4.
-            initialPassword: Self.initialPassword(
-                stored: appState.authService.storedPassword,
-                lastRejected: account.lastRejectedPassword
-            ),
+            initialUsername: prefill.id,
+            initialPassword: prefill.password,
             isLoggingIn: account.isLoggingIn,
             loginError: account.loginError?.message,
             footerLink: Self.resetPasswordLink,

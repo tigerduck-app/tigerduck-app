@@ -1,8 +1,9 @@
 #if os(iOS)
 import SwiftUI
 
-/// The signed-out mail page, styled like Library's `loginPrompt`. Nothing is pre-filled:
-/// the mail login is separate from the NTUST one (§7.1).
+/// The signed-out mail page, styled like Library's `loginPrompt`. The mail login is separate
+/// from the NTUST one (§7.1); what it nonetheless prefills, and the carve-outs on that, are
+/// `MailCredentialPrefill`'s to decide.
 struct MailLoginCard: View {
     private enum Field: Hashable { case studentID, password }
 
@@ -117,44 +118,37 @@ struct MailLoginCard: View {
             InAppBrowserView(url: MailConstants.webmailURL).ignoresSafeArea()
         }
         // Only ever seeds an empty field, so it cannot overwrite something half-typed when the
-        // view re-appears, and re-runs if the override changes while this screen is up.
-        .onAppear { seedDomainSuffix(); seedFromNTUSTAccount() }
-        .onChange(of: prefilledDomainSuffix) { _, _ in seedDomainSuffix() }
+        // view re-appears.
+        .onAppear { seedFields() }
+        #if DEBUG
+        // Re-seeds when the developer override changes — which is what takes the school's
+        // password back out of a form that now points at somebody else's server.
+        //
+        // `.onAppear` is not enough on its own: this card keeps its `@State` while the user
+        // goes to Settings → Developer → Email and applies an override, and
+        // `SchoolMailView`'s own `generation` hook resets `MailListViewModel`, not this.
+        // Reading `generation` here is also what registers this card as an observer of it, so
+        // the seed re-runs the moment the override changes rather than waiting for an
+        // unrelated redraw. Absent from Release builds, where there is no override to change.
+        .onChange(of: DevMailServerSettings.shared.generation) { _, _ in seedFields() }
+        #endif
     }
 
-    private func seedDomainSuffix() {
-        guard studentID.isEmpty, !prefilledDomainSuffix.isEmpty else { return }
-        studentID = prefilledDomainSuffix
-    }
-
-    /// Prefills the NTUST sign-in's stored ID and password, for the user to submit or correct.
-    ///
-    /// §7.1 keeps the two logins separate and this screen used to prefill nothing at all, on the
-    /// grounds that a Mail2000 password is set in webmail and need not match the SSO one. The user
-    /// asked for the prefill anyway, knowing that: for the many students who use the same password
-    /// it removes the only typing this screen asks for.
-    ///
-    /// **It never submits.** That is what keeps §7.4 intact — a wrong guess is only sent if the
-    /// user chooses to send it, and a rejected *manual* sign-in does not trip `handleAuthFailure`,
-    /// which is reserved for a saved password failing in the background.
-    ///
-    /// Skipped entirely while the developer override is on: the stored password belongs to the
-    /// school and must not be handed to someone else's server, which is the same rule the Test
-    /// connection probe applies to itself.
-    ///
-    /// A password the server has already rejected is never offered again
-    /// (`MailAccountManager.lastRejectedPassword`). A mismatch between the SSO and Mail2000
-    /// passwords is the *expected* failure on this screen, and re-seeding the rejected one made
-    /// another rejected `LOGIN` a single tap — which is the friction §7.4 is made of.
-    private func seedFromNTUSTAccount() {
-        guard !usernameIsAnAddress, password.isEmpty else { return }
+    /// Puts `MailCredentialPrefill`'s answer into the two fields. Every carve-out lives in that
+    /// function, which is pure and tested; this is only the wiring.
+    private func seedFields() {
         let auth = appState.authService
-        if studentID.isEmpty, let id = auth.storedStudentId, !id.isEmpty {
-            studentID = id
-        }
-        if let stored = auth.storedPassword, !stored.isEmpty, stored != account.lastRejectedPassword {
-            password = stored
-        }
+        let fields = MailCredentialPrefill.fields(
+            storedID: auth.storedStudentId,
+            storedPassword: auth.storedPassword,
+            currentID: studentID,
+            currentPassword: password,
+            isOverridden: usernameIsAnAddress,
+            lastRejectedPassword: account.lastRejectedPassword,
+            domainSuffix: prefilledDomainSuffix
+        )
+        studentID = fields.id
+        password = fields.password
     }
 
     @ViewBuilder
