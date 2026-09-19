@@ -381,6 +381,40 @@ final class MailListViewModel {
         session.releaseSoon()
     }
 
+    #if DEBUG
+    /// Throws away everything that was resolved against the previous mail server, after the
+    /// DEBUG developer override changed it.
+    ///
+    /// The on-disk caches and the account are dealt with by `DevMailServerSettings`, which
+    /// signs out; this is the half of the state that lives only in memory, on this object, and
+    /// that a sign-out does not touch — the resolved folder roles, the loaded pages and the
+    /// rows built from them. Left alone, the previous server's mail would be on screen for the
+    /// first frame after signing into the new one, with row taps and swipe actions addressing
+    /// folders and UIDs that mean something entirely different there.
+    ///
+    /// The held IMAP connection goes too: it is authenticated against the old server, and
+    /// `MailPageSession.close()` logs it out rather than letting it idle there for 30 s.
+    func resetForServerChange() {
+        stopPolling()
+        folderRoles = [:]
+        otherFolders = []
+        pages = [:]
+        rows = []
+        searchResults = nil
+        searchUsedLocalFallback = false
+        searchText = ""
+        unreadOnly = false
+        selection = .real(MailConstants.inbox)
+        selectionWasChosen = false
+        loadingSelection = nil
+        loadState = .idle
+        serverStatus = .unknown
+        isRefreshing = false
+        isPaginating = false
+        Task { await session.close() }
+    }
+    #endif
+
     /// Reloads when the inbox is on screen — which now means All mail as well as Inbox itself,
     /// because All mail merges the inbox in and is the screen the list opens on. Written as
     /// `selection == .real(inbox)` it would simply stop firing on that screen, and new mail

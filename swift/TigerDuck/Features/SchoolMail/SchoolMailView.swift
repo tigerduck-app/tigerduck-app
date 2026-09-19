@@ -42,12 +42,67 @@ struct SchoolMailView: View {
         }
         .navigationDestination(isPresented: $showGuide) { MailGuideView() }
         .sheet(isPresented: $showLoginSheet) { MailLoginSheet(isPresented: $showLoginSheet) }
+        #if DEBUG
+        // Reading `generation` here is also what registers this page as an observer of it, so
+        // the banner below re-evaluates the moment the override changes rather than waiting
+        // for the next unrelated redraw.
+        .onChange(of: DevMailServerSettings.shared.generation) { _, _ in
+            viewModel.resetForServerChange()
+        }
+        #endif
     }
+
+    #if DEBUG
+    private var isDeveloperServerOverridden: Bool { MailServerConfig.effective.isOverridden }
+
+    /// Requirement 5: the page itself has to say when it is not showing school mail.
+    ///
+    /// Its own row, deliberately not a suffix inside `titleBar`: that row's height is measured
+    /// against Home and Class table so the three pages put their titles at the same height, and
+    /// nothing that could change its intrinsic size belongs in it. This sits underneath, reads
+    /// the whole effective configuration (a host and a domain say more than "override on"), and
+    /// is absent entirely when the override is off — and from Release builds, where neither the
+    /// banner nor the type it reads exists.
+    ///
+    /// Whether to show it is decided by the call sites rather than in here: inside a `List`, a
+    /// conditional that resolves to nothing still carries the row modifiers applied to it and
+    /// can leave an empty row, with a separator, in the mail list of every ordinary debug
+    /// build.
+    private var developerServerBanner: some View {
+        let config = MailServerConfig.effective
+        return Group {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Developer server override — not your school mail")
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(Color.textPrimary)
+                    Text("@\(config.addressDomain) · IMAP \(config.imapHost):\(config.imapPort) · SMTP \(config.smtpHost):\(config.smtpPort)")
+                        .font(TigerDuckTheme.Typography.caption)
+                        .foregroundStyle(Color.textSecondary)
+                }
+            } icon: {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .foregroundStyle(Color.orange)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(TigerDuckTheme.Spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: TigerDuckTheme.Spacing.md, style: .continuous)
+                    .fill(Color.orange.opacity(0.12))
+            )
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            .padding(.top, TigerDuckTheme.Spacing.sm)
+        }
+    }
+    #endif
 
     private var signedOut: some View {
         ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
                 titleBar
+                #if DEBUG
+                if isDeveloperServerOverridden { developerServerBanner }
+                #endif
                 MailLoginCard()
                     .padding(.top, TigerDuckTheme.Spacing.sm)
                 Button(String(localized: "school_mail_use_other_app")) { showGuide = true }
@@ -189,6 +244,14 @@ struct SchoolMailView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets())
+            #if DEBUG
+            if isDeveloperServerOverridden {
+                developerServerBanner
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+            }
+            #endif
             searchField
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)

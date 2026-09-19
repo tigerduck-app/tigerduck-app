@@ -666,5 +666,49 @@ struct MailListViewModelTests {
         let entries = MailFolderChipBar.entries(roles: [.inbox: "INBOX"], others: [], showsAllMail: false)
         #expect(entries == [.role(.inbox, folder: "INBOX")])
     }
+
+    // MARK: The DEBUG developer server override
+
+    #if DEBUG
+    /// Everything resolved against the previous server goes, because none of it means anything
+    /// on the next one: the folder names came from that server's `LIST`, the UIDs from its
+    /// mailboxes. Signing out (which is what actually happens alongside this) clears the
+    /// account, the on-disk caches and the markers; this is the half that lives only here.
+    @Test func aServerChangeDropsTheResolvedRolesPagesAndRows() async {
+        let h = Self.harness()
+        await h.model.load()
+        #expect(!h.model.rows.isEmpty)
+        #expect(!h.model.folderRoles.isEmpty)
+        h.model.markSeenLocally(folder: "INBOX", uid: 59)
+        await h.model.select(.real("INBOX"))
+
+        h.model.resetForServerChange()
+
+        #expect(h.model.rows.isEmpty)
+        #expect(h.model.folderRoles.isEmpty)
+        #expect(h.model.otherFolders.isEmpty)
+        #expect(h.model.searchResults == nil)
+        #expect(h.model.searchText.isEmpty)
+        #expect(!h.model.unreadOnly)
+        #expect(h.model.loadState == .idle)
+        #expect(h.model.serverStatus == .unknown)
+        // The selection goes back to the default, not to whatever chip was last tapped: that
+        // chip named a folder on a server this page is no longer talking to.
+        #expect(h.model.selection == .real("INBOX"))
+        #expect(!h.model.showsAllMailChip)
+    }
+
+    /// The reset leaves the page able to load again rather than stuck — the next `load()` walks
+    /// the whole resolve-folders-then-page path from the start.
+    @Test func thePageLoadsAgainAfterAServerChange() async {
+        let h = Self.harness()
+        await h.model.load()
+        h.model.resetForServerChange()
+        await h.model.load()
+        #expect(h.model.loadState == .loaded)
+        #expect(!h.model.folderRoles.isEmpty)
+        #expect(h.model.rows.count == 50)
+    }
+    #endif
 }
 #endif
