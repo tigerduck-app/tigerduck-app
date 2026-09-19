@@ -53,6 +53,10 @@ actor DemoMailClient: MailClient {
         var text: String
         var html: String?
         var attachments: [MailBodyPart: Data]
+        /// The `Message-ID` header of a message this app appended, kept so `containsMessageID`
+        /// can answer the sent-copy dedupe probe truthfully. Fixture mail has none: it was never
+        /// sent from here, so no probe may ever match it.
+        var messageID: String?
     }
 
     private let fixture: MailDemoFixture
@@ -228,7 +232,8 @@ actor DemoMailClient: MailClient {
             isSeen: flags.contains(.seen), isAnswered: false, isDeleted: false, size: message.count,
             hasAttachments: false, isExternal: false
         )
-        messages.append(Stored(summary: summary, text: Self.decodedTextBody(from: message), html: nil, attachments: [:]))
+        messages.append(Stored(summary: summary, text: Self.decodedTextBody(from: message), html: nil, attachments: [:],
+                               messageID: MailRawHeaders.value(named: "Message-ID", in: message)))
         folders[folder] = messages
     }
 
@@ -319,7 +324,13 @@ actor DemoMailClient: MailClient {
         }
     }
 
-    func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool { false }
+    /// Answers from what is actually in the folder, rather than always saying "no". The demo
+    /// mailbox is the only place the sent-copy path can be exercised without a socket, and a
+    /// hard-coded `false` made it the one shape the dedupe can never be wrong about — it always
+    /// appended, so a demo run proved nothing about the real decision.
+    func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool {
+        (folders[folder] ?? []).contains { $0.messageID == messageID }
+    }
 
     /// The demo never sends anything; compose then saves the copy into Sent itself.
     func send(_ message: Data, from sender: String, to recipients: [String]) async throws {}
