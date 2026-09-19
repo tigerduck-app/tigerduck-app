@@ -9,14 +9,12 @@ import SwiftUI
 struct AboutOthersView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
-    @State private var showLicense = false
     @State private var showPrivacyPolicy = false
     @State private var showFeedback = false
     @State private var showDeleteAccount = false
 
     private static let feedbackURL = AppURLs.issues
     private static let privacyURL = AppURLs.privacyPolicy
-    private static let licenseURL = AppURLs.license
     private static let deleteAccountURL = AppURLs.deleteAccount
 
     var body: some View {
@@ -49,14 +47,8 @@ struct AboutOthersView: View {
                 } label: {
                     linkLabel("settings_delete_account")
                 }
-                Button {
-                    if appState.browserPreference == .inApp {
-                        showLicense = true
-                    } else {
-                        openURL(Self.licenseURL)
-                    }
-                } label: {
-                    linkLabel("settings_open_source_licenses")
+                NavigationLink(String(localized: "settings_open_source_licenses")) {
+                    OpenSourceLicensesView()
                 }
                 NavigationLink(String(localized: "settings_view_source_code")) {
                     SourceCodePickerView()
@@ -71,10 +63,6 @@ struct AboutOthersView: View {
         }
         .sheet(isPresented: $showPrivacyPolicy) {
             InAppBrowserView(url: Self.privacyURL)
-                .ignoresSafeArea()
-        }
-        .sheet(isPresented: $showLicense) {
-            InAppBrowserView(url: Self.licenseURL)
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $showDeleteAccount) {
