@@ -21,15 +21,24 @@ nonisolated enum MailConstants {
     /// locally, when the server's own `BODYSTRUCTURE` came back unreadable and the normal
     /// part-by-part fetch therefore has nothing to work from.
     ///
-    /// Not an Appendix A.6 value — a bound on an added recovery. Deliberately the same number as
-    /// `MailCache`'s per-entry ceiling (`bodyCacheLimitBytes / 2`), which is already this app's
-    /// answer to "how big is too big to hold on to for one message". Above it the recovery is
-    /// skipped and the message screen keeps the behaviour it has today: no body, the
-    /// 「無法解析這封信的格式」 banner, and 原始碼. That costs the user nothing extra, because the
-    /// forced 原始碼 mode downloads the whole message anyway (`MailMessageView` starts
-    /// `loadSource()` the moment the mode changes) — so either way exactly one whole-message
-    /// download happens, and under the ceiling it buys a readable mail instead of a hex-ish dump.
-    static let maxLocalParseBytes = bodyCacheLimitBytes / 2
+    /// Not an Appendix A.6 value — a bound on an added recovery.
+    ///
+    /// It was `bodyCacheLimitBytes / 2` (10 MB), borrowed from `MailCache`'s per-entry ceiling on
+    /// the reasoning that a mail too big to *keep* is too big to fetch whole. That was wrong, and
+    /// wrong in a way that excluded the one real message this recovery was written for: a 28 MB
+    /// Mail2000 bounce, which went on showing 「無法解析這封信的格式」 on a device after the
+    /// recovery shipped, because the guard turned it away.
+    ///
+    /// The cache's ceiling answers "how much may one entry evict?", which is a question about
+    /// *storage*. This is a question about *transfer*, and the two have opposite answers here,
+    /// because refusing to parse saves no bytes at all: `parseFailed` forces 原始碼, and
+    /// `MailMessageView.onChange(of: mode)` starts `loadSource()` the moment it does — so the
+    /// whole message is downloaded either way. Below the old ceiling that bought a readable mail;
+    /// above it, the user paid the full download *and* got the unreadable dump. The bound now
+    /// matches `maxEncodedMessageBytes`, the size this app already treats as the largest single
+    /// message it deals with, so it stops a pathological message being held in memory twice while
+    /// no longer refusing ordinary mail with a large attachment.
+    static let maxLocalParseBytes = maxEncodedMessageBytes
     static let notificationCollapseThreshold = 5
     static let connectionIdleClose: TimeInterval = 30
     static let sentCopyDedupeDelay: Duration = .seconds(3)

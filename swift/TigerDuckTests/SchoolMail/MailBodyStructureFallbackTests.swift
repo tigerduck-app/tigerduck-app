@@ -48,17 +48,26 @@ struct MailBodyStructureFallbackTests {
         #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo()))
     }
 
+    @Test func theMailThatPromptedThisRecoveryIsActuallyRecovered() {
+        // Regression, and the whole point of the feature. This test previously asserted the
+        // opposite — that a 28 MB message is refused — because the ceiling was borrowed from
+        // `MailCache`'s per-entry limit (10 MB). The real Mail2000 bounce is 28.2 MB, so the
+        // guard turned away the one message the recovery exists for, and it went on showing
+        // 「無法解析這封信的格式」 on a device after the fix shipped.
+        //
+        // Refusing to parse saves nothing: `parseFailed` forces 原始碼 and the view immediately
+        // calls `loadSource()`, so the whole message is fetched either way. The only thing the
+        // old ceiling bought above 10 MB was an unreadable dump for the same bytes.
+        #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: 28 * 1024 * 1024)))
+    }
+
     @Test func aMessageOverTheCeilingIsNotDownloadedWhole() {
-        // The mail that prompted this is ~28 MB. The fallback downloads the whole message where
-        // the normal path fetches only the parts it needs, and `MailCache` refuses to keep any
-        // single entry over half its budget, so an oversized mail is re-fetched on every open.
-        // Above the ceiling the screen keeps today's behaviour instead: no body, the banner, and
-        // 原始碼 — which downloads the message once anyway, so the user pays for one copy either
-        // way.
+        // A bound still exists, so a pathological message is not held in memory twice — it is
+        // just the size this app already calls the largest single message it deals with
+        // (`maxEncodedMessageBytes`), not the cache's storage ceiling.
         let cap = MailConstants.maxLocalParseBytes
         #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: cap)))
         #expect(!LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: cap + 1)))
-        #expect(!LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: 28 * 1024 * 1024)))
     }
 
     @Test func bothDetailFetchesCarryWhatTheCeilingAndTheFlagNeed() {
