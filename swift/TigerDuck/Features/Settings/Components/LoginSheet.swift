@@ -32,7 +32,7 @@ struct LoginSheet: View {
     @State private var inAppURL: URL?
 
     @State private var username: String
-    @State private var password = ""
+    @State private var password: String
     @FocusState private var focusedField: Field?
 
     private enum Field { case username, password }
@@ -43,6 +43,7 @@ struct LoginSheet: View {
         usernamePlaceholder: String,
         passwordPlaceholder: String,
         initialUsername: String = "",
+        initialPassword: String = "",
         isLoggingIn: Bool,
         loginError: String?,
         footerLink: FooterLink? = nil,
@@ -61,6 +62,7 @@ struct LoginSheet: View {
         self.onLogin = onLogin
         self.onDismiss = onDismiss
         _username = State(initialValue: initialUsername)
+        _password = State(initialValue: initialPassword)
     }
 
     var body: some View {
@@ -131,7 +133,9 @@ struct LoginSheet: View {
                 }
             }
             .onAppear {
-                focusedField = username.isEmpty ? .username : .password
+                // With both fields prefilled there is nothing to type, so focus nothing and
+                // leave the keyboard down rather than opening it over a filled-in form.
+                focusedField = username.isEmpty ? .username : (password.isEmpty ? .password : nil)
             }
             .interactiveDismissDisabled(isLoggingIn)
             #if os(iOS)

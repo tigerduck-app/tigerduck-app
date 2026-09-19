@@ -118,13 +118,38 @@ struct MailLoginCard: View {
         }
         // Only ever seeds an empty field, so it cannot overwrite something half-typed when the
         // view re-appears, and re-runs if the override changes while this screen is up.
-        .onAppear { seedDomainSuffix() }
+        .onAppear { seedDomainSuffix(); seedFromNTUSTAccount() }
         .onChange(of: prefilledDomainSuffix) { _, _ in seedDomainSuffix() }
     }
 
     private func seedDomainSuffix() {
         guard studentID.isEmpty, !prefilledDomainSuffix.isEmpty else { return }
         studentID = prefilledDomainSuffix
+    }
+
+    /// Prefills the NTUST sign-in's stored ID and password, for the user to submit or correct.
+    ///
+    /// §7.1 keeps the two logins separate and this screen used to prefill nothing at all, on the
+    /// grounds that a Mail2000 password is set in webmail and need not match the SSO one. The user
+    /// asked for the prefill anyway, knowing that: for the many students who use the same password
+    /// it removes the only typing this screen asks for.
+    ///
+    /// **It never submits.** That is what keeps §7.4 intact — a wrong guess is only sent if the
+    /// user chooses to send it, and a rejected *manual* sign-in does not trip `handleAuthFailure`,
+    /// which is reserved for a saved password failing in the background.
+    ///
+    /// Skipped entirely while the developer override is on: the stored password belongs to the
+    /// school and must not be handed to someone else's server, which is the same rule the Test
+    /// connection probe applies to itself.
+    private func seedFromNTUSTAccount() {
+        guard !usernameIsAnAddress, password.isEmpty else { return }
+        let auth = appState.authService
+        if studentID.isEmpty, let id = auth.storedStudentId, !id.isEmpty {
+            studentID = id
+        }
+        if let stored = auth.storedPassword, !stored.isEmpty {
+            password = stored
+        }
     }
 
     @ViewBuilder

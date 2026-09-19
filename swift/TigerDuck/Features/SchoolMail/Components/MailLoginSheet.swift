@@ -36,6 +36,7 @@ struct MailLoginSheet: View {
     }
 
     @Binding var isPresented: Bool
+    @Environment(AppState.self) private var appState
     private let account = MailAccountManager.shared
 
     var body: some View {
@@ -46,7 +47,14 @@ struct MailLoginSheet: View {
                 ? "you\(Self.initialUsername)"
                 : String(localized: "sign_in_student_id"),
             passwordPlaceholder: String(localized: "sign_in_password"),
-            initialUsername: Self.initialUsername,
+            initialUsername: Self.initialUsername.isEmpty
+                ? (appState.authService.storedStudentId ?? "")
+                : Self.initialUsername,
+            // Prefilled from the NTUST sign-in for the user to submit or correct, never
+            // submitted automatically — see `MailLoginCard.seedFromNTUSTAccount`. Skipped while
+            // the developer override is on, because the school's password is not for someone
+            // else's server.
+            initialPassword: Self.usernameIsAnAddress ? "" : (appState.authService.storedPassword ?? ""),
             isLoggingIn: account.isLoggingIn,
             loginError: account.loginError?.message,
             footerLink: Self.resetPasswordLink,
