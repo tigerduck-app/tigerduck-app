@@ -80,6 +80,19 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    compiler to Swift 6.2, which first shipped `SendableMetatype`; TigerDuck builds with Xcode 27
    (Swift 6.4).
 
+8. The explicit `swift-testing` package dependency is dropped from `Package.swift`, along with
+   the four `.product(name: "Testing", package: "swift-testing")` entries in the test targets.
+   The test targets still `import Testing`; they now get it from the toolchain, which has
+   shipped Swift Testing since Xcode 16 (Xcode 27 carries `Testing.framework` in both the
+   iPhoneSimulator and MacOSX platform directories). Declaring it as a package instead dragged
+   **swift-syntax** into the graph — the macro machinery behind `@Test` and `#expect` — and
+   built five modules of it (`SwiftSyntax`, `SwiftSyntax601`, `SwiftSyntax602`,
+   `SwiftSyntaxBuilder`, `SwiftSyntaxMacros`, 130 object files) that nothing in the app ever
+   links. Measured on a clean `swift build --build-tests`: **63.0 s → 38.0 s wall, 304 s → 171 s
+   CPU**. Verified that a `swift-tools-version:5.9` manifest — which this is — resolves the
+   toolchain's Testing without the dependency; all three test targets still pass (380/57,
+   110/3, 21/4), as does the app suite (714/77).
+
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.

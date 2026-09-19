@@ -25,8 +25,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio", from: "2.101.3"),
         .package(url: "https://github.com/apple/swift-nio-imap", from: "0.3.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.37.1"),
-        .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-testing", exact: "6.3.2")
+        .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0")
     ],
     targets: [
         .target(
@@ -44,7 +43,6 @@ let package = Package(
             name: "SwiftIMAPTests",
             dependencies: [
                 "SwiftMail",
-                .product(name: "Testing", package: "swift-testing"),
                 .product(name: "NIO", package: "swift-nio"),
                 .product(name: "NIOEmbedded", package: "swift-nio"),
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
@@ -58,15 +56,13 @@ let package = Package(
             name: "SwiftSMTPTests",
             dependencies: [
                 "SwiftMail",
-                .product(name: "Testing", package: "swift-testing"),
                 .product(name: "NIOEmbedded", package: "swift-nio")
             ]
         ),
         .testTarget(
             name: "SwiftMailCoreTests",
             dependencies: [
-                "SwiftMail",
-                .product(name: "Testing", package: "swift-testing")
+                "SwiftMail"
             ]
         )
     ]
