@@ -17,7 +17,9 @@ nonisolated struct MailFolderUnavailable: Error, Equatable {
 /// missing Sent meant a sent mail vanished with no copy kept, and a missing Trash silently turned
 /// Delete from "move to Trash" into an irreversible STORE `\Deleted` + EXPUNGE.
 ///
-/// Three rules this type exists to enforce, all of them load-bearing:
+/// Three rules about this server that this type exists to enforce, all of them load-bearing
+/// — and a fourth, about the DEBUG developer server override, on
+/// `createsMissingFolders(under:)` below:
 ///
 /// 1. **Only `.sent`, `.drafts` and `.trash` are ever created.** `.junk` never is — the app never
 ///    writes to it, it is where the *server's* own spam classifier files mail, and a folder the
@@ -54,10 +56,36 @@ nonisolated enum MailFolderProvisioner {
     /// The only roles TigerDuck may bring into existence. See rule 1 above.
     static let creatableRoles: Set<MailFolderRole> = [.sent, .drafts, .trash]
 
+    /// The fourth rule, and the only one here that is not about Mail2000: **nothing is created
+    /// at all while the DEBUG developer server override is on.**
+    ///
+    /// The names this type creates are `MailFolderRole.imapName` — modified UTF-7 for
+    /// `寄件備份匣`, `草稿匣` and `回收筒`, which are Mail2000's own folder names and match
+    /// nothing anywhere else. Against a Gmail or Fastmail test account the first send, draft or
+    /// delete would therefore create Chinese-named folders in the developer's real personal
+    /// mailbox: a visible, persistent write to exactly the account this feature exists to keep
+    /// separate from the school one, and one that survives switching the override back off.
+    ///
+    /// It would not even work. Such an account already has its own Sent and Trash, which
+    /// `MailFolderMap` cannot see (no SPECIAL-USE is consulted, only these five names), so the
+    /// app would start filing sent mail into a folder the account's own web UI does not treat
+    /// as Sent, while the real one stayed empty — a worse answer than having no Sent folder,
+    /// because it looks like it worked.
+    ///
+    /// Suppressing creation puts the override back on the behaviour that shipped before
+    /// on-demand creation existed, and every caller already handles it: filing a sent copy and
+    /// deleting both have fallbacks, and saving a draft surfaces `MailFolderUnavailable` as an
+    /// ordinary error. The real school path is untouched — `isOverridden` is false there in
+    /// every build, and in a Release build there is no override to read.
+    static func createsMissingFolders(under config: MailServerConfig) -> Bool {
+        !config.isOverridden
+    }
+
     /// The folder for `role`, creating it if the account has none.
     ///
     /// Returns nil — and the caller falls back to whatever it did before this existed — when the
-    /// role is one that must never be created, when the server refused the `CREATE`, or when the
+    /// role is one that must never be created, when the DEBUG developer server override is on
+    /// (see `createsMissingFolders(under:)`), when the server refused the `CREATE`, or when the
     /// folder list that follows does not resolve the role back. Never throws: no caller of this
     /// may fail its own operation because a folder could not be made.
     ///
@@ -71,10 +99,11 @@ nonisolated enum MailFolderProvisioner {
     /// handing the caller a folder that role resolution will never match again — which would make
     /// the next operation create yet another one.
     static func ensure(
-        _ role: MailFolderRole, in roles: [MailFolderRole: String], client: any MailClient
+        _ role: MailFolderRole, in roles: [MailFolderRole: String], client: any MailClient,
+        config: MailServerConfig = .effective
     ) async -> Ensured? {
         if let existing = roles[role] { return Ensured(name: existing, roles: roles) }
-        guard creatableRoles.contains(role) else { return nil }
+        guard creatableRoles.contains(role), createsMissingFolders(under: config) else { return nil }
         try? await client.createFolder(role.imapName)
         guard let available = try? await client.listFolders() else { return nil }
         let refreshed = MailFolderMap.resolve(available: available)

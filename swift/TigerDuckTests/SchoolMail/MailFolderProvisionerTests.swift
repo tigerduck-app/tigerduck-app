@@ -65,6 +65,40 @@ struct MailFolderProvisionerTests {
         #expect(await fake.folders.isEmpty)
     }
 
+    /// Nothing is created while the DEBUG developer server override is on.
+    ///
+    /// The names this type creates are Mail2000's own — modified UTF-7 for `寄件備份匣`,
+    /// `草稿匣`, `回收筒` — and match nothing on any other account. Against the developer's real
+    /// personal mailbox the first send, draft or delete would otherwise create Chinese-named
+    /// folders in it, which is both a visible write to an account this feature exists to keep
+    /// out of the way and a half-working Sent that the account's own web UI does not use.
+    @Test(arguments: [MailFolderRole.sent, .drafts, .trash])
+    func aMissingRoleFolderIsNotCreatedUnderTheDeveloperOverride(role: MailFolderRole) async {
+        #if DEBUG
+        let overridden = MailServerConfig.resolve(
+            override: MailServerOverrideSettings(
+                isEnabled: true, addressDomain: "example.com",
+                imapHost: "imap.example.com", imapPort: 993, imapScheme: .implicitTLS,
+                smtpHost: "smtp.example.com", smtpPort: 465, smtpScheme: .implicitTLS
+            )
+        )
+        #expect(overridden.isOverridden)
+        #expect(!MailFolderProvisioner.createsMissingFolders(under: overridden))
+        let fake = FakeMailClient(folders: ["INBOX": []])
+        #expect(await MailFolderProvisioner.ensure(role, in: [.inbox: "INBOX"], client: fake,
+                                                   config: overridden) == nil)
+        #expect(await fake.calls.isEmpty)
+        #expect(await fake.folders.keys.sorted() == ["INBOX"])
+        #endif
+    }
+
+    /// And the real school path is untouched: creation is on for the school configuration, which
+    /// is what `ensure`'s default argument resolves to in every build.
+    @Test func theSchoolConfigurationStillCreatesMissingFolders() {
+        #expect(MailFolderProvisioner.createsMissingFolders(under: .school))
+        #expect(MailFolderProvisioner.createsMissingFolders(under: MailServerConfig.effective))
+    }
+
     /// A folder that is already resolved costs nothing at all — no `CREATE`, and no `LIST` either.
     @Test func aFolderThatAlreadyResolvesIsNeverTouched() async throws {
         let fake = FakeMailClient(folders: ["INBOX": [], Self.sent: []])
