@@ -27,6 +27,9 @@ final class MailListViewModel {
     private(set) var isPaginating = false
     private(set) var searchResults: [MailListRow]?
     private(set) var searchUsedLocalFallback = false
+    /// What became of the last sent copy, when it is something the user should know — see
+    /// `reportSentCopyNotice`.
+    private(set) var sentCopyNotice: String?
     var searchText = ""
     var unreadOnly = false
 
@@ -249,6 +252,20 @@ final class MailListViewModel {
         folderRoles = roles
         guard targets != before else { return }
         Task { await load() }
+    }
+
+    /// A mail composed from this screen went out, but its copy did not reach Sent — the send
+    /// succeeded, so this is a notice the user dismisses, never a `loadState` failure.
+    ///
+    /// Nothing clears it but `dismissSentCopyNotice()`. In particular `load()` must not: the
+    /// compose sheet's own dismissal triggers a reload, so a notice cleared by loading would be
+    /// wiped by the very act of the sheet closing and never be seen at all.
+    func reportSentCopyNotice(_ message: String) {
+        sentCopyNotice = message
+    }
+
+    func dismissSentCopyNotice() {
+        sentCopyNotice = nil
     }
 
     // MARK: Search

@@ -83,7 +83,8 @@ struct MailMessageView: View {
         .sheet(isPresented: $showMoveSheet) { moveSheet }
         .sheet(item: $compose) { context in
             MailComposeView(context: context, session: session, folderRoles: viewModel.folderRoles,
-                            onFolderRolesChanged: { viewModel.adoptFolderRoles($0) })
+                            onFolderRolesChanged: { viewModel.adoptFolderRoles($0) },
+                            onSentCopyNotice: { viewModel.reportSentCopyNotice($0) })
         }
         .alert(String(localized: "school_mail_risky_title"), isPresented: Binding(
             get: { riskyAttachment != nil }, set: { if !$0 { riskyAttachment = nil } }), presenting: riskyAttachment

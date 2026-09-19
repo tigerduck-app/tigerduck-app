@@ -25,12 +25,14 @@ struct MailComposeView: View {
         context: MailComposeContext,
         session: MailPageSession,
         folderRoles: [MailFolderRole: String],
-        onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void
+        onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void,
+        onSentCopyNotice: @escaping (String) -> Void
     ) {
         let account = MailAccountManager.shared
         let sender = MailAddress(name: account.displayName, address: account.address ?? "")
         let model = MailComposeViewModel(context: context, session: session, sender: sender, folderRoles: folderRoles)
         model.onFolderRolesChanged = onFolderRolesChanged
+        model.onSentCopyNotice = onSentCopyNotice
         _viewModel = State(initialValue: model)
         mode = context.mode
     }

@@ -270,6 +270,19 @@ struct SchoolMailView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
             }
+            // The mail went out; only its copy did not reach Sent. A banner rather than the
+            // load-failure state, because nothing here failed to load — and dismissible, because
+            // it is about one send and the user may simply not care.
+            if let notice = viewModel.sentCopyNotice {
+                MailWarningBanner(
+                    message: notice,
+                    systemImage: "tray.and.arrow.down",
+                    actionTitle: String(localized: "settings_acknowledged"),
+                    action: { viewModel.dismissSentCopyNotice() }
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
             MailFolderChipBar(
                 roles: viewModel.folderRoles,
                 others: viewModel.otherFolders,
@@ -314,7 +327,8 @@ struct SchoolMailView: View {
         .onChange(of: appState.pendingDeepLink) { _, _ in drainDeepLink() }
         .sheet(item: $compose, onDismiss: { Task { await viewModel.load() } }) { context in
             MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles,
-                            onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) })
+                            onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) },
+                            onSentCopyNotice: { notice in viewModel.reportSentCopyNotice(notice) })
         }
         .task {
             await viewModel.load()

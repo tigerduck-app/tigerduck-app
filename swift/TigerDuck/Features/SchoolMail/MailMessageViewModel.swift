@@ -426,6 +426,14 @@ final class MailMessageViewModel {
         onFolderRolesChanged?(roles)
     }
 
+    /// A reply or forward sent from this screen went out, but its copy did not reach Sent. The
+    /// send itself succeeded, so this is a notice and not a failure — it rides the same
+    /// `actionError` banner a failed move or delete uses, which is the one place on this screen
+    /// that says "that didn't go the way you'd expect" without taking the mail off screen.
+    func reportSentCopyNotice(_ message: String) {
+        actionError = message
+    }
+
     /// Uses the folder's cached page UIDVALIDITY (read once in `load()`) to build the
     /// owned-deleted set, runs `operation` through the shared page session (dispatch addition
     /// 7), and persists whatever it reports still pending.
