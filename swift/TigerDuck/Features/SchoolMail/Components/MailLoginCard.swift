@@ -141,13 +141,18 @@ struct MailLoginCard: View {
     /// Skipped entirely while the developer override is on: the stored password belongs to the
     /// school and must not be handed to someone else's server, which is the same rule the Test
     /// connection probe applies to itself.
+    ///
+    /// A password the server has already rejected is never offered again
+    /// (`MailAccountManager.lastRejectedPassword`). A mismatch between the SSO and Mail2000
+    /// passwords is the *expected* failure on this screen, and re-seeding the rejected one made
+    /// another rejected `LOGIN` a single tap — which is the friction §7.4 is made of.
     private func seedFromNTUSTAccount() {
         guard !usernameIsAnAddress, password.isEmpty else { return }
         let auth = appState.authService
         if studentID.isEmpty, let id = auth.storedStudentId, !id.isEmpty {
             studentID = id
         }
-        if let stored = auth.storedPassword, !stored.isEmpty {
+        if let stored = auth.storedPassword, !stored.isEmpty, stored != account.lastRejectedPassword {
             password = stored
         }
     }

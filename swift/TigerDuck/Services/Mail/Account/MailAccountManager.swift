@@ -39,6 +39,22 @@ final class MailAccountManager {
     private(set) var loginError: LoginError?
     private(set) var authFailed: Bool
 
+    /// The password the mail server most recently **rejected** for a manual sign-in.
+    ///
+    /// In memory for this process only: never persisted, never logged, never sent anywhere.
+    /// The sign-in screens read it so they do not prefill it again — a Mail2000 password is set
+    /// in webmail and need not match the NTUST one, so a mismatch is the *expected* failure
+    /// here, and re-offering the rejected password made another rejected `LOGIN` a single tap
+    /// on exactly the path §7.4 protects (repeated failures lock the school account and its
+    /// campus Wi-Fi). A *manual* rejection deliberately does not set `authFailed`, which is
+    /// reserved for a saved password failing in the background, so nothing else throttled this.
+    ///
+    /// Cleared by a sign-in the server accepted, and by nothing else: a sign-out does not clear
+    /// it, because the password it remembers is the NTUST one the prefill would offer again and
+    /// that has not become any more likely to work. Relaunching the app forgets it, which is the
+    /// escape hatch for someone who has since changed their Mail2000 password to match.
+    @ObservationIgnored private(set) var lastRejectedPassword: String?
+
     var displayName: String? {
         didSet { prefs.displayName = displayName?.mailNonEmpty }
     }
@@ -119,10 +135,16 @@ final class MailAccountManager {
             try credentials.savePassword(password)
         } catch {
             await client.logout()
-            loginError = LoginError(error)
+            let failure = LoginError(error)
+            // Only a *rejection* is remembered. An unreachable server or a certificate the app
+            // would not trust says nothing about whether the password is right, and suppressing
+            // the prefill after one of those would be friction with no safety behind it.
+            if failure == .credentials { lastRejectedPassword = password }
+            loginError = failure
             return
         }
 
+        lastRejectedPassword = nil
         prefs.studentID = id
         prefs.demoActive = demo
         prefs.authFailed = false

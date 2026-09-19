@@ -35,6 +35,15 @@ struct MailLoginSheet: View {
         #endif
     }
 
+    /// The password this sheet opens with: the NTUST one, unless the override is on (it is not
+    /// the school's server's to have) or the mail server has already rejected it (§7.4 — see
+    /// `MailAccountManager.lastRejectedPassword`). A stored function rather than an expression
+    /// inside `body` so the rule is testable without standing the sheet up.
+    static func initialPassword(stored: String?, lastRejected: String?) -> String {
+        guard !usernameIsAnAddress, let stored, !stored.isEmpty, stored != lastRejected else { return "" }
+        return stored
+    }
+
     @Binding var isPresented: Bool
     @Environment(AppState.self) private var appState
     private let account = MailAccountManager.shared
@@ -53,8 +62,14 @@ struct MailLoginSheet: View {
             // Prefilled from the NTUST sign-in for the user to submit or correct, never
             // submitted automatically — see `MailLoginCard.seedFromNTUSTAccount`. Skipped while
             // the developer override is on, because the school's password is not for someone
-            // else's server.
-            initialPassword: Self.usernameIsAnAddress ? "" : (appState.authService.storedPassword ?? ""),
+            // else's server, and skipped once the server has rejected it: dismissing and
+            // reopening this sheet builds a fresh `LoginSheet` every time, so without that a
+            // rejected password came straight back and another rejected `LOGIN` was one tap
+            // away — see `MailAccountManager.lastRejectedPassword` and §7.4.
+            initialPassword: Self.initialPassword(
+                stored: appState.authService.storedPassword,
+                lastRejected: account.lastRejectedPassword
+            ),
             isLoggingIn: account.isLoggingIn,
             loginError: account.loginError?.message,
             footerLink: Self.resetPasswordLink,
