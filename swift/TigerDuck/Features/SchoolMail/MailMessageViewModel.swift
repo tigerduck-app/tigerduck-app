@@ -54,7 +54,8 @@ final class MailMessageViewModel {
     private(set) var plainText = ""
     private(set) var warnings: [MailWarning] = []
     /// Nothing this screen can render: no text body, no HTML body, no attachments. Drives the
-    /// 「無法解析這封信的格式，改為原始碼」 banner and the forced 原始碼 mode below.
+    /// "Couldn't read this mail's format. Showing its source instead." banner and the forced
+    /// source view below.
     ///
     /// Still a statement about what there is to show, not about why — deliberately. It used to
     /// fire for any message whose `BODYSTRUCTURE` Mail2000 botched, because the client believed
@@ -146,12 +147,13 @@ final class MailMessageViewModel {
     /// refreshed by the fetch.
     var summary: MailSummary? { detail?.summary ?? cachedSummary }
 
-    /// The modes worth offering for this mail. 格式化 renders the sanitized HTML document, so a
-    /// mail that carries no HTML part has nothing to show there — Android hides the mode outright
-    /// rather than letting the user pick a view that renders nothing, and so do we. Until a
-    /// message has loaded the answer is not known yet, so all three stay on offer; `apply` moves
-    /// the selection off 格式化 at the moment a mail turns out to be plain-text only, so the
-    /// picker is never left selecting a mode that has just disappeared.
+    /// The modes worth offering for this mail. The formatted view renders the sanitized HTML
+    /// document, so a mail that carries no HTML part has nothing to show there — Android hides
+    /// the mode outright rather than letting the user pick a view that renders nothing, and so
+    /// do we. Until a message has loaded the answer is not known yet, so all three stay on
+    /// offer; `apply` moves the selection off the formatted view at the moment a mail turns out
+    /// to be plain-text only, so the picker is never left selecting a mode that has just
+    /// disappeared.
     var availableModes: [ViewMode] {
         guard detail != nil else { return ViewMode.allCases }
         return linkedDocument == nil ? [.plain, .source] : ViewMode.allCases
@@ -175,7 +177,7 @@ final class MailMessageViewModel {
         let summary = detail.summary
         return MailOriginal(
             // A cached bounce has a name and no address (`MailAddress.parseSender`), and the
-            // name is still what a forward's header block and a reply's 「…寫道：」 line
+            // name is still what a forward's header block and a reply's "… wrote:" line
             // should print — so `from` is built whenever either half survives, not only when
             // there is an address. The empty address is what stops `replyRecipients` from
             // turning it into a recipient.
@@ -404,13 +406,13 @@ final class MailMessageViewModel {
     ///
     /// A failure part-way through is not just a failure: COPY and STORE may already have landed,
     /// and a `\Deleted` UID this app flagged but does not claim makes `shouldExpunge` false in
-    /// that folder from then on — every later delete there degrades to "hide" and 回收筒 stops
+    /// that folder from then on — every later delete there degrades to "hide" and Trash stops
     /// deleting anything. So the `catch` asks the server once, through
     /// `MailMover.recoverAfterFailure`, whether the flag actually took, and persists the claim.
     private func performMove(_ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult) async -> Bool {
         // Move and delete are four to five round trips with no progress indication, so a second
         // tap is expected behaviour. Without this the second COPYs the same mail again — it
-        // lands in both 回收筒 and the move target — and both calls read `ownedDeleted` before
+        // lands in both Trash and the move target — and both calls read `ownedDeleted` before
         // either writes it back, dropping one call's pending UID and wedging the folder exactly
         // as above. Set before the first `await`, so the two can never both get past it.
         guard !isMoving else { return false }
@@ -479,10 +481,11 @@ final class MailMessageViewModel {
     }
 
     /// HTML/SVG (by extension or by content type) is never rendered in the app at all (§9.5:
-    /// 「只能儲存或交給其他 App」) — unlike a merely risky file, "open" must always take the
-    /// share-sheet hand-off path regardless of what the user asked for, never Quick Look, which
-    /// renders HTML/SVG in-process with WebKit (JavaScript on, remote loads allowed) — exactly
-    /// what the locked-down message web view exists to prevent (fix round 1, critical 1).
+    /// save it or hand it to another app, never render it) — unlike a merely risky file, "open"
+    /// must always take the share-sheet hand-off path regardless of what the user asked for,
+    /// never Quick Look, which renders HTML/SVG in-process with WebKit (JavaScript on, remote
+    /// loads allowed) — exactly what the locked-down message web view exists to prevent (fix
+    /// round 1, critical 1).
     func isNeverRenderedInApp(_ part: MailBodyPart) -> Bool {
         let filename = part.filename ?? ""
         if MailWarnings.neverRenderedInApp(filename: filename) { return true }
@@ -565,9 +568,9 @@ final class MailMessageViewModel {
         sanitized = freshSanitized
         linkedDocument = freshLinked
         plainText = freshPlainText
-        // 格式化 is about to stop being offered for a mail with no HTML part (`availableModes`),
-        // so a selection resting on it has to move now rather than leave the picker pointing at
-        // an entry that is no longer in the menu.
+        // The formatted view is about to stop being offered for a mail with no HTML part
+        // (`availableModes`), so a selection resting on it has to move now rather than leave the
+        // picker pointing at an entry that is no longer in the menu.
         if freshLinked == nil, mode == .formatted { mode = .plain }
         parseFailed = detail.textBody == nil && detail.htmlBody == nil && detail.attachments.isEmpty
         if parseFailed { mode = .source }

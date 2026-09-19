@@ -710,8 +710,8 @@ actor LiveMailClient: MailClient {
         // Nothing above recognized this error. `.unreachable` used to be the fallback here, and
         // that is why a parser bug looked like a network outage: an `IMAPDecoderError` arrives
         // as a type this module cannot even name, became `.unreachable` → `LoginError.network`
-        // → 「無法連線到郵件伺服器」, and the device's mail was unreadable with a working network.
-        // Errors that genuinely mean "couldn't reach the server" are named above
+        // → "Can't reach the mail server", and the device's mail was unreadable with a working
+        // network. Errors that genuinely mean "couldn't reach the server" are named above
         // (`IMAPError.timeout`, `connectionFailed`) or are network-shaped in the sense
         // `isNetworkShaped` describes; an unknown error that is neither is far likelier to be a
         // protocol problem, so it says so instead of blaming the network.

@@ -28,7 +28,7 @@ nonisolated enum MailReplyComposer {
         hasPrefix(subject, ["fwd:", "fw:"]) ? subject : "Fwd: \(subject)"
     }
 
-    /// Blank lines, then 「於 {date}，{sender} 寫道：」 and the original with `> ` on every line.
+    /// Blank lines, then "On {date}, {sender} wrote:" and the original with `> ` on every line.
     static func quotedBody(of original: MailOriginal, dateText: String) -> String {
         let quoted = normalizedLines(original.bodyText).map { "> \($0)" }.joined(separator: "\n")
         return "\n\n\(header(original, dateText: dateText))\n\(quoted)"
@@ -82,7 +82,7 @@ nonisolated enum MailReplyComposer {
     /// A sender the From header only named — `"Mail Deliver System" <MAILER-DAEMON>`, kept
     /// for its display name by `MailAddress.parseSender` and so carrying no address — is
     /// dropped here rather than prefilled as `Mail Deliver System <>`. The reply opens with
-    /// an empty 收件者 and compose refuses to send it (`school_mail_no_recipient`); nothing
+    /// an empty To field and compose refuses to send it (`school_mail_no_recipient`); nothing
     /// downstream ever sees a recipient this app could not parse.
     static func replyRecipients(
         to original: MailOriginal,

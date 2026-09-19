@@ -535,9 +535,9 @@ struct MailComposeViewModelTests {
 
     // MARK: The send confirmation
 
-    /// Validation runs first and confirmation second: a form 傳送 would reject gets the error it
-    /// always got and no "要傳送這封信嗎？" — nobody is asked to confirm a send that was never
-    /// going to happen. Fix the form and the question is worth asking.
+    /// Validation runs first and confirmation second: a form that Send would reject gets the
+    /// error it always got and no "Send this mail?" — nobody is asked to confirm a send that was
+    /// never going to happen. Fix the form and the question is worth asking.
     @Test func aFormThatFailsValidationIsNeverConfirmed() async {
         let model = Self.model(MailComposeContext(mode: .new), fake: Self.fake())
         await model.prepare()
@@ -589,7 +589,7 @@ struct MailComposeViewModelTests {
     // MARK: The error dialog
 
     /// Dismissing the dialog must not take the inline message with it, and the *same* failure
-    /// happening again must raise the dialog again: tap 儲存草稿 with an unfinished 收件人,
+    /// happening again must raise the dialog again: tap Save draft with an unfinished recipient,
     /// dismiss, change nothing, tap it again. `error` is a `String?`, so the second failure is
     /// character-for-character the first — anything that decided by comparing error values would
     /// see no change and leave the second tap looking like it did nothing at all.

@@ -19,7 +19,7 @@ nonisolated enum MailCheckOutcome: Equatable, Sendable {
         }
     }
 
-    /// Shown in 通知診斷 next to the time and trigger.
+    /// Shown in Notification diagnostics next to the time and trigger.
     var diagnosticText: String {
         switch self {
         case .skippedBusy: "skipped: another check running"

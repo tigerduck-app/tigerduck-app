@@ -32,11 +32,11 @@ nonisolated enum MailCharset {
     /// The lenient decode comes *after* strict UTF-8, not straight after the strict labelled
     /// one, because the other everyday shape is a part labelled `us-ascii` that carries UTF-8:
     /// Mail2000 sends them constantly. Strict ASCII fails on those bytes, and a lenient ASCII
-    /// decode then succeeds on every one of them — turning 親愛的同學您好 into `è¦ªæ„›çš„…`,
-    /// which is the whole message lost. A body that is valid UTF-8 is UTF-8 whatever the header
-    /// claims, so that possibility is settled before any byte is replaced. Android has no
-    /// fallback at all for a resolvable label and so still has the mojibake; this side is
-    /// deliberately not matching it there.
+    /// decode then succeeds on every one of them — turning a Chinese body such as `親愛的同學您好`
+    /// into `è¦ªæ„›çš„…`, which is the whole message lost. A body that is valid UTF-8 is UTF-8
+    /// whatever the header claims, so that possibility is settled before any byte is replaced.
+    /// Android has no fallback at all for a resolvable label and so still has the mojibake;
+    /// this side is deliberately not matching it there.
     static func decode(_ data: Data, label: String?) -> String {
         let labelled = encoding(forLabel: label)
         if let labelled, let text = String(data: data, encoding: labelled) { return text }

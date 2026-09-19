@@ -1,11 +1,11 @@
 #if os(iOS)
 import SwiftUI
 
-/// 信箱設定 (design doc §6.5): the display name, the guide, and what the mailbox is costing
-/// in disk.
+/// The School Mail settings screen (design doc §6.5): the display name, the guide, and what
+/// the mailbox is costing in disk.
 ///
-/// The new-mail switch and 通知診斷 used to live here too. They moved to
-/// `MailNotificationSettingsView`, reached from Settings → 通知 with the app's other
+/// The new-mail switch and Notification diagnostics used to live here too. They moved to
+/// `MailNotificationSettingsView`, reached from Settings → Notifications with the app's other
 /// notification screens — moved, not copied, so only one screen owns the switch.
 struct MailSettingsView: View {
     @State private var displayNameDraft = ""

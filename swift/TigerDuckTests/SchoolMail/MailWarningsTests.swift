@@ -222,9 +222,10 @@ struct MailWarningsTests {
 
     /// A Mail2000 delivery-failure notice keeps its display name and no address at all
     /// (`MailAddress.parseSender`). `domain(ofAddress: "")` is `""`, which is not a school
-    /// domain, so the naive reading would badge every bounce 「外部寄件者」 with nothing after
-    /// it — a banner that names no address, on the most routine mail the school sends. It is
-    /// suppressed, and `MailSummary.isExternal` already agreed (it is false with no address).
+    /// domain, so the naive reading would raise "This sender isn't a school address" on every
+    /// bounce with nothing after it — a banner that names no address, on the most routine mail
+    /// the school sends. It is suppressed, and `MailSummary.isExternal` already agreed (it is
+    /// false with no address).
     @Test
     func anEmptySenderAddressRaisesNoExternalBanner() {
         let input = MailWarningInput(

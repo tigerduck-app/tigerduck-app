@@ -23,8 +23,8 @@ struct MailMessageView: View {
     @State private var compose: MailComposeContext?
 
     /// Which of the two delete confirmations the Delete button raised. One optional backs both
-    /// dialogs, so exactly one of them can ever be up: deleting in 回收筒 asks whether to destroy
-    /// the mail for good, and deleting anywhere else asks before moving it to 回收筒 — a delete
+    /// dialogs, so exactly one of them can ever be up: deleting in Trash asks whether to destroy
+    /// the mail for good, and deleting anywhere else asks before moving it to Trash — a delete
     /// never happens on a single tap either way.
     private enum PendingDelete { case toTrash, permanent }
 
@@ -310,8 +310,8 @@ struct MailMessageView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             // Three groups, matching Android: the view modes, then the two reversible actions,
-            // then 刪除 on its own — the one entry here that loses mail sits behind a divider of
-            // its own rather than a thumb's width below 移動到….
+            // then Delete on its own — the one entry here that loses mail sits behind a divider
+            // of its own rather than a thumb's width below Move to….
             Menu {
                 Section {
                     Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {

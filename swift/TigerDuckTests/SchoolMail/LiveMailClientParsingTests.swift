@@ -26,7 +26,7 @@ struct LiveMailClientParsingTests {
         #expect(attachment.contentType == "application/pdf")
         // See Step 7: EMLParser prefers Content-Type's plain `name=` here; the live IMAP
         // path (used by LiveMailClient) prefers Content-Disposition's `filename*=` and
-        // would read "報告.pdf" instead — checked manually in Task 19.
+        // would read `報告.pdf` instead — checked manually in Task 19.
         #expect(attachment.filename == "report.pdf")
         let bytes = try #require(attachment.decodedData())
         #expect(String(decoding: bytes, as: UTF8.self) == "%PDF-1.4\n")
@@ -61,7 +61,7 @@ struct LiveMailClientParsingTests {
     /// the student's own address replaced by this corpus's `b10000001` and the returned
     /// message stripped out). Its `From` is a display name over a bare local part with no
     /// `@domain`, which the strict list parser drops whole — name and all — leaving the row
-    /// reading 「（沒有寄件者）」. `parseSender` keeps the name and no address.
+    /// reading "(No sender)". `parseSender` keeps the name and no address.
     @Test func keepsTheSenderNameOfAMail2000Bounce() throws {
         let data = try SchoolMailFixtures.rawEML("bounce-no-domain")
         let from = try #require(MailRawHeaders.value(named: "from", in: data))

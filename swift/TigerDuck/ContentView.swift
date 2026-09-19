@@ -39,7 +39,7 @@ private struct ServerPushPopupHost: ViewModifier {
                 ),
                 presenting: bindable.pendingServerPopup
             ) { popup in
-                // System-localized "OK" / "確定" comes from the cancel role.
+                // The system-localized "OK" comes from the cancel role.
                 // Marking happens here (not at routing time) so a popup
                 // that was actually presented gets added to the FIFO
                 // dedupe — but one that was suppressed by a competing

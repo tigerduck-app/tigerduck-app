@@ -226,10 +226,11 @@ struct SettingsView: View {
                 #if os(iOS)
                 if SchoolMailAvailability.isEnabled {
                     // The School Mail switch and its check log live here, not
-                    // in 信箱設定 — one screen owns them. Dimmed and inert while
-                    // School Mail is signed out: there is no mailbox to be
-                    // notified about, and the 校園信箱 account row above already
-                    // says so, so this row carries no subtitle of its own.
+                    // in the School Mail settings screen — one screen owns
+                    // them. Dimmed and inert while School Mail is signed out:
+                    // there is no mailbox to be notified about, and the School
+                    // Mail account row above already says so, so this row
+                    // carries no subtitle of its own.
                     NavigationLink(String(localized: "school_mail_notification_settings_title")) {
                         MailNotificationSettingsView()
                     }

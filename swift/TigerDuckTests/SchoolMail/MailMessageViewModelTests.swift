@@ -88,9 +88,9 @@ struct MailMessageViewModelTests {
         #expect(h.model.summary?.isSeen == true)
     }
 
-    /// 格式化 renders the sanitized HTML document, so a plain-text-only mail must not offer it —
-    /// picking it would show nothing. The selection has to move off it at the same moment, or the
-    /// picker is left pointing at an entry that is no longer in the menu.
+    /// The formatted view renders the sanitized HTML document, so a plain-text-only mail must
+    /// not offer it — picking it would show nothing. The selection has to move off it at the same
+    /// moment, or the picker is left pointing at an entry that is no longer in the menu.
     @Test func aMailWithNoHTMLDoesNotOfferTheFormattedMode() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: "只有純文字", html: nil))
         #expect(h.model.availableModes == MailMessageViewModel.ViewMode.allCases)
@@ -208,7 +208,7 @@ struct MailMessageViewModelTests {
 
     /// A delete whose STORE lands but whose deleted-UID check then fails leaves a `\Deleted` UID
     /// on the server. If the app does not claim it, `shouldExpunge` is false in that folder for
-    /// good: every later delete degrades to "hide", and 回收筒 stops actually deleting anything.
+    /// good: every later delete degrades to "hide", and Trash stops actually deleting anything.
     @Test func aPartlyFailedDeleteClaimsTheFlagItLandedInsteadOfWedgingTheFolder() async {
         let h = Self.harness(FakeMailClient.message(uid: 5), folder: Self.trash,
                              extra: [FakeMailClient.message(uid: 6)])

@@ -321,7 +321,7 @@ actor DemoMailClient: MailClient {
 
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool { false }
 
-    /// The demo never sends anything; compose then saves the copy into 寄件備份匣 itself.
+    /// The demo never sends anything; compose then saves the copy into Sent itself.
     func send(_ message: Data, from sender: String, to recipients: [String]) async throws {}
 
     private func find(folder: String, uid: UInt32) throws -> Stored {

@@ -50,11 +50,11 @@ final class MailComposeViewModel {
     /// easy to scroll past, so the same message is also put in a dialog they have to acknowledge.
     ///
     /// This is a flag rather than something derived from `error`, because `error` is a `String?`
-    /// — a value. Tap 傳送, dismiss 「信件太大」, change nothing, tap 傳送 again, and the second
-    /// failure is character-for-character the first: anything that compared error values (a
-    /// `.alert(item:)`, an `onChange(of:)`) would see no change and swallow the second dialog,
-    /// leaving a tap that visibly did nothing. Raised unconditionally on every assignment to
-    /// `error` instead, and lowered only by `acknowledgeError()`.
+    /// — a value. Tap Send, dismiss "Attachments are over the 50 MB limit", change nothing, tap
+    /// Send again, and the second failure is character-for-character the first: anything that
+    /// compared error values (a `.alert(item:)`, an `onChange(of:)`) would see no change and
+    /// swallow the second dialog, leaving a tap that visibly did nothing. Raised unconditionally
+    /// on every assignment to `error` instead, and lowered only by `acknowledgeError()`.
     private(set) var errorNeedsAcknowledging = false
     /// A failed `prepare()`/`retryPrepare()`, kept entirely separate from `error`: an attachment
     /// change or a send/save validation error or failure must never clear the Retry action this
@@ -84,7 +84,7 @@ final class MailComposeViewModel {
     /// the draft being edited -- gates marking an original "answered" and replacing/removing a
     /// draft, so a load that never finished (or failed) can never do either (dispatch addition 5).
     @ObservationIgnored private var sourceLoaded = false
-    /// The 草稿匣 page's UIDVALIDITY as cached by the list (`.draft` mode only), read once during
+    /// The Drafts page's UIDVALIDITY as cached by the list (`.draft` mode only), read once during
     /// `prepare()`/`retryPrepare()`. `removeDraft` uses this -- never a value read fresh right
     /// before `MailMover` runs, which would make its own freshness guard compare a value against
     /// itself and could never refuse (fix round 1, critical 1; mirrors
@@ -324,7 +324,7 @@ final class MailComposeViewModel {
     /// Everything that can refuse a send before a byte leaves the phone, reporting the refusal
     /// exactly as `send()` always has and handing back the parsed recipients when there is none.
     ///
-    /// Split out so 傳送 can ask "確定要傳送嗎？" *after* the form has been judged rather than
+    /// Split out so Send can ask "Send this mail?" *after* the form has been judged rather than
     /// before: a mail that would only fail validation anyway gets the error it would have got,
     /// and the confirmation is reserved for a mail that really is about to go out. `send()` runs
     /// it again for itself, so the check is never something a caller can skip.
@@ -361,7 +361,7 @@ final class MailComposeViewModel {
         return (toList, ccList, bccList)
     }
 
-    /// Run when 傳送 is tapped, before the "要傳送這封信嗎？" confirmation: `true` means the mail
+    /// Run when Send is tapped, before the "Send this mail?" confirmation: `true` means the mail
     /// would actually send and the confirmation is worth raising. A refusal has already set
     /// `error` (and raised the dialog that goes with it), and no confirmation follows — the user
     /// is never asked to confirm a send that was never going to happen. Refuses outright while a
@@ -567,7 +567,8 @@ final class MailComposeViewModel {
             prefs.setOwnedDeleted(result.stillPending)
         } catch {
             // The STORE may already have landed; an unclaimed `\Deleted` UID blocks every later
-            // EXPUNGE in 草稿匣 for good, so the same recovery the message screen runs applies here.
+            // EXPUNGE in Drafts for good, so the same recovery the message screen runs applies
+            // here.
             guard let claim = await MailMover.recoverAfterFailure(after: error, uid: uid, previouslyFlagged: owned,
                                                                   client: client, wasAlreadyDeleted: wasAlreadyDeleted) else {
                 return

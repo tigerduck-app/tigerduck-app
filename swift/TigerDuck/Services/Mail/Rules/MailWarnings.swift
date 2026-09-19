@@ -189,8 +189,8 @@ nonisolated enum MailWarnings {
     }
 
     /// Whether `text` names an email address whose domain is a near miss of the school's. This
-    /// is what turns a delivery failure into 「你剛剛寄信是不是填錯電子信箱？」: a bounce from
-    /// `gmail.com` says nothing about a typo, so it earns no such claim.
+    /// is what turns a delivery failure into "Did you mistype an address in the mail you just
+    /// sent?": a bounce from `gmail.com` says nothing about a typo, so it earns no such claim.
     static func mentionsMistypedSchoolAddress(_ text: String) -> Bool {
         let range = NSRange(text.startIndex..., in: text)
         return emailPattern.matches(in: text, range: range).contains { match in

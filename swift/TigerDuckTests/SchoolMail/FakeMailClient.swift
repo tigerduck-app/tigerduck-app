@@ -152,7 +152,7 @@ actor FakeMailClient: MailClient {
     ) -> Message {
         let subject = subject ?? "subject \(uid)"
         // Mirrors `LiveMailClient.summary`: a From with no usable address (a Mail2000 bounce's
-        // `<MAILER-DAEMON>`) stores nil, not "", and gets no 校外 badge — there is no domain to
+        // `<MAILER-DAEMON>`) stores nil, not "", and gets no External badge — there is no domain to
         // call outside. Identical to the old behaviour for every non-empty address.
         let address = from.mailNonEmpty
         let summary = MailSummary(

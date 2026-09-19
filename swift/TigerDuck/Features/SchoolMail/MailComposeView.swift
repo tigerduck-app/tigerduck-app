@@ -131,10 +131,10 @@ struct MailComposeView: View {
                 }
             }
             // The inline message stays where it is; this is the same text again, in front of the
-            // user, because a failed 傳送 or 儲存草稿 otherwise announces itself only as a line of
-            // small red text at the bottom of a form they are looking at the top of. Dismissing
-            // acknowledges the dialog and nothing more — the inline copy survives it, and the
-            // next identical failure raises this again (`errorNeedsAcknowledging`).
+            // user, because a failed Send or Save draft otherwise announces itself only as a
+            // line of small red text at the bottom of a form they are looking at the top of.
+            // Dismissing acknowledges the dialog and nothing more — the inline copy survives
+            // it, and the next identical failure raises this again (`errorNeedsAcknowledging`).
             .alert(String(localized: "feature_school_mail"), isPresented: Binding(
                 get: { viewModel.errorNeedsAcknowledging },
                 set: { if !$0 { viewModel.acknowledgeError() } })

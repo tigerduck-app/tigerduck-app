@@ -226,8 +226,8 @@ final class MailAccountManager {
         prefs.inboxNextUID = status.uidNext
     }
 
-    /// §7.3: the display name Mail2000 webmail wrote on the newest mail in 寄件備份匣
-    /// that was sent from this address.
+    /// §7.3: the display name Mail2000 webmail wrote on the newest mail in Sent that was
+    /// sent from this address.
     private func discoverDisplayName(client: any MailClient, address: String) async -> String? {
         guard let folders = try? await client.listFolders(),
               let sent = MailFolderMap.resolve(available: folders)[.sent],

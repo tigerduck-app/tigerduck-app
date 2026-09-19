@@ -11,9 +11,9 @@ import Testing
 /// Why the message screen may never ask for a *named* header-field list, and why a response it
 /// cannot decode must not be reported as an unreachable server.
 ///
-/// On a real device every message open failed with 「無法連線到郵件伺服器」 while the list loaded
-/// fine. The list fetch asks for envelope/flags/size/bodystructure; the detail fetch was the one
-/// call site that also passed `headerFields: ["References"]`, which SwiftMail encodes as
+/// On a real device every message open failed with "Can't reach the mail server" while the list
+/// loaded fine. The list fetch asks for envelope/flags/size/bodystructure; the detail fetch was
+/// the one call site that also passed `headerFields: ["References"]`, which SwiftMail encodes as
 /// `BODY.PEEK[HEADER.FIELDS ("References")]` — the field name quoted, as RFC 3501 allows.
 /// Mail2000 echoes that section back uppercased *and* quoted a second time, and the response
 /// stops being IMAP.
@@ -131,8 +131,8 @@ struct MailFetchSectionTests {
     @Test func aDecodeFailureIsAProtocolErrorNotAnUnreachableServer() throws {
         // The whole misdiagnosis: `map(_:)` used to end in `classify(..., fallback: .unreachable)`,
         // an `IMAPDecoderError` matches none of the known shapes, so a parser failure became
-        // `.unreachable` → `LoginError.network` → 「無法連線到郵件伺服器」 on a device whose
-        // network was fine. A response this client cannot read is a protocol failure.
+        // `.unreachable` → `LoginError.network` → "Can't reach the mail server" on a device
+        // whose network was fine. A response this client cannot read is a protocol failure.
         let error = try Self.decodeFailure(Self.mail2000Echo)
         #expect(LiveMailClient.map(error) == .protocolError(String(describing: error)))
     }

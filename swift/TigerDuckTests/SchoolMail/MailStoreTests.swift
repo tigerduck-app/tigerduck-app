@@ -181,7 +181,7 @@ struct MailStoreTests {
     /// A bounce is kept by its display name alone — `fromAddress` is nil, not `""`
     /// (`LiveMailClient.summary`). Both the folder list and the opened-mail body go through
     /// the cache before they are shown again, so if either half dropped the name on the way
-    /// back the row would read 「（沒有寄件者）」 the moment the app was reopened, which is the
+    /// back the row would read "(No sender)" the moment the app was reopened, which is the
     /// bug all over again one launch later.
     @Test func aSenderWithOnlyADisplayNameSurvivesTheCache() {
         let cache = SchoolMailTestDoubles.temporaryCache()

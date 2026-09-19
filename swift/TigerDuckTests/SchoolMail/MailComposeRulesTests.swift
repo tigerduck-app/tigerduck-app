@@ -244,7 +244,7 @@ struct MailComposeRulesTests {
     /// A Mail2000 bounce's sender survives as a display name with no address
     /// (`MailAddress.parseSender`). Reply, reply-all and forward must all refuse to address
     /// anything to it: never a `MAILER-DAEMON` recipient, never a `Mail Deliver System <>`
-    /// token in the 收件者 field. The reply simply opens with no recipient — which compose
+    /// token in the To field. The reply simply opens with no recipient — which compose
     /// then blocks on — while the forward's header block still prints the name.
     @Test func aSenderWithNoAddressNeverBecomesARecipient() {
         let daemon = MailAddress(name: "Mail Deliver System", address: "")

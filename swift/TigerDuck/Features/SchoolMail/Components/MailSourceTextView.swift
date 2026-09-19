@@ -20,8 +20,8 @@ import UIKit
 /// Deliberate settings: `dataDetectorTypes = []` because link detection would walk the
 /// whole string (undoing the virtualization, and raw source is full of URL-shaped text
 /// nobody should be able to tap); `.byCharWrapping` because source is base64 runs and
-/// header lines, not words; `isEditable = false` with `isSelectable = true` so 選取 and
-/// 複製 still work.
+/// header lines, not words; `isEditable = false` with `isSelectable = true` so Select and
+/// Copy still work.
 struct MailSourceTextView: UIViewRepresentable {
     let text: String
     var textStyle: UIFont.TextStyle = .caption1

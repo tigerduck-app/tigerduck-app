@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct LoginSheet: View {
-    /// A link under the fields, e.g. School Mail's "忘記密碼？前往 mail.ntust.edu.tw".
+    /// A link under the fields, e.g. School Mail's "Forgot your password? Go to
+    /// mail.ntust.edu.tw".
     /// Opens the way bulletins do: in-app when the user prefers it, otherwise the browser.
     struct FooterLink {
         let title: String

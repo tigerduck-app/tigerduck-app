@@ -1,11 +1,11 @@
 #if os(iOS)
 import SwiftUI
 
-/// Single-select folder chips: 所有信件 · 收件匣 · 寄件備份 · 草稿 · 廣告信 · 回收筒 · 更多…
-/// Roles the server lacks are hidden (Appendix A.1), and 所有信件 appears only when there
+/// Single-select folder chips: All mail · Inbox · Sent · Drafts · Junk · Trash · More…
+/// Roles the server lacks are hidden (Appendix A.1), and All mail appears only when there
 /// are at least two folders for it to merge.
 ///
-/// 所有信件 leads, because it is the selection the list opens on: the chip standing for what
+/// All mail leads, because it is the selection the list opens on: the chip standing for what
 /// is on screen should be the first one read, not one found by scrolling past five others.
 struct MailFolderChipBar: View {
     let roles: [MailFolderRole: String]
@@ -22,7 +22,7 @@ struct MailFolderChipBar: View {
         /// The role and the name `LIST` actually reported for it — the chip selects the latter,
         /// never `role.imapName`, which is only ever the fallback used to *find* the folder.
         case role(MailFolderRole, folder: String)
-        /// The 更多… menu, with the folders it lists.
+        /// The More… menu, with the folders it lists.
         case more([String])
     }
 
@@ -70,7 +70,7 @@ struct MailFolderChipBar: View {
                     Button(ModifiedUTF7.decode(folder)) { onSelect(.real(folder)) }
                 }
             } label: {
-                // 所有信件 is never one of `others` — it is no folder at all — so the
+                // All mail is never one of `others` — it is no folder at all — so the
                 // "More…" chip is highlighted only for a real folder from that list.
                 chip(String(localized: "school_mail_folder_more"),
                      isSelected: selected.realFolder.map(folders.contains) ?? false)

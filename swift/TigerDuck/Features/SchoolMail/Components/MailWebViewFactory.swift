@@ -4,7 +4,7 @@ import WebKit
 import os
 
 /// The locked-down WKWebView of design doc §9.3: no JavaScript, a non-persistent store,
-/// every network load blocked by a content rule (images only after "載入圖片"), inline
+/// every network load blocked by a content rule (images only after "Load images"), inline
 /// `cid:` images from a custom scheme, and a CSP as a second layer.
 @MainActor
 enum MailWebViewFactory {

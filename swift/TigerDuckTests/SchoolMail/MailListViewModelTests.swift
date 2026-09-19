@@ -23,8 +23,8 @@ struct MailListViewModelTests {
     /// `nonisolated` already, so the value has nothing main-actor about it.
     nonisolated static let sent = MailFolderRole.sent.imapName
 
-    /// `sentUIDs` seeds 寄件備份, which 所有信件 merges with the inbox. The folder itself always
-    /// exists (the server has it whether or not the student has sent anything), so the 所有信件
+    /// `sentUIDs` seeds Sent, which All mail merges with the inbox. The folder itself always
+    /// exists (the server has it whether or not the student has sent anything), so the All mail
     /// chip is offered in every harness; only the merged tests put mail in it.
     static func harness(
         inboxCount: UInt32 = 60,
@@ -327,7 +327,7 @@ struct MailListViewModelTests {
         let h = Self.harness(inboxCount: 4)
         await h.model.load()
         let trash = MailFolderRole.trash.imapName
-        // A single-folder selection, stated rather than inherited: the list opens on 所有信件,
+        // A single-folder selection, stated rather than inherited: the list opens on All mail,
         // and the merged case has its own test below.
         await h.model.select(.real("INBOX"))
         #expect(h.model.selection == .real("INBOX"))
@@ -360,9 +360,9 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.filter { $0.hasPrefix("page INBOX") }.count > before)
     }
 
-    // MARK: 所有信件 — the client-side merge of 收件匣 and 寄件備份
+    // MARK: All mail — the client-side merge of Inbox and Sent
 
-    /// 寄件備份's UIDs deliberately collide with the inbox's: that is the normal case, not an
+    /// Sent's UIDs deliberately collide with the inbox's: that is the normal case, not an
     /// edge one — a UID means something only inside its own folder. Its dates are nudged half a
     /// second later than the inbox mail of the same number, so the merged order has something to
     /// interleave by and the assertions below read as a genuine interleave rather than one
@@ -403,7 +403,7 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
         // One page per folder and no more: the list already opened here, so the `select` above
         // only states this test's subject and costs nothing. A second `page INBOX` would mean
-        // the opening load had read 收件匣 alone and then thrown that away to read both.
+        // the opening load had read Inbox alone and then thrown that away to read both.
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
         #expect(await h.fake.calls.filter { $0 == "page \(Self.sent)" }.count == 1)
     }
@@ -435,7 +435,7 @@ struct MailListViewModelTests {
         #expect(inboxRow.summary.isSeen == false)
         await h.model.toggleRead(inboxRow)
         #expect(h.model.rows.first { $0.id == inboxRow.id }?.summary.isSeen == true)
-        // The 寄件備份 mail that shares the number is untouched — in the list and on the server.
+        // The Sent mail that shares the number is untouched — in the list and on the server.
         #expect(h.model.rows.first { $0.folder == Self.sent && $0.uid == 3 }?.summary.isSeen == false)
         #expect(await h.fake.folders["INBOX"]?.first { $0.summary.uid == 3 }?.summary.isSeen == true)
         #expect(await h.fake.folders[Self.sent]?.first { $0.summary.uid == 3 }?.summary.isSeen == false)
@@ -463,7 +463,7 @@ struct MailListViewModelTests {
 
     /// One cursor per folder: the merged list ends only once *both* folders genuinely have,
     /// never merely because the sparser of the two did. Note the sentinel row load-more hangs
-    /// off here belongs to 寄件備份, which ran out first — the inbox still advances.
+    /// off here belongs to Sent, which ran out first — the inbox still advances.
     @Test func theMergedListEndsOnlyWhenBothFoldersAreExhausted() async throws {
         let h = await Self.mergedHarness(inboxCount: 60, sentUIDs: [1, 2, 3])
         await h.model.load()
@@ -484,8 +484,8 @@ struct MailListViewModelTests {
     }
 
     /// Two round trips per refresh however far the merged list has been scrolled — Mail2000 caps
-    /// connections and starts answering 「伺服器忙線中」 under load — and the refresh keeps what
-    /// was paginated in rather than replacing it.
+    /// connections and starts answering "The mail server is busy" under load — and the refresh
+    /// keeps what was paginated in rather than replacing it.
     @Test func refreshingTheMergedViewCostsOnePagePerFolderHoweverFarItIsScrolled() async throws {
         let h = await Self.mergedHarness(inboxCount: 60, sentUIDs: [1, 2, 3])
         await h.model.load()
@@ -500,7 +500,7 @@ struct MailListViewModelTests {
         #expect(h.model.rows.count == 63)
     }
 
-    /// 所有信件 is not a folder name and must never become one: everything the merged view asks
+    /// All mail is not a folder name and must never become one: everything the merged view asks
     /// the server names a folder the server actually has.
     @Test func theMergedViewNeverNamesASyntheticFolderToTheServer() async {
         let h = await Self.mergedHarness()
@@ -543,7 +543,7 @@ struct MailListViewModelTests {
     }
 
     /// A change reported for one of the merged folders finds its row inside that folder's own
-    /// page, never by UID across the merged list; a folder 所有信件 does not merge is ignored
+    /// page, never by UID across the merged list; a folder All mail does not merge is ignored
     /// outright, exactly as it is for a single-folder selection.
     @Test func changesReportedForAMergedFolderActOnThatFolderAlone() async {
         let h = await Self.mergedHarness()
@@ -565,7 +565,7 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows) == before)
     }
 
-    /// The 60 s poll reloads whenever the inbox is on screen, and 所有信件 has it on screen.
+    /// The 60 s poll reloads whenever the inbox is on screen, and All mail has it on screen.
     /// Written as `selection == .real(inbox)` the guard would silently stop firing on the very
     /// screen the list opens on, and new mail would only ever appear on a pull-to-refresh.
     @Test func thePollReloadsTheMergedViewBecauseTheInboxIsInIt() async {
@@ -594,7 +594,7 @@ struct MailListViewModelTests {
 
     // MARK: The selection the list opens on
 
-    /// 所有信件, as soon as `LIST` says there are two folders to merge — never before, because
+    /// All mail, as soon as `LIST` says there are two folders to merge — never before, because
     /// until then it resolves to no folders at all.
     @Test func theListOpensOnTheMergedView() async {
         let h = await Self.mergedHarness()
@@ -607,8 +607,8 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
     }
 
-    /// No 寄件備份 means no 所有信件 chip, and a default that resolved to it anyway would leave
-    /// the list reading nothing with no chip on screen to leave it by. It stays on 收件匣.
+    /// No Sent means no All mail chip, and a default that resolved to it anyway would leave
+    /// the list reading nothing with no chip on screen to leave it by. It stays on Inbox.
     @Test func theListOpensOnTheInboxWhenThereIsNothingToMerge() async {
         let h = Self.harness(inboxCount: 4, includeSent: false)
         await h.model.load()
@@ -630,7 +630,7 @@ struct MailListViewModelTests {
 
     /// A tapped notification names the folder the mail is actually in and selects it directly
     /// (`SchoolMailView.drainDeepLink`). It can land before `LIST` comes back — and when the
-    /// folder it names is 收件匣, it does not even change the selection — so the default must
+    /// folder it names is Inbox, it does not even change the selection — so the default must
     /// recognise it as a choice, not as the placeholder it happens to match, and leave it alone.
     @Test func aDeepLinkedFolderSurvivesTheDefault() async {
         let h = await Self.mergedHarness()

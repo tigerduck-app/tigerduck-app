@@ -10,9 +10,9 @@ import Testing
 /// not fail the FETCH over it — it reports `MessageAttribute.BodyStructure.invalid` — but until
 /// vendored patch 6 that verdict was dropped on the floor, so `MessageInfo.parts` came back empty
 /// and `LiveMailClient.detail` iterated nothing: no `textBody`, no `htmlBody`, no attachments.
-/// The message screen then showed 「無法解析這封信的格式，改為原始碼」 and, because
-/// `MailWarnings` reads a haystack built from the subject and the body, the delivery-failure
-/// warning that belonged on that very mail could not fire either.
+/// The message screen then showed "Couldn't read this mail's format. Showing its source
+/// instead." and, because `MailWarnings` reads a haystack built from the subject and the body,
+/// the delivery-failure warning that belonged on that very mail could not fire either.
 ///
 /// Android never had the bug: Angus Mail fetches the message and parses the MIME itself rather
 /// than trusting the server's description of it. This is iOS doing the same, on the one path
@@ -53,11 +53,11 @@ struct MailBodyStructureFallbackTests {
         // opposite — that a 28 MB message is refused — because the ceiling was borrowed from
         // `MailCache`'s per-entry limit (10 MB). The real Mail2000 bounce is 28.2 MB, so the
         // guard turned away the one message the recovery exists for, and it went on showing
-        // 「無法解析這封信的格式」 on a device after the fix shipped.
+        // "Couldn't read this mail's format" on a device after the fix shipped.
         //
-        // Refusing to parse saves nothing: `parseFailed` forces 原始碼 and the view immediately
-        // calls `loadSource()`, so the whole message is fetched either way. The only thing the
-        // old ceiling bought above 10 MB was an unreadable dump for the same bytes.
+        // Refusing to parse saves nothing: `parseFailed` forces the source view and the screen
+        // immediately calls `loadSource()`, so the whole message is fetched either way. The only
+        // thing the old ceiling bought above 10 MB was an unreadable dump for the same bytes.
         #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: 28 * 1024 * 1024)))
     }
 
@@ -195,7 +195,7 @@ struct MailBodyStructureFallbackTests {
         await harness.model.load()
         #expect(harness.model.loadState == .loaded)
         #expect(!harness.model.parseFailed)
-        // Not forced into 原始碼 any more; a mail with no HTML part lands on 純文字.
+        // Not forced into the source view any more; a mail with no HTML part lands on plain text.
         #expect(harness.model.mode == .plain)
         #expect(harness.model.warnings.contains(.mistypedRecipient))
     }

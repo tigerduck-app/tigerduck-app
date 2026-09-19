@@ -202,9 +202,9 @@ struct SchoolMailView: View {
         }
     }
 
-    /// The row's own folder decides everything, never the selected chip: opened from 所有信件,
-    /// a 寄件備份 mail has to behave exactly as it would had the user opened 寄件備份 itself —
-    /// and the chip is not a folder there at all.
+    /// The row's own folder decides everything, never the selected chip: opened from All mail,
+    /// a Sent mail has to behave exactly as it would had the user opened Sent itself — and the
+    /// chip is not a folder there at all.
     private func row(_ row: MailListRow) -> some View {
         Button {
             if row.folder == viewModel.folderRoles[.drafts] {

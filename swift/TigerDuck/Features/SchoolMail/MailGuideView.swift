@@ -1,7 +1,7 @@
 #if os(iOS)
 import SwiftUI
 
-/// "用其他 App 收信" (design doc §5). Placeholder: the Apple Mail steps are written later;
+/// "Use another app" (design doc §5). Placeholder: the Apple Mail steps are written later;
 /// only the @Mail2000 App Store link is real.
 struct MailGuideView: View {
     var body: some View {

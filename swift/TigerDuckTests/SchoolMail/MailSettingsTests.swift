@@ -12,7 +12,8 @@ struct MailSettingsTests {
     }
 
     /// The sheet's own footer, not a `FooterLink` the test built itself: this fails if
-    /// `MailLoginSheet` ever points 忘記密碼 somewhere else or drops the footer.
+    /// `MailLoginSheet` ever points the "forgot your password" link somewhere else or drops
+    /// the footer.
     @Test func theLoginSheetCarriesTheResetLink() {
         let link = MailLoginSheet.resetPasswordLink
         #expect(link.url == MailConstants.webmailURL)
@@ -67,8 +68,9 @@ struct MailSettingsTests {
         #expect(h.hooks.enabled == 1)
     }
 
-    /// The Settings row that opens the page, and the display-name field left behind in
-    /// 信箱設定, both follow the real `isLoggedIn` — including demo mode, which is signed in.
+    /// The Settings row that opens the page, and the display-name field left behind in the
+    /// School Mail settings screen, both follow the real `isLoggedIn` — including demo mode,
+    /// which is signed in.
     @Test func bothScreensFollowTheSignedInState() async {
         let h = MailAccountManagerTests.harness()
         #expect(!h.manager.isLoggedIn)
@@ -97,10 +99,10 @@ struct MailSettingsTests {
         }
     }
 
-    /// 快取大小 has to account for the whole cache root — folder pages, bodies, sources and a
-    /// downloaded attachment alike — because that is what is actually on disk. Driven through
-    /// the screen's own measure/clear path, not through `MailCache` directly, so a row wired to
-    /// the narrower `bodyBytes()` or to a second clear-all of its own fails here.
+    /// The Cache size row has to account for the whole cache root — folder pages, bodies,
+    /// sources and a downloaded attachment alike — because that is what is actually on disk.
+    /// Driven through the screen's own measure/clear path, not through `MailCache` directly, so
+    /// a row wired to the narrower `bodyBytes()` or to a second clear-all of its own fails here.
     @Test func theCacheRowMeasuresEverythingAndClearingEmptiesIt() async throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }

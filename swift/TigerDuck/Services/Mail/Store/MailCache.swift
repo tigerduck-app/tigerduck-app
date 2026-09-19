@@ -173,8 +173,8 @@ nonisolated final class MailCache: @unchecked Sendable {
 
     /// Every byte under the cache root — folder pages, bodies, sources and the files an opened
     /// attachment leaves behind — because that is what actually occupies the disk, and what the
-    /// settings screen's 快取大小 has to account for. `bodyBytes()` is the narrower figure the
-    /// LRU budget is measured against and is not a substitute.
+    /// settings screen's Cache size row has to account for. `bodyBytes()` is the narrower
+    /// figure the LRU budget is measured against and is not a substitute.
     ///
     /// Walking a tree is real I/O, like everything else on this type: callers keep it off the
     /// main actor. Unreadable entries are skipped rather than thrown — a size that is a little

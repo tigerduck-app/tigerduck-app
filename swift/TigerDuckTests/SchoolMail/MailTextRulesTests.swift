@@ -45,9 +45,9 @@ struct MailTextRulesTests {
     }
 
     /// Mail2000 routinely labels a part `us-ascii` and then puts UTF-8 bytes in it. The label
-    /// resolves, so decoding it leniently succeeds on every byte and turns 親愛的同學您好 into
-    /// `è¦ªæ„›çš„…`. Strict UTF-8 therefore runs before the lenient path: a body that is valid
-    /// UTF-8 is UTF-8, whatever the header claims.
+    /// resolves, so decoding it leniently succeeds on every byte and turns the `親愛的同學您好`
+    /// below into `è¦ªæ„›çš„…`. Strict UTF-8 therefore runs before the lenient path: a body that
+    /// is valid UTF-8 is UTF-8, whatever the header claims.
     @Test(arguments: ["us-ascii", "US-ASCII", "ascii", "\"us-ascii\""])
     func aBodyMislabelledASCIIButWrittenInUTF8StillReadsAsUTF8(label: String) {
         #expect(MailCharset.decode(Data("親愛的同學您好".utf8), label: label) == "親愛的同學您好")

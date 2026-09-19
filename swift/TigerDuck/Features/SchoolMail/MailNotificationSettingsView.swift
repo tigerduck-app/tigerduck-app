@@ -2,8 +2,9 @@
 import SwiftUI
 import UIKit
 
-/// 校園信箱通知: the new-mail switch and the check log, reached from Settings → 通知
-/// alongside the app's other notification screens rather than from 信箱設定.
+/// School Mail notifications: the new-mail switch and the check log, reached from Settings →
+/// Notifications alongside the app's other notification screens rather than from the School
+/// Mail settings screen.
 ///
 /// The switch was **moved** here out of `MailSettingsView`, not mirrored: one screen owns
 /// `MailAccountManager.notificationsEnabled`, so there is no second copy of the control
@@ -37,7 +38,7 @@ struct MailNotificationSettingsView: View {
 
     /// Whether the Settings row that opens this screen is tappable. Signed out there is no
     /// mailbox to be notified about, so the row stays visible but dimmed and inert — no
-    /// explanatory subtitle, by the owner's choice: the 校園信箱 account row further up the
+    /// explanatory subtitle, by the owner's choice: the School Mail account row further up the
     /// same screen already says the account is signed out.
     ///
     /// Demo mode is signed in as far as this is concerned — `isLoggedIn` is the student ID

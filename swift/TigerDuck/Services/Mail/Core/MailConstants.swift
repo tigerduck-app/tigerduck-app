@@ -26,18 +26,18 @@ nonisolated enum MailConstants {
     /// It was `bodyCacheLimitBytes / 2` (10 MB), borrowed from `MailCache`'s per-entry ceiling on
     /// the reasoning that a mail too big to *keep* is too big to fetch whole. That was wrong, and
     /// wrong in a way that excluded the one real message this recovery was written for: a 28 MB
-    /// Mail2000 bounce, which went on showing 「無法解析這封信的格式」 on a device after the
-    /// recovery shipped, because the guard turned it away.
+    /// Mail2000 bounce, which went on showing "Couldn't read this mail's format" on a device
+    /// after the recovery shipped, because the guard turned it away.
     ///
     /// The cache's ceiling answers "how much may one entry evict?", which is a question about
     /// *storage*. This is a question about *transfer*, and the two have opposite answers here,
-    /// because refusing to parse saves no bytes at all: `parseFailed` forces 原始碼, and
-    /// `MailMessageView.onChange(of: mode)` starts `loadSource()` the moment it does — so the
-    /// whole message is downloaded either way. Below the old ceiling that bought a readable mail;
-    /// above it, the user paid the full download *and* got the unreadable dump. The bound now
-    /// matches `maxEncodedMessageBytes`, the size this app already treats as the largest single
-    /// message it deals with, so it stops a pathological message being held in memory twice while
-    /// no longer refusing ordinary mail with a large attachment.
+    /// because refusing to parse saves no bytes at all: `parseFailed` forces the source view,
+    /// and `MailMessageView.onChange(of: mode)` starts `loadSource()` the moment it does — so
+    /// the whole message is downloaded either way. Below the old ceiling that bought a readable
+    /// mail; above it, the user paid the full download *and* got the unreadable dump. The bound
+    /// now matches `maxEncodedMessageBytes`, the size this app already treats as the largest
+    /// single message it deals with, so it stops a pathological message being held in memory
+    /// twice while no longer refusing ordinary mail with a large attachment.
     static let maxLocalParseBytes = maxEncodedMessageBytes
     static let notificationCollapseThreshold = 5
     static let connectionIdleClose: TimeInterval = 30

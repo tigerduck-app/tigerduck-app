@@ -72,8 +72,8 @@ struct TigerDuckPatchTests {
     @Test("Encoded words go through the installed charset resolver")
     func resolverOverridesIANA() {
         defer { MailCharsetResolver.setResolver(nil) }
-        // "中文" in UTF-8. Mapping the made-up label to Latin-1 must change the result,
-        // which proves the resolver (not the IANA table's UTF-8 fallback) was asked.
+        // The base64 below is `中文` in UTF-8. Mapping the made-up label to Latin-1 must change
+        // the result, which proves the resolver (not the IANA table's UTF-8 fallback) was asked.
         MailCharsetResolver.setResolver { $0.lowercased() == "x-tigerduck" ? .isoLatin1 : nil }
         let expected = String(data: Data(base64Encoded: "5Lit5paH")!, encoding: .isoLatin1)
         #expect("=?x-tigerduck?B?5Lit5paH?=".decodeMIMEHeader() == expected)
@@ -134,8 +134,8 @@ struct TigerDuckPatchTests {
     @Test("Body text content goes through the installed charset resolver")
     func bodyTextContentUsesResolver() {
         defer { MailCharsetResolver.setResolver(nil) }
-        // "中文" in UTF-8. Mapping "big5" to Latin-1 must change the decoded result,
-        // which proves the resolver (not the IANA table's own Big5 handling) was asked.
+        // The base64 below is `中文` in UTF-8. Mapping "big5" to Latin-1 must change the decoded
+        // result, which proves the resolver (not the IANA table's own Big5 handling) was asked.
         MailCharsetResolver.setResolver { $0.lowercased() == "big5" ? .isoLatin1 : nil }
         let bytes = Data(base64Encoded: "5Lit5paH")!
         let part = MessagePart(

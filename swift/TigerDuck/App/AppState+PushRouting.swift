@@ -18,7 +18,7 @@ extension AppState {
     /// and clears the value once it has acted on it.
     enum DeepLink: Equatable {
         case bulletin(Int)
-        /// A School Mail notification. `uid == nil` (the "N 封新郵件" summary, the sign-in
+        /// A School Mail notification. `uid == nil` (the "N new mails" summary, the sign-in
         /// failure notice) opens the folder list.
         case schoolMail(folder: String, uid: UInt32?)
     }

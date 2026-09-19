@@ -60,7 +60,7 @@ nonisolated enum MailMover {
         return try await flagAndMaybeExpunge(uids: uids, in: folder, client: client, previouslyFlagged: previouslyFlagged)
     }
 
-    /// Permanent delete — the caller confirms with the user first (only offered in 回收筒).
+    /// Permanent delete — the caller confirms with the user first (only offered in Trash).
     static func deletePermanently(
         uids: [UInt32], in folder: String,
         client: any MailClient, previouslyFlagged: OwnedDeleted
@@ -102,7 +102,7 @@ nonisolated enum MailMover {
     /// Call from a `catch` around `move`/`deletePermanently`: a COPY + STORE may have partly
     /// landed on the server before the throw, and a `\Deleted` UID this app flagged but does not
     /// claim wedges `shouldExpunge` false in that folder for good — every later delete there
-    /// silently degrades to "hide", and 回收筒 stops deleting anything. Never retries the failed
+    /// silently degrades to "hide", and Trash stops deleting anything. Never retries the failed
     /// command itself: it asks the server, once, whether the `\Deleted` flag actually took, and
     /// applies `shouldRecordAfterFailure`.
     ///

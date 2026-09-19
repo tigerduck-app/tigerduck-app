@@ -31,8 +31,8 @@ struct LiveMailClientTests {
 
     /// `.unreachable` is not the fallback for an unrecognized error any more. It used to be, and
     /// that is how a FETCH response TigerDuck could not parse reached the user as
-    /// 「無法連線到郵件伺服器」 on a device whose network was fine. An error that is neither
-    /// recognized nor network-shaped says a protocol error went wrong, not the network.
+    /// "Can't reach the mail server" on a device whose network was fine. An error that is
+    /// neither recognized nor network-shaped says a protocol error went wrong, not the network.
     @Test func unknownErrorsThatAreNotNetworkShapedCountAsProtocolErrors() {
         struct SomethingElse: Error {}
         let error = SomethingElse()

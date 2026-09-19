@@ -44,7 +44,7 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
     /// `From: "Mail Deliver System" <MAILER-DAEMON>` — the shape Mail2000 puts on every
     /// delivery-failure notice — has a bare local part and no domain, so `parseOne` drops
     /// the whole token and the list row and the message header fall back to
-    /// 「（沒有寄件者）」, throwing away a name that was never in doubt. Here the name
+    /// "(No sender)", throwing away a name that was never in doubt. Here the name
     /// survives and the address comes back **empty**: the raw token is deliberately not
     /// carried through, because `address` is what `MailWarnings` classifies and what a
     /// reply is addressed to, and `MAILER-DAEMON` is not routable. An empty address makes
@@ -145,7 +145,7 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
 /// written by an older build still decodes; anything else is deleted and refetched.
 ///
 /// Deliberately **not** `Identifiable`: `uid` is unique only inside one folder, so a summary
-/// on its own cannot identify a row in a list that merges two of them (所有信件). Anything
+/// on its own cannot identify a row in a list that merges two of them (All mail). Anything
 /// that needs a list identity carries the folder with it — see `MailListRow`.
 nonisolated struct MailSummary: Codable, Hashable, Sendable {
     var uid: UInt32
