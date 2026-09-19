@@ -245,5 +245,22 @@ struct MailHTMLSanitizerTests {
             Range($0.range(at: 1), in: html).map { range in String(html[range]) }
         }
     }
+
+    // MARK: How tall the sender may make the message view
+
+    /// `height` and `min-height` are allowed CSS on purpose — a mail that sets them renders as
+    /// it was written — but that also means the sender writes `scrollView.contentSize.height`,
+    /// which the message screen puts straight into `.frame(height:)`. It used to have only a
+    /// lower bound, so the size asked for was whatever the CSS said.
+    @Test func theRenderedHeightIsClampedAtBothEnds() {
+        #expect(MailCSSFilter.allowedProperties.contains("height"))
+        #expect(MailCSSFilter.allowedProperties.contains("min-height"))
+        #expect(MailHTMLView.clampedHeight(600) == 600)
+        #expect(MailHTMLView.clampedHeight(0) == 1)
+        #expect(MailHTMLView.clampedHeight(-5) == 1)
+        #expect(MailHTMLView.clampedHeight(9_999_999) == MailHTMLView.maximumContentHeight)
+        #expect(MailHTMLView.clampedHeight(.infinity) == 1)
+        #expect(MailHTMLView.clampedHeight(.nan) == 1)
+    }
 }
 #endif

@@ -14,6 +14,23 @@ struct MailHTMLView: UIViewRepresentable {
     @Binding var contentHeight: CGFloat
     let onLinkTap: (Int) -> Void
 
+    /// The tallest this view will grow, whatever the document's content size says.
+    ///
+    /// `height` and `min-height` are in `MailCSSFilter.allowedProperties`, so the sender writes
+    /// `scrollView.contentSize.height` — and that went straight into `.frame(height:)` with only
+    /// a lower bound. A message could therefore ask for an arbitrarily tall view. 50 000 points
+    /// is far past any real mail (roughly sixty screens) and far short of a size that costs
+    /// anything to lay out.
+    static let maximumContentHeight: CGFloat = 50_000
+
+    /// The observed content size, made safe to put in a frame: clamped at both ends, and with
+    /// a non-finite value (which `contentSize` can carry mid-layout) treated as "nothing known
+    /// yet" rather than propagated into the layout.
+    nonisolated static func clampedHeight(_ raw: CGFloat) -> CGFloat {
+        guard raw.isFinite else { return 1 }
+        return min(max(raw, 1), maximumContentHeight)
+    }
+
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -50,7 +67,7 @@ struct MailHTMLView: UIViewRepresentable {
         func observeHeight(of webView: WKWebView) {
             heightObservation = webView.scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, change in
                 guard let self, let height = change.newValue?.height else { return }
-                Task { @MainActor in self.parent.contentHeight = max(height, 1) }
+                Task { @MainActor in self.parent.contentHeight = MailHTMLView.clampedHeight(height) }
             }
         }
 
