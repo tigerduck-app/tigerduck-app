@@ -14,6 +14,15 @@ struct MailLoginSheet: View {
         )
     }
 
+    /// See `MailLoginCard.usernameIsAnAddress` — the same question, for the re-auth sheet.
+    static var usernameIsAnAddress: Bool {
+        #if DEBUG
+        return MailServerConfig.effective.isOverridden
+        #else
+        return false
+        #endif
+    }
+
     @Binding var isPresented: Bool
     private let account = MailAccountManager.shared
 
@@ -26,6 +35,10 @@ struct MailLoginSheet: View {
             isLoggingIn: account.isLoggingIn,
             loginError: account.loginError?.message,
             footerLink: Self.resetPasswordLink,
+            // The school takes a student ID; a DEBUG developer override can point this at a
+            // server whose usernames are addresses, which must not be upper-cased as they are
+            // typed. False in every Release build.
+            usernameIsAnAddress: Self.usernameIsAnAddress,
             onLogin: { studentID, password in
                 Task {
                     await account.login(studentID: studentID, password: password)

@@ -15,6 +15,19 @@ struct MailLoginCard: View {
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
     private let account = MailAccountManager.shared
 
+    /// Whether the username this field collects is an email address rather than a student ID.
+    ///
+    /// Only the DEBUG developer override can point the app at a server whose usernames are
+    /// addresses; against the school it is always a student ID, so this is `false` in every
+    /// Release build and the field keeps exactly the behaviour it has always had.
+    private var usernameIsAnAddress: Bool {
+        #if DEBUG
+        return MailServerConfig.effective.isOverridden
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.lg) {
             Image(systemName: "envelope.fill")
@@ -28,9 +41,16 @@ struct MailLoginCard: View {
 
             VStack(spacing: TigerDuckTheme.Spacing.sm) {
                 TextField(String(localized: "sign_in_student_id"), text: $studentID)
-                    .textContentType(.username)
+                    .textContentType(usernameIsAnAddress ? .emailAddress : .username)
                     .autocorrectionDisabled()
-                    .textInputAutocapitalization(.characters)
+                    // `.characters` is right for a Mail2000 student ID (`B10000000`) and wrong for
+                    // anything else: it upper-cases *every* character as it is typed, so
+                    // `user@example.com` becomes `USER@EXAMPLE.COM` before it ever reaches
+                    // `MailAccountManager.normalizedUsername` — which then preserves that case,
+                    // because an address's local part is case-sensitive (RFC 5321 §2.3.11). The
+                    // login goes out upper-cased and the server rejects it.
+                    .textInputAutocapitalization(usernameIsAnAddress ? .never : .characters)
+                    .keyboardType(usernameIsAnAddress ? .emailAddress : .default)
                     .focused($field, equals: .studentID)
                     .submitLabel(.next)
                     .onSubmit { field = .password }
