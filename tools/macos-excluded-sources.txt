@@ -259,6 +259,7 @@ SchoolMailView.swift
 # Features/SchoolMail/Components — School Mail's UI components; iOS-only,
 # see Features/SchoolMail above
 MailAttachmentList.swift
+MailCredentialPrefill.swift
 MailFolderChipBar.swift
 MailHTMLView.swift
 MailLoginCard.swift
@@ -276,6 +277,7 @@ MailAccountManager.swift
 # see Features/SchoolMail above
 MailMessageBuilder.swift
 MailReplyComposer.swift
+MailSentCopy.swift
 
 # Services/Mail/Core — School Mail's client protocol, constants and models;
 # iOS-only, see Features/SchoolMail above
