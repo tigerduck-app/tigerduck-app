@@ -238,6 +238,29 @@ struct MailListViewModelTests {
         #expect(h.model.rows.last?.uid == 1)
     }
 
+    /// Pagination merges the next page into the one already held and dedupes by UID — and a UID
+    /// only means anything within one UIDVALIDITY generation. A folder recreated between the two
+    /// requests reuses those numbers for entirely different messages, so merging across the two
+    /// would keep rows that point at mail the server no longer has *and* drop the genuinely new
+    /// mail whose UIDs were reused, as duplicates of it. The generation change has to run the
+    /// same recovery `MailClientError.folderChanged` does.
+    @Test func paginatingAcrossAFolderRecreationRecoversInsteadOfMerging() async throws {
+        let h = Self.harness(inboxCount: 60)
+        await h.model.load()
+        #expect(h.model.rows.count == 50)
+        let last = try #require(h.model.rows.last)
+        await h.fake.update { fake in
+            fake.uidValidity["INBOX"] = 2
+            fake.folders["INBOX"] = (UInt32(1)...3).map { FakeMailClient.message(uid: $0, subject: "新信 \($0)") }
+        }
+        await h.model.loadMoreIfNeeded(after: last)
+        // Only the new generation's mail, and all of it: nothing from the old one survived the
+        // dedupe, and nothing new was dropped by it.
+        #expect(h.model.rows.map(\.uid) == [3, 2, 1])
+        #expect(h.model.rows.allSatisfy { $0.summary.subject?.hasPrefix("新信") == true })
+        #expect(h.cache.loadPage(folder: "INBOX")?.uidValidity == 2)
+    }
+
     /// A second `load()` for the same folder while one is already running (a pull-to-refresh
     /// landing during the 60 s poll's own reload, say) must not issue a redundant
     /// `listFolders`/`page` pair on the one serialized connection.

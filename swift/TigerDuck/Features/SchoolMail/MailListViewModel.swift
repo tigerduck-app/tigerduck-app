@@ -204,6 +204,18 @@ final class MailListViewModel {
                     try await client.page(folder: folder, olderThanSequence: older, pageSize: MailConstants.pageSize)
                 }
                 guard selection == self.selection, var page = pages[folder] else { return }
+                // The merge below dedupes by UID, and a UID only means anything within one
+                // UIDVALIDITY generation. If the folder was recreated between the page already
+                // held and this one, the server is reusing those numbers for entirely different
+                // messages: the stale rows would stay (pointing at mail that no longer exists,
+                // and answering taps with `folderChanged`) and every genuinely new message whose
+                // UID was reused would be discarded here as a duplicate. Recover the folder
+                // instead — the same recovery the `folderChanged` arm just below runs, which is
+                // what `page()` itself would have thrown had it been able to compare generations.
+                guard next.uidValidity == page.uidValidity else {
+                    await recoverFromFolderChange(folder)
+                    return
+                }
                 let known = Set(page.summaries.map(\.uid))
                 page.summaries += next.summaries.filter { !known.contains($0.uid) }
                 page.oldestLoadedSequence = next.oldestLoadedSequence
