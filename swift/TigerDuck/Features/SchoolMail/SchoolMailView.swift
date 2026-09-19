@@ -13,6 +13,9 @@ struct SchoolMailView: View {
     @State private var route: MailMessageRoute?
     @State private var compose: MailComposeContext?
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
+    /// See the compose toolbar button: the glyph's own vertical bias, measured at the default
+    /// text size, and scaled here because the symbol itself grows with the text size.
+    @ScaledMetric(relativeTo: .body) private var composeGlyphLift: CGFloat = 1.5
     private let account = MailAccountManager.shared
 
     var body: some View {
@@ -125,8 +128,18 @@ struct SchoolMailView: View {
                     .accessibilityLabel(String(localized: "school_mail_use_other_app"))
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { compose = MailComposeContext(mode: .new) } label: { Image(systemName: "square.and.pencil.circle") }
-                    .accessibilityLabel(String(localized: "school_mail_compose"))
+                Button { compose = MailComposeContext(mode: .new) } label: {
+                    Image(systemName: "square.and.pencil")
+                        // Optical centring, not a stray layout tweak — please leave it in.
+                        // `square.and.pencil` is drawn with its rounded square 1.5pt *below*
+                        // the centre of its own 21pt layout box (the room above belongs to the
+                        // pencil), while the two circled glyphs beside it sit dead centre in
+                        // theirs. Centred by frame it therefore reads as hanging low next to
+                        // them; lifted by that 1.5pt the three line up. Horizontally the square
+                        // is already centred, so there is nothing to correct on x.
+                        .offset(y: -composeGlyphLift)
+                }
+                .accessibilityLabel(String(localized: "school_mail_compose"))
             }
         }
         .sheet(item: $compose, onDismiss: { Task { await viewModel.load() } }) { context in
