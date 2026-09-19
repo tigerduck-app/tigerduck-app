@@ -75,6 +75,33 @@ final class RejectingNotificationCenter: MailNotificationCenter, @unchecked Send
     func removeAllMailNotifications() async {}
 }
 
+/// Signs a different student in at the exact moment a notification is posted — i.e. inside the
+/// window between a check fetching its account's new mail and persisting that account's marker.
+/// The notification itself is recorded so a test can say whether the previous student's mail was
+/// announced on the new student's device.
+final class AccountSwitchingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
+    private let lock = NSLock()
+    private let prefs: any MailPreferences
+    private let signedInDuringAdd: String?
+    private var _requests: [UNNotificationRequest] = []
+    var requests: [UNNotificationRequest] { lock.withLock { _requests } }
+
+    /// `signedInDuringAdd` is the student ID that takes over partway through; `nil` models a
+    /// plain sign-out landing there instead.
+    init(prefs: any MailPreferences, signedInDuringAdd: String?) {
+        self.prefs = prefs
+        self.signedInDuringAdd = signedInDuringAdd
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        lock.withLock { _requests.append(request) }
+        prefs.studentID = signedInDuringAdd
+    }
+
+    func removeDelivered(withIdentifiers identifiers: [String]) {}
+    func removeAllMailNotifications() async {}
+}
+
 struct MailCheckerTests {
     struct Harness {
         let checker: MailChecker
@@ -325,6 +352,72 @@ struct MailCheckerTests {
         #expect(await checker.check(trigger: .backgroundTask) == .newMail(6))
         #expect(center.accepted.isEmpty)
         #expect(prefs.inboxNextUID == 1)
+    }
+
+    // MARK: A check that outlives the account that started it
+
+    /// A check in flight when the student signs out must not write its results back: the marker
+    /// keys, the diagnostics ring and the notification centre are all shared with whatever
+    /// account is signed in next (`AGENTS.md`: do not write previous-user data back after
+    /// logout). It answers `.skippedSignedOut` — what it would have returned had the sign-out
+    /// landed a moment earlier.
+    @Test func aCheckWhoseAccountSignsOutMidFlightWritesNothing() async {
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 5)], marker: 3)
+        await h.fake.update { $0.holdStatus = true }
+        let check = Task { await h.checker.check(trigger: .backgroundTask) }
+        await h.fake.waitForArrival("status")
+        h.prefs.studentID = nil
+        await h.fake.releaseStatus()
+
+        #expect(await check.value == .skippedSignedOut)
+        #expect(h.prefs.inboxNextUID == 3)
+        #expect(h.center.requests.isEmpty)
+        #expect(h.prefs.diagnostics.isEmpty)
+    }
+
+    /// The same race one step later, and the one that actually reaches the notification centre:
+    /// a different student signs in while this run's notifications are being posted. The marker
+    /// it was about to advance now belongs to that student — advancing it would move them past
+    /// mail they have never seen, which is mail they would then never be notified about.
+    @Test func aCheckDoesNotAdvanceTheMarkerOfAnAccountThatSignedInMidRun() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 3
+        let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)]])
+        let center = AccountSwitchingNotificationCenter(prefs: prefs, signedInDuringAdd: "B29999999")
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { prefs.authFailed = true })
+
+        #expect(await checker.check(trigger: .backgroundTask) == .skippedSignedOut)
+        #expect(prefs.inboxNextUID == 3)
+        #expect(prefs.diagnostics.isEmpty)
+    }
+
+    /// `onAuthFailure` stops every background check for the account it is reported against, so a
+    /// rejection of the *previous* student's saved password must never be recorded once someone
+    /// else is signed in — it would lock the new account out of its own checks until it signed
+    /// in again by hand.
+    @Test func anAuthFailureIsNotReportedAgainstTheAccountThatSignedInAfterwards() async {
+        let h = Self.harness(inbox: [], marker: 1)
+        await h.fake.update {
+            $0.statusError = .authenticationFailed
+            $0.holdStatus = true
+        }
+        let check = Task { await h.checker.check(trigger: .backgroundTask) }
+        await h.fake.waitForArrival("status")
+        h.prefs.studentID = "B29999999"
+        await h.fake.releaseStatus()
+
+        #expect(await check.value == .skippedSignedOut)
+        #expect(await h.authFailures.value == 0)
+        #expect(h.prefs.authFailed == false)
+    }
+
+    @Test func resultsOnlyApplyToTheAccountThatStartedTheCheck() {
+        #expect(MailChecker.resultsStillApply(startedAs: "B10000000", current: "B10000000"))
+        #expect(!MailChecker.resultsStillApply(startedAs: "B10000000", current: nil))
+        #expect(!MailChecker.resultsStillApply(startedAs: "B10000000", current: "B29999999"))
     }
 
     @Test func notifierHelpers() async {
