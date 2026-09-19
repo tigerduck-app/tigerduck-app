@@ -72,6 +72,10 @@ struct TimetableGridView: View {
         courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
     }
 
+    /// The room hint rides a notch under the course name so the name keeps
+    /// the visual weight — the room is a reminder, not a second title.
+    private var roomHintSize: CGFloat { courseNameSize * 0.85 }
+
     private static let allWeekdayLabels = AppConstants.Periods.weekdays + AppConstants.Periods.weekendDays
 
     private var weekdayLabels: [String] {
@@ -161,6 +165,26 @@ struct TimetableGridView: View {
                                 .minimumScaleFactor(0.7)
                                 .multilineTextAlignment(.center)
                                 .padding(2)
+                        }
+                        .overlay(alignment: .bottomLeading) {
+                            // A 衝堂 cell never reaches this branch, so the
+                            // hint is absent there by construction — a split
+                            // cell has no free corner to print it in.
+                            if let room = CourseRoomHint.room(
+                                for: course, weekday: weekday, periodId: periodId
+                            ) {
+                                Text(room)
+                                    .font(.system(size: roomHintSize))
+                                    .foregroundStyle(Color.textSecondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.6)
+                                    .padding(.leading, 3)
+                                    .padding(.bottom, 2)
+                                    // Stay clear of the assignment badge,
+                                    // which sits in the opposite corner.
+                                    .padding(.trailing, hasBadge ? badgeIconSize + 6 : 3)
+                                    .accessibilityHidden(true)
+                            }
                         }
                         .assignmentBadge(show: hasBadge, iconSize: badgeIconSize, padding: 4)
                         .frame(height: totalHeight)

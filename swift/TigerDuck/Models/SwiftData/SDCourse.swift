@@ -167,6 +167,14 @@ final class SDCourse: Identifiable {
         return rooms.isEmpty ? Self.dedup(classroom) : rooms.joined(separator: ", ")
     }
 
+    /// The room recorded for exactly one `(weekday, period)` slot, or ""
+    /// when the map holds none. Unlike ``classroom(for:)`` this never joins
+    /// a day's rooms into a list, so a course that meets twice in one day
+    /// in two different rooms still reports one room per block.
+    func classroom(weekday: Int, period: String) -> String {
+        classroomMap["\(weekday)-\(period)"] ?? ""
+    }
+
     private static let roomSeparators = CharacterSet(charactersIn: "、，,")
 
     /// Split a classroom string by common separators, trim, drop empties.
