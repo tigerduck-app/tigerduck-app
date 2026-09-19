@@ -327,6 +327,9 @@ struct MailListViewModelTests {
         let h = Self.harness(inboxCount: 4)
         await h.model.load()
         let trash = MailFolderRole.trash.imapName
+        // A single-folder selection, stated rather than inherited: the list opens on 所有信件,
+        // and the merged case has its own test below.
+        await h.model.select(.real("INBOX"))
         #expect(h.model.selection == .real("INBOX"))
 
         h.model.removeLocally(folder: trash, uid: 4)
@@ -398,8 +401,10 @@ struct MailListViewModelTests {
         await h.model.select(.allMail)
         #expect(h.model.selection == .allMail)
         #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
-        // One page per folder, and the inbox's own chip did its own single page before that.
-        #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 2)
+        // One page per folder and no more: the list already opened here, so the `select` above
+        // only states this test's subject and costs nothing. A second `page INBOX` would mean
+        // the opening load had read 收件匣 alone and then thrown that away to read both.
+        #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
         #expect(await h.fake.calls.filter { $0 == "page \(Self.sent)" }.count == 1)
     }
 
@@ -560,17 +565,106 @@ struct MailListViewModelTests {
         #expect(Self.labels(h.model.rows) == before)
     }
 
-    /// The 60 s poll stays inbox-only: 所有信件 refreshes on pull-to-refresh like every other
-    /// non-inbox selection, which is what keeps the merged view out of the new-mail path.
-    @Test func thePollNeverReloadsTheMergedView() async {
+    /// The 60 s poll reloads whenever the inbox is on screen, and 所有信件 has it on screen.
+    /// Written as `selection == .real(inbox)` the guard would silently stop firing on the very
+    /// screen the list opens on, and new mail would only ever appear on a pull-to-refresh.
+    @Test func thePollReloadsTheMergedViewBecauseTheInboxIsInIt() async {
         let h = await Self.mergedHarness()
         await h.model.load()
-        await h.model.select(.allMail)
+        #expect(h.model.selection == .allMail)
+        let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
+        h.script.outcome = .newMail(1)
+        await h.model.pollOnce()
+        #expect(h.script.calls == 1)
+        // Both merged folders, because that is what the screen is showing.
+        #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before + 2)
+    }
+
+    /// ...and a folder the inbox is not in still never reloads off the poll.
+    @Test func thePollLeavesAFolderWithoutTheInboxAlone() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        await h.model.select(.real(MailFolderRole.trash.imapName))
         let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
         h.script.outcome = .newMail(1)
         await h.model.pollOnce()
         #expect(h.script.calls == 1)
         #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before)
+    }
+
+    // MARK: The selection the list opens on
+
+    /// 所有信件, as soon as `LIST` says there are two folders to merge — never before, because
+    /// until then it resolves to no folders at all.
+    @Test func theListOpensOnTheMergedView() async {
+        let h = await Self.mergedHarness()
+        #expect(h.model.selection == .real("INBOX"))
+        #expect(h.model.targets == ["INBOX"])
+
+        await h.model.load()
+        #expect(h.model.selection == .allMail)
+        #expect(h.model.targets == ["INBOX", Self.sent])
+        #expect(Self.labels(h.model.rows) == ["收5", "收4", "寄3", "收3", "寄2", "收2", "寄1", "收1"])
+    }
+
+    /// No 寄件備份 means no 所有信件 chip, and a default that resolved to it anyway would leave
+    /// the list reading nothing with no chip on screen to leave it by. It stays on 收件匣.
+    @Test func theListOpensOnTheInboxWhenThereIsNothingToMerge() async {
+        let h = Self.harness(inboxCount: 4, includeSent: false)
+        await h.model.load()
+        #expect(h.model.showsAllMailChip == false)
+        #expect(h.model.selection == .real("INBOX"))
+        #expect(h.model.rows.map(\.uid) == [4, 3, 2, 1])
+    }
+
+    /// The server never answered, so nothing is known about its folders — the list stays on the
+    /// one selection that can read anything at all without a `LIST`, and paints its cache.
+    @Test func theListStaysOnTheInboxWhenTheFoldersAreNeverKnown() async {
+        let h = Self.harness(open: { throw MailClientError.unreachable })
+        h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1,
+                                        summaries: [SchoolMailTestDoubles.summary(uid: 9)], oldestLoadedSequence: nil))
+        await h.model.load()
+        #expect(h.model.selection == .real("INBOX"))
+        #expect(h.model.rows.map(\.uid) == [9])
+    }
+
+    /// A tapped notification names the folder the mail is actually in and selects it directly
+    /// (`SchoolMailView.drainDeepLink`). It can land before `LIST` comes back — and when the
+    /// folder it names is 收件匣, it does not even change the selection — so the default must
+    /// recognise it as a choice, not as the placeholder it happens to match, and leave it alone.
+    @Test func aDeepLinkedFolderSurvivesTheDefault() async {
+        let h = await Self.mergedHarness()
+        await h.model.select(.real("INBOX"))
+        await h.model.load()
+        #expect(h.model.selection == .real("INBOX"))
+        #expect(Self.labels(h.model.rows) == ["收5", "收4", "收3", "收2", "收1"])
+
+        let other = await Self.mergedHarness()
+        await other.model.select(.real(MailFolderRole.trash.imapName))
+        await other.model.load()
+        #expect(other.model.selection == .real(MailFolderRole.trash.imapName))
+    }
+
+    /// The chip standing for what is on screen is the first one read.
+    @Test func theMergedChipComesFirst() async {
+        let h = await Self.mergedHarness()
+        await h.model.load()
+        let entries = MailFolderChipBar.entries(roles: h.model.folderRoles, others: h.model.otherFolders,
+                                                showsAllMail: h.model.showsAllMailChip)
+        #expect(entries.first == .allMail)
+        #expect(entries == [
+            .allMail,
+            .role(.inbox, folder: "INBOX"),
+            .role(.sent, folder: Self.sent),
+            .role(.trash, folder: MailFolderRole.trash.imapName),
+            .more(["Moodle &irJ6C4oOitZTQA-"]),
+        ])
+    }
+
+    /// Without the chip there is nothing to put first, and the roles still lead.
+    @Test func theChipsAreJustTheFoldersWhenThereIsNothingToMerge() {
+        let entries = MailFolderChipBar.entries(roles: [.inbox: "INBOX"], others: [], showsAllMail: false)
+        #expect(entries == [.role(.inbox, folder: "INBOX")])
     }
 }
 #endif

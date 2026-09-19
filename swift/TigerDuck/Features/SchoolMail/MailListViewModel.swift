@@ -12,6 +12,10 @@ final class MailListViewModel {
 
     private(set) var folderRoles: [MailFolderRole: String] = [:]
     private(set) var otherFolders: [String] = []
+    /// 收件匣 only until `LIST` has answered — see `adoptDefaultSelection`, which turns this into
+    /// 所有信件 the moment there is something to merge. It cannot start as `.allMail`: that
+    /// selection resolves to the folders the server reported, and before `LIST` it resolves to
+    /// nothing at all.
     private(set) var selection: MailFolderSelection = .real(MailConstants.inbox)
     /// The merged list, newest first. Every entry carries the real folder it came from — see
     /// `MailListRow` — and every action a row leads to addresses *that* folder, never
@@ -43,6 +47,11 @@ final class MailListViewModel {
     /// stale by the time it returns is discarded by the `selection == self.selection` checks
     /// below rather than by being refused up front.
     @ObservationIgnored private var loadingSelection: MailFolderSelection?
+    /// Whether something has actually *chosen* a folder — a chip tap, or a mail notification
+    /// naming the folder it arrived in (both go through `select`). 所有信件 is only the default,
+    /// so once a choice has been made it must never be overwritten by one, however late the
+    /// server's folder list turns up.
+    @ObservationIgnored private var selectionWasChosen = false
     /// The tail of the cache-write chain — see `chainCacheWrite`.
     @ObservationIgnored private var pendingCacheWrite: Task<Void, Never>?
 
@@ -74,6 +83,12 @@ final class MailListViewModel {
     /// would just be a second name for whichever one resolved.
     var showsAllMailChip: Bool { MailFolderSelection.allMail.targets(roles: folderRoles).count > 1 }
 
+    /// Whether 收件匣 is one of the folders currently on screen — true for the 收件匣 chip and
+    /// for 所有信件, which merges the inbox in. Anything that used to ask
+    /// `selection == .real(inbox)` means *this*: 所有信件 is now the screen the list opens on,
+    /// and a test written as "is the inbox selected" silently stops firing there.
+    var showsInbox: Bool { targets.contains(MailConstants.inbox) }
+
     // MARK: Loading
 
     /// Paints each covered folder's cached page first, then refreshes the newest page *of each*
@@ -86,7 +101,12 @@ final class MailListViewModel {
     /// reason the merged view refreshes only the newest page per folder — Mail2000 caps
     /// connections and starts answering 「伺服器忙線中」 under load.
     func load() async {
-        let selection = self.selection
+        // `var`, not `let`: the opening load may adopt 所有信件 partway through, once `LIST` has
+        // said the folders exist (`adoptDefaultSelection`). Every `selection == self.selection`
+        // check below asks "is what I am fetching still what the screen wants", so this has to
+        // follow the adoption or the load would abandon itself as stale. The two `defer`s read
+        // it at scope exit, so they follow it too.
+        var selection = self.selection
         guard loadingSelection != selection else { return }
         loadingSelection = selection
         defer { if loadingSelection == selection { loadingSelection = nil } }
@@ -112,6 +132,14 @@ final class MailListViewModel {
                 folderRoles = MailFolderMap.resolve(available: available)
                 otherFolders = MailFolderMap.otherFolders(available: available)
                 guard selection == self.selection else { return }
+                // The first moment 所有信件 is resolvable, and so the first moment the default
+                // can be applied. Doing it here rather than through `select` keeps the opening
+                // load to a single pass: the folders it now covers are fetched by the `page`
+                // calls just below, with no second load and no first one thrown away.
+                if adoptDefaultSelection() {
+                    selection = self.selection
+                    loadingSelection = selection
+                }
                 // 所有信件 could not name its folders before this, so the cache paint above had
                 // nothing to look up. Now it does.
                 if await paintFromCache() { loadState = .loaded }
@@ -190,6 +218,10 @@ final class MailListViewModel {
     }
 
     func select(_ selection: MailFolderSelection) async {
+        // Before the early-out, not after: a notification that names 收件匣 while 收件匣 is still
+        // the pre-`LIST` placeholder has chosen it just as deliberately as a chip tap would
+        // have, and the default must not come along afterwards and move the list off it.
+        selectionWasChosen = true
         guard selection != self.selection else { return }
         self.selection = selection
         pages = [:]
@@ -329,10 +361,15 @@ final class MailListViewModel {
         session.releaseSoon()
     }
 
-    /// INBOX-only, as it has always been — 所有信件 included, which refreshes on pull-to-refresh
-    /// like every other non-inbox selection. That is also what keeps the merged view entirely
-    /// out of the new-mail path: it never reloads off a `.newMail` outcome and so never moves
-    /// anything the notification side reads.
+    /// Reloads when the inbox is on screen — which now means 所有信件 as well as 收件匣 itself,
+    /// because 所有信件 merges the inbox in and is the screen the list opens on. Written as
+    /// `selection == .real(inbox)` it would simply stop firing on that screen, and new mail
+    /// would never appear without a pull-to-refresh.
+    ///
+    /// The check itself (`runPageCheck`) is inbox-only and unchanged, and it is the only thing
+    /// here that touches the notification baseline — `load()` only reads pages. So a merged
+    /// reload costs one extra `page` round trip (寄件備份's) per *new-mail* poll, never per
+    /// poll, and moves nothing the notification side reads.
     func pollOnce() async {
         let check = runPageCheck
         guard let outcome = try? await session.use({ client in await check(client) }) else { return }
@@ -342,7 +379,7 @@ final class MailListViewModel {
         // `folderChanged`) until something else happens to force a reload.
         switch outcome {
         case .newMail, .baselineReset:
-            guard selection == .real(MailConstants.inbox), searchResults == nil else { return }
+            guard showsInbox, searchResults == nil else { return }
             await load()
         default:
             return
@@ -350,6 +387,27 @@ final class MailListViewModel {
     }
 
     // MARK: Internals
+
+    /// Moves the list onto 所有信件 the first time the server's folder list makes that possible,
+    /// and reports whether it did. This is what "the list opens on 所有信件" actually means: the
+    /// selection cannot simply *start* there, because 所有信件 has no name of its own and
+    /// resolves to the folders `LIST` reported — before that it resolves to nothing, and the
+    /// list would open on a selection reading no folders at all, with no chip yet drawn to
+    /// leave it by.
+    ///
+    /// Nothing happens when there is no 所有信件 to select (a server missing 寄件備份, say): the
+    /// list stays on 收件匣, which is both the placeholder it started on and the right answer.
+    /// Nothing happens either once something has genuinely chosen a folder — see
+    /// `selectionWasChosen`.
+    ///
+    /// Not a `select` call: `select` clears the pages and reloads, and here the pages are the
+    /// inbox's freshly painted cache and the reload is the one already in flight. The merged
+    /// view is composed from the same per-folder pages, so the inbox's simply stays.
+    private func adoptDefaultSelection() -> Bool {
+        guard !selectionWasChosen, selection != .allMail, showsAllMailChip else { return false }
+        selection = .allMail
+        return true
+    }
 
     /// Reads a cached page for every folder the selection covers that has none loaded yet, so
     /// the list paints before any of it is asked for again. Returns whether anything landed.
