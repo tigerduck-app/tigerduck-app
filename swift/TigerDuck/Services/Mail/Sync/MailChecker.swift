@@ -3,6 +3,23 @@ import Foundation
 
 nonisolated enum MailCheckTrigger: String, Codable, Sendable {
     case page, foreground, backgroundTask
+
+    /// What the Notifications → School Mail diagnostics row shows. `rawValue` stays the stored
+    /// form — records already on disk carry it, and it is what a bug report is read against
+    /// whatever language the reporter's phone is in.
+    var displayText: String {
+        switch self {
+        case .page: String(localized: "school_mail_check_trigger_page")
+        case .foreground: String(localized: "school_mail_check_trigger_foreground")
+        case .backgroundTask: String(localized: "school_mail_check_trigger_background")
+        }
+    }
+
+    /// The localized form of a stored `MailCheckRecord.trigger`. A raw value this build does not
+    /// know — a record written by an older version — is shown as written rather than dropped.
+    static func displayText(forStored raw: String) -> String {
+        MailCheckTrigger(rawValue: raw)?.displayText ?? raw
+    }
 }
 
 nonisolated enum MailCheckOutcome: Equatable, Sendable {
@@ -19,7 +36,10 @@ nonisolated enum MailCheckOutcome: Equatable, Sendable {
         }
     }
 
-    /// Shown in Notification diagnostics next to the time and trigger.
+    /// The **stored** form, written into `MailCheckRecord.result`. Deliberately English and
+    /// deliberately unchanged: it is what every record already on disk contains, and what a
+    /// pasted diagnostic reads as whatever language the phone that wrote it was in.
+    /// `displayText(forStored:)` is what the screen shows.
     var diagnosticText: String {
         switch self {
         case .skippedBusy: "skipped: another check running"
@@ -28,11 +48,61 @@ nonisolated enum MailCheckOutcome: Equatable, Sendable {
         case .skippedAuthFailed: "skipped: sign-in failed"
         case .baselineReset: "baseline reset"
         case .noNewMail: "no new mail"
-        case .newMail(let count): "\(count) new"
+        case .newMail(let count): "\(count)\(Self.newMailSuffix)"
         case .authFailed: "sign-in failed"
-        case .failed(let error): "failed: \(error)"
+        case .failed(let error): "\(Self.failurePrefix)\(error)"
         }
     }
+
+    /// The two parts of `diagnosticText` that carry a value. Named constants so the reverse map
+    /// below cannot drift from the text it has to recognize.
+    static let failurePrefix = "failed: "
+    static let newMailSuffix = " new"
+
+    /// What the Notifications → School Mail diagnostics row shows. That screen is gated only on
+    /// `SchoolMailAvailability.isEnabled`, not on DEBUG, so it is an ordinary user-facing screen
+    /// and raw enum text does not belong on it.
+    var displayText: String {
+        switch self {
+        case .skippedBusy: String(localized: "school_mail_check_skipped_busy")
+        case .skippedSignedOut: String(localized: "school_mail_check_skipped_signed_out")
+        case .skippedDisabled: String(localized: "school_mail_check_skipped_disabled")
+        case .skippedAuthFailed: String(localized: "school_mail_check_skipped_auth_failed")
+        case .baselineReset: String(localized: "school_mail_check_baseline_reset")
+        case .noNewMail: String(localized: "school_mail_check_no_new_mail")
+        case .newMail(let count): String(format: String(localized: "school_mail_new_mail_count"), String(count))
+        case .authFailed: String(localized: "school_mail_check_sign_in_failed")
+        // The underlying error stays as it was thrown: it is the only thing on this screen a
+        // bug report can be diagnosed from, and translating it would lose that.
+        case .failed(let error): String(format: String(localized: "school_mail_check_failed"), "\(error)")
+        }
+    }
+
+    /// The localized form of a stored `MailCheckRecord.result`.
+    ///
+    /// The record persists `diagnosticText`, so this maps that stable text back onto the case
+    /// that wrote it rather than changing what is stored. The value-less cases are matched
+    /// through `diagnosticText` itself, so the two can never drift; a string this build does not
+    /// recognize (a record from an older version) is shown as written rather than dropped.
+    static func displayText(forStored stored: String) -> String {
+        if let known = valuelessCases.first(where: { $0.diagnosticText == stored }) {
+            return known.displayText
+        }
+        if stored.hasPrefix(failurePrefix) {
+            return String(format: String(localized: "school_mail_check_failed"),
+                          String(stored.dropFirst(failurePrefix.count)))
+        }
+        if stored.hasSuffix(newMailSuffix), let count = Int(stored.dropLast(newMailSuffix.count)) {
+            return String(format: String(localized: "school_mail_new_mail_count"), String(count))
+        }
+        return stored
+    }
+
+    /// Every case whose stored text carries no value, and so round-trips exactly.
+    private static let valuelessCases: [MailCheckOutcome] = [
+        .skippedBusy, .skippedSignedOut, .skippedDisabled, .skippedAuthFailed,
+        .baselineReset, .noNewMail, .authFailed,
+    ]
 }
 
 /// The new-mail check of design doc §8.5, shared by every trigger. Single-flight: while a

@@ -84,10 +84,15 @@ struct MailNotificationSettingsView: View {
                     Text(String(localized: "school_mail_settings_no_checks"))
                         .foregroundStyle(.secondary)
                 } else {
+                    // The record stores `MailCheckOutcome.diagnosticText` and the trigger's raw
+                    // value, both English and both still exactly what is written to disk. This
+                    // screen is reached from Settings → Notifications and gated only on
+                    // `SchoolMailAvailability.isEnabled`, so it is not a Debug screen and does
+                    // not get to show raw enum text in a zh-TW-primary app.
                     ForEach(Array(records.enumerated()), id: \.offset) { _, record in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(record.result)
-                            Text("\(record.date.fullDateString) \(record.date.timeString) · \(record.trigger)")
+                            Text(MailCheckOutcome.displayText(forStored: record.result))
+                            Text("\(record.date.fullDateString) \(record.date.timeString) · \(MailCheckTrigger.displayText(forStored: record.trigger))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

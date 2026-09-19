@@ -337,5 +337,43 @@ struct MailCheckerTests {
         #expect(center.removed == ["school-mail-7-42"])
         #expect(center.removedAll == 1)
     }
+
+    // MARK: What the diagnostics screen shows
+
+    /// The record keeps `diagnosticText` — unchanged, English, and what a pasted bug report is
+    /// read against — and the screen renders `displayText(forStored:)`. These pin the map
+    /// between the two rather than the English wording, which lives in the strings catalogue.
+    @Test(arguments: [
+        MailCheckOutcome.skippedBusy, .skippedSignedOut, .skippedDisabled, .skippedAuthFailed,
+        .baselineReset, .noNewMail, .authFailed,
+    ])
+    func everyValuelessOutcomeRoundTripsThroughItsStoredText(outcome: MailCheckOutcome) {
+        #expect(MailCheckOutcome.displayText(forStored: outcome.diagnosticText) == outcome.displayText)
+        #expect(MailCheckOutcome.displayText(forStored: outcome.diagnosticText) != outcome.diagnosticText)
+    }
+
+    @Test func aCountAndAFailureKeepTheirValueThroughTheMap() {
+        #expect(MailCheckOutcome.displayText(forStored: MailCheckOutcome.newMail(3).diagnosticText)
+            == MailCheckOutcome.newMail(3).displayText)
+        let failure = MailCheckOutcome.failed(.unreachable)
+        // The underlying error is carried, not summarized: it is the only thing on this screen
+        // a bug report can be diagnosed from.
+        #expect(failure.diagnosticText.contains("unreachable"))
+        #expect(MailCheckOutcome.displayText(forStored: failure.diagnosticText) == failure.displayText)
+    }
+
+    /// A record written by a build that knew a case this one does not is shown as it was
+    /// written — never blank, never a key name.
+    @Test func anUnrecognizedRecordIsShownAsWritten() {
+        #expect(MailCheckOutcome.displayText(forStored: "something this build never wrote")
+            == "something this build never wrote")
+        #expect(MailCheckTrigger.displayText(forStored: "widget") == "widget")
+    }
+
+    @Test(arguments: [MailCheckTrigger.page, .foreground, .backgroundTask])
+    func everyTriggerHasItsOwnDisplayText(trigger: MailCheckTrigger) {
+        #expect(MailCheckTrigger.displayText(forStored: trigger.rawValue) == trigger.displayText)
+        #expect(trigger.displayText != trigger.rawValue)
+    }
 }
 #endif
