@@ -102,7 +102,8 @@ struct SchoolMailView: View {
                 otherFolders: viewModel.otherFolders,
                 onSeenChanged: { folder, uid, seen in viewModel.markSeenLocally(folder: folder, uid: uid, seen: seen) },
                 onRemoved: { folder, uid in viewModel.removeLocally(folder: folder, uid: uid) },
-                onFolderChanged: { folder in Task { await viewModel.recoverFromFolderChange(folder) } }
+                onFolderChanged: { folder in Task { await viewModel.recoverFromFolderChange(folder) } },
+                onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) }
             )
         }
         .onAppear { drainDeepLink() }
@@ -143,7 +144,8 @@ struct SchoolMailView: View {
             }
         }
         .sheet(item: $compose, onDismiss: { Task { await viewModel.load() } }) { context in
-            MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles)
+            MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles,
+                            onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) })
         }
         .task {
             await viewModel.load()

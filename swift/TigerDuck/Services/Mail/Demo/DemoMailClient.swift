@@ -206,6 +206,16 @@ actor DemoMailClient: MailClient {
         throw MailClientError.folderChanged
     }
 
+    /// The demo mailbox never creates anything. Its fixture already has all five role folders, so
+    /// nothing reaches this in practice; it refuses rather than quietly succeeding so that the
+    /// "never create against the demo client" rule is upheld by the client itself and not merely
+    /// by every caller remembering to check. A refusal is exactly the shape callers already
+    /// handle — the same one a server that says no produces — so the demo keeps behaving as it
+    /// always has.
+    func createFolder(_ name: String) async throws {
+        throw MailClientError.protocolError("the demo mailbox does not create folders")
+    }
+
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {
         var messages = folders[folder] ?? []
         let uid = (messages.map(\.summary.uid).max() ?? 0) + 1

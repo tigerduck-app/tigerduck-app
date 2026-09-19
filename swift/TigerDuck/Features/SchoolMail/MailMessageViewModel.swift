@@ -73,10 +73,16 @@ final class MailMessageViewModel {
     private(set) var allowRemoteImages = false
     private(set) var actionError: String?
     /// True for the whole of a move or delete — four to five IMAP round trips with nothing on
-    /// screen to say so. The view disables every affordance that starts one while it is set;
-    /// `performMove` refuses as well, so a tap the view somehow lets through still cannot file
-    /// the same mail into two folders.
+    /// screen to say so — and for the `prepareDelete()` that may precede one. The view disables
+    /// every affordance that starts one while it is set; `performMove` refuses as well, so a tap
+    /// the view somehow lets through still cannot file the same mail into two folders.
     private(set) var isMoving = false
+    /// The account's role folders, as the list resolved them when this screen opened — and as
+    /// `prepareDelete()` re-resolves them after creating a missing Trash. Observed (not
+    /// `@ObservationIgnored`) precisely because it changes: `deleteIsPermanent` and the move
+    /// sheet are both read off it, and both have to follow a folder that has just come into
+    /// existence.
+    private(set) var folderRoles: [MailFolderRole: String]
     var mode: ViewMode = .formatted
 
     /// `(folder, uid, seen)` — the folder is part of the identity being reported, not
@@ -91,8 +97,11 @@ final class MailMessageViewModel {
     /// the caller can route the recovery through `MailListViewModel.recoverFromFolderChange(_:)`,
     /// which drops through that same chain.
     @ObservationIgnored var onFolderChanged: ((String) -> Void)?
+    /// `prepareDelete()` created a missing role folder and re-resolved the map: the list holds
+    /// its own copy, resolved once per session, and would otherwise keep handing every later
+    /// screen a map that still says the folder does not exist.
+    @ObservationIgnored var onFolderRolesChanged: (([MailFolderRole: String]) -> Void)?
     @ObservationIgnored private let session: MailPageSession
-    @ObservationIgnored private let folderRoles: [MailFolderRole: String]
     @ObservationIgnored private let cache: MailCache
     @ObservationIgnored private let prefs: any MailPreferences
     @ObservationIgnored private let notifier: MailNotifier
@@ -148,7 +157,14 @@ final class MailMessageViewModel {
         return linkedDocument == nil ? [.plain, .source] : ViewMode.allCases
     }
 
-    /// Delete means "move to 回收筒"; inside 回收筒 (or with no 回收筒) it is permanent (§8.3).
+    /// Delete means "move to Trash"; inside Trash — or with no Trash folder resolved — it is
+    /// permanent (§8.3).
+    ///
+    /// Still `true` for an account with no Trash, deliberately: this says what the delete the
+    /// user is about to confirm *will* do, and until a Trash folder actually exists that is a
+    /// permanent delete. `prepareDelete()` is what gets one created, and it runs before either
+    /// confirmation is raised, so this is read after any creation has already succeeded or
+    /// failed — never in the hope that one will.
     var deleteIsPermanent: Bool {
         guard let trash = folderRoles[.trash] else { return true }
         return route.folder == trash
@@ -312,7 +328,35 @@ final class MailMessageViewModel {
         }
     }
 
-    /// The caller confirms first when `deleteIsPermanent`.
+    /// Run when Delete is tapped, before either confirmation dialog is raised. Creates a Trash
+    /// folder if the account has none, and answers `deleteIsPermanent` as it stands afterwards —
+    /// which is the question that picks the dialog.
+    ///
+    /// Creating here rather than inside `delete()` is what keeps the dialog honest. The two
+    /// confirmations say different things: one warns the mail is about to be destroyed, the
+    /// other that it is about to be moved to Trash. Creating the folder after the user has
+    /// answered would mean asking them to confirm destruction and then not destroying it — and
+    /// the forever dialog is the last thing standing between the user and unrecoverable mail, so
+    /// it has to mean what it says. This is still not speculative: nothing gets created until the
+    /// user has actually asked to delete a mail, and the only cost of their then cancelling is an
+    /// empty Trash folder the next delete will use.
+    ///
+    /// A failed CREATE leaves `deleteIsPermanent` true, so the flow lands on the permanent-delete
+    /// confirmation exactly as it does today. What must never happen — a Trash folder that could
+    /// not be created turning Delete into a silent hard delete — is unreachable: this never
+    /// deletes anything, and `delete()` below only ever runs from behind one of the two dialogs.
+    func prepareDelete() async -> Bool {
+        guard folderRoles[.trash] == nil, !isMoving else { return deleteIsPermanent }
+        isMoving = true
+        defer { isMoving = false }
+        await ensureFolder(.trash)
+        return deleteIsPermanent
+    }
+
+    /// The caller confirms first — `prepareDelete()` says which of the two confirmations applies.
+    /// Never creates a folder itself: by the time this runs the user has already answered a
+    /// dialog whose wording depends on the answer, so changing it here would change what they
+    /// agreed to.
     func delete() async -> Bool {
         if !deleteIsPermanent, let trash = folderRoles[.trash] {
             return await move(to: trash)
@@ -320,6 +364,29 @@ final class MailMessageViewModel {
         return await performMove { client, owned in
             try await MailMover.deletePermanently(uids: [self.route.uid], in: self.route.folder, client: client, previouslyFlagged: owned)
         }
+    }
+
+    /// Creates `role`'s folder if the account has none, adopting the role map the provisioner
+    /// re-resolved from a fresh folder list. Silent on failure by design: every caller has its
+    /// own fallback, and none of them may fail an action the user asked for because a folder
+    /// could not be made. `folderRoles` is read into a local first so the `use(_:)` body has no
+    /// reason to capture `self`.
+    private func ensureFolder(_ role: MailFolderRole) async {
+        let known = folderRoles
+        let ensured = try? await session.use { client in
+            await MailFolderProvisioner.ensure(role, in: known, client: client)
+        }
+        guard let ensured = ensured ?? nil else { return }
+        adoptFolderRoles(ensured.roles)
+    }
+
+    /// Takes on a role map re-resolved from a fresh folder list — this screen's own
+    /// `ensureFolder`, or the compose sheet it presents having created one — and passes it up to
+    /// the list, which resolved its copy once and would otherwise never hear about the folder.
+    func adoptFolderRoles(_ roles: [MailFolderRole: String]) {
+        guard roles != folderRoles else { return }
+        folderRoles = roles
+        onFolderRolesChanged?(roles)
     }
 
     /// Uses the folder's cached page UIDVALIDITY (read once in `load()`) to build the

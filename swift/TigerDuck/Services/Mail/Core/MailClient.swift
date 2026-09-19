@@ -69,6 +69,13 @@ protocol MailClient: Actor {
     /// different generation says nothing about this one.
     func deletedUIDs(folder: String, expectedUIDValidity: UInt32) async throws -> Set<UInt32>
     func expunge(folder: String, expectedUIDValidity: UInt32) async throws
+    /// IMAP `CREATE`, with `name` in the same raw modified-UTF-7 form every other folder
+    /// argument here takes. Only ever called by `MailFolderProvisioner`, from inside the
+    /// operation about to need the folder — never speculatively, and never for `.junk` or
+    /// `INBOX`. A server that refuses (including because the mailbox already exists) throws;
+    /// the provisioner asks a fresh `listFolders()` what actually happened rather than reading
+    /// the refusal.
+    func createFolder(_ name: String) async throws
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool
     func send(_ message: Data, from sender: String, to recipients: [String]) async throws

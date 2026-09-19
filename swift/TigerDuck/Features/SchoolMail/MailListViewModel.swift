@@ -231,6 +231,26 @@ final class MailListViewModel {
         await load()
     }
 
+    /// Adopts a role map a screen this list presented re-resolved after creating a missing role
+    /// folder on demand (`MailFolderProvisioner`).
+    ///
+    /// `load()` only lists folders while `folderRoles` is empty, so without this the map resolved
+    /// at the first load would stand for the whole session: the new folder would have no chip, a
+    /// second message opened would believe Trash still does not exist and try to create it again,
+    /// and — for Sent — "All mail" would go on merging one folder instead of two. The map is
+    /// never patched in place here; what arrives already came from a fresh `listFolders()` run
+    /// through `MailFolderMap.resolve`, which is the same source this type's own resolution uses.
+    ///
+    /// Adopting a wider set of folders can change what the current selection covers, so it
+    /// reloads when it does — "All mail" gaining Sent has to go and fetch it.
+    func adoptFolderRoles(_ roles: [MailFolderRole: String]) {
+        guard roles != folderRoles else { return }
+        let before = targets
+        folderRoles = roles
+        guard targets != before else { return }
+        Task { await load() }
+    }
+
     // MARK: Search
 
     /// Server-side search in each folder the selection covers; where the server refuses (or is

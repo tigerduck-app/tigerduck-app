@@ -478,6 +478,14 @@ actor LiveMailClient: MailClient {
         }
     }
 
+    /// `IMAPServer.createMailbox` sends the name as raw bytes (`MailboxName(ByteBuffer(string:))`)
+    /// after `resolveMailboxPath` has applied any advertised personal-namespace prefix, so the
+    /// modified-UTF-7 name the caller passes is exactly what reaches the wire — the same spelling
+    /// `listFolders()` reports back and `selectMailbox`/`copy`/`append` already take.
+    func createFolder(_ name: String) async throws {
+        try await run { try await self.imap.createMailbox(name) }
+    }
+
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {
         try await run {
             // SwiftMail's IMAP `append` only accepts a `String` (IMAPServer+Append.swift has no

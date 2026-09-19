@@ -21,10 +21,17 @@ struct MailComposeView: View {
     @State private var pendingPicks = 0
     @FocusState private var focused: Field?
 
-    init(context: MailComposeContext, session: MailPageSession, folderRoles: [MailFolderRole: String]) {
+    init(
+        context: MailComposeContext,
+        session: MailPageSession,
+        folderRoles: [MailFolderRole: String],
+        onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void
+    ) {
         let account = MailAccountManager.shared
         let sender = MailAddress(name: account.displayName, address: account.address ?? "")
-        _viewModel = State(initialValue: MailComposeViewModel(context: context, session: session, sender: sender, folderRoles: folderRoles))
+        let model = MailComposeViewModel(context: context, session: session, sender: sender, folderRoles: folderRoles)
+        model.onFolderRolesChanged = onFolderRolesChanged
+        _viewModel = State(initialValue: model)
         mode = context.mode
     }
 

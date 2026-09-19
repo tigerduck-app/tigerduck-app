@@ -66,7 +66,14 @@ final class MailComposeViewModel {
     @ObservationIgnored private let context: MailComposeContext
     @ObservationIgnored private let session: MailPageSession
     @ObservationIgnored private let sender: MailAddress
-    @ObservationIgnored private let folderRoles: [MailFolderRole: String]
+    /// The account's role folders as the list resolved them, updated in place when `send()` or
+    /// `saveDraft()` has to create one that was missing. Nothing on this screen renders it, so it
+    /// stays out of the observation graph.
+    @ObservationIgnored private var folderRoles: [MailFolderRole: String]
+    /// Reports a role map re-resolved after creating a folder on demand, so the screen that
+    /// presented this sheet — and through it the list, which resolves its own map once per
+    /// session — stops believing the folder does not exist.
+    @ObservationIgnored var onFolderRolesChanged: (([MailFolderRole: String]) -> Void)?
     @ObservationIgnored private let prefs: any MailPreferences
     @ObservationIgnored private let cache: MailCache
     @ObservationIgnored private let sleep: (Duration) async -> Void
@@ -379,7 +386,7 @@ final class MailComposeViewModel {
         let messageID = MailMessageBuilder.makeMessageID()
         let sendDate = now()
         let senderAddress = sender.address
-        let sentFolder = folderRoles[.sent]
+        let knownRoles = folderRoles
         let replyFolder = (sourceLoaded && isReply) ? context.folder : nil
         let replyUID = (sourceLoaded && isReply) ? context.uid : nil
         let draftFolder = (sourceLoaded && context.mode == .draft) ? context.folder : nil
@@ -400,7 +407,7 @@ final class MailComposeViewModel {
         }
         let recipients = mail.envelopeRecipients
         do {
-            try await session.use { client in
+            let refreshedRoles = try await session.use { client -> [MailFolderRole: String]? in
                 try await client.send(message, from: senderAddress, to: recipients)
                 if let replyFolder, let replyUID {
                     // No pin: compose holds the *drafts* page's UIDVALIDITY, never the original's
@@ -410,19 +417,28 @@ final class MailComposeViewModel {
                     try? await client.setFlag(.answered, on: true, folder: replyFolder, uids: [replyUID],
                                               expectedUIDValidity: nil)
                 }
-                if let sentFolder {
-                    // Save a sent copy only if the server did not file one itself (§8.4).
+                // The mail has gone out, so there is now a copy worth filing — and only now may a
+                // missing Sent folder be created for it. An account without one used to lose the
+                // copy silently. If the CREATE fails the mail still went, which is the part worth
+                // protecting: sending is the point, filing the copy is not worth failing it for.
+                let sent = await MailFolderProvisioner.ensure(.sent, in: knownRoles, client: client)
+                if let sent {
+                    // Save a sent copy only if the server did not file one itself (§8.4). Still
+                    // asked even for a folder just created, because the server files its own copy
+                    // on its own schedule and may well have made the same folder first.
                     await sleepFn(MailConstants.sentCopyDedupeDelay)
-                    let alreadySaved = (try? await client.containsMessageID(messageID, in: sentFolder)) ?? false
+                    let alreadySaved = (try? await client.containsMessageID(messageID, in: sent.name)) ?? false
                     if !alreadySaved {
-                        try? await client.append(message, to: sentFolder, flags: [.seen])
+                        try? await client.append(message, to: sent.name, flags: [.seen])
                     }
                 }
                 if let draftFolder, let draftUID {
                     await Self.removeDraft(uid: draftUID, folder: draftFolder, client: client, prefs: prefsRef,
                                            pageUIDValidity: pageUIDValidity, wasAlreadyDeleted: draftWasDeleted)
                 }
+                return sent?.roles
             }
+            if let refreshedRoles { adoptFolderRoles(refreshedRoles) }
             didFinish = true
         } catch {
             // The mail is never retried here on any error, `folderChanged` included -- the list
@@ -431,22 +447,21 @@ final class MailComposeViewModel {
         }
     }
 
-    /// Saves to 草稿匣 with `\Draft`; editing a draft saves a new one and deletes the old. Runs the
+    /// Saves to Drafts with `\Draft`; editing a draft saves a new one and deletes the old. Runs the
     /// same recipient and size validation `send()` does (dispatch addition 1 and 3) -- a draft may
     /// legitimately have no recipients yet, only a token that couldn't be parsed, or an over-budget
     /// attachment, blocks saving.
+    ///
+    /// An account with no Drafts folder gets one created, but only once every one of those checks
+    /// has passed and the message has been built: a save that was never going to happen must not
+    /// leave a folder behind. A CREATE that fails surfaces the same error a missing Drafts folder
+    /// always did — the user has to know the draft was not kept.
     @discardableResult
     func saveDraft() async -> Bool {
         guard !isSending else { return false }
         // Saving a draft is an IMAP APPEND, which needs the same rejected password (§7.4).
         guard !prefs.authFailed else {
             error = MailAccountManager.LoginError.credentials.message
-            return false
-        }
-        guard let drafts = folderRoles[.drafts] else {
-            // Set an error rather than failing silently -- the confirmation dialog's Save
-            // button would otherwise do nothing with no explanation (fix round 1, minor 4).
-            error = String(localized: "school_mail_error_generic")
             return false
         }
         error = nil
@@ -475,7 +490,10 @@ final class MailComposeViewModel {
 
         let messageID = MailMessageBuilder.makeMessageID()
         let saveDate = now()
-        let draftUID = (sourceLoaded && context.mode == .draft && context.folder == drafts) ? context.uid : nil
+        let knownRoles = folderRoles
+        // Against the map as it stands, deliberately: a draft can only have been opened from a
+        // Drafts folder that already resolved, so a `nil` here is a mode that cannot be `.draft`.
+        let draftUID = (sourceLoaded && context.mode == .draft && context.folder == knownRoles[.drafts]) ? context.uid : nil
         let pageUIDValidity = draftPageUIDValidity
         let draftWasDeleted = draftWasAlreadyDeleted
         let prefsRef = prefs
@@ -488,19 +506,37 @@ final class MailComposeViewModel {
             return false
         }
         do {
-            try await session.use { client in
-                try await client.append(message, to: drafts, flags: [.draft, .seen])
+            let refreshedRoles = try await session.use { client -> [MailFolderRole: String] in
+                guard let drafts = await MailFolderProvisioner.ensure(.drafts, in: knownRoles, client: client) else {
+                    throw MailFolderUnavailable(role: .drafts)
+                }
+                try await client.append(message, to: drafts.name, flags: [.draft, .seen])
                 if let draftUID {
-                    await Self.removeDraft(uid: draftUID, folder: drafts, client: client, prefs: prefsRef,
+                    await Self.removeDraft(uid: draftUID, folder: drafts.name, client: client, prefs: prefsRef,
                                            pageUIDValidity: pageUIDValidity, wasAlreadyDeleted: draftWasDeleted)
                 }
+                return drafts.roles
             }
+            adoptFolderRoles(refreshedRoles)
             baseline = savedBaseline
             return true
+        } catch is MailFolderUnavailable {
+            // Set an error rather than failing silently -- the confirmation dialog's Save
+            // button would otherwise do nothing with no explanation (fix round 1, minor 4).
+            error = String(localized: "school_mail_error_generic")
+            return false
         } catch {
             self.error = MailAccountManager.LoginError(error).message
             return false
         }
+    }
+
+    /// Takes on a role map the provisioner re-resolved from a fresh folder list, and tells the
+    /// screen that presented this sheet — nothing above knows a folder was created otherwise.
+    private func adoptFolderRoles(_ roles: [MailFolderRole: String]) {
+        guard roles != folderRoles else { return }
+        folderRoles = roles
+        onFolderRolesChanged?(roles)
     }
 
     // MARK: Internals

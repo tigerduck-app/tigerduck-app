@@ -35,6 +35,17 @@ actor FakeMailClient: MailClient {
     /// Simulates a `UID SEARCH DELETED` the server rejected (NO/BAD): `MailMover` must throw and
     /// never EXPUNGE, even though its own STORE may already have landed.
     var deletedUIDsError: MailClientError?
+    /// Simulates a server that refuses `CREATE` (no permission, quota, a name it dislikes): the
+    /// folder is not made and the caller has to fall back.
+    var createFolderError: MailClientError?
+    /// Simulates a server that accepts `CREATE` but stores the mailbox under a different name
+    /// than the one it was given — a mangled or re-encoded folder name, the same class of defect
+    /// vendored patches 5 and 6 exist for. The `CREATE` "succeeds" and the folder that appears is
+    /// one role resolution can never match.
+    var createdFolderName: String?
+    /// Simulates a `LIST` the server refused, so a caller cannot find out what its own `CREATE`
+    /// actually did.
+    var listFoldersError: MailClientError?
     var acceptedPassword: String?
     /// When set, `status` suspends until `releaseStatus()` is called. Kept as a named property
     /// for the tests that already use it; it is the general command gate below under another name.
@@ -174,6 +185,7 @@ actor FakeMailClient: MailClient {
 
     func listFolders() async throws -> [String] {
         calls.append("listFolders")
+        if let listFoldersError { throw listFoldersError }
         return folders.keys.sorted()
     }
 
@@ -306,6 +318,19 @@ actor FakeMailClient: MailClient {
         await gate("expunge")
         try assertUIDValidity(expectedUIDValidity, folder: folder)
         folders[folder]?.removeAll { $0.summary.isDeleted }
+    }
+
+    /// Models a real server rather than a recorder: the folder actually appears in `folders`, so
+    /// `listFolders()` reports it afterwards and role resolution has to match the name back — the
+    /// round trip, not just the call. Creating one that already exists is refused the way IMAP
+    /// refuses it, which is the race the provisioner has to treat as success.
+    func createFolder(_ name: String) async throws {
+        calls.append("createFolder \(name)")
+        await gate("createFolder")
+        if let createFolderError { throw createFolderError }
+        let stored = createdFolderName ?? name
+        guard folders[stored] == nil else { throw MailClientError.protocolError("mailbox already exists") }
+        folders[stored] = []
     }
 
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws {

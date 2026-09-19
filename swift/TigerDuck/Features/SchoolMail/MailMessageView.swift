@@ -6,7 +6,6 @@ import UIKit
 struct MailMessageView: View {
     @State private var viewModel: MailMessageViewModel
     private let session: MailPageSession
-    private let folderRoles: [MailFolderRole: String]
     private let otherFolders: [String]
 
     @Environment(AppState.self) private var appState
@@ -45,15 +44,16 @@ struct MailMessageView: View {
         otherFolders: [String],
         onSeenChanged: @escaping (String, UInt32, Bool) -> Void,
         onRemoved: @escaping (String, UInt32) -> Void,
-        onFolderChanged: @escaping (String) -> Void
+        onFolderChanged: @escaping (String) -> Void,
+        onFolderRolesChanged: @escaping ([MailFolderRole: String]) -> Void
     ) {
         let model = MailMessageViewModel(route: route, session: session, folderRoles: folderRoles)
         model.onSeenChanged = onSeenChanged
         model.onRemoved = onRemoved
         model.onFolderChanged = onFolderChanged
+        model.onFolderRolesChanged = onFolderRolesChanged
         _viewModel = State(initialValue: model)
         self.session = session
-        self.folderRoles = folderRoles
         self.otherFolders = otherFolders
     }
 
@@ -82,7 +82,8 @@ struct MailMessageView: View {
         .quickLookPreview($previewURL)
         .sheet(isPresented: $showMoveSheet) { moveSheet }
         .sheet(item: $compose) { context in
-            MailComposeView(context: context, session: session, folderRoles: folderRoles)
+            MailComposeView(context: context, session: session, folderRoles: viewModel.folderRoles,
+                            onFolderRolesChanged: { viewModel.adoptFolderRoles($0) })
         }
         .alert(String(localized: "school_mail_risky_title"), isPresented: Binding(
             get: { riskyAttachment != nil }, set: { if !$0 { riskyAttachment = nil } }), presenting: riskyAttachment
@@ -335,7 +336,13 @@ struct MailMessageView: View {
                 }
                 Section {
                     Button(role: .destructive) {
-                        pendingDelete = viewModel.deleteIsPermanent ? .permanent : .toTrash
+                        // Asynchronous because an account with no Trash gets one created here,
+                        // before the dialog is chosen — `prepareDelete()` explains why that has
+                        // to happen on this side of the confirmation rather than after it.
+                        Task {
+                            let isPermanent = await viewModel.prepareDelete()
+                            pendingDelete = isPermanent ? .permanent : .toTrash
+                        }
                     } label: {
                         Label(String(localized: "school_mail_delete"), systemImage: "trash")
                     }
@@ -350,8 +357,12 @@ struct MailMessageView: View {
     private var moveSheet: some View {
         NavigationStack {
             List {
-                ForEach(MailFolderRole.allCases.filter { folderRoles[$0] != nil && folderRoles[$0] != viewModel.route.folder }, id: \.self) { role in
-                    Button(role.title) { move(to: folderRoles[role]!) }
+                // The view model's map, not a copy captured at init: a folder created on demand
+                // since this screen opened belongs in this list.
+                ForEach(MailFolderRole.allCases.filter {
+                    viewModel.folderRoles[$0] != nil && viewModel.folderRoles[$0] != viewModel.route.folder
+                }, id: \.self) { role in
+                    Button(role.title) { move(to: viewModel.folderRoles[role]!) }
                         .disabled(viewModel.isMoving)
                 }
                 ForEach(otherFolders.filter { $0 != viewModel.route.folder }, id: \.self) { folder in
