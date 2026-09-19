@@ -16,12 +16,25 @@ public enum MailTransportSecurity: Sendable, Equatable {
     case plainText
 }
 
-/// A caller-supplied certificate check that replaces NIOSSL's default verification.
+/// A caller-supplied certificate check that **replaces** NIOSSL's verification entirely.
 ///
 /// `verify` receives the peer's chain as DER-encoded certificates (leaf first) and the host
 /// the connection was opened to, and returns `true` to accept the connection. It runs on the
 /// connection's event loop, so it must not block for long. Verifiers compare by
 /// `identifier`, which keeps ``MailCertificateVerificationPolicy`` `Equatable`.
+///
+/// - Important: this is not an extra check layered on top of platform trust. Installing it
+///   overrides *all* of BoringSSL's verification, **hostname checking included**, and on Darwin
+///   it also overwrites the Security.framework callback NIOSSL installs in
+///   `NIOSSLContext.createConnection()` — `NIOSSLClientHandler.init` replaces it. `verify` is
+///   therefore the whole evaluation: it must validate the chain against trusted roots and check
+///   the certificate against `host` itself before applying whatever policy (pinning, say) it
+///   was written for. A verifier that only compares public-key hashes accepts any chain from
+///   any issuer for any name that happens to carry a pinned key.
+///
+///   `MailTLSConfiguration.makeClientConfiguration` still sets `.fullVerification` for this
+///   policy, but only because NIOSSL skips a custom callback altogether when verification is
+///   `.none`. It performs no validation of its own here.
 public struct MailCertificateVerifier: Sendable {
     public let identifier: String
     public let verify: @Sendable (_ derChain: [[UInt8]], _ host: String) -> Bool
@@ -50,8 +63,10 @@ public enum MailCertificateVerificationPolicy: Sendable, Equatable {
     /// self-signed or otherwise locally untrusted certificate.
     case noVerification
 
-    /// Validate with a caller-supplied verifier instead of NIOSSL's default logic — for
-    /// example to add public-key pinning on top of platform trust evaluation.
+    /// Hand the whole evaluation to a caller-supplied verifier instead of NIOSSL's default
+    /// logic. The verifier owns chain *and* hostname validation — see
+    /// ``MailCertificateVerifier``, which explains why a pin-only verifier here validates
+    /// nothing.
     case custom(MailCertificateVerifier)
 }
 
@@ -101,7 +116,14 @@ enum MailTLSConfiguration {
         switch certificateVerificationPolicy {
             case .fullVerification, .custom:
                 // `.custom` must keep verification on: NIOSSL skips a custom callback
-                // entirely when `certificateVerification` is `.none`.
+                // entirely when `certificateVerification` is `.none`. That is the *only*
+                // thing these two lines do for `.custom` — they do not add a layer of
+                // validation underneath the callback. `NIOSSLCustomVerificationCallback`
+                // overrides all of BoringSSL's verification, hostname checking included, and
+                // on Darwin `NIOSSLClientHandler.init` overwrites the Security.framework
+                // callback `NIOSSLContext.createConnection()` installed. So the verifier is
+                // the whole evaluation, chain and hostname alike — see
+                // `MailCertificateVerifier`.
                 configuration.certificateVerification = .fullVerification
                 configuration.trustRoots = .default
             case .noVerification:

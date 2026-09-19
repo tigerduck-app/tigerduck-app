@@ -9,6 +9,15 @@ import os
 /// first; then some certificate's SPKI must be in the host's pin set. After the pin set's
 /// expiration date the check falls back to system trust alone (fail-soft, issue #92).
 /// There is no way to bypass a failure (design doc §7.1).
+///
+/// - Important: the chain and hostname evaluation below is not belt-and-braces over something
+///   NIOSSL is also doing. Installing a `NIOSSLCustomVerificationCallback` **replaces** all of
+///   BoringSSL's verification, hostname checking included, and on Darwin it overwrites the
+///   Security.framework callback NIOSSL installs in `NIOSSLContext.createConnection()`.
+///   `.fullVerification` in `MailTransportSecurity` only keeps the callback from being skipped.
+///   So `SecTrustCreateWithCertificates` + `SecPolicyCreateSSL(true, host)` +
+///   `SecTrustEvaluateWithError` here *are* the connection's only validation — remove them for
+///   a pin-only check and School Mail accepts any chain from any issuer for any name.
 nonisolated enum MailTLSVerifier {
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.TLS")
 

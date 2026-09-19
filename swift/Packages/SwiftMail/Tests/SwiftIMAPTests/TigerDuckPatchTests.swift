@@ -9,7 +9,16 @@ import Testing
 // rest of this test target does (see SearchCommandTests.swift).
 private typealias UID = SwiftMail.UID
 
-/// The three changes TigerDuck carries on top of 1.11.0.
+/// The TigerDuck patches this file pins: **patch 1** (the `.custom` certificate-verification
+/// policy) and **patch 3** (`CHARSET UTF-8` on `SEARCH`/`UID SEARCH` for non-ASCII criteria),
+/// plus the charset-resolver hook of **patch 2**. `VENDORED.md` lists all nine changes and
+/// names this file; it is the only test covering patches 1 and 3, so a re-vendor that drops it
+/// drops the only thing that would notice those patches going missing.
+///
+/// Note what the patch-1 tests do and do not say. `.custom` keeps `certificateVerification` at
+/// `.fullVerification` so NIOSSL runs the callback at all — it does not mean NIOSSL still
+/// validates anything. The callback replaces BoringSSL's verification entirely, hostname
+/// checking included; the verifier owns the whole evaluation.
 @Suite("TigerDuck patches", .serialized, .timeLimit(.minutes(1)))
 struct TigerDuckPatchTests {
     /// The public *.ntust.edu.tw leaf, so a real NIOSSLCertificate can be built.

@@ -7,9 +7,25 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
 
 ## TigerDuck changes on top of 1.11.0
 
-1. `MailCertificateVerificationPolicy.custom` — a caller-supplied certificate verifier,
-   so the app can add SPKI pinning on top of NIOSSL's default trust evaluation
+1. `MailCertificateVerificationPolicy.custom` — a caller-supplied certificate verifier, which
+   **replaces NIOSSL's verification entirely** and owns the whole evaluation, chain and
+   hostname included
    (`MailTransportSecurity.swift`, `IMAPConnection+TLS.swift`, `SMTPServer+Connection.swift`).
+
+   This is not pinning layered on top of platform trust, and reading it that way is how a
+   client ends up with no validation at all. `NIOSSLCustomVerificationCallback` overrides all
+   of BoringSSL's verification, hostname checking included, and on Darwin the
+   Security.framework callback NIOSSL installs in `NIOSSLContext.createConnection()` is
+   overwritten by `NIOSSLClientHandler.init`. Setting `certificateVerification =
+   .fullVerification` with `trustRoots = .default` is *necessary* — NIOSSL skips a custom
+   callback altogether when verification is `.none`, so without it the callback never runs —
+   but it performs no validation of its own.
+
+   The shipped app is correct only because its verifier does the whole job itself:
+   `Services/Mail/Transport/MailTLSVerifier.swift` runs `SecTrustCreateWithCertificates` +
+   `SecPolicyCreateSSL(true, host)` + `SecTrustEvaluateWithError` **before** it looks at pins.
+   A pin-only verifier written on the assumption that something else still checks the chain and
+   the hostname would ship a client that validates neither.
 2. `MailCharsetResolver` — an overridable charset-label → `String.Encoding` hook for
    RFC 2047 header decoding *and* message body decoding, so the app's Appendix A.5
    rules (Big5-as-HKSCS, GBK-as-GB18030, …) apply to sender names, subjects, and
@@ -109,3 +125,17 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.
+
+## Tests TigerDuck added
+
+Both live in the upstream test targets, so `swift test` runs them and a re-vendor that drops
+them fails loudly rather than quietly.
+
+- `Tests/SwiftIMAPTests/TigerDuckPatchTests.swift` — the only test pinning **patches 1 and 3**:
+  that a `.custom` policy keeps `certificateVerification` at `.fullVerification` (patch 1's
+  callback is skipped entirely otherwise), that verifiers compare by identifier, that a
+  `.custom` policy builds a client handler, and that `SEARCH`/`UID SEARCH` carry `CHARSET UTF-8`
+  exactly when a criterion contains non-ASCII text. Undocumented, this is the file whose loss at
+  the next re-vendor would take two patches with it unnoticed.
+- `Tests/SwiftIMAPTests/InvalidBodyStructureTests.swift` — pins **patch 6**, driving the real
+  `FetchMessageInfoHandler` behind `IMAPClientHandler`.
