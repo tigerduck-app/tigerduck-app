@@ -427,8 +427,11 @@ struct MailMessageView: View {
         )
     }
 
+    /// The second gate on a tapped link's scheme, after `MailLinkTarget.canOpen` decided whether
+    /// to offer Open at all. Both, rather than one: this is the function that hands a URL to the
+    /// system, and it should be readable as safe without tracing where its argument came from.
     private func openLink(_ href: String) {
-        guard let url = URL(string: href) else { return }
+        guard MailLinkTarget.isOpenable(href), let url = URL(string: href) else { return }
         if url.scheme?.lowercased() == "mailto" {
             let target = url.absoluteString.dropFirst("mailto:".count).split(separator: "?").first.map(String.init) ?? ""
             compose = MailComposeContext(mode: .new, to: MailAddress.parseList(target.removingPercentEncoding ?? target))

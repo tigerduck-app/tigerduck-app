@@ -8,15 +8,50 @@ struct MailMessageRoute: Hashable {
 }
 
 /// One tapped link — judged, shown and opened as the SAME canonicalized string (message-screen
-/// dispatch, 2026-09-16 additions 1–2). `canOpen` is false only for an http(s) href a
-/// browser-style parse rejects; the dialog then still shows it (bidi-stripped) but without an
-/// Open action. `id` is the href itself: this value only ever backs one transient confirmation
-/// sheet at a time, never a list, so a repeated href across separate taps is not a problem.
+/// dispatch, 2026-09-16 additions 1–2). `canOpen` is false for an http(s) href a browser-style
+/// parse rejects, and for any scheme outside `openableSchemes`; the dialog then still shows the
+/// href (bidi-stripped) but without an Open action. `id` is the href itself: this value only
+/// ever backs one transient confirmation sheet at a time, never a list, so a repeated href
+/// across separate taps is not a problem.
 nonisolated struct MailLinkTarget: Equatable, Sendable, Identifiable {
     var href: String
     var issues: [MailLinkIssue]
     var canOpen: Bool
     var id: String { href }
+
+    /// The only schemes a link in a mail may be opened with.
+    ///
+    /// `MailWarnings.canonicalHref` returns anything that is not `http`/`https` unchanged — it
+    /// canonicalizes those two and judges nothing else — so without this every scheme was
+    /// openable. The HTML path is closed further up by the sanitizer's
+    /// `addProtocols("a", "href", "http", "https", "mailto")`, but the plain-text path is not:
+    /// what becomes a link there is whatever `NSDataDetector` decides is one. `InAppBrowserView`
+    /// refuses non-http(s), so the hole was the `openURL(url)` branch, which would have handed
+    /// the system an arbitrary scheme — `tigerduck://` included, i.e. a mail able to drive the
+    /// app's own deep links from a single confirmed tap.
+    static let openableSchemes: Set<String> = ["http", "https", "mailto"]
+
+    /// Whether `href` names a scheme this app will open. A relative or scheme-less href is not
+    /// openable: there is no base URL a mail's link could be resolved against.
+    static func isOpenable(_ href: String) -> Bool {
+        guard let scheme = scheme(of: href) else { return false }
+        return openableSchemes.contains(scheme)
+    }
+
+    /// The scheme, lower-cased, per RFC 3986 §3.1 (`ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`),
+    /// or nil when there is none. The character rule is also what keeps a colon *inside* a path
+    /// or a userinfo from being read as a scheme separator.
+    private static func scheme(of href: String) -> String? {
+        let href = href.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let colon = href.firstIndex(of: ":") else { return nil }
+        let scheme = href[href.startIndex..<colon]
+        guard let first = scheme.first, first.isASCII, first.isLetter else { return nil }
+        let isSchemeCharacter = { (character: Character) in
+            character.isASCII && (character.isLetter || character.isNumber || "+-.".contains(character))
+        }
+        guard scheme.allSatisfy(isSchemeCharacter) else { return nil }
+        return scheme.lowercased()
+    }
 }
 
 @MainActor
@@ -523,7 +558,7 @@ final class MailMessageViewModel {
         return MailLinkTarget(
             href: MailTextCleaner.clean(canonical),
             issues: MailWarnings.linkIssues(text: text, href: canonical),
-            canOpen: true
+            canOpen: MailLinkTarget.isOpenable(canonical)
         )
     }
 

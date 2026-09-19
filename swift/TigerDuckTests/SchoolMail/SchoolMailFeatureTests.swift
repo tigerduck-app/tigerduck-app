@@ -53,5 +53,34 @@ struct SchoolMailFeatureTests {
         #expect(AppState.schoolMailDeepLink(from: ["kind": "school_mail", "uid": "not-a-number"]) == .schoolMail(folder: "INBOX", uid: nil))
         #expect(AppState.schoolMailDeepLink(from: ["kind": "school_mail", "uid": "99999999999"]) == .schoolMail(folder: "INBOX", uid: nil))
     }
+
+    // MARK: Which schemes a tapped link may be opened with
+
+    @Test(arguments: [
+        "https://ntust.edu.tw/", "http://ntust.edu.tw/", "HTTPS://ntust.edu.tw/",
+        "mailto:someone@mail.ntust.edu.tw", "MailTo:someone@mail.ntust.edu.tw",
+    ])
+    func theAllowedSchemesOpen(href: String) {
+        #expect(MailLinkTarget.isOpenable(href))
+    }
+
+    /// `MailWarnings.canonicalHref` hands back anything that is not http(s) unchanged, so every
+    /// one of these used to be offered with an Open button. `tigerduck:` is the pointed one: it
+    /// would have let a mail drive the app's own deep links from a single confirmed tap.
+    @Test(arguments: [
+        "tigerduck://schoolMail?uid=1", "javascript:alert(1)", "file:///etc/passwd",
+        "data:text/html,<b>x</b>", "sms:+886000000000", "itms-apps://apps.apple.com/app/id1",
+        "", "ntust.edu.tw", "/relative/path", "//ntust.edu.tw/x", "1https://ntust.edu.tw/",
+    ])
+    func everythingElseIsNotOpenable(href: String) {
+        #expect(!MailLinkTarget.isOpenable(href))
+    }
+
+    /// A colon inside a path or userinfo is not a scheme separator.
+    @Test func aColonThatIsNotASchemeSeparatorIsNotAScheme() {
+        #expect(!MailLinkTarget.isOpenable("ntust.edu.tw/a:b"))
+        #expect(MailLinkTarget.isOpenable("https://user:secret@ntust.edu.tw/"))
+    }
+
 }
 #endif
