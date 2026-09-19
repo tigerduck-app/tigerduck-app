@@ -296,7 +296,7 @@ struct AddCourseSheet: View {
                         Text(group.displayName)
                             .font(TigerDuckTheme.Typography.headline)
                             .foregroundStyle(Color.textPrimary)
-                        Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits))
+                        Text(String(format: String(localized: "add_course_result_meta"), group.courseNo, group.instructor, group.credits.creditsText))
                             .font(TigerDuckTheme.Typography.caption)
                             .foregroundStyle(Color.textSecondary)
                         if !group.classroom.isEmpty {
@@ -543,7 +543,7 @@ struct AddCourseSheet: View {
         let primaryName: String
         let secondaryName: String?
         let instructor: String
-        let credits: Int
+        let credits: Double
         let classroom: String
         /// Per-(weekday, period) classroom map, mirroring the structure that
         /// ``AppServiceBridge.buildSDCourse`` produces for the normal fetch
@@ -640,7 +640,7 @@ struct AddCourseSheet: View {
                     primaryName: result.CourseName,
                     secondaryName: secondaryNamesByNo[result.CourseNo],
                     instructor: result.CourseTeacher,
-                    credits: Int(result.CreditPoint) ?? 0,
+                    credits: Double(result.CreditPoint) ?? 0,
                     classroom: result.ClassRoomNo ?? "",
                     classroomMap: initialMap,
                     enrolledCount: result.ChooseStudent ?? 0,

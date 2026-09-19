@@ -406,7 +406,7 @@ struct MacClassTableView: View {
 
     // MARK: - Helpers
 
-    private var totalCredits: Int {
+    private var totalCredits: Double {
         courses.reduce(0) { $0 + $1.credits }
     }
 

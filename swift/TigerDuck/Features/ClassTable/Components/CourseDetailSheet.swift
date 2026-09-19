@@ -157,7 +157,7 @@ struct CourseDetailSheet: View {
             }
             InfoRow(
                 label: String(localized: "course_detail_credits_label"),
-                value: "\(course.credits)"
+                value: course.credits.creditsText
             )
             InfoRow(
                 label: String(localized: "course_detail_enrollment_label"),

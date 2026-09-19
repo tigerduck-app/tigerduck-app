@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-private func course(_ term: String, _ code: String, credits: Int?, grade: String, status: GradeStatus = .graded) -> CourseGrade {
+private func course(_ term: String, _ code: String, credits: Double?, grade: String, status: GradeStatus = .graded) -> CourseGrade {
     CourseGrade(
         index: nil, term: term, code: code, name: code, credits: credits, creditType: .normal,
         grade: grade, status: status, remark: "", geDimension: nil, distanceLearning: false

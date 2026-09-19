@@ -5,7 +5,7 @@ private struct CourseData: Sendable {
     let courseNo: String
     var courseName: String
     let instructor: String
-    let credits: Int
+    let credits: Double
     var classroom: String
     let enrolledCount: Int
     let maxCount: Int
@@ -296,7 +296,7 @@ enum AppServiceBridge {
                             courseName: c.courseName,
                             courseNameEn: nil,
                             moodleId: c.moodleIdNumber,
-                            credits: c.credits > 0 ? Double(c.credits) : nil,
+                            credits: c.credits > 0 ? c.credits : nil,
                             classroom: c.classroom.isEmpty ? nil : c.classroom,
                             instructors: c.instructor.isEmpty ? nil : [c.instructor],
                             scheduleJson: c.schedule.isEmpty ? nil : Dictionary(uniqueKeysWithValues: c.schedule.map { ("\($0.key)", $0.value) }),
@@ -666,7 +666,7 @@ enum AppServiceBridge {
             courseNo: first.CourseNo,
             courseName: first.CourseName,
             instructor: first.CourseTeacher,
-            credits: Int(first.CreditPoint) ?? 0,
+            credits: Double(first.CreditPoint) ?? 0,
             classroom: allClassrooms.joined(separator: ", "),
             enrolledCount: first.ChooseStudent ?? 0,
             maxCount: Int(first.Restrict2 ?? "0") ?? 0,

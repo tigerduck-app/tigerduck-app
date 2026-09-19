@@ -713,7 +713,9 @@ private struct CachedCourse: Codable {
     let courseNo: String
     let courseName: String
     let instructor: String
-    let credits: Int
+    /// Fractional since half-credit courses exist. A cache written while
+    /// this was an `Int` decodes unchanged — JSON has one number type.
+    let credits: Double
     let classroom: String
     let enrolledCount: Int
     let maxCount: Int

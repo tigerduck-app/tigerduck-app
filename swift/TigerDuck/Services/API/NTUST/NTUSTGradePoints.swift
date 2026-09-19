@@ -51,8 +51,8 @@ nonisolated enum NTUSTGradePoints {
         for course in courses where course.status == .graded {
             guard let credit = course.credits, credit > 0,
                   let points = points(forGrade: course.grade) else { continue }
-            weighted += points * Double(credit)
-            credits += Double(credit)
+            weighted += points * credit
+            credits += credit
         }
         return credits > 0 ? weighted / credits : nil
     }

@@ -94,7 +94,8 @@ struct CourseGrade: Codable, Equatable, Sendable, Identifiable {
     var term: String
     var code: String
     var name: String
-    var credits: Int?
+    /// Fractional: NTUST issues half credits.
+    var credits: Double?
     var creditType: CreditType
     var grade: String
     var status: GradeStatus
@@ -153,9 +154,9 @@ struct CreditSummary: Codable, Equatable, Sendable {
 }
 
 struct CreditBreakdown: Codable, Equatable, Sendable {
-    var inPerson: Int
-    var distance: Int
-    var total: Int
+    var inPerson: Double
+    var distance: Double
+    var total: Double
 
     /// `nonisolated` for the same reason as ``ScoreReport/empty``.
     nonisolated static let zero = CreditBreakdown(inPerson: 0, distance: 0, total: 0)

@@ -8,7 +8,8 @@ final class SDCourse: Identifiable {
     @Attribute(.unique) var courseNo: String
     var courseName: String
     var instructor: String
-    var credits: Int
+    /// NTUST issues half credits, so this is fractional. See `creditsText`.
+    var credits: Double
     var classroom: String
     var enrolledCount: Int
     var maxCount: Int
@@ -65,7 +66,7 @@ final class SDCourse: Identifiable {
         courseNo: String,
         courseName: String,
         instructor: String = "",
-        credits: Int = 0,
+        credits: Double = 0,
         classroom: String = "",
         enrolledCount: Int = 0,
         maxCount: Int = 0,

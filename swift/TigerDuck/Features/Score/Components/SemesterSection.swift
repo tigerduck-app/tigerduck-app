@@ -48,7 +48,7 @@ struct SemesterSection: View {
                     HStack(spacing: TigerDuckTheme.Spacing.sm) {
                         statPill(
                             icon: "number",
-                            text: String(format: String(localized: "score_course_credits"), totalCredits)
+                            text: String(format: String(localized: "score_course_credits"), totalCredits.creditsText)
                         )
                         if let gpa = gpaPoint?.semester.gpa {
                             let provisional = gpaPoint?.isProvisional == true
@@ -86,7 +86,7 @@ struct SemesterSection: View {
         return String(format: String(localized: "score_academic_year_semester"), year, label)
     }
 
-    private var totalCredits: Int {
+    private var totalCredits: Double {
         courses.reduce(0) { $0 + ($1.credits ?? 0) }
     }
 

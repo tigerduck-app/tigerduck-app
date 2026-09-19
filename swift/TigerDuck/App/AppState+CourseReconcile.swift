@@ -199,7 +199,7 @@ extension AppState {
             courseNo: courseNo,
             courseName: name ?? row["course_name"] as? String ?? courseNo,
             instructor: (row["instructors"] as? [String])?.joined(separator: ", ") ?? "",
-            credits: Int(row["credits"] as? Double ?? 0),
+            credits: row["credits"] as? Double ?? 0,
             classroom: row["classroom"] as? String ?? "",
             enrolledCount: row["enrolled_count"] as? Int ?? 0,
             maxCount: row["max_count"] as? Int ?? 0,
