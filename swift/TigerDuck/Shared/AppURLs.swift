@@ -16,5 +16,4 @@ enum AppURLs {
     /// (SFSafariViewController), which follows a cross-origin redirect in
     /// place rather than handing off to Safari.
     static let serverStatus   = URL(string: "https://status.tigerduck.app/")!
-    static let license        = URL(string: "https://github.com/tigerduck-app/tigerduck-app/blob/main/LICENSE")!
 }

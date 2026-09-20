@@ -387,6 +387,14 @@ struct TigerDuckApp: App {
             MacSettingsScene()
                 .environment(appState)
         }
+
+        // Its own window rather than a page inside Settings: that window is
+        // fixed-size with no navigation stack, and licence texts are long.
+        Window(String(localized: "settings_open_source_licenses"), id: MacLicensesView.windowID) {
+            MacLicensesView()
+                .environment(appState)
+        }
+        .defaultSize(width: 900, height: 600)
     }
 }
 
