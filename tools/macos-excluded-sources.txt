@@ -80,7 +80,10 @@ HomeViewModel.swift
 
 # Features/Library — iOS library QR + brightness control (UIScreen)
 HDRQRCodeImage.swift
+LibraryBrightnessCoordinator.swift
 LibraryQRCodeView.swift
+LibraryQRImageCache.swift
+LibraryQRRenderer.swift
 LibraryView.swift
 LibraryViewModel.swift
 
@@ -157,6 +160,7 @@ PasswordField.swift
 # SharedUI — iOS-only shared components
 EmptyStateView.swift
 GlassTextButtonModifier.swift
+HostScreenReader.swift
 InAppBrowserView.swift
 JustifiedText.swift
 LoadingShimmer.swift
