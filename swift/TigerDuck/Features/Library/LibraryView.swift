@@ -181,7 +181,14 @@ struct LibraryView: View {
     /// the QR pop locally, so the global brightness override is skipped to
     /// preserve the local-highlight behaviour this view is built around.
     private func boostBrightnessForQR() {
-        guard let screen = hostScreen.screen, !edrIsAvailable else { return }
+        guard let screen = hostScreen.screen, !edrIsAvailable else {
+            // Not boosting here means this view has no business holding the
+            // override at all. Letting go matters most on a move: carried to
+            // an EDR-capable display, a plain `return` left the SDR panel we
+            // just left pinned at 1.0 with nothing on it, until teardown.
+            restoreBrightness()
+            return
+        }
         LibraryBrightnessCoordinator.shared.boost(screen, token: brightnessToken)
     }
 
