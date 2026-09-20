@@ -393,6 +393,12 @@ struct TigerDuckApp: App {
         Window(String(localized: "settings_open_source_licenses"), id: MacLicensesView.windowID) {
             MacLicensesView()
                 .environment(appState)
+                // Environments do not cross scene boundaries, so this window
+                // takes neither the tint MacSettingsScene applies nor the one
+                // on the main window: without it the links here would come up
+                // in the system accent while the rest of the app used the
+                // chosen one.
+                .tint(appState.accentColor)
         }
         .defaultSize(width: 900, height: 600)
     }
