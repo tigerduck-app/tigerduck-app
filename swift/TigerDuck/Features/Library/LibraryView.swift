@@ -8,6 +8,9 @@ struct LibraryView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @State private var viewModel = LibraryViewModel()
     @State private var showNotImplementedAlert = false
     @FocusState private var loginField: LoginField?
@@ -22,6 +25,14 @@ struct LibraryView: View {
     /// screen for the QR page. `nil` means we are not currently
     /// overriding brightness.
     @State private var savedBrightness: CGFloat?
+    /// The screen `savedBrightness` was taken from and that is currently
+    /// pinned bright. Held separately because on a foldable the QR can
+    /// move between displays while the boost is live, and the restore has
+    /// to go back to the panel we actually touched.
+    @State private var boostedScreen: UIScreen?
+    /// The screen hosting this view right now, from ``HostScreenReader``.
+    /// `nil` until the view is in a window.
+    @State private var hostScreen: UIScreen?
     #endif
 
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 56
@@ -61,6 +72,18 @@ struct LibraryView: View {
             releaseExpressTransit()
             restoreBrightness()
         }
+        // Folding the device hands the window to the other display. The
+        // QR has to arrive there already boosted, and the display we are
+        // leaving has to get its brightness back — otherwise a fold either
+        // leaves a dim code at the scanner or strands the inner panel at
+        // 100% until the user quits.
+        #if os(iOS)
+        .onHostScreenChange { screen in
+            hostScreen = screen
+            guard viewModel.isLoggedIn else { return }
+            boostBrightnessForQR()
+        }
+        #endif
         .onChange(of: viewModel.isLoggedIn) { _, loggedIn in
             if loggedIn {
                 suppressExpressTransit()
@@ -143,7 +166,8 @@ struct LibraryView: View {
     /// `LibraryQRCodeView` keeps it scannable, and overriding system
     /// brightness is the behaviour this view exists to avoid.
     private var edrIsAvailable: Bool {
-        HDRQRCodeImage.isSupported && UIScreen.main.potentialEDRHeadroom > 1.0
+        guard let hostScreen else { return false }
+        return HDRQRCodeImage.isSupported && hostScreen.potentialEDRHeadroom > 1.0
     }
 
     /// Pin the screen at full brightness while the QR is on-screen — the
@@ -152,32 +176,45 @@ struct LibraryView: View {
     /// the QR pop locally, so the global brightness override is skipped to
     /// preserve the local-highlight behaviour this view is built around.
     private func boostBrightnessForQR() {
-        guard !edrIsAvailable else { return }
-        if savedBrightness == nil {
-            savedBrightness = UIScreen.main.brightness
-        }
-        UIScreen.main.brightness = 1.0
+        // Already pinned on the screen we are on — nothing to do. Without
+        // this the repeated `onAppear` / scene-phase calls would capture
+        // an already-boosted 1.0 as the "pre-boost" value and the restore
+        // would leave the panel at full.
+        guard hostScreen !== boostedScreen else { return }
+        // Moving between displays: give the old one its brightness back
+        // before touching the new one.
+        restoreBrightness()
+        guard let hostScreen, !edrIsAvailable else { return }
+        savedBrightness = hostScreen.brightness
+        boostedScreen = hostScreen
+        hostScreen.brightness = 1.0
     }
 
     private func restoreBrightness() {
-        guard let saved = savedBrightness else { return }
-        UIScreen.main.brightness = saved
+        guard let saved = savedBrightness, let screen = boostedScreen else { return }
+        screen.brightness = saved
         savedBrightness = nil
+        boostedScreen = nil
     }
     #else
     private func boostBrightnessForQR() {}
     private func restoreBrightness() {}
     #endif
 
-    /// iPad rotates freely, so anchor the QR to vertical center to keep its
-    /// on-screen position stable across orientation changes. iPhone is
-    /// portrait-locked by Info.plist and stays on the regular top-aligned
-    /// scroll layout. macOS has no `UIDevice`; the Mac surface doesn't
-    /// expose LibraryView today but the file still compiles into the Mac
-    /// target, so fall through to the regular layout instead.
+    /// A wide canvas rotates freely, so anchor the QR to vertical center
+    /// to keep its on-screen position stable across orientation changes.
+    /// A compact one is portrait in practice and stays on the regular
+    /// top-aligned scroll layout.
+    ///
+    /// Keyed on the size class rather than the idiom because the premise
+    /// the idiom check encoded — "iPhone is portrait-locked by Info.plist"
+    /// — is false on a foldable: the inner display ignores the app's
+    /// supported orientations, and it reports the `.phone` idiom while
+    /// being regular in both dimensions. macOS has no size class here but
+    /// does not expose LibraryView today, so it falls through.
     private var shouldCenterQRForRotation: Bool {
         #if os(iOS)
-        UIDevice.current.userInterfaceIdiom == .pad && viewModel.isLoggedIn
+        horizontalSizeClass == .regular && viewModel.isLoggedIn
         #else
         false
         #endif
