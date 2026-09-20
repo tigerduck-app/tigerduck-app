@@ -74,19 +74,22 @@ struct MoreView: View {
             }
             // A feature opened from More should read as the same page the
             // user would get by tapping it in the tab bar, so the push
-            // chevron goes away: these views already carry their own
-            // in-content title bar and, as a tab root, sit under an empty
-            // nav bar. Only `navigationBarBackButtonHidden` — hiding the
-            // whole bar via `toolbar(.hidden, for: .navigationBar)` would
-            // also kill the interactivePopGesture, and the edge swipe is
-            // the way back once the chevron is gone.
+            // chevron goes away. Most of these destinations carry their
+            // own in-content title bar and sit under an empty nav bar as
+            // a tab root; BulletinsView is the exception, with a real
+            // `.navigationTitle` plus toolbar items — dropping the
+            // chevron is what makes it match its own tab root too.
+            //
+            // The bar itself stays, because those titles and toolbar
+            // items need it. See `MoreFeatureDestination` below for why
+            // the chevron's replacement is an escape action rather than
+            // nothing at all.
             //
             // Settings is deliberately untouched: it is pushed by its own
             // NavigationLink in the header above, never through this
             // AppFeature destination, so it keeps its back button.
             .navigationDestination(for: AppFeature.self) { feature in
-                moreDestination(for: feature)
-                    .navigationBarBackButtonHidden(true)
+                MoreFeatureDestination { moreDestination(for: feature) }
             }
         }
         // Consume deep-links from callers that can't reach this view's
@@ -122,6 +125,46 @@ struct MoreView: View {
         case .gpa: ScoreView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)
         }
+    }
+}
+
+/// Chrome for a feature page pushed from the More tab: no back chevron, so
+/// the page reads like the same feature reached from the tab bar.
+///
+/// Two things have to hold for that to be safe, and neither is local to
+/// this file:
+///
+/// 1. The left-edge swipe is what replaces the chevron for most users, and
+///    it survives `navigationBarBackButtonHidden` only because
+///    `Extensions/UINavigationController+Swipeback.swift` re-points the
+///    `interactivePopGestureRecognizer` delegate app-wide. Stock UIKit
+///    disables that gesture *precisely* when the back button is hidden, so
+///    deleting that extension strands users on every destination here —
+///    not just on the bulletin detail page its comment names.
+/// 2. A screen-edge pan has no Switch Control equivalent and is not how
+///    VoiceOver users go back, so the swipe alone would make these pages a
+///    dead end for assistive tech. `.escape` restores the route the
+///    chevron used to provide — VoiceOver's two-finger scrub lands here.
+///
+/// This has to be a wrapper `View`: `@Environment(\.dismiss)` read in
+/// `MoreView`'s own body resolves to MoreView's dismissal, not the pushed
+/// page's. `dismiss()` rather than trimming `navigationPath` on purpose —
+/// the features below push their own second-level destinations with
+/// `item:`/`isPresented:`, which never enter the bound path, so mutating
+/// the path directly could desync the stack.
+private struct MoreFeatureDestination<Content: View>: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .navigationBarBackButtonHidden(true)
+            .accessibilityAction(.escape) { dismiss() }
     }
 }
 
