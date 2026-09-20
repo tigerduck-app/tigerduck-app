@@ -55,7 +55,25 @@ final class HostScreenReaderView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        let screen = window?.screen
+        reportHostScreen()
+    }
+
+    /// `didMoveToWindow` alone is not the whole signal.
+    ///
+    /// A fold — and a Stage Manager window dragged to another display —
+    /// reassigns `UIWindowScene.screen` underneath a window that never
+    /// changes, so no view is added or removed and `didMoveToWindow` never
+    /// fires. That is precisely the case this reader exists for, so the
+    /// screen is re-read on layout too, which a geometry change always
+    /// drives. `CapturedScreenReader` pairs the same callback with a
+    /// notification observer for the same reason.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        reportHostScreen()
+    }
+
+    private func reportHostScreen() {
+        let screen = window?.windowScene?.screen ?? window?.screen
         guard screen !== reportedScreen else { return }
         reportedScreen = screen
         onChange?(screen)
