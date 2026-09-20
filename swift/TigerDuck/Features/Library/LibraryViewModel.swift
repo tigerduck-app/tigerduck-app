@@ -80,6 +80,7 @@ final class LibraryViewModel {
             qrCodeImage = nil
             qrPayload = nil
             LibraryQRCache.shared.clear()
+            LibraryQRImageCache.shared.clear()
             stopTimers()
             onLibraryStateChanged?()
             return
@@ -143,9 +144,10 @@ final class LibraryViewModel {
                 // Rasterise off the main actor: a cold CIContext plus the
                 // CGImage render was a visible hitch on older phones.
                 let image = await Task.detached(priority: .userInitiated) {
-                    Self.generateQRImage(from: payload)
+                    LibraryQRRenderer.image(from: payload)
                 }.value
                 LibraryQRCache.shared.store(payload)
+                if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                 qrPayload = payload
                 qrCodeImage = image
                 isLoadingQR = false
@@ -158,6 +160,7 @@ final class LibraryViewModel {
                     isLoggedIn = false
                     consecutiveErrors = 0
                     LibraryQRCache.shared.clear()
+                    LibraryQRImageCache.shared.clear()
                     stopTimers()
                     onLibraryStateChanged?()
                 } else {
@@ -182,35 +185,6 @@ final class LibraryViewModel {
         }
     }
 
-    /// One context for the app's lifetime — creating one per QR compiles
-    /// Core Image's Metal pipeline every 30 s.
-    // `nonisolated` (not `nonisolated(unsafe)`) — `CIContext` is `Sendable`
-    // in the current SDK, so the unchecked escape hatch is no longer needed.
-    // The annotation itself still is: the module defaults to MainActor
-    // isolation, and `generateQRImage` runs off it.
-    nonisolated private static let ciContext = CIContext()
-
-    nonisolated private static func generateQRImage(from string: String) -> UIImage? {
-        // Plain SDR black/white render. HDR brightness is applied at draw
-        // time by `HDRQRCodeImage` via a Metal shader against an EDR-enabled
-        // CAMetalLayer — doing it here through CoreImage's filter chain
-        // proved unreliable (false-color clamping + SwiftUI not tagging
-        // synthetic UIImages as HDR).
-        let context = ciContext
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(string.utf8)
-        filter.correctionLevel = "M"
-
-        guard let ciImage = filter.outputImage else { return nil }
-        let scale: CGFloat = 10
-        let transformed = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-
-        guard let cgImage = context.createCGImage(transformed, from: transformed.extent) else {
-            return nil
-        }
-        return UIImage(cgImage: cgImage)
-    }
-
     // MARK: - Timers
 
     /// Coming back to the page while the last code still has at least
@@ -224,11 +198,23 @@ final class LibraryViewModel {
             let remaining = cache.remaining()
             if qrPayload != payload || qrCodeImage == nil {
                 qrPayload = payload
-                Task { @MainActor in
-                    qrCodeImage = await Task.detached(priority: .userInitiated) {
-                        Self.generateQRImage(from: payload)
-                    }.value
+                // Already rendered this payload — either on a previous
+                // visit to this tab or speculatively during a gesture's
+                // lead-in. Assign synchronously so the QR is on screen in
+                // the first frame instead of after a hop through a
+                // detached render.
+                if let memoized = LibraryQRImageCache.shared.image(for: payload) {
+                    qrCodeImage = memoized
                     isLoadingQR = false
+                } else {
+                    Task { @MainActor in
+                        let image = await Task.detached(priority: .userInitiated) {
+                            LibraryQRRenderer.image(from: payload)
+                        }.value
+                        if let image { LibraryQRImageCache.shared.store(image, for: payload) }
+                        qrCodeImage = image
+                        isLoadingQR = false
+                    }
                 }
             }
             restartCountdown(from: remaining)
