@@ -91,12 +91,16 @@ enum LibraryService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
         clearToken()
         LibraryQRCache.shared.clear()
+        #if os(iOS)
         // The rendered pixels are credential-derived too. Without this the
         // previous user's QR image outlives their session in a process-wide
         // singleton, which is the "do not keep previous-user data after
-        // logout" rule this repo holds elsewhere.
+        // logout" rule this repo holds elsewhere. iOS-only for the same
+        // reason as the broadcaster below: the cache holds a `UIImage`, and
+        // the Mac target compiles this file off an explicit source
+        // allowlist (`INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]`) that the
+        // cache — like the rest of the Library UI — is not on.
         LibraryQRImageCache.shared.clear()
-        #if os(iOS)
         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
         #endif
     }
