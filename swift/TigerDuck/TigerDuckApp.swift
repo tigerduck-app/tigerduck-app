@@ -392,6 +392,13 @@ struct TigerDuckApp: App {
         // fixed-size with no navigation stack, and licence texts are long.
         Window(String(localized: "settings_open_source_licenses"), id: MacLicensesView.windowID) {
             MacLicensesView()
+                // Same rebuild the main window does: String(localized:) is
+                // resolved once, so without this the window would sit in the
+                // old language until it was closed and reopened. Its title
+                // comes back with it, by way of the navigationTitle inside —
+                // the name in the Window menu is the scene's own and stays
+                // until relaunch.
+                .id(rootLanguageId)
                 .environment(appState)
                 // Environments do not cross scene boundaries, so this window
                 // takes neither the tint MacSettingsScene applies nor the one
@@ -399,6 +406,11 @@ struct TigerDuckApp: App {
                 // in the system accent while the rest of the app used the
                 // chosen one.
                 .tint(appState.accentColor)
+                .onReceive(
+                    NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
+                ) { _ in
+                    rootLanguageId = UUID()
+                }
         }
         .defaultSize(width: 900, height: 600)
     }
