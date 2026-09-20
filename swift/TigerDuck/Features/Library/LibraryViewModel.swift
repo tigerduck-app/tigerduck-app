@@ -138,6 +138,7 @@ final class LibraryViewModel {
         Task { @MainActor in
             isLoadingQR = qrCodeImage == nil
             errorMessage = nil
+            let generation = LibraryService.loginGeneration
             do {
                 let payload = try await LibraryService.generateQRCode()
                 // Rasterise off the main actor: a cold CIContext plus the
@@ -145,6 +146,16 @@ final class LibraryViewModel {
                 let image = await Task.detached(priority: .userInitiated) {
                     LibraryQRRenderer.image(from: payload)
                 }.value
+                // The user signed out — or signed in as someone else — while
+                // the request was in flight. This code belongs to whoever was
+                // signed in when it was asked for, so it must not reach the
+                // process-wide caches or the screen. Dropping it is enough:
+                // the next `onAppear` (or the refresh tick, whichever comes
+                // first) is what collapses the page to its logged-out state.
+                guard LibraryService.loginGeneration == generation else {
+                    isLoadingQR = false
+                    return
+                }
                 LibraryQRCache.shared.store(payload)
                 if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                 qrPayload = payload
@@ -213,6 +224,7 @@ final class LibraryViewModel {
                     // spinner; an already-displayed code stays put until the
                     // new one lands. Same rule `fetchAndDisplayQR` uses.
                     isLoadingQR = qrCodeImage == nil
+                    let generation = LibraryService.loginGeneration
                     Task { @MainActor in
                         let image = await Task.detached(priority: .userInitiated) {
                             LibraryQRRenderer.image(from: payload)
@@ -224,6 +236,10 @@ final class LibraryViewModel {
                         // single-slot cache would evict the current entry and
                         // turn the next visit's memo hit into a miss.
                         guard qrPayload == payload else { return }
+                        // Same reasoning as `fetchAndDisplayQR`: a logout in
+                        // this window already cleared both caches, and these
+                        // pixels must not refill them.
+                        guard LibraryService.loginGeneration == generation else { return }
                         if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                         qrCodeImage = image
                         isLoadingQR = false

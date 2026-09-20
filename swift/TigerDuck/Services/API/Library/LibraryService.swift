@@ -67,6 +67,22 @@ enum LibraryService {
         KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryUsername)
     }
 
+    /// Bumped whenever the stored library identity changes — a logout, or a
+    /// different account signing in.
+    ///
+    /// The QR path is asynchronous and untracked: `generateQRCode()` is a
+    /// network round trip, and the rasterise after it hops off the main
+    /// actor. A logout landing inside that window let the previous user's
+    /// code finish arriving afterwards and write itself back into the
+    /// process-wide caches and onto the screen — which is the
+    /// "do not write previous-user data back after logout" rule in
+    /// `swift/TigerDuck/AGENTS.md`. Callers read this before their request
+    /// and compare before storing anything.
+    ///
+    /// Mirrors ``AuthService/loginGeneration``, which guards the NTUST side
+    /// for the same reason.
+    @MainActor private(set) static var loginGeneration: Int = 0
+
     /// `@MainActor`-isolated so the broadcaster call below is an in-actor
     /// sync call (no deferred Task). This preserves serialization — a
     /// save followed by a clear runs broadcastSet → broadcastWipe in
@@ -74,6 +90,14 @@ enum LibraryService {
     /// strict concurrency.
     @MainActor
     static func saveCredentials(username: String, password: String) {
+        // Only a genuine account change invalidates work in flight.
+        // `ensureToken()` re-logs in with the *stored* credentials when the
+        // token expires, and that lands here mid-request — bumping on every
+        // save would make a refresh discard the very QR request that
+        // triggered it.
+        if storedUsername != username {
+            loginGeneration &+= 1
+        }
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
         // iOS-only: macOS has no paired watch surface and the broadcaster
@@ -87,6 +111,9 @@ enum LibraryService {
     /// See `saveCredentials` for the `@MainActor` rationale.
     @MainActor
     static func clearCredentials() {
+        // Before the deletes, so anything that reads it from here on already
+        // sees its captured generation as stale.
+        loginGeneration &+= 1
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryUsername)
         KeychainManager.delete(key: AppConstants.KeychainKeys.libraryPassword)
         clearToken()
