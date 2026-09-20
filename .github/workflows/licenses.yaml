@@ -11,11 +11,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 1
-          # No submodules: this only reads Package.resolved, project.pbxproj,
-          # LICENSE and the committed swift/TigerDuck/licenses.json.
+          # Submodules, for name-abbr: it ships inside the app under its own
+          # MIT licence, and its LICENSE file is the one licence text the
+          # check can compare against its source. Without it on disk that
+          # comparison skips, and a PR moving the pin to a commit whose
+          # LICENSE changed — year, holder, a relicence — would leave the
+          # listed text stale and still pass. Everything else the check reads
+          # (Package.resolved, project.pbxproj, LICENSE and the committed
+          # swift/TigerDuck/licenses.json) is in this repository.
+          submodules: true
 
       # Offline on purpose: comparing the list with Package.resolved needs no
-      # package checkouts, so a package added, removed or bumped without
+      # Swift package checkouts, so a package added, removed or bumped without
       # regenerating the list fails here instead of shipping unlisted.
       - name: Check the licence list matches the linked packages
         run: python3 tools/generate_licenses.py --check
