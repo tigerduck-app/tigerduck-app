@@ -21,18 +21,15 @@ struct LibraryView: View {
     /// Held only while the QR page is on-screen so a side-button double-press
     /// can't fire up Apple Pay / Express Transit and cover the library QR.
     @State private var passSuppressionToken: PKSuppressionRequestToken?
-    /// Pre-boost screen brightness, captured the first time we max the
-    /// screen for the QR page. `nil` means we are not currently
-    /// overriding brightness.
-    @State private var savedBrightness: CGFloat?
-    /// The screen `savedBrightness` was taken from and that is currently
-    /// pinned bright. Held separately because on a foldable the QR can
-    /// move between displays while the boost is live, and the restore has
-    /// to go back to the panel we actually touched.
-    @State private var boostedScreen: UIScreen?
     /// The screen hosting this view right now, from ``HostScreenReader``.
-    /// `nil` until the view is in a window.
-    @State private var hostScreen: UIScreen?
+    /// Empty until the view is in a window, and weak because the panel can
+    /// go away underneath us.
+    @State private var hostScreen = WeakScreen()
+    /// This instance's claim on the brightness override. Several
+    /// `LibraryView`s can be alive at once — the tab plus the embedded
+    /// copies Home and More push — so the override itself is owned by
+    /// ``LibraryBrightnessCoordinator`` and each view only holds a ticket.
+    @State private var brightnessToken = UUID()
     #endif
 
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 56
@@ -79,7 +76,10 @@ struct LibraryView: View {
         // 100% until the user quits.
         #if os(iOS)
         .onHostScreenChange { screen in
-            hostScreen = screen
+            hostScreen = WeakScreen(screen)
+            // Leaving the window is as much a reason to let go of the panel
+            // as leaving the page is.
+            guard screen != nil else { return restoreBrightness() }
             guard viewModel.isLoggedIn else { return }
             boostBrightnessForQR()
         }
@@ -111,7 +111,12 @@ struct LibraryView: View {
                 // 1.0 if the user is no longer looking at the QR.
                 restoreBrightness()
             @unknown default:
+                // A phase we do not know about is not a reason to keep the
+                // user's transit card suppressed or their panel pinned at
+                // full. Tear down exactly as the known non-active cases do.
                 viewModel.stopTimers()
+                releaseExpressTransit()
+                restoreBrightness()
             }
         }
     }
@@ -166,8 +171,8 @@ struct LibraryView: View {
     /// `LibraryQRCodeView` keeps it scannable, and overriding system
     /// brightness is the behaviour this view exists to avoid.
     private var edrIsAvailable: Bool {
-        guard let hostScreen else { return false }
-        return HDRQRCodeImage.isSupported && hostScreen.potentialEDRHeadroom > 1.0
+        guard let screen = hostScreen.screen else { return false }
+        return HDRQRCodeImage.isSupported && screen.potentialEDRHeadroom > 1.0
     }
 
     /// Pin the screen at full brightness while the QR is on-screen — the
@@ -176,25 +181,14 @@ struct LibraryView: View {
     /// the QR pop locally, so the global brightness override is skipped to
     /// preserve the local-highlight behaviour this view is built around.
     private func boostBrightnessForQR() {
-        // Already pinned on the screen we are on — nothing to do. Without
-        // this the repeated `onAppear` / scene-phase calls would capture
-        // an already-boosted 1.0 as the "pre-boost" value and the restore
-        // would leave the panel at full.
-        guard hostScreen !== boostedScreen else { return }
-        // Moving between displays: give the old one its brightness back
-        // before touching the new one.
-        restoreBrightness()
-        guard let hostScreen, !edrIsAvailable else { return }
-        savedBrightness = hostScreen.brightness
-        boostedScreen = hostScreen
-        hostScreen.brightness = 1.0
+        guard let screen = hostScreen.screen, !edrIsAvailable else { return }
+        LibraryBrightnessCoordinator.shared.boost(screen, token: brightnessToken)
     }
 
+    /// Safe to call unconditionally: the coordinator ignores a token it is
+    /// not holding, and only restores the panel once every claim is gone.
     private func restoreBrightness() {
-        guard let saved = savedBrightness, let screen = boostedScreen else { return }
-        screen.brightness = saved
-        savedBrightness = nil
-        boostedScreen = nil
+        LibraryBrightnessCoordinator.shared.release(token: brightnessToken)
     }
     #else
     private func boostBrightnessForQR() {}
