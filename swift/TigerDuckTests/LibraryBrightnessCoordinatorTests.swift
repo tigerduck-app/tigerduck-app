@@ -82,6 +82,31 @@ struct LibraryBrightnessCoordinatorTests {
         #expect(outer.brightness == 0.7)
     }
 
+    /// Two windows on two displays. The app ships with
+    /// `UIApplicationSupportsMultipleScenes`, so an iPad under Stage Manager
+    /// with an external screen can have a Library window on each. A single
+    /// global "boosted panel" made the second window's claim hand the first
+    /// display its brightness back while that window was still showing a
+    /// code — the QR the user was holding up to a scanner went dim.
+    @Test
+    func claimsOnSeparateDisplaysDoNotEvictEachOther() {
+        let first = FakePanel(0.4), second = FakePanel(0.7)
+        let c = LibraryBrightnessCoordinator()
+        let a = UUID(), b = UUID()
+
+        c.boost(first, token: a)
+        c.boost(second, token: b)
+        #expect(first.brightness == 1.0, "still showing a code — must stay pinned")
+        #expect(second.brightness == 1.0)
+
+        c.release(token: b)
+        #expect(second.brightness == 0.7)
+        #expect(first.brightness == 1.0, "releasing one display must not touch the other")
+
+        c.release(token: a)
+        #expect(first.brightness == 0.4)
+    }
+
     /// Releasing a token nobody registered must not restore anything — the
     /// view calls this unconditionally from teardown paths.
     @Test
