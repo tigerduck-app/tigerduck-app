@@ -63,8 +63,9 @@ private struct AppLicenseView: View {
     }
 }
 
-/// One package: who holds the copyright, where it lives, and every licence
-/// and notice file it ships, verbatim.
+/// One package: why it ships when that isn't obvious, who holds the
+/// copyright, where it lives, and every licence and notice file it ships,
+/// verbatim.
 private struct PackageLicenseView: View {
     let package: LicenseCatalog.Package
 
@@ -76,6 +77,10 @@ private struct PackageLicenseView: View {
                         Text(version)
                             .font(.callout)
                             .foregroundStyle(.secondary)
+                    }
+                    if let note = package.note {
+                        Text(note)
+                            .font(.callout)
                     }
                     ForEach(package.copyright, id: \.self) { line in
                         Text(line)

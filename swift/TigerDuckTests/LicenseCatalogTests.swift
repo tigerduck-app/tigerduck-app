@@ -51,4 +51,24 @@ struct LicenseCatalogTests {
         let catalog = try #require(LicenseCatalog.load())
         #expect(!catalog.packages.contains { $0.identity == "swift-syntax" })
     }
+
+    /// The abbreviation tables ship as bundle resources, symlinked in from a
+    /// submodule that is published under MIT. The app being AGPL says
+    /// nothing about them, and MIT asks that its notice travel with the data.
+    @Test("the abbreviation data is listed under its own licence, not the app's")
+    func bundledDataIsListed() throws {
+        let catalog = try #require(LicenseCatalog.load())
+        let nameAbbr = try #require(catalog.packages.first { $0.identity == "name-abbr" })
+        #expect(nameAbbr.license == "MIT")
+        #expect(nameAbbr.copyright.contains { $0.contains("TigerDuck") })
+        #expect(try #require(nameAbbr.texts.first).text.hasPrefix("MIT License"))
+    }
+
+    @Test("anything that ships without a package to explain it says why it ships")
+    func bundledEntriesExplainThemselves() throws {
+        let catalog = try #require(LicenseCatalog.load())
+        for package in catalog.packages where package.version == nil {
+            #expect(package.note?.isEmpty == false, "\(package.name) has no note")
+        }
+    }
 }

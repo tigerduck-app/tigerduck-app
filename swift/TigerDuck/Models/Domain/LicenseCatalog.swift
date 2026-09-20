@@ -1,7 +1,8 @@
 import Foundation
 
-/// `licenses.json`: TigerDuck's own licence and every Swift package the app
-/// links, each package's licence file verbatim. Written by
+/// `licenses.json`: TigerDuck's own licence, every Swift package the app
+/// links, and anything else that ships inside the bundle under a licence of
+/// its own — each with its licence file verbatim. Written by
 /// `tools/generate_licenses.py`; CI fails when it falls behind
 /// `Package.resolved`.
 struct LicenseCatalog: Decodable {
@@ -25,6 +26,8 @@ struct LicenseCatalog: Decodable {
         let license: String
         /// The copyright lines of the licence file, as the holder wrote them.
         let copyright: [String]
+        /// Why this ships, for material the dependency graph doesn't explain.
+        let note: String?
         let texts: [LicenseText]
 
         var id: String { identity }

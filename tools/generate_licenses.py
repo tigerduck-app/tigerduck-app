@@ -10,7 +10,9 @@ Android's AboutLibraries plugin, so this reads the package checkouts itself.
 
 Packages come from Package.resolved, plus local packages the project
 references by path (those never appear in Package.resolved). BUILD_ONLY
-names the ones left out on purpose, with the reason.
+names the ones left out on purpose, with the reason. BUNDLED names material
+that ships inside the app bundle without being a package at all, which no
+dependency graph would ever mention.
 
 Regenerate after adding, removing or updating a package:
 
@@ -45,6 +47,23 @@ APP_LICENSE_NAME = "GNU Affero General Public License v3.0"
 BUILD_ONLY = {
     "swift-syntax": "only Defaults' macros use it, and macros run inside the compiler",
 }
+
+# Ships inside the app bundle, but is not a Swift package, so
+# Package.resolved has nothing to say about it. Its licence is its own — the
+# app being AGPL does not cover data published separately under MIT.
+BUNDLED = [
+    {
+        "identity": "name-abbr",
+        "name": "name-abbr",
+        "path": ROOT / "name-abbr",
+        "url": "https://github.com/tigerduck-app/name-abbr",
+        "note": (
+            "Course and classroom abbreviation tables, shipped as "
+            "class-name-abbr.json and classroom-name-abbr.json. Published "
+            "separately from the app and under MIT rather than the app's AGPL."
+        ),
+    },
+]
 
 # Where reading the licence file's first block would name only part of it.
 LICENSE_OVERRIDES = {
@@ -87,7 +106,14 @@ def detect_license(text: str) -> str:
     raise SystemExit("error: unrecognised licence text; add the package to LICENSE_OVERRIDES")
 
 
-def package_entry(identity: str, name: str, version: str | None, url: str | None, checkout: Path) -> dict:
+def package_entry(
+    identity: str,
+    name: str,
+    version: str | None,
+    url: str | None,
+    checkout: Path,
+    note: str | None = None,
+) -> dict:
     files = sorted(p for p in checkout.iterdir() if p.is_file())
     licenses = [p for p in files if LICENSE_FILE.match(p.name)]
     notices = [p for p in files if NOTICE_FILE.match(p.name)]
@@ -102,6 +128,7 @@ def package_entry(identity: str, name: str, version: str | None, url: str | None
         "url": url,
         "license": LICENSE_OVERRIDES.get(identity) or detect_license(main),
         "copyright": list(dict.fromkeys(line.strip() for line in main.splitlines() if COPYRIGHT_LINE.match(line))),
+        "note": note,
         "texts": texts,
     }
 
@@ -135,6 +162,16 @@ def generate(checkouts: Path) -> dict:
         ))
     for path in local_packages():
         packages.append(package_entry(path.name.lower(), path.name, None, None, path))
+    for bundled in BUNDLED:
+        path = bundled["path"]
+        if not path.is_dir():
+            raise SystemExit(
+                f"error: {bundled['identity']} is not checked out at {path}. "
+                "Run: git submodule update --init"
+            )
+        packages.append(package_entry(
+            bundled["identity"], bundled["name"], None, bundled["url"], path, bundled["note"],
+        ))
     packages.sort(key=lambda p: p["name"].lower())
     return {
         "app": {"license": APP_LICENSE_NAME, "text": APP_LICENSE.read_text()},
@@ -153,6 +190,7 @@ def check() -> int:
         if pin["identity"] not in BUILD_ONLY
     }
     expected.update({path.name.lower(): None for path in local_packages()})
+    expected.update({bundled["identity"]: None for bundled in BUNDLED})
     problems = []
     for identity in sorted(expected.keys() - listed.keys()):
         problems.append(f"  {identity} is linked but not listed")
@@ -161,8 +199,16 @@ def check() -> int:
     for identity in sorted(expected.keys() & listed.keys()):
         if expected[identity] != listed[identity]:
             problems.append(f"  {identity} is {expected[identity]}, listed as {listed[identity]}")
+    listed_texts = {p["identity"]: p["texts"][0]["text"] for p in json.loads(OUTPUT.read_text())["packages"]}
     if json.loads(OUTPUT.read_text())["app"]["text"] != APP_LICENSE.read_text():
         problems.append("  LICENSE changed since the list was generated")
+    # CI checks out without submodules, so compare only what is on disk.
+    for bundled in BUNDLED:
+        license_file = bundled["path"] / "LICENSE"
+        if not license_file.is_file():
+            continue
+        if listed_texts.get(bundled["identity"]) != license_file.read_text().strip() + "\n":
+            problems.append(f"  {bundled['identity']}'s LICENSE changed since the list was generated")
     if problems:
         print("error: licenses.json is out of date:", file=sys.stderr)
         print("\n".join(problems), file=sys.stderr)

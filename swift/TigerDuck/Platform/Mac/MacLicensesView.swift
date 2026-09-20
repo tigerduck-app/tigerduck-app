@@ -82,6 +82,11 @@ struct MacLicensesView: View {
     @ViewBuilder
     private func packageDetail(_ package: LicenseCatalog.Package) -> some View {
         heading(package.name, subtitle: [package.version, package.license].compactMap { $0 }.joined(separator: " · "))
+        if let note = package.note {
+            Text(note)
+                .font(.callout)
+                .textSelection(.enabled)
+        }
         ForEach(package.copyright, id: \.self) { line in
             Text(line)
                 .font(.callout)
