@@ -23,7 +23,28 @@ final class LibraryQRImageCache {
     private var cachedPayload: String?
     private var cachedImage: UIImage?
 
-    init() {}
+    private var memoryWarningObserver: (any NSObjectProtocol)?
+
+    init() {
+        // A scale-10 QR is roughly half a megabyte of backing bitmap, and
+        // `clear()` is otherwise only reachable from the logout paths — so a
+        // user who opens Library once would carry it for the rest of the
+        // session. Dropping it under pressure costs one re-render on the
+        // next visit, which is the thing this cache makes cheap anyway.
+        memoryWarningObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { LibraryQRImageCache.shared.clear() }
+        }
+    }
+
+    deinit {
+        if let memoryWarningObserver {
+            NotificationCenter.default.removeObserver(memoryWarningObserver)
+        }
+    }
 
     /// The rendered code for `payload`, or `nil` if what we hold is for a
     /// different one. The payload rotates every 30 s and a stale image is
