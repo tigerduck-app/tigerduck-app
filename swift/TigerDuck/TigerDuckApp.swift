@@ -33,7 +33,12 @@ struct TigerDuckApp: App {
         PushCoordinator.assertEnvConsistency()
     }
 
-    var sharedModelContainer: ModelContainer = {
+    /// `static` so the store is opened exactly once per process. As an
+    /// instance property this was rebuilt on every `App` initialisation —
+    /// SwiftData expects a single `ModelContainer` per on-disk store, and
+    /// the open (disk + schema compatibility check) is synchronous work
+    /// sitting directly in front of the first frame.
+    static let sharedModelContainer: ModelContainer = {
         let schema = Schema([
             SDCourse.self,
             SDAssignment.self,
@@ -174,7 +179,7 @@ struct TigerDuckApp: App {
                     }
                 }
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(Self.sharedModelContainer)
     }
 
     /// Translates a tapped notification into the right AppState mutation.
@@ -267,7 +272,12 @@ struct TigerDuckApp: App {
     @NSApplicationDelegateAdaptor(MacPushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    var sharedModelContainer: ModelContainer = {
+    /// `static` so the store is opened exactly once per process. As an
+    /// instance property this was rebuilt on every `App` initialisation —
+    /// SwiftData expects a single `ModelContainer` per on-disk store, and
+    /// the open (disk + schema compatibility check) is synchronous work
+    /// sitting directly in front of the first frame.
+    static let sharedModelContainer: ModelContainer = {
         let schema = Schema([
             SDCourse.self,
             SDAssignment.self,
@@ -374,7 +384,7 @@ struct TigerDuckApp: App {
                     }
                 }
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(Self.sharedModelContainer)
         .defaultSize(width: 1180, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
