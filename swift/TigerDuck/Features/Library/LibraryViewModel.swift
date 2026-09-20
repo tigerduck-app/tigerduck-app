@@ -1,5 +1,4 @@
 import SwiftUI
-import CoreImage.CIFilterBuiltins
 
 @Observable
 final class LibraryViewModel {
@@ -198,19 +197,33 @@ final class LibraryViewModel {
             let remaining = cache.remaining()
             if qrPayload != payload || qrCodeImage == nil {
                 qrPayload = payload
-                // Already rendered this payload — either on a previous
-                // visit to this tab or speculatively during a gesture's
-                // lead-in. Assign synchronously so the QR is on screen in
-                // the first frame instead of after a hop through a
-                // detached render.
+                // Already rendered this payload on an earlier visit to the
+                // page. Assign synchronously so the QR is on screen in the
+                // first frame instead of after a hop through a detached
+                // render.
                 if let memoized = LibraryQRImageCache.shared.image(for: payload) {
                     qrCodeImage = memoized
                     isLoadingQR = false
                 } else {
+                    // No memo: there is a render ahead of us, so say so.
+                    // Without this the card falls back to the inert
+                    // `qrcode` glyph, which reads as "no code" rather than
+                    // "loading" while the countdown is already running.
+                    // Only a card with nothing on it should show the
+                    // spinner; an already-displayed code stays put until the
+                    // new one lands. Same rule `fetchAndDisplayQR` uses.
+                    isLoadingQR = qrCodeImage == nil
                     Task { @MainActor in
                         let image = await Task.detached(priority: .userInitiated) {
                             LibraryQRRenderer.image(from: payload)
                         }.value
+                        // The 30 s refresh can rotate the payload while this
+                        // render is in flight. Landing late must not put an
+                        // expired matrix on screen under the new code's
+                        // countdown — and must not store either, because a
+                        // single-slot cache would evict the current entry and
+                        // turn the next visit's memo hit into a miss.
+                        guard qrPayload == payload else { return }
                         if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                         qrCodeImage = image
                         isLoadingQR = false
