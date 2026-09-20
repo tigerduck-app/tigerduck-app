@@ -8,6 +8,7 @@
       "identity": "defaults",
       "name": "Defaults",
       "version": "9.0.9",
+      "revision": "00a7465a0668a87fa159e779b9d80f1f9652357e",
       "url": "https://github.com/sindresorhus/Defaults",
       "license": "MIT",
       "copyright": [
@@ -26,6 +27,7 @@
       "identity": "name-abbr",
       "name": "name-abbr",
       "version": null,
+      "revision": null,
       "url": "https://github.com/tigerduck-app/name-abbr",
       "license": "MIT",
       "copyright": [
@@ -44,6 +46,7 @@
       "identity": "networkimage",
       "name": "NetworkImage",
       "version": "6.0.1",
+      "revision": "2849f5323265386e200484b0d0f896e73c3411b9",
       "url": "https://github.com/gonzalezreal/NetworkImage",
       "license": "MIT",
       "copyright": [
@@ -62,6 +65,7 @@
       "identity": "sentry-cocoa",
       "name": "sentry-cocoa",
       "version": "9.26.0",
+      "revision": "cd213f98af160e6497eeff0707bc3f6a205b159c",
       "url": "https://github.com/getsentry/sentry-cocoa",
       "license": "MIT",
       "copyright": [
@@ -84,6 +88,7 @@
       "identity": "swift-cmark",
       "name": "swift-cmark",
       "version": "0.8.0",
+      "revision": "924936d0427cb25a61169739a7660230bffa6ea6",
       "url": "https://github.com/swiftlang/swift-cmark",
       "license": "BSD-2-Clause AND MIT",
       "copyright": [
@@ -106,6 +111,7 @@
       "identity": "swift-markdown-ui",
       "name": "swift-markdown-ui",
       "version": "2.4.1",
+      "revision": "5f613358148239d0292c0cef674a3c2314737f9e",
       "url": "https://github.com/gonzalezreal/swift-markdown-ui",
       "license": "MIT",
       "copyright": [
@@ -124,6 +130,7 @@
       "identity": "swiftsoup",
       "name": "SwiftSoup",
       "version": "2.13.7",
+      "revision": "8d6ad267714cac3ae747cefdd21f7a6665006e1f",
       "url": "https://github.com/scinfu/SwiftSoup",
       "license": "MIT",
       "copyright": [
@@ -143,6 +150,7 @@
       "identity": "valet",
       "name": "Valet",
       "version": "5.1.0",
+      "revision": "246baf6be3f9e3ff116dc05251a08f69dd7c7b9d",
       "url": "https://github.com/square/Valet",
       "license": "Apache-2.0",
       "copyright": [

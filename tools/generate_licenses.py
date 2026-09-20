@@ -186,6 +186,23 @@ def verify_revision(identity: str, checkout: Path, pinned: str | None) -> None:
         )
 
 
+def within(path: Path, root: Path) -> bool:
+    """Whether `path` really lives under `root`, symlinks followed.
+
+    A package may legitimately symlink LICENSE to LICENSE.md, so the link
+    itself is fine; what is not is a link whose target leaves the checkout.
+    Everything matched here is copied verbatim into a file that is committed
+    and shipped, and `is_file()` and `read_text()` both follow links, so a
+    dependency could otherwise name any readable UTF-8 file on the machine
+    that generates the list and have its contents published. Pinning the
+    revision does not help: the link can belong to the pinned commit.
+    """
+    try:
+        return path.resolve(strict=True).is_relative_to(root.resolve(strict=True))
+    except (OSError, RuntimeError):
+        return False
+
+
 def package_entry(
     identity: str,
     name: str,
@@ -194,10 +211,17 @@ def package_entry(
     checkout: Path,
     note: str | None = None,
     first_party: bool = False,
+    revision: str | None = None,
 ) -> dict:
     files = sorted(p for p in checkout.iterdir() if p.is_file())
     licenses = [p for p in files if LICENSE_FILE.match(p.name)]
     notices = [p for p in files if NOTICE_FILE.match(p.name)]
+    escaping = [p for p in licenses + notices if not within(p, checkout)]
+    if escaping:
+        raise SystemExit(
+            f"error: {name}'s {', '.join(p.name for p in escaping)} resolves outside "
+            f"{checkout}; refusing to copy a file from beyond the package into the list"
+        )
     if not licenses:
         raise SystemExit(f"error: {name} has no LICENSE or COPYING file in {checkout}")
     texts = [{"file": p.name, "text": license_text(p, name).strip() + "\n"} for p in licenses + notices]
@@ -206,6 +230,11 @@ def package_entry(
         "identity": identity,
         "name": name,
         "version": version,
+        # The version alone cannot date the list: a pin moved to a new
+        # revision at the same version, or pinned to a branch or a bare
+        # revision and so carrying no version at all, would compare equal
+        # forever while the licence text went stale.
+        "revision": revision,
         "url": url,
         "license": LICENSE_OVERRIDES.get(identity) or detect_license(identity, main),
         "copyright": list(dict.fromkeys(line.strip() for line in main.splitlines() if COPYRIGHT_LINE.match(line))),
@@ -244,6 +273,7 @@ def generate(checkouts: Path) -> dict:
         verify_revision(identity, checkout, pin["state"].get("revision"))
         packages.append(package_entry(
             identity, name, pin["state"].get("version"), pin["location"].removesuffix(".git"), checkout,
+            revision=pin["state"].get("revision"),
         ))
     for path in local_packages():
         if not path.is_dir():
@@ -310,21 +340,31 @@ def check() -> int:
     listing = json.loads(OUTPUT.read_text(encoding="utf-8"))
     listed = {p["identity"]: p for p in listing["packages"]}
     expected = {
-        pin["identity"]: pin["state"].get("version")
+        pin["identity"]: (pin["state"].get("version"), pin["state"].get("revision"))
         for pin in resolved_pins()
         if pin["identity"] not in BUILD_ONLY
     }
-    expected.update({path.name.lower(): None for path in local_packages()})
-    expected.update({bundled["identity"]: None for bundled in BUNDLED})
+    expected.update({path.name.lower(): (None, None) for path in local_packages()})
+    expected.update({bundled["identity"]: (None, None) for bundled in BUNDLED})
     problems = []
     for identity in sorted(expected.keys() - listed.keys()):
         problems.append(f"  {identity} is linked but not listed")
     for identity in sorted(listed.keys() - expected.keys()):
         problems.append(f"  {identity} is listed but no longer linked")
     for identity in sorted(expected.keys() & listed.keys()):
-        if expected[identity] != listed[identity].get("version"):
+        version, revision = expected[identity]
+        if version != listed[identity].get("version"):
             problems.append(
-                f"  {identity} is {expected[identity]}, listed as {listed[identity].get('version')}"
+                f"  {identity} is {version}, listed as {listed[identity].get('version')}"
+            )
+        # The revision as well as the version, because a pin can move without
+        # the version moving — and a pin to a branch or a bare revision has no
+        # version at all, so version alone would compare None to None however
+        # far the licence text had drifted.
+        elif revision != listed[identity].get("revision"):
+            problems.append(
+                f"  {identity} is at {brief(revision)}, listed at "
+                f"{brief(listed[identity].get('revision'))}"
             )
     # Fields a table decides rather than a checkout. Identity and version both
     # still look right after a table is edited, so without this a note, a URL
