@@ -106,6 +106,7 @@ StudentHeaderCard.swift
 ScoreView.swift
 
 # Features/Settings — iOS settings screens; macOS uses MacSettingsScene
+AboutOthersView.swift
 AssignmentReminderSettingsView.swift
 CloudSyncSettingsView.swift
 FontSizeSettingsView.swift
@@ -113,6 +114,7 @@ LibrarySettingsView.swift
 LiveActivitySettingsView.swift
 LoginSheet.swift
 NotificationPermissionSettingsView.swift  # macOS never receives notifications, by design (spec §2) — not merely a different UI tree like the rest of this group
+OpenSourceLicensesView.swift
 OtherSettingsView.swift
 SourceCodePickerView.swift
 SyncContentSettingsView.swift
