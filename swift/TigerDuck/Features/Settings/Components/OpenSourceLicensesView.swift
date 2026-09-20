@@ -36,6 +36,21 @@ struct OpenSourceLicensesView: View {
                         }
                     }
                 }
+            } else {
+                // The list did not load — `LicenseCatalog.load` has already
+                // told Sentry why. What is left to do here is not leave an
+                // empty page behind: the attribution MIT and BSD ask for,
+                // and the offer of source the AGPL makes, are owed whether
+                // or not a JSON file parsed, and the repository carries
+                // both.
+                Section {
+                    Text(String(localized: "settings_licenses_unavailable"))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    if let url = LicenseCatalog.fallbackLicenseURL {
+                        LicenseLinkRow(titleKey: "settings_open_source_licenses", url: url)
+                    }
+                }
             }
         }
         .navigationTitle(String(localized: "settings_open_source_licenses"))

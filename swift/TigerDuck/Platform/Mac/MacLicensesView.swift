@@ -49,10 +49,16 @@ struct MacLicensesView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     switch selection {
                     case .app, nil:
-                        if let app = catalog?.app { appDetail(app) }
+                        if let app = catalog?.app {
+                            appDetail(app)
+                        } else {
+                            unavailableDetail()
+                        }
                     case .package(let id):
                         if let package = catalog?.packages.first(where: { $0.id == id }) {
                             packageDetail(package)
+                        } else {
+                            unavailableDetail()
                         }
                     }
                 }
@@ -106,6 +112,24 @@ struct MacLicensesView: View {
                 .font(.headline)
                 .padding(.top, 8)
             licenseText(file: file.file, text: file.text)
+        }
+    }
+
+    /// The list did not load — `LicenseCatalog.load` has already told
+    /// Sentry why. The sidebar has nothing to list and nothing to select,
+    /// so the whole of what is left to say goes in the detail pane: an
+    /// empty window would quietly drop the attribution MIT and BSD ask
+    /// for and the offer of source the AGPL makes, and the repository
+    /// carries both. Same two strings as the iPhone's page, so the two
+    /// read alike.
+    @ViewBuilder
+    private func unavailableDetail() -> some View {
+        Text(String(localized: "settings_licenses_unavailable"))
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+        if let url = LicenseCatalog.fallbackLicenseURL {
+            linkRow("settings_open_source_licenses", url: url)
         }
     }
 

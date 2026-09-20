@@ -43,14 +43,58 @@ struct LicenseCatalog: Decodable {
     /// Everything else, which is genuinely someone else's work.
     var thirdParty: [Package] { packages.filter { $0.firstParty != true } }
 
+    /// The one way of coming back empty that arrives without an error of
+    /// its own to report. The app's other bundled JSON is allowed to fail
+    /// quietly — nobody is worse off for a What's New sheet that doesn't
+    /// open — but this page is how the MIT and BSD notices travel and how
+    /// the AGPL's offer of source is made, so a blank one is something we
+    /// hear about rather than read about in a report.
+    private enum LoadFailure: Error {
+        /// `licenses.json` never reached the bundle: dropped from the
+        /// target's resources rather than written wrong.
+        case resourceMissing
+    }
+
     static func load(from bundle: Bundle = .main) -> LicenseCatalog? {
-        guard let url = bundle.url(forResource: "licenses", withExtension: "json"),
-              let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(LicenseCatalog.self, from: data)
+        guard let url = bundle.url(forResource: "licenses", withExtension: "json") else {
+            AppLogger.captureError(
+                LoadFailure.resourceMissing,
+                context: ["phase": "licenseCatalog.resource"]
+            )
+            return nil
+        }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            AppLogger.captureError(error, context: ["phase": "licenseCatalog.read"])
+            return nil
+        }
+        do {
+            return try JSONDecoder().decode(Self.self, from: data)
+        } catch {
+            // Decoding is all or nothing: one entry the generator wrote
+            // wrong takes TigerDuck's own AGPL text down with every
+            // package. The error names the key path that failed, which is
+            // the one thing a blank page in the field cannot tell us.
+            AppLogger.captureError(error, context: ["phase": "licenseCatalog.decode"])
+            return nil
+        }
     }
 
     /// Read once: both licence pages use it and it does not change at run time.
     static let bundled = load()
+
+    /// Where the licence still is when the bundled list is not: the
+    /// `LICENSE` of the repository this build was compiled from. Read off
+    /// ``SourceRepository`` rather than written out a second time, so a
+    /// rename carries — and kept here rather than in ``AppURLs`` because
+    /// the fallback on the two licence pages is the only thing that wants
+    /// it.
+    static let fallbackLicenseURL: URL? = SourceRepository.all
+        .first(where: \.isCurrent)?
+        .url
+        .appending(path: "blob/main/LICENSE")
 
     /// Licence files are hard-wrapped at ~72 columns, which on a phone breaks
     /// every line a second time. Joins the lines of each paragraph so the
