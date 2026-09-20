@@ -14,6 +14,7 @@
         "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)"
       ],
       "note": null,
+      "firstParty": false,
       "texts": [
         {
           "file": "license",
@@ -31,6 +32,7 @@
         "Copyright (c) 2026 TigerDuck"
       ],
       "note": "Course and classroom abbreviation tables, shipped as class-name-abbr.json and classroom-name-abbr.json. Published separately from the app and under MIT rather than the app's AGPL.",
+      "firstParty": true,
       "texts": [
         {
           "file": "LICENSE",
@@ -48,6 +50,7 @@
         "Copyright (c) 2020 Guille Gonzalez"
       ],
       "note": null,
+      "firstParty": false,
       "texts": [
         {
           "file": "LICENSE",
@@ -65,6 +68,7 @@
         "Copyright (c) 2015 Sentry"
       ],
       "note": null,
+      "firstParty": false,
       "texts": [
         {
           "file": "LICENSE.md",
@@ -90,6 +94,7 @@
         "Copyright (C) 2014-15 John MacFarlane"
       ],
       "note": null,
+      "firstParty": false,
       "texts": [
         {
           "file": "COPYING",
@@ -107,6 +112,7 @@
         "Copyright (c) 2020 Guillermo Gonzalez"
       ],
       "note": null,
+      "firstParty": false,
       "texts": [
         {
           "file": "LICENSE",
@@ -125,6 +131,7 @@
         "Copyright (c) 2016-2025 Nabil Chatbi (Swift port)"
       ],
       "note": null,
+      "firstParty": false,
       "texts": [
         {
           "file": "LICENSE",
@@ -142,6 +149,7 @@
         "Copyright 2014 Square, Inc."
       ],
       "note": null,
+      "firstParty": false,
       "texts": [
         {
           "file": "LICENSE",

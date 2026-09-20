@@ -28,9 +28,15 @@ struct MacLicensesView: View {
                     Section {
                         row(title: String(localized: "app_name"), subtitle: catalog.app.license)
                             .tag(Selection.app)
+                        // TigerDuck's own, published separately — MIT, not
+                        // the app's AGPL, so not a third party either.
+                        ForEach(catalog.firstParty) { package in
+                            row(title: package.name, subtitle: package.license)
+                                .tag(Selection.package(package.id))
+                        }
                     }
                     Section(String(localized: "settings_licenses_section_third_party")) {
-                        ForEach(catalog.packages) { package in
+                        ForEach(catalog.thirdParty) { package in
                             row(title: package.name, subtitle: package.license)
                                 .tag(Selection.package(package.id))
                         }

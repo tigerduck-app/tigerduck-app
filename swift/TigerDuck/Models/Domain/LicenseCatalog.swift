@@ -28,6 +28,8 @@ struct LicenseCatalog: Decodable {
         let copyright: [String]
         /// Why this ships, for material the dependency graph doesn't explain.
         let note: String?
+        /// TigerDuck's own, published separately: listed beside the app, not under third parties.
+        let firstParty: Bool?
         let texts: [LicenseText]
 
         var id: String { identity }
@@ -35,6 +37,11 @@ struct LicenseCatalog: Decodable {
 
     let app: AppLicense
     let packages: [Package]
+
+    /// TigerDuck's own, shown beside the app's licence.
+    var firstParty: [Package] { packages.filter { $0.firstParty == true } }
+    /// Everything else, which is genuinely someone else's work.
+    var thirdParty: [Package] { packages.filter { $0.firstParty != true } }
 
     static func load(from bundle: Bundle = .main) -> LicenseCatalog? {
         guard let url = bundle.url(forResource: "licenses", withExtension: "json"),

@@ -2,23 +2,33 @@ import MarkdownUI
 import SwiftUI
 
 /// Sub-page behind Open-source licences on `AboutOthersView`: TigerDuck's own
-/// licence, then every Swift package the app links. Android has the same
-/// page, fed by its own build's dependency list.
+/// licence and anything else it publishes, then every Swift package the app
+/// links. Android has the same page, fed by its own build's dependency list.
 struct OpenSourceLicensesView: View {
     private let catalog = LicenseCatalog.bundled
 
     var body: some View {
         List {
             if let catalog {
+                // TigerDuck's own licence, and next to it anything TigerDuck
+                // publishes separately — name-abbr is MIT, not the app's
+                // AGPL, and listing it under "third-party" would be wrong.
                 Section {
                     NavigationLink {
                         AppLicenseView(license: catalog.app)
                     } label: {
                         licenseRow(title: String(localized: "app_name"), subtitle: catalog.app.license)
                     }
+                    ForEach(catalog.firstParty) { package in
+                        NavigationLink {
+                            PackageLicenseView(package: package)
+                        } label: {
+                            licenseRow(title: package.name, subtitle: package.license)
+                        }
+                    }
                 }
                 Section(String(localized: "settings_licenses_section_third_party")) {
-                    ForEach(catalog.packages) { package in
+                    ForEach(catalog.thirdParty) { package in
                         NavigationLink {
                             PackageLicenseView(package: package)
                         } label: {

@@ -14,6 +14,12 @@ names the ones left out on purpose, with the reason. BUNDLED names material
 that ships inside the app bundle without being a package at all, which no
 dependency graph would ever mention.
 
+One list covers every target. Only the main app target has a non-empty
+packageProductDependencies — the watch app, the widgets and the Live
+Activity extension link no packages of their own — so the iPhone's page is
+already the whole story. Check that again if a watch-only dependency is
+ever added.
+
 Regenerate after adding, removing or updating a package:
 
     python3 tools/generate_licenses.py                  # resolves packages into a temp dir first
@@ -57,6 +63,7 @@ BUNDLED = [
         "name": "name-abbr",
         "path": ROOT / "name-abbr",
         "url": "https://github.com/tigerduck-app/name-abbr",
+        "firstParty": True,
         "note": (
             "Course and classroom abbreviation tables, shipped as "
             "class-name-abbr.json and classroom-name-abbr.json. Published "
@@ -113,6 +120,7 @@ def package_entry(
     url: str | None,
     checkout: Path,
     note: str | None = None,
+    first_party: bool = False,
 ) -> dict:
     files = sorted(p for p in checkout.iterdir() if p.is_file())
     licenses = [p for p in files if LICENSE_FILE.match(p.name)]
@@ -129,6 +137,9 @@ def package_entry(
         "license": LICENSE_OVERRIDES.get(identity) or detect_license(main),
         "copyright": list(dict.fromkeys(line.strip() for line in main.splitlines() if COPYRIGHT_LINE.match(line))),
         "note": note,
+        # TigerDuck's own, published separately: listed beside the app
+        # rather than under third parties, since it is neither.
+        "firstParty": first_party,
         "texts": texts,
     }
 
@@ -170,7 +181,8 @@ def generate(checkouts: Path) -> dict:
                 "Run: git submodule update --init"
             )
         packages.append(package_entry(
-            bundled["identity"], bundled["name"], None, bundled["url"], path, bundled["note"],
+            bundled["identity"], bundled["name"], None, bundled["url"], path,
+            bundled["note"], bundled["firstParty"],
         ))
     packages.sort(key=lambda p: p["name"].lower())
     return {
