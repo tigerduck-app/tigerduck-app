@@ -4,10 +4,10 @@ import UIKit
 
 /// Rasterises a library QR payload.
 ///
-/// Extracted from `LibraryViewModel` so the speculative warm path in
-/// ``LibraryQRPrewarmer`` renders through exactly the same code — two
-/// renderers would eventually disagree on scale or correction level and
-/// produce a code that scans differently depending on how it was warmed.
+/// Extracted from `LibraryViewModel` so every path that needs a code
+/// rasterises through exactly the same parameters — two renderers would
+/// eventually disagree on scale or correction level and produce codes that
+/// scan differently depending on which one made them.
 enum LibraryQRRenderer {
 
     /// One context for the app's lifetime — creating one per QR compiles
