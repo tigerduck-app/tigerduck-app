@@ -72,8 +72,21 @@ struct MoreView: View {
             } message: {
                 Text(String(localized: "settings_library_feature_disabled_message"))
             }
+            // A feature opened from More should read as the same page the
+            // user would get by tapping it in the tab bar, so the push
+            // chevron goes away: these views already carry their own
+            // in-content title bar and, as a tab root, sit under an empty
+            // nav bar. Only `navigationBarBackButtonHidden` — hiding the
+            // whole bar via `toolbar(.hidden, for: .navigationBar)` would
+            // also kill the interactivePopGesture, and the edge swipe is
+            // the way back once the chevron is gone.
+            //
+            // Settings is deliberately untouched: it is pushed by its own
+            // NavigationLink in the header above, never through this
+            // AppFeature destination, so it keeps its back button.
             .navigationDestination(for: AppFeature.self) { feature in
                 moreDestination(for: feature)
+                    .navigationBarBackButtonHidden(true)
             }
         }
         // Consume deep-links from callers that can't reach this view's
