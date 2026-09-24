@@ -78,6 +78,9 @@ final class LibraryViewModel {
             isLoggedIn = false
             qrCodeImage = nil
             qrPayload = nil
+            // A request still in flight from the ended session is dropped
+            // without touching this flag, so nothing else will clear it.
+            isLoadingQR = false
             LibraryQRCache.shared.clear()
             LibraryQRImageCache.shared.clear()
             stopTimers()
