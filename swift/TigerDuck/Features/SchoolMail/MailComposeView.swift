@@ -206,12 +206,7 @@ struct MailComposeView: View {
     }
 
     private func addressField(_ title: String, text: Binding<String>, field: Field) -> some View {
-        TextField(title, text: text)
-            .keyboardType(.emailAddress)
-            .textContentType(.emailAddress)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .focused($focused, equals: field)
+        MailRecipientTokenField(title: title, text: text, focus: $focused, field: field)
     }
 
     // MARK: Attachments

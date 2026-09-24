@@ -267,6 +267,7 @@ MailHTMLView.swift
 MailLoginCard.swift
 MailLoginSheet.swift
 MailRecipientRow.swift
+MailRecipientTokenField.swift
 MailRowView.swift
 MailSourceTextView.swift
 MailWarningBanner.swift

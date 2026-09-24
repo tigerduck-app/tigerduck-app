@@ -662,13 +662,21 @@ final class MailComposeViewModel {
         for token in splitTopLevel(raw) {
             let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
-            if let address = MailAddress.parseList(trimmed).first, address.address.unicodeScalars.allSatisfy(\.isASCII) {
+            if let address = sendableAddress(trimmed) {
                 addresses.append(address)
             } else {
                 invalid.append(trimmed)
             }
         }
         return (addresses, invalid)
+    }
+
+    /// One recipient token as `send()` would take it, or `nil` when `send()` would refuse it —
+    /// the rule the compose screen's recipient bubbles mark an invalid one by.
+    nonisolated static func sendableAddress(_ token: String) -> MailAddress? {
+        guard let address = MailAddress.parseList(token).first,
+              address.address.unicodeScalars.allSatisfy(\.isASCII) else { return nil }
+        return address
     }
 
     private static func splitTopLevel(_ raw: String) -> [String] {
