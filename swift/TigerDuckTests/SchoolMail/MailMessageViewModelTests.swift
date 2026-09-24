@@ -629,13 +629,13 @@ struct MailMessageViewModelTests {
         #expect(nothing.secondary == nil)
     }
 
-    @Test func theRecipientRowIsOnlyOfferedWithRecipients() {
-        var summary = SchoolMailTestDoubles.summary(uid: 1)
-        summary.to = nil
-        summary.cc = []
-        #expect(!MailMessageView.hasRecipients(summary))
-        summary.cc = ["a@mail.ntust.edu.tw"]
-        #expect(MailMessageView.hasRecipients(summary))
+    /// An empty field gets no line at all, and blank entries do not leave a stray comma.
+    @Test func aRecipientLineNamesEveryoneAndNothingElse() {
+        #expect(MailMessageView.recipientLine(nil) == nil)
+        #expect(MailMessageView.recipientLine([]) == nil)
+        #expect(MailMessageView.recipientLine(["", " "]) == nil)
+        #expect(MailMessageView.recipientLine(["\"A\" <a@mail.ntust.edu.tw>", " ", "b@gmail.com"])
+            == "\"A\" <a@mail.ntust.edu.tw>, b@gmail.com")
     }
 
     @Test func linkIndexParsingAcceptsOnlyTheExactSyntheticForm() {

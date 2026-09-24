@@ -195,24 +195,24 @@ struct MailMessageView: View {
                 Text(summary.subject?.mailNonEmpty ?? String(localized: "school_mail_no_subject"))
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(Color.textPrimary)
-                if Self.hasRecipients(summary) {
-                    DisclosureGroup(isExpanded: $showDetails) {
-                        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-                            if let to = summary.to, !to.isEmpty {
-                                Text(String(format: String(localized: "school_mail_details_to"), to.joined(separator: ", ")))
-                            }
-                            if let cc = summary.cc, !cc.isEmpty {
-                                Text(String(format: String(localized: "school_mail_details_cc"), cc.joined(separator: ", ")))
-                            }
-                        }
+                if let to = Self.recipientLine(summary.to) {
+                    Text(String(format: String(localized: "school_mail_details_to"), to))
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
                         .textSelection(.enabled)
+                }
+                // Only Cc hides behind a disclosure; To is always shown in full above. The line
+                // itself is what opens — one line collapsed, all of it expanded — so nothing is
+                // printed twice.
+                if let cc = Self.recipientLine(summary.cc) {
+                    DisclosureGroup(isExpanded: $showDetails) {
+                        EmptyView()
                     } label: {
-                        Text(String(format: String(localized: "school_mail_details_to"), summary.to?.first ?? ""))
+                        Text(String(format: String(localized: "school_mail_details_cc"), cc))
                             .font(TigerDuckTheme.Typography.caption)
                             .foregroundStyle(Color.textSecondary)
-                            .lineLimit(1)
+                            .lineLimit(showDetails ? nil : 1)
+                            .textSelection(.enabled)
                             // One caption line is ~16 pt tall: the whole row, at the platform's
                             // minimum touch height, is what toggles.
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -234,10 +234,11 @@ struct MailMessageView: View {
         return (name, address)
     }
 
-    /// Whether there is anything for the To/Cc disclosure to show. With neither, it would be a
-    /// "To:" label with nothing after it that expands to nothing.
-    nonisolated static func hasRecipients(_ summary: MailSummary) -> Bool {
-        !(summary.to ?? []).isEmpty || !(summary.cc ?? []).isEmpty
+    /// A recipient list as one line, or `nil` when it has nobody in it — so an empty field never
+    /// shows as a bare "To:" or "Cc:".
+    nonisolated static func recipientLine(_ recipients: [String]?) -> String? {
+        let named = (recipients ?? []).compactMap { $0.mailNonEmpty }
+        return named.isEmpty ? nil : named.joined(separator: ", ")
     }
 
     @ViewBuilder
