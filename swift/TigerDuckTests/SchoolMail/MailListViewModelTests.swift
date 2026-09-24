@@ -772,5 +772,55 @@ struct MailListViewModelTests {
         #expect(h.model.loadState == .idle)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
     }
+
+    // MARK: Poll body prefetch
+
+    @Test func aPolledArrivalsBodyIsCached() async {
+        let h = Self.harness(inboxCount: 4, includeSent: false)
+        await h.model.load()
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 5, text: "new")) }
+        h.script.outcome = .newMail(1)
+        await h.model.pollOnce()
+        #expect(h.model.rows.first?.uid == 5)
+        #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == ["detail INBOX 5"])
+        await h.model.waitForCacheWrites()
+        #expect(h.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5)?.textBody == "new")
+    }
+
+    @Test func aBurstPrefetchesOnlyTheNewestFive() async {
+        let h = Self.harness(inboxCount: 4, includeSent: false)
+        await h.model.load()
+        await h.fake.update { fake in
+            for uid in UInt32(5)...12 { fake.folders["INBOX"]?.append(FakeMailClient.message(uid: uid)) }
+        }
+        h.script.outcome = .newMail(8)
+        await h.model.pollOnce()
+        #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == (8...12).reversed().map { "detail INBOX \($0)" })
+    }
+
+    @Test func aFailedPrefetchLeavesThePollAlone() async {
+        let h = Self.harness(inboxCount: 4, includeSent: false)
+        await h.model.load()
+        await h.fake.update {
+            $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 5))
+            $0.detailError = .protocolError("no")
+        }
+        h.script.outcome = .newMail(1)
+        await h.model.pollOnce()
+        #expect(await h.fake.calls.contains("detail INBOX 5"))
+        #expect(h.model.loadState == .loaded)
+        #expect(h.model.serverStatus == .ok)
+        #expect(h.model.rows.first?.uid == 5)
+    }
+
+    @Test func onlyNewMailIsPrefetched() async {
+        let h = Self.harness(inboxCount: 4, includeSent: false)
+        await h.model.load()
+        h.script.outcome = .noNewMail
+        await h.model.pollOnce()
+        h.script.outcome = .baselineReset
+        await h.model.pollOnce()
+        #expect(await !h.fake.calls.contains { $0.hasPrefix("detail") })
+    }
 }
 #endif

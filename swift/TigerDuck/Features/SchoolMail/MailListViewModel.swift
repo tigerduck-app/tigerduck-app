@@ -451,6 +451,11 @@ final class MailListViewModel {
         resetInMemoryState()
     }
 
+    /// Test hook: returns once every cache write queued so far has landed.
+    func waitForCacheWrites() async {
+        await pendingCacheWrite?.value
+    }
+
     #if DEBUG
     /// Throws away everything that was resolved against the previous mail server, after the
     /// DEBUG developer override changed it.
@@ -505,11 +510,56 @@ final class MailListViewModel {
         // Without this the list keeps painting the old generation (and answering taps with
         // `folderChanged`) until something else happens to force a reload.
         switch outcome {
-        case .newMail, .baselineReset:
+        case .newMail:
+            guard showsInbox, searchResults == nil else { return }
+            // Read before the reload, from the inbox's own page: in All mail the rows also hold
+            // Sent's, whose UIDs say nothing about the inbox's.
+            let previousNewest = pages[MailConstants.inbox]?.summaries.map(\.uid).max() ?? 0
+            await load()
+            await prefetchArrivedBodies(after: previousNewest)
+        case .baselineReset:
             guard showsInbox, searchResults == nil else { return }
             await load()
         default:
             return
+        }
+    }
+
+    /// The new-mail body prefetch `MailChecker` does for a notification, on the page poll's path.
+    ///
+    /// The poll never goes through the checker's own prefetch — the page trigger only answers
+    /// "is there new mail" — so in the one case where a mail is almost certain to be tapped
+    /// within seconds, the app open on this very list, the row appeared and opening it still
+    /// spun. The arrivals are exactly the inbox rows above `previousNewest`, the highest UID the
+    /// list held before this poll's reload, never the page the user has been reading all along.
+    ///
+    /// Bounded to `MailConstants.bodyPrefetchLimit`, newest first, one `use(_:)` per body so a
+    /// tap waits behind at most one of them. Silent: it touches neither `loadState` nor
+    /// `serverStatus`, and a body that will not come down only means that opening that mail is
+    /// as slow as it used to be. `detail` fetches with `BODY.PEEK`, so nothing is marked read.
+    private func prefetchArrivedBodies(after previousNewest: UInt32) async {
+        let epoch = accountEpoch
+        let inbox = MailConstants.inbox
+        guard loadState == .loaded, serverStatus == .ok, let page = pages[inbox] else { return }
+        let validity = page.uidValidity
+        let arrivals = page.summaries.map(\.uid).filter { $0 > previousNewest }
+            .sorted(by: >).prefix(MailConstants.bodyPrefetchLimit)
+        let cache = self.cache
+        for uid in arrivals {
+            guard !Task.isCancelled, epoch == accountEpoch else { return }
+            let cached = await Task.detached { cache.loadDetail(folder: inbox, uidValidity: validity, uid: uid) }.value
+            if cached != nil { continue }
+            do {
+                let detail = try await session.use { client in
+                    try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity)
+                }
+                guard epoch == accountEpoch else { return }
+                chainCacheWrite { cache.saveDetail(detail, folder: inbox, uidValidity: validity) }
+            } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
+                return
+            } catch {
+                continue
+            }
         }
     }
 
