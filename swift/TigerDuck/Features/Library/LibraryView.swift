@@ -80,7 +80,10 @@ struct LibraryView: View {
             // Leaving the window is as much a reason to let go of the panel
             // as leaving the page is.
             guard screen != nil else { return restoreBrightness() }
-            guard viewModel.isLoggedIn else { return }
+            // A screen change while the scene is inactive or backgrounded
+            // must not take back the claim the scene-phase handler just
+            // released; `.active` boosts the new screen on the way back.
+            guard viewModel.isLoggedIn, scenePhase == .active else { return }
             boostBrightnessForQR()
         }
         #endif
