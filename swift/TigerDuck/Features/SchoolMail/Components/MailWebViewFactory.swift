@@ -2,6 +2,37 @@
 import Foundation
 import WebKit
 import os
+import UIKit
+
+/// The page a mail's HTML is drawn on: the app's own surface, not white paper.
+///
+/// Only the page is themed. A sender's own colours are never rewritten, because rewriting them
+/// distorts logos, screenshots and branded mail with no way for the reader to tell; mail that
+/// opts into `prefers-color-scheme` follows along through `color-scheme`, which also keeps the
+/// user agent's own defaults (links, form controls) legible on a dark page.
+nonisolated struct MailHTMLTheme: Equatable, Hashable, Sendable {
+    /// `0xRRGGBB`.
+    var background: UInt32
+    var foreground: UInt32
+    var isDark: Bool
+
+    /// `Color.backgroundPrimary` and `Color.textPrimary` — what `MailMessageView` itself is
+    /// drawn in. The app is dark-only (`TigerDuckApp` pins `.preferredColorScheme(.dark)`), so
+    /// there is exactly one theme to follow and nothing to re-render the page on.
+    static let app = MailHTMLTheme(background: 0x000000, foreground: 0xFFFFFF, isDark: true)
+
+    var backgroundCSS: String { Self.css(background) }
+    var foregroundCSS: String { Self.css(foreground) }
+    var backgroundColor: UIColor { Self.uiColor(background) }
+
+    /// `#rrggbb`. Hex digits only, so the phone's locale cannot change what is written.
+    static func css(_ rgb: UInt32) -> String { String(format: "#%06x", rgb & 0xFFFFFF) }
+
+    private static func uiColor(_ rgb: UInt32) -> UIColor {
+        UIColor(red: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+    }
+}
 
 /// The locked-down WKWebView of design doc §9.3: no JavaScript, a non-persistent store,
 /// every network load blocked by a content rule (images only after "Load images"), inline
@@ -50,32 +81,45 @@ enum MailWebViewFactory {
         return String(decoding: data, as: UTF8.self)
     }
 
-    /// Installed before every load. If compiling fails, the CSP still blocks remote loads; the
-    /// failure's type is logged (never mail content, mirroring `MailHTMLSanitizer`'s own logger
-    /// — fix round 1, minor 11) so a silently-degraded CSP-only mode is at least visible.
-    static func installRules(on webView: WKWebView, allowRemoteImages: Bool) async {
-        let controller = webView.configuration.userContentController
-        controller.removeAllContentRuleLists()
+    /// Compiles the rule list for one load. If compiling fails, the CSP still blocks remote
+    /// loads; the failure's type is logged (never mail content, mirroring `MailHTMLSanitizer`'s
+    /// own logger — fix round 1, minor 11) so a silently-degraded CSP-only mode is at least
+    /// visible.
+    ///
+    /// Compiling is the only asynchronous step, and it is kept apart from installing
+    /// (`installRules(_:on:)`) so a caller can install a list and load the document it belongs to
+    /// in one main-actor step — see `MailHTMLView.Coordinator.load`.
+    static func compileRules(allowRemoteImages: Bool) async -> WKContentRuleList? {
         let identifier = allowRemoteImages ? "school-mail-images" : "school-mail-block-all"
         do {
-            if let list = try await WKContentRuleListStore.default().compileContentRuleList(
+            return try await WKContentRuleListStore.default().compileContentRuleList(
                 forIdentifier: identifier, encodedContentRuleList: contentRules(allowRemoteImages: allowRemoteImages)
-            ) {
-                controller.add(list)
-            }
+            )
         } catch {
             logger.error("Mail content rule compile failed, CSP still blocks remote loads: \(String(describing: type(of: error)), privacy: .public)")
+            return nil
         }
     }
 
-    /// White "paper" in both themes (§9.3): senders design mail for white backgrounds.
-    static func document(for bodyHTML: String, allowRemoteImages: Bool) -> String {
+    /// Replaces whatever rule list the web view had with `list`. Every list goes first: a
+    /// `block-all` list left installed beside an `images` one keeps blocking, because
+    /// `ignore-previous-rules` does not reach across lists.
+    static func installRules(_ list: WKContentRuleList?, on webView: WKWebView) {
+        let controller = webView.configuration.userContentController
+        controller.removeAllContentRuleLists()
+        if let list { controller.add(list) }
+    }
+
+    /// The mail on `theme`'s page (§9.3 used to mean white paper in both themes; it now means
+    /// the app's own surface — see `MailHTMLTheme`).
+    static func document(for bodyHTML: String, allowRemoteImages: Bool, theme: MailHTMLTheme = .app) -> String {
         let imageSources = allowRemoteImages ? "tdcid: data: https: http:" : "tdcid: data:"
+        let scheme = theme.isDark ? "dark" : "light"
         return """
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src \(imageSources); style-src 'unsafe-inline'">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>html,body{margin:0;padding:12px;background:#ffffff;color:#000000;font:-apple-system-body;overflow-wrap:anywhere;}img{max-width:100%;height:auto;}table{max-width:100%;}</style>
+        <style>:root{color-scheme:\(scheme);}html,body{margin:0;padding:12px;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}img{max-width:100%;height:auto;}table{max-width:100%;}</style>
         </head><body>\(bodyHTML)</body></html>
         """
     }

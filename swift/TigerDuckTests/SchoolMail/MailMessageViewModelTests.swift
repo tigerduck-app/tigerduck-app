@@ -574,6 +574,33 @@ struct MailMessageViewModelTests {
         #expect(MailWebViewFactory.document(for: "", allowRemoteImages: true).contains("img-src tdcid: data: https: http:"))
     }
 
+    /// The mail sits on the app's own page, not a sheet of white paper inside a dark app.
+    @Test func theDocumentIsDrawnOnTheAppsPage() {
+        let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false)
+        #expect(document.contains("background:#000000"))
+        #expect(document.contains("color:#ffffff"))
+        #expect(document.contains(":root{color-scheme:dark;}"))
+        #expect(!document.contains("#ffffff;color:#000000"))
+    }
+
+    @Test func aLightThemeSaysSo() {
+        let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x1A1A1A, isDark: false)
+        let document = MailWebViewFactory.document(for: "", allowRemoteImages: false, theme: light)
+        #expect(document.contains("color-scheme:light"))
+        #expect(document.contains("background:#ffffff;color:#1a1a1a"))
+    }
+
+    /// Only the page is themed: a sender's own colours reach the document untouched.
+    @Test func aSendersOwnColoursAreLeftAlone() {
+        let body = #"<p style="background:#ffeeaa;color:#003300">x</p>"#
+        #expect(MailWebViewFactory.document(for: body, allowRemoteImages: false).contains(body))
+    }
+
+    @Test func themeColoursAreSixDigitHex() {
+        #expect(MailHTMLTheme.css(0x00_0A_0B) == "#000a0b")
+        #expect(MailHTMLTheme.css(0xFF_12_34_56) == "#123456")
+    }
+
     @Test func linkIndexParsingAcceptsOnlyTheExactSyntheticForm() {
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0", linkCount: 2) == 0)
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/1", linkCount: 2) == 1)
