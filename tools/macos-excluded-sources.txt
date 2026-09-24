@@ -80,7 +80,10 @@ HomeViewModel.swift
 
 # Features/Library — iOS library QR + brightness control (UIScreen)
 HDRQRCodeImage.swift
+LibraryBrightnessCoordinator.swift
 LibraryQRCodeView.swift
+LibraryQRImageCache.swift
+LibraryQRRenderer.swift
 LibraryView.swift
 LibraryViewModel.swift
 
@@ -106,6 +109,7 @@ StudentHeaderCard.swift
 ScoreView.swift
 
 # Features/Settings — iOS settings screens; macOS uses MacSettingsScene
+AboutOthersView.swift
 AssignmentReminderSettingsView.swift
 CloudSyncSettingsView.swift
 FontSizeSettingsView.swift
@@ -113,6 +117,7 @@ LibrarySettingsView.swift
 LiveActivitySettingsView.swift
 LoginSheet.swift
 NotificationPermissionSettingsView.swift  # macOS never receives notifications, by design (spec §2) — not merely a different UI tree like the rest of this group
+OpenSourceLicensesView.swift
 OtherSettingsView.swift
 SourceCodePickerView.swift
 SyncContentSettingsView.swift
@@ -157,6 +162,7 @@ PasswordField.swift
 # SharedUI — iOS-only shared components
 EmptyStateView.swift
 GlassTextButtonModifier.swift
+HostScreenReader.swift
 InAppBrowserView.swift
 JustifiedText.swift
 LoadingShimmer.swift

@@ -33,7 +33,12 @@ struct TigerDuckApp: App {
         PushCoordinator.assertEnvConsistency()
     }
 
-    var sharedModelContainer: ModelContainer = {
+    /// `static` so the store is opened exactly once per process. As an
+    /// instance property this was rebuilt on every `App` initialisation —
+    /// SwiftData expects a single `ModelContainer` per on-disk store, and
+    /// the open (disk + schema compatibility check) is synchronous work
+    /// sitting directly in front of the first frame.
+    static let sharedModelContainer: ModelContainer = {
         let schema = Schema([
             SDCourse.self,
             SDAssignment.self,
@@ -174,7 +179,7 @@ struct TigerDuckApp: App {
                     }
                 }
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(Self.sharedModelContainer)
     }
 
     /// Translates a tapped notification into the right AppState mutation.
@@ -267,7 +272,12 @@ struct TigerDuckApp: App {
     @NSApplicationDelegateAdaptor(MacPushAppDelegate.self) private var pushAppDelegate
     @Environment(\.scenePhase) private var scenePhase
 
-    var sharedModelContainer: ModelContainer = {
+    /// `static` so the store is opened exactly once per process. As an
+    /// instance property this was rebuilt on every `App` initialisation —
+    /// SwiftData expects a single `ModelContainer` per on-disk store, and
+    /// the open (disk + schema compatibility check) is synchronous work
+    /// sitting directly in front of the first frame.
+    static let sharedModelContainer: ModelContainer = {
         let schema = Schema([
             SDCourse.self,
             SDAssignment.self,
@@ -374,7 +384,7 @@ struct TigerDuckApp: App {
                     }
                 }
         }
-        .modelContainer(sharedModelContainer)
+        .modelContainer(Self.sharedModelContainer)
         .defaultSize(width: 1180, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
@@ -387,6 +397,32 @@ struct TigerDuckApp: App {
             MacSettingsScene()
                 .environment(appState)
         }
+
+        // Its own window rather than a page inside Settings: that window is
+        // fixed-size with no navigation stack, and licence texts are long.
+        Window(String(localized: "settings_open_source_licenses"), id: MacLicensesView.windowID) {
+            MacLicensesView()
+                // Same rebuild the main window does: String(localized:) is
+                // resolved once, so without this the window would sit in the
+                // old language until it was closed and reopened. Its title
+                // comes back with it, by way of the navigationTitle inside —
+                // the name in the Window menu is the scene's own and stays
+                // until relaunch.
+                .id(rootLanguageId)
+                .environment(appState)
+                // Environments do not cross scene boundaries, so this window
+                // takes neither the tint MacSettingsScene applies nor the one
+                // on the main window: without it the links here would come up
+                // in the system accent while the rest of the app used the
+                // chosen one.
+                .tint(appState.accentColor)
+                .onReceive(
+                    NotificationCenter.default.publisher(for: AppConstants.languageDidChange)
+                ) { _ in
+                    rootLanguageId = UUID()
+                }
+        }
+        .defaultSize(width: 900, height: 600)
     }
 }
 

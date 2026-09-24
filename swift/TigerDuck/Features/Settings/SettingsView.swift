@@ -285,6 +285,9 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                NavigationLink(String(localized: "settings_about_others")) {
+                    AboutOthersView()
+                }
             }
 
             #if DEBUG

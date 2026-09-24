@@ -10,6 +10,12 @@ import UIKit
 /// deliberately hides the back chevron for full-screen reading, so
 /// without this override users are stranded with no dismissal path.
 ///
+/// Callers that depend on this — deleting this file breaks all of them,
+/// not just the bulletin reader:
+/// - `Features/Bulletins/Components/BulletinDetailView.swift`
+/// - `Features/More/MoreView.swift` (`MoreFeatureDestination` hides the
+///   chevron on every feature page pushed from the More tab)
+///
 /// What: replace the nav controller's gesture delegate with the
 /// controller itself, and allow the gesture as long as the stack has
 /// something to pop to (i.e. we're not on the root).

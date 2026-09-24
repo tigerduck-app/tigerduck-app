@@ -87,19 +87,26 @@ struct LibrarySettingsView: View {
     /// Flip-to-Library: only available on iPhone (iPad use case is unclear
     /// and the issue scope says "phone only"), where the gesture routes to
     /// the Library tab. Android has the same switch on its library page,
-    /// shown there only while the feature is on.
+    /// shown there only while the feature is on, which this matches.
     ///
-    /// Here the row is rendered (not hidden) even when library is off so
-    /// the user can see the preference exists and inspect its state before
-    /// enabling library — hiding it caused users who turned library
-    /// off-then-on to be silently re-armed with the default-true persisted
-    /// value. The toggle is also kept enabled in that state so the user can
-    /// opt out before flipping the library feature back on; the gesture is
-    /// gated at fire time by `libraryFeatureEnabled` in the coordinator
-    /// either way.
+    /// The row is a sub-setting of the library feature switch above it, so
+    /// it goes away with the feature: with library off the gesture cannot
+    /// fire (`FlipToLibraryModifier.shouldBeActive` and its fire-time guard
+    /// both require `libraryFeatureEnabled`), and a live-looking switch for
+    /// something that does nothing reads as broken.
+    ///
+    /// Reading `libraryFeatureEnabled` rather than `libraryToggleBinding`
+    /// is deliberate: that binding also reports on for
+    /// `pendingLibraryEnable`, so this row would appear behind the
+    /// confirmation overlay and vanish again if the user cancels.
+    /// Confirming brings it back on this same screen, still carrying
+    /// whatever value was persisted, so the preference stays inspectable
+    /// wherever it can actually do anything.
     private var showsFlipToLibrary: Bool {
         #if os(iOS)
-        UIDevice.current.userInterfaceIdiom == .phone && FlipDetector.isSupported
+        appState.libraryFeatureEnabled
+            && UIDevice.current.userInterfaceIdiom == .phone
+            && FlipDetector.isSupported
         #else
         false
         #endif

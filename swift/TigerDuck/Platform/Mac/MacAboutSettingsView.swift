@@ -9,6 +9,7 @@ import SwiftUI
 /// browser, so every one of them is drawn as a link and says so.
 struct MacAboutSettingsView: View {
     @Environment(\.openURL) private var openURL
+    @Environment(\.openWindow) private var openWindow
     @State private var isShowingRepositories = false
 
     var body: some View {
@@ -23,7 +24,20 @@ struct MacAboutSettingsView: View {
                 linkRow("settings_feedback_bug_report", url: AppURLs.issues)
                 linkRow("settings_privacy_policy", url: AppURLs.privacyPolicy)
                 linkRow("settings_delete_account", url: AppURLs.deleteAccount)
-                linkRow("settings_open_source_licenses", url: AppURLs.license)
+                Button {
+                    openWindow(id: MacLicensesView.windowID)
+                } label: {
+                    HStack {
+                        Text(String(localized: "settings_open_source_licenses"))
+                            .foregroundStyle(.tint)
+                        Spacer()
+                        Image(systemName: "macwindow")
+                            .font(.caption)
+                            .foregroundStyle(.tint)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
 
             // A disclosure rather than a second window: five repositories

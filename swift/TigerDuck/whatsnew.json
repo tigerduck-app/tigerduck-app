@@ -182,5 +182,27 @@
         "Half-credit courses no longer count as zero — credit totals, the transcript and your GPA all include them"
       ]
     }
+  },
+  "2.1.3": {
+    "zh-TW": {
+      "title": "2.1.3 更新內容",
+      "highlights": [
+        "相容於 iPhone Duo",
+        "可在 App 內查看所有開源授權",
+        "最佳化顯示頁面，螢幕左滑回到上一頁",
+        "最佳化圖書館 QR 顯示",
+        "修復同步後課程詳情遺失通識向度與課程期間的問題"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.1.3",
+      "highlights": [
+        "Compatible with iPhone Duo",
+        "View every open-source license right in the app",
+        "Optimized page display — swipe from the left edge to go back",
+        "Optimized the library QR code display",
+        "Fixed course details losing the GE dimension and course duration after a sync"
+      ]
+    }
   }
 }
