@@ -31,7 +31,10 @@ struct MailListViewModelTests {
         sentUIDs: [UInt32] = [],
         includeSent: Bool = true,
         open: (() async throws -> any MailClient)? = nil,
-        signOutEvents: NotificationCenter = NotificationCenter()
+        signOutEvents: NotificationCenter = NotificationCenter(),
+        // Never starts unless a test says otherwise, so tests that count `page` calls are not
+        // counting a background warm's as well.
+        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(86_400)) }
     ) -> Harness {
         let inbox = (UInt32(1)...inboxCount).map { FakeMailClient.message(uid: $0, subject: "公告 \($0)", seen: $0 % 2 == 0) }
         var folders: [String: [FakeMailClient.Message]] = [
@@ -49,7 +52,7 @@ struct MailListViewModelTests {
         let model = MailListViewModel(session: session, cache: cache, runPageCheck: { _ in
             script.calls += 1
             return script.outcome
-        }, signOutEvents: signOutEvents)
+        }, signOutEvents: signOutEvents, warmDelay: warmDelay)
         return Harness(model: model, fake: fake, cache: cache, script: script)
     }
 
@@ -771,6 +774,125 @@ struct MailListViewModelTests {
         #expect(h.model.rows.isEmpty)
         #expect(h.model.loadState == .idle)
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
+    }
+
+    // MARK: Warm
+
+    /// Holds a warm at its start delay until the test opens it.
+    actor DelayGate {
+        private var isOpen = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+        func wait() async {
+            guard !isOpen else { return }
+            await withCheckedContinuation { waiters.append($0) }
+        }
+        func open() {
+            isOpen = true
+            for waiter in waiters { waiter.resume() }
+            waiters = []
+        }
+    }
+
+    nonisolated static let trash = MailFolderRole.trash.imapName
+
+    /// All mail shows the inbox and Sent; Trash is the one role folder left to warm.
+    @Test func openingTheListWarmsTheFoldersItIsNotShowing() async {
+        let h = Self.harness(warmDelay: {})
+        await h.model.refresh()
+        await h.model.waitForWarm()
+        #expect(h.model.selection == .allMail)
+        let requests = await h.fake.pageRequests
+        #expect(requests.contains("\(Self.trash) \(MailConstants.warmPageSize)"))
+        #expect(requests.filter { $0.hasPrefix(Self.trash) }.count == 1)
+        #expect(requests.contains("INBOX \(MailConstants.pageSize)"))
+        #expect(h.cache.loadPage(folder: Self.trash)?.summaries.count == 1)
+        // Nothing about the screen itself moved.
+        #expect(h.model.rows.allSatisfy { $0.folder != Self.trash })
+    }
+
+    @Test func aWarmFailureNeverReachesTheScreen() async {
+        let h = Self.harness(warmDelay: {})
+        await h.fake.update { $0.pageErrors = [Self.trash: .protocolError("no")] }
+        await h.model.refresh()
+        await h.model.waitForWarm()
+        #expect(await h.fake.pageRequests.contains { $0.hasPrefix(Self.trash) })
+        #expect(h.model.loadState == .loaded)
+        #expect(h.model.serverStatus == .ok)
+    }
+
+    /// A warm fetches a short first page; a cache the user already paged further into is worth
+    /// more than it.
+    @Test func aWarmNeverShortensADeeperCache() async {
+        let h = Self.harness(warmDelay: {})
+        let deep = (1...30).map { SchoolMailTestDoubles.summary(uid: UInt32($0)) }
+        h.cache.savePage(MailFolderPage(folder: Self.trash, uidValidity: 1, messageCount: 30, summaries: deep, oldestLoadedSequence: nil))
+        await h.model.refresh()
+        await h.model.waitForWarm()
+        #expect(h.cache.loadPage(folder: Self.trash)?.summaries.count == 30)
+    }
+
+    @Test func warmWriteRule() {
+        func page(_ count: Int, validity: UInt32 = 1) -> MailFolderPage {
+            MailFolderPage(folder: "F", uidValidity: validity, messageCount: count,
+                           summaries: (0..<count).map { SchoolMailTestDoubles.summary(uid: UInt32($0 + 1)) },
+                           oldestLoadedSequence: nil)
+        }
+        #expect(MailListViewModel.warmShouldWrite(page(20), over: nil))
+        #expect(MailListViewModel.warmShouldWrite(page(20), over: page(10)))
+        #expect(MailListViewModel.warmShouldWrite(page(20), over: page(20)))
+        #expect(!MailListViewModel.warmShouldWrite(page(20), over: page(50)))
+        // Another generation: the deeper cache names mail that no longer exists.
+        #expect(MailListViewModel.warmShouldWrite(page(20), over: page(50, validity: 2)))
+    }
+
+    /// Moving onto Trash makes the inbox and Sent the folders worth warming.
+    @Test func aFolderSwitchWarmsWhatTheUserLeft() async {
+        let h = Self.harness(warmDelay: {})
+        await h.model.refresh()
+        await h.model.waitForWarm()
+        await h.model.select(.real(Self.trash))
+        await h.model.waitForWarm()
+        let requests = await h.fake.pageRequests
+        #expect(requests.contains("INBOX \(MailConstants.warmPageSize)"))
+        #expect(requests.contains("\(Self.sent) \(MailConstants.warmPageSize)"))
+        // The inbox cache holds the fifty the list loaded; a twenty-row warm does not replace it.
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.count == 50)
+    }
+
+    /// Leaving inside the start delay cancels the warm; coming back starts it again, once.
+    @Test func comingBackResumesAWarmThatNeverRan() async {
+        let gate = DelayGate()
+        let h = Self.harness(warmDelay: { await gate.wait() })
+        await h.model.refresh()
+        h.model.stopPolling()
+        await gate.open()
+        h.model.startPolling()
+        await h.model.waitForWarm()
+        #expect(await h.fake.pageRequests.filter { $0.hasPrefix(Self.trash) }.count == 1)
+        // Finished: another visit has nothing left to warm and does not go and check.
+        h.model.stopPolling()
+        let before = await h.fake.pageRequests.count
+        h.model.startPolling()
+        await h.model.waitForWarm()
+        #expect(await h.fake.pageRequests.count == before)
+        h.model.stopPolling()
+    }
+
+    /// A refresh in the first moments after the paint must not queue behind the warm.
+    @Test func aRefreshStopsTheWarmBeforeItStarts() async {
+        let gate = DelayGate()
+        let h = Self.harness(warmDelay: { await gate.wait() })
+        await h.model.refresh()
+        let before = await h.fake.pageRequests.count
+        await h.model.refresh()
+        // The second refresh's own pages went out while the first warm was still held.
+        let afterRefresh = await h.fake.pageRequests
+        #expect(afterRefresh.count > before)
+        #expect(!afterRefresh.contains { $0.hasPrefix(Self.trash) })
+        await gate.open()
+        await h.model.waitForWarm()
+        // One warm ran — the second refresh's — not two.
+        #expect(await h.fake.pageRequests.filter { $0.hasPrefix(Self.trash) }.count == 1)
     }
 
     // MARK: Poll body prefetch

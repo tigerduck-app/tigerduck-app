@@ -62,6 +62,15 @@ final class MailListViewModel {
     /// user has left — `isCurrent`. The selection alone cannot tell: the reset puts it back on
     /// Inbox, which is very likely what the stale load was fetching.
     @ObservationIgnored private var accountEpoch = 0
+    /// The background warm of the folders the list is not showing — see `startWarm`.
+    @ObservationIgnored private var warmTask: Task<Void, Never>?
+    /// True once a warm queue has run to its end, so coming back to the screen knows there is
+    /// nothing left to warm rather than going to the server to find that out.
+    @ObservationIgnored private var warmDone = false
+    /// Set while the screen is away (`stopPolling`), so a refresh that lands after the user left
+    /// does not start warming for a screen nobody is looking at.
+    @ObservationIgnored private var isPaused = false
+    @ObservationIgnored private let warmDelay: @Sendable () async -> Void
     @ObservationIgnored nonisolated(unsafe) private var signOutObserver: (any NSObjectProtocol)?
     @ObservationIgnored private let signOutEvents: NotificationCenter
 
@@ -69,7 +78,8 @@ final class MailListViewModel {
         session: MailPageSession? = nil,
         cache: MailCache? = nil,
         runPageCheck: @escaping (any MailClient) async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .page, using: $0) },
-        signOutEvents: NotificationCenter = .default
+        signOutEvents: NotificationCenter = .default,
+        warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.warmStartDelay) }
     ) {
         // Both defaults are resolved here, in the init's own MainActor-isolated body, rather
         // than in the default-parameter expressions above: a default-parameter expression is
@@ -80,6 +90,7 @@ final class MailListViewModel {
         self.cache = cache ?? MailAccountManager.shared.cache
         self.runPageCheck = runPageCheck
         self.signOutEvents = signOutEvents
+        self.warmDelay = warmDelay
         // The screen keeps this view model across a sign-out (it is `@State` on `SchoolMailView`),
         // so without this the next student's first frame is the previous student's list, and a
         // load that was in flight writes the previous student's pages into a cache that stamps
@@ -210,6 +221,23 @@ final class MailListViewModel {
         }
     }
 
+    /// A load the user asked for — the screen opening, a pull, Retry, the compose sheet closing —
+    /// with the warm stopped first and started again once the list is up.
+    ///
+    /// Stopped first because the warm shares the one connection, and `AsyncSerialLock` is FIFO:
+    /// left running, this load would queue behind every folder still waiting its turn. It cannot
+    /// abort a page already in flight — SwiftMail's commands run to completion — so the most this
+    /// waits is one page, and the warm's start delay makes even that unlikely. Restarted rather
+    /// than only stopped, or the first pull would end warming for the rest of the visit.
+    ///
+    /// Not what the 60 s poll calls: a poll that finds new mail reloads through `load()` alone,
+    /// and warming every other folder again once a minute is not what it is for.
+    func refresh() async {
+        cancelWarm()
+        await load()
+        startWarmIfLoaded()
+    }
+
     /// One cursor per real folder: every folder the selection covers that still has older mail
     /// is paged one page further back and the result re-merged. So the merged list ends only
     /// once *both* folders genuinely have, never merely because the sparser of the two did.
@@ -272,7 +300,11 @@ final class MailListViewModel {
         rows = []
         searchResults = nil
         searchUsedLocalFallback = false
+        cancelWarm()
         await load()
+        // Rebuilt, not resumed: the folders worth warming are the ones the *new* selection is
+        // not showing, which now includes the one the user just left.
+        startWarmIfLoaded()
     }
 
     /// Adopts a role map a screen this list presented re-resolved after creating a missing role
@@ -424,6 +456,11 @@ final class MailListViewModel {
     // MARK: Polling (60 s while the page is visible)
 
     func startPolling() {
+        isPaused = false
+        // Leaving cancels the warm, and a visit that left inside its start delay — following a
+        // notification and coming straight back — would otherwise leave every other folder cold
+        // for the rest of it.
+        if !warmDone, warmTask == nil { startWarmIfLoaded() }
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -435,8 +472,10 @@ final class MailListViewModel {
     }
 
     func stopPolling() {
+        isPaused = true
         pollTask?.cancel()
         pollTask = nil
+        cancelWarm()
         session.releaseSoon()
     }
 
@@ -449,6 +488,11 @@ final class MailListViewModel {
         pollTask?.cancel()
         pollTask = nil
         resetInMemoryState()
+    }
+
+    /// Test hook: returns once the current warm, if any, has finished or stopped.
+    func waitForWarm() async {
+        await warmTask?.value
     }
 
     /// Test hook: returns once every cache write queued so far has landed.
@@ -475,6 +519,8 @@ final class MailListViewModel {
 
     private func resetInMemoryState() {
         accountEpoch += 1
+        cancelWarm()
+        warmDone = false
         folderRoles = [:]
         otherFolders = []
         pages = [:]
@@ -561,6 +607,88 @@ final class MailListViewModel {
                 continue
             }
         }
+    }
+
+    // MARK: Warm
+
+    /// Warms the folders the user is *not* looking at, so a chip tap paints from cache instead of
+    /// a spinner.
+    ///
+    /// The role folders in chip order, minus whatever the selection already shows. One at a time
+    /// and on the page's own connection — Mail2000 caps connections and answers "server busy"
+    /// under load, so a fan-out would be paid for by the screen the user is actually reading —
+    /// and `MailConstants.warmPageSize` rows each, enough to fill a screen.
+    ///
+    /// Silent by construction: it never touches `loadState`, `serverStatus`, `rows` or `pages`.
+    /// It writes only the cache, and never shortens a folder cache the user has already paged
+    /// further into (`warmShouldWrite`). A failure means only that a later chip tap is as slow as
+    /// it used to be, so it is swallowed — except one that says the connection itself is gone,
+    /// which stops the queue rather than reopening and logging in again once per folder (NTUST
+    /// counts failed logins towards a lockout).
+    private func startWarm() {
+        warmTask?.cancel()
+        warmDone = false
+        var covered = Set(targets)
+        let queue = MailFolderRole.allCases.compactMap { folderRoles[$0] }.filter { covered.insert($0).inserted }
+        guard !queue.isEmpty else {
+            warmTask = nil
+            warmDone = true
+            return
+        }
+        let epoch = accountEpoch
+        let delay = warmDelay
+        let cache = self.cache
+        warmTask = Task { [weak self] in
+            // Cancelling cannot abort a page already on the wire, so the only way to spare the
+            // refresh that follows a paint straight away is for the warm not to have started yet.
+            await delay()
+            for folder in queue {
+                guard !Task.isCancelled, let self, self.accountEpoch == epoch else { return }
+                do {
+                    let page = try await self.session.use { client in
+                        try await client.page(folder: folder, olderThanSequence: nil, pageSize: MailConstants.warmPageSize)
+                    }
+                    guard !Task.isCancelled, self.accountEpoch == epoch else { return }
+                    // The screen owns a folder it has moved onto since, and its page in memory
+                    // and the one on disk must not diverge.
+                    if self.targets.contains(folder) { continue }
+                    await self.chainCacheWrite {
+                        if Self.warmShouldWrite(page, over: cache.loadPage(folder: folder)) { cache.savePage(page) }
+                    }.value
+                } catch let error as MailClientError where MailChecker.endsPrefetch(error) {
+                    return
+                } catch {
+                    continue
+                }
+            }
+            // Reached only by running the queue out; a cancelled warm leaves this false, which is
+            // what tells the next `startPolling` there is still warming to do.
+            guard let self, !Task.isCancelled else { return }
+            self.warmDone = true
+            self.warmTask = nil
+        }
+    }
+
+    /// Only after a load that reached the server: after a failed one the list still reads
+    /// `.loaded` (cached rows stay up), and warming then would only reconnect and log in again
+    /// against a server that has just refused.
+    private func startWarmIfLoaded() {
+        guard !isPaused, loadState == .loaded, serverStatus == .ok else { return }
+        startWarm()
+    }
+
+    private func cancelWarm() {
+        warmTask?.cancel()
+        warmTask = nil
+    }
+
+    /// Whether a warm's page may replace what is cached for its folder: always over nothing and
+    /// over another UIDVALIDITY generation, otherwise only when it is at least as long. A warm
+    /// fetches a short first page, and a cache the user paged fifty rows further into is worth
+    /// more than it.
+    nonisolated static func warmShouldWrite(_ page: MailFolderPage, over cached: MailFolderPage?) -> Bool {
+        guard let cached, cached.uidValidity == page.uidValidity else { return true }
+        return page.summaries.count >= cached.summaries.count
     }
 
     // MARK: Internals

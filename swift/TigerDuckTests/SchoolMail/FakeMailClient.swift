@@ -20,6 +20,12 @@ actor FakeMailClient: MailClient {
     /// used to prove a caller's own state change (dropping a stale cache, say) survives even
     /// when the reload that follows it doesn't succeed.
     var pageError: MailClientError?
+    /// A `page` refused for one folder only, e.g. to fail a background warm of Trash while the
+    /// inbox the screen shows still loads.
+    var pageErrors: [String: MailClientError] = [:]
+    /// Every `page` call as `"<folder> <pageSize>"`, kept apart from `calls` so the many tests
+    /// that match `"page INBOX"` there are unaffected.
+    private(set) var pageRequests: [String] = []
     var searchError: MailClientError?
     /// Simulates a server that refuses `SEARCH HEADER "Message-ID"` — nothing in Mail2000's
     /// CAPABILITY banner promises it is honoured, and a refusal is what makes the sent-copy
@@ -220,8 +226,10 @@ actor FakeMailClient: MailClient {
 
     func page(folder: String, olderThanSequence: Int?, pageSize: Int) async throws -> MailFolderPage {
         calls.append("page \(folder)")
+        pageRequests.append("\(folder) \(pageSize)")
         await gate("page")
         if let pageError { throw pageError }
+        if let error = pageErrors[folder] { throw error }
         let ordered = (folders[folder] ?? []).sorted { $0.summary.uid < $1.summary.uid }
         let total = ordered.count
         let upper = min((olderThanSequence ?? total + 1) - 1, total)

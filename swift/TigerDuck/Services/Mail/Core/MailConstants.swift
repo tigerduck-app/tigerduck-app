@@ -54,6 +54,12 @@ nonisolated enum MailConstants {
     /// bound on an added recovery, so a folder with thousands of flagged messages costs a few
     /// round trips rather than an unbounded scan.
     static let emptyWindowWalkbackPages = 4
+    /// Rows per folder a background warm fetches (`MailListViewModel.startWarm`): enough to fill
+    /// a screen, and the real load that follows a chip tap replaces it.
+    static let warmPageSize = 20
+    /// How long a warm holds off before it takes the connection, so that a refresh in the first
+    /// moments after the list paints cancels it rather than queueing behind it.
+    static let warmStartDelay: Duration = .milliseconds(500)
     /// Newest arrivals whose bodies one check or one page poll fetches ahead of a tap.
     static let bodyPrefetchLimit = 5
 

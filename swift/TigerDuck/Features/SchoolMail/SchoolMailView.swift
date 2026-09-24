@@ -310,7 +310,7 @@ struct SchoolMailView: View {
         .onChange(of: viewModel.searchText) { _, text in
             if text.isEmpty { viewModel.clearSearch() }
         }
-        .refreshable { await viewModel.load() }
+        .refreshable { await viewModel.refresh() }
         .navigationDestination(item: $route) { route in
             MailMessageView(
                 route: route,
@@ -325,13 +325,13 @@ struct SchoolMailView: View {
         }
         .onAppear { drainDeepLink() }
         .onChange(of: appState.pendingDeepLink) { _, _ in drainDeepLink() }
-        .sheet(item: $compose, onDismiss: { Task { await viewModel.load() } }) { context in
+        .sheet(item: $compose, onDismiss: { Task { await viewModel.refresh() } }) { context in
             MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles,
                             onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) },
                             onSentCopyNotice: { notice in viewModel.reportSentCopyNotice(notice) })
         }
         .task {
-            await viewModel.load()
+            await viewModel.refresh()
             viewModel.startPolling()
         }
         .onDisappear { viewModel.stopPolling() }
@@ -451,7 +451,7 @@ struct SchoolMailView: View {
                 .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-            Button(String(localized: "action_retry")) { Task { await viewModel.load() } }
+            Button(String(localized: "action_retry")) { Task { await viewModel.refresh() } }
                 .buttonStyle(.bordered)
         }
         .frame(maxWidth: .infinity)
