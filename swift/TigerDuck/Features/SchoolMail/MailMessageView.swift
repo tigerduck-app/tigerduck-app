@@ -165,9 +165,10 @@ struct MailMessageView: View {
     @ViewBuilder
     private var header: some View {
         if let summary = viewModel.summary {
+            let sender = Self.senderLines(name: summary.fromName, address: summary.fromAddress)
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
                 HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.sm) {
-                    Text(summary.fromName?.mailNonEmpty ?? summary.fromAddress ?? String(localized: "school_mail_no_sender"))
+                    Text(sender.primary ?? String(localized: "school_mail_no_sender"))
                         .font(TigerDuckTheme.Typography.headline)
                         .foregroundStyle(.tint)
                     if summary.isExternal {
@@ -185,7 +186,7 @@ struct MailMessageView: View {
                             .foregroundStyle(Color.textSecondary)
                     }
                 }
-                if let address = summary.fromAddress {
+                if let address = sender.secondary {
                     Text(address)
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
@@ -194,26 +195,49 @@ struct MailMessageView: View {
                 Text(summary.subject?.mailNonEmpty ?? String(localized: "school_mail_no_subject"))
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(Color.textPrimary)
-                DisclosureGroup(isExpanded: $showDetails) {
-                    VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
-                        if let to = summary.to, !to.isEmpty {
-                            Text(String(format: String(localized: "school_mail_details_to"), to.joined(separator: ", ")))
+                if Self.hasRecipients(summary) {
+                    DisclosureGroup(isExpanded: $showDetails) {
+                        VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
+                            if let to = summary.to, !to.isEmpty {
+                                Text(String(format: String(localized: "school_mail_details_to"), to.joined(separator: ", ")))
+                            }
+                            if let cc = summary.cc, !cc.isEmpty {
+                                Text(String(format: String(localized: "school_mail_details_cc"), cc.joined(separator: ", ")))
+                            }
                         }
-                        if let cc = summary.cc, !cc.isEmpty {
-                            Text(String(format: String(localized: "school_mail_details_cc"), cc.joined(separator: ", ")))
-                        }
-                    }
-                    .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.textSecondary)
-                    .textSelection(.enabled)
-                } label: {
-                    Text(String(format: String(localized: "school_mail_details_to"), summary.to?.first ?? ""))
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)
-                        .lineLimit(1)
+                        .textSelection(.enabled)
+                    } label: {
+                        Text(String(format: String(localized: "school_mail_details_to"), summary.to?.first ?? ""))
+                            .font(TigerDuckTheme.Typography.caption)
+                            .foregroundStyle(Color.textSecondary)
+                            .lineLimit(1)
+                            // One caption line is ~16 pt tall: the whole row, at the platform's
+                            // minimum touch height, is what toggles.
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
                 }
             }
         }
+    }
+
+    /// The sender's two header lines. The address goes on the second line only when a name took
+    /// the first: a sender with no display name used to have its address printed as the
+    /// headline and then again straight underneath. Blank values count as missing, so an empty
+    /// address (a bounce, a cache an older build wrote) never becomes an empty headline.
+    nonisolated static func senderLines(name: String?, address: String?) -> (primary: String?, secondary: String?) {
+        let name = name?.mailNonEmpty
+        let address = address?.mailNonEmpty
+        guard let name else { return (address, nil) }
+        return (name, address)
+    }
+
+    /// Whether there is anything for the To/Cc disclosure to show. With neither, it would be a
+    /// "To:" label with nothing after it that expands to nothing.
+    nonisolated static func hasRecipients(_ summary: MailSummary) -> Bool {
+        !(summary.to ?? []).isEmpty || !(summary.cc ?? []).isEmpty
     }
 
     @ViewBuilder

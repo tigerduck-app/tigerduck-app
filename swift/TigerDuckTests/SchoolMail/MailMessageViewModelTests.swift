@@ -601,6 +601,43 @@ struct MailMessageViewModelTests {
         #expect(MailHTMLTheme.css(0xFF_12_34_56) == "#123456")
     }
 
+    // MARK: Header
+
+    @Test func aNamedSenderGetsTwoLines() {
+        let lines = MailMessageView.senderLines(name: "教務處", address: "office@mail.ntust.edu.tw")
+        #expect(lines.primary == "教務處")
+        #expect(lines.secondary == "office@mail.ntust.edu.tw")
+    }
+
+    /// The address used to be the headline and then printed again underneath it.
+    @Test func aSenderWithNoNameShowsTheAddressOnce() {
+        let lines = MailMessageView.senderLines(name: nil, address: "someone@gmail.com")
+        #expect(lines.primary == "someone@gmail.com")
+        #expect(lines.secondary == nil)
+        let blank = MailMessageView.senderLines(name: "   ", address: "someone@gmail.com")
+        #expect(blank.primary == "someone@gmail.com")
+        #expect(blank.secondary == nil)
+    }
+
+    /// A bounce carries a name and no usable address; an empty address is no address.
+    @Test func aMissingAddressLeavesNoEmptyLine() {
+        let bounce = MailMessageView.senderLines(name: "Mail Deliver System", address: "")
+        #expect(bounce.primary == "Mail Deliver System")
+        #expect(bounce.secondary == nil)
+        let nothing = MailMessageView.senderLines(name: nil, address: " ")
+        #expect(nothing.primary == nil)
+        #expect(nothing.secondary == nil)
+    }
+
+    @Test func theRecipientRowIsOnlyOfferedWithRecipients() {
+        var summary = SchoolMailTestDoubles.summary(uid: 1)
+        summary.to = nil
+        summary.cc = []
+        #expect(!MailMessageView.hasRecipients(summary))
+        summary.cc = ["a@mail.ntust.edu.tw"]
+        #expect(MailMessageView.hasRecipients(summary))
+    }
+
     @Test func linkIndexParsingAcceptsOnlyTheExactSyntheticForm() {
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/0", linkCount: 2) == 0)
         #expect(MailWebViewFactory.parseLinkIndex("https://link.invalid/1", linkCount: 2) == 1)
