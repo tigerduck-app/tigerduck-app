@@ -119,12 +119,17 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         }
     }
 
+    /// A capsule on one line — the radius is half a one-line bubble's height — that stays a
+    /// rounded box, rather than a stretched pill, when a long address wraps.
+    private static var bubbleShape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+
     private func bubble(_ token: String, at index: Int) -> some View {
         let valid = MailComposeViewModel.sendableAddress(token) != nil
         return HStack(spacing: 4) {
+            // Wraps rather than truncating, so a long address is never shown cut short.
             Text(verbatim: token)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
+                .typesettingLanguage(MailRecipient.unhyphenatedLanguage)
             Button {
                 tokens.remove(at: index)
                 publish()
@@ -139,9 +144,9 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         .foregroundStyle(valid ? Color.textPrimary : Color.red)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(valid ? AnyShapeStyle(.tint.opacity(0.25)) : AnyShapeStyle(Color.red.opacity(0.15)), in: Capsule())
-        .overlay { if !valid { Capsule().strokeBorder(Color.red.opacity(0.6), lineWidth: 1) } }
-        .contentShape(Capsule())
+        .background(valid ? AnyShapeStyle(.tint.opacity(0.25)) : AnyShapeStyle(Color.red.opacity(0.15)), in: Self.bubbleShape)
+        .overlay { if !valid { Self.bubbleShape.strokeBorder(Color.red.opacity(0.6), lineWidth: 1) } }
+        .contentShape(Self.bubbleShape)
         .onTapGesture { edit(at: index) }
     }
 

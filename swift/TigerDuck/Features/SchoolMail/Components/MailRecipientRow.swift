@@ -12,6 +12,11 @@ nonisolated struct MailRecipient: Hashable, Sendable {
     /// This is the signed-in student's own address.
     var isSelf: Bool
 
+    /// Addresses are typeset as a language with no hyphenation, so one too long for its line
+    /// breaks without gaining a `-` that is not in it (`ntust.e-du.tw`). Traditional Chinese: it
+    /// is what most of these names are written in, and it leaves Latin text as it is.
+    static let unhyphenatedLanguage = Locale.Language(identifier: "zh-Hant")
+
     /// `Name <address>`, the bare address, or the entry as written when it is not an address.
     var displayText: String {
         guard let address else { return raw }
@@ -52,9 +57,10 @@ struct MailRecipientRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.xs) {
             Text(label)
+            // Never cut short: a recipient too long for the line — the student's own address
+            // included — wraps onto the next one. Collapsing only hides the other recipients.
             line
-                .lineLimit(isExpanded ? nil : 1)
-                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if isCollapsible {
@@ -83,7 +89,8 @@ struct MailRecipientRow: View {
     private var line: Text {
         var text = Text(verbatim: "")
         for (index, recipient) in shown.enumerated() {
-            let part = Text(verbatim: recipient.displayText)
+            // On each piece: the modifier on the finished line does not reach inside these.
+            let part = Text(verbatim: recipient.displayText).typesettingLanguage(MailRecipient.unhyphenatedLanguage)
             let styled = recipient.isSelf ? part.foregroundStyle(.tint) : part
             text = index == 0 ? styled : Text("\(text), \(styled)")
         }
