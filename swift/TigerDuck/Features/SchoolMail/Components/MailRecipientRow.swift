@@ -66,8 +66,10 @@ struct MailRecipientRow: View {
         }
         .font(TigerDuckTheme.Typography.caption)
         .foregroundStyle(Color.textSecondary)
-        // The whole line, at the platform's minimum touch height, is what opens it.
-        .frame(minHeight: isCollapsible ? 44 : nil)
+        // The whole line, at the platform's minimum touch height, is what opens it. Fixed padding
+        // rather than a centred minimum height: the first line then stays exactly where it was
+        // and opening only adds lines below it, instead of the whole block re-centring upwards.
+        .padding(.vertical, isCollapsible ? 14 : 0)
         .contentShape(Rectangle())
         .onTapGesture {
             guard isCollapsible else { return }
