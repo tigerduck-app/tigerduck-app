@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.1.2-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.2)
+[![Version](https://img.shields.io/badge/Version-v2.1.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.3)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -111,6 +111,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v2.1.3`** | 2026-09-24 | A new Others page under About; open-source licenses are listed in full in the app, in a window of their own on the Mac; pages opened from More drop the back arrow; the library QR code is up the moment you return to the tab, its brightness boost follows the screen the code is actually on, and the screen no longer stays at full brightness after you leave; course details keep the GE dimension and course duration across a sync |
 | **`v2.1.2`** | 2026-09-19 | 📋 **The class table previews the classroom in each cell** — with a toggle in Settings; course details gain the GE dimension and the course duration, and a tap copies the course code; half-credit courses no longer count as zero in credit totals, the transcript or your GPA |
 | **`v2.1.1`** | 2026-09-18 | 📚 **Fixed cross-listed classes breaking the Moodle and assignment links** |
 | **`v2.1.0`** | 2026-09-12 | 🔔 **Assignment reminders move to the server** — iOS no longer depends on local scheduling, so a reminder arrives on time even when the app is closed; assignments already submitted on Moodle stop reminding; notification settings sync across devices; the expired-Moodle-login notification finally carries text and translations instead of arriving blank; the TigerSync settings screen is reorganised on all three platforms |
