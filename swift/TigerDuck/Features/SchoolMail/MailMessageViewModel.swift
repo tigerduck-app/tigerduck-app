@@ -240,6 +240,7 @@ final class MailMessageViewModel {
         let cache = self.cache
         let folder = route.folder
         let uid = route.uid
+        let account = prefs.studentID
         let page = await Task.detached { cache.loadPage(folder: folder) }.value
         let validity = page?.uidValidity
         pageUIDValidity = validity
@@ -264,7 +265,9 @@ final class MailMessageViewModel {
                 try await client.detail(folder: folder, uid: uid, expectedUIDValidity: validity)
             }
             await apply(fresh)
-            if let validity {
+            // The cache stamps whoever is signed in when it writes: a body fetched for a student
+            // who signed out while it was on the wire must not be filed under the next one.
+            if let validity, prefs.studentID == account {
                 await Task.detached { cache.saveDetail(fresh, folder: folder, uidValidity: validity) }.value
             }
             if !fresh.summary.isSeen {
@@ -326,6 +329,7 @@ final class MailMessageViewModel {
         let folder = route.folder
         let uid = route.uid
         let validity = pageUIDValidity
+        let account = prefs.studentID
         if let validity,
            let cached = await Task.detached(operation: { cache.loadSource(folder: folder, uidValidity: validity, uid: uid) }).value {
             source = cached
@@ -335,7 +339,8 @@ final class MailMessageViewModel {
             let data = try await session.use { client in try await client.rawSource(folder: folder, uid: uid) }
             let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
             source = text
-            if let validity {
+            // As in `load()`: never filed under a student other than the one it was fetched for.
+            if let validity, prefs.studentID == account {
                 await Task.detached { cache.saveSource(text, folder: folder, uidValidity: validity, uid: uid) }.value
             }
         } catch {

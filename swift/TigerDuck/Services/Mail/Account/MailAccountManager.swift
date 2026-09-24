@@ -32,7 +32,16 @@ final class MailAccountManager {
         }
     }
 
-    static let shared = MailAccountManager()
+    static let shared = MailAccountManager(signOutEvents: .default)
+
+    /// Posted by `logout()`, once per sign-out, synchronously on the main actor.
+    ///
+    /// An event rather than an observed `isLoggedIn`: a sign-out followed by a sign-in before an
+    /// observer next looked would read as "no change", and whatever it held for the previous
+    /// student — the page's authenticated IMAP connection (`MailPageSession`), the list's
+    /// in-memory pages (`MailListViewModel`) — would carry straight over to the next one. An
+    /// observer registered in its own `init` cannot miss one of these.
+    static let didSignOut = Notification.Name("SchoolMail.didSignOut")
 
     private(set) var studentID: String?
     private(set) var isLoggingIn = false
@@ -110,6 +119,10 @@ final class MailAccountManager {
     /// Everything that touches `credentials`, `prefs`, `studentID`, `displayName` or
     /// `onSignedIn` is state, and only the current sign-in may write it.
     @ObservationIgnored private var loginGeneration = 0
+    /// Where `didSignOut` is posted: `.default` for `shared`, which is what every page session and
+    /// list listens on, and a private centre for any other instance — so a test's sign-outs,
+    /// running in parallel with other tests, never tear down a session that is not theirs.
+    @ObservationIgnored private let signOutEvents: NotificationCenter
 
     init(
         prefs: any MailPreferences = DefaultsMailPreferences(),
@@ -117,9 +130,11 @@ final class MailAccountManager {
         cache: MailCache = .shared,
         isDemoLogin: @escaping (String, String) -> Bool = { MailDemoFixture.shared?.matches(studentID: $0, password: $1) ?? false },
         makeClient: @escaping (Bool) -> any MailClient = { MailClientFactory.make(demo: $0) },
-        clearCache: (@Sendable () async -> Void)? = nil
+        clearCache: (@Sendable () async -> Void)? = nil,
+        signOutEvents: NotificationCenter = NotificationCenter()
     ) {
         self.prefs = prefs
+        self.signOutEvents = signOutEvents
         self.credentials = credentials
         self.cache = cache
         self.isDemoLogin = isDemoLogin
@@ -278,6 +293,7 @@ final class MailAccountManager {
         authFailed = false
         displayName = nil
         notificationsEnabled = prefs.notificationsEnabled
+        signOutEvents.post(name: Self.didSignOut, object: nil)
         onSignedOut?()
     }
 

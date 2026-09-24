@@ -57,11 +57,19 @@ final class MailListViewModel {
     @ObservationIgnored private var selectionWasChosen = false
     /// The tail of the cache-write chain — see `chainCacheWrite`.
     @ObservationIgnored private var pendingCacheWrite: Task<Void, Never>?
+    /// Bumped by every sign-out (`resetForAccountChange`). Work that started under an earlier
+    /// value is the previous student's, and is dropped exactly like work for a selection the
+    /// user has left — `isCurrent`. The selection alone cannot tell: the reset puts it back on
+    /// Inbox, which is very likely what the stale load was fetching.
+    @ObservationIgnored private var accountEpoch = 0
+    @ObservationIgnored nonisolated(unsafe) private var signOutObserver: (any NSObjectProtocol)?
+    @ObservationIgnored private let signOutEvents: NotificationCenter
 
     init(
         session: MailPageSession? = nil,
         cache: MailCache? = nil,
-        runPageCheck: @escaping (any MailClient) async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .page, using: $0) }
+        runPageCheck: @escaping (any MailClient) async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .page, using: $0) },
+        signOutEvents: NotificationCenter = .default
     ) {
         // Both defaults are resolved here, in the init's own MainActor-isolated body, rather
         // than in the default-parameter expressions above: a default-parameter expression is
@@ -71,6 +79,23 @@ final class MailListViewModel {
         self.session = session ?? MailPageSession()
         self.cache = cache ?? MailAccountManager.shared.cache
         self.runPageCheck = runPageCheck
+        self.signOutEvents = signOutEvents
+        // The screen keeps this view model across a sign-out (it is `@State` on `SchoolMailView`),
+        // so without this the next student's first frame is the previous student's list, and a
+        // load that was in flight writes the previous student's pages into a cache that stamps
+        // them with whoever is signed in by then.
+        signOutObserver = signOutEvents.addObserver(forName: MailAccountManager.didSignOut, object: nil, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.resetForAccountChange() }
+        }
+    }
+
+    deinit {
+        if let signOutObserver { signOutEvents.removeObserver(signOutObserver) }
+    }
+
+    /// Whether work that started for `selection` under `epoch` still belongs on screen.
+    private func isCurrent(_ selection: MailFolderSelection, _ epoch: Int) -> Bool {
+        selection == self.selection && epoch == accountEpoch
     }
 
     var displayedRows: [MailListRow] {
@@ -110,9 +135,10 @@ final class MailListViewModel {
         // follow the adoption or the load would abandon itself as stale. The two `defer`s read
         // it at scope exit, so they follow it too.
         var selection = self.selection
+        let epoch = accountEpoch
         guard loadingSelection != selection else { return }
         loadingSelection = selection
-        defer { if loadingSelection == selection { loadingSelection = nil } }
+        defer { if epoch == accountEpoch, loadingSelection == selection { loadingSelection = nil } }
 
         if await paintFromCache() {
             loadState = .loaded
@@ -125,16 +151,18 @@ final class MailListViewModel {
         // `loadingSelection` nothing newer has since taken over — otherwise a slow load for a
         // selection the user has since left (or already superseded by a newer load) could stop
         // the spinner or flip the dot red while a still-relevant load is genuinely in flight.
-        defer { if selection == self.selection, loadingSelection == selection { isRefreshing = false } }
+        defer { if isCurrent(selection, epoch), loadingSelection == selection { isRefreshing = false } }
         do {
             // Resolved before the targets are read, not alongside them: All mail has no name of
             // its own, so which folders it covers is only knowable once `listFolders` has said
             // what the server has.
             if folderRoles.isEmpty {
                 let available = try await session.use { client in try await client.listFolders() }
+                // The previous student's folders are not the next one's.
+                guard epoch == accountEpoch else { return }
                 folderRoles = MailFolderMap.resolve(available: available)
                 otherFolders = MailFolderMap.otherFolders(available: available)
-                guard selection == self.selection else { return }
+                guard isCurrent(selection, epoch) else { return }
                 // The first moment All mail is resolvable, and so the first moment the default
                 // can be applied. Doing it here rather than through `select` keeps the opening
                 // load to a single pass: the folders it now covers are fetched by the `page`
@@ -147,7 +175,7 @@ final class MailListViewModel {
                 // nothing to look up. Now it does.
                 if await paintFromCache() { loadState = .loaded }
             }
-            guard selection == self.selection else { return }
+            guard isCurrent(selection, epoch) else { return }
             let folders = targets
             let fetched = try await session.use { client -> [(String, MailFolderPage)] in
                 var result: [(String, MailFolderPage)] = []
@@ -157,26 +185,26 @@ final class MailListViewModel {
                 }
                 return result
             }
-            guard selection == self.selection else { return }
+            guard isCurrent(selection, epoch) else { return }
             for (folder, fresh) in fetched {
                 if let previous = pages[folder], previous.uidValidity != fresh.uidValidity {
                     await dropFolder(folder)
                     pages[folder] = nil
-                    guard selection == self.selection else { return }
+                    guard isCurrent(selection, epoch) else { return }
                 }
                 var merged = mergeFreshPage(fresh, folder: folder)
                 rebuildRows()
                 if merged.summaries.isEmpty, merged.messageCount > 0 {
                     merged = await walkBackToVisibleMail(from: merged, folder: folder)
                 }
-                guard selection == self.selection else { return }
+                guard isCurrent(selection, epoch) else { return }
                 await save(merged)
             }
             rebuildRows()
             serverStatus = .ok
             loadState = .loaded
         } catch {
-            guard selection == self.selection else { return }
+            guard isCurrent(selection, epoch) else { return }
             serverStatus = .failed
             loadState = rows.isEmpty ? .failed(MailAccountManager.LoginError(error).message) : .loaded
         }
@@ -194,6 +222,7 @@ final class MailListViewModel {
     func loadMoreIfNeeded(after row: MailListRow) async {
         guard searchResults == nil, !isPaginating, row.id == displayedRows.last?.id else { return }
         let selection = self.selection
+        let epoch = accountEpoch
         let cursors = targets.compactMap { folder in pages[folder]?.oldestLoadedSequence.map { (folder, $0) } }
         guard !cursors.isEmpty else { return }
         isPaginating = true
@@ -203,7 +232,7 @@ final class MailListViewModel {
                 let next = try await session.use { client in
                     try await client.page(folder: folder, olderThanSequence: older, pageSize: MailConstants.pageSize)
                 }
-                guard selection == self.selection, var page = pages[folder] else { return }
+                guard isCurrent(selection, epoch), var page = pages[folder] else { return }
                 // The merge below dedupes by UID, and a UID only means anything within one
                 // UIDVALIDITY generation. If the folder was recreated between the page already
                 // held and this one, the server is reusing those numbers for entirely different
@@ -225,7 +254,7 @@ final class MailListViewModel {
                 await recoverFromFolderChange(folder)
                 return
             } catch {
-                guard selection == self.selection else { return }
+                guard isCurrent(selection, epoch) else { return }
                 serverStatus = .failed
                 return
             }
@@ -293,6 +322,7 @@ final class MailListViewModel {
             return
         }
         let selection = self.selection
+        let epoch = accountEpoch
         var found: [MailListRow] = []
         var usedFallback = false
         var serverFailed = false
@@ -303,10 +333,10 @@ final class MailListViewModel {
                     let newest = Array(matches.sorted(by: >).prefix(MailConstants.pageSize))
                     return try await client.summaries(folder: folder, uids: newest)
                 }
-                guard selection == self.selection else { return }
+                guard isCurrent(selection, epoch) else { return }
                 found += matched.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
             } catch {
-                guard selection == self.selection else { return }
+                guard isCurrent(selection, epoch) else { return }
                 if (error as? MailClientError) != .searchUnsupported { serverFailed = true }
                 found += (pages[folder]?.summaries ?? [])
                     .filter { Self.matches($0, query) }
@@ -314,7 +344,7 @@ final class MailListViewModel {
                 usedFallback = true
             }
         }
-        guard selection == self.selection else { return }
+        guard isCurrent(selection, epoch) else { return }
         if serverFailed { serverStatus = .failed }
         searchResults = ordered(found)
         searchUsedLocalFallback = usedFallback
@@ -410,21 +440,36 @@ final class MailListViewModel {
         session.releaseSoon()
     }
 
+    /// Throws away everything in memory that belonged to the student who just signed out: the
+    /// resolved folder roles, the loaded pages and the rows built from them. Left alone, they
+    /// would be the next student's first frame, with row taps and swipe actions addressing the
+    /// previous student's folders and UIDs. The held connection is `MailPageSession`'s to close,
+    /// on the same event.
+    func resetForAccountChange() {
+        pollTask?.cancel()
+        pollTask = nil
+        resetInMemoryState()
+    }
+
     #if DEBUG
     /// Throws away everything that was resolved against the previous mail server, after the
     /// DEBUG developer override changed it.
     ///
     /// The on-disk caches and the account are dealt with by `DevMailServerSettings`, which
-    /// signs out; this is the half of the state that lives only in memory, on this object, and
-    /// that a sign-out does not touch — the resolved folder roles, the loaded pages and the
-    /// rows built from them. Left alone, the previous server's mail would be on screen for the
-    /// first frame after signing into the new one, with row taps and swipe actions addressing
-    /// folders and UIDs that mean something entirely different there.
+    /// signs out (and so reaches `resetForAccountChange` too); this is the same in-memory reset,
+    /// kept callable directly for the override's own flow.
     ///
     /// The held IMAP connection goes too: it is authenticated against the old server, and
     /// `MailPageSession.close()` logs it out rather than letting it idle there for 30 s.
     func resetForServerChange() {
         stopPolling()
+        resetInMemoryState()
+        Task { await session.close() }
+    }
+    #endif
+
+    private func resetInMemoryState() {
+        accountEpoch += 1
         folderRoles = [:]
         otherFolders = []
         pages = [:]
@@ -440,9 +485,8 @@ final class MailListViewModel {
         serverStatus = .unknown
         isRefreshing = false
         isPaginating = false
-        Task { await session.close() }
+        sentCopyNotice = nil
     }
-    #endif
 
     /// Reloads when the inbox is on screen — which now means All mail as well as Inbox itself,
     /// because All mail merges the inbox in and is the screen the list opens on. Written as
@@ -611,6 +655,7 @@ final class MailListViewModel {
         var current = start
         var fetched = 0
         let selection = self.selection
+        let epoch = accountEpoch
         while current.summaries.isEmpty, let cursor = current.oldestLoadedSequence,
               fetched < MailConstants.emptyWindowWalkbackPages {
             fetched += 1
@@ -619,7 +664,7 @@ final class MailListViewModel {
             }) else { break }
             // A selection change, or the folder being recreated under us: either way this walk
             // has nothing left to say, and the load that follows recovers properly.
-            guard selection == self.selection, older.uidValidity == current.uidValidity else { break }
+            guard isCurrent(selection, epoch), older.uidValidity == current.uidValidity else { break }
             current = MailFolderPage(
                 folder: current.folder, uidValidity: current.uidValidity, messageCount: current.messageCount,
                 summaries: older.summaries.sorted { $0.uid > $1.uid },

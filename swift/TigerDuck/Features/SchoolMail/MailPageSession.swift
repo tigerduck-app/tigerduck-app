@@ -43,16 +43,34 @@ final class MailPageSession {
     /// this type's tests then depends on wall-clock scheduling.
     private let sleep: @Sendable (Duration) async -> Void
 
+    /// Bumped by every sign-out. A client opened under an earlier value belongs to a student who
+    /// is no longer signed in, so `resolveClient` never hands one out.
+    private var signOutEpoch = 0
+    nonisolated(unsafe) private var signOutObserver: (any NSObjectProtocol)?
+    private let signOutEvents: NotificationCenter
+
     init(
         idleClose: Duration = .seconds(MailConstants.connectionIdleClose),
         open: @escaping () async throws -> any MailClient = { try await MailAccountManager.shared.openSession() },
         onAuthFailure: @escaping @MainActor () -> Void = { MailAccountManager.shared.handleAuthFailure() },
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        signOutEvents: NotificationCenter = .default
     ) {
         self.idleClose = idleClose
         self.open = open
         self.onAuthFailure = onAuthFailure
         self.sleep = sleep
+        self.signOutEvents = signOutEvents
+        // Registered here, before anything can use the session, and delivered synchronously
+        // (`queue: nil`) on the main actor `MailAccountManager.logout()` posts from — so no
+        // sign-out can land between two looks and be missed.
+        signOutObserver = signOutEvents.addObserver(forName: MailAccountManager.didSignOut, object: nil, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.invalidateForSignOut() }
+        }
+    }
+
+    deinit {
+        if let signOutObserver { signOutEvents.removeObserver(signOutObserver) }
     }
 
     /// Runs `body` with the session's client, counting the whole call — including resolving
@@ -128,6 +146,29 @@ final class MailPageSession {
         await current?.logout()
     }
 
+    /// Closes the connection the moment its student signs out, instead of leaving it for the
+    /// idle timer.
+    ///
+    /// The timer is not enough: `use(_:)` cancels it and `resolveClient` reuses a held client
+    /// as-is, and the client carries the credentials it logged in with. So a different student
+    /// signing in within the idle window, and opening the mail tab, would be handed the previous
+    /// student's session — their mailbox on screen, and a compose that sends *as them*.
+    ///
+    /// Synchronous so it completes inside the sign-out itself; the `LOGOUT` round trip runs
+    /// after. A call still in flight keeps the client it already has, and finishes against it.
+    func invalidateForSignOut() {
+        signOutEpoch += 1
+        closeTask?.cancel()
+        closeTask = nil
+        closeGeneration += 1
+        isReleased = false
+        pendingDrop = false
+        opening = nil
+        let stale = client
+        client = nil
+        if let stale { Task { await stale.logout() } }
+    }
+
     // MARK: Internals
 
     /// Ends one `use(_:)` call's accounting. Once `inFlight` reaches zero, a connection some
@@ -144,13 +185,27 @@ final class MailPageSession {
         }
     }
 
+    /// An open that a sign-out overtook is thrown away rather than adopted: the connection it
+    /// made was logged in with the credentials of whoever was signed in when it started.
     private func resolveClient() async throws -> any MailClient {
         if let client { return client }
-        if let opening { return try await opening.value }
+        let epoch = signOutEpoch
+        if let opening {
+            let opened = try await opening.value
+            // Whoever started that open closes it; this caller only must not use it.
+            guard epoch == signOutEpoch else { throw CancellationError() }
+            return opened
+        }
         let task = Task { try await open() }
         opening = task
-        defer { opening = nil }
+        // Only this epoch's own open is cleared: after a sign-out, `opening` may already be a
+        // newer call's, made for the next student.
+        defer { if epoch == signOutEpoch { opening = nil } }
         let opened = try await task.value
+        guard epoch == signOutEpoch else {
+            await opened.logout()
+            throw CancellationError()
+        }
         client = opened
         return opened
     }

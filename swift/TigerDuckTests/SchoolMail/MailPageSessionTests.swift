@@ -176,5 +176,90 @@ struct MailPageSessionTests {
         }
         #expect(failures == 0)
     }
+
+    // MARK: Sign-out
+
+    /// Hands out `first`, then `second` on every later open, counting opens.
+    private final class Opener {
+        let first: FakeMailClient
+        let second: FakeMailClient
+        var count = 0
+        init(first: FakeMailClient, second: FakeMailClient) {
+            self.first = first
+            self.second = second
+        }
+        func open() async throws -> any MailClient {
+            count += 1
+            if count == 1 {
+                try await first.login(studentID: "B10000000", password: "pw")
+                return first
+            }
+            return second
+        }
+    }
+
+    /// Without this, the idle timer was the only thing that ever closed the page's connection
+    /// — and `use(_:)` cancels it. A second student signing in inside that window was handed the
+    /// first student's session: their mailbox, and a compose that sent as them.
+    @Test func aSignOutClosesTheHeldConnectionAtOnce() async throws {
+        let center = NotificationCenter()
+        let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
+        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center)
+        _ = try await session.use { _ in }
+
+        center.post(name: MailAccountManager.didSignOut, object: nil)
+        await opener.first.waitForArrival("logout")
+        #expect(await opener.first.calls.contains("logout"))
+
+        let next = try await session.use { $0 }
+        #expect(next === opener.second)
+        #expect(opener.count == 2)
+    }
+
+    @Test func aSignOutThroughTheAccountManagerReachesTheSession() async throws {
+        let center = NotificationCenter()
+        let fake = FakeMailClient(folders: ["INBOX": []])
+        let manager = MailAccountManager(
+            prefs: InMemoryMailPreferences(),
+            credentials: MailCredentialStore(storage: InMemoryMailSecretStorage()),
+            cache: SchoolMailTestDoubles.temporaryCache(),
+            signOutEvents: center
+        )
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, signOutEvents: center)
+        _ = try await session.use { _ in }
+        manager.logout()
+        await fake.waitForArrival("logout")
+        #expect(await fake.calls.contains("logout"))
+    }
+
+    /// An open still logging in when the student signs out finishes with the old credentials:
+    /// it is closed, never adopted, and the call that asked for it gets no client.
+    @Test func anOpenOvertakenByASignOutIsClosedNotAdopted() async throws {
+        let center = NotificationCenter()
+        let opener = Opener(first: FakeMailClient(folders: ["INBOX": []]), second: FakeMailClient(folders: ["INBOX": []]))
+        let session = MailPageSession(idleClose: .seconds(30), open: { try await opener.open() }, signOutEvents: center)
+        await opener.first.hold("login")
+        let use = Task { try await session.use { $0 } }
+        await opener.first.waitForArrival("login")
+
+        center.post(name: MailAccountManager.didSignOut, object: nil)
+        await opener.first.release("login")
+
+        await #expect(throws: CancellationError.self) { _ = try await use.value }
+        #expect(await opener.first.calls.contains("logout"))
+        let next = try await session.use { $0 }
+        #expect(next === opener.second)
+    }
+
+    /// Sign-outs on a different centre — another test's account manager — are not this
+    /// session's business.
+    @Test func aSignOutElsewhereLeavesTheSessionAlone() async throws {
+        let fake = FakeMailClient(folders: ["INBOX": []])
+        let session = MailPageSession(idleClose: .seconds(30), open: { fake }, signOutEvents: NotificationCenter())
+        _ = try await session.use { _ in }
+        NotificationCenter().post(name: MailAccountManager.didSignOut, object: nil)
+        await Task.yield()
+        #expect(await fake.calls.contains("logout") == false)
+    }
 }
 #endif

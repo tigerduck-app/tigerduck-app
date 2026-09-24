@@ -220,6 +220,7 @@ actor FakeMailClient: MailClient {
 
     func page(folder: String, olderThanSequence: Int?, pageSize: Int) async throws -> MailFolderPage {
         calls.append("page \(folder)")
+        await gate("page")
         if let pageError { throw pageError }
         let ordered = (folders[folder] ?? []).sorted { $0.summary.uid < $1.summary.uid }
         let total = ordered.count

@@ -379,6 +379,28 @@ struct MailAccountManagerTests {
             clearCache: clearCache
         )
     }
+
+    /// One event per sign-out, however close together: `MailPageSession` and `MailListViewModel`
+    /// tear down on each, and a missed one leaves the previous student's connection open.
+    @Test func everySignOutIsAnnouncedOnce() async {
+        let center = NotificationCenter()
+        let manager = MailAccountManager(
+            prefs: InMemoryMailPreferences(),
+            credentials: MailCredentialStore(storage: InMemoryMailSecretStorage()),
+            cache: SchoolMailTestDoubles.temporaryCache(),
+            signOutEvents: center
+        )
+        var events = 0
+        let token = center.addObserver(forName: MailAccountManager.didSignOut, object: nil, queue: nil) { _ in
+            MainActor.assumeIsolated { events += 1 }
+        }
+        defer { center.removeObserver(token) }
+        manager.logout()
+        // Synchronous: the teardown has already happened by the time `logout()` returns.
+        #expect(events == 1)
+        manager.logout()
+        #expect(events == 2)
+    }
 }
 
 /// Collects events from concurrent tasks without a data race — used only to assert ordering in

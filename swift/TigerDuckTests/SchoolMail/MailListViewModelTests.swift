@@ -30,7 +30,8 @@ struct MailListViewModelTests {
         inboxCount: UInt32 = 60,
         sentUIDs: [UInt32] = [],
         includeSent: Bool = true,
-        open: (() async throws -> any MailClient)? = nil
+        open: (() async throws -> any MailClient)? = nil,
+        signOutEvents: NotificationCenter = NotificationCenter()
     ) -> Harness {
         let inbox = (UInt32(1)...inboxCount).map { FakeMailClient.message(uid: $0, subject: "公告 \($0)", seen: $0 % 2 == 0) }
         var folders: [String: [FakeMailClient.Message]] = [
@@ -44,11 +45,11 @@ struct MailListViewModelTests {
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
         let script = CheckScript()
-        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake })
+        let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake }, signOutEvents: signOutEvents)
         let model = MailListViewModel(session: session, cache: cache, runPageCheck: { _ in
             script.calls += 1
             return script.outcome
-        })
+        }, signOutEvents: signOutEvents)
         return Harness(model: model, fake: fake, cache: cache, script: script)
     }
 
@@ -733,5 +734,43 @@ struct MailListViewModelTests {
         #expect(h.model.rows.count == 50)
     }
     #endif
+
+    // MARK: Sign-out
+
+    /// The screen keeps its view model across a sign-out, so the previous student's list must
+    /// not be the next student's first frame.
+    @Test func aSignOutClearsTheList() async {
+        let center = NotificationCenter()
+        let h = Self.harness(inboxCount: 4, signOutEvents: center)
+        await h.model.load()
+        #expect(!h.model.rows.isEmpty)
+        center.post(name: MailAccountManager.didSignOut, object: nil)
+        #expect(h.model.rows.isEmpty)
+        #expect(h.model.folderRoles.isEmpty)
+        #expect(h.model.loadState == .idle)
+        #expect(h.model.serverStatus == .unknown)
+    }
+
+    /// A load on the wire when the student signs out lands after the reset: it must neither put
+    /// their mail back on screen nor write it into a cache that stamps the next student.
+    @Test func aLoadASignOutOvertookWritesNothing() async {
+        let center = NotificationCenter()
+        // Inbox only, so the reset's own move back to Inbox is not what stops the stale load.
+        let h = Self.harness(inboxCount: 4, includeSent: false, signOutEvents: center)
+        await h.model.load()
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 5)) }
+        h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 0, summaries: [], oldestLoadedSequence: nil))
+
+        await h.fake.hold("page")
+        let load = Task { await h.model.load() }
+        await h.fake.waitForArrival("page")
+        center.post(name: MailAccountManager.didSignOut, object: nil)
+        await h.fake.release("page")
+        await load.value
+
+        #expect(h.model.rows.isEmpty)
+        #expect(h.model.loadState == .idle)
+        #expect(h.cache.loadPage(folder: "INBOX")?.summaries.isEmpty == true)
+    }
 }
 #endif
