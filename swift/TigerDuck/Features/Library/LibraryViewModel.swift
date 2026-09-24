@@ -164,6 +164,13 @@ final class LibraryViewModel {
                 consecutiveErrors = 0
                 restartCountdown()
             } catch {
+                // Same rule as the success path: a failure from a session
+                // that has since ended must not show its error, back off the
+                // new session's refresh, or clear the caches it now owns.
+                guard LibraryService.loginGeneration == generation else {
+                    isLoadingQR = false
+                    return
+                }
                 errorMessage = error.localizedDescription
                 isLoadingQR = false
                 if !LibraryService.isTokenValid {
