@@ -39,7 +39,7 @@ nonisolated struct MailRecipient: Hashable, Sendable {
     }
 }
 
-/// A "To:" or "Cc:" line of the mail being read: its recipients as text, separated by commas,
+/// A "To:" or "Cc:" line of the mail being read: its recipients as text, one per line,
 /// with the student's own address in the accent colour so "this one is me" reads at a glance.
 ///
 /// More than one recipient collapses to the first and a count, behind its own arrow, so a
@@ -85,14 +85,16 @@ struct MailRecipientRow: View {
         .accessibilityAddTraits(isCollapsible ? .isButton : [])
     }
 
-    /// The shown recipients joined with ", ", then "+N" for the ones collapsed away.
+    /// The shown recipients, one per line after a comma, then "+N" for the ones collapsed away.
     private var line: Text {
         var text = Text(verbatim: "")
         for (index, recipient) in shown.enumerated() {
             // On each piece: the modifier on the finished line does not reach inside these.
             let part = Text(verbatim: recipient.displayText).typesettingLanguage(MailRecipient.unhyphenatedLanguage)
             let styled = recipient.isSelf ? part.foregroundStyle(.tint) : part
-            text = index == 0 ? styled : Text("\(text), \(styled)")
+            // Each recipient starts a line of its own, so a long one that wraps never has the
+            // next one begin partway through its last line.
+            text = index == 0 ? styled : Text("\(text),\n\(styled)")
         }
         if hiddenCount > 0 { text = Text("\(text)  +\(hiddenCount)") }
         return text
