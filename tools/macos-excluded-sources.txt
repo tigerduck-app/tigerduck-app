@@ -261,6 +261,7 @@ SchoolMailView.swift
 MailAttachmentList.swift
 MailCredentialPrefill.swift
 MailFolderChipBar.swift
+MailGuideWebView.swift
 MailHTMLView.swift
 MailLoginCard.swift
 MailLoginSheet.swift
