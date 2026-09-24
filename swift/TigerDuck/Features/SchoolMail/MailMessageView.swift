@@ -17,7 +17,6 @@ struct MailMessageView: View {
     @State private var previewURL: URL?
     @State private var shareItem: MailFileItem?
     @State private var riskyAttachment: RiskyAttachment?
-    @State private var showDetails = false
     @State private var showMoveSheet = false
     @State private var pendingDelete: PendingDelete?
     @State private var compose: MailComposeContext?
@@ -195,29 +194,14 @@ struct MailMessageView: View {
                 Text(summary.subject?.mailNonEmpty ?? String(localized: "school_mail_no_subject"))
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(Color.textPrimary)
-                if let to = Self.recipientLine(summary.to) {
-                    Text(String(format: String(localized: "school_mail_details_to"), to))
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.textSecondary)
-                        .textSelection(.enabled)
+                let own = MailAccountManager.shared.address
+                let to = MailRecipient.parse(summary.to, ownAddress: own)
+                let cc = MailRecipient.parse(summary.cc, ownAddress: own)
+                if !to.isEmpty {
+                    MailRecipientRow(label: Self.fieldLabel("school_mail_details_to"), recipients: to)
                 }
-                // Only Cc hides behind a disclosure; To is always shown in full above. The line
-                // itself is what opens — one line collapsed, all of it expanded — so nothing is
-                // printed twice.
-                if let cc = Self.recipientLine(summary.cc) {
-                    DisclosureGroup(isExpanded: $showDetails) {
-                        EmptyView()
-                    } label: {
-                        Text(String(format: String(localized: "school_mail_details_cc"), cc))
-                            .font(TigerDuckTheme.Typography.caption)
-                            .foregroundStyle(Color.textSecondary)
-                            .lineLimit(showDetails ? nil : 1)
-                            .textSelection(.enabled)
-                            // One caption line is ~16 pt tall: the whole row, at the platform's
-                            // minimum touch height, is what toggles.
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
+                if !cc.isEmpty {
+                    MailRecipientRow(label: Self.fieldLabel("school_mail_details_cc"), recipients: cc)
                 }
             }
         }
@@ -234,11 +218,10 @@ struct MailMessageView: View {
         return (name, address)
     }
 
-    /// A recipient list as one line, or `nil` when it has nobody in it — so an empty field never
-    /// shows as a bare "To:" or "Cc:".
-    nonisolated static func recipientLine(_ recipients: [String]?) -> String? {
-        let named = (recipients ?? []).compactMap { $0.mailNonEmpty }
-        return named.isEmpty ? nil : named.joined(separator: ", ")
+    /// "To:" / "Cc:" on their own, in the reader's language: the localized "To: %1$@" with nothing
+    /// in the slot. Every translation puts the value last, so what is left is the label.
+    static func fieldLabel(_ key: String.LocalizationValue) -> String {
+        String(format: String(localized: key), "").trimmingCharacters(in: .whitespaces)
     }
 
     @ViewBuilder

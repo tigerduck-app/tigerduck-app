@@ -629,13 +629,32 @@ struct MailMessageViewModelTests {
         #expect(nothing.secondary == nil)
     }
 
-    /// An empty field gets no line at all, and blank entries do not leave a stray comma.
-    @Test func aRecipientLineNamesEveryoneAndNothingElse() {
-        #expect(MailMessageView.recipientLine(nil) == nil)
-        #expect(MailMessageView.recipientLine([]) == nil)
-        #expect(MailMessageView.recipientLine(["", " "]) == nil)
-        #expect(MailMessageView.recipientLine(["\"A\" <a@mail.ntust.edu.tw>", " ", "b@gmail.com"])
-            == "\"A\" <a@mail.ntust.edu.tw>, b@gmail.com")
+    @Test func recipientsAreReadIntoNameAndAddress() {
+        let list = MailRecipient.parse(["\"王大明\" <a@mail.ntust.edu.tw>", " ", "b@gmail.com", "undisclosed-recipients:"],
+                                       ownAddress: nil)
+        #expect(list.count == 3)
+        #expect(list[0].name == "王大明")
+        #expect(list[0].address == "a@mail.ntust.edu.tw")
+        #expect(list[1].name == nil)
+        #expect(list[1].address == "b@gmail.com")
+        // Not an address: shown as written rather than dropped.
+        #expect(list[2].address == nil)
+        #expect(list[2].raw == "undisclosed-recipients:")
+        #expect(MailRecipient.parse(nil, ownAddress: nil).isEmpty)
+    }
+
+    /// The student's own address is the one the header tints.
+    @Test func theStudentsOwnAddressIsMarked() {
+        let list = MailRecipient.parse(["B10000000@Mail.NTUST.edu.tw", "b10000001@mail.ntust.edu.tw"],
+                                       ownAddress: "b10000000@mail.ntust.edu.tw")
+        #expect(list.map(\.isSelf) == [true, false])
+        #expect(MailRecipient.parse(["a@x.com"], ownAddress: nil).map(\.isSelf) == [false])
+    }
+
+    @Test func theFieldLabelIsTheLocalizedPrefix() {
+        #expect(MailMessageView.fieldLabel("school_mail_details_to")
+            == String(format: String(localized: "school_mail_details_to"), "").trimmingCharacters(in: .whitespaces))
+        #expect(!MailMessageView.fieldLabel("school_mail_details_cc").contains("%"))
     }
 
     @Test func linkIndexParsingAcceptsOnlyTheExactSyntheticForm() {
