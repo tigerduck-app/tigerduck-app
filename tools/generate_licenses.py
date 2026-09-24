@@ -84,7 +84,13 @@ BUNDLED = [
 # no version to show — and an entry without a version has to say why it ships
 # instead (LicenseCatalogTests checks that). Keyed by directory name;
 # LOCAL_PACKAGE_NOTE covers the ones not named here.
-LOCAL_PACKAGE_NOTES: dict[str, str] = {}
+LOCAL_PACKAGE_NOTES: dict[str, str] = {
+    # Packages/SwiftMail/VENDORED.md records the upstream commit and every change.
+    "SwiftMail": (
+        "A patched copy of Cocoanetics/SwiftMail 1.11.0 kept in this repository "
+        "and built from source, so there is no released version to name."
+    ),
+}
 LOCAL_PACKAGE_NOTE = (
     "A Swift package kept in this repository and built from source rather "
     "than resolved from a release, so there is no version to name."
