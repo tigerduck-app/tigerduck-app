@@ -12,6 +12,13 @@ nonisolated struct MailRecipient: Hashable, Sendable {
     /// This is the signed-in student's own address.
     var isSelf: Bool
 
+    /// `Name <address>`, the bare address, or the entry as written when it is not an address.
+    var displayText: String {
+        guard let address else { return raw }
+        guard let name else { return address }
+        return "\(name) <\(address)>"
+    }
+
     /// Each entry of a `MailSummary.to`/`cc` list — `"Name" <mailbox@host>` or `mailbox@host` —
     /// as a recipient. Blank entries are dropped. `ownAddress` is compared case-insensitively:
     /// Mail2000 writes addresses lowercase, a sender may not.
@@ -27,8 +34,8 @@ nonisolated struct MailRecipient: Hashable, Sendable {
     }
 }
 
-/// A "To:" or "Cc:" line of recipient bubbles, separated by commas, with the student's own
-/// address tinted so "this one is me" reads at a glance.
+/// A "To:" or "Cc:" line of the mail being read: its recipients as text, separated by commas,
+/// with the student's own address in the accent colour so "this one is me" reads at a glance.
 ///
 /// More than one recipient collapses to the first and a count, behind its own arrow, so a
 /// mail sent to a whole class does not push the message off the screen; each line opens on its
@@ -43,29 +50,17 @@ struct MailRecipientRow: View {
     private var hiddenCount: Int { recipients.count - shown.count }
 
     var body: some View {
-        HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.xs) {
+        HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.xs) {
             Text(label)
-                .padding(.vertical, 3)
-            FlowLayout(spacing: 4, lineSpacing: 6) {
-                ForEach(Array(shown.enumerated()), id: \.offset) { index, recipient in
-                    HStack(spacing: 0) {
-                        bubble(recipient)
-                        if index < shown.count - 1 {
-                            Text(",").padding(.vertical, 3)
-                        }
-                    }
-                }
-                if hiddenCount > 0 {
-                    Text("+\(hiddenCount)")
-                        .padding(.vertical, 3)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            line
+                .lineLimit(isExpanded ? nil : 1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if isCollapsible {
                 Image(systemName: "chevron.down")
                     .font(.caption2.weight(.semibold))
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                    .padding(.vertical, 5)
                     .accessibilityHidden(true)
             }
         }
@@ -82,25 +77,16 @@ struct MailRecipientRow: View {
         .accessibilityAddTraits(isCollapsible ? .isButton : [])
     }
 
-    private func bubble(_ recipient: MailRecipient) -> some View {
-        Group {
-            if let name = recipient.name, let address = recipient.address {
-                Text("\(Text(name).foregroundStyle(Color.textPrimary)) \(address)")
-            } else {
-                Text(recipient.address ?? recipient.raw)
-                    .foregroundStyle(recipient.isSelf ? Color.textPrimary : Color.textSecondary)
-            }
+    /// The shown recipients joined with ", ", then "+N" for the ones collapsed away.
+    private var line: Text {
+        var text = Text(verbatim: "")
+        for (index, recipient) in shown.enumerated() {
+            let part = Text(verbatim: recipient.displayText)
+            let styled = recipient.isSelf ? part.foregroundStyle(.tint) : part
+            text = index == 0 ? styled : Text("\(text), \(styled)")
         }
-        .lineLimit(1)
-        .truncationMode(.middle)
-        .textSelection(.enabled)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(recipient.isSelf ? AnyShapeStyle(.tint.opacity(0.3)) : AnyShapeStyle(Color.textPrimary.opacity(0.1)),
-                    in: Capsule())
-        .overlay {
-            if recipient.isSelf { Capsule().strokeBorder(.tint.opacity(0.8), lineWidth: 1) }
-        }
+        if hiddenCount > 0 { text = Text("\(text)  +\(hiddenCount)") }
+        return text
     }
 }
 #endif
