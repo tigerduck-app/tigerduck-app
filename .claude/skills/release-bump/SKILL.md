@@ -1,6 +1,6 @@
 ---
 name: release-bump
-description: Use when bumping TigerDuck's marketing version (vX.Y.Z) — bumps project.pbxproj, adds the in-app whatsnew.json entry, refreshes README.md + README.en.md (badge + version-history row), and creates a single chore(release) commit. Trigger on phrases like "bump version", "升版", "release X.Y.Z", "更新 README 標版本", or whenever pbxproj's MARKETING_VERSION changes are staged.
+description: Use when bumping TigerDuck's marketing version (vX.Y.Z) — bumps project.pbxproj (marketing version and build number), adds the in-app whatsnew.json entry, refreshes README.md + README.en.md (badge + version-history row), and creates a single chore(release) commit. Trigger on phrases like "bump version", "升版", "release X.Y.Z", "更新 README 標版本", or whenever pbxproj's MARKETING_VERSION changes are staged.
 ---
 
 # TigerDuck Release Bump
@@ -20,6 +20,7 @@ Gather from the user only if not already obvious:
 
 1. **Target version** `X.Y.Z` — auto-detect if pbxproj is already staged (read the `+` lines)
 2. **Highlights for the version-history row** — auto-extract from `git log <prev-tag>..HEAD` if the user hasn't dictated them; confirm the framing in 1 short line before editing READMEs
+3. **Build number** — current `CURRENT_PROJECT_VERSION` + 1, unless the user names one
 
 ## Procedure
 
@@ -28,8 +29,11 @@ Gather from the user only if not already obvious:
 ```bash
 git status
 git tag --sort=-creatordate | head -3                           # latest 3 tags
-git log --oneline "$(git describe --tags --abbrev=0)"..HEAD     # commits since last tag
-grep -n "MARKETING_VERSION" swift/TigerDuck.xcodeproj/project.pbxproj
+# Commits since the last release bump. Not `git describe`: the tags sit on
+# main's merge commits, which dev often doesn't contain, so it finds an older one.
+git log --oneline "$(git log -1 --format=%h --grep='^chore(release): bump marketing version')"..HEAD
+grep -oE '(MARKETING_VERSION|CURRENT_PROJECT_VERSION) = [^;]*;' swift/TigerDuck.xcodeproj/project.pbxproj | sort | uniq -c
+git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARKETING_VERSION|CURRENT_PROJECT_VERSION) = [^;]*;' | sort | uniq -c
 ```
 
 The pbxproj has **16** `MARKETING_VERSION` lines: **8 are real shipping
@@ -37,26 +41,35 @@ targets** (Debug + Release each for TigerDuck, TigerDuckLiveActivity,
 `watchkitapp` and Widgets) and **8 are `= 1.0;` placeholders** (the four test
 / UITest targets). **Only bump the 8 shipping lines** — leave `1.0` alone.
 
-Confirm the split rather than trusting this count; targets get added:
-
-```bash
-grep -oE 'MARKETING_VERSION = [^;]*;' swift/TigerDuck.xcodeproj/project.pbxproj | sort | uniq -c
-```
+Confirm the split with the `uniq -c` output rather than trusting this count;
+targets get added.
 
 Every shipping line must move together. Apple rejects a build whose embedded
 extensions or watch app disagree with the host app on `CFBundleShortVersionString`.
 
-### 2. Bump pbxproj (skip if already staged)
+`CURRENT_PROJECT_VERSION` (the build number) is a **separate 16-line set** with
+no placeholders: all 16, test targets included, always move together.
 
-Use Edit with `replace_all: true` to flip every `MARKETING_VERSION = <PREV>;` → `MARKETING_VERSION = <NEW>;`. The `= 1.0;` placeholders are untouched because they don't match `<PREV>`.
+### 2. Bump pbxproj — marketing version *and* build number (skip if already staged)
 
-```text
-old_string: MARKETING_VERSION = 1.6.0;
-new_string: MARKETING_VERSION = 1.6.1;
-replace_all: true
+**Every marketing bump also increments the build number by 1.** The repo's
+`CURRENT_PROJECT_VERSION` is kept equal to the build number Xcode Cloud shows
+for the release, so a local build and the CI build report the same
+`CFBundleVersion`. If the user names a different number (Xcode Cloud ran extra
+builds since), use theirs.
+
+```bash
+sed -i '' -e 's|MARKETING_VERSION = <PREV>;|MARKETING_VERSION = <NEW>;|g' \
+          -e 's|CURRENT_PROJECT_VERSION = <PREV_BUILD>;|CURRENT_PROJECT_VERSION = <NEW_BUILD>;|g' \
+          swift/TigerDuck.xcodeproj/project.pbxproj
 ```
 
-Verify after edit: `grep -c "MARKETING_VERSION = <NEW>;" swift/TigerDuck.xcodeproj/project.pbxproj` should return **8**.
+The `= 1.0;` placeholders are untouched because they don't match `<PREV>`.
+Re-run the `uniq -c` grep: **8** × `<NEW>` and **16** × `<NEW_BUILD>`.
+
+If `origin/main` (from the audit) is already on `<NEW_BUILD>` or higher — a
+hotfix shipped from `main` — go above it; App Store Connect rejects a reused
+build number.
 
 ### 3. Synthesize highlights
 
@@ -157,15 +170,16 @@ Stage exactly the files we touched — never `git add .` (the repo often has unt
 git add swift/TigerDuck.xcodeproj/project.pbxproj swift/TigerDuck/whatsnew.json README.md README.en.md
 ```
 
-Commit message — Chinese body, no `Co-Authored-By` (per global preference):
+Commit message — English, no `Co-Authored-By` (per global preference):
 
 ```text
 chore(release): bump marketing version to <NEW>
 
-- pbxproj 8 條 shipping MARKETING_VERSION（4 個 target × Debug/Release）從 <PREV> → <NEW>
-- whatsnew.json 補上 <NEW> 的中英「新功能」內容
-- README 中英版徽章升級到 v<NEW>
-- 版本歷程補上 v<NEW> 重點：
+- pbxproj: 8 shipping MARKETING_VERSION lines (4 targets x Debug/Release) <PREV> -> <NEW>
+- pbxproj: 16 CURRENT_PROJECT_VERSION lines <PREV_BUILD> -> <NEW_BUILD>, matching Xcode Cloud
+- whatsnew.json: add the <NEW> entry in zh-TW and en
+- README.md / README.en.md: badge bumped to v<NEW>
+- Release history row for v<NEW>:
   * <bullet 1>
   * <bullet 2>
   * <bullet 3>
@@ -184,12 +198,10 @@ git status      # should be clean of release files; submodule/untracked unrelate
 
 Sometimes the marketing version stays put and only the build number moves —
 typically because a hotfix shipped from `main` and consumed the build number
-`dev` was going to use. `CURRENT_PROJECT_VERSION` is a **separate 16-line
-set** from `MARKETING_VERSION`, and unlike it there are no placeholders:
-all 16, test targets included, move together and always have.
+`dev` was going to use, or Xcode Cloud's count moved past the repo's. Only the
+16 `CURRENT_PROJECT_VERSION` lines change:
 
 ```bash
-grep -oE 'CURRENT_PROJECT_VERSION = [^;]*;' swift/TigerDuck.xcodeproj/project.pbxproj | sort | uniq -c
 sed -i '' 's|CURRENT_PROJECT_VERSION = <PREV>;|CURRENT_PROJECT_VERSION = <NEW>;|g' swift/TigerDuck.xcodeproj/project.pbxproj
 ```
 
@@ -208,6 +220,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 
 ## Conventions cheat sheet
 
+- **Build number moves with every marketing bump.** `CURRENT_PROJECT_VERSION` +1 on all 16 lines, kept equal to the build number Xcode Cloud shows.
 - **Two READMEs always move together.** Never update one without the other.
 - **`whatsnew.json` moves with them.** Every marketing bump gets an entry, both locales.
 - **Badge color is `00BB00`** (green). Don't switch palette.
@@ -215,19 +228,20 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 - **Date:** `YYYY-MM-DD` in the table.
 - **Commit type:** `chore(release):` for version bumps, `docs(README):` for follow-up doc-only fixes.
 - **No `Co-Authored-By`** trailer.
-- **Body language:** Chinese, bullet list with `-` and nested `*`.
+- **Body language:** English, bullet list with `-` and nested `*`.
 - **Stage explicitly** — never `git add -A` / `git add .` in this skill.
 - **Don't include the `app-translation` submodule pointer** in the release commit unless the user explicitly asks. Submodule bumps are their own commit (`chore(app-translation): bump submodule to <sha>`).
-- **Don't touch the 4 `MARKETING_VERSION = 1.0;` placeholder lines** in pbxproj — those are the test targets.
+- **Don't touch the 8 `MARKETING_VERSION = 1.0;` placeholder lines** in pbxproj — those are the test targets.
 
 ## Verification before commit
 
 - [ ] `grep -c "MARKETING_VERSION = <NEW>;" swift/TigerDuck.xcodeproj/project.pbxproj` → exactly **8**
+- [ ] `grep -c "CURRENT_PROJECT_VERSION = <NEW_BUILD>;" swift/TigerDuck.xcodeproj/project.pbxproj` → exactly **16**
 - [ ] `whatsnew.json` has a `<NEW>` key with both `zh-TW` and `en`, and still parses
 - [ ] Both READMEs have the new badge URL and link target
 - [ ] Both version-history tables have the new row at the **top** (right under the header divider)
 - [ ] Date is `YYYY-MM-DD`, version cell is `` **`vX.Y.Z`** ``
-- [ ] Commit body is in Chinese, no `Co-Authored-By`
+- [ ] Commit body is in English, no `Co-Authored-By`
 - [ ] `git status` after commit shows only unrelated untracked/dirty files (submodule pointer, ad-hoc docs)
 
 ## Anti-patterns
@@ -236,6 +250,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 - ❌ Shipping a marketing bump with no `whatsnew.json` entry — the update sheet just doesn't appear, and nothing warns you.
 - ❌ Pasting the README highlight verbatim into `whatsnew.json` — the README row is a changelog, the JSON is App Store copy.
 - ❌ Bumping `MARKETING_VERSION = 1.0;` placeholders — these are test targets, not shippable.
+- ❌ Bumping the marketing version but not the build number — the repo's build drifts from what Xcode Cloud shows.
 - ❌ Squashing the app-translation submodule bump into the release commit — keep them separate so reverting a release doesn't unwind translations.
 - ❌ Inventing roadmap items to mark as done. Only tick rows that already exist.
 - ❌ Using `git add .` — too greedy for this repo's working tree.
