@@ -152,10 +152,9 @@ final class LibraryViewModel {
                 // process-wide caches or the screen. Dropping it is enough:
                 // the next `onAppear` (or the refresh tick, whichever comes
                 // first) is what collapses the page to its logged-out state.
-                guard LibraryService.loginGeneration == generation else {
-                    isLoadingQR = false
-                    return
-                }
+                // `isLoadingQR` is left alone too: it belongs to whichever
+                // request is current, and a new session's may still be running.
+                guard LibraryService.loginGeneration == generation else { return }
                 LibraryQRCache.shared.store(payload)
                 if let image { LibraryQRImageCache.shared.store(image, for: payload) }
                 qrPayload = payload
@@ -166,11 +165,9 @@ final class LibraryViewModel {
             } catch {
                 // Same rule as the success path: a failure from a session
                 // that has since ended must not show its error, back off the
-                // new session's refresh, or clear the caches it now owns.
-                guard LibraryService.loginGeneration == generation else {
-                    isLoadingQR = false
-                    return
-                }
+                // new session's refresh, clear the caches it now owns, or
+                // touch its loading state.
+                guard LibraryService.loginGeneration == generation else { return }
                 errorMessage = error.localizedDescription
                 isLoadingQR = false
                 if !LibraryService.isTokenValid {
