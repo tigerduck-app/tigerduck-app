@@ -85,8 +85,10 @@ struct LicenseCatalog: Decodable {
     /// Read once: both licence pages use it and it does not change at run time.
     static let bundled = load()
 
-    /// Where the licence still is when the bundled list is not: the
-    /// `LICENSE` of the repository this build was compiled from. Read off
+    /// Where the licences still are when the bundled list is not: the
+    /// committed `licenses.json` of the repository this build was compiled
+    /// from, which carries TigerDuck's own licence and every third-party
+    /// notice — the same text the page would have shown. Read off
     /// ``SourceRepository`` rather than written out a second time, so a
     /// rename carries — and kept here rather than in ``AppURLs`` because
     /// the fallback on the two licence pages is the only thing that wants
@@ -94,7 +96,7 @@ struct LicenseCatalog: Decodable {
     static let fallbackLicenseURL: URL? = SourceRepository.all
         .first(where: \.isCurrent)?
         .url
-        .appending(path: "blob/main/LICENSE")
+        .appending(path: "blob/main/swift/TigerDuck/licenses.json")
 
     /// Licence files are hard-wrapped at ~72 columns, which on a phone breaks
     /// every line a second time. Joins the lines of each paragraph so the

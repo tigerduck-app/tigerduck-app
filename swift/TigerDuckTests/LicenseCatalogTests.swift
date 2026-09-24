@@ -130,12 +130,12 @@ struct LicenseCatalogTests {
     /// All the two pages have left to show when the list is gone. It is
     /// derived from ``SourceRepository``, so an `isCurrent` that moved
     /// would leave the fallback with nothing to link to either.
-    @Test("the fallback link points at the current repository's LICENSE")
-    func fallbackLinkPointsAtTheRepositoryLicense() throws {
+    @Test("the fallback link points at the current repository's licence list")
+    func fallbackLinkPointsAtTheRepositoryLicenseList() throws {
         let current = SourceRepository.all.first(where: \.isCurrent)
         let repository = try #require(current)
         let fallback = try #require(LicenseCatalog.fallbackLicenseURL)
-        #expect(fallback.absoluteString == repository.url.absoluteString + "/blob/main/LICENSE")
+        #expect(fallback.absoluteString == repository.url.absoluteString + "/blob/main/swift/TigerDuck/licenses.json")
     }
 
     /// A bundle laid out flat, the way the app's own is, carrying whatever
