@@ -113,7 +113,8 @@ actor MailChecker {
         prefs: DefaultsMailPreferences(),
         notifier: MailNotifier(center: SystemMailNotificationCenter()),
         openSession: { try await MailAccountManager.shared.openSession() },
-        onAuthFailure: { await MailAccountManager.shared.handleAuthFailure() }
+        onAuthFailure: { await MailAccountManager.shared.handleAuthFailure() },
+        cache: .shared
     )
 
     nonisolated let notifier: MailNotifier
@@ -121,6 +122,9 @@ actor MailChecker {
     private let openSession: @Sendable () async throws -> any MailClient
     private let onAuthFailure: @Sendable () async -> Void
     private let now: @Sendable () -> Date
+    /// Where `prefetchBodies` puts the bodies of the mail a check notified about. `nil` turns the
+    /// prefetch off — the default, so a test that is not about it never writes a cache anywhere.
+    private let cache: MailCache?
     private var isRunning = false
 
     init(
@@ -128,13 +132,15 @@ actor MailChecker {
         notifier: MailNotifier,
         openSession: @escaping @Sendable () async throws -> any MailClient,
         onAuthFailure: @escaping @Sendable () async -> Void,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        cache: MailCache? = nil
     ) {
         self.prefs = prefs
         self.notifier = notifier
         self.openSession = openSession
         self.onAuthFailure = onAuthFailure
         self.now = now
+        self.cache = cache
     }
 
     /// - Parameter existing: the mail page's held connection, reused instead of a new login.
@@ -196,7 +202,16 @@ actor MailChecker {
 
         let outcome: MailCheckOutcome?
         do {
-            outcome = try await checkInbox(for: account, client: client, notify: notify)
+            let result = try await checkInbox(for: account, client: client, notify: notify)
+            outcome = result?.outcome
+            // Last, and deliberately after `checkInbox` has written the marker. Warming bodies is
+            // a convenience the check's real job does not depend on, and it is the slowest thing
+            // here — up to five fetches on a connection that may be on a train. Run before the
+            // advance, a process death anywhere in it would leave the marker where it was and
+            // notify every one of these mails again on the next check.
+            if notify, let result {
+                await prefetchBodies(for: account, client: client, uidValidity: result.uidValidity, uids: result.notified)
+            }
         } catch MailClientError.authenticationFailed {
             await reportAuthFailure(for: account)
             outcome = .authFailed
@@ -216,16 +231,24 @@ actor MailChecker {
         await onAuthFailure()
     }
 
-    private func checkInbox(for account: String, client: any MailClient, notify: Bool) async throws -> MailCheckOutcome? {
+    /// What `checkInbox` found: the outcome, plus the mail it notified about and the UIDVALIDITY
+    /// those UIDs belong to, for `prefetchBodies`.
+    private struct InboxCheck {
+        var outcome: MailCheckOutcome
+        var uidValidity: UInt32
+        var notified: [UInt32] = []
+    }
+
+    private func checkInbox(for account: String, client: any MailClient, notify: Bool) async throws -> InboxCheck? {
         let status = try await client.status(folder: MailConstants.inbox)
         // The baseline write just below is this account's answer about this account's inbox.
         guard stillSignedIn(as: account) else { return nil }
         guard prefs.inboxUIDValidity == status.uidValidity, let marker = prefs.inboxNextUID else {
             prefs.inboxUIDValidity = status.uidValidity
             prefs.inboxNextUID = status.uidNext
-            return .baselineReset
+            return InboxCheck(outcome: .baselineReset, uidValidity: status.uidValidity)
         }
-        guard status.uidNext > marker else { return .noNewMail }
+        guard status.uidNext > marker else { return InboxCheck(outcome: .noNewMail, uidValidity: status.uidValidity) }
 
         // `marker:*` always includes the last message, even when its UID is below marker.
         let fetched = try await client.summaries(folder: MailConstants.inbox, fromUID: marker)
@@ -263,7 +286,51 @@ actor MailChecker {
         // has never seen, which is mail it would then never be notified about.
         guard stillSignedIn(as: account) else { return nil }
         prefs.inboxNextUID = unnotified.min().map { min($0, ceiling) } ?? ceiling
-        return fresh.isEmpty ? .noNewMail : .newMail(fresh.count)
+        return InboxCheck(
+            outcome: fresh.isEmpty ? .noNewMail : .newMail(fresh.count),
+            uidValidity: status.uidValidity,
+            notified: notify ? fresh.map(\.uid) : []
+        )
+    }
+
+    /// Pulls the newest notified mails' bodies down on the connection this check already holds,
+    /// so tapping the notification opens a mail that is already on disk rather than a spinner.
+    ///
+    /// Bounded to `MailConstants.bodyPrefetchLimit`, newest first — a burst of mail must not turn a check that
+    /// should take a second into a long one, least of all inside a `BGAppRefreshTask`. Silent: the
+    /// check's real job has already succeeded, and a body that will not come down only means that
+    /// opening that mail is as slow as it used to be. It stops, though, on cancellation (the
+    /// background task's expiration handler) and on an error that says the connection itself is
+    /// gone, rather than trying the rest one by one against it. `detail` fetches with
+    /// `BODY.PEEK`, so nothing here marks a mail read.
+    private func prefetchBodies(for account: String, client: any MailClient, uidValidity: UInt32, uids: [UInt32]) async {
+        guard let cache else { return }
+        for uid in uids.sorted(by: >).prefix(MailConstants.bodyPrefetchLimit) {
+            // The cache stamps whoever is signed in *now*; a body fetched for the previous
+            // student must not be filed under the next one.
+            guard !Task.isCancelled, stillSignedIn(as: account) else { return }
+            if cache.loadDetail(folder: MailConstants.inbox, uidValidity: uidValidity, uid: uid) != nil { continue }
+            do {
+                let detail = try await client.detail(folder: MailConstants.inbox, uid: uid, expectedUIDValidity: uidValidity)
+                guard !Task.isCancelled, stillSignedIn(as: account) else { return }
+                cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity)
+            } catch let error as MailClientError where Self.endsPrefetch(error) {
+                return
+            } catch {
+                continue
+            }
+        }
+    }
+
+    /// Whether a failed body fetch says the connection itself is unusable, so the rest would only
+    /// fail the same way — or, for a rejected login, add to the failures NTUST counts towards a
+    /// lockout. A protocol error or a recreated folder is about one message, and the next may
+    /// still come down.
+    nonisolated static func endsPrefetch(_ error: MailClientError) -> Bool {
+        switch error {
+        case .unreachable, .certificateRejected, .authenticationFailed, .serverBusy: true
+        case .searchUnsupported, .folderChanged, .protocolError: false
+        }
     }
 
     private func record(trigger: MailCheckTrigger, outcome: MailCheckOutcome) {

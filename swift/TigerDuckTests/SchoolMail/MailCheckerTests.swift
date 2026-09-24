@@ -111,7 +111,8 @@ struct MailCheckerTests {
         let authFailures: Counter
     }
 
-    static func harness(inbox: [FakeMailClient.Message], validity: UInt32? = 1, marker: UInt32? = nil) -> Harness {
+    static func harness(inbox: [FakeMailClient.Message], validity: UInt32? = 1, marker: UInt32? = nil,
+                        cache: MailCache? = nil) -> Harness {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
         prefs.inboxUIDValidity = validity
@@ -126,7 +127,8 @@ struct MailCheckerTests {
             onAuthFailure: {
                 prefs.authFailed = true
                 await authFailures.increment()
-            }
+            },
+            cache: cache
         )
         return Harness(checker: checker, prefs: prefs, fake: fake, center: center, authFailures: authFailures)
     }
@@ -461,6 +463,109 @@ struct MailCheckerTests {
         #expect(MailCheckOutcome.displayText(forStored: "something this build never wrote")
             == "something this build never wrote")
         #expect(MailCheckTrigger.displayText(forStored: "widget") == "widget")
+    }
+
+    // MARK: Body prefetch
+
+    @Test func aNotifiedMailsBodyIsCachedForTheTap() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3, text: "hello")], marker: 3, cache: cache)
+        #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(1))
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 3)?.textBody == "hello")
+    }
+
+    @Test func aBurstPrefetchesOnlyTheNewestFive() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: (3...10).map { FakeMailClient.message(uid: $0) }, marker: 3, cache: cache)
+        #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(8))
+        let fetched = await h.fake.calls.filter { $0.hasPrefix("detail INBOX") }
+        #expect(fetched == (6...10).reversed().map { "detail INBOX \($0)" })
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
+    }
+
+    @Test func seenMailIsNotPrefetched() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3, seen: true), FakeMailClient.message(uid: 4)],
+                             marker: 3, cache: cache)
+        #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(1))
+        #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == ["detail INBOX 4"])
+    }
+
+    /// The prefetch is a convenience on top of a check that has already done its job: a body
+    /// that will not come down changes neither the outcome nor the marker.
+    @Test func aFailedPrefetchLeavesTheCheckSucceeded() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)], marker: 3, cache: cache)
+        await h.fake.update { $0.detailError = .protocolError("no body") }
+        #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(2))
+        #expect(h.prefs.inboxNextUID == 5)
+        #expect(!h.prefs.authFailed)
+        // A per-message error moves on to the next one...
+        #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == ["detail INBOX 4", "detail INBOX 3"])
+    }
+
+    @Test func aDeadConnectionStopsThePrefetch() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)], marker: 3, cache: cache)
+        await h.fake.update { $0.detailError = .unreachable }
+        #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(2))
+        // ...but one that says the connection is gone does not try the rest against it.
+        #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == ["detail INBOX 4"])
+    }
+
+    @Test func nothingIsPrefetchedWithoutNewMail() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let baseline = Self.harness(inbox: [FakeMailClient.message(uid: 3)], marker: nil, cache: cache)
+        #expect(await baseline.checker.check(trigger: .backgroundTask) == .baselineReset)
+        #expect(await !baseline.fake.calls.contains { $0.hasPrefix("detail") })
+        let quiet = Self.harness(inbox: [FakeMailClient.message(uid: 3)], marker: 4, cache: cache)
+        #expect(await quiet.checker.check(trigger: .backgroundTask) == .noNewMail)
+        #expect(await !quiet.fake.calls.contains { $0.hasPrefix("detail") })
+    }
+
+    /// The page trigger runs on the list's own connection, and the list fetches what it shows.
+    @Test func thePageTriggerPrefetchesNothing() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3)], marker: 3, cache: cache)
+        #expect(await h.checker.check(trigger: .page, using: h.fake) == .newMail(1))
+        #expect(await !h.fake.calls.contains { $0.hasPrefix("detail") })
+    }
+
+    /// The prefetch runs after the marker is written, so a process death partway through it
+    /// cannot make the next check notify the same mail again.
+    @Test func theMarkerIsWrittenBeforeAnyBodyIsFetched() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3)], marker: 3, cache: cache)
+        await h.fake.hold("detail")
+        let check = Task { await h.checker.check(trigger: .backgroundTask) }
+        await h.fake.waitForArrival("detail")
+        #expect(h.prefs.inboxNextUID == 4)
+        await h.fake.release("detail")
+        #expect(await check.value == .newMail(1))
+    }
+
+    /// A body fetched for a student who has since signed out is previous-user data.
+    @Test func aSignOutDuringThePrefetchWritesNoBody() async {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)], marker: 3, cache: cache)
+        await h.fake.hold("detail")
+        let check = Task { await h.checker.check(trigger: .backgroundTask) }
+        await h.fake.waitForArrival("detail")
+        h.prefs.studentID = nil
+        await h.fake.release("detail")
+        _ = await check.value
+        #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 4) == nil)
+        #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == ["detail INBOX 4"])
+    }
+
+    @Test(arguments: [MailClientError.unreachable, .certificateRejected, .authenticationFailed, .serverBusy])
+    func connectionErrorsEndThePrefetch(error: MailClientError) {
+        #expect(MailChecker.endsPrefetch(error))
+    }
+
+    @Test(arguments: [MailClientError.protocolError("x"), .folderChanged, .searchUnsupported])
+    func messageErrorsDoNotEndThePrefetch(error: MailClientError) {
+        #expect(!MailChecker.endsPrefetch(error))
     }
 
     @Test(arguments: [MailCheckTrigger.page, .foreground, .backgroundTask])

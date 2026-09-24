@@ -258,6 +258,7 @@ actor FakeMailClient: MailClient {
 
     func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
         calls.append("detail \(folder) \(uid)")
+        await gate("detail")
         if let detailError { throw detailError }
         try assertUIDValidity(expectedUIDValidity, folder: folder)
         guard let message = folders[folder]?.first(where: { $0.summary.uid == uid }) else {

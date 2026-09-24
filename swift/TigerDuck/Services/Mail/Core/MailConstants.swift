@@ -54,6 +54,8 @@ nonisolated enum MailConstants {
     /// bound on an added recovery, so a folder with thousands of flagged messages costs a few
     /// round trips rather than an unbounded scan.
     static let emptyWindowWalkbackPages = 4
+    /// Newest arrivals whose bodies one check or one page poll fetches ahead of a tap.
+    static let bodyPrefetchLimit = 5
 
     static let backgroundTaskIdentifier = "org.ntust.app.TigerDuck.mailRefresh"
     static let backgroundEarliestBegin: TimeInterval = 15 * 60
