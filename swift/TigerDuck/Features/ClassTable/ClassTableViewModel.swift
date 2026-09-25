@@ -182,13 +182,14 @@ final class ClassTableViewModel {
     var resettingSemesters: Set<String> = []
     var currentSemesterCourses: [SDCourse] = []
     private let courseProvider = CanonicalCourseProvider()
-    /// Whether classes do not meet on a day — `ClassTableView` passes the
-    /// school calendar with the user's "still have class" choices. Never, by
-    /// default, so a test does not read the device's cached calendar.
-    private let isQuietDay: (Date) -> Bool
+    /// Whether a day is a class day — `ClassTableView` passes the school
+    /// calendar's answer: in term, and not a holiday the user has left
+    /// quiet. Every day, by default, so a test does not read the device's
+    /// cached calendar.
+    private let isClassDay: (Date) -> Bool
 
-    init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
-        self.isQuietDay = isQuietDay
+    init(isClassDay: @escaping (Date) -> Bool = { _ in true }) {
+        self.isClassDay = isClassDay
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
 
@@ -345,13 +346,12 @@ final class ClassTableViewModel {
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
         // ponytail: outside the term there is no "today" worth showing —
-        // the carousel would either be empty or surface a stale day. Empty
-        // here also hides the section, which keys off `todayCourses.isEmpty`.
-        guard AcademicCalendarStore.shared.calendar.isInSession() else { return [] }
-        // Nor on a holiday the user has not opted back into — the rule the
-        // Live Activity and the widgets follow. The 5 s tick above picks up
-        // a toggle flipped on the calendar tab.
-        guard !isQuietDay(AppClock.now()) else { return [] }
+        // the carousel would either be empty or surface a stale day. Nor on
+        // a holiday the user has not opted back into, the rule the Live
+        // Activity and the widgets follow. Empty here also hides the
+        // section, which keys off `todayCourses.isEmpty`, and the 5 s tick
+        // above picks up a toggle flipped on the calendar tab.
+        guard isClassDay(AppClock.now()) else { return [] }
         return currentSemesterCourses.coursesForToday()
     }
 

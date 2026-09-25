@@ -6,7 +6,7 @@ struct ClassTableView: View {
 
     @Environment(AppState.self) private var appState
     @State private var viewModel = ClassTableViewModel(
-        isQuietDay: { AcademicCalendarStore.shared.suppressesClasses(on: $0) }
+        isClassDay: { AcademicCalendarStore.shared.isClassDay($0) }
     )
 
     var body: some View {
