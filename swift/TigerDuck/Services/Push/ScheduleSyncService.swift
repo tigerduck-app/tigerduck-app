@@ -32,6 +32,14 @@ final class ScheduleSyncService {
         /// backend files a push-to-start job for every event it receives, and
         /// an empty list is what cancels the ones this device queued before.
         let liveActivityAvailable: Bool
+        /// The school calendar and the holidays this user still has class on.
+        /// A class event on a day classes do not meet is left out, the rule
+        /// the on-device resolver applies, since the server would start an
+        /// activity for a class that is not happening. Assignments stay: a
+        /// deadline on a day off is still a deadline. The defaults suppress
+        /// nothing, like an app that has not fetched the calendar yet.
+        var calendar: AcademicCalendar = .empty
+        var optedInHolidayIDs: Set<Int> = []
     }
 
     private let identity: PushIdentity
@@ -103,6 +111,7 @@ final class ScheduleSyncService {
         let timeline = resolver.timeline(for: inputs.courses, around: now)
         let futureSlots = timeline
             .filter { !$0.course.isSkipped(on: $0.date) }
+            .filter { !inputs.calendar.suppressesClasses(on: $0.date, optedIn: inputs.optedInHolidayIDs) }
             .filter { $0.start >= now && $0.start <= horizonEnd }
 
         for slot in futureSlots {
@@ -220,7 +229,9 @@ extension ScheduleSyncService.Inputs {
         assignments: [SDAssignment],
         preferences: LiveActivityPreferencesStore,
         cloudSyncEnabled: Bool,
-        accentHex: Int
+        accentHex: Int,
+        calendar: AcademicCalendar,
+        optedInHolidayIDs: Set<Int>
     ) {
         self.init(
             courses: courses,
@@ -234,7 +245,9 @@ extension ScheduleSyncService.Inputs {
             liveActivityAvailable: effectiveLiveActivityEnabled(
                 isLiveActivityEnabled: preferences.isLiveActivityEnabled,
                 cloudSyncEnabled: cloudSyncEnabled
-            )
+            ),
+            calendar: calendar,
+            optedInHolidayIDs: optedInHolidayIDs
         )
     }
 }

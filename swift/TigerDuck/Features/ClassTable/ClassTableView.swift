@@ -5,7 +5,9 @@ struct ClassTableView: View {
     var embedded = false
 
     @Environment(AppState.self) private var appState
-    @State private var viewModel = ClassTableViewModel()
+    @State private var viewModel = ClassTableViewModel(
+        isClassDay: { AcademicCalendarStore.shared.isClassDay($0) }
+    )
 
     var body: some View {
         if embedded {

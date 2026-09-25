@@ -75,6 +75,11 @@ final class AcademicCalendarStore {
         calendar.suppressesClasses(on: day, optedIn: optedInHolidayIDs)
     }
 
+    /// Whether `day` is a class day — in term, and not a quiet holiday.
+    func isClassDay(_ day: Date) -> Bool {
+        calendar.isClassDay(day, optedIn: optedInHolidayIDs)
+    }
+
     /// Re-fetch, cheaply.
     ///
     /// Called on every foreground. The server answers 304 with no body when

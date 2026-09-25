@@ -28,7 +28,7 @@ LiveActivity/
 - The course source for this subsystem goes through `CanonicalCourseProvider` so Home, Class Table, and Live Activity stay aligned.
 
 ## ANTI-PATTERNS
-- Do not end an activity only because it is not the current resolved target. Several can run at once: server push-to-start pre-starts later ones (a classPreparing activity and its inClass follow-up are distinct), and each is ended by its server end job or its own countdown. The coordinator ends only expired activities and duplicate copies of one `composedActivityId`, and all of them while Live Activity is unavailable — see the header of `LiveActivityCoordinator.swift`.
+- Do not end an activity only because it is not the current resolved target. Several can run at once: server push-to-start pre-starts later ones (a classPreparing activity and its inClass follow-up are distinct), and each is ended by its server end job or its own countdown. The coordinator ends only expired activities, duplicate copies of one `composedActivityId`, and class activities (classPreparing / inClass) on a day classes do not meet by the academic calendar and the user's "still have class" choices, and all of them while Live Activity is unavailable — see the header of `LiveActivityCoordinator.swift`.
 - Do not exceed the assignment lead-time invariant in `LiveActivityPreferencesStore` (8 hours).
 - Do not prompt for notification authorization from background-safe scheduling paths; explicit user intent is required.
 - Do not reschedule reminders for purely visual changes like accent-only updates.

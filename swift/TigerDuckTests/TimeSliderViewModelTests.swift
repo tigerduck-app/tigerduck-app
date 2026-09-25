@@ -18,6 +18,45 @@ struct TimeSliderViewModelTests {
         #expect(CourseTimeSlot.dateFromTimeString("", on: ref) == nil)
     }
 
+    /// A class on a day classes do not meet is left off the time machine,
+    /// while the days around it keep theirs.
+    @Test func holidaySlots_areLeftOffTheTimeline() {
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
+        let today = AcademicCalendar.startOfDay(AppClock.now())
+        let onToday: (CourseTimeSlot) -> Bool = { AcademicCalendar.startOfDay($0.date) == today }
+
+        let schoolDay = TimeSliderViewModel()
+        schoolDay.configure(courses: [course])
+        let holiday = TimeSliderViewModel(isQuietDay: { AcademicCalendar.startOfDay($0) == today })
+        holiday.configure(courses: [course])
+
+        #expect(schoolDay.timeSlots.contains(where: onToday))
+        #expect(!holiday.timeSlots.contains(where: onToday))
+        #expect(holiday.timeSlots.count == schoolDay.timeSlots.filter { !onToday($0) }.count)
+    }
+
+    /// Which days are quiet can change while the courses do not — a
+    /// "still have class" toggle, a holiday published — and the timeline
+    /// follows without waiting for the slider to reappear.
+    @Test @MainActor func quietDayChange_rebuildsTheTimeline() async throws {
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
+        let today = AcademicCalendar.startOfDay(AppClock.now())
+        let onToday: (CourseTimeSlot) -> Bool = { AcademicCalendar.startOfDay($0.date) == today }
+        var todayIsQuiet = false
+        let viewModel = TimeSliderViewModel(isQuietDay: {
+            todayIsQuiet && AcademicCalendar.startOfDay($0) == today
+        })
+        viewModel.configure(courses: [course])
+        #expect(viewModel.timeSlots.contains(where: onToday))
+
+        todayIsQuiet = true
+        NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
+
+        try await waitUntil { !viewModel.timeSlots.contains(where: onToday) }
+    }
+
     @Test func xOffset_returnsZeroWithNoCourses() {
         let vm = TimeSliderViewModel()
         vm.configure(courses: [])

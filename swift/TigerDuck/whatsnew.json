@@ -204,5 +204,25 @@
         "Fixed course details losing the GE dimension and course duration after a sync"
       ]
     }
+  },
+  "2.1.4": {
+    "zh-TW": {
+      "title": "2.1.4 更新內容",
+      "highlights": [
+        "放假日不再跳出課程動態島",
+        "放假日的「今日課程」與首頁「時光機」不再列出當天的課",
+        "在行事曆切換「還要上課？」後，動態島、小工具與課表立即更新",
+        "臨時宣布的放假日（如颱風假），打開 App 即會收起已出現的課程動態島"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.1.4",
+      "highlights": [
+        "Class Live Activities no longer pop up on holidays",
+        "On holidays, Today's courses and the home Time machine no longer list that day's classes",
+        "Flipping “Still have class?” in the calendar updates the Live Activity, widgets and class table right away",
+        "For a holiday announced at short notice (such as a typhoon day), opening the app dismisses class Live Activities already on screen"
+      ]
+    }
   }
 }
