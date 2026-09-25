@@ -123,13 +123,18 @@ extension AppState {
         guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID) else {
             return
         }
-        // The Live Activity and widgets read the same set, so they have to
-        // be told: today may have just become loud, or quiet. iOS only —
-        // `AppState+LiveActivity.swift` is not compiled for macOS, and the
-        // Mac has no class reminders for the toggle to affect anyway.
+        // The Live Activity, the schedule the server starts it from, and the
+        // widgets all read the same set, so they have to be told: today may
+        // have just become loud, or quiet. `scheduleLiveActivityRefresh`
+        // re-resolves the activity and re-sends the schedule, whose class
+        // events follow the set too. iOS only — `AppState+LiveActivity.swift`
+        // is not compiled for macOS, and the Mac has no class reminders for
+        // the toggle to affect anyway. The widgets regenerate from their own
+        // writer on the notification.
         #if os(iOS)
-        Task { await refreshLiveActivity() }
+        scheduleLiveActivityRefresh()
         #endif
+        NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
         guard Defaults[.cloudSyncEnabled] else { return }
         enqueueHolidayUpload(holidayID: holidayID)
     }

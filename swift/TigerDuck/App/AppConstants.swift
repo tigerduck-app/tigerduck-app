@@ -61,6 +61,10 @@ nonisolated enum AppConstants {
     /// skipped sees the lock-screen activity update without waiting
     /// for the next sync tick.
     static let courseSkipStateDidChange = Notification.Name("TigerDuck.courseSkipStateDidChange")
+    /// Posted when the user flips a holiday's "still have class" switch on
+    /// this device. Drives the widget snapshot, which draws quiet days from
+    /// the same set, in its own writer.
+    static let holidayNotifyDidChange = Notification.Name("TigerDuck.holidayNotifyDidChange")
     /// Posted when the per-course color assignment map mutates (user
     /// picked a custom color, reassigned all, or a course got displaced
     /// during a setColor uniqueness rebalance). Drives the widget
