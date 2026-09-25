@@ -53,7 +53,9 @@ extension AppState {
                 assignments: DataCache.shared.loadAssignments(),
                 preferences: liveActivityPreferences,
                 cloudSyncEnabled: cloudSyncEnabled,
-                accentHex: accentColorHex
+                accentHex: accentColorHex,
+                calendar: AcademicCalendarStore.shared.calendar,
+                optedInHolidayIDs: AcademicCalendarStore.shared.optedInHolidayIDs
             )
             #else
             // A Mac uploads no schedule. The backend never delivers a Live
