@@ -83,6 +83,13 @@ enum LibraryService {
     /// for the same reason.
     @MainActor private(set) static var loginGeneration: Int = 0
 
+    /// Posted on the main actor whenever `loginGeneration` moves — a sign-out,
+    /// or a different account signing in. The generation only stops work that
+    /// is still in flight; a code that already landed stays on whatever screen
+    /// shows it until that screen next refreshes, so a screen that is up when
+    /// the account changes listens for this and drops it at once.
+    static let accountDidChange = Notification.Name("TigerDuck.libraryAccountDidChange")
+
     /// `@MainActor`-isolated so the broadcaster call below is an in-actor
     /// sync call (no deferred Task). This preserves serialization — a
     /// save followed by a clear runs broadcastSet → broadcastWipe in
@@ -95,11 +102,24 @@ enum LibraryService {
         // token expires, and that lands here mid-request — bumping on every
         // save would make a refresh discard the very QR request that
         // triggered it.
-        if storedUsername != username {
+        let accountChanged = storedUsername != username
+        if accountChanged {
             loginGeneration &+= 1
         }
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryUsername, value: username)
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
+        if accountChanged {
+            // A code cached for the previous account still scans as theirs, and
+            // `LibraryViewModel.startQRRefreshCycle` reuses a cached one that has
+            // time left — so a sign-in as someone else without a sign-out in
+            // between would put the previous account's code back on screen.
+            LibraryQRCache.shared.clear()
+            #if os(iOS)
+            LibraryQRImageCache.shared.clear()
+            #endif
+            // After the save, so a listener that re-reads the account sees the new one.
+            NotificationCenter.default.post(name: accountDidChange, object: nil)
+        }
         // iOS-only: macOS has no paired watch surface and the broadcaster
         // (WatchConnectivity) isn't in the Mac target. Mirrors the
         // existing iOS-gating pattern used elsewhere in the watch path.
@@ -130,6 +150,8 @@ enum LibraryService {
         LibraryQRImageCache.shared.clear()
         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
         #endif
+        // Last, once everything the account owned is gone.
+        NotificationCenter.default.post(name: accountDidChange, object: nil)
     }
 
     private static var storedPassword: String? {

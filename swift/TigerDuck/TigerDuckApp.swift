@@ -31,6 +31,7 @@ struct TigerDuckApp: App {
         DebugClockController.shared.bootstrap()
         #endif
         PushCoordinator.assertEnvConsistency()
+        SchoolMailBootstrap.install()
     }
 
     /// `static` so the store is opened exactly once per process. As an
@@ -136,6 +137,11 @@ struct TigerDuckApp: App {
                     rootLanguageId = UUID()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
+                    switch newPhase {
+                    case .active: SchoolMailBootstrap.sceneDidBecomeActive()
+                    case .background: SchoolMailBootstrap.sceneDidEnterBackground()
+                    default: break
+                    }
                     if newPhase == .active {
                         // Reset the app-icon badge but leave delivered
                         // notifications in Notification Center — user can
@@ -243,6 +249,8 @@ struct TigerDuckApp: App {
             } else {
                 appState.pendingServerPopup = payload
             }
+        case MailConstants.notificationKind:
+            appState.pendingDeepLink = AppState.schoolMailDeepLink(from: info)
         default:
             // Unknown / legacy kinds fall through to the OS default open
             // behaviour — no-op here so we don't accidentally swallow them.

@@ -1,0 +1,199 @@
+---
+name: Swift
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:   # manual trigger, used to re-check the experimental Windows job
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      # swift-testing 6.3.2 (shared by the test targets) has a swift-tools-version
+      # 6.2 manifest, so the selected Xcode must ship Swift 6.2+. `macos-latest`
+      # rotated to the macos-26 image (2026-07-15), whose stable Xcodes all
+      # qualify — track the newest one rather than pinning a version that the
+      # next image rotation strands without platform components.
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Verify Swift version
+        run: swift --version
+      - name: Build (macOS)
+        run: swift build --build-tests -v
+      # The watchdog exists because a test-run deadlock surfaces here as a silent
+      # 10-minute stall followed by "cancelled" — no output, no stacks, nothing to
+      # debug with. If the run is still alive after the deadline it samples every
+      # test process so the log shows exactly which threads are stuck where, then
+      # fails the step honestly instead of letting the job timeout eat it.
+      - name: Test (macOS)
+        run: |
+          swift test -v --skip-build &
+          TEST_PID=$!
+          (
+            # /dev/null keeps the orphaned sleep from holding the step's output
+            # pipe open (the runner waits on that pipe) after a normal fast run.
+            sleep 360 >/dev/null 2>&1
+            echo "::error::Test run still running after 6 minutes - dumping thread samples"
+            for pid in $(pgrep -f 'swiftpm-testing|SwiftMailPackageTests'); do
+              echo "=== sample of PID $pid ($(ps -o comm= -p $pid)) ==="
+              sample "$pid" 3 -file /dev/stdout || true
+            done
+            # The helper processes are children of the driver but survive its death;
+            # kill them too so the step ends now instead of at the job timeout.
+            pkill -9 -f 'swiftpm-testing|SwiftMailPackageTests' 2>/dev/null || true
+            kill -9 "$TEST_PID" 2>/dev/null || true
+          ) &
+          WATCHDOG_PID=$!
+          set +e
+          wait "$TEST_PID"
+          STATUS=$?
+          set -e
+          kill "$WATCHDOG_PID" 2>/dev/null || true
+          exit "$STATUS"
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      # latest-stable rather than a pin: the image's newest Xcode is the one
+      # whose platform components are preinstalled. The pinned 26.0 outlived its
+      # image — on macos-26 it has no iOS platform, and `-downloadPlatform` for
+      # it fails with "Unable to connect to simulator", so the build died with
+      # "iOS 26.0 is not installed" before compiling anything.
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      # Xcode 16+ ships platform SDKs as on-demand components, so a freshly
+      # rotated `macos-latest` image can have the selected Xcode without the iOS
+      # platform installed — `-destination 'generic/platform=iOS'` then resolves
+      # to zero destinations ("iOS … is not installed") before anything compiles.
+      # Fetch the component when it is missing. Best-effort (`|| true`): on images
+      # that already have it the download itself can error, and the Build step
+      # below is the real gate either way (it only needs the SDK).
+      - name: Ensure the iOS platform is installed (best-effort)
+        run: xcodebuild -downloadPlatform iOS || true
+      - name: Build (iOS)
+        run: xcodebuild -scheme SwiftMail -destination 'generic/platform=iOS' build
+
+  build-linux:
+    runs-on: ubuntu-latest
+    # Without a limit a hung test run occupies the runner for the 6-hour GitHub
+    # default — several did exactly that before the watchdog below existed.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify Swift version
+        run: swift --version
+      - name: Build (Linux)
+        run: swift build --build-tests -v
+      # Same watchdog as build-macos, with gdb standing in for sample(1): a
+      # deadlocked test run must fail with thread backtraces in the log, not
+      # sit silently until the job timeout.
+      - name: Test (Linux)
+        run: |
+          swift test -v --skip-build &
+          TEST_PID=$!
+          (
+            sleep 360 >/dev/null 2>&1
+            echo "::error::Test run still running after 6 minutes - dumping thread backtraces"
+            for pid in $(pgrep -f 'swiftpm-testing|SwiftMailPackageTests'); do
+              echo "=== backtraces of PID $pid ($(ps -o comm= -p $pid)) ==="
+              sudo gdb -p "$pid" -batch -ex 'thread apply all bt' 2>&1 | tail -200 || true
+            done
+            pkill -9 -f 'swiftpm-testing|SwiftMailPackageTests' 2>/dev/null || true
+            kill -9 "$TEST_PID" 2>/dev/null || true
+          ) &
+          WATCHDOG_PID=$!
+          set +e
+          wait "$TEST_PID"
+          STATUS=$?
+          set -e
+          kill "$WATCHDOG_PID" 2>/dev/null || true
+          exit "$STATUS"
+
+  build-windows:
+    # Windows build + test. No vcpkg / system C libraries are needed: the only
+    # native dependency is BoringSSL, which swift-nio-ssl vendors and builds
+    # itself (compiling it from scratch is the slow part, hence the timeout).
+    #
+    # EXPERIMENTAL — runs on manual dispatch only. Re-evaluated 2026-07-18 on
+    # Swift 6.3.1 + Windows SDK 10.0.26100:
+    #   • Sockets: swift-nio 2.101.3 contains #3433, which fixes the former
+    #     IPPROTO_UDP import and Sendable Windows HANDLE compiler failures.
+    #     NIO/NIOPosix now build in upstream's required Windows 6.3 job.
+    #   • TLS: swift-nio-ssl 2.37.2 still does not compile its NIOSSL Swift
+    #     target on Windows. Eight source files emit `#error("unsupported os")`;
+    #     WinSDK/ucrt socket and POSIX types/functions are also missing (in_addr,
+    #     in6_addr, inet_pton/inet_ntop, stat, opendir). #585 only fixed the
+    #     vendored BoringSSL header collisions. Track apple/swift-nio-ssl#567,
+    #     which has no Windows CI and currently has changes requested.
+    #   • IMAP/Foundation: swift-nio-imap has Windows/ucrt source guards but no
+    #     Windows CI. The NIOSSL failure prevents SwiftMail from compiling, so no
+    #     later Foundation gap can yet be assessed; SwiftCross already supplies
+    #     the known UTType and String.Encoding compatibility shims.
+    # Keep this job available for manual upstream re-checks without posting a
+    # permanently failing check on every push and pull request.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Swift
+        uses: SwiftyLab/setup-swift@latest
+        with:
+          # 6.3.x ships Windows SDK overlays new enough for the runner's
+          # Windows Kit (10.0.26100); older toolchains hit winsock.h /
+          # winsock2.h redefinition errors while compiling BoringSSL.
+          swift-version: "6.3.1"
+      - name: Verify Swift version
+        run: swift --version
+      # The BoringSSL Windows-SDK header workarounds (_WINSOCKAPI_/NOMINMAX/
+      # NOCRYPT) live in swift-nio-ssl's CNIOBoringSSL target settings, not
+      # here — passing them globally via -Xcc would
+      # also reach the Swift module importer and mis-import IPPROTO, breaking
+      # swift-nio's NIOPosix.
+      - name: Build (Windows)
+        run: swift build --build-tests -v
+      - name: Test (Windows)
+        run: swift test -v --skip-build
+
+  build-android:
+    # Cross-build the SwiftMail library for Android via skiptools/swift-android-action.
+    #
+    # Build-only (no test run): the test targets depend on swift-testing, whose
+    # Android compatibility is not validated here, so we check that the library
+    # cross-compiles rather than the test suites. The earlier "invalid
+    # redeclaration of 'badOS'" blocker is fixed upstream by apple/swift-nio-imap
+    # #826 (commit bcf8756), which adds Android/Bionic to NIOIMAPCore's libc guards.
+    #
+    # Package.swift also drops the ArgumentParser-based CLI demos on Android
+    # (keyed on the TARGET_OS_ANDROID env the action sets) to avoid a spurious
+    # explicit-module dependency cycle.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build (Android)
+        uses: skiptools/swift-android-action@v2
+        with:
+          # Pin to a full patch version: the floating "6.3" key can drift the
+          # cached host toolchain ahead of the SDK and break module imports.
+          swift-version: "6.3.2"
+          # SDK + NDK overrun the runner's ~14 GiB free space.
+          free-disk-space: true
+          # Skip building/running the test targets (swift-testing's Android
+          # compatibility is unverified); build the library + its deps only.
+          build-tests: false
+          run-tests: false

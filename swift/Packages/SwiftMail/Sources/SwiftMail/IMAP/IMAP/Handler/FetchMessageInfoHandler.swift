@@ -1,0 +1,321 @@
+// FetchHeadersHandler.swift
+// A specialized handler for IMAP fetch headers operations
+
+import Foundation
+@preconcurrency import NIOIMAP
+import NIOIMAPCore
+import NIO
+import NIOConcurrencyHelpers
+
+/// Handler for IMAP FETCH HEADERS command
+final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAPCommandHandler, @unchecked Sendable {
+    /// Collected email headers
+    private var messageInfos: [MessageInfo] = []
+    private var currentSequenceNumber: SequenceNumber?
+    private var currentHeaderLiteral = Data()
+    private var collectingThreadingHeaders = false
+
+    /// Handle a tagged OK response by succeeding the promise with the mailbox info
+    /// - Parameter response: The tagged response
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
+
+        // Succeed with the collected headers
+        let collectedInfos = lock.withLock { self.messageInfos }
+        succeedWithResult(collectedInfos)
+    }
+
+    /// Handle a tagged error response
+    /// - Parameter response: The tagged response
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
+        failWithError(IMAPError.fetchFailed(String(describing: response.state)))
+    }
+
+    /// Process an incoming response
+    /// - Parameter response: The response to process
+    /// - Returns: Whether the response was handled by this handler
+    override func processResponse(_ response: Response) -> Bool {
+        // Call the base class implementation to buffer the response
+        let handled = super.processResponse(response)
+
+        // Process fetch responses
+        if case .fetch(let fetchResponse) = response {
+            processFetchResponse(fetchResponse)
+        }
+
+        // Return the result from the base class
+        return handled
+    }
+
+    /// Process a fetch response
+    /// - Parameter fetchResponse: The fetch response to process
+    private func processFetchResponse(_ fetchResponse: FetchResponse) {
+        switch fetchResponse {
+            case .simpleAttribute(let attribute):
+                // Process simple attributes (no sequence number)
+                processMessageAttribute(attribute, sequenceNumber: nil)
+
+            case .start(let sequenceNumber):
+                // Create a new header for this sequence number
+                currentSequenceNumber = SequenceNumber(sequenceNumber.rawValue)
+                currentHeaderLiteral.removeAll(keepingCapacity: true)
+                collectingThreadingHeaders = false
+                let messageInfo = MessageInfo(sequenceNumber: SequenceNumber(sequenceNumber.rawValue))
+                lock.withLock {
+                    self.messageInfos.append(messageInfo)
+                }
+
+            case .streamingBegin(let kind, _):
+                collectingThreadingHeaders = Self.shouldCollectThreadingHeaders(for: kind)
+                if collectingThreadingHeaders {
+                    currentHeaderLiteral.removeAll(keepingCapacity: true)
+                }
+
+            case .streamingBytes(let data):
+                guard collectingThreadingHeaders else { break }
+                currentHeaderLiteral.append(contentsOf: data.readableBytesView)
+
+            case .streamingEnd:
+                guard collectingThreadingHeaders else { break }
+                applyCollectedThreadingHeaders()
+                collectingThreadingHeaders = false
+                currentHeaderLiteral.removeAll(keepingCapacity: true)
+
+            case .finish:
+                currentSequenceNumber = nil
+                collectingThreadingHeaders = false
+                currentHeaderLiteral.removeAll(keepingCapacity: true)
+
+            default:
+                break
+        }
+    }
+
+    private func applyCollectedThreadingHeaders() {
+        // Legacy messages may contain raw 8-bit header bytes. Decode each line
+        // independently with the same total UTF-8/Latin-1 policy used by the
+        // EML parser so one malformed field cannot discard the entire literal.
+        let headerBlock = EMLParser.decodeHeaderBlock(currentHeaderLiteral)
+
+        // Parse once in lossless order; derive the legacy dict from the ordered result
+        // so repeated fields never require two passes.
+        let orderedHeaders = EMLParser.parseAllHeaders(headerBlock)
+        let allHeaders = Dictionary(orderedHeaders.map { ($0.key, $0.value) },
+                                    uniquingKeysWith: { _, last in last })
+
+        // Headers already exposed via ENVELOPE or stored in dedicated fields
+        let envelopeKeys: Set<String> = [
+            "from",
+            "to",
+            "cc",
+            "bcc",
+            "subject",
+            "date",
+            "message-id",
+            "in-reply-to",
+            "references",
+            "reply-to"
+        ]
+
+        let referencesValue = allHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let additionalHeaders = allHeaders.filter { !envelopeKeys.contains($0.key) }
+        let additionalHeaderFields = orderedHeaders
+            .filter { !envelopeKeys.contains($0.key) }
+            .map { HeaderField(name: $0.key, value: $0.value) }
+
+        lock.withLock {
+            guard let index = currentMessageIndex() else { return }
+            var header = self.messageInfos[index]
+
+            Self.applyMissingStandardHeaders(allHeaders, to: &header)
+
+            if let references = referencesValue, !references.isEmpty {
+                let parsed = Self.parseMessageIDs(from: references)
+                header.references = parsed.isEmpty ? nil : parsed
+            }
+
+            header.additionalFields = additionalHeaders.isEmpty ? nil : additionalHeaders
+            header.additionalHeaderFields = additionalHeaderFields.isEmpty ? nil : additionalHeaderFields
+            self.messageInfos[index] = header
+        }
+    }
+
+    /// Populate standard message fields from a requested header literal when
+    /// ENVELOPE was omitted or left a field nil. ENVELOPE values stay
+    /// authoritative when both representations are present.
+    private static func applyMissingStandardHeaders(
+        _ fields: [String: String],
+        to header: inout MessageInfo
+    ) {
+        let parsed = EMLParser.buildMessageInfo(from: fields)
+        if header.subject == nil { header.subject = parsed.subject }
+        if header.from == nil { header.from = parsed.from }
+        if header.to.isEmpty { header.to = parsed.to }
+        if header.cc.isEmpty { header.cc = parsed.cc }
+        if header.bcc.isEmpty { header.bcc = parsed.bcc }
+        if header.date == nil, let rawDate = fields["date"] {
+            header.date = parseEnvelopeDate(rawDate)
+        }
+        if header.messageId == nil { header.messageId = parsed.messageId }
+        if header.inReplyTo == nil, let rawInReplyTo = fields["in-reply-to"] {
+            header.inReplyTo = MessageID(rawInReplyTo)
+        }
+    }
+
+    private func currentMessageIndex() -> Int? {
+        if let currentSequenceNumber,
+           let index = messageInfos.firstIndex(where: { $0.sequenceNumber == currentSequenceNumber }) {
+            return index
+        }
+
+        return messageInfos.indices.last
+    }
+
+    /// Process a message attribute and update the corresponding email header
+    /// - Parameters:
+    ///   - attribute: The message attribute to process
+    ///   - sequenceNumber: The sequence number of the message (if known)
+    private func processMessageAttribute(_ attribute: MessageAttribute, sequenceNumber: SequenceNumber?) {
+        // If we don't have a sequence number, we can't update a header
+        guard let sequenceNumber = sequenceNumber else {
+            // For attributes that come without a sequence number, we assume they belong to the last header
+            lock.withLock {
+                if let lastIndex = self.messageInfos.indices.last {
+                    var header = self.messageInfos[lastIndex]
+                    updateHeader(&header, with: attribute)
+                    self.messageInfos[lastIndex] = header
+                }
+            }
+            return
+        }
+
+        // Find or create a header for this sequence number
+        let seqNum = SequenceNumber(sequenceNumber.value)
+        lock.withLock {
+            if let index = self.messageInfos.firstIndex(where: { $0.sequenceNumber == seqNum }) {
+                var header = self.messageInfos[index]
+                updateHeader(&header, with: attribute)
+                self.messageInfos[index] = header
+            } else {
+                var header = MessageInfo(sequenceNumber: seqNum)
+                updateHeader(&header, with: attribute)
+                self.messageInfos.append(header)
+            }
+        }
+    }
+
+    /// Update an email header with information from a message attribute.
+    /// - Parameters:
+    ///   - header: The header to update
+    ///   - attribute: The attribute containing the information
+    private func updateHeader(_ header: inout MessageInfo, with attribute: MessageAttribute) {
+        switch attribute {
+            case .envelope(let envelope):
+                applyEnvelope(envelope, to: &header)
+            case .uid(let uid):
+                header.uid = UID(nio: uid)
+            case .internalDate(let serverDate):
+                header.internalDate = Self.date(from: serverDate)
+            case .flags(let flags):
+                header.flags = flags.map(self.convertFlag)
+            case .body(.valid(let structure), _):
+                header.parts = [MessagePart](structure)
+            case .body(.invalid, _):
+                // The parser could not read the structure the server sent, and said so rather
+                // than failing the whole FETCH. Record that: without it `parts` is left empty
+                // and the caller cannot tell a server that described its own message badly from
+                // a message that has no parts. See `MessageInfo.bodyStructureUnusable`.
+                header.bodyStructureUnusable = true
+            case .rfc822Size(let size):
+                header.size = size
+            default:
+                break
+        }
+    }
+
+    /// Pull envelope fields (subject, addresses, date, ids) onto a header in one
+    /// shot so the top-level switch stays shallow.
+    private func applyEnvelope(_ envelope: Envelope, to header: inout MessageInfo) {
+        if let subject = envelope.subject?.stringValue {
+            header.subject = subject.decodeMIMEHeader()
+        }
+        if !envelope.from.isEmpty {
+            header.from = formatAddress(envelope.from[0])
+        }
+        header.to = envelope.to.map { formatAddress($0) }
+        header.cc = envelope.cc.map { formatAddress($0) }
+        header.bcc = envelope.bcc.map { formatAddress($0) }
+        if let date = envelope.date, let parsed = Self.parseEnvelopeDate(String(date)) {
+            header.date = parsed
+            // If parsing fails we silently fall through. Callers can use `internalDate`
+            // (the server's receipt timestamp) as a stable fallback. We don't log here:
+            // a large mailbox with many unparsable dates would flood stderr.
+        }
+        if let messageID = envelope.messageID {
+            header.messageId = MessageID(String(messageID))
+        }
+        if let inReplyTo = envelope.inReplyTo {
+            header.inReplyTo = MessageID(String(inReplyTo))
+        }
+    }
+
+    /// Build a Foundation `Date` from the server's typed `ServerMessageDate`.
+    private static func date(from serverDate: ServerMessageDate) -> Date? {
+        let components = serverDate.components
+        var dateComponents = DateComponents()
+        dateComponents.year = components.year
+        dateComponents.month = components.month
+        dateComponents.day = components.day
+        dateComponents.hour = components.hour
+        dateComponents.minute = components.minute
+        dateComponents.second = components.second
+        dateComponents.timeZone = Foundation.TimeZone(secondsFromGMT: components.zoneMinutes * 60)
+        return Calendar(identifier: .gregorian).date(from: dateComponents)
+    }
+
+    /// Convert a NIOIMAPCore.Flag to our MessageFlag type
+    private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
+        let flagString = String(flag)
+
+        switch flagString.uppercased() {
+            case "\\SEEN":
+                return .seen
+            case "\\ANSWERED":
+                return .answered
+            case "\\FLAGGED":
+                return .flagged
+            case "\\DELETED":
+                return .deleted
+            case "\\DRAFT":
+                return .draft
+            default:
+                // For any other flag, treat it as a custom flag
+                return .custom(flagString)
+        }
+    }
+
+    /// Format an address for display
+    /// - Parameter address: The address to format
+    /// - Returns: A formatted string representation of the address
+    private func formatAddress(_ address: EmailAddressListElement) -> String {
+        switch address {
+            case .singleAddress(let emailAddress):
+                let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
+                let mailbox = emailAddress.mailbox?.stringValue ?? ""
+                let host = emailAddress.host?.stringValue ?? ""
+
+                if !name.isEmpty {
+                    return "\"\(name)\" <\(mailbox)@\(host)>"
+                } else {
+                    return "\(mailbox)@\(host)"
+                }
+
+            case .group(let group):
+                let groupName = group.groupName.stringValue.decodeMIMEHeader()
+                let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
+                return "\(groupName): \(members)"
+        }
+    }
+
+}

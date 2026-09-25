@@ -25,6 +25,9 @@ struct SettingsView: View {
     @State private var showLibraryLogin = false
     @State private var libIsLoggingIn = false
     @State private var libLoginError: String?
+    #if os(iOS)
+    @State private var showSchoolMailLogin = false
+    #endif
     @State private var notificationsAuthorized: Bool = true
     @State private var showOfficialWebsite = false
     @State private var showServerStatus = false
@@ -68,6 +71,11 @@ struct SettingsView: View {
                 if appState.libraryFeatureEnabled {
                     libraryAccountRow
                 }
+                #if os(iOS)
+                if SchoolMailAvailability.isEnabled {
+                    schoolMailAccountRow
+                }
+                #endif
             }
 
             // MARK: - Customization
@@ -215,7 +223,23 @@ struct SettingsView: View {
                     // screen has nothing to take effect either.
                     .disabled(!cloudSyncEnabled)
                 }
-                // Owner's ruling, 2026-09-12 (spec §6, item 4): third row,
+                #if os(iOS)
+                if SchoolMailAvailability.isEnabled {
+                    // The School Mail switch and its check log live here, not
+                    // in the School Mail settings screen — one screen owns
+                    // them. Dimmed and inert while School Mail is signed out:
+                    // there is no mailbox to be notified about, and the School
+                    // Mail account row above already says so, so this row
+                    // carries no subtitle of its own.
+                    NavigationLink(String(localized: "school_mail_notification_settings_title")) {
+                        MailNotificationSettingsView()
+                    }
+                    .disabled(!MailNotificationSettingsView.settingsRowIsEnabled(
+                        isLoggedIn: MailAccountManager.shared.isLoggedIn))
+                }
+                #endif
+
+                // Owner's ruling, 2026-09-12 (spec §6, item 4): the last row,
                 // always enabled — it reads OS-level permission state
                 // directly, which stays meaningful whether or not course
                 // sync is on. iPhone/iPad only; macOS has no equivalent.
@@ -231,6 +255,13 @@ struct SettingsView: View {
                 NavigationLink(String(localized: "settings_library_related_features")) {
                     LibrarySettingsView()
                 }
+                #if os(iOS)
+                if SchoolMailAvailability.isEnabled {
+                    NavigationLink(String(localized: "school_mail_account_title")) {
+                        MailSettingsView()
+                    }
+                }
+                #endif
                 NavigationLink(String(localized: "settings_section_other_settings")) {
                     OtherSettingsView()
                 }
@@ -307,6 +338,10 @@ struct SettingsView: View {
                 }
                 NavigationLink("TigerSync status") {
                     TigerSyncStatusView()
+                }
+                // School Mail is iOS-only, so its server override is too.
+                NavigationLink("Email") {
+                    DevMailServerView()
                 }
                 #endif
                 // Bypass `.screenCaptureProtected(...)` system-wide for
@@ -387,6 +422,9 @@ struct SettingsView: View {
             )
         }
         #if os(iOS)
+        .sheet(isPresented: $showSchoolMailLogin) {
+            MailLoginSheet(isPresented: $showSchoolMailLogin)
+        }
         // Manual-check-result alert — covers the "you're up to date" and
         // "couldn't reach the App Store" outcomes. The .offered case is
         // handled by `.updateNotifySheetHost()` instead, so the row's
@@ -555,6 +593,20 @@ struct SettingsView: View {
         )
     }
 
+    #if os(iOS)
+    /// Red when signed out or when the server rejected the saved password (§7.4).
+    private var schoolMailAccountRow: some View {
+        let mail = MailAccountManager.shared
+        return accountRow(
+            title: String(localized: "school_mail_account_title"),
+            isLoggedIn: mail.isLoggedIn && !mail.authFailed,
+            detail: mail.studentID,
+            onLogin: { showSchoolMailLogin = true },
+            onLogout: { mail.logout() }
+        )
+    }
+    #endif
+
     @ViewBuilder
     private func accountRow(
         title: String,
@@ -621,6 +673,19 @@ struct SettingsView: View {
     private func eraseEverything() {
         appState.logoutNTUST()
         appState.logoutLibrary()
+        #if os(iOS)
+        // The mail password lives in its own Valet, which `SecureStore.removeAll` does
+        // not reach; logging out wipes it with the mail caches and markers.
+        MailAccountManager.shared.logout()
+        // The developer mail-server override lives in `UserDefaults`, so the persistent
+        // domain removal further down takes it with everything else — but the resolved
+        // copy this process is holding is cached in memory and would outlive it, leaving
+        // the app still talking to the overridden server with nothing on disk saying so.
+        // Putting it back explicitly makes storage and memory agree now rather than at
+        // the next launch. (Unlike the API endpoint, this is not preserved across a
+        // reset: that one survives because it lives in the Keychain on purpose.)
+        DevMailServerSettings.shared.resetToSchoolServer()
+        #endif
 
         DataCache.shared.clearEverything()
 

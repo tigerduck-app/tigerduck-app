@@ -1,0 +1,18 @@
+Received: from 140.118.31.71
+	by mail.ntust.edu.tw with Mail2000 ESMTP Server V8.00(1061942:0:AUTH_RELAY)
+	(envelope-from <>); Fri, 18 Sep 2026 20:44:45 +0800 (CST)
+Return-Path: <>
+Received: By OpenMail Mailer;Fri, 18 Sep 2026 20:44:41 +0800 (CST)
+From: "Mail Deliver System" <MAILER-DAEMON>
+To: b10000001@mail.ntust.edu.tw
+Message-ID: <3417241789735481004@MAILER-DAEMON>
+Subject: Returned Mail: Hostname cannot be resolved
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+The original message was received at Fri, 18 Sep 2026 20:44:37 +0800 (CST)
+from b10000001@mail.ntust.edu.tw
+
+---The following addresses had delivery errors---
+
+B10000001@mail.ntust.edj.tw [Hostname cannot be resolved]

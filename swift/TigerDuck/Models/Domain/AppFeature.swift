@@ -11,6 +11,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
     case gpa
     case courseSelection
     case graduationRequirements
+    case schoolMail
 
     // Library
     case library
@@ -42,6 +43,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .gpa: String(localized: "feature_score")
         case .courseSelection: String(localized: "feature_course_selection")
         case .graduationRequirements: String(localized: "feature_graduation_requirements")
+        case .schoolMail: String(localized: "feature_school_mail")
         case .discussionRoom: String(localized: "feature_discussion_room")
         case .libraryLecture: String(localized: "feature_library_lecture")
         case .freeLunch: String(localized: "feature_free_lunch")
@@ -68,6 +70,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .gpa: String(localized: "feature_score_short")
         case .courseSelection: String(localized: "feature_course_selection_short")
         case .graduationRequirements: String(localized: "feature_graduation_requirements_short")
+        case .schoolMail: String(localized: "feature_school_mail_short")
         case .discussionRoom: String(localized: "feature_discussion_room_short")
         case .libraryLecture: String(localized: "feature_library_lecture_short")
         case .freeLunch: String(localized: "feature_free_lunch_short")
@@ -90,6 +93,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .gpa: "chart.bar.fill"
         case .courseSelection: "pencil.and.list.clipboard"
         case .graduationRequirements: "graduationcap.fill"
+        case .schoolMail: "envelope.fill"
         case .discussionRoom: "door.left.hand.open"
         case .libraryLecture: "mic.fill"
         case .freeLunch: "takeoutbag.and.cup.and.straw.fill"
@@ -102,10 +106,21 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    var isImplemented: Bool {
+    /// `nonisolated` so the pure-decode seam that filters on it —
+    /// `AppState.decodeConfiguredTabs(_:isShown:)`, itself deliberately `nonisolated` and
+    /// testable without `Defaults` — can keep `{ $0.isImplemented }` as its default argument.
+    /// A default argument expression is type-checked in a nonisolated context, and the module
+    /// builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, which would otherwise put this
+    /// property on the main actor. Nothing here needs it: the switch reads only `self`, and the
+    /// one case that consults anything external reads `SchoolMailAvailability.isEnabled`, which
+    /// is already `nonisolated` (a compile-time flag, no state).
+    nonisolated var isImplemented: Bool {
         switch self {
         case .home, .classTable, .calendar, .library, .announcements, .gpa:
             return true
+        case .schoolMail:
+            // Hidden until the computer center's written consent (design doc §12.5).
+            return SchoolMailAvailability.isEnabled
         default:
             return false
         }
@@ -113,7 +128,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
 
     var category: FeatureCategory? {
         switch self {
-        case .home, .classTable, .calendar: .page
+        case .home, .classTable, .calendar, .schoolMail: .page
         case .gpa, .courseSelection, .graduationRequirements: .academic
         case .library, .discussionRoom, .libraryLecture: .library
         case .announcements, .freeLunch, .clubs, .emptyClassroom, .scholarship: .life
@@ -139,6 +154,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .gpa,
         .courseSelection,
         .graduationRequirements,
+        .schoolMail,
         .discussionRoom,
         .libraryLecture,
         .freeLunch,
@@ -165,6 +181,7 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         .gpa,
         .courseSelection,
         .graduationRequirements,
+        .schoolMail,
         .library,
         .discussionRoom,
         .libraryLecture,

@@ -1,0 +1,122 @@
+import Foundation
+import NIO
+import NIOEmbedded
+@preconcurrency import NIOIMAP
+@preconcurrency import NIOIMAPCore
+import Testing
+@testable import SwiftMail
+
+private typealias UID = SwiftMail.UID
+private typealias SequenceNumber = SwiftMail.SequenceNumber
+
+@Suite(.serialized, .timeLimit(.minutes(1)))
+struct SearchCommandTests {
+
+    // MARK: - Wire format: identifierSet scope key
+
+    @Test
+    func testIdentifierSetScopeIncludedInUIDSearch() async throws {
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
+
+        let ids = MessageIdentifierSet<UID>([UID(10), UID(20), UID(30)])
+        let command = SearchCommand<UID>(identifierSet: ids, criteria: [SearchCriteria.unseen])
+        let tagged = command.toTaggedCommand(tag: "S001")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wire = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        #expect(wire.contains("UID SEARCH"))
+        #expect(wire.contains("UID 10:30") || wire.contains("UID 10,20,30"))
+    }
+
+    @Test
+    func testUIDSortWireFormatUsesSortCommand() async throws {
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
+
+        let ids = MessageIdentifierSet<UID>([UID(10), UID(20), UID(30)])
+        let command = SearchCommand<UID>(
+            identifierSet: ids,
+            criteria: [SearchCriteria.unseen],
+            sortCriteria: [.descending(.date)],
+            useSort: true
+        )
+        let tagged = command.toTaggedCommand(tag: "S001A")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wire = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        #expect(wire.contains("UID SORT"))
+        #expect(wire.contains("(REVERSE DATE)"))
+        #expect(wire.contains("UTF-8"))
+        #expect(wire.contains("UID 10:30") || wire.contains("UID 10,20,30"))
+    }
+
+    @Test
+    func testNoIdentifierSetSearchesEntireMailbox() async throws {
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
+
+        let command = SearchCommand<UID>(identifierSet: nil, criteria: [SearchCriteria.unseen])
+        let tagged = command.toTaggedCommand(tag: "S002")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wire = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        #expect(wire.contains("UID SEARCH"))
+        #expect(!wire.contains("UID 10"))
+    }
+
+    @Test
+    func testIdentifierSetScopeIncludedInSequenceNumberSearch() async throws {
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
+
+        let ids = MessageIdentifierSet<SequenceNumber>([SequenceNumber(1), SequenceNumber(2)])
+        let command = SearchCommand<SequenceNumber>(identifierSet: ids, criteria: [SearchCriteria.unseen])
+        let tagged = command.toTaggedCommand(tag: "S003")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wire = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        #expect(!wire.contains("UID SEARCH"))
+        #expect(wire.contains("SEARCH"))
+        #expect(wire.contains("1:2") || wire.contains("1,2"))
+    }
+
+    @Test
+    func testUIDExpungeUsesUIDCommandWireFormat() async throws {
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
+
+        let command = UIDExpungeCommand(identifierSet: UIDSet([UID(10), UID(20), UID(30)]))
+        let tagged = command.toTaggedCommand(tag: "S004")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wire = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        #expect(wire.contains("UID EXPUNGE"))
+        #expect(wire.contains("10:30") || wire.contains("10,20,30"))
+    }
+}
