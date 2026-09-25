@@ -18,6 +18,11 @@ final class TimeSliderViewModel {
     /// Tracks which haptic interval the user was last in, to fire once per crossing.
     private var lastHapticSlot: Int = 0
     private let hapticGenerator = UISelectionFeedbackGenerator()
+    /// Whether classes do not meet on a day — `TimeSliderSection` passes the
+    /// school calendar with the user's "still have class" choices, and a
+    /// slot on such a day is left off the timeline. Never, by default, so a
+    /// test does not read the device's cached calendar.
+    private let isQuietDay: (Date) -> Bool
 
     var hasCourses: Bool { !timeSlots.isEmpty }
 
@@ -27,7 +32,8 @@ final class TimeSliderViewModel {
     /// Built once per `configure` call; `xOffset(for:)` interpolates between them.
     private var anchors: [(time: Date, x: CGFloat)] = []
 
-    init() {
+    init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
+        self.isQuietDay = isQuietDay
         hapticGenerator.prepare()
     }
 
@@ -47,7 +53,7 @@ final class TimeSliderViewModel {
             from: allCourses,
             centerDate: center,
             dayRadius: TimeSliderMetrics.timelineDayRadius
-        )
+        ).filter { !isQuietDay($0.date) }
         rebuildAnchors()
     }
 

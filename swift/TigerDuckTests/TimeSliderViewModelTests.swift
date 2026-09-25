@@ -18,6 +18,24 @@ struct TimeSliderViewModelTests {
         #expect(CourseTimeSlot.dateFromTimeString("", on: ref) == nil)
     }
 
+    /// A class on a day classes do not meet is left off the time machine,
+    /// while the days around it keep theirs.
+    @Test func holidaySlots_areLeftOffTheTimeline() {
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
+        let today = AcademicCalendar.startOfDay(AppClock.now())
+        let onToday: (CourseTimeSlot) -> Bool = { AcademicCalendar.startOfDay($0.date) == today }
+
+        let schoolDay = TimeSliderViewModel()
+        schoolDay.configure(courses: [course])
+        let holiday = TimeSliderViewModel(isQuietDay: { AcademicCalendar.startOfDay($0) == today })
+        holiday.configure(courses: [course])
+
+        #expect(schoolDay.timeSlots.contains(where: onToday))
+        #expect(!holiday.timeSlots.contains(where: onToday))
+        #expect(holiday.timeSlots.count == schoolDay.timeSlots.filter { !onToday($0) }.count)
+    }
+
     @Test func xOffset_returnsZeroWithNoCourses() {
         let vm = TimeSliderViewModel()
         vm.configure(courses: [])
