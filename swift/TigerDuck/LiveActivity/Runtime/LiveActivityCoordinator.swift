@@ -42,7 +42,10 @@ nonisolated struct LiveActivityUpdateTokenRegistration: Sendable {
 /// 現行設計同時滿足兩者：逾期與重複照樣清理，非當前目標則放著不動，
 /// 由伺服器排定的 end job 或其自身的倒數收尾。即時動態不可用時（spec §6，
 /// `effectiveLiveActivityEnabled` 為 false）則一個不留，伺服器啟動的也一樣。
-/// 決策邏輯抽在 `instanceIdsToEnd`（可用時即 `expiredInstanceIds`）與
+/// 落在不上課日子（校曆假日，且使用者沒選「還要上課？」）的課堂活動也會
+/// 結束——伺服器只在推播送出當下判斷假日，事後公布的假日得由這裡收尾。
+/// 決策邏輯抽在 `endReason`（prune 與新活動出現時共用，批次形式為
+/// `instanceIdsToEnd`）與
 /// `duplicateInstanceIdsToEnd`，由 `LiveActivityCoordinatorTests` 釘住。詳見 spec §4.3。
 /// 但釘住的只是這些決策函式本身，不是 `pruneRunningActivities` 這個迴圈：
 /// 迴圈裡若被插回一段 `else if !isCurrentTarget { await end(...) }`，
@@ -70,6 +73,12 @@ final class LiveActivityCoordinator {
     /// ended when it shows up instead of running to its own countdown.
     /// `true` until `AppState` installs the real answer.
     private var isAvailable: () -> Bool = { true }
+    /// Whether classes do not meet on a day, with this user's "still have
+    /// class" choices — `AcademicCalendarStore`'s answer, supplied by
+    /// `AppState`. Asked on the same passes as `isAvailable`, so a class
+    /// activity on screen for a day that has turned quiet is ended rather
+    /// than left to its countdown. `false` until `AppState` installs it.
+    private var isQuietDay: (Date) -> Bool = { _ in false }
 
     init(store: SharedSnapshotStore = SharedSnapshotStore()) {
         self.store = store
@@ -96,9 +105,14 @@ final class LiveActivityCoordinator {
         isAvailable = provider
     }
 
+    func setQuietDayProvider(_ provider: @escaping (Date) -> Bool) {
+        isQuietDay = provider
+    }
+
     /// Apply the resolved snapshot. Starts or updates the single activity
-    /// matching the target id, and ends only activities that are expired or
-    /// duplicates; an activity that is not the current target is left running.
+    /// matching the target id, and ends only activities that are expired,
+    /// duplicates, or classes on a day classes do not meet; an activity that
+    /// is not the current target is left running.
     /// While Live Activity is unavailable it ends every activity instead, and
     /// starts none.
     func apply(snapshot: LiveActivitySnapshot?) async {
@@ -205,26 +219,26 @@ final class LiveActivityCoordinator {
                 // A push-to-start twin of an activity this app already
                 // started is ended inside the prune; nothing below is for it.
                 if endedActivityIds.contains(activity.id) { continue }
-                // Live Activity unavailable (spec §6): the server can still
-                // start one from a schedule this device uploaded before the
-                // rule turned off. End it on arrival, and never register its
-                // update token — the prune above may not have listed it yet.
-                guard isAvailable() else {
-                    await end(activity, reason: "Live Activity unavailable")
+                // The server can start one from a schedule this device
+                // uploaded before Live Activity turned unavailable (spec §6),
+                // or a class for a day that has turned quiet since. Either
+                // way it is ended on arrival and its update token never
+                // registered — the prune above may not have listed it yet.
+                if let reason = Self.endReason(
+                    for: Self.makeFacts(activity),
+                    now: now,
+                    isAvailable: isAvailable(),
+                    isQuietDay: isQuietDay
+                ) {
+                    await end(activity, reason: reason.rawValue)
                     continue
                 }
-                let snapshot = activity.content.state.snapshot
-                let facts = Self.makeFacts(activity)
-                if Self.expiredInstanceIds([facts], now: now).contains(facts.instanceId) {
-                    await end(activity, reason: "observed expired activity")
-                } else {
-                    observeUpdateToken(for: activity)
-                    scheduleAutomaticEnd(
-                        for: activity.attributes.activityId,
-                        snapshot: snapshot,
-                        now: now
-                    )
-                }
+                observeUpdateToken(for: activity)
+                scheduleAutomaticEnd(
+                    for: activity.attributes.activityId,
+                    snapshot: activity.content.state.snapshot,
+                    now: now
+                )
             }
         }
     }
@@ -248,9 +262,6 @@ final class LiveActivityCoordinator {
         // 一次取樣後重複使用。分兩次讀 `Activity.activities` 會讓結束判定
         // 與實際迴圈看到不同的清單。
         let listed = Activity<TigerDuckActivityAttributes>.activities
-        let doomed = Set(
-            Self.instanceIdsToEnd(listed.map(Self.makeFacts), now: now, isAvailable: available)
-        )
         var retainedTaskIds: Set<String> = []
         for activity in listed {
             // 上面已經結束、但仍被列出的副本：對它呼叫 `end(_:reason:)`
@@ -258,11 +269,13 @@ final class LiveActivityCoordinator {
             if endedActivityIds.contains(activity.id) { continue }
             let activityId = activity.attributes.activityId
 
-            if doomed.contains(activity.id) {
-                await end(
-                    activity,
-                    reason: available ? "countdown expired" : "Live Activity unavailable"
-                )
+            if let reason = Self.endReason(
+                for: Self.makeFacts(activity),
+                now: now,
+                isAvailable: available,
+                isQuietDay: isQuietDay
+            ) {
+                await end(activity, reason: reason.rawValue)
             } else {
                 retainedTaskIds.insert(activityId)
                 observeUpdateToken(for: activity)
@@ -286,6 +299,7 @@ final class LiveActivityCoordinator {
         RunningActivityFacts(
             instanceId: activity.id,
             activityId: activity.attributes.activityId,
+            scenario: activity.content.state.snapshot.scenario,
             countdownTarget: activity.content.state.snapshot.countdownTarget,
             hasPushToken: activity.pushToken != nil,
             isLive: activity.activityState == .active
@@ -303,6 +317,8 @@ final class LiveActivityCoordinator {
         let instanceId: String
         /// `attributes.activityId`——場景範圍的身分。
         let activityId: String
+        /// 只有課堂類（classPreparing / inClass）會因為不上課而結束。
+        let scenario: LiveActivityScenarioKind
         let countdownTarget: Date?
         /// APNs 是否已為這個副本鑄出 update token。
         let hasPushToken: Bool
@@ -324,19 +340,66 @@ final class LiveActivityCoordinator {
             .map(\.instanceId)
     }
 
-    /// prune 應當結束的 `Activity.id`。
+    /// prune 應當結束的 `Activity.id`——`endReason` 的批次形式。
     ///
-    /// 即時動態可用時，就是 `expiredInstanceIds`。不可用時——同步課程資訊關閉，
+    /// 即時動態可用時，是 `expiredInstanceIds` 加上 `quietClassInstanceIds`
+    /// （`isQuietDay` 為 AppState 提供的校曆判斷）。不可用時——同步課程資訊關閉，
     /// 或使用者自己的即時動態開關關閉（`effectiveLiveActivityEnabled`）——
     /// 則是全部，連伺服器以 push-to-start 預先啟動、倒數還沒到的也算在內：
     /// 伺服器是照裝置先前上傳的排程啟動它們的，不會替這條規則把關。spec §6。
     nonisolated static func instanceIdsToEnd(
         _ facts: [RunningActivityFacts],
         now: Date,
-        isAvailable: Bool
+        isAvailable: Bool,
+        isQuietDay: (Date) -> Bool = { _ in false }
     ) -> [String] {
-        guard isAvailable else { return facts.map(\.instanceId) }
-        return expiredInstanceIds(facts, now: now)
+        facts
+            .filter {
+                endReason(for: $0, now: now, isAvailable: isAvailable, isQuietDay: isQuietDay) != nil
+            }
+            .map(\.instanceId)
+    }
+
+    /// 結束一個活動的理由，也是寫進 log 的字串。
+    nonisolated enum EndReason: String, Sendable {
+        case unavailable = "Live Activity unavailable"
+        case expired = "countdown expired"
+        case quietDay = "classes do not meet that day"
+    }
+
+    /// 一個活動該不該結束，該的話是為什麼；`nil` 就是留下。
+    ///
+    /// prune 與新活動出現時都只照這個判斷行事：有理由就結束，沒有理由的
+    /// 才註冊 update token、排好倒數收尾。不可用時一律結束（spec §6）；
+    /// 可用時結束倒數已過的，以及落在不上課日子的課堂活動
+    /// （`quietClassInstanceIds`）。
+    nonisolated static func endReason(
+        for fact: RunningActivityFacts,
+        now: Date,
+        isAvailable: Bool,
+        isQuietDay: (Date) -> Bool
+    ) -> EndReason? {
+        if !isAvailable { return .unavailable }
+        if !expiredInstanceIds([fact], now: now).isEmpty { return .expired }
+        if !quietClassInstanceIds([fact], isQuietDay: isQuietDay).isEmpty { return .quietDay }
+        return nil
+    }
+
+    /// 落在不上課日子的課堂活動（classPreparing / inClass）的 `Activity.id`。
+    ///
+    /// 伺服器在推播送出當下才判斷假日，擋不住已經在畫面上的活動：推播之後
+    /// 才公布的颱風假、使用者在活動出現後才關掉的「還要上課？」。日子取自
+    /// 倒數目標——課前是上課時間、上課中是下課時間，都落在上課那天，與後端
+    /// 判斷時讀的是同一個欄位。沒有倒數目標的無從判斷，不動它；作業類也
+    /// 不動，放假日的截止時間照樣是截止時間。
+    nonisolated static func quietClassInstanceIds(
+        _ facts: [RunningActivityFacts],
+        isQuietDay: (Date) -> Bool
+    ) -> [String] {
+        facts
+            .filter { [.classPreparing, .inClass].contains($0.scenario) }
+            .filter { $0.countdownTarget.map(isQuietDay) ?? false }
+            .map(\.instanceId)
     }
 
     /// 同一個 `activityId` 有多份 live 副本時，應當結束的那些 `Activity.id`。

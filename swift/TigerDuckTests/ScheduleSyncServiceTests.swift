@@ -58,7 +58,9 @@ struct ScheduleSyncServiceTests {
         showInClass: Bool = true,
         showAssignmentScenario: Bool = true,
         classPreparingLead: TimeInterval = 15 * 60,
-        assignmentLead: TimeInterval = 3 * 3600
+        assignmentLead: TimeInterval = 3 * 3600,
+        calendar: AcademicCalendar = .empty,
+        optedInHolidayIDs: Set<Int> = []
     ) -> ScheduleSyncService.Inputs {
         ScheduleSyncService.Inputs(
             courses: courses,
@@ -69,7 +71,21 @@ struct ScheduleSyncServiceTests {
             showClassPreparing: showClassPreparing,
             showInClass: showInClass,
             showAssignmentScenario: showAssignmentScenario,
-            liveActivityAvailable: true
+            liveActivityAvailable: true,
+            calendar: calendar,
+            optedInHolidayIDs: optedInHolidayIDs
+        )
+    }
+
+    /// A calendar whose only holiday is the Taipei day of `day`.
+    private static func calendar(holidayOn day: Date, id: Int = 1) -> AcademicCalendar {
+        let date = AcademicCalendar.startOfDay(day)
+        return AcademicCalendar(
+            revision: 1,
+            terms: [],
+            holidays: [
+                Holiday(id: id, nameZh: "中秋節", nameEn: "Mid-Autumn Festival", start: date, end: date)
+            ]
         )
     }
 
@@ -122,7 +138,9 @@ struct ScheduleSyncServiceTests {
                         assignments: [assignment],
                         preferences: store,
                         cloudSyncEnabled: cloudSync,
-                        accentHex: 0x4A90E2
+                        accentHex: 0x4A90E2,
+                        calendar: .empty,
+                        optedInHolidayIDs: []
                     ),
                     now: now,
                     horizonEnd: end
@@ -134,6 +152,72 @@ struct ScheduleSyncServiceTests {
                 }
             }
         }
+    }
+
+    // MARK: - School holidays
+
+    /// The server starts a Live Activity from every event it is handed, so a
+    /// class that does not meet is not uploaded — the rule the on-device
+    /// resolver applies. Judged on the class's own day: "now" is the Monday
+    /// evening before, which is no holiday. The assignment stays, since a
+    /// deadline on a day off is still a deadline.
+    @Test func holiday_dropsClassEventsButKeepsAssignments() {
+        let ctx = Self.context()
+        let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
+
+        let events = ScheduleSyncService.buildEvents(
+            inputs: Self.defaultInputs(
+                courses: [course],
+                assignments: [assignment],
+                calendar: Self.calendar(holidayOn: Self.tuesdayAt(8))
+            ),
+            now: now,
+            horizonEnd: now.addingTimeInterval(48 * 3600)
+        )
+
+        #expect(events.map(\.scenario) == [.assignmentUrgent])
+    }
+
+    /// "Still have class?" on that holiday: the user said the class meets.
+    @Test func optedInHoliday_keepsClassEvents() {
+        let ctx = Self.context()
+        let (course, assignment, now) = Self.tuesdayClassAndDeadline(context: ctx)
+
+        let events = ScheduleSyncService.buildEvents(
+            inputs: Self.defaultInputs(
+                courses: [course],
+                assignments: [assignment],
+                calendar: Self.calendar(holidayOn: Self.tuesdayAt(8), id: 7),
+                optedInHolidayIDs: [7]
+            ),
+            now: now,
+            horizonEnd: now.addingTimeInterval(48 * 3600)
+        )
+
+        #expect(Set(events.map(\.scenario)) == [.classPreparing, .inClass, .assignmentUrgent])
+    }
+
+    /// Tuesday periods 3-4 and a deadline at Tuesday noon, seen from the
+    /// Monday evening before. The caller holds `context` for as long as it
+    /// uses the models.
+    private static func tuesdayClassAndDeadline(
+        context ctx: ModelContext
+    ) -> (SDCourse, SDAssignment, Date) {
+        let course = makeCourse(
+            courseNo: "CS301",
+            name: "Compilers",
+            weekdayToPeriods: [2: ["3", "4"]],
+            context: ctx
+        )
+        let assignment = SDAssignment(
+            assignmentId: "a-301",
+            courseNo: "CS301",
+            courseName: "Compilers",
+            title: "Parser",
+            dueDate: tuesdayAt(12)
+        )
+        ctx.insert(assignment)
+        return (course, assignment, tuesdayAt(20, secondsFromNow: -24 * 3600))
     }
 
     @Test func singleCourse_emitsBothClassPreparingAndInClass() {

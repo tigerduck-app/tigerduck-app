@@ -4,7 +4,9 @@ struct TimeSliderSection: View {
     let courses: [SDCourse]
     var onSelectCourse: ((CourseTimeSlot) -> Void)? = nil
     @Environment(AppState.self) private var appState
-    @State private var viewModel = TimeSliderViewModel()
+    @State private var viewModel = TimeSliderViewModel(
+        isQuietDay: { AcademicCalendarStore.shared.suppressesClasses(on: $0) }
+    )
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {

@@ -121,6 +121,12 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
         guard !covering.isEmpty else { return false }
         return !covering.contains { optedIn.contains($0.id) }
     }
+
+    /// Whether `day` is a class day: in term, and not a holiday the user has
+    /// left quiet. What the "today" surfaces list courses for.
+    func isClassDay(_ day: Date, optedIn: Set<Int>) -> Bool {
+        isInSession(on: day) && !suppressesClasses(on: day, optedIn: optedIn)
+    }
 }
 
 // MARK: - Wire format

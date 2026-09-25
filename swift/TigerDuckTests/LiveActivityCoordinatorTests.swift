@@ -16,12 +16,14 @@ struct LiveActivityCoordinatorTests {
         instanceId: String,
         activityId: String,
         countdownTarget: Date?,
+        scenario: LiveActivityScenarioKind = .inClass,
         hasPushToken: Bool = false,
         isLive: Bool = true
     ) -> LiveActivityCoordinator.RunningActivityFacts {
         .init(
             instanceId: instanceId,
             activityId: activityId,
+            scenario: scenario,
             countdownTarget: countdownTarget,
             hasPushToken: hasPushToken,
             isLive: isLive
@@ -222,6 +224,130 @@ struct LiveActivityCoordinatorTests {
         #expect(
             Set(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: false))
                 == ["i1", "i2", "i3"]
+        )
+    }
+
+    // MARK: - 不上課的日子
+
+    @Test("不上課的日子，課堂類活動會被結束，作業類留下")
+    func quietDayEndsClassActivitiesOnly() {
+        // 伺服器照舊為一個不上課的日子啟動了課前與上課中的活動——例如
+        // 推播送出後才公布的颱風假。同一天還有一個作業即將到期的活動，
+        // 以及一個沒有倒數目標、無從判斷是哪一天的課堂活動。
+        let preparing = Self.facts(
+            instanceId: "i1",
+            activityId: "classPreparing-B",
+            countdownTarget: Self.now.addingTimeInterval(2 * 3600),
+            scenario: .classPreparing
+        )
+        let inClass = Self.facts(
+            instanceId: "i2",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(30 * 60),
+            scenario: .inClass
+        )
+        let assignment = Self.facts(
+            instanceId: "i3",
+            activityId: "assignmentUrgent-C",
+            countdownTarget: Self.now.addingTimeInterval(3600),
+            scenario: .assignmentUrgent
+        )
+        let untimed = Self.facts(
+            instanceId: "i4",
+            activityId: "inClass-D",
+            countdownTarget: nil,
+            scenario: .inClass
+        )
+        let all = [preparing, inClass, assignment, untimed]
+
+        #expect(LiveActivityCoordinator.instanceIdsToEnd(all, now: Self.now, isAvailable: true).isEmpty)
+        #expect(
+            Set(LiveActivityCoordinator.instanceIdsToEnd(
+                all, now: Self.now, isAvailable: true, isQuietDay: { _ in true }
+            )) == ["i1", "i2"]
+        )
+    }
+
+    // MARK: - 單一活動的處置（prune 與新活動出現時共用）
+
+    @Test("新出現的不上課日子課堂活動會被結束，不會留下來註冊 token")
+    func quietDayClassIsEndedNotKept() {
+        // prune 與觀察者迴圈都只照 `endReason` 行事：有理由就結束，
+        // 沒有理由的才註冊 update token。所以不上課日子的課堂活動拿到
+        // 理由，就不會走到註冊那一步。
+        let holidayEnds = Self.now.addingTimeInterval(12 * 3600)
+        func reason(_ fact: LiveActivityCoordinator.RunningActivityFacts) -> LiveActivityCoordinator.EndReason? {
+            LiveActivityCoordinator.endReason(
+                for: fact, now: Self.now, isAvailable: true, isQuietDay: { $0 < holidayEnds }
+            )
+        }
+
+        let quietClass = Self.facts(
+            instanceId: "i1",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(30 * 60),
+            scenario: .inClass
+        )
+        let quietAssignment = Self.facts(
+            instanceId: "i2",
+            activityId: "assignmentUrgent-B",
+            countdownTarget: Self.now.addingTimeInterval(3600),
+            scenario: .assignmentUrgent
+        )
+        let schoolDayClass = Self.facts(
+            instanceId: "i3",
+            activityId: "classPreparing-C",
+            countdownTarget: Self.now.addingTimeInterval(24 * 3600),
+            scenario: .classPreparing
+        )
+
+        #expect(reason(quietClass) == .quietDay)
+        #expect(reason(quietAssignment) == nil)
+        #expect(reason(schoolDayClass) == nil)
+    }
+
+    @Test("理由的先後：不可用、倒數已過、不上課")
+    func endReasonPrecedence() {
+        let expiredClass = Self.facts(
+            instanceId: "i1",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(-60),
+            scenario: .inClass
+        )
+        let reason = { (available: Bool) in
+            LiveActivityCoordinator.endReason(
+                for: expiredClass, now: Self.now, isAvailable: available, isQuietDay: { _ in true }
+            )
+        }
+
+        #expect(reason(false) == .unavailable)
+        #expect(reason(true) == .expired)
+    }
+
+    @Test("判斷的是課堂自己的那一天")
+    func quietDayIsJudgedOnTheClassesOwnDay() {
+        // 一個活動的課落在放假日，另一個落在照常上課的日子；只有前者結束。
+        let onHoliday = Self.facts(
+            instanceId: "i1",
+            activityId: "inClass-A",
+            countdownTarget: Self.now.addingTimeInterval(30 * 60),
+            scenario: .inClass
+        )
+        let onSchoolDay = Self.facts(
+            instanceId: "i2",
+            activityId: "classPreparing-B",
+            countdownTarget: Self.now.addingTimeInterval(24 * 3600),
+            scenario: .classPreparing
+        )
+        let holidayEnds = Self.now.addingTimeInterval(12 * 3600)
+
+        #expect(
+            LiveActivityCoordinator.instanceIdsToEnd(
+                [onHoliday, onSchoolDay],
+                now: Self.now,
+                isAvailable: true,
+                isQuietDay: { $0 < holidayEnds }
+            ) == ["i1"]
         )
     }
 }

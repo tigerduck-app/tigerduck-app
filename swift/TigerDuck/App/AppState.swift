@@ -159,6 +159,9 @@ final class AppState {
         liveActivityCoordinator.setAvailabilityProvider { [weak self] in
             self?.isLiveActivityAvailable ?? false
         }
+        liveActivityCoordinator.setQuietDayProvider { day in
+            AcademicCalendarStore.shared.suppressesClasses(on: day)
+        }
         #endif
 
         // Install the refresh-failure relogin handler BEFORE enabling the push
