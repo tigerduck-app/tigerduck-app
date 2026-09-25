@@ -134,7 +134,11 @@ final class LiveActivityCoordinator {
         // Unavailable, the prune above has already ended everything, and the
         // resolver hands back nil anyway; this keeps a snapshot resolved just
         // before the switch flipped from starting a new activity after it.
-        guard let snapshot, isAvailable() else {
+        // The same goes for a class on a day that turned quiet while the
+        // prune awaited — a "still have class" toggle, a holiday published.
+        guard let snapshot,
+              Self.canStart(snapshot, isAvailable: isAvailable(), isQuietDay: isQuietDay)
+        else {
             store.writeSnapshot(nil)
             // Nothing to cancel here: `pruneRunningActivities` above already
             // cancelled every automatic-end timer except the survivors'
@@ -397,9 +401,37 @@ final class LiveActivityCoordinator {
         isQuietDay: (Date) -> Bool
     ) -> [String] {
         facts
-            .filter { [.classPreparing, .inClass].contains($0.scenario) }
-            .filter { $0.countdownTarget.map(isQuietDay) ?? false }
+            .filter {
+                isQuietClass($0.scenario, countdownTarget: $0.countdownTarget, isQuietDay: isQuietDay)
+            }
             .map(\.instanceId)
+    }
+
+    /// 課堂活動（classPreparing / inClass），且倒數目標落在不上課的日子。
+    nonisolated static func isQuietClass(
+        _ scenario: LiveActivityScenarioKind,
+        countdownTarget: Date?,
+        isQuietDay: (Date) -> Bool
+    ) -> Bool {
+        [.classPreparing, .inClass].contains(scenario)
+            && (countdownTarget.map(isQuietDay) ?? false)
+    }
+
+    /// `apply` 啟動或更新 `snapshot` 前的最後確認：即時動態可用，且不是
+    /// 落在不上課日子的課堂活動。問在 prune 的 await 之後——snapshot 是在
+    /// 那之前解析的，期間的「還要上課？」切換或新公布的假日得在這裡擋下，
+    /// 不然要等到下一次 prune 才會收掉。
+    nonisolated static func canStart(
+        _ snapshot: LiveActivitySnapshot,
+        isAvailable: Bool,
+        isQuietDay: (Date) -> Bool
+    ) -> Bool {
+        isAvailable
+            && !isQuietClass(
+                snapshot.scenario,
+                countdownTarget: snapshot.countdownTarget,
+                isQuietDay: isQuietDay
+            )
     }
 
     /// 同一個 `activityId` 有多份 live 副本時，應當結束的那些 `Activity.id`。

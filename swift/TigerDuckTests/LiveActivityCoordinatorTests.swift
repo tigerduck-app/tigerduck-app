@@ -324,6 +324,52 @@ struct LiveActivityCoordinatorTests {
         #expect(reason(true) == .expired)
     }
 
+    // MARK: - apply 啟動或更新前的最後確認
+
+    private static func snapshot(
+        _ scenario: LiveActivityScenarioKind,
+        countdownTarget: Date?
+    ) -> LiveActivitySnapshot {
+        LiveActivitySnapshot(
+            scenario: scenario,
+            title: "Test",
+            subtitle: "10:20 - 12:10",
+            locationText: nil,
+            instructor: nil,
+            countdownTarget: countdownTarget,
+            progressStart: nil,
+            accentHex: 0,
+            deepLink: nil,
+            sourceId: "TEST100_20260925_3"
+        )
+    }
+
+    @Test("prune 等待期間變成不上課的日子，apply 不會再啟動那堂課")
+    func quietDayChangeStopsTheStart() {
+        // apply 先 prune 才啟動，prune 會 await，而 snapshot 是在那之前解析
+        // 的。期間使用者關掉「還要上課？」或校曆新增了假日，啟動前得再問一次。
+        let target = Self.now.addingTimeInterval(30 * 60)
+        let quiet: (Date) -> Bool = { _ in true }
+        let schoolDay: (Date) -> Bool = { _ in false }
+        func canStart(
+            _ scenario: LiveActivityScenarioKind,
+            available: Bool = true,
+            isQuietDay: (Date) -> Bool
+        ) -> Bool {
+            LiveActivityCoordinator.canStart(
+                Self.snapshot(scenario, countdownTarget: target),
+                isAvailable: available,
+                isQuietDay: isQuietDay
+            )
+        }
+
+        #expect(!canStart(.inClass, isQuietDay: quiet))
+        #expect(!canStart(.classPreparing, isQuietDay: quiet))
+        #expect(canStart(.assignmentUrgent, isQuietDay: quiet))
+        #expect(canStart(.inClass, isQuietDay: schoolDay))
+        #expect(!canStart(.assignmentUrgent, available: false, isQuietDay: schoolDay))
+    }
+
     @Test("判斷的是課堂自己的那一天")
     func quietDayIsJudgedOnTheClassesOwnDay() {
         // 一個活動的課落在放假日，另一個落在照常上課的日子；只有前者結束。
