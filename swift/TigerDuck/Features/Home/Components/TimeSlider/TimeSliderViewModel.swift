@@ -23,6 +23,11 @@ final class TimeSliderViewModel {
     /// slot on such a day is left off the timeline. Never, by default, so a
     /// test does not read the device's cached calendar.
     private let isQuietDay: (Date) -> Bool
+    // `nonisolated(unsafe)` so `deinit` can remove them; `@ObservationIgnored`
+    // keeps the macro from swapping the storage out from under the modifier.
+    // Same pattern as `ClassTableViewModel.dataObserver`.
+    @ObservationIgnored
+    private nonisolated(unsafe) var quietDayObservers: [Any] = []
 
     var hasCourses: Bool { !timeSlots.isEmpty }
 
@@ -35,6 +40,24 @@ final class TimeSliderViewModel {
     init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
         self.isQuietDay = isQuietDay
         hapticGenerator.prepare()
+        // Which days are quiet can change while the courses do not: a
+        // "still have class" toggle, or a holiday published — the calendar
+        // store posts `dataDidUpdate` when its dates change. Rebuild then,
+        // rather than wait for the slider to reappear.
+        quietDayObservers = [AppConstants.holidayNotifyDidChange, AppConstants.dataDidUpdate]
+            .map { name in
+                NotificationCenter.default.addObserver(
+                    forName: name, object: nil, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.reloadQuietDays() }
+                }
+            }
+    }
+
+    deinit {
+        for observer in quietDayObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Configuration
@@ -45,6 +68,13 @@ final class TimeSliderViewModel {
         if !isUserDragging {
             selectedTime = AppClock.now()
         }
+    }
+
+    /// Rebuild around the same center when which days are quiet may have
+    /// changed. Unlike `configure`, it leaves the selected time where the
+    /// user put it.
+    func reloadQuietDays() {
+        rebuildTimeline(around: timelineCenterDate)
     }
 
     private func rebuildTimeline(around center: Date) {
