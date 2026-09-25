@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.1.3-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.3)
+[![Version](https://img.shields.io/badge/Version-v2.1.4-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.1.4)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -112,6 +112,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 
 | 版本 | 日期 | 重點                                                                                                                                                                                                                                                                                                                                                                                                                              |
 |:---:|:---:|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`v2.1.4`** | 2026-09-25 | 放假日不再跳出課程動態島：上傳給伺服器的排程會略過放假日的課，推播後才公布的放假日（如颱風假）打開 App 即收起已出現的動態島；放假日的「今日課程」與首頁「時光機」不再列出當天的課；在行事曆切換「還要上課？」後，排程、小工具與課表立即更新 |
 | **`v2.1.3`** | 2026-09-24 | 「關於」新增「其他」頁面，開源授權改在 App 內列出所有套件的授權全文，Mac 版以獨立視窗顯示；從「更多」開啟的功能頁面不再顯示返回箭頭；圖書館 QR 回到分頁時立即顯示，亮度改跟著 QR 實際所在的螢幕走，離開後螢幕不再卡在最高亮度；同步後課程詳情不再遺失通識向度與課程期間 |
 | **`v2.1.2`** | 2026-09-19 | 📋 **課表格子直接預覽教室** — 可在設定開關；課程詳情補上通識向度與課程期間，點一下即可複製課程代碼；0.5 學分的課程不再被算成 0，學分統計、成績單與 GPA 都會正確計入 |
 | **`v2.1.1`** | 2026-09-18 | 📚 **修復合班上課造成 Moodle 與作業無法關聯的問題**                                                                                                                                                                                                                                                                                                                                                                               |
