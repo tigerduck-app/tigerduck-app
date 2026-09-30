@@ -168,6 +168,7 @@ struct MailCheckerTests {
         #expect(first.threadIdentifier == "schoolMail")
         #expect(first.userInfo["kind"] as? String == "school_mail")
         #expect(first.userInfo["uid"] as? Int == 3)
+        #expect(first.userInfo["uidValidity"] as? Int == 1)
         // No subject: the fallback text still lands inside the "Email: " prefix.
         #expect(h.center.requests[1].content.title == "Email: (No subject)")
         #expect(h.center.requests[1].content.body == "office@mail.ntust.edu.tw")

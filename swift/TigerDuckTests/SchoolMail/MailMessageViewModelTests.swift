@@ -337,6 +337,29 @@ struct MailMessageViewModelTests {
         #expect(h.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
     }
 
+    /// A notification names the generation its UID was minted under. Once the folder has been
+    /// recreated and the list has re-cached it under the new generation, the same UID is another
+    /// mail — pinning to the cached page would open it and mark it read. The fetch is pinned to
+    /// the route's own UIDVALIDITY instead, and refused.
+    @Test func aNotificationFromBeforeAFolderRecreationDoesNotOpenTheMailNowAtItsUID() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, subject: "新信"))
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 2, messageCount: 1,
+                                        summaries: [FakeMailClient.message(uid: 5, subject: "新信").summary],
+                                        oldestLoadedSequence: nil))
+        let model = MailMessageViewModel(
+            route: MailMessageRoute(folder: "INBOX", uid: 5, uidValidity: 1), session: h.session,
+            folderRoles: [.inbox: "INBOX", .trash: Self.trash],
+            cache: h.cache, prefs: h.prefs, notifier: MailNotifier(center: h.center)
+        )
+        await model.load()
+
+        #expect(model.detail == nil)
+        #expect(model.cachedSummary == nil)
+        #expect(model.loadState == .failed(MailAccountManager.LoginError(MailClientError.folderChanged).message))
+        #expect(await !h.fake.calls.contains { $0.hasPrefix("setFlag") })
+    }
+
     /// The gap this closes precisely: the mark-as-seen `setFlag` in `load()` was already pinned,
     /// but it only runs for an unread mail. Opening one that is already `\Seen` sent no pinned
     /// command at all, so nothing ever compared generations — and the reused UID's message was

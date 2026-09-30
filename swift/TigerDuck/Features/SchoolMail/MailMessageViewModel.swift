@@ -5,6 +5,9 @@ import Observation
 struct MailMessageRoute: Hashable {
     var folder: String
     var uid: UInt32
+    /// The generation `uid` belongs to, when the route knows it — a notification does, and the
+    /// folder can be recreated between the post and the tap. `nil` defers to the cached page's.
+    var uidValidity: UInt32? = nil
 }
 
 /// One tapped link — judged, shown and opened as the SAME canonicalized string (message-screen
@@ -241,8 +244,13 @@ final class MailMessageViewModel {
         let folder = route.folder
         let uid = route.uid
         let account = prefs.studentID
-        let page = await Task.detached { cache.loadPage(folder: folder) }.value
-        let validity = page?.uidValidity
+        let cachedPage = await Task.detached { cache.loadPage(folder: folder) }.value
+        // A route that names its generation pins to that, not to whatever page is cached now:
+        // after a folder recreation the same UID is another mail, which the pinned fetch below
+        // refuses with `folderChanged` instead of opening it and marking it read. A page from
+        // another generation says nothing about this mail, so its row is not used either.
+        let validity = route.uidValidity ?? cachedPage?.uidValidity
+        let page = cachedPage?.uidValidity == validity ? cachedPage : nil
         pageUIDValidity = validity
         if detail == nil {
             // The header can be drawn from this alone, so it goes up before the body is even

@@ -19,8 +19,9 @@ extension AppState {
     enum DeepLink: Equatable {
         case bulletin(Int)
         /// A School Mail notification. `uid == nil` (the "N new mails" summary, the sign-in
-        /// failure notice) opens the folder list.
-        case schoolMail(folder: String, uid: UInt32?)
+        /// failure notice) opens the folder list. `uidValidity` is the generation `uid` was
+        /// minted under, so a folder recreated before the tap cannot hand it to another mail.
+        case schoolMail(folder: String, uid: UInt32?, uidValidity: UInt32? = nil)
     }
 
     /// Parses a School Mail notification tap into a `DeepLink`. Returns `nil` for any
@@ -29,7 +30,8 @@ extension AppState {
     static func schoolMailDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
         guard userInfo["kind"] as? String == MailConstants.notificationKind else { return nil }
         let folder = userInfo["folder"] as? String ?? MailConstants.inbox
-        return .schoolMail(folder: folder, uid: schoolMailUID(from: userInfo["uid"]))
+        return .schoolMail(folder: folder, uid: schoolMailUID(from: userInfo["uid"]),
+                           uidValidity: schoolMailUID(from: userInfo["uidValidity"]))
     }
 
     /// Decode `uid` from a JSON-bridged userInfo value the same tolerant way

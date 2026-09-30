@@ -428,13 +428,13 @@ struct SchoolMailView: View {
 
     /// A tapped mail notification (Task 13): switch folder, then open the message.
     private func drainDeepLink() {
-        guard case .schoolMail(let folder, let uid) = appState.pendingDeepLink, account.isLoggedIn else { return }
+        guard case .schoolMail(let folder, let uid, let uidValidity) = appState.pendingDeepLink, account.isLoggedIn else { return }
         appState.pendingDeepLink = nil
         Task {
             // A notification names a real folder (only INBOX ever posts one), so the list goes
             // to that folder itself rather than to the merged view.
             await viewModel.select(.real(folder))
-            if let uid { route = MailMessageRoute(folder: folder, uid: uid) }
+            if let uid { route = MailMessageRoute(folder: folder, uid: uid, uidValidity: uidValidity) }
         }
     }
 

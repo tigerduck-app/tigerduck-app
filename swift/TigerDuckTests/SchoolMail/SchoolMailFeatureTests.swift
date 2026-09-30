@@ -27,8 +27,8 @@ struct SchoolMailFeatureTests {
     }
 
     @Test func mailNotificationsRouteToTheMessage() {
-        let link = AppState.schoolMailDeepLink(from: ["kind": "school_mail", "folder": "INBOX", "uid": 42])
-        #expect(link == .schoolMail(folder: "INBOX", uid: 42))
+        let link = AppState.schoolMailDeepLink(from: ["kind": "school_mail", "folder": "INBOX", "uid": 42, "uidValidity": 7])
+        #expect(link == .schoolMail(folder: "INBOX", uid: 42, uidValidity: 7))
     }
 
     @Test func summaryAndSignInNotificationsOpenTheList() {

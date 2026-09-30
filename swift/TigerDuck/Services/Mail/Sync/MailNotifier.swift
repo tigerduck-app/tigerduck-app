@@ -102,7 +102,8 @@ nonisolated struct MailNotifier: Sendable {
             let content = Self.content(
                 title: String(format: String(localized: "school_mail_notification_title"), subject),
                 body: sender,
-                userInfo: ["kind": MailConstants.notificationKind, "folder": MailConstants.inbox, "uid": Int(message.uid)]
+                userInfo: ["kind": MailConstants.notificationKind, "folder": MailConstants.inbox, "uid": Int(message.uid),
+                           "uidValidity": Int(uidValidity)]
             )
             let identifier = Self.identifier(uidValidity: uidValidity, uid: message.uid)
             do {
