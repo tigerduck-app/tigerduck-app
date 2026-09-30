@@ -124,6 +124,36 @@ struct MailListViewModelTests {
         #expect(h.model.displayedRows.last?.uid == 1)
     }
 
+    /// The matches a search leaves for later are UIDs of the folder's generation at search time. If
+    /// the folder is recreated before the user scrolls to them, those UIDs name other mail: the
+    /// page is refused rather than listed as matches, and the folder's stale results go with it.
+    @Test func aFolderRecreatedBeforeTheNextSearchPageIsNotListedAsMatches() async throws {
+        let h = Self.harness()
+        await h.model.load()
+        h.model.searchText = "公告"
+        await h.model.submitSearch()
+        let last = try #require(h.model.displayedRows.last)
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.searchResults?.isEmpty == true)
+    }
+
+    /// A page of matches can add nothing that shows — here the newest fifty are all `\Deleted` —
+    /// and then no last row appears to ask for the next page. Paging carries on until something
+    /// shows or the matches run out.
+    @Test func aSearchPageWithNothingToShowDoesNotStallThePaging() async {
+        let h = Self.harness()
+        await h.model.load()
+        await h.fake.update { fake in
+            fake.folders["INBOX"] = (UInt32(1)...60).map {
+                FakeMailClient.message(uid: $0, subject: "公告 \($0)", deleted: $0 > 10)
+            }
+        }
+        h.model.searchText = "公告"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.map(\.uid) == Array((UInt32(1)...10).reversed()))
+    }
+
     @Test func searchFallsBackToLoadedMailWhenTheServerRefuses() async {
         let h = Self.harness()
         await h.model.load()

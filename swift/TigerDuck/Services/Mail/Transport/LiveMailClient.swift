@@ -225,10 +225,11 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    func summaries(folder: String, uids: [UInt32]) async throws -> [MailSummary] {
+    func summaries(folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws -> [MailSummary] {
         guard !uids.isEmpty else { return [] }
         return try await run {
-            _ = try await self.imap.examineMailbox(folder)
+            let selection = try await self.imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             let infos = try await self.imap.fetchMessageInfosBulk(using: Self.uidSet(uids), options: Self.summaryOptions)
             return infos.compactMap(Self.summary(from:))
         }
@@ -458,16 +459,16 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    func search(folder: String, query: String) async throws -> [UInt32] {
+    func search(folder: String, query: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
         try await run {
             do {
-                _ = try await self.imap.examineMailbox(folder)
+                let selection = try await self.imap.examineMailbox(folder)
                 // The SORT/ESEARCH variants need capabilities Mail2000 lacks; this plain
                 // SEARCH is the one that works (the vendored patch adds CHARSET UTF-8 for Chinese).
                 let found = try await self.rawSearch(
                     criteria: [.or(.or(.from(query), .subject(query)), .body(query))]
                 )
-                return found.toArray().map(\.value)
+                return (found.toArray().map(\.value), selection.uidValidity.value)
             } catch let error as IMAPError {
                 throw Self.mapSearchError(error)
             }

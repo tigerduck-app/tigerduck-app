@@ -34,8 +34,10 @@ protocol MailClient: Actor {
     /// Summaries with UID ≥ `fromUID`. Implementations may return one extra message below
     /// `fromUID` (the IMAP `n:*` quirk); callers filter.
     func summaries(folder: String, fromUID: UInt32) async throws -> [MailSummary]
-    /// Summaries for specific UIDs (search results beyond the loaded pages).
-    func summaries(folder: String, uids: [UInt32]) async throws -> [MailSummary]
+    /// Summaries for specific UIDs (search results beyond the loaded pages). `expectedUIDValidity`
+    /// as in `setFlag`: the generation `search` reported those UIDs under, compared against this
+    /// call's own EXAMINE — a search's later pages are fetched long after the search itself.
+    func summaries(folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws -> [MailSummary]
     /// `expectedUIDValidity` is checked against this call's own SELECT/EXAMINE response — see
     /// `setFlag`. The result of this read decides whether a `\Deleted` UID is recorded as one
     /// TigerDuck owns, so it is part of the chain that ends in EXPUNGE and is pinned the same way.
@@ -60,8 +62,9 @@ protocol MailClient: Actor {
     func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data
     /// Throws `.searchUnsupported` when the server rejects the search. Never falls back to
     /// downloading messages to search them locally — a caller that wants that behavior does it
-    /// itself against already-loaded/cached mail.
-    func search(folder: String, query: String) async throws -> [UInt32]
+    /// itself against already-loaded/cached mail. `uidValidity` is this call's own EXAMINE's: the
+    /// generation the UIDs belong to, for pinning whatever is later fetched by them.
+    func search(folder: String, query: String) async throws -> (uids: [UInt32], uidValidity: UInt32)
     /// `expectedUIDValidity` is the UIDVALIDITY generation the caller's UIDs were read under,
     /// compared against **this call's own** SELECT response before the STORE is sent. A caller
     /// that holds no pin passes `nil` and gets no check — only the read-flag callers may, and the

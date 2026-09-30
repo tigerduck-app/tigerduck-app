@@ -247,8 +247,9 @@ actor FakeMailClient: MailClient {
         return (folders[folder] ?? []).map(\.summary).filter { $0.uid >= fromUID } + extraSummaries
     }
 
-    func summaries(folder: String, uids: [UInt32]) async throws -> [MailSummary] {
+    func summaries(folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws -> [MailSummary] {
         calls.append("summaries \(folder) \(uids)")
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
         return (folders[folder] ?? []).map(\.summary).filter { uids.contains($0.uid) }
     }
 
@@ -291,14 +292,15 @@ actor FakeMailClient: MailClient {
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.attachments[part.section] ?? Data()
     }
 
-    func search(folder: String, query: String) async throws -> [UInt32] {
+    func search(folder: String, query: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
         calls.append("search \(folder) \(query)")
         await gate("search")
         if let searchError { throw searchError }
-        return (folders[folder] ?? []).map(\.summary).filter {
+        let uids = (folders[folder] ?? []).map(\.summary).filter {
             ($0.subject ?? "").localizedCaseInsensitiveContains(query)
                 || ($0.fromAddress ?? "").localizedCaseInsensitiveContains(query)
         }.map(\.uid)
+        return (uids, uidValidity[folder] ?? 1)
     }
 
     func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws {

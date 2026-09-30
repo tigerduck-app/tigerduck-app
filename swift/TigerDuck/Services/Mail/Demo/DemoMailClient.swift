@@ -114,8 +114,9 @@ actor DemoMailClient: MailClient {
         (folders[folder] ?? []).map(\.summary).filter { $0.uid >= fromUID }
     }
 
-    func summaries(folder: String, uids: [UInt32]) async throws -> [MailSummary] {
-        (folders[folder] ?? []).map(\.summary).filter { uids.contains($0.uid) }
+    func summaries(folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws -> [MailSummary] {
+        try assertUIDValidity(expectedUIDValidity)
+        return (folders[folder] ?? []).map(\.summary).filter { uids.contains($0.uid) }
     }
 
     func flags(folder: String, uids: ClosedRange<UInt32>, expectedUIDValidity: UInt32?) async throws -> [UInt32: MailFlags] {
@@ -157,13 +158,14 @@ actor DemoMailClient: MailClient {
         return stored.attachments.first { $0.key.section == part.section }?.value ?? Data()
     }
 
-    func search(folder: String, query: String) async throws -> [UInt32] {
-        (folders[folder] ?? []).filter {
+    func search(folder: String, query: String) async throws -> (uids: [UInt32], uidValidity: UInt32) {
+        let uids = (folders[folder] ?? []).filter {
             ($0.summary.subject ?? "").localizedCaseInsensitiveContains(query)
                 || ($0.summary.fromAddress ?? "").localizedCaseInsensitiveContains(query)
                 || ($0.summary.fromName ?? "").localizedCaseInsensitiveContains(query)
                 || $0.text.localizedCaseInsensitiveContains(query)
         }.map(\.summary.uid)
+        return (uids, fixture.uidValidity)
     }
 
     func setFlag(_ flag: MailFlag, on: Bool, folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws {

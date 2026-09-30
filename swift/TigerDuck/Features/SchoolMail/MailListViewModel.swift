@@ -62,9 +62,10 @@ final class MailListViewModel {
     /// user has left — `isCurrent`. The selection alone cannot tell: the reset puts it back on
     /// Inbox, which is very likely what the stale load was fetching.
     @ObservationIgnored private var accountEpoch = 0
-    /// The server matches the last search has not fetched yet, per folder, newest first — what
-    /// scrolling to the end of the results fetches next (`loadMoreSearchResults`).
-    @ObservationIgnored private var unfetchedMatches: [String: [UInt32]] = [:]
+    /// The server matches the last search has not fetched yet, per folder: the UIDs, newest first,
+    /// and the generation `search` found them under — what scrolling to the end of the results
+    /// fetches next (`loadMoreSearchResults`).
+    @ObservationIgnored private var unfetchedMatches: [String: (uidValidity: UInt32, uids: [UInt32])] = [:]
     /// Bumped by every search submitted or cleared, so a results page still on the wire for an
     /// earlier query is dropped rather than appended to the results of this one.
     @ObservationIgnored private var searchGeneration = 0
@@ -365,15 +366,17 @@ final class MailListViewModel {
         searchGeneration += 1
         let generation = searchGeneration
         var found: [MailListRow] = []
-        var unfetched: [String: [UInt32]] = [:]
+        var unfetched: [String: (uidValidity: UInt32, uids: [UInt32])] = [:]
         var usedFallback = false
         var serverFailed = false
         for folder in targets {
             do {
-                let (matched, rest) = try await session.use { client -> ([MailSummary], [UInt32]) in
-                    let matches = try await client.search(folder: folder, query: query).sorted(by: >)
+                let (matched, rest) = try await session.use { client -> ([MailSummary], (uidValidity: UInt32, uids: [UInt32])) in
+                    let result = try await client.search(folder: folder, query: query)
+                    let matches = result.uids.sorted(by: >)
                     let newest = Array(matches.prefix(MailConstants.pageSize))
-                    return (try await client.summaries(folder: folder, uids: newest), Array(matches.dropFirst(newest.count)))
+                    let summaries = try await client.summaries(folder: folder, uids: newest, expectedUIDValidity: result.uidValidity)
+                    return (summaries, (result.uidValidity, Array(matches.dropFirst(newest.count))))
                 }
                 guard isCurrent(selection, epoch), generation == searchGeneration else { return }
                 found += matched.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
@@ -392,30 +395,50 @@ final class MailListViewModel {
         searchResults = ordered(found)
         unfetchedMatches = unfetched
         searchUsedLocalFallback = usedFallback
+        // Nothing on screen means no last row to ask for more, however many matches are left.
+        if displayedRows.isEmpty { await loadMoreSearchResults() }
     }
 
-    /// The next page of each folder's unfetched matches. The same known limitation as the list's
+    /// The next page of each folder's unfetched matches, pinned to the generation they were found
+    /// under. A page can add nothing that shows — every match `\Deleted`, or read under Unread
+    /// only — and then no new last row appears to ask for the next one, so this keeps going until
+    /// the end of the list moves or the matches run out. The same known limitation as the list's
     /// own load-more applies to All mail: the merge is ordered but not yet complete below the
     /// older of the folders' loaded horizons.
     private func loadMoreSearchResults() async {
         let selection = self.selection
         let epoch = accountEpoch
         let generation = searchGeneration
-        let pending = unfetchedMatches.filter { !$0.value.isEmpty }
-        guard !pending.isEmpty else { return }
+        let end = displayedRows.last?.id
         isPaginating = true
         defer { isPaginating = false }
-        for (folder, uids) in pending {
-            let batch = Array(uids.prefix(MailConstants.pageSize))
-            do {
-                let more = try await session.use { client in try await client.summaries(folder: folder, uids: batch) }
-                guard isCurrent(selection, epoch), generation == searchGeneration, let results = searchResults else { return }
-                unfetchedMatches[folder] = Array(uids.dropFirst(batch.count))
-                searchResults = ordered(results + more.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) })
-            } catch {
-                guard isCurrent(selection, epoch) else { return }
-                serverStatus = .failed
-                return
+        while displayedRows.last?.id == end {
+            let pending = unfetchedMatches.filter { !$0.value.uids.isEmpty }
+            guard !pending.isEmpty else { return }
+            for (folder, matches) in pending {
+                let batch = Array(matches.uids.prefix(MailConstants.pageSize))
+                do {
+                    let more = try await session.use { client in
+                        try await client.summaries(folder: folder, uids: batch, expectedUIDValidity: matches.uidValidity)
+                    }
+                    guard isCurrent(selection, epoch), generation == searchGeneration, let results = searchResults else { return }
+                    unfetchedMatches[folder]?.uids = Array(matches.uids.dropFirst(batch.count))
+                    let listed = Set(results.map(\.id))
+                    let rows = more.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
+                    searchResults = ordered(results + rows.filter { !listed.contains($0.id) })
+                } catch MailClientError.folderChanged {
+                    // Recreated since the search: its UIDs name other mail now, the ones already
+                    // listed included. They go, and the folder recovers like any other change.
+                    guard isCurrent(selection, epoch), generation == searchGeneration else { return }
+                    unfetchedMatches[folder] = nil
+                    searchResults?.removeAll { $0.folder == folder }
+                    await recoverFromFolderChange(folder)
+                    return
+                } catch {
+                    guard isCurrent(selection, epoch) else { return }
+                    serverStatus = .failed
+                    return
+                }
             }
         }
     }
