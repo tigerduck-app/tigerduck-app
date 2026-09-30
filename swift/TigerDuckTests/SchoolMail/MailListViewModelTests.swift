@@ -110,6 +110,20 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.contains("search INBOX 公告 7"))
     }
 
+    /// A server search that matches more than a page shows the newest page first; scrolling to the
+    /// end of the results fetches the rest, so the older matches are not out of reach.
+    @Test func searchResultsPastThePageLoadAtTheEnd() async throws {
+        let h = Self.harness()
+        await h.model.load()
+        h.model.searchText = "公告"
+        await h.model.submitSearch()
+        #expect(h.model.displayedRows.count == 50)
+        let last = try #require(h.model.displayedRows.last)
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.displayedRows.count == 60)
+        #expect(h.model.displayedRows.last?.uid == 1)
+    }
+
     @Test func searchFallsBackToLoadedMailWhenTheServerRefuses() async {
         let h = Self.harness()
         await h.model.load()

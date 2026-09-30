@@ -62,6 +62,12 @@ final class MailListViewModel {
     /// user has left — `isCurrent`. The selection alone cannot tell: the reset puts it back on
     /// Inbox, which is very likely what the stale load was fetching.
     @ObservationIgnored private var accountEpoch = 0
+    /// The server matches the last search has not fetched yet, per folder, newest first — what
+    /// scrolling to the end of the results fetches next (`loadMoreSearchResults`).
+    @ObservationIgnored private var unfetchedMatches: [String: [UInt32]] = [:]
+    /// Bumped by every search submitted or cleared, so a results page still on the wire for an
+    /// earlier query is dropped rather than appended to the results of this one.
+    @ObservationIgnored private var searchGeneration = 0
     /// The background warm of the folders the list is not showing — see `startWarm`.
     @ObservationIgnored private var warmTask: Task<Void, Never>?
     /// True once a warm queue has run to its end, so coming back to the screen knows there is
@@ -248,7 +254,8 @@ final class MailListViewModel {
     /// The missing mail arrives with the next load-more, and the list never presents an end
     /// that isn't one, which is the part that would actually mislead.
     func loadMoreIfNeeded(after row: MailListRow) async {
-        guard searchResults == nil, !isPaginating, row.id == displayedRows.last?.id else { return }
+        guard !isPaginating, row.id == displayedRows.last?.id else { return }
+        guard searchResults == nil else { return await loadMoreSearchResults() }
         let selection = self.selection
         let epoch = accountEpoch
         let cursors = targets.compactMap { folder in pages[folder]?.oldestLoadedSequence.map { (folder, $0) } }
@@ -355,18 +362,22 @@ final class MailListViewModel {
         }
         let selection = self.selection
         let epoch = accountEpoch
+        searchGeneration += 1
+        let generation = searchGeneration
         var found: [MailListRow] = []
+        var unfetched: [String: [UInt32]] = [:]
         var usedFallback = false
         var serverFailed = false
         for folder in targets {
             do {
-                let matched = try await session.use { client -> [MailSummary] in
-                    let matches = try await client.search(folder: folder, query: query)
-                    let newest = Array(matches.sorted(by: >).prefix(MailConstants.pageSize))
-                    return try await client.summaries(folder: folder, uids: newest)
+                let (matched, rest) = try await session.use { client -> ([MailSummary], [UInt32]) in
+                    let matches = try await client.search(folder: folder, query: query).sorted(by: >)
+                    let newest = Array(matches.prefix(MailConstants.pageSize))
+                    return (try await client.summaries(folder: folder, uids: newest), Array(matches.dropFirst(newest.count)))
                 }
-                guard isCurrent(selection, epoch) else { return }
+                guard isCurrent(selection, epoch), generation == searchGeneration else { return }
                 found += matched.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
+                unfetched[folder] = rest
             } catch {
                 guard isCurrent(selection, epoch) else { return }
                 if (error as? MailClientError) != .searchUnsupported { serverFailed = true }
@@ -376,13 +387,41 @@ final class MailListViewModel {
                 usedFallback = true
             }
         }
-        guard isCurrent(selection, epoch) else { return }
+        guard isCurrent(selection, epoch), generation == searchGeneration else { return }
         if serverFailed { serverStatus = .failed }
         searchResults = ordered(found)
+        unfetchedMatches = unfetched
         searchUsedLocalFallback = usedFallback
     }
 
+    /// The next page of each folder's unfetched matches. The same known limitation as the list's
+    /// own load-more applies to All mail: the merge is ordered but not yet complete below the
+    /// older of the folders' loaded horizons.
+    private func loadMoreSearchResults() async {
+        let selection = self.selection
+        let epoch = accountEpoch
+        let generation = searchGeneration
+        let pending = unfetchedMatches.filter { !$0.value.isEmpty }
+        guard !pending.isEmpty else { return }
+        isPaginating = true
+        defer { isPaginating = false }
+        for (folder, uids) in pending {
+            let batch = Array(uids.prefix(MailConstants.pageSize))
+            do {
+                let more = try await session.use { client in try await client.summaries(folder: folder, uids: batch) }
+                guard isCurrent(selection, epoch), generation == searchGeneration, let results = searchResults else { return }
+                unfetchedMatches[folder] = Array(uids.dropFirst(batch.count))
+                searchResults = ordered(results + more.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) })
+            } catch {
+                guard isCurrent(selection, epoch) else { return }
+                serverStatus = .failed
+                return
+            }
+        }
+    }
+
     func clearSearch() {
+        searchGeneration += 1
         searchResults = nil
         searchUsedLocalFallback = false
     }
