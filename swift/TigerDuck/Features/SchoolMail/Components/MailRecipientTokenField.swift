@@ -83,7 +83,9 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.xs) {
             Text(title)
                 .foregroundStyle(.secondary)
-            FlowLayout(spacing: 4, lineSpacing: 6) {
+            // 6 between lines is the bulletin tags' own `FlowLayout` line spacing; the theme has no
+            // step between `xs` and `sm`.
+            FlowLayout(spacing: TigerDuckTheme.Spacing.xs, lineSpacing: 6) {
                 ForEach(Array(tokens.enumerated()), id: \.offset) { index, token in
                     bubble(token, at: index)
                 }
@@ -121,11 +123,13 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
 
     /// A capsule on one line — the radius is half a one-line bubble's height — that stays a
     /// rounded box, rather than a stretched pill, when a long address wraps.
-    private static var bubbleShape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+    private static var bubbleShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md, style: .continuous)
+    }
 
     private func bubble(_ token: String, at index: Int) -> some View {
         let valid = MailComposeViewModel.sendableAddress(token) != nil
-        return HStack(spacing: 4) {
+        return HStack(spacing: TigerDuckTheme.Spacing.xs) {
             // Wraps rather than truncating, so a long address is never shown cut short.
             Text(verbatim: token)
                 .fixedSize(horizontal: false, vertical: true)
@@ -142,8 +146,8 @@ struct MailRecipientTokenField<Focus: Hashable>: View {
         }
         .font(TigerDuckTheme.Typography.caption)
         .foregroundStyle(valid ? Color.textPrimary : Color.red)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, TigerDuckTheme.Spacing.sm)
+        .padding(.vertical, TigerDuckTheme.Spacing.xs)
         .background(valid ? AnyShapeStyle(.tint.opacity(0.25)) : AnyShapeStyle(Color.red.opacity(0.15)), in: Self.bubbleShape)
         .overlay { if !valid { Self.bubbleShape.strokeBorder(Color.red.opacity(0.6), lineWidth: 1) } }
         .contentShape(Self.bubbleShape)
