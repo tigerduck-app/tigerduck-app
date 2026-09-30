@@ -143,6 +143,30 @@ struct MailAccountManagerTests {
         #expect(!h.manager.authFailed)
     }
 
+    /// A background LOGIN still on the wire when the user signs out belongs to the account that
+    /// signed out. Its rejection must not set the shared `authFailed` — that stops the checks of
+    /// whoever signs in next, for a password they never entered — and `openSession` applies it
+    /// before `MailChecker` gets the chance to drop the stale result. Signed in by seeding rather
+    /// than `login()`, so the only LOGIN to arrive at the gate is the one under test.
+    @Test func aRejectionThatLandsAfterASignOutMarksNoAccountAsFailed() async throws {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        let h = Self.harness(prefs: prefs)
+        try MailCredentialStore(storage: h.secrets).savePassword("pw")
+        await h.fake.update { $0.acceptedPassword = "changed" }
+        await h.fake.hold("login")
+        let session = Task { try await h.manager.openSession() }
+        await h.fake.waitForArrival("login")
+
+        h.manager.logout()
+        await h.fake.release("login")
+        await #expect(throws: MailClientError.authenticationFailed) { _ = try await session.value }
+
+        #expect(!h.manager.authFailed)
+        #expect(!h.prefs.authFailed)
+        #expect(h.hooks.authFailed == 0)
+    }
+
     @Test func logoutClearsEverything() async throws {
         let h = Self.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")

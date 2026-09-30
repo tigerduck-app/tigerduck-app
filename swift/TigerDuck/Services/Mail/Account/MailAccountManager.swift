@@ -250,13 +250,17 @@ final class MailAccountManager {
         guard let id = prefs.studentID, let password = credentials.password() else {
             throw MailClientError.protocolError("credentials unavailable")
         }
+        // The sign-in these credentials belong to — see `loginGeneration`. A sign-out while the
+        // LOGIN below is on the wire makes its rejection the previous account's, and applying it
+        // would stop the checks of whoever signs in next, for a password they never entered.
+        let generation = loginGeneration
         let client = makeClient(prefs.demoActive)
         do {
             try await client.login(studentID: id, password: password)
             return client
         } catch MailClientError.authenticationFailed {
             await client.logout()
-            handleAuthFailure()
+            if generation == loginGeneration { handleAuthFailure() }
             throw MailClientError.authenticationFailed
         } catch {
             await client.logout()
