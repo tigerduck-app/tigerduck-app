@@ -247,8 +247,10 @@ actor FakeMailClient: MailClient {
         return (folders[folder] ?? []).map(\.summary).filter { $0.uid >= fromUID } + extraSummaries
     }
 
+    /// Gated so a test can recreate the folder between a search and the page of it this fetches.
     func summaries(folder: String, uids: [UInt32], expectedUIDValidity: UInt32?) async throws -> [MailSummary] {
         calls.append("summaries \(folder) \(uids)")
+        await gate("summaries")
         try assertUIDValidity(expectedUIDValidity, folder: folder)
         return (folders[folder] ?? []).map(\.summary).filter { uids.contains($0.uid) }
     }

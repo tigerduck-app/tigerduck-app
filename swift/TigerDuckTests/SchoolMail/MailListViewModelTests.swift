@@ -138,6 +138,24 @@ struct MailListViewModelTests {
         #expect(h.model.searchResults?.isEmpty == true)
     }
 
+    /// The same recreation one step earlier, between the search and its first page. The pinned
+    /// fetch refuses the matched UIDs, and the cached page a fallback would search is the old
+    /// generation too — so nothing from the folder is listed, rather than pre-recreation mail.
+    @Test func aFolderRecreatedBetweenTheSearchAndItsFirstPageListsNoStaleMail() async {
+        let h = Self.harness()
+        await h.model.load()
+        await h.fake.hold("summaries")
+        h.model.searchText = "公告 60"
+        let search = Task { await h.model.submitSearch() }
+        await h.fake.waitForArrival("summaries")
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        await h.fake.release("summaries")
+        await search.value
+
+        #expect(h.model.searchResults?.isEmpty == true)
+        #expect(!h.model.searchUsedLocalFallback)
+    }
+
     /// A page of matches can add nothing that shows — here the newest fifty are all `\Deleted` —
     /// and then no last row appears to ask for the next page. Paging carries on until something
     /// shows or the matches run out.

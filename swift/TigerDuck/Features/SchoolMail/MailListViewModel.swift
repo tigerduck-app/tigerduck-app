@@ -369,6 +369,7 @@ final class MailListViewModel {
         var unfetched: [String: (uidValidity: UInt32, uids: [UInt32])] = [:]
         var usedFallback = false
         var serverFailed = false
+        var recreated: [String] = []
         for folder in targets {
             do {
                 let (matched, rest) = try await session.use { client -> ([MailSummary], (uidValidity: UInt32, uids: [UInt32])) in
@@ -381,6 +382,12 @@ final class MailListViewModel {
                 guard isCurrent(selection, epoch), generation == searchGeneration else { return }
                 found += matched.filter { !$0.isDeleted }.map { MailListRow(folder: folder, summary: $0) }
                 unfetched[folder] = rest
+            } catch MailClientError.folderChanged {
+                // Recreated between the search and its first page. The matched UIDs name other
+                // mail now, and so does the cached page a fallback would search, so neither is
+                // listed: the folder recovers instead, as it does on a later page.
+                guard isCurrent(selection, epoch) else { return }
+                recreated.append(folder)
             } catch {
                 guard isCurrent(selection, epoch) else { return }
                 if (error as? MailClientError) != .searchUnsupported { serverFailed = true }
@@ -395,6 +402,7 @@ final class MailListViewModel {
         searchResults = ordered(found)
         unfetchedMatches = unfetched
         searchUsedLocalFallback = usedFallback
+        for folder in recreated { await recoverFromFolderChange(folder) }
         // Nothing on screen means no last row to ask for more, however many matches are left.
         if displayedRows.isEmpty { await loadMoreSearchResults() }
     }
