@@ -19,6 +19,9 @@ struct SchoolMailView: View {
     @State private var showGuide = false
     @State private var route: MailMessageRoute?
     @State private var compose: MailComposeContext?
+    /// Whether the search row is out — see `searchField`.
+    @State private var isSearchRevealed = false
+    @FocusState private var isSearchFocused: Bool
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
     /// See the compose button in the header row: the glyph's own vertical bias, measured at
     /// the default text size, and scaled here because the symbol itself grows with the text
@@ -205,7 +208,9 @@ struct SchoolMailView: View {
     /// deliberately has no navigation title — the title is content now, so that it and the
     /// buttons sit where Home's and Class table's do — which left the search field alone in
     /// the bar, holding the header a full bar's height lower than those two pages: the very
-    /// mismatch this page was reported for. As a row it scrolls with everything else.
+    /// mismatch this page was reported for. As a row it scrolls with everything else, and like
+    /// that drawer on Announcements it stays hidden until the list is pulled down past its top
+    /// (`pullToRevealSearch`).
     private var searchField: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
             Image(systemName: "magnifyingglass")
@@ -215,6 +220,7 @@ struct SchoolMailView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.search)
+                .focused($isSearchFocused)
                 .onSubmit { Task { await viewModel.submitSearch() } }
             if !viewModel.searchText.isEmpty {
                 Button { viewModel.searchText = "" } label: {
@@ -254,13 +260,17 @@ struct SchoolMailView: View {
                     .listRowInsets(EdgeInsets())
             }
             #endif
-            searchField
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(
-                    top: TigerDuckTheme.Spacing.md, leading: 0,
-                    bottom: 0, trailing: 0
-                ))
+            // The row modifiers sit inside the conditional, so a hidden field leaves no empty
+            // row behind — see `developerServerBanner`.
+            if isSearchRevealed || !viewModel.searchText.isEmpty {
+                searchField
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(
+                        top: TigerDuckTheme.Spacing.md, leading: 0,
+                        bottom: 0, trailing: 0
+                    ))
+            }
             if account.authFailed {
                 NTUSTReauthErrorBanner(
                     message: String(localized: "school_mail_auth_failed_banner"),
@@ -307,6 +317,7 @@ struct SchoolMailView: View {
         .background(Color.backgroundPrimary)
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
         .scrollDismissesKeyboard(.immediately)
+        .pullToRevealSearch(isRevealed: $isSearchRevealed, isActive: isSearchFocused || !viewModel.searchText.isEmpty)
         .onChange(of: viewModel.searchText) { _, text in
             if text.isEmpty { viewModel.clearSearch() }
         }

@@ -172,6 +172,7 @@ JustifiedText.swift
 LoadingShimmer.swift
 LoginRequiredView.swift
 NTUSTReauthErrorBanner.swift
+PullToRevealSearch.swift
 SectionHeader.swift
 View+Alerts.swift
 WidgetContainer.swift
