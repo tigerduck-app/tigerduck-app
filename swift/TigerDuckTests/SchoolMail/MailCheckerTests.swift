@@ -84,7 +84,10 @@ final class AccountSwitchingNotificationCenter: MailNotificationCenter, @uncheck
     private let prefs: any MailPreferences
     private let signedInDuringAdd: String?
     private var _requests: [UNNotificationRequest] = []
+    private var _requestsAtRemoveAll: [Int] = []
     var requests: [UNNotificationRequest] { lock.withLock { _requests } }
+    /// How many requests had been posted each time `removeAllMailNotifications` ran.
+    var requestsAtRemoveAll: [Int] { lock.withLock { _requestsAtRemoveAll } }
 
     /// `signedInDuringAdd` is the student ID that takes over partway through; `nil` models a
     /// plain sign-out landing there instead.
@@ -99,7 +102,7 @@ final class AccountSwitchingNotificationCenter: MailNotificationCenter, @uncheck
     }
 
     func removeDelivered(withIdentifiers identifiers: [String]) {}
-    func removeAllMailNotifications() async {}
+    func removeAllMailNotifications() async { lock.withLock { _requestsAtRemoveAll.append(_requests.count) } }
 }
 
 struct MailCheckerTests {
@@ -394,6 +397,25 @@ struct MailCheckerTests {
         #expect(await checker.check(trigger: .backgroundTask) == .skippedSignedOut)
         #expect(prefs.inboxNextUID == 3)
         #expect(prefs.diagnostics.isEmpty)
+    }
+
+    /// A sign-out that lands while this run is posting clears the lock screen itself — but it may
+    /// do so before the rest of this run's notifications arrive, which would leave the previous
+    /// student's sender and subject behind. The run takes back everything it posted, after its
+    /// last `add`.
+    @Test func aRunWhoseAccountSignsOutWhileNotifyingTakesItsNotificationsBack() async {
+        let prefs = InMemoryMailPreferences()
+        prefs.studentID = "B10000000"
+        prefs.inboxUIDValidity = 1
+        prefs.inboxNextUID = 3
+        let fake = FakeMailClient(folders: ["INBOX": [FakeMailClient.message(uid: 3), FakeMailClient.message(uid: 4)]])
+        let center = AccountSwitchingNotificationCenter(prefs: prefs, signedInDuringAdd: nil)
+        let checker = MailChecker(prefs: prefs, notifier: MailNotifier(center: center),
+                                  openSession: { fake }, onAuthFailure: { prefs.authFailed = true })
+
+        #expect(await checker.check(trigger: .backgroundTask) == .skippedSignedOut)
+        #expect(center.requests.count == 2)
+        #expect(center.requestsAtRemoveAll == [2])
     }
 
     /// `onAuthFailure` stops every background check for the account it is reported against, so a

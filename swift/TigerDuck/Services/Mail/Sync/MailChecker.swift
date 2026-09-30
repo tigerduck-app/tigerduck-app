@@ -265,6 +265,10 @@ actor MailChecker {
         var unnotified: Set<UInt32> = []
         if notify {
             unnotified = await notifier.notify(fresh, uidValidity: status.uidValidity)
+            // A sign-out while these were being posted ran its own `removeAll`, possibly before
+            // the last of them arrived. A run that outlived its account takes back what it
+            // posted, so the previous student's sender and subject do not stay on the lock screen.
+            if !stillSignedIn(as: account) { await notifier.removeAll() }
         }
         // Advance past what was actually fetched, not STATUS's UIDNEXT, so a message that
         // arrived between the two commands is neither skipped nor notified twice...
