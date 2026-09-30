@@ -9,7 +9,10 @@ extension AppFeature {
     /// designed for Mac; surfacing them in the Mac sidebar would create
     /// dead taps. The underlying `LibraryService` still compiles so a
     /// future Mac port can flip the switch without code changes.
-    static let macHiddenFeatures: Set<AppFeature> = libraryRelatedFeatures
+    ///
+    /// School Mail is iOS/iPadOS only (design doc §4) — its code is `#if os(iOS)` and
+    /// SwiftMail is not linked on macOS; `isImplemented` is already false there too.
+    static let macHiddenFeatures: Set<AppFeature> = libraryRelatedFeatures.union([.schoolMail])
 
     /// True iff this feature should be visible anywhere in the macOS UI
     /// (sidebar, More page, future Settings tab pickers).

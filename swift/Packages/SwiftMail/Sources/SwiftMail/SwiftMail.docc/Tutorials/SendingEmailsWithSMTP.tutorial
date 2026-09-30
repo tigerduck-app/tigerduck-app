@@ -1,0 +1,59 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Sending Emails with SMTP") {
+        Learn how to use SwiftMail's SMTP functionality to send emails with attachments.
+        
+        @Image(source: placeholder.png, alt: "Illustration showing SMTP email flow")
+    }
+    
+    @Section(title: "Connecting to an SMTP Server") {
+        @ContentAndMedia {
+            Learn how to establish a connection to an SMTP server, authenticate, send an email with attachment and then disconnect.
+            
+            @Image(source: placeholder.png, alt: "Illustration showing SMTP connection")
+        }
+        
+        @Steps {
+            @Step {
+                First, create an SMTP server instance with your server details.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-1.swift")
+            }
+            
+            @Step {
+                Connect to the server and authenticate with your credentials.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-2.swift")
+            }
+       
+            @Step {
+                Create email addresses for the sender and recipients.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-3.swift")
+            }
+            
+            @Step {
+                Create an email with subject and body.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-4.swift")
+            }
+            
+            @Step {
+                Optionally add attachments
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-5.swift")
+            }
+        
+            @Step {
+                Send the email and handle the response.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-6.swift")
+            }
+
+            @Step {
+                Clean up by disconnecting from the server.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-7.swift")
+            }
+        }
+    }
+} 

@@ -1,0 +1,19 @@
+{
+  "student_id": "B99999999",
+  "password": "tigerduck-review",
+  "uid_validity": 1,
+  "folders": {
+    "INBOX": [
+      {"uid": 4, "from_name": "教務處", "from_address": "academic@mail.ntust.edu.tw", "to": ["b99999999@mail.ntust.edu.tw"], "subject": "115 學年度第 1 學期加退選公告", "date": "2026-09-14T09:00:00+08:00", "seen": false, "text": "各位同學好：\n加退選將於 9/21 開始，請於期限內完成。\n教務處", "html": "<p>各位同學好：</p><p>加退選將於 <b>9/21</b> 開始，詳見 <a href=\"https://www.ntust.edu.tw\">學校首頁</a>。</p><p>教務處</p>", "attachments": []},
+      {"uid": 3, "from_name": "圖書館", "from_address": "library@mail.ntust.edu.tw", "to": ["b99999999@mail.ntust.edu.tw"], "subject": "借閱到期提醒", "date": "2026-09-13T10:30:00+08:00", "seen": false, "text": "您借閱的圖書將於 3 天後到期，清單如附件。", "html": null, "attachments": [{"filename": "借閱清單.pdf", "content_type": "application/pdf", "base64": "JVBERi0xLjQK"}]},
+      {"uid": 2, "from_name": "Campus Card Service", "from_address": "no-reply@campus-card.example", "to": ["b99999999@mail.ntust.edu.tw"], "subject": "Your student card statement", "date": "2026-09-12T08:00:00+08:00", "seen": true, "text": "Your monthly statement is ready.", "html": null, "attachments": []},
+      {"uid": 1, "from_name": "信箱管理員", "from_address": "admin@mailbox-quota.example", "to": ["b99999999@mail.ntust.edu.tw"], "subject": "您的信箱容量已滿", "date": "2026-09-11T23:15:00+08:00", "seen": true, "text": "請點選連結重新驗證您的帳號密碼。", "html": "<p>請點選 <a href=\"https://mailbox-quota.example/verify\">ntust.edu.tw</a> 重新驗證您的帳號密碼。</p>", "attachments": []}
+    ],
+    "&W8RO9lCZTv1TIw-": [
+      {"uid": 1, "from_name": "", "from_address": "b99999999@mail.ntust.edu.tw", "to": ["academic@mail.ntust.edu.tw"], "subject": "Re: 加退選問題", "date": "2026-09-10T15:00:00+08:00", "seen": true, "text": "謝謝您的回覆。", "html": null, "attachments": []}
+    ],
+    "&g0l6P1Mj-": [],
+    "&XuNUSk,hUyM-": [],
+    "&Vt5lNntS-": []
+  }
+}

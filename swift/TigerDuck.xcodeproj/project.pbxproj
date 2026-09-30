@@ -11,6 +11,7 @@
 		42B9BC032F90EBFA00D3B5A1 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 42B9BC022F90EBFA00D3B5A1 /* SwiftUI.framework */; };
 		42B9BC142F90EBFB00D3B5A1 /* TigerDuckLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 42B9BBFE2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		42D2EEAD2F73B4B300973752 /* tigerduck.icon in Resources */ = {isa = PBXBuildFile; fileRef = 42D2EEAC2F73B4B300973752 /* tigerduck.icon */; };
+		44361EB2FDF34C1180AAA293 /* SwiftMail in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = 286A28B6C50C02BAA1C53862 /* SwiftMail */; };
 		60A0A00130AA000100000001 /* Valet in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20130AA000100000001 /* Valet */; };
 		60A0A00230AA000100000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20230AA000100000001 /* SwiftSoup */; };
 		60A0A00330AA000100000001 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 60A0A20330AA000100000001 /* Sentry */; };
@@ -254,6 +255,7 @@
 				60A0A00330AA000100000001 /* Sentry in Frameworks */,
 				60A0A00230AA000100000001 /* SwiftSoup in Frameworks */,
 				60A0A00130AA000100000001 /* Valet in Frameworks */,
+				44361EB2FDF34C1180AAA293 /* SwiftMail in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -388,6 +390,7 @@
 				60A0A20330AA000100000001 /* Sentry */,
 				60A0A20430AA000100000001 /* Defaults */,
 				60A0A20530AA000100000001 /* MarkdownUI */,
+				286A28B6C50C02BAA1C53862 /* SwiftMail */,
 			);
 			productName = TigerDuck;
 			productReference = 424C46562F6E763C009D1DDA /* TigerDuck.app */;
@@ -673,6 +676,7 @@
 				60A0A10330AA000100000001 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				60A0A10430AA000100000001 /* XCRemoteSwiftPackageReference "Defaults" */,
 				60A0A10530AA000100000001 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				E8CC3E13C4358E9783C31871 /* XCLocalSwiftPackageReference "Packages/SwiftMail" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 424C46572F6E763C009D1DDA /* Products */;
@@ -1040,6 +1044,7 @@
 					LanguageManager.swift,
 					WidgetURLRouter.swift,
 					AppFeature.swift,
+					Services/Mail/Core/SchoolMailAvailability.swift,
 					AssignmentFilter.swift,
 					AssignmentStatus.swift,
 					CourseState.swift,
@@ -1285,6 +1290,7 @@
 					LanguageManager.swift,
 					WidgetURLRouter.swift,
 					AppFeature.swift,
+					Services/Mail/Core/SchoolMailAvailability.swift,
 					AssignmentFilter.swift,
 					AssignmentStatus.swift,
 					CourseState.swift,
@@ -2033,6 +2039,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		E8CC3E13C4358E9783C31871 /* XCLocalSwiftPackageReference "Packages/SwiftMail" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/SwiftMail;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		60A0A10130AA000100000001 /* XCRemoteSwiftPackageReference "Valet" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -2077,6 +2090,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		286A28B6C50C02BAA1C53862 /* SwiftMail */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftMail;
+		};
 		60A0A20130AA000100000001 /* Valet */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 60A0A10130AA000100000001 /* XCRemoteSwiftPackageReference "Valet" */;

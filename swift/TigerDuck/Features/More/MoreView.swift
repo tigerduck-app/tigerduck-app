@@ -122,6 +122,9 @@ struct MoreView: View {
         case .calendar: CalendarTabView(embedded: true)
         case .announcements: BulletinsView(embedded: true)
         case .library: LibraryView(embedded: true)
+        #if os(iOS)
+        case .schoolMail: SchoolMailView(embedded: true)
+        #endif
         case .gpa: ScoreView(embedded: true)
         default: PlaceholderFeatureView(feature: feature)
         }

@@ -282,7 +282,10 @@ struct SyncStatusDot: View {
         }
     }
 
-    private static func statusText(_ status: ServerStatus) -> String {
+    /// The three words the `.servers` rows report a state in. Not private: a `.single` page
+    /// whose source has no vocabulary of its own (School Mail — a mail server is reachable or
+    /// it is not) should say the same words here rather than keep a second copy of them.
+    static func statusText(_ status: ServerStatus) -> String {
         switch status {
         case .ok: String(localized: "sync_status_ok")
         case .failed: String(localized: "sync_status_failed")

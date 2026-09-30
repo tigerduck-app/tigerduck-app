@@ -44,6 +44,19 @@ final class LibraryViewModel {
     /// succeeds.
     private static let backoffSchedule: [TimeInterval] = [60, 120, 300]
 
+    @ObservationIgnored nonisolated(unsafe) private var accountObserver: (any NSObjectProtocol)?
+
+    init() {
+        // `queue: nil` delivers synchronously on the posting thread, and
+        // `LibraryService` posts from the main actor — so the code is off the
+        // screen before the sign-out that invalidated it even returns.
+        accountObserver = NotificationCenter.default.addObserver(
+            forName: LibraryService.accountDidChange, object: nil, queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dropCodeForAccountChange() }
+        }
+    }
+
     // MARK: - Lifecycle
 
     func load() {
@@ -279,6 +292,21 @@ final class LibraryViewModel {
         }
     }
 
+    /// The library account changed underneath this screen — signed out in
+    /// Settings, or someone else signed in. The code on screen is the
+    /// previous account's and still scans, so it goes now rather than at the
+    /// next refresh tick or the next `onAppear`. Nothing is fetched from here:
+    /// a sign-in on this screen starts its own cycle, and one made elsewhere
+    /// is picked up by `onAppear`.
+    private func dropCodeForAccountChange() {
+        stopTimers()
+        qrCodeImage = nil
+        qrPayload = nil
+        isLoadingQR = false
+        consecutiveErrors = 0
+        isLoggedIn = LibraryService.isTokenValid
+    }
+
     func stopTimers() {
         refreshTimer?.invalidate()
         refreshTimer = nil
@@ -288,5 +316,6 @@ final class LibraryViewModel {
 
     deinit {
         stopTimers()
+        if let accountObserver { NotificationCenter.default.removeObserver(accountObserver) }
     }
 }

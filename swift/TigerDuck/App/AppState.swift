@@ -206,8 +206,8 @@ final class AppState {
             #endif
         }
 
-        // Every change to 同步課程資訊, whichever writer made it — see
-        // `cloudSyncEnabled`.
+        // Every change to Sync course information, whichever writer
+        // made it — see `cloudSyncEnabled`.
         cloudSyncPreference.onChange { [weak self] enabled in
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
@@ -412,10 +412,10 @@ final class AppState {
         didSet { Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter }
     }
 
-    /// Cross-device sync toggle (同步課程資訊). When OFF, all backend sync
-    /// calls (override download/upload, course upload, assignment upload)
-    /// are skipped and push notifications + Live Activity are unavailable
-    /// (spec §6).
+    /// Cross-device sync toggle (Sync course information). When OFF, all
+    /// backend sync calls (override download/upload, course upload,
+    /// assignment upload) are skipped and push notifications + Live Activity
+    /// are unavailable (spec §6).
     ///
     /// The preference itself, not a copy of it: this reads and writes
     /// `Defaults[.cloudSyncEnabled]` through `cloudSyncPreference`, so it
@@ -430,8 +430,8 @@ final class AppState {
 
     let cloudSyncPreference = CloudSyncPreference()
 
-    /// Everything a change to 同步課程資訊 sets off. `cloudSyncPreference`
-    /// calls it once per change, whichever writer made it.
+    /// Everything a change to Sync course information sets off.
+    /// `cloudSyncPreference` calls it once per change, whichever writer made it.
     ///
     /// Nothing in here writes the preference, and `CloudSyncCoordinator` only
     /// follows it, so no side effect can come back around as another change.
@@ -486,7 +486,7 @@ final class AppState {
         didSet { Defaults[.invertSliderDirection] = invertSliderDirection }
     }
 
-    /// Assignment time display: true = absolute (2026/3/24 23:59:00), false = relative (5 天後)
+    /// Assignment time display: true = absolute (2026/3/24 23:59:00), false = relative (in 5 days)
     var showAbsoluteAssignmentTime: Bool = Defaults[.showAbsoluteAssignmentTime] {
         didSet { Defaults[.showAbsoluteAssignmentTime] = showAbsoluteAssignmentTime }
     }
@@ -611,13 +611,30 @@ final class AppState {
 
     // MARK: - Tab Configuration
 
-    var configuredTabs: [AppFeature] = {
-        if let data = Defaults[.configuredTabsData],
-           let rawValues = try? JSONDecoder().decode([String].self, from: data) {
-            let features = rawValues.compactMap { AppFeature(rawValue: $0) }
-            return features.isEmpty ? AppFeature.defaultTabs : features
+    /// Pure decode step for `configuredTabs`: `Data → [String] → [AppFeature]`, filtered by
+    /// `isShown` (default: `isImplemented`) so the result never contains a raw value this build
+    /// doesn't recognise (an older build's saved/synced config replayed on a build that predates
+    /// a case — `compactMap` drops those) or a feature this build hides behind a gate (e.g. a
+    /// `.schoolMail` tab pinned on a DEBUG build and then carried over — shared container, device
+    /// restore — to a build where `SchoolMailAvailability.isEnabled` is false). Nothing
+    /// legitimately reaches `configuredTabs` while unimplemented already — `pinnableFeatures`,
+    /// what `TabEditorView` offers, is filtered the same way — so this only ever catches stale
+    /// data. Returns `nil` for missing/undecodable `data` or a result that filters down to
+    /// nothing, so callers can substitute their own default tabs; kept free of `Defaults` so it's
+    /// testable without touching UserDefaults.
+    nonisolated static func decodeConfiguredTabs(
+        _ data: Data?,
+        isShown: (AppFeature) -> Bool = { $0.isImplemented }
+    ) -> [AppFeature]? {
+        guard let data, let rawValues = try? JSONDecoder().decode([String].self, from: data) else {
+            return nil
         }
-        return AppFeature.defaultTabs
+        let features = rawValues.compactMap { AppFeature(rawValue: $0) }.filter(isShown)
+        return features.isEmpty ? nil : features
+    }
+
+    var configuredTabs: [AppFeature] = {
+        AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) ?? AppFeature.defaultTabs
     }() {
         didSet {
             do {

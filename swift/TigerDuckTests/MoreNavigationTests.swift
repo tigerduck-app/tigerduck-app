@@ -35,6 +35,7 @@ struct MoreNavigationTests {
         // map to a real page.
         let destinationsWithRealPages: Set<AppFeature> = [
             .home, .classTable, .calendar, .announcements, .library, .gpa,
+            .schoolMail,
         ]
         let unbacked = AppFeature.moreFeatures.filter { !destinationsWithRealPages.contains($0) }
         #expect(unbacked.isEmpty, "More rows with no real destination: \(unbacked)")

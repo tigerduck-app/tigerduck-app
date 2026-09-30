@@ -74,7 +74,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
     /// `network_security_config.xml`. Keep both repos updated together
     /// at every rotation — diverging pin sets means one platform
     /// breaks before the other.
-    private static let pinSets: [PinSet] = {
+    nonisolated private static let pinSets: [PinSet] = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
         guard let expiration = formatter.date(from: "2027-01-18") else {
@@ -111,6 +111,26 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         category: "Security.TLSPin"
     )
 
+    nonisolated private static let staticLogger = Logger(
+        subsystem: "org.ntust.app.TigerDuck",
+        category: "Security.TLSPin"
+    )
+
+    /// What the pin table says about `host`, for TLS stacks that do not go through
+    /// URLSession (the School Mail IMAP/SMTP connections, see `MailTLSVerifier`).
+    enum PinPolicy: Equatable, Sendable {
+        case notPinned
+        case pinned(Set<String>)
+        /// The host's pin set is past its expiration date: fall back to system trust,
+        /// exactly as `urlSession(_:didReceive:completionHandler:)` does.
+        case expired
+    }
+
+    nonisolated static func pinPolicy(forHost host: String, now: Date = Date()) -> PinPolicy {
+        guard let set = matchingPinSet(for: host) else { return .notPinned }
+        return now >= set.expiration ? .expired : .pinned(set.pins)
+    }
+
     // MARK: - URLSessionDelegate
 
     func urlSession(
@@ -126,7 +146,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
 
         let host = challenge.protectionSpace.host
 
-        guard let pinSet = matchingPinSet(for: host) else {
+        guard let pinSet = Self.matchingPinSet(for: host) else {
             // Host not in scope (analytics, app's own backend, etc.)
             // — defer to system trust. Safe to install on mixed-host
             // sessions for that reason.
@@ -170,7 +190,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         // continues to validate.
         let chain = (SecTrustCopyCertificateChain(trust) as? [SecCertificate]) ?? []
         for cert in chain {
-            guard let hash = sha256SPKIBase64(of: cert) else { continue }
+            guard let hash = Self.sha256SPKIBase64(of: cert) else { continue }
             if pinSet.pins.contains(hash) {
                 completionHandler(.useCredential, URLCredential(trust: trust))
                 return
@@ -185,7 +205,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
 
     // MARK: - Internals
 
-    private func matchingPinSet(for host: String) -> PinSet? {
+    nonisolated private static func matchingPinSet(for host: String) -> PinSet? {
         // Strip a trailing dot — some resolver / proxy paths inject
         // FQDN form (`ssoam2.ntust.edu.tw.`) which would otherwise
         // miss both the equality and the `.suffix` suffix branches and
@@ -224,7 +244,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
     /// any key algorithm the SPKI-header table below does not cover —
     /// caller continues walking the chain rather than failing the
     /// connection on a single unsupported cert.
-    private func sha256SPKIBase64(of cert: SecCertificate) -> String? {
+    nonisolated static func sha256SPKIBase64(of cert: SecCertificate) -> String? {
         guard let key = SecCertificateCopyKey(cert),
               let spki = spkiData(from: key) else {
             return nil
@@ -242,7 +262,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
     /// pre-wired so the obvious next algorithm migration does not
     /// require a pinning code change. Anything else returns nil and
     /// degrades to a chain-walk miss on that cert specifically.
-    private func spkiData(from key: SecKey) -> Data? {
+    nonisolated private static func spkiData(from key: SecKey) -> Data? {
         guard let attrs = SecKeyCopyAttributes(key) as? [String: Any],
               let keyType = attrs[kSecAttrKeyType as String] as? String,
               let keySize = attrs[kSecAttrKeySizeInBits as String] as? Int,
@@ -284,7 +304,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
             // mismatch — triage starts from the wrong hypothesis and
             // delays rotating the spkiData table. Logging the type +
             // size points straight at the missing header entry.
-            logger.fault(
+            staticLogger.fault(
                 "TLS pin: unsupported key (type=\(keyType, privacy: .public), bits=\(keySize, privacy: .public)) — add SPKI header to spkiData or this cert is silently skipped during chain walk"
             )
             return nil

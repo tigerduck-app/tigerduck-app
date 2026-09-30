@@ -1,0 +1,19 @@
+From: news@mail.ntust.edu.tw
+To: b10000001@mail.ntust.edu.tw
+Subject: newsletter
+Date: Tue, 15 Sep 2026 18:15:00 +0800
+Message-ID: <rel-1@mail.ntust.edu.tw>
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="r1"
+
+--r1
+Content-Type: text/html; charset=UTF-8
+
+<p>logo <img src="cid:logo@x"></p>
+--r1
+Content-Type: image/png
+Content-ID: <logo@x>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgo=
+--r1--
