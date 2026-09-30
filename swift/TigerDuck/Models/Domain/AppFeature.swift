@@ -119,7 +119,6 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         case .home, .classTable, .calendar, .library, .announcements, .gpa:
             return true
         case .schoolMail:
-            // Hidden until the computer center's written consent (design doc §12.5).
             return SchoolMailAvailability.isEnabled
         default:
             return false

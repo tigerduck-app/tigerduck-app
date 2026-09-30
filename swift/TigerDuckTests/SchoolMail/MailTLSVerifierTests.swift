@@ -58,11 +58,6 @@ struct MailTLSVerifierTests {
         #expect(!MailTLSVerifier.verify(derChain: [], host: "mail.ntust.edu.tw", now: Self.pinnedDate))
     }
 
-    @Test func releaseBuildsHideTheFeatureUntilConsent() {
-        #expect(SchoolMailAvailability.releaseEnabled == false)
-        #expect(SchoolMailAvailability.isEnabled)  // tests run DEBUG builds
-    }
-
     @Test func addressesAreLowercase() {
         #expect(MailConstants.address(forStudentID: " B10000000 ") == "b10000000@mail.ntust.edu.tw")
     }

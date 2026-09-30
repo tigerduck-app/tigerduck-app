@@ -614,9 +614,8 @@ final class AppState {
     /// Pure decode step for `configuredTabs`: `Data → [String] → [AppFeature]`, filtered by
     /// `isShown` (default: `isImplemented`) so the result never contains a raw value this build
     /// doesn't recognise (an older build's saved/synced config replayed on a build that predates
-    /// a case — `compactMap` drops those) or a feature this build hides behind a gate (e.g. a
-    /// `.schoolMail` tab pinned on a DEBUG build and then carried over — shared container, device
-    /// restore — to a build where `SchoolMailAvailability.isEnabled` is false). Nothing
+    /// a case — `compactMap` drops those) or a feature this build hides (e.g. `.schoolMail` on
+    /// macOS, where `SchoolMailAvailability.isEnabled` is false). Nothing
     /// legitimately reaches `configuredTabs` while unimplemented already — `pinnableFeatures`,
     /// what `TabEditorView` offers, is filtered the same way — so this only ever catches stale
     /// data. Returns `nil` for missing/undecodable `data` or a result that filters down to
