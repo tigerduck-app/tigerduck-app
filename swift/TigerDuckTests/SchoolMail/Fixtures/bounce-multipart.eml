@@ -1,0 +1,52 @@
+Received: from 140.118.31.71
+	by mail.ntust.edu.tw with Mail2000 ESMTP Server V8.00(1061942:0:AUTH_RELAY)
+	(envelope-from <>); Fri, 18 Sep 2026 21:02:11 +0800 (CST)
+Return-Path: <>
+Received: By OpenMail Mailer;Fri, 18 Sep 2026 21:02:08 +0800 (CST)
+From: "Mail Deliver System" <MAILER-DAEMON>
+To: b10000001@mail.ntust.edu.tw
+Message-ID: <7712430098118240931@MAILER-DAEMON>
+Subject: Returned Mail: Hostname cannot be resolved
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="---xSlk6?OEkwsMzDd4=o4fchcYwdj"
+
+This is a multi-part message in MIME format.
+
+-----xSlk6?OEkwsMzDd4=o4fchcYwdj
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+The original message was received at Fri, 18 Sep 2026 21:02:04 +0800 (CST)
+from b10000001@mail.ntust.edu.tw
+
+---The following addresses had delivery errors---
+
+B10000001@mail.ntust.edj.tw [Hostname cannot be resolved]
+
+-----xSlk6?OEkwsMzDd4=o4fchcYwdj
+Content-Type: message/rfc822
+Content-Disposition: attachment
+
+From: "中文" <b10000001@mail.ntust.edu.tw>
+To: B10000001@mail.ntust.edj.tw
+Subject: =?UTF-8?B?6Yyy6Z+z?=
+Message-ID: <4451009982213365170@mail.ntust.edu.tw>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="=_inner_9f2a41"
+
+--=_inner_9f2a41
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 7bit
+
+Recording attached.
+
+--=_inner_9f2a41
+Content-Type: audio/mp4; name="lecture.m4a"
+Content-Disposition: attachment; filename="lecture.m4a"
+Content-Transfer-Encoding: base64
+
+AAAAHGZ0eXBNNEEgAAAAAE00QSBtcDQyaXNvbQ==
+
+--=_inner_9f2a41--
+
+-----xSlk6?OEkwsMzDd4=o4fchcYwdj--

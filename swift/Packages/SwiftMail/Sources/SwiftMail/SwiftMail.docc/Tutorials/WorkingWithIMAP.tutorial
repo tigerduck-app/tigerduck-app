@@ -1,0 +1,77 @@
+@Tutorial(time: 20) {
+    @Intro(title: "Working with IMAP") {
+        Learn how to use SwiftMail's IMAP functionality to connect to email servers and manage messages.
+        
+        @Image(source: placeholder.png, alt: "Illustration showing IMAP email flow")
+    }
+    
+    @Section(title: "Connecting to an IMAP Server") {
+        @ContentAndMedia {
+            Learn how to establish a connection to an IMAP server, fetch emails, search for eamails and to disconnect from the server.
+            
+            @Image(source: placeholder.png, alt: "Illustration showing IMAP connection")
+        }
+        
+        @Steps {
+            @Step {
+                First, create an IMAP server instance with your server details.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-1.swift")
+            }
+            
+            @Step {
+                Connect to the server and authenticate with your credentials.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-2.swift")
+            }
+			
+			@Step {
+				List available mailboxes on the server.
+				
+				@Code(name: "IMAPExample.swift", file: "imap-3.swift")
+			}
+        
+			@Step {
+				Select a mailbox to work with.
+				
+				@Code(name: "IMAPExample.swift", file: "imap-4.swift")
+			}
+			
+            @Step {
+                Fetch the latest messages from the selected mailbox.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-5.swift")
+            }
+
+            @Step {
+                Define message identifier set types for searching. SwiftMail supports two types of message identifiers: SequenceNumber and UID.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-6.swift")
+            }
+            
+            @Step {
+                Search for unread messages using sequence numbers.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-7.swift")
+            }
+            
+            @Step {
+                Search for messages by subject using UIDs.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-8.swift")
+            }
+
+            @Step {
+                Create a new draft by appending a fresh email via IMAP.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-10.swift")
+            }
+			
+			@Step {
+				Logout and close the connection to maintain server resources and ensure a clean disconnection.
+				
+				@Code(name: "IMAPExample.swift", file: "imap-9.swift")
+			}
+        }
+    }
+} 

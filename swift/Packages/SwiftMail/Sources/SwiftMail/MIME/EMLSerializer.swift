@@ -1,0 +1,256 @@
+// EMLSerializer.swift
+// Serialize a Message back to RFC 822 / EML format
+
+import Foundation
+
+/// Errors that can occur during EML serialization
+public enum EMLSerializerError: Error, LocalizedError {
+    case missingPartData(Section)
+    case encodingFailed
+
+    public var errorDescription: String? {
+        switch self {
+            case .missingPartData(let section):
+                return "Missing data for message part \(section.description)"
+            case .encodingFailed:
+                return "Failed to encode the message as UTF-8"
+        }
+    }
+}
+
+/// Serializes a ``Message`` to raw RFC 822 / EML bytes.
+public struct EMLSerializer {
+
+    // MARK: - Public API
+
+    /// Serialize a ``Message`` to RFC 822 / EML data.
+    ///
+    /// Part data is written as-is (it should already be in transfer-encoded form,
+    /// e.g. base64 for binary attachments).
+    ///
+    /// - Parameter message: The message to serialize.
+    /// - Returns: Raw RFC 822 bytes ready to be written to a `.eml` file or appended to IMAP.
+    public static func serialize(_ message: Message) throws -> Data {
+        var output = ""
+        writeHeaders(message.header, into: &output)
+        try writeBody(parts: message.parts, into: &output)
+
+        guard let data = output.data(using: .utf8) else {
+            throw EMLSerializerError.encodingFailed
+        }
+        return data
+    }
+
+    /// Emit the RFC 822 header block (`From:`, `To:`, …) and then `MIME-Version`.
+    private static func writeHeaders(_ header: MessageInfo, into output: inout String) {
+        appendHeaderIfPresent("From", header.from, into: &output)
+        appendListHeader("To", header.to, into: &output)
+        appendListHeader("Cc", header.cc, into: &output)
+        appendListHeader("Bcc", header.bcc, into: &output)
+        // Subject is free text — RFC 2047-encode it if non-ASCII. (From/To/Cc here
+        // are already-formatted address strings, so they are left as-is; per-name
+        // encoding of those would require re-parsing each address.)
+        appendHeaderIfPresent("Subject", header.subject?.rfc2047EncodedHeader(), into: &output)
+        if let date = header.date {
+            output += "Date: \(formatRFC2822Date(date))\r\n"
+        }
+        if let messageId = header.messageId {
+            output += "Message-ID: \(messageId.description)\r\n"
+        }
+        output += "MIME-Version: 1.0\r\n"
+
+        for (key, value) in (header.additionalFields ?? [:]).sorted(by: { $0.key < $1.key }) {
+            output += "\(capitalizeHeaderName(key)): \(value)\r\n"
+        }
+    }
+
+    private static func appendHeaderIfPresent(_ name: String, _ value: String?, into output: inout String) {
+        guard let value else { return }
+        output += "\(name): \(value)\r\n"
+    }
+
+    private static func appendListHeader(_ name: String, _ values: [String], into output: inout String) {
+        guard !values.isEmpty else { return }
+        output += "\(name): \(values.joined(separator: ", "))\r\n"
+    }
+
+    /// Emit the body: empty placeholder, single-part inline, or multipart.
+    private static func writeBody(parts: [MessagePart], into output: inout String) throws {
+        if parts.isEmpty {
+            output += "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
+        } else if parts.count == 1, let part = parts.first, part.section.components.count == 1 {
+            output += serializePartHeaders(part)
+            output += "\r\n"
+            if let data = part.data {
+                output += stringFromData(data)
+            }
+        } else {
+            try serializeMultipart(parts: parts, output: &output)
+        }
+    }
+
+    // MARK: - Multipart Serialization
+
+    /// Group parts by their section prefix and serialize as multipart.
+    private static func serializeMultipart(parts: [MessagePart], output: inout String) throws {
+        // Determine multipart type from content types
+        let multipartType = inferMultipartType(from: parts)
+        let boundary = generateBoundary()
+
+        output += "Content-Type: multipart/\(multipartType); boundary=\"\(boundary)\"\r\n"
+        output += "\r\n"
+        output += "This is a multi-part message in MIME format.\r\n"
+
+        // Group parts by top-level section to detect nested multipart
+        let grouped = groupPartsByTopLevel(parts)
+
+        for group in grouped {
+            output += "\r\n--\(boundary)\r\n"
+
+            if group.count == 1, let part = group.first, part.section.components.count == 1 {
+                // Single leaf part in this group. A singleton group whose part
+                // still has deeper section components is a multipart wrapper
+                // around one child and must recurse to preserve that level.
+                output += serializePartHeaders(part)
+                output += "\r\n"
+                if let data = part.data {
+                    output += stringFromData(data)
+                }
+            } else {
+                // Nested multipart group — drop the leading section component
+                // consumed by this level so the recursion descends the part
+                // tree instead of regrouping the same sections forever.
+                let children = group.map { droppingLeadingSectionComponent($0) }
+                try serializeMultipart(parts: children, output: &output)
+            }
+        }
+
+        output += "\r\n--\(boundary)--\r\n"
+    }
+
+    /// Serialize headers for a single part.
+    private static func serializePartHeaders(_ part: MessagePart) -> String {
+        var headers = ""
+
+        var contentType = part.contentType
+        if let filename = part.filename {
+            contentType += "; name=\"\(filename)\""
+        }
+        headers += "Content-Type: \(contentType)\r\n"
+
+        if let encoding = part.encoding {
+            headers += "Content-Transfer-Encoding: \(encoding)\r\n"
+        }
+
+        if let disposition = part.disposition {
+            var dispValue = disposition
+            if let filename = part.filename {
+                dispValue += "; filename=\"\(filename)\""
+            }
+            headers += "Content-Disposition: \(dispValue)\r\n"
+        }
+
+        if let contentId = part.contentId {
+            headers += "Content-ID: <\(contentId)>\r\n"
+        }
+
+        return headers
+    }
+
+    /// Infer the multipart subtype from the parts' content types.
+    private static func inferMultipartType(from parts: [MessagePart]) -> String {
+        let types = Set(parts.map { $0.contentType.lowercased() })
+
+        // If all parts are text variants → alternative
+        if types.allSatisfy({ $0.hasPrefix("text/") }) {
+            return "alternative"
+        }
+
+        // If any part has a content ID → related
+        if parts.contains(where: { $0.contentId != nil }) {
+            return "related"
+        }
+
+        // Default to mixed
+        return "mixed"
+    }
+
+    /// Group parts by their top-level section number.
+    /// Parts [1], [2] stay separate. Parts [1,1], [1,2] are grouped under [1].
+    private static func groupPartsByTopLevel(_ parts: [MessagePart]) -> [[MessagePart]] {
+        // If all parts are top-level (single component section), return each as its own group
+        let allTopLevel = parts.allSatisfy { $0.section.components.count == 1 }
+        if allTopLevel {
+            return parts.map { [$0] }
+        }
+
+        // Group by first component
+        var groups: [Int: [MessagePart]] = [:]
+        for part in parts {
+            let topLevel = part.section.components.first ?? 1
+            groups[topLevel, default: []].append(part)
+        }
+
+        return groups.keys.sorted().map { groups[$0]! }
+    }
+
+    /// Return a copy of the part with the first section component removed,
+    /// re-rooting it one level down the part tree (e.g. [1, 2] becomes [2]).
+    private static func droppingLeadingSectionComponent(_ part: MessagePart) -> MessagePart {
+        return MessagePart(
+            section: Section(Array(part.section.components.dropFirst())),
+            contentType: part.contentType,
+            disposition: part.disposition,
+            encoding: part.encoding,
+            filename: part.filename,
+            contentId: part.contentId,
+            size: part.size,
+            data: part.data,
+            embeddedMessageInfo: part.embeddedMessageInfo
+        )
+    }
+
+    // MARK: - Helpers
+
+    /// Format a Date as RFC 2822 string.
+    private static func formatRFC2822Date(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        return formatter.string(from: date)
+    }
+
+    /// Capitalize a header name (e.g. "x-mailer" → "X-Mailer").
+    private static func capitalizeHeaderName(_ name: String) -> String {
+        return name.split(separator: "-")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
+            .joined(separator: "-")
+    }
+
+    /// Generate a unique MIME boundary string.
+    private static func generateBoundary() -> String {
+        return "SwiftMail-Boundary-\(UUID().uuidString)"
+    }
+
+    /// Convert Data to a string, preferring UTF-8 then ASCII.
+    private static func stringFromData(_ data: Data) -> String {
+        return String(data: data, encoding: .utf8)
+            ?? String(data: data, encoding: .ascii)
+            ?? String(data: data, encoding: .isoLatin1)
+            ?? ""
+    }
+}
+
+// MARK: - Message convenience method
+
+public extension Message {
+    /// Serialize this message to raw EML / RFC 822 data.
+    ///
+    /// Part data is written as-is (already transfer-encoded from IMAP FETCH).
+    ///
+    /// - Returns: Raw RFC 822 bytes.
+    /// - Throws: ``EMLSerializerError`` if serialization fails.
+    func emlData() throws -> Data {
+        return try EMLSerializer.serialize(self)
+    }
+}

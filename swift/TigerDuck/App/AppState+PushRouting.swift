@@ -18,6 +18,34 @@ extension AppState {
     /// and clears the value once it has acted on it.
     enum DeepLink: Equatable {
         case bulletin(Int)
+        /// A School Mail notification. `uid == nil` (the "N new mails" summary, the sign-in
+        /// failure notice) opens the folder list. `uidValidity` is the generation `uid` was
+        /// minted under, so a folder recreated before the tap cannot hand it to another mail.
+        case schoolMail(folder: String, uid: UInt32?, uidValidity: UInt32? = nil)
+    }
+
+    /// Parses a School Mail notification tap into a `DeepLink`. Returns `nil` for any
+    /// other `kind` (bulletin, popup, or unrecognized) so callers can chain it after
+    /// their own routing without misclassifying unrelated pushes.
+    static func schoolMailDeepLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
+        guard userInfo["kind"] as? String == MailConstants.notificationKind else { return nil }
+        let folder = userInfo["folder"] as? String ?? MailConstants.inbox
+        return .schoolMail(folder: folder, uid: schoolMailUID(from: userInfo["uid"]),
+                           uidValidity: schoolMailUID(from: userInfo["uidValidity"]))
+    }
+
+    /// Decode `uid` from a JSON-bridged userInfo value the same tolerant way
+    /// `TigerDuckApp`'s `bulletinId(from:)` decodes `bulletin_id`: APNs / FCM / intermediate
+    /// relays bridge JSON numbers inconsistently — some land as an Int-tagged NSNumber that
+    /// succeeds `as? Int`, others as a Double-tagged NSNumber where `as? Int` fails, and a few
+    /// re-encode the value as a quoted string. `UInt32(exactly:)` (rather than a truncating or
+    /// trapping initializer) also turns a negative or too-large value into `nil` instead of
+    /// wrapping or crashing — `schoolMailDeepLink` already treats `nil` as "open the folder list".
+    private static func schoolMailUID(from raw: Any?) -> UInt32? {
+        if let n = raw as? Int { return UInt32(exactly: n) }
+        if let n = raw as? NSNumber { return UInt32(exactly: n.int64Value) }
+        if let s = raw as? String, let n = Int64(s) { return UInt32(exactly: n) }
+        return nil
     }
 
     /// Payload for an operator-issued popup push. `id` is the server-side

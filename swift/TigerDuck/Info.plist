@@ -51,5 +51,16 @@
             </array>
         </dict>
     </array>
+    <!-- School Mail (iOS only; macOS ignores these keys). Background App Refresh runs
+         the new-mail check in `MailBackgroundRefresh`; the identifier must equal
+         `MailConstants.backgroundTaskIdentifier`. -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+    </array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>org.ntust.app.TigerDuck.mailRefresh</string>
+    </array>
 </dict>
 </plist>

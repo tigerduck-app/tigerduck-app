@@ -39,7 +39,7 @@ private struct ServerPushPopupHost: ViewModifier {
                 ),
                 presenting: bindable.pendingServerPopup
             ) { popup in
-                // System-localized "OK" / "確定" comes from the cancel role.
+                // The system-localized "OK" comes from the cancel role.
                 // Marking happens here (not at routing time) so a popup
                 // that was actually presented gets added to the FIFO
                 // dedupe — but one that was suppressed by a competing
@@ -134,6 +134,7 @@ struct MainTabView: View {
         // view drains the deep link and pushes the detail screen.
         .onChange(of: appState.pendingDeepLink, initial: true) { _, new in
             routeBulletinDeepLinkIfNeeded(new)
+            routeSchoolMailDeepLinkIfNeeded(new)
         }
         #endif
         .onChange(of: scenePhase) { _, newPhase in
@@ -181,6 +182,20 @@ struct MainTabView: View {
         } else {
             selectedTab = .more
             appState.pendingMoreDeepLink = .announcements
+        }
+    }
+
+    /// Switches to the School Mail tab (or routes via More if it isn't
+    /// pinned) when a mail notification is tapped. Guarded on
+    /// `SchoolMailAvailability.isEnabled` so a stale/synced deep link
+    /// never opens the feature on a build where it's hidden.
+    private func routeSchoolMailDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
+        guard case .schoolMail = link, SchoolMailAvailability.isEnabled else { return }
+        if visibleTabs.contains(.schoolMail) {
+            selectedTab = .schoolMail
+        } else {
+            selectedTab = .more
+            appState.pendingMoreDeepLink = .schoolMail
         }
     }
     #endif
@@ -237,6 +252,9 @@ struct MainTabView: View {
         case .emptyClassroom: PlaceholderFeatureView(feature: feature)
         case .scholarship: PlaceholderFeatureView(feature: feature)
         case .englishVocab: PlaceholderFeatureView(feature: feature)
+        #if os(iOS)
+        case .schoolMail: SchoolMailView()
+        #endif
         default: PlaceholderFeatureView(feature: feature)
         }
     }

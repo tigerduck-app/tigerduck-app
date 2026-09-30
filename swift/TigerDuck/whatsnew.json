@@ -224,5 +224,21 @@
         "For a holiday announced at short notice (such as a typhoon day), opening the app dismisses class Live Activities already on screen"
       ]
     }
+  },
+  "2.2.0": {
+    "zh-TW": {
+      "title": "2.2.0 更新內容",
+      "highlights": [
+        "新增「即時」校園信箱：收發臺科大信件，收件匣、寄件備份、草稿、回收筒、廣告信等",
+        "可搜尋、回覆、全部回覆與轉寄信件，也能加入附件，或分享、儲存收到的附件"
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.2.0",
+      "highlights": [
+        "New real-time School Mail: send and receive your NTUST mail — Inbox, Sent, Drafts, Trash, Junk and more",
+        "Search, reply, reply all and forward, add attachments, and share or save the ones you receive"
+      ]
+    }
   }
 }

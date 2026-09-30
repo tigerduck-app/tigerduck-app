@@ -67,6 +67,12 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
         let nd = NotificationDelegate()
         UNUserNotificationCenter.current().delegate = nd
         self.notificationDelegate = nd
+        #if os(iOS)
+        // School Mail's refresh task must be registered before launch finishes.
+        if SchoolMailAvailability.isEnabled {
+            MailBackgroundRefresh.register()
+        }
+        #endif
         return true
     }
 
