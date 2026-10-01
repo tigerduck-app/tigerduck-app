@@ -22,8 +22,7 @@
 <img align="right" width="330" alt="IMG_9202-portrait" src="https://github.com/user-attachments/assets/cf13806f-3419-4b50-8b9f-13fd77f979ef" />
 
 TigerDuck 是由一群學生共同開發的校園助手  
-為了解決資源零散、通知不及時與介面不直觀等問題  
-有用過 [TAT](https://github.com/morris13579/tat_ntust) 嗎，我們努力把 TigerDuck 做得更 OAO
+為了解決資源零散、通知不及時與介面不直觀等問題
 
 ### 📚 **作業**
 - 一眼就知道還有多少**作業沒有繳交**
