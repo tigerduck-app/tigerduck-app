@@ -437,10 +437,24 @@ final class UpdateNotifyCoordinator {
 
         guard case let .found(lookup) = result else { return }
 
-        guard
-            let latest = AppVersion(lookup.version),
-            latest > AppVersion.current
-        else {
+        // A store version that cannot be read says nothing about whether
+        // the installed build is current. Answering "up to date" here is
+        // how a "v2.2.0" on the store went unnoticed, so it is reported
+        // and a manual check fails instead. The throttle above is already
+        // stamped, which keeps this to one report a day per install.
+        guard let latest = AppVersion(lookup.version) else {
+            AppLogger.captureError(
+                AppStoreUpdateService.LookupError.unparseableVersion,
+                context: [
+                    "phase": "UpdateNotifyCoordinator.performCheck",
+                    "storeVersion": lookup.version,
+                ]
+            )
+            if manual { lastManualCheckResult = .failed }
+            return
+        }
+
+        guard latest > AppVersion.current else {
             if manual { lastManualCheckResult = .upToDate }
             return
         }
