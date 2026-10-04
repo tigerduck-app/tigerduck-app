@@ -1,6 +1,16 @@
 #if os(iOS)
 import SwiftUI
 
+/// The slice of app state the Mail pages read and write: `AppState` in the
+/// app, a plain stand-in in tests — which can't build an `AppState`, whose
+/// init reaches the Keychain and runs migrations.
+protocol WhatsNewBottomBarState: AnyObject {
+    var configuredTabs: [AppFeature] { get set }
+    var libraryFeatureEnabled: Bool { get }
+}
+
+extension AppState: WhatsNewBottomBarState {}
+
 extension WhatsNewPage {
     /// 2.3.0: introduces School Mail, which shipped in 2.2.0 but few
     /// noticed. Says "2.2.0" rather than "the last version" because
@@ -36,15 +46,23 @@ extension WhatsNewPage {
         ),
         confirm: WhatsNewText(en: "Apply Recommended Arrangement", zhHant: "套用建議排列"),
         decline: WhatsNewText(en: "Keep Mine", zhHant: "保留目前設定"),
-        isApplicable: { appState in
-            recommendedTabsWithMail(visibleTabs(appState)) != nil
-        },
-        apply: { appState in
-            if let tabs = recommendedTabsWithMail(visibleTabs(appState)) {
-                appState.configuredTabs = tabs
-            }
-        }
+        isApplicable: { asksAboutMail($0) },
+        apply: { applyMailRecommendation(to: $0) }
     )
+
+    /// Whether the bottom-bar question applies to `state`'s bar.
+    static func asksAboutMail(_ state: some WhatsNewBottomBarState) -> Bool {
+        recommendedTabsWithMail(visibleTabs(state)) != nil
+    }
+
+    /// What the question's Apply does: stores the recommended bar, or
+    /// leaves the bar alone when there's none — e.g. Back after applying
+    /// and Apply again. Keep Mine calls nothing.
+    static func applyMailRecommendation(to state: some WhatsNewBottomBarState) {
+        if let tabs = recommendedTabsWithMail(visibleTabs(state)) {
+            state.configuredTabs = tabs
+        }
+    }
 
     /// The Mail pages — the introduction and the bottom-bar question —
     /// are only for a bar without Mail; someone who already put it there
@@ -71,8 +89,8 @@ extension WhatsNewPage {
         return visible.count < AppFeature.maxTabs ? visible + [.schoolMail] : nil
     }
 
-    private static func visibleTabs(_ appState: AppState) -> [AppFeature] {
-        AppFeature.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled)
+    private static func visibleTabs(_ state: some WhatsNewBottomBarState) -> [AppFeature] {
+        AppFeature.visibleTabs(state.configuredTabs, libraryEnabled: state.libraryFeatureEnabled)
     }
 }
 #endif

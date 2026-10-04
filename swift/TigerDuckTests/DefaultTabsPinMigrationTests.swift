@@ -2,13 +2,99 @@
 // (Home, Class table, Calendar) when the default became Home, Class table,
 // Mail. iPhone/iPad-only like the migration; the test target also builds
 // for macOS.
+//
+// The `runIfNeeded` tests write the real `UserDefaults.standard` keys the
+// migration reads and writes, the same way `BulletinPushOptOutMigrationTests`
+// does: inside `withExclusiveRealDefaults`, clearing the four keys first and
+// putting back exactly what the test host held — present or absent — after.
+// `doneKey` mirrors the migration's private flag literal. An optional key
+// that still reads back after the clear is held by a lower defaults domain — seen on a
+// simulator with a stray device-wide plist for the bundle id — where the
+// migration can't see "nothing stored", so the test stops there with that
+// reason rather than failing on what follows.
 #if os(iOS)
+import Defaults
 import Foundation
 import Testing
 @testable import TigerDuck
 
+private let doneKey = "DefaultTabsPinMigration.v1.done"
+
 @MainActor
 struct DefaultTabsPinMigrationTests {
+    private static func withRealMigrationKeys(_ body: () throws -> Void) async throws {
+        try await withExclusiveRealDefaults {
+            let names = [
+                doneKey,
+                Defaults.Keys.configuredTabsData.name,
+                Defaults.Keys.lastShownWhatsNewVersion.name,
+                Defaults.Keys.hasCompletedOnboarding.name,
+            ]
+            let saved = names.map { UserDefaults.standard.object(forKey: $0) }
+            defer {
+                for (name, value) in zip(names, saved) {
+                    if let value {
+                        UserDefaults.standard.set(value, forKey: name)
+                    } else {
+                        UserDefaults.standard.removeObject(forKey: name)
+                    }
+                }
+            }
+            names.forEach(UserDefaults.standard.removeObject(forKey:))
+            // Not `hasCompletedOnboarding`: its registered default reads
+            // back as `false`, which is what "absent" means for it.
+            for name in names.prefix(3) {
+                try #require(
+                    UserDefaults.standard.object(forKey: name) == nil,
+                    "\(name) is still set by a lower defaults domain on this device"
+                )
+            }
+            try body()
+        }
+    }
+
+    // MARK: - runIfNeeded
+
+    @Test func anUpgradeStoresTheOldBarOnce() async throws {
+        try await Self.withRealMigrationKeys {
+            Defaults[.lastShownWhatsNewVersion] = "2.2.0"
+            Defaults[.hasCompletedOnboarding] = true
+
+            #expect(DefaultTabsPinMigration.runIfNeeded())
+            #expect(AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) == [.home, .classTable, .calendar])
+            #expect(UserDefaults.standard.bool(forKey: doneKey))
+
+            // Once done, never again — even with the bar gone.
+            Defaults[.configuredTabsData] = nil
+            #expect(!DefaultTabsPinMigration.runIfNeeded())
+            #expect(Defaults[.configuredTabsData] == nil)
+        }
+    }
+
+    /// `AppState.init` seeds the running version before migrations run.
+    @Test func aFreshInstallStoresNothing() async throws {
+        try await Self.withRealMigrationKeys {
+            Defaults[.lastShownWhatsNewVersion] = "2.3.0"
+
+            #expect(!DefaultTabsPinMigration.runIfNeeded())
+            #expect(Defaults[.configuredTabsData] == nil)
+            #expect(UserDefaults.standard.bool(forKey: doneKey))
+        }
+    }
+
+    @Test func anUpgradesCustomizedBarIsNotOverwritten() async throws {
+        try await Self.withRealMigrationKeys {
+            Defaults[.lastShownWhatsNewVersion] = "2.2.0"
+            Defaults[.hasCompletedOnboarding] = true
+            let mine = try JSONEncoder().encode(["home", "gpa"])
+            Defaults[.configuredTabsData] = mine
+
+            #expect(!DefaultTabsPinMigration.runIfNeeded())
+            #expect(Defaults[.configuredTabsData] == mine)
+        }
+    }
+
+    // MARK: - Classification
     @Test func anExistingUntouchedBarKeepsCalendar() {
         #expect(DefaultTabsPinMigration.keepsPreviousDefault(storedTabs: nil, isExistingInstall: true))
     }
