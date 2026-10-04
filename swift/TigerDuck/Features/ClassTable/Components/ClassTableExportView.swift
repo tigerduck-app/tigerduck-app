@@ -85,24 +85,26 @@ enum ClassTableExporter {
         }
     }
 
-    /// "課表 114-2 B11315000.png": the name the file keeps wherever it is
-    /// saved or sent, so it says what it is and whose. Spaces between the
-    /// parts, because the term label already carries a dash. The student
-    /// id is left out, not left as a trailing space, when there is none.
+    /// "課表_114-2_B11315000.png": the name the file keeps wherever it is
+    /// saved or sent, so it says what it is and whose. Underscores, never
+    /// spaces — between the parts and inside them ("Class_table") — so the
+    /// name survives a URL or a command line without quoting or %20. The
+    /// student id is left out, not left as a trailing underscore, when
+    /// there is none.
     nonisolated static func fileName(title: String, semesterLabel: String, studentId: String?) -> String {
         let parts = [title, semesterLabel, studentId ?? ""]
             .map {
                 $0.components(separatedBy: unsafeFileNameCharacters).joined()
-                    .trimmingCharacters(in: .whitespaces)
+                    .split(whereSeparator: \.isWhitespace)
+                    .joined(separator: "_")
             }
             .filter { !$0.isEmpty }
-        return parts.joined(separator: " ") + ".png"
+        return parts.joined(separator: "_") + ".png"
     }
 
     /// Path separators, the characters Files and FAT-formatted drives
-    /// refuse, and line breaks.
+    /// refuse, and control characters.
     private nonisolated static let unsafeFileNameCharacters = CharacterSet(charactersIn: "/\\:*?\"<>|")
-        .union(.newlines)
         .union(.controlCharacters)
 }
 #endif
