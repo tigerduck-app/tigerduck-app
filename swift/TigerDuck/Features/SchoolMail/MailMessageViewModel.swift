@@ -123,6 +123,10 @@ final class MailMessageViewModel {
     /// existence.
     private(set) var folderRoles: [MailFolderRole: String]
     var mode: ViewMode = .formatted
+    /// "View in light mode": the formatted view drawn on white paper (`MailHTMLTheme.light`)
+    /// instead of the app's own page. It belongs to this screen, like `mode` — never saved — so
+    /// the next mail opens on the app's page again; only the mail that needed it was switched.
+    var viewsInLightMode = false
 
     /// `(folder, uid, seen)` — the folder is part of the identity being reported, not
     /// context: a UID means nothing without it, and the list must be able to tell that this
@@ -196,6 +200,14 @@ final class MailMessageViewModel {
         guard detail != nil else { return ViewMode.allCases }
         return linkedDocument == nil ? [.plain, .source] : ViewMode.allCases
     }
+
+    /// Whether the menu offers "View in light mode". Only the formatted view of an HTML mail is
+    /// drawn on a page at all — plain text and source are the app's own text — so anywhere else
+    /// the item would change nothing on screen.
+    var offersLightMode: Bool { mode == .formatted && linkedDocument != nil }
+
+    /// The page the formatted view draws the mail on.
+    var htmlTheme: MailHTMLTheme { viewsInLightMode ? .light : .app }
 
     /// Delete means "move to Trash"; inside Trash — or with no Trash folder resolved — it is
     /// permanent (§8.3).
