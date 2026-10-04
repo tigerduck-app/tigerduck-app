@@ -21,9 +21,9 @@ import AppKit
 ///
 /// **Cross-platform alignment**: the gating constants mirror Android's
 /// `UpdatePromptGate.COOLDOWN_MS` (7 days, same available version after
-/// "Later") and the What's New content schema mirrors Android's
-/// `assets/whatsnew.json` so the same release notes render on both
-/// platforms.
+/// "Later"), and the What's New flow — code-defined feature pages
+/// stacked across skipped versions, then a `whatsnew.json` summary —
+/// matches Android's, which keys the same idea by versionCode.
 @MainActor
 @Observable
 final class UpdateNotifyCoordinator {
@@ -34,11 +34,12 @@ final class UpdateNotifyCoordinator {
     /// `handleUpdatePromptAction` clears it on accept / later / skip.
     var pendingUpdate: PendingUpdate?
 
-    /// What's New entry to present on the next eligible launch. Set by
-    /// ``evaluateWhatsNewOnLaunch()`` when the installed version moved
-    /// past `lastShownWhatsNewVersion` and an entry is registered for
-    /// the running version in `whatsnew.json`.
-    var pendingWhatsNew: WhatsNewRepository.ResolvedWhatsNew?
+    /// What's New flow to present on the next eligible launch. Set by
+    /// ``evaluateWhatsNewOnLaunch(in:)`` when the installed version moved
+    /// past `lastShownWhatsNewVersion` and the skipped releases left
+    /// anything to show — feature pages from ``WhatsNewCatalog`` or a
+    /// summary for the running version in `whatsnew.json`.
+    var pendingWhatsNew: WhatsNewPresentation?
 
     /// True while a manual "Check for Updates" tap is in flight. Surface
     /// in Settings so the row can show a spinner instead of a button.
@@ -98,87 +99,63 @@ final class UpdateNotifyCoordinator {
 
     // MARK: - What's New
 
-    /// Resolved language tag passed to the What's New repository. Reads
-    /// the in-app override first (`AppLanguage`-keyed setting), then
-    /// falls back to the device locale. Wrapping this lets the manual
-    /// "Open What's New" Settings entry and the launch-time auto-open
-    /// stay in lockstep.
-    private var resolvedLanguageTag: String {
-        let stored = Defaults[.appLanguage]
-        if stored.lowercased() != "system" { return stored }
-        return Locale.current.identifier
-    }
-
-    /// True iff at least one entry is registered in `whatsnew.json` for
-    /// the current locale resolution. Drives the Settings → What's New
-    /// row's visibility.
+    /// True iff there is anything to replay — catalog pages or a
+    /// summary in `whatsnew.json` for the current locale resolution.
+    /// Drives the Settings → What's New row's visibility.
     var hasWhatsNewContent: Bool {
-        repository.hasAnyContent(languageTag: resolvedLanguageTag)
+        latestWhatsNew != nil
     }
 
-    /// Latest authored entry for the current locale, independent of
-    /// `lastShownWhatsNewVersion`. Backs the Settings → What's New
-    /// entry point, which is allowed to re-present the same content.
-    var latestWhatsNew: WhatsNewRepository.ResolvedWhatsNew? {
-        repository.latestEntry(languageTag: resolvedLanguageTag)
+    /// Newest release's flow, up to the installed version, for the current
+    /// locale — independent of `lastShownWhatsNewVersion`. Backs the
+    /// Settings → What's New entry point, which is allowed to re-present
+    /// the same content.
+    var latestWhatsNew: WhatsNewPresentation? {
+        let languageTag = WhatsNewLanguage.currentLanguageTag
+        let current = AppVersion.current
+        return WhatsNewFlowBuilder.replay(
+            language: WhatsNewLanguage(languageTag: languageTag),
+            upTo: current,
+            releases: WhatsNewCatalog.releases,
+            latestSummary: repository.latestEntry(languageTag: languageTag, upTo: current),
+            summaryFor: { repository.entry(forVersion: $0, languageTag: languageTag) }
+        )
     }
 
-    /// Call once during app launch, after onboarding has completed, to
-    /// decide whether to surface the What's New sheet. The decision rule
-    /// mirrors Android's `WhatsNewGate.shouldShow`:
+    /// Call during app launch, after onboarding has completed, to decide
+    /// whether to surface the What's New sheet:
     ///
-    /// 1. `lastShownWhatsNewVersion` is set (a brand-new install seeded
-    ///    it during fresh-install handling, so this branch fails for
-    ///    first-launch users — they haven't missed anything).
-    /// 2. The running version is strictly greater than the last seen
-    ///    version.
-    /// 3. `whatsnew.json` has a usable entry for the running version
-    ///    in the resolved locale.
-    func evaluateWhatsNewOnLaunch() {
-        guard let lastShownRaw = Defaults[.lastShownWhatsNewVersion],
-              let lastShown = AppVersion(lastShownRaw)
-        else {
-            // Fresh installs that completed the seed land here with a
-            // valid `lastShownRaw`; only path that legitimately lacks
-            // one is "upgrade from a version that predated this
-            // feature". Surface What's New in that case too.
-            return surfaceLatestIfAvailable()
-        }
-        guard lastShown < AppVersion.current else { return }
-        let current = bundleVersionString
-        if let entry = repository.entry(forVersion: current, languageTag: resolvedLanguageTag) {
-            present(entry)
-        }
-        // No registered entry for the running version → silent skip
-        // (matches Android: a bug-fix release with no JSON entry should
-        // NOT pop a dialog).
-    }
+    /// 1. A marker at or past the running version means this version was
+    ///    already handled — nothing to do.
+    /// 2. Otherwise the marker advances to the running version right away,
+    ///    whether or not anything shows. That keeps it meaning "last version
+    ///    opened" (as Android's does), so a page skipped by its
+    ///    `isApplicable` check on this version can't resurface on a later
+    ///    upgrade, and makes repeat calls idempotent — `MainTabView.onAppear`
+    ///    re-fires on every language change, via `ContentView`'s
+    ///    `.id(rootLanguageId)` rebuild, and must not re-present the sheet.
+    /// 3. The flow stacks feature pages from every release since the marker,
+    ///    then the running version's summary. A missing marker — an upgrade
+    ///    from a build that predates it, since fresh installs are seeded —
+    ///    counts the running version only. Nothing to show (a bug-fix
+    ///    release) stays silent.
+    func evaluateWhatsNewOnLaunch(in appState: AppState) {
+        let lastShown = Defaults[.lastShownWhatsNewVersion].flatMap(AppVersion.init)
+        let current = AppVersion.current
+        if let lastShown, !(lastShown < current) { return }
 
-    /// Fallback path for users upgrading from a pre-feature version
-    /// (no `lastShownWhatsNewVersion` set). Only surface the latest
-    /// entry when its version actually matches the running bundle —
-    /// otherwise a release that forgot to add a `whatsnew.json` entry
-    /// would pop the *previous* version's sheet ("What's new in 1.7.0"
-    /// to a 1.8.0 user), which is worse than no prompt.
-    private func surfaceLatestIfAvailable() {
-        guard let entry = latestWhatsNew,
-              entry.version == bundleVersionString
-        else { return }
-        present(entry)
-    }
-
-    /// Set `pendingWhatsNew` AND advance the seen marker in the same
-    /// pass. Stamping eagerly (rather than only on dismiss) makes
-    /// `evaluateWhatsNewOnLaunch()` idempotent across the repeated
-    /// `MainTabView.onAppear` firings caused by `ContentView`'s
-    /// `.id(rootLanguageId)` rebuild on every language change — without
-    /// this, a remount before the user has tapped Continue would
-    /// re-present the sheet on every language toggle in the same
-    /// session. The `acknowledgeWhatsNew()` call from the sheet's
-    /// dismiss path is then an idempotent re-write of the same key.
-    private func present(_ entry: WhatsNewRepository.ResolvedWhatsNew) {
-        pendingWhatsNew = entry
-        Defaults[.lastShownWhatsNewVersion] = bundleVersionString
+        let version = bundleVersionString
+        let languageTag = WhatsNewLanguage.currentLanguageTag
+        Defaults[.lastShownWhatsNewVersion] = version
+        pendingWhatsNew = WhatsNewFlowBuilder.upgrade(
+            from: lastShown,
+            to: current,
+            version: version,
+            language: WhatsNewLanguage(languageTag: languageTag),
+            releases: WhatsNewCatalog.releases,
+            summary: repository.entry(forVersion: version, languageTag: languageTag),
+            isApplicable: { $0.isApplicable(appState) }
+        )
     }
 
     /// Sticky write that advances `lastShownWhatsNewVersion` to the

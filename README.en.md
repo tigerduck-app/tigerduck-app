@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.2.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.2.0)
+[![Version](https://img.shields.io/badge/Version-v2.3.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.3.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -110,6 +110,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v2.3.0`** | 2026-10-04 | 🎨 **A new What's New** — after an update, animated pages introduce new features one at a time, catching up on any versions you skipped, then list the release's highlights; the first asks whether to reset your bottom bar to the defaults, shown only if you've customized it; School Mail search goes past the newest 50 matches, and its search field stays hidden until you pull the mail list down; mail notifications no longer arrive after signing out, and a folder recreated mid-search no longer lists stale mail |
 | **`v2.2.0`** | 2026-09-30 | 📬 **School Mail** — the iOS app now reads and sends your NTUST Mail2000 mail: Inbox, Sent, Drafts, Trash, Junk and All mail, with search, reply, forward, attachments, move and delete; it checks for new mail every few minutes and notifies you; sign-in fills in your NTUST account, and the password is stored encrypted on this device only; the phone talks to the school's mail server directly, never through TigerDuck's servers; signing out or switching accounts takes the previous account's library QR code off the screen right away |
 | **`v2.1.4`** | 2026-09-25 | Class Live Activities no longer pop up on holidays: the schedule uploaded to the server skips holiday classes, and a holiday announced after the push (such as a typhoon day) dismisses the activities already on screen once the app is opened; Today's courses and the home Time machine no longer list a holiday's classes; flipping “Still have class?” in the calendar updates the schedule, widgets and class table right away |
 | **`v2.1.3`** | 2026-09-24 | A new Others page under About; open-source licenses are listed in full in the app, in a window of their own on the Mac; pages opened from More drop the back arrow; the library QR code is up the moment you return to the tab, its brightness boost follows the screen the code is actually on, and the screen no longer stays at full brightness after you leave; course details keep the GE dimension and course duration across a sync |

@@ -240,5 +240,25 @@
         "Search, reply, reply all and forward, add attachments, and share or save the ones you receive"
       ]
     }
+  },
+  "2.3.0": {
+    "zh-TW": {
+      "title": "2.3.0 更新內容",
+      "items": [
+        { "symbol": "sparkles", "title": "全新的新功能介紹", "body": "更新後會逐頁介紹新功能，跳過的版本也會一併補上。" },
+        { "symbol": "rectangle.bottomthird.inset.filled", "title": "恢復預設底部功能列", "body": "自訂過底部功能列的話，可以一鍵回到預設的項目。" },
+        { "symbol": "text.magnifyingglass", "title": "搜尋更多信件", "body": "校園信箱搜尋可以查看最新 50 封以外的結果。" },
+        { "symbol": "arrow.down.circle", "title": "下拉即可搜尋", "body": "搜尋欄平時隱藏，下拉信件列表時才會出現。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.3.0",
+      "items": [
+        { "symbol": "sparkles", "title": "A new What's New", "body": "New features are introduced page by page after an update, including any versions you skipped." },
+        { "symbol": "rectangle.bottomthird.inset.filled", "title": "Reset the bottom bar", "body": "If you've customized your bottom bar, you can go back to the default tabs in one tap." },
+        { "symbol": "text.magnifyingglass", "title": "Search more mail", "body": "School Mail search now goes past the newest 50 matches." },
+        { "symbol": "arrow.down.circle", "title": "Pull down to search", "body": "The search field stays out of the way until you pull the mail list down." }
+      ]
+    }
   }
 }

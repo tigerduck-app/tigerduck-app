@@ -1,0 +1,247 @@
+#if os(iOS)
+import SwiftUI
+
+/// The scrolling body of one feature page — everything above the page
+/// dots. The buttons below belong to ``WhatsNewFlowView``, which keeps
+/// them in place while pages slide.
+struct WhatsNewPageContentView: View {
+    let page: WhatsNewPage
+    let context: WhatsNewPageContext
+
+    var body: some View {
+        switch page.kind {
+        case .feature(let content), .optIn(let content, _, _, _), .permission(let content, _, _, _):
+            WhatsNewTemplateBody(content: content) { EmptyView() }
+        case .choice(let content, let options, let current, let select):
+            WhatsNewTemplateBody(content: content) {
+                WhatsNewChoicePicker(options: options, initial: current(context.appState)) {
+                    select(context.appState, $0)
+                }
+            }
+        case .toggle(let content, let label, let get, let set):
+            WhatsNewTemplateBody(content: content) {
+                WhatsNewToggleRow(label: label.resolved(for: context.language), initial: get(context.appState)) {
+                    set(context.appState, $0)
+                }
+            }
+        case .custom(_, let build):
+            build(context)
+        }
+    }
+}
+
+/// Demo, title and body, centred — the shared shape of every template —
+/// with a slot underneath for the template's own control.
+private struct WhatsNewTemplateBody<Accessory: View>: View {
+    let content: WhatsNewPage.Content
+    @ViewBuilder let accessory: Accessory
+    @Environment(\.whatsNewLanguage) private var language
+    @Environment(\.whatsNewPageIsCurrent) private var isCurrent
+    @AccessibilityFocusState private var isTitleFocused: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: TigerDuckTheme.Spacing.xl) {
+                    if let visual = content.visual {
+                        WhatsNewVisualView(visual: visual)
+                    }
+                    VStack(spacing: TigerDuckTheme.Spacing.md) {
+                        Text(content.title.resolved(for: language))
+                            .font(.title.bold())
+                            .accessibilityAddTraits(.isHeader)
+                            .accessibilityFocused($isTitleFocused)
+                        Text(content.body.resolved(for: language))
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    accessory
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, TigerDuckTheme.Spacing.xl)
+                .padding(.vertical, TigerDuckTheme.Spacing.lg)
+                // Centred in the page while it fits, so a short page
+                // doesn't leave its gap all above the buttons; once
+                // Dynamic Type outgrows the page it scrolls from the top.
+                .frame(minHeight: proxy.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        // The Next button stays put while pages slide, so VoiceOver focus
+        // would sit on it and never hear the new page; move it to the
+        // heading as the page becomes current.
+        .onChange(of: isCurrent) { _, current in
+            if current { isTitleFocused = true }
+        }
+    }
+}
+
+struct WhatsNewVisualView: View {
+    let visual: WhatsNewVisual
+
+    var body: some View {
+        switch visual {
+        case .symbol(let name, let effect):
+            Image(systemName: name)
+                .font(.system(size: 76))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tint)
+                .modifier(WhatsNewSymbolEffectModifier(effect: effect))
+                .frame(height: 120)
+                .accessibilityHidden(true)
+        case .view(let demo):
+            demo()
+                .frame(maxWidth: .infinity)
+                .frame(height: 240)
+        }
+    }
+}
+
+/// Loops the page's symbol effect. Reduce Motion stills the symbol
+/// rather than swapping in a subtler effect — the text carries the page.
+private struct WhatsNewSymbolEffectModifier: ViewModifier {
+    let effect: WhatsNewSymbolEffect
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if reduceMotion {
+            content
+        } else {
+            switch effect {
+            case .none:
+                content
+            case .bounce:
+                content.symbolEffect(.bounce, options: .repeat(.periodic(delay: 1.5)))
+            case .pulse:
+                content.symbolEffect(.pulse, options: .repeat(.continuous))
+            case .wiggle:
+                content.symbolEffect(.wiggle, options: .repeat(.periodic(delay: 1.5)))
+            case .breathe:
+                content.symbolEffect(.breathe, options: .repeat(.continuous))
+            case .rotate:
+                content.symbolEffect(.rotate, options: .repeat(.periodic(delay: 1)))
+            case .variableColor:
+                content.symbolEffect(.variableColor.iterative, options: .repeat(.continuous))
+            }
+        }
+    }
+}
+
+/// Side-by-side cards, one per look. A tap applies the pick at once, so
+/// leaving the page by any route keeps it.
+private struct WhatsNewChoicePicker: View {
+    let options: [WhatsNewPage.ChoiceOption]
+    /// The live setting. Followed after the first build too: the pager
+    /// builds this page while its neighbour is on screen, and that
+    /// neighbour may change the setting before the user gets here.
+    let initial: String
+    let select: (String) -> Void
+    @State private var selection: String
+    @Environment(\.whatsNewLanguage) private var language
+
+    init(options: [WhatsNewPage.ChoiceOption], initial: String, select: @escaping (String) -> Void) {
+        self.options = options
+        self.initial = initial
+        self.select = select
+        _selection = State(initialValue: initial)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: TigerDuckTheme.Spacing.lg) {
+            ForEach(options) { option in
+                let isSelected = option.id == selection
+                Button {
+                    selection = option.id
+                    select(option.id)
+                } label: {
+                    VStack(spacing: TigerDuckTheme.Spacing.sm) {
+                        option.preview()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.lg, style: .continuous)
+                                    .strokeBorder(
+                                        isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.separator),
+                                        lineWidth: isSelected ? 3 : 1
+                                    )
+                            }
+                        Text(option.title.resolved(for: language))
+                            .font(.subheadline.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                            .accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                .animation(.snappy, value: isSelected)
+            }
+        }
+        .onChange(of: initial) { _, live in selection = live }
+    }
+}
+
+/// A switch under the demo, applied live as it flips.
+private struct WhatsNewToggleRow: View {
+    let label: String
+    /// The live setting, followed for the same reason as
+    /// ``WhatsNewChoicePicker/initial``.
+    let initial: Bool
+    let set: (Bool) -> Void
+    @State private var isOn: Bool
+
+    init(label: String, initial: Bool, set: @escaping (Bool) -> Void) {
+        self.label = label
+        self.initial = initial
+        self.set = set
+        _isOn = State(initialValue: initial)
+    }
+
+    var body: some View {
+        Toggle(label, isOn: $isOn)
+            .onChange(of: isOn) { _, newValue in set(newValue) }
+            .onChange(of: initial) { _, live in isOn = live }
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            .padding(.vertical, TigerDuckTheme.Spacing.md)
+            .background(
+                Color(uiColor: .secondarySystemBackground),
+                in: RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md, style: .continuous)
+            )
+    }
+}
+
+struct WhatsNewPageDots: View {
+    let count: Int
+    let current: Int
+    @Environment(\.whatsNewLanguage) private var language
+
+    var body: some View {
+        HStack(spacing: TigerDuckTheme.Spacing.sm) {
+            ForEach(0..<count, id: \.self) { step in
+                Circle()
+                    .fill(step == current ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
+                    .frame(width: 7, height: 7)
+            }
+        }
+        .animation(.snappy, value: current)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(WhatsNewText(
+            en: "Page \(current + 1) of \(count)",
+            zhHant: "第 \(current + 1) 頁，共 \(count) 頁"
+        ).resolved(for: language))
+    }
+}
+
+extension EnvironmentValues {
+    /// Whether the What's New page this view sits in is the one on
+    /// screen. The pager builds the pages either side ahead of time, so a
+    /// page can't tell from `onAppear` alone.
+    @Entry var whatsNewPageIsCurrent: Bool = true
+}
+#endif

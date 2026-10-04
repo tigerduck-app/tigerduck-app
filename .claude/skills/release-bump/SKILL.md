@@ -131,36 +131,54 @@ If the version unlocks new product capability, also tick the matching item in th
 
 ### 5. Add the in-app "What's new" entry
 
-`swift/TigerDuck/whatsnew.json` drives the sheet the app shows on first launch
-after an update, and the Settings → About "What's new" row. **A version with no
-entry here silently shows nothing** — the decoder is defensive on purpose, so a
-missing entry is not an error you will see. Add it every marketing bump.
+`swift/TigerDuck/whatsnew.json` holds the **summary** — the last page of the
+sheet the app shows on first launch after an update, and of the Settings →
+About "What's new" replay. **A version with no entry here shows no summary** —
+the decoder is defensive on purpose, so a missing entry is not an error you will
+see. Add it every marketing bump.
 
 Top-level keys are `CFBundleShortVersionString` values, in ascending order.
 Each needs both locales — `zh-TW` and `en`; the repository falls back to `en`
-for every other language, so those two are the whole surface.
+for every other language, so those two are the whole surface. Each row is an SF
+Symbol, a short headline and one line of detail — Apple's What's New layout:
 
 ```json
   "<NEW>": {
     "zh-TW": {
       "title": "<NEW> 更新內容",
-      "highlights": ["...", "..."]
+      "items": [
+        { "symbol": "envelope.fill", "title": "...", "body": "..." }
+      ]
     },
     "en": {
       "title": "What's new in <NEW>",
-      "highlights": ["...", "..."]
+      "items": [
+        { "symbol": "envelope.fill", "title": "...", "body": "..." }
+      ]
     }
   }
 ```
 
-- 3–5 highlights, **user-facing outcomes only** — no internal refactors, no
-  bug-fix plumbing the user never saw. This is App Store copy, not a changelog.
-- Full sentences ending in `。` / `.`, same voice as the neighbouring entries.
+- 3–5 rows, **user-facing outcomes only** — no internal refactors, no bug-fix
+  plumbing the user never saw. This is App Store copy, not a changelog.
+- `title` is a few words naming the feature; `body` is one sentence ending in
+  `。` / `.`, same voice as the neighbouring entries.
+- `symbol` is an SF Symbol name that exists on the deployment target (check it
+  in the SF Symbols app); use the same symbol in both locales.
 - The zh and en lists are translations of each other: same count, same order.
+- Older entries carry `highlights: ["..."]` instead of `items` and still
+  render, as bulleted sentences. Write new entries with `items`.
 - Append the block at the end, keep 2-space indent, and re-validate:
   `python3 -c "import json;json.load(open('swift/TigerDuck/whatsnew.json'))"`
 - Reuse the README highlights as the source, then trim them to what a user
   would actually notice.
+
+Feature pages — a demo of a new feature, or a question such as "apply the
+recommended layout?" — come before the summary and are **not** part of a bump.
+They're Swift in `swift/TigerDuck/Features/Updates/WhatsNewCatalog.swift`, keyed
+by the same version, with their copy inline in the same two languages
+(`WhatsNewText(en:zhHant:)`, not `app-translation`); they land with the feature
+work. A bump only checks that any catalog key it ships matches `<NEW>`.
 
 ### 6. Commit
 
@@ -249,6 +267,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 - ❌ Updating only the Chinese README — the English one drifts and stops matching.
 - ❌ Shipping a marketing bump with no `whatsnew.json` entry — the update sheet just doesn't appear, and nothing warns you.
 - ❌ Pasting the README highlight verbatim into `whatsnew.json` — the README row is a changelog, the JSON is App Store copy.
+- ❌ Writing a new `whatsnew.json` entry as `highlights` — it renders as plain bullets; new entries use `items` rows.
 - ❌ Bumping `MARKETING_VERSION = 1.0;` placeholders — these are test targets, not shippable.
 - ❌ Bumping the marketing version but not the build number — the repo's build drifts from what Xcode Cloud shows.
 - ❌ Squashing the app-translation submodule bump into the release commit — keep them separate so reverting a release doesn't unwind translations.

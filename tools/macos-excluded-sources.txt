@@ -32,6 +32,7 @@ DevMailServerOverride.swift
 DevMailServerView.swift
 TigerSyncStatusView.swift
 TriggersDebugView.swift
+WhatsNewSampleFlow.swift
 
 # Extensions — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
@@ -131,7 +132,10 @@ SettingsView.swift
 # with an alert (MacUpdateCheck.swift) and shows no What's New
 UpdateNotifySheetHost.swift
 UpdatePromptView.swift
-WhatsNewSheetView.swift
+WhatsNewFlowView.swift
+WhatsNewPageViews.swift
+WhatsNewResetBottomBarPage.swift
+WhatsNewSummaryView.swift
 
 # LiveActivity/Models — ActivityKit — iOS only
 AssignmentReminderOffset.swift
