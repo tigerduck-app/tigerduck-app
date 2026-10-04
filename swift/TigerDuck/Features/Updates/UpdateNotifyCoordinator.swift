@@ -106,15 +106,18 @@ final class UpdateNotifyCoordinator {
         latestWhatsNew != nil
     }
 
-    /// Newest release's flow for the current locale, independent of
-    /// `lastShownWhatsNewVersion`. Backs the Settings → What's New
-    /// entry point, which is allowed to re-present the same content.
+    /// Newest release's flow, up to the installed version, for the current
+    /// locale — independent of `lastShownWhatsNewVersion`. Backs the
+    /// Settings → What's New entry point, which is allowed to re-present
+    /// the same content.
     var latestWhatsNew: WhatsNewPresentation? {
         let languageTag = WhatsNewLanguage.currentLanguageTag
+        let current = AppVersion.current
         return WhatsNewFlowBuilder.replay(
             language: WhatsNewLanguage(languageTag: languageTag),
+            upTo: current,
             releases: WhatsNewCatalog.releases,
-            latestSummary: repository.latestEntry(languageTag: languageTag),
+            latestSummary: repository.latestEntry(languageTag: languageTag, upTo: current),
             summaryFor: { repository.entry(forVersion: $0, languageTag: languageTag) }
         )
     }

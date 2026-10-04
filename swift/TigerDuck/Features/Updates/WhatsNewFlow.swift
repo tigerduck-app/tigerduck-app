@@ -56,20 +56,24 @@ enum WhatsNewFlowBuilder {
         return make(version: version, language: language, pages: pages, summary: summary)
     }
 
-    /// The flow behind Settings → What's New: the newest release that has
-    /// either pages or a summary, shown whole — no applicability filter,
-    /// since a replay is the user asking to see it again.
+    /// The flow behind Settings → What's New: the newest release, at most
+    /// the installed one, that has either pages or a summary, shown whole —
+    /// no applicability filter, since a replay is the user asking to see
+    /// it again. Pages registered ahead of their release's bump stay out
+    /// until a build reports that version.
     ///
-    /// `latestSummary` is the newest authored summary; `summaryFor`
-    /// looks one up for a specific version, used when the catalog's
-    /// newest release is ahead of the JSON's.
+    /// `latestSummary` is the newest authored summary up to the same
+    /// ceiling; `summaryFor` looks one up for a specific version, used
+    /// when the catalog's newest release is ahead of the JSON's.
     static func replay(
         language: WhatsNewLanguage,
+        upTo current: AppVersion,
         releases: [String: [WhatsNewPage]],
         latestSummary: WhatsNewRepository.ResolvedWhatsNew?,
         summaryFor: (String) -> WhatsNewRepository.ResolvedWhatsNew?
     ) -> WhatsNewPresentation? {
-        let newestPages = parsed(releases).last
+        let reached = parsed(releases).filter { $0.version <= current }
+        let newestPages = reached.last
         let summaryVersion = latestSummary.flatMap { AppVersion($0.version) }
 
         if let newestPages, summaryVersion.map({ $0 < newestPages.version }) ?? true {
@@ -81,7 +85,7 @@ enum WhatsNewFlowBuilder {
             )
         }
         guard let latestSummary, let summaryVersion else { return nil }
-        let pages = parsed(releases)
+        let pages = reached
             .filter { $0.version == summaryVersion }
             .flatMap(\.pages)
         return make(version: latestSummary.version, language: language, pages: pages, summary: latestSummary)

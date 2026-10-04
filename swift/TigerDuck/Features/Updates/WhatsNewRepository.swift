@@ -64,23 +64,25 @@ struct WhatsNewRepository {
         )
     }
 
-    /// Resolved entry for the newest registered version, ignoring the
-    /// running build's version. Backs the Settings → What's New entry,
-    /// which has to surface the latest authored content even on the
-    /// build that ships it.
-    func latestEntry(languageTag: String) -> ResolvedWhatsNew? {
+    /// Resolved entry for the newest registered version — at most
+    /// `upTo` when given. Backs the Settings → What's New entry, which
+    /// passes the running version so a build carrying the next release's
+    /// summary ahead of its bump keeps replaying its own.
+    func latestEntry(languageTag: String, upTo: AppVersion? = nil) -> ResolvedWhatsNew? {
         guard let byVersion = loadByVersion(), !byVersion.isEmpty else { return nil }
         // Sort by parsed AppVersion so "1.10.0" outranks "1.9.0" (lexical
-        // sort would invert them). Falls back to lexical ordering when
-        // any key fails to parse, which matters for a maintainer typo —
-        // surfacing *something* beats surfacing nothing.
+        // sort would invert them). With no ceiling, falls back to lexical
+        // ordering when every key fails to parse — a maintainer typo, where
+        // surfacing *something* beats surfacing nothing; a ceiling can't be
+        // checked against an unparseable key, so it skips them.
         let pairs = byVersion.keys.compactMap { key -> (String, AppVersion)? in
             guard let v = AppVersion(key) else { return nil }
+            if let upTo, upTo < v { return nil }
             return (key, v)
         }
         let latestKey: String? = pairs
             .max(by: { $0.1 < $1.1 })?
-            .0 ?? byVersion.keys.sorted().last
+            .0 ?? (upTo == nil ? byVersion.keys.sorted().last : nil)
         guard let latestKey else { return nil }
         return Self.select(
             versionEntry: byVersion[latestKey],

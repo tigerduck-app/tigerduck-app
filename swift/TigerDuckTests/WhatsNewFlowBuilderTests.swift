@@ -89,6 +89,7 @@ struct WhatsNewFlowBuilderTests {
     @Test func replayShowsTheNewestReleaseWithItsSummary() throws {
         let flow = try #require(WhatsNewFlowBuilder.replay(
             language: .en,
+            upTo: AppVersion("9.9.9")!,
             releases: ["2.2.0": [page("old")], "2.3.0": [page("new")]],
             latestSummary: summary("2.3.0"),
             summaryFor: { _ in nil }
@@ -101,6 +102,7 @@ struct WhatsNewFlowBuilderTests {
     @Test func replayFollowsTheCatalogWhenItIsAheadOfTheJSON() throws {
         let flow = try #require(WhatsNewFlowBuilder.replay(
             language: .en,
+            upTo: AppVersion("9.9.9")!,
             releases: ["2.3.0": [page("new")]],
             latestSummary: summary("2.2.0"),
             summaryFor: { $0 == "2.3.0" ? summary("2.3.0") : nil }
@@ -113,6 +115,7 @@ struct WhatsNewFlowBuilderTests {
     @Test func replayFollowsTheJSONWhenItIsAheadOfTheCatalog() throws {
         let flow = try #require(WhatsNewFlowBuilder.replay(
             language: .en,
+            upTo: AppVersion("9.9.9")!,
             releases: ["2.2.0": [page("old")]],
             latestSummary: summary("2.3.0"),
             summaryFor: { _ in nil }
@@ -124,6 +127,7 @@ struct WhatsNewFlowBuilderTests {
     @Test func replayIgnoresTheApplicabilityCheck() throws {
         let flow = try #require(WhatsNewFlowBuilder.replay(
             language: .en,
+            upTo: AppVersion("9.9.9")!,
             releases: ["2.3.0": [page("a", applicable: false)]],
             latestSummary: nil,
             summaryFor: { _ in nil }
@@ -132,7 +136,36 @@ struct WhatsNewFlowBuilderTests {
     }
 
     @Test func replayWithNothingAuthoredIsNoFlow() {
-        #expect(WhatsNewFlowBuilder.replay(language: .en, releases: [:], latestSummary: nil, summaryFor: { _ in nil }) == nil)
+        #expect(WhatsNewFlowBuilder.replay(
+            language: .en,
+            upTo: AppVersion("9.9.9")!,
+            releases: [:],
+            latestSummary: nil,
+            summaryFor: { _ in nil }
+        ) == nil)
+    }
+
+    @Test func replayLeavesOutPagesAheadOfTheInstalledVersion() throws {
+        let flow = try #require(WhatsNewFlowBuilder.replay(
+            language: .en,
+            upTo: AppVersion("2.2.0")!,
+            releases: ["2.2.0": [page("installed")], "2.3.0": [page("ahead")]],
+            latestSummary: summary("2.2.0"),
+            summaryFor: { _ in nil }
+        ))
+        #expect(flow.version == "2.2.0")
+        #expect(flow.pages.map(\.id) == ["installed"])
+        #expect(flow.summary?.version == "2.2.0")
+    }
+
+    @Test func replayWithOnlyFuturePagesAndNoSummaryIsNoFlow() {
+        #expect(WhatsNewFlowBuilder.replay(
+            language: .en,
+            upTo: AppVersion("2.2.0")!,
+            releases: ["2.3.0": [page("ahead")]],
+            latestSummary: nil,
+            summaryFor: { _ in nil }
+        ) == nil)
     }
 
     // MARK: - Helpers

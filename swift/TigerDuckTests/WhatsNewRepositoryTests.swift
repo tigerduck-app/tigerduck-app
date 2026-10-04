@@ -93,6 +93,8 @@ struct WhatsNewRepositoryTests {
             #expect(AppVersion(key) != nil, "unparseable version key \(key)")
         }
         #expect(WhatsNewRepository().latestEntry(languageTag: "en") != nil)
+        // A ceiling below the newest entry stops at the newest one under it.
+        #expect(WhatsNewRepository().latestEntry(languageTag: "en", upTo: AppVersion("2.2.0")!)?.version == "2.2.0")
         #expect(WhatsNewRepository().latestEntry(languageTag: "zh-Hant-TW") != nil)
     }
 
