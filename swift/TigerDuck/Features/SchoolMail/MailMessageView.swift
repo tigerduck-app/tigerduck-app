@@ -77,7 +77,7 @@ struct MailMessageView: View {
             )
         }
         .sheet(item: $inAppURL) { item in InAppBrowserView(url: item.url).ignoresSafeArea() }
-        .sheet(item: $shareItem) { item in MailShareSheet(url: item.url) }
+        .sheet(item: $shareItem) { item in ShareSheet(url: item.url).presentationDetents([.medium, .large]) }
         .quickLookPreview($previewURL)
         .sheet(isPresented: $showMoveSheet) { moveSheet }
         .sheet(item: $compose) { context in

@@ -31,6 +31,14 @@ private func weekdayDisplayName(_ weekday: Int) -> String {
 
 struct TimetableGridView: View {
     let viewModel: ClassTableViewModel
+    /// Off for an exported image: the badge marks work still due, which is
+    /// a reminder for whoever is looking at the screen today, not part of
+    /// the timetable someone is being shown.
+    var showsAssignmentBadges = true
+    /// Overrides the environment's Differentiate Without Color, which marks
+    /// a 衝堂 cluster with a warning triangle; nil follows the environment.
+    /// For an export, whose renderer cannot set that value itself.
+    var differentiateWithoutColor: Bool? = nil
     @Environment(AppState.self) private var appState
 
     private let rowSpacing: CGFloat = 3
@@ -147,7 +155,7 @@ struct TimetableGridView: View {
                 .fill(Color.cardSurface.opacity(0.15))
 
         case .solo(let course, let spanCount):
-            let hasBadge = viewModel.hasAssignment(for: course.courseNo)
+            let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
             let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
             // A 衝堂 cell never reaches this branch, so the hint is absent
             // there by construction — a split cell has no free corner.
@@ -233,6 +241,8 @@ struct TimetableGridView: View {
                 .overlay(alignment: .top) {
                     ConflictClusterView(
                         viewModel: viewModel,
+                        showsAssignmentBadges: showsAssignmentBadges,
+                        differentiateWithoutColorOverride: differentiateWithoutColor,
                         segments: segments,
                         combinedSpan: combinedSpan,
                         cellHeight: cellHeight,
@@ -258,6 +268,8 @@ struct TimetableGridView: View {
 /// bury a course's tail under a `.skip` with nothing drawn on top.
 private struct ConflictClusterView: View {
     let viewModel: ClassTableViewModel
+    let showsAssignmentBadges: Bool
+    let differentiateWithoutColorOverride: Bool?
     let segments: [ClassTableViewModel.ConflictSegment]
     let combinedSpan: Int
     let cellHeight: CGFloat
@@ -265,7 +277,8 @@ private struct ConflictClusterView: View {
     let weekday: Int
     let periodId: String
 
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var environmentDiffWithoutColor
+    private var diffWithoutColor: Bool { differentiateWithoutColorOverride ?? environmentDiffWithoutColor }
     @Environment(AppState.self) private var appState
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
@@ -445,7 +458,7 @@ private struct ConflictClusterView: View {
         let span = segment.span
         let offset = segment.offset
         let bottomRows = max(combinedSpan - offset - span, 0)
-        let hasBadge = viewModel.hasAssignment(for: course.courseNo)
+        let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
 
         return VStack(spacing: rowSpacing) {
             if offset > 0 {
@@ -565,7 +578,7 @@ private struct ConflictClusterView: View {
         labelAlignment: Alignment,
         barFraction: CGFloat
     ) -> some View {
-        let hasBadge = viewModel.hasAssignment(for: course.courseNo)
+        let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
         return GeometryReader { boxProxy in
             ZStack(alignment: labelAlignment) {
                 course.color.opacity(0.4)

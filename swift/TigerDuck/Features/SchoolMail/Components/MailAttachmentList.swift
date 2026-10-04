@@ -1,20 +1,9 @@
 #if os(iOS)
 import SwiftUI
-import UIKit
 
 struct MailFileItem: Identifiable {
     let url: URL
     var id: URL { url }
-}
-
-struct MailShareSheet: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url], applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 /// Attachments are never downloaded or opened automatically (§9.5).
