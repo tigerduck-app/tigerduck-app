@@ -144,8 +144,15 @@ jobs:
       #
       # Both live in the runner's temp directory rather than in the checkout,
       # so the action's mtime scan over the checkout does not walk into them;
-      # every xcodebuild below is pointed there. Package.resolved is named
-      # outright: left to find it, the action globs `**` over the checkout.
+      # every xcodebuild below is pointed there.
+      #
+      # The package clones are per leg, not shared, though both legs clone
+      # the same packages. A leg's DerivedData remembers the mtimes of the
+      # clone it compiled, and the action restores mtimes only inside the
+      # checkout. Shared, the clones came from whichever leg saved first, and
+      # the other leg saw every package file as changed: the first warm run
+      # rebuilt the watch leg's 1,846 Swift and 892 C files from scratch while
+      # the phone leg, whose clone it was, compiled 2.
       - name: Restore the last build
         uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
         with:
@@ -153,7 +160,7 @@ jobs:
           restore-keys: xcode-${{ matrix.leg }}-
           deriveddata-directory: ${{ runner.temp }}/DerivedData
           sourcepackages-directory: ${{ runner.temp }}/SourcePackages
-          swiftpm-package-resolved-file: swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          swiftpm-cache-key: xcode-packages-${{ matrix.leg }}-${{ hashFiles('swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
 
       # The next steps are what a single `xcodebuild test` does inside
       # itself: fetch packages, compile, wait for the simulator, run. Split,
@@ -183,16 +190,18 @@ jobs:
       # No index store: it is what Xcode's jump-to-definition and search read,
       # nothing here does, and writing it costs compile time and cache space.
       #
-      # The full log goes to a file, and what the job prints is the count of
-      # each kind of task the build ran and of compiles per target. That is
-      # how to tell whether the restored build was reused: an up-to-date
-      # rebuild runs no SwiftCompile or CompileC at all.
+      # The full log goes to a file, each line stamped with the time it
+      # arrived, and what the job prints is: the count of each kind of task
+      # the build ran and of compiles per target (an up-to-date rebuild runs
+      # no SwiftCompile or CompileC at all), the longest silences in the log
+      # with the line that ended each, and xcodebuild's own timing summary.
       - name: Build for testing
         env:
           SCHEME: ${{ matrix.scheme }}
           UDID: ${{ steps.sim.outputs.udid }}
           ONLY_TESTING: ${{ matrix.only_testing }}
         run: |
+          set -o pipefail
           log="$RUNNER_TEMP/build.log"
           if ! xcodebuild build-for-testing \
               -project swift/TigerDuck.xcodeproj \
@@ -201,17 +210,24 @@ jobs:
               ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"} \
               -derivedDataPath "$RUNNER_TEMP/DerivedData" \
               -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+              -showBuildTimingSummary \
               COMPILER_INDEX_STORE_ENABLE=NO \
-              > "$log" 2>&1; then
-            grep -E "error:" "$log" | sort -u | head -50
-            tail -n 30 "$log"
+              2>&1 | perl -MTime::HiRes=time -ne 'printf "%.1f %s", time, $_' > "$log"; then
+            cut -d' ' -f2- "$log" | grep -E "error:" | sort -u | head -50
+            tail -n 30 "$log" | cut -d' ' -f2-
             exit 1
           fi
+          set +o pipefail
           echo "-- tasks run"
-          grep -oE '^[A-Z][A-Za-z]+ ' "$log" | sort | uniq -c | sort -rn | head -20
+          cut -d' ' -f2- "$log" | grep -oE '^[A-Z][A-Za-z]+ ' | sort | uniq -c | sort -rn | head -20
           echo "-- compiles by target"
-          grep -E '^(SwiftCompile|CompileC) ' "$log" \
+          cut -d' ' -f2- "$log" | grep -E '^(SwiftCompile|CompileC) ' \
             | grep -oE "in target '[^']+' from project '[^']+'" | sort | uniq -c | sort -rn | head -40
+          echo "-- longest silences (seconds, then the line that ended each)"
+          awk 'NR > 1 { printf "%7.1f  %s\n", $1 - prev, substr($0, index($0, " ") + 1) } { prev = $1 }' "$log" \
+            | sort -rn | head -15 | cut -c1-220
+          echo "-- xcodebuild timing summary"
+          cut -d' ' -f2- "$log" | sed -n '/Build Timing Summary/,$p' | head -40
           true
 
       # bootstatus prints a status line about once a second until the device
