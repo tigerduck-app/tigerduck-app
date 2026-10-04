@@ -94,7 +94,7 @@ jobs:
       # `.ongoing` comes back `.tomorrowFirst`, and `(comps.hour → 2) == 10`
       # misses by exactly the offset. A simulator takes the host's zone, so
       # this is the one place to say it — and it goes before the simulator
-      # starts booting in the next step, not after.
+      # starts booting, not after.
       - name: Run in the school's timezone
         run: |
           sudo systemsetup -settimezone Asia/Taipei
@@ -105,13 +105,7 @@ jobs:
       # device may not exist on. (That exact mismatch — iPhone 17 Pro Max
       # present on 26.5 while `latest` meant 27.0 — is what it does locally.)
       # Take whichever devices the image actually has.
-      #
-      # The boot starts here and runs alongside the package fetch and the
-      # compile: `simctl boot` returns once the boot is under way, and the
-      # "Wait for the simulator" step after the build collects it. Booted
-      # after the build instead, it was a minute of the runner doing nothing
-      # else.
-      - name: Pick and boot a simulator
+      - name: Pick a simulator
         id: sim
         env:
           RUNTIME: ${{ matrix.runtime }}
@@ -139,7 +133,6 @@ jobs:
           fi
           xcrun simctl list devices available | grep -E "$udid"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
-          xcrun simctl boot "$udid"
 
       # Brings back this leg's last build so only what changed recompiles.
       # A cached DerivedData alone is not enough: a fresh checkout stamps
@@ -151,7 +144,8 @@ jobs:
       #
       # Both live in the runner's temp directory rather than in the checkout,
       # so the action's mtime scan over the checkout does not walk into them;
-      # every xcodebuild below is pointed there.
+      # every xcodebuild below is pointed there. Package.resolved is named
+      # outright: left to find it, the action globs `**` over the checkout.
       - name: Restore the last build
         uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
         with:
@@ -159,11 +153,13 @@ jobs:
           restore-keys: xcode-${{ matrix.leg }}-
           deriveddata-directory: ${{ runner.temp }}/DerivedData
           sourcepackages-directory: ${{ runner.temp }}/SourcePackages
+          swiftpm-package-resolved-file: swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
       # The next steps are what a single `xcodebuild test` does inside
       # itself: fetch packages, compile, wait for the simulator, run. Split,
       # the job view times each one; whole, it showed one 13-16 minute step
-      # and no way to tell which part was slow.
+      # and no way to tell which part was slow. Not `-quiet`: with the clones
+      # restored this should fetch nothing, and the log is how to tell.
       - name: Resolve packages
         env:
           SCHEME: ${{ matrix.scheme }}
@@ -173,25 +169,50 @@ jobs:
           -scheme "$SCHEME"
           -derivedDataPath "$RUNNER_TEMP/DerivedData"
           -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
-          -quiet
+
+      # The boot starts here and runs alongside the compile: `simctl boot`
+      # returns once the boot is under way, and the "Wait for the simulator"
+      # step after the build collects it. Not any earlier: a first boot takes
+      # the runner's 3 cores for a minute or two, and started at the top of
+      # the job it slowed the cache download from ~70 MB/s to ~4.
+      - name: Start the simulator booting
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: xcrun simctl boot "$UDID"
 
       # No index store: it is what Xcode's jump-to-definition and search read,
       # nothing here does, and writing it costs compile time and cache space.
+      #
+      # The full log goes to a file, and what the job prints is the count of
+      # each kind of task the build ran and of compiles per target. That is
+      # how to tell whether the restored build was reused: an up-to-date
+      # rebuild runs no SwiftCompile or CompileC at all.
       - name: Build for testing
         env:
           SCHEME: ${{ matrix.scheme }}
           UDID: ${{ steps.sim.outputs.udid }}
           ONLY_TESTING: ${{ matrix.only_testing }}
-        run: >
-          xcodebuild build-for-testing
-          -project swift/TigerDuck.xcodeproj
-          -scheme "$SCHEME"
-          -destination "id=$UDID"
-          ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"}
-          -derivedDataPath "$RUNNER_TEMP/DerivedData"
-          -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
-          COMPILER_INDEX_STORE_ENABLE=NO
-          -quiet
+        run: |
+          log="$RUNNER_TEMP/build.log"
+          if ! xcodebuild build-for-testing \
+              -project swift/TigerDuck.xcodeproj \
+              -scheme "$SCHEME" \
+              -destination "id=$UDID" \
+              ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"} \
+              -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+              -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+              COMPILER_INDEX_STORE_ENABLE=NO \
+              > "$log" 2>&1; then
+            grep -E "error:" "$log" | sort -u | head -50
+            tail -n 30 "$log"
+            exit 1
+          fi
+          echo "-- tasks run"
+          grep -oE '^[A-Z][A-Za-z]+ ' "$log" | sort | uniq -c | sort -rn | head -20
+          echo "-- compiles by target"
+          grep -E '^(SwiftCompile|CompileC) ' "$log" \
+            | grep -oE "in target '[^']+' from project '[^']+'" | sort | uniq -c | sort -rn | head -40
+          true
 
       # bootstatus prints a status line about once a second until the device
       # is up; only the last few say anything.
