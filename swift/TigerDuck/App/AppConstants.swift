@@ -205,6 +205,11 @@ nonisolated enum AppConstants {
         /// ``AppConstants/updateCheckThrottle`` so rapid foreground
         /// returns don't hammer Apple's endpoint.
         static let lastUpdateCheckAt = "lastUpdateCheckAt"
+        /// App Store version that last failed to parse and was reported.
+        /// Manual checks skip ``updateCheckThrottle``, so this is what
+        /// keeps an unreadable store version to one report per install
+        /// rather than one per "Check for Updates" tap.
+        static let lastReportedUnparseableStoreVersion = "lastReportedUnparseableStoreVersion"
         /// App Store version most recently surfaced via the prompt sheet.
         /// Paired with ``lastPromptedUpdateAt`` to implement the
         /// "don't nag" cooldown ported from Android's

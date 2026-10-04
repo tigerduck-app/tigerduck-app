@@ -312,6 +312,9 @@ nonisolated extension Defaults.Keys {
     static let lastUpdateCheckAt = Key<Date?>(
         AppConstants.UserDefaultsKeys.lastUpdateCheckAt
     )
+    static let lastReportedUnparseableStoreVersion = Key<String?>(
+        AppConstants.UserDefaultsKeys.lastReportedUnparseableStoreVersion
+    )
     static let lastPromptedUpdateVersion = Key<String?>(
         AppConstants.UserDefaultsKeys.lastPromptedUpdateVersion
     )
