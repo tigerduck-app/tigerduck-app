@@ -53,36 +53,56 @@ enum ClassTableExporter {
     /// explicitly.
     static func render(
         viewModel: ClassTableViewModel,
-        studentId: String?,
         appState: AppState,
-        dynamicTypeSize: DynamicTypeSize
-    ) -> URL? {
+        dynamicTypeSize: DynamicTypeSize,
+        layoutDirection: LayoutDirection,
+        legibilityWeight: LegibilityWeight?
+    ) async -> URL? {
+        let studentId = appState.authService.storedStudentId
         let content = ClassTableExportView(viewModel: viewModel, studentId: studentId)
             .environment(appState)
             // The app pins dark (`TigerDuckApp`), and the page's colours are
             // written for it.
             .environment(\.colorScheme, .dark)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
+            // A right-to-left language mirrors the page's grid; the empty
+            // environment would draw it left-to-right.
+            .environment(\.layoutDirection, layoutDirection)
+            // Bold Text. Differentiate Without Color cannot follow: SwiftUI
+            // does not let it be set, so a 衝堂 cluster's warning triangle
+            // stays off the image.
+            .environment(\.legibilityWeight, legibilityWeight)
         let renderer = ImageRenderer(content: content)
         renderer.scale = 3
-        guard let data = renderer.uiImage?.pngData() else { return nil }
+        // The background is opaque, so an alpha channel only costs encode
+        // time and bytes.
+        renderer.isOpaque = true
+        guard let image = renderer.uiImage else { return nil }
 
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ClassTableExport", isDirectory: true)
-        let url = directory.appendingPathComponent(
-            fileName(
-                title: String(localized: "feature_class_table"),
-                semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
-                studentId: studentId
-            )
+        let name = fileName(
+            title: String(localized: "feature_class_table"),
+            semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
+            studentId: studentId
         )
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            return nil
-        }
+        // Drawing needs the main actor; encoding a 3x PNG and writing it does
+        // not, and is the slower half.
+        return await Task.detached(priority: .userInitiated) { () -> URL? in
+            guard let data = image.pngData() else { return nil }
+            let fileManager = FileManager.default
+            let directory = fileManager.temporaryDirectory
+                .appendingPathComponent("ClassTableExport", isDirectory: true)
+            let url = directory.appendingPathComponent(name)
+            do {
+                // Only the newest export is kept: an older one carries a
+                // student id and nothing points at it any more.
+                try? fileManager.removeItem(at: directory)
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+                try data.write(to: url, options: .atomic)
+                return url
+            } catch {
+                return nil
+            }
+        }.value
     }
 
     /// "課表_114-2_B11315000.png": the name the file keeps wherever it is

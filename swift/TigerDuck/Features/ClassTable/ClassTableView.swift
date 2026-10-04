@@ -10,9 +10,12 @@ struct ClassTableView: View {
     )
     @State private var exportedFile: ExportedFile?
     @State private var showExportFailed = false
+    @State private var isExporting = false
     // Read here and passed on to the export, whose renderer does not inherit
     // this view's environment.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.legibilityWeight) private var legibilityWeight
 
     var body: some View {
         if embedded {
@@ -304,8 +307,9 @@ struct ClassTableView: View {
                     Label(String(localized: "class_table_export_screenshot"), systemImage: "square.and.arrow.up")
                 }
                 // Only the content state draws a grid; anything else would
-                // export a header over nothing.
-                .disabled(pageAccessState != .content)
+                // export a header over nothing. Held off while an export is
+                // still being written, so two cannot race for the same file.
+                .disabled(pageAccessState != .content || isExporting)
             }
         } label: {
             headerIcon("ellipsis")
@@ -343,16 +347,21 @@ struct ClassTableView: View {
     /// Renders the timetable to a PNG and hands it to the share sheet, where
     /// Save Image, Save to Files and every sharing target are on offer.
     private func exportScreenshot() {
-        let url = ClassTableExporter.render(
-            viewModel: viewModel,
-            studentId: appState.authService.storedStudentId,
-            appState: appState,
-            dynamicTypeSize: dynamicTypeSize
-        )
-        if let url {
-            exportedFile = ExportedFile(url: url)
-        } else {
-            showExportFailed = true
+        isExporting = true
+        Task {
+            let url = await ClassTableExporter.render(
+                viewModel: viewModel,
+                appState: appState,
+                dynamicTypeSize: dynamicTypeSize,
+                layoutDirection: layoutDirection,
+                legibilityWeight: legibilityWeight
+            )
+            isExporting = false
+            if let url {
+                exportedFile = ExportedFile(url: url)
+            } else {
+                showExportFailed = true
+            }
         }
     }
 

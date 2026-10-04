@@ -1,6 +1,5 @@
 #if os(iOS)
 import SwiftUI
-import UIKit
 
 struct MailFileItem: Identifiable {
     let url: URL
