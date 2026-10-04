@@ -18,8 +18,13 @@ nonisolated struct MailHTMLTheme: Equatable, Hashable, Sendable {
 
     /// `Color.backgroundPrimary` and `Color.textPrimary` — what `MailMessageView` itself is
     /// drawn in. The app is dark-only (`TigerDuckApp` pins `.preferredColorScheme(.dark)`), so
-    /// there is exactly one theme to follow and nothing to re-render the page on.
+    /// there is exactly one app theme to follow; the only other page is `light`, on request.
     static let app = MailHTMLTheme(background: 0x000000, foreground: 0xFFFFFF, isDark: true)
+
+    /// White paper: "View in light mode". Leaving the sender's colours alone means a mail that
+    /// sets dark text and no background of its own reads as nothing on `app`'s black page; this
+    /// is the page such a mail was written against, and the reader's way back to it.
+    static let light = MailHTMLTheme(background: 0xFFFFFF, foreground: 0x000000, isDark: false)
 
     var backgroundCSS: String { Self.css(background) }
     var foregroundCSS: String { Self.css(foreground) }

@@ -106,6 +106,50 @@ struct MailMessageViewModelTests {
         #expect(h.model.mode == .formatted)
     }
 
+    /// Only the formatted view of an HTML mail is drawn on a page, so that is the only place
+    /// "View in light mode" would change anything — and before the body lands there is no HTML
+    /// to know about yet.
+    @Test func lightModeIsOfferedOnlyForTheFormattedViewOfAnHTMLMail() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
+        #expect(!h.model.offersLightMode)
+        await h.model.load()
+        #expect(h.model.offersLightMode)
+        h.model.mode = .plain
+        #expect(!h.model.offersLightMode)
+        h.model.mode = .source
+        #expect(!h.model.offersLightMode)
+    }
+
+    @Test func aPlainTextMailHasNoLightMode() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "只有純文字", html: nil))
+        await h.model.load()
+        #expect(!h.model.offersLightMode)
+    }
+
+    /// The app's own page until the reader asks, white paper while they want it, and the app's
+    /// page again when they turn it back off.
+    @Test func lightModeSwitchesThePageTheMailIsDrawnOn() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
+        await h.model.load()
+        #expect(h.model.htmlTheme == .app)
+        h.model.viewsInLightMode = true
+        #expect(h.model.htmlTheme == .light)
+        h.model.viewsInLightMode = false
+        #expect(h.model.htmlTheme == .app)
+    }
+
+    /// Never saved: the next mail opens on the app's page, whatever the last one was switched to.
+    @Test func lightModeBelongsToOneScreen() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: "<p>a</p>"),
+                             extra: [FakeMailClient.message(uid: 6, html: "<p>b</p>")])
+        await h.model.load()
+        h.model.viewsInLightMode = true
+        let next = h.anotherMessage(uid: 6)
+        await next.load()
+        #expect(!next.viewsInLightMode)
+        #expect(next.htmlTheme == .app)
+    }
+
     @Test func unreadableMailFallsBackToSource() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: nil))
         await h.model.load()
@@ -611,6 +655,14 @@ struct MailMessageViewModelTests {
         let document = MailWebViewFactory.document(for: "", allowRemoteImages: false, theme: light)
         #expect(document.contains("color-scheme:light"))
         #expect(document.contains("background:#ffffff;color:#1a1a1a"))
+    }
+
+    /// "View in light mode" is white paper with black text, in the light scheme — the page a mail
+    /// that only sets its own dark text was written against.
+    @Test func lightModeIsWhitePaper() {
+        let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false, theme: .light)
+        #expect(document.contains(":root{color-scheme:light;}"))
+        #expect(document.contains("background:#ffffff;color:#000000"))
     }
 
     /// Only the page is themed: a sender's own colours reach the document untouched.

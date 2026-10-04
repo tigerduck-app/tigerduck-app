@@ -265,6 +265,7 @@ struct MailMessageView: View {
                         linkCount: linked.links.count,
                         inlineImages: viewModel.detail?.inlineImages ?? [:],
                         allowRemoteImages: viewModel.allowRemoteImages,
+                        theme: viewModel.htmlTheme,
                         contentHeight: $webHeight,
                         onLinkTap: { index in
                             if let target = viewModel.linkTarget(forIndex: index) { pendingLinkTarget = target }
@@ -330,6 +331,13 @@ struct MailMessageView: View {
                     Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
                         ForEach(viewModel.availableModes) { mode in
                             Text(mode.title).tag(mode)
+                        }
+                    }
+                    // A checkmark item, beside the views it changes: on, the HTML is redrawn on
+                    // white paper; off, back on the app's page.
+                    if viewModel.offersLightMode {
+                        Toggle(isOn: $viewModel.viewsInLightMode) {
+                            Label(String(localized: "school_mail_view_light_mode"), systemImage: "sun.max")
                         }
                     }
                 }

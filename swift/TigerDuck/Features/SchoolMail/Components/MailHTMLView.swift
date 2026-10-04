@@ -43,12 +43,8 @@ struct MailHTMLView: UIViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.allowsLinkPreview = false
         webView.scrollView.isScrollEnabled = false
-        // The page's own colour underneath as well as in the document, so nothing white shows
-        // before the first paint or past the document's edge.
         webView.isOpaque = false
-        webView.backgroundColor = theme.backgroundColor
-        webView.scrollView.backgroundColor = theme.backgroundColor
-        webView.underPageBackgroundColor = theme.backgroundColor
+        Self.paint(webView, with: theme)
         context.coordinator.observeHeight(of: webView)
         context.coordinator.load(into: webView)
         return webView
@@ -57,6 +53,14 @@ struct MailHTMLView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.load(into: webView)
+    }
+
+    /// The page's own colour underneath as well as in the document, so nothing of another colour
+    /// shows before the first paint or past the document's edge.
+    static func paint(_ webView: WKWebView, with theme: MailHTMLTheme) {
+        webView.backgroundColor = theme.backgroundColor
+        webView.scrollView.backgroundColor = theme.backgroundColor
+        webView.underPageBackgroundColor = theme.backgroundColor
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
@@ -89,13 +93,16 @@ struct MailHTMLView: UIViewRepresentable {
         /// Nothing orders those compiles, so the first load's could finish last and put the
         /// image-stripped document back on screen, under an allowance that says images are on
         /// and with the banner that offered them already gone. So only the newest load installs
-        /// anything, and it installs its rules and its document together.
+        /// anything, and it installs its rules, its page colour and its document together — a
+        /// switch to or from light mode repaints the view in the same step as the document that
+        /// matches it, never around a document still drawn on the other page.
         func load(into webView: WKWebView) {
             let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)"
             guard key != loadedKey else { return }
             loadedKey = key
+            let theme = parent.theme
             let document = MailWebViewFactory.document(for: parent.html, allowRemoteImages: parent.allowRemoteImages,
-                                                       theme: parent.theme)
+                                                       theme: theme)
             let allowImages = parent.allowRemoteImages
             loadTask?.cancel()
             loadGeneration += 1
@@ -104,6 +111,7 @@ struct MailHTMLView: UIViewRepresentable {
                 let rules = await MailWebViewFactory.compileRules(allowRemoteImages: allowImages)
                 guard let self, !Task.isCancelled, generation == self.loadGeneration else { return }
                 MailWebViewFactory.installRules(rules, on: webView)
+                MailHTMLView.paint(webView, with: theme)
                 webView.loadHTMLString(document, baseURL: nil)
             }
         }
