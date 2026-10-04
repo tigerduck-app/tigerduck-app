@@ -32,6 +32,7 @@ DevMailServerOverride.swift
 DevMailServerView.swift
 TigerSyncStatusView.swift
 TriggersDebugView.swift
+WhatsNewSampleFlow.swift
 
 # Extensions — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
