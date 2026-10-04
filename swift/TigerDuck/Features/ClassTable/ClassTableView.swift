@@ -8,6 +8,11 @@ struct ClassTableView: View {
     @State private var viewModel = ClassTableViewModel(
         isClassDay: { AcademicCalendarStore.shared.isClassDay($0) }
     )
+    @State private var exportedFile: ExportedFile?
+    @State private var showExportFailed = false
+    // Read here and passed on to the export, whose renderer does not inherit
+    // this view's environment.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         if embedded {
@@ -206,6 +211,15 @@ struct ClassTableView: View {
                 )
                 .presentationDetents([.medium])
             }
+            .sheet(item: $exportedFile) { file in
+                ShareSheet(url: file.url)
+                    // The heights UIKit gives the share sheet when it
+                    // presents one itself.
+                    .presentationDetents([.medium, .large])
+            }
+            .alert(String(localized: "class_table_export_failed"), isPresented: $showExportFailed) {
+                Button(String(localized: "action_confirm"), role: .cancel) {}
+            }
     }
 
     /// Page-level access gate for the Class Table screen. Delegates to the
@@ -242,30 +256,24 @@ struct ClassTableView: View {
     /// size on that OS.
     ///
     /// On 26 Today is only 28.33pt, because `.buttonStyle(.glass)` is a much
-    /// tighter control. Deliberately not matched: this capsule holds two icon
-    /// targets rather than one short word, and at Today's height the glass
-    /// read as a thin sliver behind the glyphs. 36pt is ~1.3x that, which
-    /// gives the pair enough glass to read as a control in its own right —
-    /// and lands close to the 40pt the pre-26 path already uses, so the two
-    /// OSes end up more alike than the underlying button styles are.
+    /// tighter control. Deliberately not matched: at Today's height the
+    /// glass behind an icon reads as a thin sliver rather than a button.
+    /// 36pt is ~1.3x that, enough glass to read as a control in its own
+    /// right — and close to the 40pt the pre-26 path already uses, so the
+    /// two OSes end up more alike than the underlying button styles are.
     ///
     /// `HeaderControlMetricsTests` measures both against the live Today
     /// button, so it still catches Apple moving those metrics underneath us.
     private static var headerActionHeight: CGFloat {
         if #available(iOS 26, *) { 36 } else { 40 }
     }
-    /// Wider than it is tall: the extra width is what turns two adjacent
-    /// cells into a capsule rather than a circle, and it is where the glyphs
-    /// get their breathing room now that the height is pinned.
-    private static let headerActionWidth: CGFloat = 40
 
-    /// Reset and add, sharing one Liquid Glass capsule.
+    /// Everything that acts on the timetable, behind one ⋯ button — the
+    /// same shape as a mail message's actions.
     ///
-    /// One backing rather than two circles: they are a set — both act on the
-    /// timetable directly below — and two separate circles read as two
-    /// unrelated controls that happen to be adjacent. This is also what the
-    /// system does with a toolbar item group on iOS 26, which is the shape
-    /// users are learning to read as "these belong together".
+    /// Add and reset used to sit here as a pair of glyphs. A third action
+    /// would have made a row of three unlabelled icons, and export is not
+    /// something a glyph alone can say; a menu names each one.
     ///
     /// The status dot stays outside it deliberately. It reports on the
     /// servers, it does not act on the timetable, and folding it in would
@@ -276,38 +284,51 @@ struct ClassTableView: View {
     /// timetable reads as part of the grid instead of a control acting on it.
     @ViewBuilder
     private var headerActions: some View {
-        let row = HStack(spacing: 0) {
-            Button {
-                viewModel.showResetConfirm = true
-            } label: {
-                headerIcon("arrow.triangle.2.circlepath")
+        let menu = Menu {
+            Section {
+                Button {
+                    viewModel.showAddCourse = true
+                } label: {
+                    Label(String(localized: "add_course_title"), systemImage: "plus")
+                }
+                Button {
+                    viewModel.showResetConfirm = true
+                } label: {
+                    Label(String(localized: "class_table_reset_title"), systemImage: "arrow.triangle.2.circlepath")
+                }
             }
-            .accessibilityLabel(Text("class_table_reset_title"))
-            Button {
-                viewModel.showAddCourse = true
-            } label: {
-                headerIcon("plus")
+            Section {
+                Button {
+                    exportScreenshot()
+                } label: {
+                    Label(String(localized: "class_table_export_screenshot"), systemImage: "square.and.arrow.up")
+                }
+                // Only the content state draws a grid; anything else would
+                // export a header over nothing.
+                .disabled(pageAccessState != .content)
             }
-            .accessibilityLabel(Text("add_course_title"))
+        } label: {
+            headerIcon("ellipsis")
         }
+        .accessibilityLabel(Text("class_table_more_actions"))
         if #available(iOS 26, *) {
-            row.glassEffect(.regular.interactive(), in: .capsule)
+            menu.glassEffect(.regular.interactive(), in: .circle)
         } else {
             // Below 26 there is no glass to supply a backing, and a bare
-            // pair of glyphs beside Today's filled pill reads as unfinished
-            // rather than as the same class of control. `.secondarySystemFill`
-            // is what `.bordered` — Today's own pre-26 style — fills with.
-            row.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
+            // glyph beside Today's filled pill reads as unfinished rather
+            // than as the same class of control. `.secondarySystemFill` is
+            // what `.bordered` — Today's own pre-26 style — fills with.
+            menu.background(Circle().fill(Color(uiColor: .secondarySystemFill)))
         }
     }
 
     /// `contentShape` is explicit because the glyph is smaller than its
     /// cell: without it the tappable area is the symbol's own bounds, and
-    /// the padding that makes the capsule look right would not be tappable.
+    /// the padding that makes the circle look right would not be tappable.
     /// `.subheadline` rather than `.body`: Today's caption label renders
     /// 14.33pt tall inside its 28.33pt pill, where a `.body` symbol is a
-    /// full 17pt. Matching the outer height alone still left these icons
-    /// visibly heavier than the button they sit next to a tab away —
+    /// full 17pt. Matching the outer height alone still left the icon
+    /// visibly heavier than the button it sits next to a tab away —
     /// `.subheadline` puts the glyph at 15.33pt, the same optical weight.
     /// A semantic font, not a fixed size, so it scales with Dynamic Type
     /// the way Today's label does.
@@ -315,8 +336,24 @@ struct ClassTableView: View {
         Image(systemName: systemName)
             .font(.subheadline.weight(.medium))
             .foregroundStyle(.primary)
-            .frame(width: Self.headerActionWidth, height: Self.headerActionHeight)
+            .frame(width: Self.headerActionHeight, height: Self.headerActionHeight)
             .contentShape(.rect)
+    }
+
+    /// Renders the timetable to a PNG and hands it to the share sheet, where
+    /// Save Image, Save to Files and every sharing target are on offer.
+    private func exportScreenshot() {
+        let url = ClassTableExporter.render(
+            viewModel: viewModel,
+            studentId: appState.authService.storedStudentId,
+            appState: appState,
+            dynamicTypeSize: dynamicTypeSize
+        )
+        if let url {
+            exportedFile = ExportedFile(url: url)
+        } else {
+            showExportFailed = true
+        }
     }
 
     private var authenticatedContent: some View {
@@ -388,4 +425,10 @@ struct ClassTableView: View {
         guard let studentId = appState.authService.storedStudentId, !studentId.isEmpty else { return credits }
         return "\(studentId) · \(credits)"
     }
+}
+
+/// An exported class table image waiting for the share sheet.
+private struct ExportedFile: Identifiable {
+    let url: URL
+    var id: URL { url }
 }

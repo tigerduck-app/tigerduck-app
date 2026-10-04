@@ -1,0 +1,108 @@
+#if os(iOS)
+import SwiftUI
+import UIKit
+
+/// The class table as it goes into an exported image: whose it is and which
+/// term above, then the same grid the page draws.
+///
+/// The grid is the live `TimetableGridView`, not a copy, so the image keeps
+/// whatever the page shows — colours, custom and abbreviated names, the
+/// start / 節 / end period column, the room hint when it is switched on.
+/// Only the assignment badge stays out; see
+/// ``TimetableGridView/showsAssignmentBadges``.
+struct ClassTableExportView: View {
+    let viewModel: ClassTableViewModel
+    let studentId: String?
+
+    /// A phone's width whatever the device, so an export from an iPad is
+    /// still a picture that reads at a glance when it lands on a phone.
+    static let width: CGFloat = 390
+
+    var body: some View {
+        VStack(spacing: TigerDuckTheme.Spacing.md) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(viewModel.displayLabel(for: viewModel.currentSemester))
+                    .font(TigerDuckTheme.Typography.headline)
+                    .foregroundStyle(Color.textPrimary)
+                Spacer(minLength: TigerDuckTheme.Spacing.sm)
+                if let studentId, !studentId.isEmpty {
+                    Text(studentId)
+                        .font(TigerDuckTheme.Typography.body)
+                        .foregroundStyle(Color.textSecondary)
+                }
+            }
+            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+
+            TimetableGridView(viewModel: viewModel, showsAssignmentBadges: false)
+        }
+        .padding(.vertical, TigerDuckTheme.Spacing.lg)
+        .frame(width: Self.width)
+        // Opaque: the cells are translucent course colours, and over a
+        // transparent PNG they would take on whatever the viewer puts behind.
+        .background(Color.backgroundPrimary)
+    }
+}
+
+@MainActor
+enum ClassTableExporter {
+    /// Draws ``ClassTableExportView`` into a PNG in the temporary directory
+    /// and returns its URL, or `nil` when nothing could be drawn or written.
+    ///
+    /// `ImageRenderer` starts from an empty environment rather than the one
+    /// the page sits in, so everything the grid reads from it is handed over
+    /// explicitly.
+    static func render(
+        viewModel: ClassTableViewModel,
+        studentId: String?,
+        appState: AppState,
+        dynamicTypeSize: DynamicTypeSize
+    ) -> URL? {
+        let content = ClassTableExportView(viewModel: viewModel, studentId: studentId)
+            .environment(appState)
+            // The app pins dark (`TigerDuckApp`), and the page's colours are
+            // written for it.
+            .environment(\.colorScheme, .dark)
+            .environment(\.dynamicTypeSize, dynamicTypeSize)
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = 3
+        guard let data = renderer.uiImage?.pngData() else { return nil }
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClassTableExport", isDirectory: true)
+        let url = directory.appendingPathComponent(
+            fileName(
+                title: String(localized: "feature_class_table"),
+                semesterLabel: viewModel.displayLabel(for: viewModel.currentSemester),
+                studentId: studentId
+            )
+        )
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// "課表 114-2 B11315000.png": the name the file keeps wherever it is
+    /// saved or sent, so it says what it is and whose. Spaces between the
+    /// parts, because the term label already carries a dash. The student
+    /// id is left out, not left as a trailing space, when there is none.
+    nonisolated static func fileName(title: String, semesterLabel: String, studentId: String?) -> String {
+        let parts = [title, semesterLabel, studentId ?? ""]
+            .map {
+                $0.components(separatedBy: unsafeFileNameCharacters).joined()
+                    .trimmingCharacters(in: .whitespaces)
+            }
+            .filter { !$0.isEmpty }
+        return parts.joined(separator: " ") + ".png"
+    }
+
+    /// Path separators, the characters Files and FAT-formatted drives
+    /// refuse, and line breaks.
+    private nonisolated static let unsafeFileNameCharacters = CharacterSet(charactersIn: "/\\:*?\"<>|")
+        .union(.newlines)
+        .union(.controlCharacters)
+}
+#endif

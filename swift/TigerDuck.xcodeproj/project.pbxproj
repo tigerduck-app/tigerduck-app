@@ -1217,6 +1217,7 @@
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "將匯出的課表圖片儲存到「照片」。";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphonesimulator*]" = YES;
 				INFOPLIST_KEY_SENTRY_DSN = "";
@@ -1467,6 +1468,7 @@
 				INFOPLIST_FILE = TigerDuck/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "將匯出的課表圖片儲存到「照片」。";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphonesimulator*]" = YES;
 				INFOPLIST_KEY_SENTRY_DSN = "";
