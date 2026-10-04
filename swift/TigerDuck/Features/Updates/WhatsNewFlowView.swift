@@ -113,8 +113,13 @@ struct WhatsNewFlowView: View {
 
     // MARK: - Steps
 
-    @ViewBuilder
     private func content(at step: Int) -> some View {
+        stepContent(at: step)
+            .environment(\.whatsNewPageIsCurrent, step == index)
+    }
+
+    @ViewBuilder
+    private func stepContent(at step: Int) -> some View {
         if step < presentation.pages.count {
             WhatsNewPageContentView(
                 page: presentation.pages[step],

@@ -18,6 +18,7 @@ struct WhatsNewSummaryContent: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasAppeared = false
+    @AccessibilityFocusState private var isTitleFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -27,6 +28,7 @@ struct WhatsNewSummaryContent: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused($isTitleFocused)
 
                 VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xl) {
                     ForEach(Array(entry.items.enumerated()), id: \.offset) { offset, item in
@@ -51,7 +53,11 @@ struct WhatsNewSummaryContent: View {
         .scrollBounceBehavior(.basedOnSize)
         .onAppear { if isActive { hasAppeared = true } }
         .onChange(of: isActive) { _, active in
-            if active { hasAppeared = true }
+            guard active else { return }
+            hasAppeared = true
+            // Paged onto from a feature page: take VoiceOver focus off
+            // the footer button and onto the summary's heading.
+            isTitleFocused = true
         }
     }
 }

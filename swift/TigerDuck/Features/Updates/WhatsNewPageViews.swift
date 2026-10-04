@@ -36,6 +36,8 @@ private struct WhatsNewTemplateBody<Accessory: View>: View {
     let content: WhatsNewPage.Content
     @ViewBuilder let accessory: Accessory
     @Environment(\.whatsNewLanguage) private var language
+    @Environment(\.whatsNewPageIsCurrent) private var isCurrent
+    @AccessibilityFocusState private var isTitleFocused: Bool
 
     var body: some View {
         GeometryReader { proxy in
@@ -48,6 +50,7 @@ private struct WhatsNewTemplateBody<Accessory: View>: View {
                         Text(content.title.resolved(for: language))
                             .font(.title.bold())
                             .accessibilityAddTraits(.isHeader)
+                            .accessibilityFocused($isTitleFocused)
                         Text(content.body.resolved(for: language))
                             .font(.body)
                             .foregroundStyle(.secondary)
@@ -65,6 +68,12 @@ private struct WhatsNewTemplateBody<Accessory: View>: View {
                 .frame(minHeight: proxy.size.height)
             }
             .scrollBounceBehavior(.basedOnSize)
+        }
+        // The Next button stays put while pages slide, so VoiceOver focus
+        // would sit on it and never hear the new page; move it to the
+        // heading as the page becomes current.
+        .onChange(of: isCurrent) { _, current in
+            if current { isTitleFocused = true }
         }
     }
 }
@@ -210,6 +219,7 @@ private struct WhatsNewToggleRow: View {
 struct WhatsNewPageDots: View {
     let count: Int
     let current: Int
+    @Environment(\.whatsNewLanguage) private var language
 
     var body: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -220,7 +230,18 @@ struct WhatsNewPageDots: View {
             }
         }
         .animation(.snappy, value: current)
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(WhatsNewText(
+            en: "Page \(current + 1) of \(count)",
+            zhHant: "第 \(current + 1) 頁，共 \(count) 頁"
+        ).resolved(for: language))
     }
+}
+
+extension EnvironmentValues {
+    /// Whether the What's New page this view sits in is the one on
+    /// screen. The pager builds the pages either side ahead of time, so a
+    /// page can't tell from `onAppear` alone.
+    @Entry var whatsNewPageIsCurrent: Bool = true
 }
 #endif
