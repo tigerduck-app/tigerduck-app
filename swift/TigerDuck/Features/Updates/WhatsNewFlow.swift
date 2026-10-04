@@ -1,0 +1,107 @@
+import Foundation
+
+/// One run of the What's New sheet: feature pages, then the summary.
+/// Either half may be missing, never both — ``WhatsNewFlowBuilder``
+/// returns `nil` instead of an empty flow.
+struct WhatsNewPresentation: Identifiable, Equatable {
+    let version: String
+    let pages: [WhatsNewPage]
+    let summary: WhatsNewRepository.ResolvedWhatsNew?
+
+    /// Sheet identity. Built from content rather than random so the same
+    /// flow observed twice (e.g. a re-render between launch and present)
+    /// keeps one sheet.
+    var id: String {
+        ([version] + pages.map(\.id) + [summary == nil ? "-" : "summary"]).joined(separator: "|")
+    }
+
+    /// Pages hold closures, so equality goes by identity.
+    static func == (lhs: WhatsNewPresentation, rhs: WhatsNewPresentation) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+/// Pure assembly of a What's New flow from the catalog, the summary
+/// lookup and the seen marker — kept free of `Defaults` and bundles so
+/// tests drive it directly.
+enum WhatsNewFlowBuilder {
+    /// The flow shown after an upgrade from `lastSeen` to `current`.
+    ///
+    /// Pages come from every release in `(lastSeen, current]`, oldest
+    /// first, minus those `isApplicable` rejects. With no `lastSeen`
+    /// (an upgrade from a build that predates the marker) only the
+    /// installed version's pages count — dumping the whole history on
+    /// that user would be worse than showing them less. The summary is
+    /// the installed version's only.
+    static func upgrade(
+        from lastSeen: AppVersion?,
+        to current: AppVersion,
+        version: String,
+        releases: [String: [WhatsNewPage]],
+        summary: WhatsNewRepository.ResolvedWhatsNew?,
+        isApplicable: (WhatsNewPage) -> Bool
+    ) -> WhatsNewPresentation? {
+        let pages = parsed(releases)
+            .filter { release in
+                guard !(current < release.version) else { return false }
+                if let lastSeen { return lastSeen < release.version }
+                return !(release.version < current)
+            }
+            .flatMap(\.pages)
+            .filter(isApplicable)
+        return make(version: version, pages: pages, summary: summary)
+    }
+
+    /// The flow behind Settings → What's New: the newest release that has
+    /// either pages or a summary, shown whole — no applicability filter,
+    /// since a replay is the user asking to see it again.
+    ///
+    /// `latestSummary` is the newest authored summary; `summaryFor`
+    /// looks one up for a specific version, used when the catalog's
+    /// newest release is ahead of the JSON's.
+    static func replay(
+        releases: [String: [WhatsNewPage]],
+        latestSummary: WhatsNewRepository.ResolvedWhatsNew?,
+        summaryFor: (String) -> WhatsNewRepository.ResolvedWhatsNew?
+    ) -> WhatsNewPresentation? {
+        let newestPages = parsed(releases).last
+        let summaryVersion = latestSummary.flatMap { AppVersion($0.version) }
+
+        if let newestPages, summaryVersion.map({ $0 < newestPages.version }) ?? true {
+            return make(version: newestPages.key, pages: newestPages.pages, summary: summaryFor(newestPages.key))
+        }
+        guard let latestSummary, let summaryVersion else { return nil }
+        let pages = parsed(releases)
+            .filter { !($0.version < summaryVersion) && !(summaryVersion < $0.version) }
+            .flatMap(\.pages)
+        return make(version: latestSummary.version, pages: pages, summary: latestSummary)
+    }
+
+    // MARK: - Private
+
+    private struct Release {
+        let key: String
+        let version: AppVersion
+        let pages: [WhatsNewPage]
+    }
+
+    /// Releases with a parseable key and at least one page, oldest first.
+    /// A typo'd key is skipped rather than guessed at.
+    private static func parsed(_ releases: [String: [WhatsNewPage]]) -> [Release] {
+        releases
+            .compactMap { key, pages in
+                guard !pages.isEmpty, let version = AppVersion(key) else { return nil }
+                return Release(key: key, version: version, pages: pages)
+            }
+            .sorted { $0.version < $1.version }
+    }
+
+    private static func make(
+        version: String,
+        pages: [WhatsNewPage],
+        summary: WhatsNewRepository.ResolvedWhatsNew?
+    ) -> WhatsNewPresentation? {
+        guard !pages.isEmpty || summary != nil else { return nil }
+        return WhatsNewPresentation(version: version, pages: pages, summary: summary)
+    }
+}

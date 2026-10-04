@@ -39,13 +39,13 @@ struct SettingsView: View {
     /// result is shown via that sheet path, not this alert.
     @State private var showManualUpdateCheckResultAlert = false
     /// Item for the Settings → What's New row, allowing repeat
-    /// presentation of the latest release notes independent of the
+    /// presentation of the latest release's flow independent of the
     /// auto-launch gate's seen-state. Driven by `.sheet(item:)` rather
     /// than `.sheet(isPresented:)` so the entry is captured at present
     /// time — a stale `latestWhatsNew == nil` between the row tap and
     /// the sheet body evaluation cannot leak an empty sheet onto
     /// screen.
-    @State private var manualWhatsNewItem: WhatsNewRepository.ResolvedWhatsNew?
+    @State private var manualWhatsNewItem: WhatsNewPresentation?
     #endif
     @Environment(\.scenePhase) private var scenePhase
 
@@ -441,8 +441,8 @@ struct SettingsView: View {
                 Text(manualCheckResultAlertMessage)
             }
         )
-        .sheet(item: $manualWhatsNewItem) { entry in
-            WhatsNewSheetView(entry: entry) {
+        .sheet(item: $manualWhatsNewItem) { presentation in
+            WhatsNewFlowView(presentation: presentation) {
                 // Manual open does NOT advance
                 // `lastShownWhatsNewVersion` — the Settings entry is a
                 // re-visit surface, and stamping the seen marker here
@@ -450,7 +450,7 @@ struct SettingsView: View {
                 // viewing release notes again.
                 manualWhatsNewItem = nil
             }
-            .presentationDetents([.fraction(0.85), .large])
+            .whatsNewSheetPresentation()
         }
         #endif
     }
@@ -544,11 +544,11 @@ struct SettingsView: View {
         }
     }
 
-    /// "What's New" entry — always opens the latest entry registered
-    /// in `whatsnew.json`, independent of the
-    /// `lastShownWhatsNewVersion` gate. Hidden when the asset has no
-    /// entries for the resolved locale (e.g. during early bring-up of
-    /// a release where the JSON hasn't been filled in yet).
+    /// "What's New" entry — always opens the newest release's flow
+    /// (``WhatsNewCatalog`` pages plus its `whatsnew.json` summary),
+    /// independent of the `lastShownWhatsNewVersion` gate. Hidden when
+    /// neither has anything for the resolved locale (e.g. during early
+    /// bring-up of a release where the JSON hasn't been filled in yet).
     @ViewBuilder
     private var whatsNewRow: some View {
         if appState.updateNotifyCoordinator.hasWhatsNewContent {
