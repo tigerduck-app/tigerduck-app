@@ -14,10 +14,48 @@ nonisolated enum SecureStore {
     /// * unreadable while the device is locked (background tasks running
     ///   with the screen locked simply won't see credentials — acceptable
     ///   given the threat model)
+    ///
+    /// Except the few secrets a locked-screen launch needs, which live in
+    /// ``readableWhileLocked``.
     private static let shared = Valet.valet(
         with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
         accessibility: .whenUnlockedThisDeviceOnly
     )
+
+    /// The secrets a launch behind a locked screen has to read.
+    ///
+    /// iOS launches the app in the background for a push, and a locked
+    /// phone is the usual case: above all a Live Activity push-to-start,
+    /// which hands the app the new activity's update token to register so
+    /// the server can end the activity when the class does. Registering
+    /// reads the backend session, the device id and the endpoint the device
+    /// was pointed at. In ``shared`` none of them could be read there, so
+    /// that launch took itself for signed out, minted a throwaway device id
+    /// and fell back to the default endpoint — the activity was never
+    /// registered, and stayed up after class until the app was next opened.
+    ///
+    /// The NTUST, Moodle and library credentials stay in ``shared``:
+    /// nothing that runs in the background needs them.
+    private static let readableWhileLockedKeys: Set<String> = [
+        AuthTokenManager.accessTokenKey,
+        AuthTokenManager.refreshTokenKey,
+        AuthTokenManager.expiresAtKey,
+        AppConstants.KeychainKeys.pushDeviceId,
+        DebugEndpointStore.keychainKey,
+    ]
+
+    /// Home of ``readableWhileLockedKeys``. `.afterFirstUnlockThisDeviceOnly`
+    /// is readable once the phone has been unlocked after a restart, and
+    /// like ``shared`` never leaves the device.
+    private static let readableWhileLocked = Valet.valet(
+        with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
+        accessibility: .afterFirstUnlockThisDeviceOnly
+    )
+
+    /// The valet `key` is written to.
+    private static func home(forKey key: String) -> Valet {
+        readableWhileLockedKeys.contains(key) ? readableWhileLocked : shared
+    }
 
     /// Legacy per-app valet at the looser `.afterFirstUnlock` class. We
     /// only read from this so existing installs migrate forward into
@@ -43,17 +81,32 @@ nonisolated enum SecureStore {
     )
 
     static func save(_ data: Data, forKey key: String) throws {
-        try shared.setObject(data, forKey: key)
+        let home = home(forKey: key)
+        try home.setObject(data, forKey: key)
         // Best-effort cleanup: a previous build may still have the value
-        // sitting in the legacy / shared-group valets at a looser
-        // accessibility class. Strip any stale copies so the new write
-        // is the single source of truth.
-        try? legacyShared.removeObject(forKey: key)
-        try? legacySharedGroup.removeObject(forKey: key)
+        // sitting in another valet — the legacy / shared-group ones at a
+        // looser accessibility class, or ``shared`` for a key that has
+        // since moved to ``readableWhileLocked``. Strip any stale copies so
+        // the new write is the single source of truth.
+        for store in [shared, legacyShared, legacySharedGroup] where store !== home {
+            try? store.removeObject(forKey: key)
+        }
     }
 
     static func load(key: String) -> Data? {
-        if let value = try? shared.object(forKey: key) {
+        let home = home(forKey: key)
+        if let value = try? home.object(forKey: key) {
+            return value
+        }
+
+        // Every build before ``readableWhileLocked`` kept its keys in
+        // ``shared``. That cannot be read behind a locked screen, so the
+        // value moves on the first read after an unlock. Conditional
+        // delete, for the reason given below.
+        if home !== shared, let value = try? shared.object(forKey: key) {
+            if (try? home.setObject(value, forKey: key)) != nil {
+                try? shared.removeObject(forKey: key)
+            }
             return value
         }
 
@@ -67,7 +120,7 @@ nonisolated enum SecureStore {
         // read taken while locked would succeed, fail to copy forward, and
         // then delete the only remaining copy.
         if let value = try? legacyShared.object(forKey: key) {
-            if (try? shared.setObject(value, forKey: key)) != nil {
+            if (try? home.setObject(value, forKey: key)) != nil {
                 try? legacyShared.removeObject(forKey: key)
             }
             return value
@@ -77,7 +130,7 @@ nonisolated enum SecureStore {
         // there) and purge the shared copy. Same conditional delete, same
         // reason.
         if let value = try? legacySharedGroup.object(forKey: key) {
-            if (try? shared.setObject(value, forKey: key)) != nil {
+            if (try? home.setObject(value, forKey: key)) != nil {
                 try? legacySharedGroup.removeObject(forKey: key)
             }
             return value
@@ -87,7 +140,7 @@ nonisolated enum SecureStore {
             return nil
         }
 
-        let migrated = (try? shared.setObject(legacyValue, forKey: key)) != nil
+        let migrated = (try? home.setObject(legacyValue, forKey: key)) != nil
         if migrated {
             legacyDelete(key: key)
         }
@@ -95,6 +148,7 @@ nonisolated enum SecureStore {
     }
 
     static func delete(key: String) {
+        try? readableWhileLocked.removeObject(forKey: key)
         try? shared.removeObject(forKey: key)
         try? legacyShared.removeObject(forKey: key)
         try? legacySharedGroup.removeObject(forKey: key)
@@ -106,7 +160,7 @@ nonisolated enum SecureStore {
     /// purge to avoid flipping the "installed" flag on partial cleanup.
     static func deleteReportingSuccess(key: String) -> Bool {
         var ok = true
-        for store in [shared, legacyShared, legacySharedGroup] {
+        for store in [readableWhileLocked, shared, legacyShared, legacySharedGroup] {
             do {
                 try store.removeObject(forKey: key)
             } catch {
@@ -135,7 +189,7 @@ nonisolated enum SecureStore {
         let preserved: [String: Data] = preservedKeys.reduce(into: [:]) { acc, key in
             if let value = load(key: key) { acc[key] = value }
         }
-        for store in [shared, legacyShared, legacySharedGroup] {
+        for store in [readableWhileLocked, shared, legacyShared, legacySharedGroup] {
             try? store.removeAllObjects()
         }
         for (key, value) in preserved {
