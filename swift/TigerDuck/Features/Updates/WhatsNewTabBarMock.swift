@@ -10,11 +10,13 @@ import SwiftUI
 ///
 /// Before is read from the live setting each time the page becomes the
 /// current one, then held, so confirming doesn't redraw it as the page
-/// slides away.
+/// slides away. VoiceOver reads it as one element listing both bars, so
+/// the tab a change would remove is heard, not just seen.
 struct WhatsNewTabBarChangeDemo: View {
     let after: @MainActor ([AppFeature]) -> [AppFeature]
 
     @Environment(AppState.self) private var appState
+    @Environment(\.whatsNewLanguage) private var language
     @Environment(\.whatsNewPageIsCurrent) private var isCurrent
     @State private var held: [AppFeature]?
 
@@ -53,7 +55,23 @@ struct WhatsNewTabBarChangeDemo: View {
         .onChange(of: isCurrent, initial: true) { _, isCurrent in
             if isCurrent { held = visibleTabs }
         }
-        .accessibilityHidden(true)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenDescription(before: before, after: offered))
+    }
+
+    /// "Before: Home, Class table, Calendar, More. After: Home, Class
+    /// table, Mail, More." — or just the one bar when nothing changes.
+    private func spokenDescription(before: [AppFeature], after: [AppFeature]) -> String {
+        guard before != after else { return spoken(Self.yoursCaption, before) }
+        let sentences = [spoken(Self.beforeCaption, before), spoken(Self.afterCaption, after)]
+        return language == .zhHant ? sentences.joined(separator: "。") + "。" : sentences.joined(separator: ". ") + "."
+    }
+
+    private func spoken(_ caption: WhatsNewText, _ tabs: [AppFeature]) -> String {
+        let names = (tabs + [.more]).map(\.tabBarDisplayName)
+        return language == .zhHant
+            ? caption.resolved(for: language) + "：" + names.joined(separator: "、")
+            : caption.resolved(for: language) + ": " + names.joined(separator: ", ")
     }
 
     private var visibleTabs: [AppFeature] {
