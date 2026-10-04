@@ -37,29 +37,34 @@ private struct WhatsNewTemplateBody<Accessory: View>: View {
     @ViewBuilder let accessory: Accessory
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: TigerDuckTheme.Spacing.xl) {
-                if let visual = content.visual {
-                    WhatsNewVisualView(visual: visual)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: TigerDuckTheme.Spacing.xl) {
+                    if let visual = content.visual {
+                        WhatsNewVisualView(visual: visual)
+                    }
+                    VStack(spacing: TigerDuckTheme.Spacing.md) {
+                        Text(String(localized: content.title))
+                            .font(.title.bold())
+                            .accessibilityAddTraits(.isHeader)
+                        Text(String(localized: content.body))
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    accessory
                 }
-                VStack(spacing: TigerDuckTheme.Spacing.md) {
-                    Text(String(localized: content.title))
-                        .font(.title.bold())
-                        .accessibilityAddTraits(.isHeader)
-                    Text(String(localized: content.body))
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                accessory
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, TigerDuckTheme.Spacing.xl)
+                .padding(.vertical, TigerDuckTheme.Spacing.lg)
+                // Centred in the page while it fits, so a short page
+                // doesn't leave its gap all above the buttons; once
+                // Dynamic Type outgrows the page it scrolls from the top.
+                .frame(minHeight: proxy.size.height)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, TigerDuckTheme.Spacing.xl)
-            .padding(.top, TigerDuckTheme.Spacing.xxl)
-            .padding(.bottom, TigerDuckTheme.Spacing.lg)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollBounceBehavior(.basedOnSize)
     }
 }
 
