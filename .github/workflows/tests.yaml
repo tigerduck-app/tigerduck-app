@@ -227,9 +227,11 @@ jobs:
           echo "-- compiles by target"
           cut -d' ' -f2- "$log" | grep -E '^(SwiftCompile|CompileC) ' \
             | grep -oE "in target '[^']+' from project '[^']+'" | sort | uniq -c | sort -rn | head -40
-          echo "-- longest silences (seconds, then the line that ended each)"
-          awk 'NR > 1 { printf "%7.1f  %s\n", $1 - prev, substr($0, index($0, " ") + 1) } { prev = $1 }' "$log" \
-            | sort -rn | head -15 | cut -c1-220
+          echo "-- longest silences (seconds: the line before | the line after)"
+          awk '{ line = substr($0, index($0, " ") + 1) }
+               NR > 1 { printf "%7.1f  %.110s | %.110s\n", $1 - prev, last, line }
+               { prev = $1; last = line }' "$log" \
+            | sort -rn 2>/dev/null | head -15
           echo "-- xcodebuild timing summary"
           cut -d' ' -f2- "$log" | sed -n '/Build Timing Summary/,$p' | head -40
           true
