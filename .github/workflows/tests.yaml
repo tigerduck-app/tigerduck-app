@@ -15,10 +15,13 @@ name: Tests
 #
 # The phone and watch suites run on runners of their own, side by side. They
 # used to run back to back in one job, so the gate took the sum of the two
-# (8-14 min) where it now takes the slower one. Each leg's time is almost all
-# build plus simulator boot — the tests themselves finish in seconds — so
-# splitting either suite across more runners would only pay for the build
-# again.
+# (8-14 min) where it now takes the slower one. That was written when the
+# phone suite was ~200 tests that finished in seconds. At ~1,050 it takes a
+# dev Mac ~35 s, but the phone leg's test phase on the 3-core runner is 5-7
+# of its 13-16 minutes, and one `xcodebuild test` step cannot say how much
+# of that is simulator boot and how much is the tests. So its phases run as
+# separate steps below, each with its own time in the job view, and the
+# summary step says where the test time itself went.
 #
 # Note there is no `CODE_SIGNING_ALLOWED=NO` here, the usual CI shorthand for
 # "this machine has no certificates". A simulator build signs ad-hoc and needs
@@ -75,8 +78,13 @@ jobs:
           # anything this workflow is meant to catch.
           submodules: true
 
+      # The core count is what the test timings below have to be read
+      # against: Swift Testing runs tests side by side, so a suite a dev Mac
+      # finishes in seconds can take minutes on a runner a quarter its size.
       - name: Xcode version
-        run: xcodebuild -version
+        run: |
+          xcodebuild -version
+          sysctl -n machdep.cpu.brand_string hw.ncpu
 
       # Naming a simulator is how this breaks six months from now: images add
       # and drop devices, and `OS=latest` resolves to a runtime the named
@@ -125,13 +133,46 @@ jobs:
           sudo systemsetup -settimezone Asia/Taipei
           date
 
+      # The next four steps are what a single `xcodebuild test` does inside
+      # itself, in the same order: fetch packages, compile, boot the
+      # simulator, run. Split, the job view times each one; whole, it showed
+      # one 13-16 minute step and no way to tell which part was slow. The
+      # simulator boots after the compile, not alongside it, so its time is
+      # its own and not shared with the compiler for the runner's 3 cores.
+      - name: Resolve packages
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        run: >
+          xcodebuild -resolvePackageDependencies
+          -project swift/TigerDuck.xcodeproj
+          -scheme "$SCHEME"
+          -quiet
+
+      - name: Build for testing
+        env:
+          SCHEME: ${{ matrix.scheme }}
+          UDID: ${{ steps.sim.outputs.udid }}
+          ONLY_TESTING: ${{ matrix.only_testing }}
+        run: >
+          xcodebuild build-for-testing
+          -project swift/TigerDuck.xcodeproj
+          -scheme "$SCHEME"
+          -destination "id=$UDID"
+          ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"}
+          -quiet
+
+      - name: Boot the simulator
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: xcrun simctl bootstatus "$UDID" -b
+
       - name: Unit tests (${{ matrix.leg }})
         env:
           SCHEME: ${{ matrix.scheme }}
           UDID: ${{ steps.sim.outputs.udid }}
           ONLY_TESTING: ${{ matrix.only_testing }}
         run: >
-          xcodebuild test
+          xcodebuild test-without-building
           -project swift/TigerDuck.xcodeproj
           -scheme "$SCHEME"
           -destination "id=$UDID"
@@ -148,6 +189,12 @@ jobs:
       # *why* a test failed, and a mid-run crash marks every remaining test
       # failed with no message attached — so a bare list of names cannot tell
       # "173 real failures" apart from "one crash, 172 casualties".
+      #
+      # The timing section is how the test step's minutes get read. "Ran for"
+      # is the bundle's own start to finish; the test step's time minus it is
+      # app install, launch and teardown. Suite and test times are each test's
+      # own duration, and Swift Testing runs tests side by side, so they add up
+      # to more than the run took — read them as shares, not as wall time.
       - name: Test summary
         if: always()
         # `set +e`: the job's verdict is the test step's, not this step's. It
@@ -160,14 +207,36 @@ jobs:
             echo "not produced (the step before it did not get that far)"
             exit 0
           fi
-          xcrun xcresulttool get test-results summary --path "$bundle" \
+          summary=$(xcrun xcresulttool get test-results summary --path "$bundle")
+          tests=$(mktemp)
+          xcrun xcresulttool get test-results tests --path "$bundle" > "$tests"
+          echo "$summary" \
             | jq '{result, totalTestCount, passedTests, failedTests, skippedTests}' \
             || echo "could not read the summary — see the uploaded bundle"
           echo "-- failures"
-          xcrun xcresulttool get test-results tests --path "$bundle" \
-            | jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
-                     | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"' \
+          jq -r '[.. | objects | select(.result? == "Failed" and .nodeType? == "Test Case")]
+                 | .[:40][] | "\(.name)\n    \([.. | objects | select(.nodeType? == "Failure Message") | .name] | join("\n    "))"' "$tests" \
             || echo "could not read the failures — see the uploaded bundle"
+          echo "-- timing"
+          echo "$summary" | jq -r '"ran for \((.finishTime - .startTime) | floor)s"' \
+            || echo "could not read the run's start and finish"
+          jq -r '[.. | objects | select(.nodeType? == "Test Case") | .durationInSeconds // 0]
+                 | "\(length) tests adding up to \(add | floor)s; \(map(select(. >= 1)) | length) of them took 1s or more"' "$tests" \
+            || echo "could not read the test durations"
+          echo "slowest suites:"
+          jq -r 'def lpad($n): tostring | (" " * ($n - length)) + .;
+                 [.. | objects | select(.nodeType? == "Test Suite")
+                   | {name, d: [.children[]? | select(.nodeType? == "Test Case") | .durationInSeconds // 0]}
+                   | select(.d | length > 0)]
+                 | sort_by(-(.d | add)) | .[:15][]
+                 | "  \(.d | add | floor | lpad(5))s \(.d | length | lpad(4)) tests  \(.name)"' "$tests" \
+            || echo "could not read the suite durations"
+          echo "slowest tests:"
+          jq -r 'def lpad($n): tostring | (" " * ($n - length)) + .;
+                 [.. | objects | select(.nodeType? == "Test Case")]
+                 | sort_by(-(.durationInSeconds // 0)) | .[:10][]
+                 | "  \((.durationInSeconds // 0) * 10 | floor / 10 | lpad(5))s  \(.name)"' "$tests" \
+            || echo "could not read the test durations"
           exit 0
 
       # The summary above is a best effort against a JSON shape Apple changes
