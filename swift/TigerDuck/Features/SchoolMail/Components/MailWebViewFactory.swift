@@ -4,7 +4,8 @@ import WebKit
 import os
 import UIKit
 
-/// The page a mail's HTML is drawn on: the app's own surface, not white paper.
+/// The page a mail's HTML is drawn on: the app's own surface (`app`), or white paper (`light`)
+/// only when the reader asks for it.
 ///
 /// Only the page is themed. A sender's own colours are never rewritten, because rewriting them
 /// distorts logos, screenshots and branded mail with no way for the reader to tell; mail that

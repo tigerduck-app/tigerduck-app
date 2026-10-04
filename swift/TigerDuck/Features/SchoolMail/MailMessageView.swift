@@ -333,9 +333,12 @@ struct MailMessageView: View {
                             Text(mode.title).tag(mode)
                         }
                     }
-                    // A checkmark item, beside the views it changes: on, the HTML is redrawn on
-                    // white paper; off, back on the app's page.
-                    if viewModel.offersLightMode {
+                }
+                // Right under the views it changes, but in a section of its own: a Picker and a
+                // Toggle both draw a checkmark, so sharing one would read as two selected views.
+                // On, the HTML is redrawn on white paper; off, back on the app's page.
+                if viewModel.offersLightMode {
+                    Section {
                         Toggle(isOn: $viewModel.viewsInLightMode) {
                             Label(String(localized: "school_mail_view_light_mode"), systemImage: "sun.max")
                         }
