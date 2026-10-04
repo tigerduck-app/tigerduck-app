@@ -100,7 +100,26 @@ struct WhatsNewRepository {
         else {
             return nil
         }
-        return try? JSONDecoder().decode(ByVersion.self, from: data)
+        return Self.decodeByVersion(data)
+    }
+
+    /// Decodes each version on its own, so one malformed entry — `items`
+    /// written as an object, say — drops only that version's summary
+    /// rather than every one. Kept static for tests; the strict check that
+    /// the shipped file decodes whole lives in `WhatsNewRepositoryTests`.
+    static func decodeByVersion(_ data: Data) -> [String: [String: WhatsNewEntry]]? {
+        try? JSONDecoder()
+            .decode([String: Lenient<[String: WhatsNewEntry]>].self, from: data)
+            .compactMapValues(\.value)
+    }
+
+    /// A value that decodes to `nil` instead of failing its container.
+    private struct Lenient<Value: Decodable>: Decodable {
+        let value: Value?
+
+        init(from decoder: Decoder) throws {
+            value = try? Value(from: decoder)
+        }
     }
 
     /// Pure selector — kept static so tests can drive it without mounting

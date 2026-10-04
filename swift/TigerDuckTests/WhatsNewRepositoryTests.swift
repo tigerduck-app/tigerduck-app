@@ -69,6 +69,19 @@ struct WhatsNewRepositoryTests {
         #expect(select(json, languageTag: "ja-JP")?.title == "EN")
     }
 
+    @Test func aMalformedVersionDropsOnlyItsOwnSummary() throws {
+        let json = """
+        {
+          "2.2.0": { "en": { "title": "Bad", "items": { "title": "not an array" } } },
+          "2.3.0": { "en": { "title": "Good", "items": [{ "title": "Row" }] } }
+        }
+        """
+        let byVersion = try #require(WhatsNewRepository.decodeByVersion(Data(json.utf8)))
+        #expect(byVersion["2.2.0"] == nil)
+        let good = WhatsNewRepository.select(versionEntry: byVersion["2.3.0"], version: "2.3.0", languageTag: "en")
+        #expect(good?.title == "Good")
+    }
+
     @Test func theShippedJSONDecodesAndEveryKeyIsAVersion() throws {
         let url = try #require(Bundle.main.url(forResource: "whatsnew", withExtension: "json"))
         let byVersion = try JSONDecoder().decode(
