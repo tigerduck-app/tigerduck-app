@@ -11,6 +11,10 @@ import SwiftUI
 /// renders each sentence as a bulleted body-only row.
 struct WhatsNewSummaryContent: View {
     let entry: WhatsNewRepository.ResolvedWhatsNew
+    /// True once the flow has paged onto the summary. The pager builds
+    /// a neighbouring step ahead of time, offscreen, so the rows wait
+    /// for this rather than `onAppear` to settle in where they're seen.
+    let isActive: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hasAppeared = false
@@ -45,7 +49,10 @@ struct WhatsNewSummaryContent: View {
             .padding(.bottom, TigerDuckTheme.Spacing.lg)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .onAppear { hasAppeared = true }
+        .onAppear { if isActive { hasAppeared = true } }
+        .onChange(of: isActive) { _, active in
+            if active { hasAppeared = true }
+        }
     }
 }
 

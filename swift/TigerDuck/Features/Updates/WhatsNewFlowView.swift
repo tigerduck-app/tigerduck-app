@@ -20,11 +20,14 @@ struct WhatsNewFlowView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.layoutDirection) private var layoutDirection
     @State private var index = 0
     /// True while a permission page awaits its system prompt; holds the
     /// buttons so a second tap can't stack another request.
     @State private var isRequesting = false
+    /// The in-flight permission request, cancelled when the sheet goes
+    /// away so a prompt answered after a swipe-down can't advance — or
+    /// finish — a flow that's no longer on screen.
+    @State private var requestTask: Task<Void, Never>?
 
     private var stepCount: Int {
         presentation.pages.count + (presentation.summary == nil ? 0 : 1)
@@ -37,6 +40,7 @@ struct WhatsNewFlowView: View {
             footer
         }
         .environment(\.whatsNewLanguage, presentation.language)
+        .onDisappear { requestTask?.cancel() }
     }
 
     // MARK: - Layout
@@ -83,9 +87,10 @@ struct WhatsNewFlowView: View {
                     .accessibilityHidden(step != index)
                 }
             }
-            // An RTL HStack lays steps out right to left, so the strip
-            // slides the other way to bring the next one in.
-            .offset(x: CGFloat(index) * proxy.size.width * (layoutDirection == .rightToLeft ? 1 : -1))
+            // An RTL HStack lays steps out right to left, but SwiftUI
+            // mirrors `offset(x:)` under RTL as well, so the same
+            // negative offset brings the next step in either way.
+            .offset(x: -CGFloat(index) * proxy.size.width)
         }
         .clipped()
     }
@@ -120,7 +125,7 @@ struct WhatsNewFlowView: View {
                 )
             )
         } else if let summary = presentation.summary {
-            WhatsNewSummaryContent(entry: summary)
+            WhatsNewSummaryContent(entry: summary, isActive: step == index)
         }
     }
 
@@ -146,9 +151,11 @@ struct WhatsNewFlowView: View {
                 VStack(spacing: TigerDuckTheme.Spacing.sm) {
                     primaryButton(confirm.resolved(for: presentation.language), isBusy: isRequesting) {
                         isRequesting = true
-                        Task {
+                        requestTask = Task {
                             await request(appState)
                             isRequesting = false
+                            requestTask = nil
+                            guard !Task.isCancelled else { return }
                             advance()
                         }
                     }

@@ -124,12 +124,17 @@ private struct WhatsNewSymbolEffectModifier: ViewModifier {
 /// leaving the page by any route keeps it.
 private struct WhatsNewChoicePicker: View {
     let options: [WhatsNewPage.ChoiceOption]
+    /// The live setting. Followed after the first build too: the pager
+    /// builds this page while its neighbour is on screen, and that
+    /// neighbour may change the setting before the user gets here.
+    let initial: String
     let select: (String) -> Void
     @State private var selection: String
     @Environment(\.whatsNewLanguage) private var language
 
     init(options: [WhatsNewPage.ChoiceOption], initial: String, select: @escaping (String) -> Void) {
         self.options = options
+        self.initial = initial
         self.select = select
         _selection = State(initialValue: initial)
     }
@@ -169,17 +174,22 @@ private struct WhatsNewChoicePicker: View {
                 .animation(.snappy, value: isSelected)
             }
         }
+        .onChange(of: initial) { _, live in selection = live }
     }
 }
 
 /// A switch under the demo, applied live as it flips.
 private struct WhatsNewToggleRow: View {
     let label: String
+    /// The live setting, followed for the same reason as
+    /// ``WhatsNewChoicePicker/initial``.
+    let initial: Bool
     let set: (Bool) -> Void
     @State private var isOn: Bool
 
     init(label: String, initial: Bool, set: @escaping (Bool) -> Void) {
         self.label = label
+        self.initial = initial
         self.set = set
         _isOn = State(initialValue: initial)
     }
@@ -187,6 +197,7 @@ private struct WhatsNewToggleRow: View {
     var body: some View {
         Toggle(label, isOn: $isOn)
             .onChange(of: isOn) { _, newValue in set(newValue) }
+            .onChange(of: initial) { _, live in isOn = live }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
             .padding(.vertical, TigerDuckTheme.Spacing.md)
             .background(
