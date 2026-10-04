@@ -113,7 +113,7 @@ struct MainTabView: View {
             // What's New layered on top of their first home screen —
             // the seed in AppState.init's fresh-install branch already
             // stamped lastShownWhatsNewVersion in that case.
-            appState.updateNotifyCoordinator.evaluateWhatsNewOnLaunch()
+            appState.updateNotifyCoordinator.evaluateWhatsNewOnLaunch(in: appState)
             // Background update check is gated on `hasCompletedOnboarding`
             // inside the coordinator, so a brand-new user landing on
             // MainTabView for the first time gets the first iTunes

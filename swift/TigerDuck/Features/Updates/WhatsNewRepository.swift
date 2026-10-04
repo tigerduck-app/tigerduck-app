@@ -1,16 +1,17 @@
 import Foundation
 
-/// Loads maintainer-authored "What's new" content from the bundled
+/// Loads maintainer-authored "What's new" summaries from the bundled
 /// `whatsnew.json` asset. Ported from the Android `WhatsNewRepository`:
 /// the JSON is a versionString → per-locale map; this repo picks the
 /// locale block that best matches the resolved app language tag and
-/// surfaces it as a ``ResolvedWhatsNew``.
+/// surfaces it as a ``ResolvedWhatsNew`` — the summary page that ends
+/// the What's New flow.
 ///
 /// **Maintainer ritual** (matches the Android side): every release
 /// worth surfacing in-app adds a new top-level entry to
 /// `whatsnew.json` BEFORE the version is tagged / merged to main. Pure
 /// bug-fix releases can be skipped — the gate stays quiet when no
-/// entry is registered.
+/// entry (and no ``WhatsNewCatalog`` page) is registered.
 ///
 /// **Locale resolution**: every Sinitic-family language (Mandarin
 /// `zh-Hant*` / `zh-Hans*`, Cantonese `yue`, Wu `wuu`, Min Nan `nan`,
@@ -27,7 +28,16 @@ struct WhatsNewRepository {
     struct ResolvedWhatsNew: Equatable {
         let version: String
         let title: String
-        let highlights: [String]
+        let items: [Item]
+
+        /// A summary row with its blanks already filtered out: at least
+        /// one of `title` / `body` is non-nil. A legacy `highlights`
+        /// sentence arrives as a body-only row with no symbol.
+        struct Item: Equatable {
+            let symbol: String?
+            let title: String?
+            let body: String?
+        }
     }
 
     private let bundle: Bundle
@@ -79,13 +89,6 @@ struct WhatsNewRepository {
         )
     }
 
-    /// True when the asset has at least one usable entry. Used by the
-    /// Settings row to hide the "What's New" button on a build that
-    /// shipped without any registered content yet.
-    func hasAnyContent(languageTag: String) -> Bool {
-        latestEntry(languageTag: languageTag) != nil
-    }
-
     // MARK: - Internal
 
     private typealias ByVersion = [String: [String: WhatsNewEntry]]
@@ -113,14 +116,37 @@ struct WhatsNewRepository {
             .compactMap { versionEntry[$0] }
             .first
         guard let entry,
-              let title = entry.title?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !title.isEmpty,
-              let highlights = entry.highlights,
-              !highlights.isEmpty
+              let title = nonBlank(entry.title)
         else {
             return nil
         }
-        return ResolvedWhatsNew(version: version, title: title, highlights: highlights)
+        let items = resolvedItems(of: entry)
+        guard !items.isEmpty else { return nil }
+        return ResolvedWhatsNew(version: version, title: title, items: items)
+    }
+
+    /// `items` when the entry authors any usable row, otherwise the
+    /// legacy `highlights` sentences as body-only rows. Rows left with
+    /// neither a title nor a body are dropped rather than rendered as
+    /// an empty line.
+    private static func resolvedItems(of entry: WhatsNewEntry) -> [ResolvedWhatsNew.Item] {
+        let items: [ResolvedWhatsNew.Item] = (entry.items ?? []).compactMap { item in
+            let title = nonBlank(item.title)
+            let body = nonBlank(item.body)
+            guard title != nil || body != nil else { return nil }
+            return ResolvedWhatsNew.Item(symbol: nonBlank(item.symbol), title: title, body: body)
+        }
+        if !items.isEmpty { return items }
+        return (entry.highlights ?? []).compactMap { line in
+            nonBlank(line).map { ResolvedWhatsNew.Item(symbol: nil, title: nil, body: $0) }
+        }
+    }
+
+    private static func nonBlank(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
     }
 
     /// ISO 639 codes treated as "Chinese-family" for locale fallback —
