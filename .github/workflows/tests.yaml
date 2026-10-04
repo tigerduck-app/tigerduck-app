@@ -65,6 +65,10 @@ jobs:
           # The watch app is a companion app, so it needs its own scheme and
           # its own destination; the phone scheme's test action does not reach
           # it. Xcode pairs the watch simulator with a phone one on its own.
+          # That scheme builds the phone app for running only, not for
+          # testing: built for a watch destination, the phone app and all
+          # its packages came out for arm64 and x86_64 both, twice the phone
+          # leg's compile, for tests that never load it.
           - leg: watch
             scheme: TigerDuckWatch Watch App
             runtime: watchOS
