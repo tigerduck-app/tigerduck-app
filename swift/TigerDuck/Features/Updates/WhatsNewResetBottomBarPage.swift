@@ -39,7 +39,8 @@ extension WhatsNewPage {
 
 /// A mock of the bottom bar that morphs from the user's tabs into the
 /// default ones and back: tabs both bars share slide into place, the
-/// rest fade. Reduce Motion shows the two bars stacked instead.
+/// rest fade. Reduce Motion shows the two bars stacked instead, and a bar
+/// that already is the default just shows still.
 private struct BottomBarResetDemo: View {
     @Environment(AppState.self) private var appState
     @Environment(\.whatsNewLanguage) private var language
@@ -59,7 +60,12 @@ private struct BottomBarResetDemo: View {
 
     var body: some View {
         Group {
-            if reduceMotion {
+            if yours == defaults {
+                // Nothing to morph — a replay for someone already on the
+                // default bar, or Back after confirming the reset. Show the
+                // default bar still rather than swap it for itself.
+                bar(Self.defaultCaption, tabs: defaults)
+            } else if reduceMotion {
                 VStack(spacing: TigerDuckTheme.Spacing.md) {
                     bar(Self.yoursCaption, tabs: yours)
                     Image(systemName: "arrow.down")
