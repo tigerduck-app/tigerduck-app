@@ -92,7 +92,8 @@ struct WhatsNewFlowBuilderTests {
             upTo: AppVersion("9.9.9")!,
             releases: ["2.2.0": [page("old")], "2.3.0": [page("new")]],
             latestSummary: summary("2.3.0"),
-            summaryFor: { _ in nil }
+            summaryFor: { _ in nil },
+            isApplicable: { _ in true }
         ))
         #expect(flow.version == "2.3.0")
         #expect(flow.pages.map(\.id) == ["new"])
@@ -105,7 +106,8 @@ struct WhatsNewFlowBuilderTests {
             upTo: AppVersion("9.9.9")!,
             releases: ["2.3.0": [page("new")]],
             latestSummary: summary("2.2.0"),
-            summaryFor: { $0 == "2.3.0" ? summary("2.3.0") : nil }
+            summaryFor: { $0 == "2.3.0" ? summary("2.3.0") : nil },
+            isApplicable: { _ in true }
         ))
         #expect(flow.version == "2.3.0")
         #expect(flow.pages.map(\.id) == ["new"])
@@ -118,21 +120,39 @@ struct WhatsNewFlowBuilderTests {
             upTo: AppVersion("9.9.9")!,
             releases: ["2.2.0": [page("old")]],
             latestSummary: summary("2.3.0"),
-            summaryFor: { _ in nil }
+            summaryFor: { _ in nil },
+            isApplicable: { _ in true }
         ))
         #expect(flow.version == "2.3.0")
         #expect(flow.pages.isEmpty)
     }
 
-    @Test func replayIgnoresTheApplicabilityCheck() throws {
+    @Test func replayLeavesOutPagesThatDoNotApply() throws {
         let flow = try #require(WhatsNewFlowBuilder.replay(
             language: .en,
             upTo: AppVersion("9.9.9")!,
-            releases: ["2.3.0": [page("a", applicable: false)]],
+            releases: ["2.3.0": [page("skip"), page("keep")]],
             latestSummary: nil,
-            summaryFor: { _ in nil }
+            summaryFor: { _ in nil },
+            isApplicable: { $0.id != "skip" }
         ))
-        #expect(flow.pages.map(\.id) == ["a"])
+        #expect(flow.pages.map(\.id) == ["keep"])
+    }
+
+    /// A newest release whose pages all drop out doesn't hide an older
+    /// release's pages and summary.
+    @Test func replayFallsBackPastAReleaseWhosePagesAllDropOut() throws {
+        let flow = try #require(WhatsNewFlowBuilder.replay(
+            language: .en,
+            upTo: AppVersion("9.9.9")!,
+            releases: ["2.2.0": [page("old")], "2.3.0": [page("skip")]],
+            latestSummary: summary("2.2.0"),
+            summaryFor: { _ in nil },
+            isApplicable: { $0.id != "skip" }
+        ))
+        #expect(flow.version == "2.2.0")
+        #expect(flow.pages.map(\.id) == ["old"])
+        #expect(flow.summary?.version == "2.2.0")
     }
 
     @Test func replayWithNothingAuthoredIsNoFlow() {
@@ -141,7 +161,8 @@ struct WhatsNewFlowBuilderTests {
             upTo: AppVersion("9.9.9")!,
             releases: [:],
             latestSummary: nil,
-            summaryFor: { _ in nil }
+            summaryFor: { _ in nil },
+            isApplicable: { _ in true }
         ) == nil)
     }
 
@@ -151,7 +172,8 @@ struct WhatsNewFlowBuilderTests {
             upTo: AppVersion("2.2.0")!,
             releases: ["2.2.0": [page("installed")], "2.3.0": [page("ahead")]],
             latestSummary: summary("2.2.0"),
-            summaryFor: { _ in nil }
+            summaryFor: { _ in nil },
+            isApplicable: { _ in true }
         ))
         #expect(flow.version == "2.2.0")
         #expect(flow.pages.map(\.id) == ["installed"])
@@ -164,7 +186,8 @@ struct WhatsNewFlowBuilderTests {
             upTo: AppVersion("2.2.0")!,
             releases: ["2.3.0": [page("ahead")]],
             latestSummary: nil,
-            summaryFor: { _ in nil }
+            summaryFor: { _ in nil },
+            isApplicable: { _ in true }
         ) == nil)
     }
 
@@ -188,13 +211,12 @@ struct WhatsNewFlowBuilderTests {
         )
     }
 
-    private func page(_ id: String, applicable: Bool = true) -> WhatsNewPage {
+    private func page(_ id: String) -> WhatsNewPage {
         .feature(
             id: id,
             visual: nil,
             title: WhatsNewText(en: "title", zhHant: "標題"),
-            body: WhatsNewText(en: "body", zhHant: "內文"),
-            isApplicable: { _ in applicable }
+            body: WhatsNewText(en: "body", zhHant: "內文")
         )
     }
 

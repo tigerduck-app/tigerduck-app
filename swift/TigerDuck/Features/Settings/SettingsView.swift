@@ -551,14 +551,14 @@ struct SettingsView: View {
     /// bring-up of a release where the JSON hasn't been filled in yet).
     @ViewBuilder
     private var whatsNewRow: some View {
-        if appState.updateNotifyCoordinator.hasWhatsNewContent {
+        if appState.updateNotifyCoordinator.hasWhatsNewContent(in: appState) {
             Button {
                 // Capture the entry at tap time and pass it directly to
                 // `.sheet(item:)` — avoids the empty-sheet edge case
                 // where the row was visible on the latest render but
                 // `latestWhatsNew` evaluates to nil inside the sheet
                 // body (e.g. language change between render and tap).
-                manualWhatsNewItem = appState.updateNotifyCoordinator.latestWhatsNew
+                manualWhatsNewItem = appState.updateNotifyCoordinator.latestWhatsNew(in: appState)
             } label: {
                 HStack {
                     Text(String(localized: "settings_whats_new"))
