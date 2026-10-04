@@ -48,6 +48,11 @@ It was created to solve common pain points: scattered resources, delayed notific
 ### 🏛️ **Library** (Experimental)
 - Instant library entry QR code with zero delay
 
+### 📬 **School Mail** (iOS)
+- Read and send your NTUST Mail2000 mail in the app: Inbox, Sent, Drafts, Trash, Junk and All mail
+- Search, reply, forward, attachments, move and delete, with new-mail notifications
+- The phone talks to the school's mail server directly, never through TigerDuck's servers, and the password stays encrypted on this device
+
 ### ⌚ **Apple Watch**
 - **Now & Next** home screen: the current and next class, with progress for the one in session
 - **Today** list and per-course detail
@@ -167,6 +172,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 ### 📣 Campus Information
 - [x] **Department & Office Announcements** — Aggregated announcements `v1.0`
 - [x] **LLM-classified bulletins + subscriptions** — Server-side classification & de-duplication, subscribable categories, unread filter `v1.5.0`
+- [x] **School Mail** — Read and send NTUST Mail2000 mail in the app, with new-mail notifications (iOS) `v2.2.0`
 - [ ] **Scholarships** — Filterable by eligibility (low-income, indigenous, etc.)
 - [ ] **Daily Club Activities** — Curated daily club event listings
 - [ ] **Empty Classroom Finder** — Quickly find currently available classrooms
@@ -224,8 +230,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 - **macOS**
 - Xcode 26+
 - Swift 5
-- [uv](https://github.com/astral-sh/uv) package manager (backend / POC scripts)
-- Docker Desktop (only required for the full push backend stack)
+- [uv](https://github.com/astral-sh/uv) package manager (only for the `api-poc/` scripts)
 
 ### iOS App
 ```bash
@@ -273,7 +278,7 @@ tigerduck-app/
 ├── swift/                              # iOS App + companion targets (Xcode 26+ / iOS 18+ / watchOS 11+)
 │   ├── TigerDuck/                      # Main iOS app sources
 │   │   ├── App/                        # Global state (AppState), language manager, push delegate
-│   │   ├── Bridge/                     # Service orchestration (KMP / native fetch bridge)
+│   │   ├── Bridge/                     # Fetch orchestration between services and SwiftData
 │   │   ├── Features/                   # Screen-level feature modules
 │   │   │   ├── Home/                   # Home (Time Slider, assignments, widgets)
 │   │   │   ├── ClassTable/             # Class table
@@ -281,20 +286,26 @@ tigerduck-app/
 │   │   │   ├── Bulletins/              # Server-driven, LLM-classified announcements
 │   │   │   ├── Score/                  # Historical GPA & rankings
 │   │   │   ├── Library/                # Library
+│   │   │   ├── SchoolMail/             # School Mail (iOS only)
 │   │   │   ├── More/                   # "More" hub + feature pinning
 │   │   │   ├── Settings/               # Settings (language, abbreviations, theme, source)
-│   │   │   └── Onboarding/             # First-run onboarding flow
+│   │   │   ├── Onboarding/             # First-run onboarding flow
+│   │   │   └── Updates/                # Update prompt + What's New
 │   │   ├── LiveActivity/               # Live Activity / Dynamic Island (in-app logic)
 │   │   │   ├── Models/  Preferences/  Providers/
-│   │   │   ├── Resolvers/  Runtime/  Scheduling/
+│   │   │   ├── Resolvers/  Runtime/
 │   │   ├── Models/
 │   │   │   ├── Domain/                 # Business logic models
 │   │   │   └── SwiftData/              # Local persistence models
 │   │   ├── Platform/Mac/               # macOS-only surfaces (sidebar, Mac page layouts, push delegate)
 │   │   ├── Services/
-│   │   │   ├── Auth/                   # NTUST SSO authentication
-│   │   │   ├── Network/                # Networking layer
-│   │   │   ├── Push/                   # APNs / push registration
+│   │   │   ├── API/                    # NTUST / Moodle / calendar / library / bulletin clients
+│   │   │   ├── Auth/                   # NTUST SSO authentication, backend tokens
+│   │   │   ├── Core/                   # Cache, HTML parsing, name abbreviations
+│   │   │   ├── Mail/                   # School Mail IMAP / SMTP
+│   │   │   ├── Push/                   # APNs / push registration, schedule sync
+│   │   │   ├── CloudSync/  Sync/       # Cloud sync and settings sync
+│   │   │   ├── Watch/                  # WatchConnectivity to the Watch app
 │   │   │   ├── Logging/                # Structured logging
 │   │   │   └── Migrations/             # One-shot migrations
 │   │   ├── SharedUI/                   # Reusable cross-feature views
@@ -304,11 +315,13 @@ tigerduck-app/
 │   ├── TigerDuckWatch Watch App/       # Apple Watch app (Now & Next / Today / detail / Library QR)
 │   ├── TigerDuckWatchWidget/           # Apple Watch complication
 │   ├── TigerDuckTests/                 # Unit tests (Swift Testing + XCTest, incl. widget / watch logic)
+│   ├── Packages/SwiftMail/             # Vendored IMAP / SMTP package used by School Mail
 │   ├── ci_scripts/                     # Xcode Cloud post-clone hook (fetches submodules)
 │   └── Shared/                         # Cross-target shared code (sensors, Watch comms, theme)
 ├── api-poc/                            # Third-party API validation scripts (NTUST / Moodle / Calendar)
-│   └── api/                            # ntust_sso / course_lookup / moodle / calendar
-├── tools/localization/                 # Localization sync and key-check scripts
+│   └── api/                            # moodle/ · ntust/ · public/ (calendar, bulletin)
+├── tools/                              # Localization, licence and macOS source checks
+├── .github/workflows/                  # PR checks: unit tests, version bump, What's New, localization
 ├── docs/                               # Planning docs, migration notes (iOS side)
 ├── app-translation/                    # ⤴ git submodule: 67 locale translations
 └── name-abbr/                          # ⤴ git submodule: course / classroom abbreviation dictionaries

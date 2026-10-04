@@ -48,6 +48,11 @@ TigerDuck 是由一群學生共同開發的校園助手
 ### 🏛️ **圖書館**（實驗性）
 - 秒開入館 QR-Code，無任何延遲
 
+### 📬 **校園信箱**（iOS）
+- 在 App 內直接收發臺科大 Mail2000 信件：收件匣、寄件備份、草稿、回收筒、廣告信與「所有信件」
+- 搜尋、回覆、轉寄、收發附件、移動與刪除，新信到達時通知
+- 手機直接連線學校郵件伺服器，不經過 TigerDuck 伺服器；密碼只加密存在這台裝置
+
 ### ⌚ **Apple Watch**
 - **Now & Next** 主畫面：當下 / 下一節課，以及進行中課程的進度
 - **Today** 列表與課程詳情頁
@@ -168,6 +173,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 ### 📣 校園資訊
 - [x] **各處室、中心公告** – 支援公告整合 `v1.0`
 - [x] **公告 LLM 分類 + 訂閱通知** – 後端自動分類去重、可訂閱類別、未讀篩選 `v1.5.0`
+- [x] **校園信箱** – 在 App 內收發臺科大 Mail2000 信件，新信通知（iOS）`v2.2.0`
 - [ ] **獎學金資訊** – 支援 Filter，可依低收、中低收、原住民等條件過濾
 - [ ] **當日社團活動** – 整理每日社團活動資訊
 - [ ] **空教室查詢** – 快速查詢目前可使用的教室
@@ -225,8 +231,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 - **macOS**
 - Xcode 26+
 - Swift 5
-- [uv](https://github.com/astral-sh/uv) 套件管理器（後端 / POC 腳本）
-- Docker Desktop（要跑完整推播後端時才需要）
+- [uv](https://github.com/astral-sh/uv) 套件管理器（僅 `api-poc/` 腳本需要）
 
 ### iOS App
 ```bash
@@ -274,7 +279,7 @@ tigerduck-app/
 ├── swift/                              # iOS App + 周邊 target（Xcode 26+ / iOS 18+ / watchOS 11+）
 │   ├── TigerDuck/                      # 主 iOS App 來源
 │   │   ├── App/                        # 全域狀態（AppState）、語言管理、推播代理
-│   │   ├── Bridge/                     # 服務協調層（KMP / 原生抓取 bridge）
+│   │   ├── Bridge/                     # 服務與 SwiftData 之間的抓取協調層
 │   │   ├── Features/                   # 各分頁功能模組
 │   │   │   ├── Home/                   # 首頁（時光機、作業、小工具）
 │   │   │   ├── ClassTable/             # 課表
@@ -282,20 +287,26 @@ tigerduck-app/
 │   │   │   ├── Bulletins/              # 公告（後端 LLM 分類、訂閱、推播）
 │   │   │   ├── Score/                  # 歷年成績與排名
 │   │   │   ├── Library/                # 圖書館
+│   │   │   ├── SchoolMail/             # 校園信箱（僅 iOS）
 │   │   │   ├── More/                   # 「更多」聚合頁與功能釘選
 │   │   │   ├── Settings/               # 設定（語言、簡稱、主題、來源碼）
-│   │   │   └── Onboarding/             # 初次使用引導
+│   │   │   ├── Onboarding/             # 初次使用引導
+│   │   │   └── Updates/                # 更新提示與「新功能」介紹
 │   │   ├── LiveActivity/               # 即時動態 / 動態島（App 內邏輯）
 │   │   │   ├── Models/  Preferences/  Providers/
-│   │   │   ├── Resolvers/  Runtime/  Scheduling/
+│   │   │   ├── Resolvers/  Runtime/
 │   │   ├── Models/
 │   │   │   ├── Domain/                 # 業務邏輯模型
 │   │   │   └── SwiftData/              # 本地持久化模型
 │   │   ├── Platform/Mac/               # macOS 專屬版面（側邊欄、各頁 Mac 版、推播代理）
 │   │   ├── Services/
-│   │   │   ├── Auth/                   # NTUST SSO 認證
-│   │   │   ├── Network/                # 網路請求
-│   │   │   ├── Push/                   # APNs / Push 註冊
+│   │   │   ├── API/                    # 校務系統 / Moodle / 行事曆 / 圖書館 / 公告 API
+│   │   │   ├── Auth/                   # NTUST SSO 認證、後端 token
+│   │   │   ├── Core/                   # 快取、HTML 解析、名稱簡稱
+│   │   │   ├── Mail/                   # 校園信箱 IMAP / SMTP
+│   │   │   ├── Push/                   # APNs / Push 註冊、課表同步
+│   │   │   ├── CloudSync/  Sync/       # 雲端同步與設定同步
+│   │   │   ├── Watch/                  # 與 Watch App 的 WatchConnectivity 同步
 │   │   │   ├── Logging/                # 結構化日誌
 │   │   │   └── Migrations/             # 一次性遷移
 │   │   ├── SharedUI/                   # 共用 UI 元件
@@ -305,11 +316,13 @@ tigerduck-app/
 │   ├── TigerDuckWatch Watch App/       # Apple Watch App（Now & Next / Today / 課程詳情 / 圖書證 QR）
 │   ├── TigerDuckWatchWidget/           # Apple Watch 複雜功能 (Complication)
 │   ├── TigerDuckTests/                 # 單元測試（Swift Testing + XCTest，含 Widget / Watch 邏輯）
+│   ├── Packages/SwiftMail/             # 校園信箱使用的 IMAP / SMTP 套件（vendored）
 │   ├── ci_scripts/                     # Xcode Cloud post-clone（抓子模組）
 │   └── Shared/                         # 跨 target 共用程式碼（感測器、Watch 通訊、Theme）
 ├── api-poc/                            # 第三方 API 驗證腳本（NTUST / Moodle / Calendar）
-│   └── api/                            # ntust_sso / course_lookup / moodle / calendar
-├── tools/localization/                 # 翻譯同步與 key 檢查腳本
+│   └── api/                            # moodle/ · ntust/ · public/（行事曆、公告）
+├── tools/                              # 翻譯、授權清單與 macOS 檔案歸屬檢查腳本
+├── .github/workflows/                  # PR 檢查：單元測試、版本號、新功能介紹、翻譯
 ├── docs/                               # 規劃文件、移轉計畫（iOS 端）
 ├── app-translation/                    # ⤴ git submodule：67 語系翻譯
 └── name-abbr/                          # ⤴ git submodule：課程 / 教室簡稱字典
