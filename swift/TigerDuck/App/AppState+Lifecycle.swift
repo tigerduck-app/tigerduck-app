@@ -43,6 +43,13 @@ extension AppState {
         // (see Features/Bulletins), so a Mac build never wrote the
         // ambiguous flag state this disambiguates.
         BulletinPushOptOutMigration.runIfNeeded()
+        // Synchronous because `configuredTabs` was read before init() got
+        // here: a bar it keeps is reloaded straight away, before the tab
+        // bar or What's New reads it. iOS only like the bar itself — the
+        // Mac sidebar keeps its own list.
+        if DefaultTabsPinMigration.runIfNeeded() {
+            configuredTabs = AppState.decodeConfiguredTabs(Defaults[.configuredTabsData]) ?? AppFeature.defaultTabs
+        }
         #endif
         Task(priority: .utility) { @MainActor in
             #if os(iOS)

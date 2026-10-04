@@ -172,9 +172,16 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         tabs.filter { libraryEnabled || !libraryRelatedFeatures.contains($0) }
     }
 
+    /// The bar a new install starts with, and what the tab editor's Reset
+    /// restores. Calendar until 2.3.0, when Mail took its place — an
+    /// existing user who never customized keeps Calendar
+    /// (`DefaultTabsPinMigration`) and is asked about Mail in What's New.
     static let defaultTabs: [AppFeature] = [
-        .home, .classTable, .calendar,
-    ]
+        .home, .classTable, .schoolMail,
+    ].filter(\.isImplemented)
+
+    /// The most tabs a user can pin; the tab bar adds "More" after them.
+    static let maxTabs = 4
 
     /// Features displayed in the "More" page, grouped by category.
     /// Same convention as ``pinnableFeatures``.
