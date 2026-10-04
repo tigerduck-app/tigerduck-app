@@ -106,7 +106,7 @@ final class DebugNotificationsViewModel {
                           title: "Preview mail", body: { "Debug Menu" },
                           userInfo: ["kind": MailConstants.notificationKind, "folder": MailConstants.inbox]))
         #endif
-        kinds.append(Kind(id: "Send bulletin (Other)", threadIdentifier: "bulletin", title: "Simulated push",
+        kinds.append(Kind(id: "Send bulletin (Other)", threadIdentifier: "other", title: "Simulated push",
                           body: { "Fake push fired at \(AppClock.now().formatted(date: .omitted, time: .standard)) (app clock)" }))
         return kinds
     }()
