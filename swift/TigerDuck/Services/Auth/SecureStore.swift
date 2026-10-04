@@ -92,7 +92,12 @@ nonisolated enum SecureStore {
 
     static func save(_ data: Data, forKey key: String) throws {
         let home = home(forKey: key)
-        if home !== shared {
+        // Only while home has no value yet. Once it has one, `load` never
+        // reads ``shared`` for this key, so a copy there buries nothing and
+        // the check could only refuse the save: a rotated refresh token
+        // behind a locked screen, lost if that phone reports even an item
+        // ``shared`` does not hold as unreadable.
+        if home !== shared, (try? home.object(forKey: key)) == nil {
             try requireNoUnreadableCopyInShared(forKey: key)
         }
         try home.setObject(data, forKey: key)

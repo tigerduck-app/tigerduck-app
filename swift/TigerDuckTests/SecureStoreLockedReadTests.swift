@@ -79,15 +79,20 @@ struct SecureStoreLockedReadTests {
 
     // MARK: Behind a locked screen
 
+    /// Whether a locked phone also reports an item it does not hold as
+    /// unreadable. A simulator cannot say, so the locked tests take both.
+    static let absentReadsFailWhileLocked = [false, true]
+
     /// The case the move is for. Once moved, a locked launch reads the
     /// session and the device id, and when it refreshes the session, the
     /// rotated refresh token is saved; lost, the next refresh would send
-    /// the spent one.
-    @Test(arguments: readWhileLocked)
-    func aMovedSecretCanBeReadAndReplacedWhileLocked(key: String) throws {
+    /// the spent one. That cannot hang on how the locked phone reports the
+    /// earlier build's copy that the move took away.
+    @Test(arguments: readWhileLocked, absentReadsFailWhileLocked)
+    func aMovedSecretCanBeReadAndReplacedWhileLocked(key: String, absentReadsFail: Bool) throws {
         SecureStore.delete(key: key)
         defer { SecureStore.delete(key: key) }
-        let earlierBuilds = LockablePhoneKeychain()
+        let earlierBuilds = LockablePhoneKeychain(absentReadsFailWhileLocked: absentReadsFail)
 
         try SecureStore.$sharedForTesting.withValue(earlierBuilds) {
             try earlierBuilds.setObject(Data("old".utf8), forKey: key)
@@ -104,11 +109,11 @@ struct SecureStoreLockedReadTests {
     /// read what an earlier build kept, so it takes the secret for absent —
     /// `PushIdentity` mints a fresh device id and saves it. That stand-in
     /// must not take the real value's place.
-    @Test(arguments: readWhileLocked)
-    func aSecretNotYetMovedIsKeptForAnUnlockedRead(key: String) throws {
+    @Test(arguments: readWhileLocked, absentReadsFailWhileLocked)
+    func aSecretNotYetMovedIsKeptForAnUnlockedRead(key: String, absentReadsFail: Bool) throws {
         SecureStore.delete(key: key)
         defer { SecureStore.delete(key: key) }
-        let earlierBuilds = LockablePhoneKeychain()
+        let earlierBuilds = LockablePhoneKeychain(absentReadsFailWhileLocked: absentReadsFail)
 
         try SecureStore.$sharedForTesting.withValue(earlierBuilds) {
             try earlierBuilds.setObject(Data("real".utf8), forKey: key)
@@ -181,14 +186,22 @@ struct SecureStoreLockedReadTests {
 ///
 /// Locked, it fails the way that valet does behind a locked screen: reading
 /// an item it holds, or writing one, is `couldNotAccessKeychain`
-/// (`errSecInteractionNotAllowed`). An item it does not hold still reads as
-/// `itemNotFound`, which is what lets `SecureStore` tell an unreadable copy
-/// from none. Deletes go through even when locked, so a test catches code
-/// that drops a copy it could not read.
+/// (`errSecInteractionNotAllowed`). Deletes go through even when locked, so
+/// a test catches code that drops a copy it could not read.
 private final class LockablePhoneKeychain: KeychainStore, @unchecked Sendable {
     private let lock = NSLock()
     private var items: [String: Data] = [:]
     private var locked = false
+
+    /// Whether, locked, reading an item it does not hold fails too, rather
+    /// than reading as `itemNotFound`. Whether a locked phone tells an
+    /// absent item from an unreadable one is something a simulator cannot
+    /// show, so a test can take either answer.
+    private let absentReadsFailWhileLocked: Bool
+
+    init(absentReadsFailWhileLocked: Bool = false) {
+        self.absentReadsFailWhileLocked = absentReadsFailWhileLocked
+    }
 
     var isLocked: Bool {
         get { lock.withLock { locked } }
@@ -202,8 +215,10 @@ private final class LockablePhoneKeychain: KeychainStore, @unchecked Sendable {
 
     func object(forKey key: String) throws -> Data {
         try lock.withLock {
+            if locked, items[key] != nil || absentReadsFailWhileLocked {
+                throw KeychainError.couldNotAccessKeychain
+            }
             guard let item = items[key] else { throw KeychainError.itemNotFound }
-            guard !locked else { throw KeychainError.couldNotAccessKeychain }
             return item
         }
     }
