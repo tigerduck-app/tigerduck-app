@@ -30,6 +30,7 @@ struct SecureStoreLockedReadTests {
 
     @Test(arguments: readWhileLocked)
     func aSecretTheBackgroundNeedsIsReadableAfterFirstUnlock(key: String) throws {
+        SecureStore.delete(key: key)
         defer { SecureStore.delete(key: key) }
 
         try SecureStore.save(Data("value".utf8), forKey: key)
@@ -39,6 +40,7 @@ struct SecureStoreLockedReadTests {
 
     @Test(arguments: unlockedOnly)
     func aCredentialStaysUnreadableWhileLocked(key: String) throws {
+        SecureStore.delete(key: key)
         defer { SecureStore.delete(key: key) }
 
         try SecureStore.save(Data("value".utf8), forKey: key)
@@ -48,17 +50,34 @@ struct SecureStoreLockedReadTests {
 
     @Test(arguments: readWhileLocked)
     func aSecretSavedByAnEarlierBuildMovesOnItsFirstRead(key: String) throws {
+        SecureStore.delete(key: key)
         defer { SecureStore.delete(key: key) }
-        // Where every earlier build wrote every secret.
-        let earlier = Valet.valet(
-            with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
-            accessibility: .whenUnlockedThisDeviceOnly
-        )
-        try earlier.setObject(Data("value".utf8), forKey: key)
+        try earlierBuildsValet.setObject(Data("value".utf8), forKey: key)
 
         #expect(SecureStore.load(key: key) == Data("value".utf8))
         #expect(accessibilityClasses(of: key) == [afterFirstUnlock])
     }
+
+    @Test(arguments: readWhileLocked)
+    func aSaveOverAnEarlierBuildsReadableCopyReplacesIt(key: String) throws {
+        SecureStore.delete(key: key)
+        defer { SecureStore.delete(key: key) }
+        // Unlocked, the earlier build's copy is readable: the save is the
+        // newer value and takes its place. (Locked, the save is refused so
+        // a stand-in cannot bury it — not reproducible in a simulator.)
+        try earlierBuildsValet.setObject(Data("old".utf8), forKey: key)
+
+        try SecureStore.save(Data("new".utf8), forKey: key)
+
+        #expect(SecureStore.load(key: key) == Data("new".utf8))
+        #expect(accessibilityClasses(of: key) == [afterFirstUnlock])
+    }
+
+    /// Where every earlier build wrote every secret.
+    private let earlierBuildsValet = Valet.valet(
+        with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
+        accessibility: .whenUnlockedThisDeviceOnly
+    )
 
     private let afterFirstUnlock = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
     private let whenUnlocked = kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String

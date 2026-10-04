@@ -82,6 +82,9 @@ nonisolated enum SecureStore {
 
     static func save(_ data: Data, forKey key: String) throws {
         let home = home(forKey: key)
+        if home !== shared {
+            try requireNoUnreadableCopyInShared(forKey: key)
+        }
         try home.setObject(data, forKey: key)
         // Best-effort cleanup: a previous build may still have the value
         // sitting in another valet — the legacy / shared-group ones at a
@@ -90,6 +93,24 @@ nonisolated enum SecureStore {
         // the new write is the single source of truth.
         for store in [shared, legacyShared, legacySharedGroup] where store !== home {
             try? store.removeObject(forKey: key)
+        }
+    }
+
+    /// Throws when ``shared`` holds a copy of `key` this launch cannot read.
+    ///
+    /// That is an earlier build's value on a locked phone, before its first
+    /// read after an unlock moved it. `load` could not see it, so the caller
+    /// is writing something in its place — `PushIdentity` mints a fresh
+    /// device id. ``readableWhileLocked`` takes writes behind a locked
+    /// screen and `load` reads it first, so that stand-in would replace the
+    /// real value for good. Refused instead, as the write to ``shared``
+    /// itself always was there; the real value moves on the next unlocked
+    /// read.
+    private static func requireNoUnreadableCopyInShared(forKey key: String) throws {
+        do {
+            _ = try shared.object(forKey: key)
+        } catch KeychainError.itemNotFound {
+            return
         }
     }
 
