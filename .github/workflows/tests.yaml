@@ -86,12 +86,32 @@ jobs:
           xcodebuild -version
           sysctl -n machdep.cpu.brand_string hw.ncpu
 
+      # Every date in this app is a Taiwan school day: `AcademicCalendar.calendar`
+      # and `WidgetTaipei.calendar` are hard-pinned to Asia/Taipei, while the
+      # tests build their fixtures with `Calendar.current`. On the machines
+      # these were written on those agree. On a UTC runner they are eight hours
+      # apart, so a fixture meaning "Monday 09:30" arrives as Monday 17:30 —
+      # `.ongoing` comes back `.tomorrowFirst`, and `(comps.hour → 2) == 10`
+      # misses by exactly the offset. A simulator takes the host's zone, so
+      # this is the one place to say it — and it goes before the simulator
+      # starts booting in the next step, not after.
+      - name: Run in the school's timezone
+        run: |
+          sudo systemsetup -settimezone Asia/Taipei
+          date
+
       # Naming a simulator is how this breaks six months from now: images add
       # and drop devices, and `OS=latest` resolves to a runtime the named
       # device may not exist on. (That exact mismatch — iPhone 17 Pro Max
       # present on 26.5 while `latest` meant 27.0 — is what it does locally.)
       # Take whichever devices the image actually has.
-      - name: Pick a simulator
+      #
+      # The boot starts here and runs alongside the package fetch and the
+      # compile: `simctl boot` returns once the boot is under way, and the
+      # "Wait for the simulator" step after the build collects it. Booted
+      # after the build instead, it was a minute of the runner doing nothing
+      # else.
+      - name: Pick and boot a simulator
         id: sim
         env:
           RUNTIME: ${{ matrix.runtime }}
@@ -119,26 +139,31 @@ jobs:
           fi
           xcrun simctl list devices available | grep -E "$udid"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid"
 
-      # Every date in this app is a Taiwan school day: `AcademicCalendar.calendar`
-      # and `WidgetTaipei.calendar` are hard-pinned to Asia/Taipei, while the
-      # tests build their fixtures with `Calendar.current`. On the machines
-      # these were written on those agree. On a UTC runner they are eight hours
-      # apart, so a fixture meaning "Monday 09:30" arrives as Monday 17:30 —
-      # `.ongoing` comes back `.tomorrowFirst`, and `(comps.hour → 2) == 10`
-      # misses by exactly the offset. A simulator takes the host's zone, so
-      # this is the one place to say it.
-      - name: Run in the school's timezone
-        run: |
-          sudo systemsetup -settimezone Asia/Taipei
-          date
+      # Brings back this leg's last build so only what changed recompiles.
+      # A cached DerivedData alone is not enough: a fresh checkout stamps
+      # every file with the checkout's time, Xcode reads a new mtime as a
+      # changed file, and everything rebuilds anyway. This action also keeps
+      # each source file's mtime next to its hash, and puts the old mtime back
+      # on every file whose contents still match. The package clones are a
+      # second cache keyed on Package.resolved, which both legs share.
+      #
+      # Both live in the runner's temp directory rather than in the checkout,
+      # so the action's mtime scan over the checkout does not walk into them;
+      # every xcodebuild below is pointed there.
+      - name: Restore the last build
+        uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
+        with:
+          key: xcode-${{ matrix.leg }}-${{ github.sha }}
+          restore-keys: xcode-${{ matrix.leg }}-
+          deriveddata-directory: ${{ runner.temp }}/DerivedData
+          sourcepackages-directory: ${{ runner.temp }}/SourcePackages
 
-      # The next four steps are what a single `xcodebuild test` does inside
-      # itself, in the same order: fetch packages, compile, boot the
-      # simulator, run. Split, the job view times each one; whole, it showed
-      # one 13-16 minute step and no way to tell which part was slow. The
-      # simulator boots after the compile, not alongside it, so its time is
-      # its own and not shared with the compiler for the runner's 3 cores.
+      # The next steps are what a single `xcodebuild test` does inside
+      # itself: fetch packages, compile, wait for the simulator, run. Split,
+      # the job view times each one; whole, it showed one 13-16 minute step
+      # and no way to tell which part was slow.
       - name: Resolve packages
         env:
           SCHEME: ${{ matrix.scheme }}
@@ -146,8 +171,12 @@ jobs:
           xcodebuild -resolvePackageDependencies
           -project swift/TigerDuck.xcodeproj
           -scheme "$SCHEME"
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
           -quiet
 
+      # No index store: it is what Xcode's jump-to-definition and search read,
+      # nothing here does, and writing it costs compile time and cache space.
       - name: Build for testing
         env:
           SCHEME: ${{ matrix.scheme }}
@@ -159,11 +188,14 @@ jobs:
           -scheme "$SCHEME"
           -destination "id=$UDID"
           ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"}
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
+          COMPILER_INDEX_STORE_ENABLE=NO
           -quiet
 
       # bootstatus prints a status line about once a second until the device
       # is up; only the last few say anything.
-      - name: Boot the simulator
+      - name: Wait for the simulator
         env:
           UDID: ${{ steps.sim.outputs.udid }}
         run: |
@@ -181,6 +213,8 @@ jobs:
           -scheme "$SCHEME"
           -destination "id=$UDID"
           ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"}
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
           -resultBundlePath Tests.xcresult
           -quiet
 
