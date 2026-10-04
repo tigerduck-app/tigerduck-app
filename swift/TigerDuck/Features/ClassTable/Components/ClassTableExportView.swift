@@ -13,6 +13,9 @@ import UIKit
 struct ClassTableExportView: View {
     let viewModel: ClassTableViewModel
     let studentId: String?
+    /// The page's Differentiate Without Color, handed to the grid directly:
+    /// the renderer's environment cannot carry it.
+    let differentiateWithoutColor: Bool
 
     /// A phone's width whatever the device, so an export from an iPad is
     /// still a picture that reads at a glance when it lands on a phone.
@@ -33,7 +36,11 @@ struct ClassTableExportView: View {
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
-            TimetableGridView(viewModel: viewModel, showsAssignmentBadges: false)
+            TimetableGridView(
+                viewModel: viewModel,
+                showsAssignmentBadges: false,
+                differentiateWithoutColor: differentiateWithoutColor
+            )
         }
         .padding(.vertical, TigerDuckTheme.Spacing.lg)
         .frame(width: Self.width)
@@ -47,6 +54,7 @@ struct ClassTableExportView: View {
 enum ClassTableExporter {
     /// Draws ``ClassTableExportView`` into a PNG in the temporary directory
     /// and returns its URL, or `nil` when nothing could be drawn or written.
+    /// Hand the URL to ``discard(_:)`` once it has been shared.
     ///
     /// `ImageRenderer` starts from an empty environment rather than the one
     /// the page sits in, so everything the grid reads from it is handed over
@@ -56,10 +64,15 @@ enum ClassTableExporter {
         appState: AppState,
         dynamicTypeSize: DynamicTypeSize,
         layoutDirection: LayoutDirection,
-        legibilityWeight: LegibilityWeight?
+        legibilityWeight: LegibilityWeight?,
+        differentiateWithoutColor: Bool
     ) async -> URL? {
         let studentId = appState.authService.storedStudentId
-        let content = ClassTableExportView(viewModel: viewModel, studentId: studentId)
+        let content = ClassTableExportView(
+            viewModel: viewModel,
+            studentId: studentId,
+            differentiateWithoutColor: differentiateWithoutColor
+        )
             .environment(appState)
             // The app pins dark (`TigerDuckApp`), and the page's colours are
             // written for it.
@@ -68,9 +81,8 @@ enum ClassTableExporter {
             // A right-to-left language mirrors the page's grid; the empty
             // environment would draw it left-to-right.
             .environment(\.layoutDirection, layoutDirection)
-            // Bold Text. Differentiate Without Color cannot follow: SwiftUI
-            // does not let it be set, so a 衝堂 cluster's warning triangle
-            // stays off the image.
+            // Bold Text. Differentiate Without Color cannot be set here, so
+            // it rides on the view instead.
             .environment(\.legibilityWeight, legibilityWeight)
         let renderer = ImageRenderer(content: content)
         renderer.scale = 3
@@ -89,20 +101,49 @@ enum ClassTableExporter {
         return await Task.detached(priority: .userInitiated) { () -> URL? in
             guard let data = image.pngData() else { return nil }
             let fileManager = FileManager.default
-            let directory = fileManager.temporaryDirectory
-                .appendingPathComponent("ClassTableExport", isDirectory: true)
+            removeLeftovers(fileManager)
+            // A directory of its own per export, so the file inside keeps the
+            // readable name and two exports never touch each other's file —
+            // Home's class table and the Class Table tab each have the menu.
+            let directory = exportRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
             let url = directory.appendingPathComponent(name)
             do {
-                // Only the newest export is kept: an older one carries a
-                // student id and nothing points at it any more.
-                try? fileManager.removeItem(at: directory)
                 try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
                 try data.write(to: url, options: .atomic)
                 return url
             } catch {
+                try? fileManager.removeItem(at: directory)
                 return nil
             }
         }.value
+    }
+
+    /// Deletes an export once its share sheet has closed: it carries a
+    /// student id, and nothing points at it any more. Only ever a directory
+    /// ``render`` made.
+    nonisolated static func discard(_ url: URL) {
+        let directory = url.deletingLastPathComponent()
+        guard directory.deletingLastPathComponent().standardizedFileURL == exportRoot.standardizedFileURL else { return }
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    private nonisolated static var exportRoot: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("ClassTableExport", isDirectory: true)
+    }
+
+    /// Exports ``discard(_:)`` never reached — the app ended while a share
+    /// sheet was up. Ten minutes is far longer than any export takes to
+    /// reach its share sheet, and only one share sheet can be up at a time.
+    private nonisolated static func removeLeftovers(_ fileManager: FileManager) {
+        let cutoff = Date().addingTimeInterval(-10 * 60)
+        let entries = (try? fileManager.contentsOfDirectory(
+            at: exportRoot,
+            includingPropertiesForKeys: [.creationDateKey]
+        )) ?? []
+        for entry in entries {
+            let created = (try? entry.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
+            if created < cutoff { try? fileManager.removeItem(at: entry) }
+        }
     }
 
     /// "課表_114-2_B11315000.png": the name the file keeps wherever it is

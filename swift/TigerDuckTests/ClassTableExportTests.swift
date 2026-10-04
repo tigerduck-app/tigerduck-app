@@ -35,5 +35,21 @@ struct ClassTableExportTests {
         let name = ClassTableExporter.fileName(title: "Class table/Timetable", semesterLabel: "114-2", studentId: "B11315000")
         #expect(name == "Class_tableTimetable_114-2_B11315000.png")
     }
+
+    /// discard deletes the directory around the file it is given, so it has
+    /// to refuse anything the exporter did not write.
+    @Test("discard leaves a file outside the export directory alone")
+    func discardStaysInItsDirectory() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ClassTableExportTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("課表_114-2.png")
+        try Data([0]).write(to: file)
+
+        ClassTableExporter.discard(file)
+
+        #expect(FileManager.default.fileExists(atPath: file.path))
+    }
 }
 #endif

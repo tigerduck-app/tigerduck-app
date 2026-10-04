@@ -17,12 +17,11 @@ struct ShareSheet: UIViewControllerRepresentable {
         // item binding stays set: the sheet is left blank, or gone while
         // SwiftUI still thinks it is up — and the next share of the same
         // file, same URL and so same id, never presents. Close through
-        // SwiftUI instead, once an activity completes or the share sheet
-        // itself is closed (no activity chosen).
+        // SwiftUI instead, whatever the outcome: UIKit calls this once the
+        // activity controller has been dismissed — an activity completed,
+        // one chosen and then cancelled, or the sheet closed outright.
         let dismiss = context.environment.dismiss
-        controller.completionWithItemsHandler = { activityType, completed, _, _ in
-            if completed || activityType == nil { dismiss() }
-        }
+        controller.completionWithItemsHandler = { _, _, _, _ in dismiss() }
         return controller
     }
 

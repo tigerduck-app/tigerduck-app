@@ -16,6 +16,7 @@ struct ClassTableView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.legibilityWeight) private var legibilityWeight
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     var body: some View {
         if embedded {
@@ -216,6 +217,7 @@ struct ClassTableView: View {
             }
             .sheet(item: $exportedFile) { file in
                 ShareSheet(url: file.url)
+                    .onDisappear { ClassTableExporter.discard(file.url) }
                     // The heights UIKit gives the share sheet when it
                     // presents one itself.
                     .presentationDetents([.medium, .large])
@@ -354,7 +356,8 @@ struct ClassTableView: View {
                 appState: appState,
                 dynamicTypeSize: dynamicTypeSize,
                 layoutDirection: layoutDirection,
-                legibilityWeight: legibilityWeight
+                legibilityWeight: legibilityWeight,
+                differentiateWithoutColor: differentiateWithoutColor
             )
             isExporting = false
             if let url {

@@ -35,6 +35,10 @@ struct TimetableGridView: View {
     /// a reminder for whoever is looking at the screen today, not part of
     /// the timetable someone is being shown.
     var showsAssignmentBadges = true
+    /// Overrides the environment's Differentiate Without Color, which marks
+    /// a 衝堂 cluster with a warning triangle; nil follows the environment.
+    /// For an export, whose renderer cannot set that value itself.
+    var differentiateWithoutColor: Bool? = nil
     @Environment(AppState.self) private var appState
 
     private let rowSpacing: CGFloat = 3
@@ -238,6 +242,7 @@ struct TimetableGridView: View {
                     ConflictClusterView(
                         viewModel: viewModel,
                         showsAssignmentBadges: showsAssignmentBadges,
+                        differentiateWithoutColorOverride: differentiateWithoutColor,
                         segments: segments,
                         combinedSpan: combinedSpan,
                         cellHeight: cellHeight,
@@ -264,6 +269,7 @@ struct TimetableGridView: View {
 private struct ConflictClusterView: View {
     let viewModel: ClassTableViewModel
     let showsAssignmentBadges: Bool
+    let differentiateWithoutColorOverride: Bool?
     let segments: [ClassTableViewModel.ConflictSegment]
     let combinedSpan: Int
     let cellHeight: CGFloat
@@ -271,7 +277,8 @@ private struct ConflictClusterView: View {
     let weekday: Int
     let periodId: String
 
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var diffWithoutColor
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var environmentDiffWithoutColor
+    private var diffWithoutColor: Bool { differentiateWithoutColorOverride ?? environmentDiffWithoutColor }
     @Environment(AppState.self) private var appState
     @ScaledMetric(relativeTo: .caption2) private var badgeIconSize: CGFloat = 8
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
