@@ -61,9 +61,13 @@ final class UpdateNotifyCoordinator {
         case failed
     }
 
+    /// Where the check's errors go: Sentry in the app, a recorder in tests.
+    typealias ErrorReporter = @Sendable (any Error, [String: String]) -> Void
+
     private let bundleId: String
     private let session: URLSession
     private let repository: WhatsNewRepository
+    private let reportError: ErrorReporter
     /// Coalesces concurrent calls — a manual "Check now" tap that lands
     /// while the scene-active background check is mid-flight reuses the
     /// in-flight task rather than firing a duplicate iTunes Lookup hit.
@@ -89,11 +93,13 @@ final class UpdateNotifyCoordinator {
     nonisolated init(
         bundleId: String = Bundle.main.bundleIdentifier ?? "org.ntust.app.TigerDuck",
         session: URLSession = .shared,
-        repository: WhatsNewRepository? = nil
+        repository: WhatsNewRepository? = nil,
+        reportError: @escaping ErrorReporter = { AppLogger.captureError($0, context: $1) }
     ) {
         self.bundleId = bundleId
         self.session = session
         self.repository = repository ?? WhatsNewRepository()
+        self.reportError = reportError
     }
 
     // MARK: - What's New
@@ -440,16 +446,9 @@ final class UpdateNotifyCoordinator {
         // A store version that cannot be read says nothing about whether
         // the installed build is current. Answering "up to date" here is
         // how a "v2.2.0" on the store went unnoticed, so it is reported
-        // and a manual check fails instead. The throttle above is already
-        // stamped, which keeps this to one report a day per install.
+        // and a manual check fails instead.
         guard let latest = AppVersion(lookup.version) else {
-            AppLogger.captureError(
-                AppStoreUpdateService.LookupError.unparseableVersion,
-                context: [
-                    "phase": "UpdateNotifyCoordinator.performCheck",
-                    "storeVersion": lookup.version,
-                ]
-            )
+            reportUnparseableStoreVersion(lookup.version)
             if manual { lastManualCheckResult = .failed }
             return
         }
@@ -489,11 +488,27 @@ final class UpdateNotifyCoordinator {
         if manual { lastManualCheckResult = .offered(pending) }
     }
 
+    /// Reports an unreadable store version once per version per install.
+    /// The 24h throttle cannot do this on its own: manual checks skip it,
+    /// so every "Check for Updates" tap would send the same report again.
+    /// A later store version that is also unreadable is reported afresh.
+    private func reportUnparseableStoreVersion(_ version: String) {
+        guard Defaults[.lastReportedUnparseableStoreVersion] != version else { return }
+        Defaults[.lastReportedUnparseableStoreVersion] = version
+        reportError(
+            AppStoreUpdateService.LookupError.unparseableVersion,
+            [
+                "phase": "UpdateNotifyCoordinator.performCheck",
+                "storeVersion": version,
+            ]
+        )
+    }
+
     private func sharedLookup() async -> LookupResult {
         if let existing = inFlight {
             return await existing.value
         }
-        let task = Task<LookupResult, Never> { [bundleId, session] in
+        let task = Task<LookupResult, Never> { [bundleId, session, reportError] in
             do {
                 // Pin the storefront so users abroad / on a VPN don't
                 // get an IP-inferred storefront that returns no record
@@ -508,10 +523,7 @@ final class UpdateNotifyCoordinator {
                 case .noRecord: return .noRecord
                 }
             } catch {
-                AppLogger.captureError(
-                    error,
-                    context: ["phase": "AppStoreUpdateService.fetchLatest"]
-                )
+                reportError(error, ["phase": "AppStoreUpdateService.fetchLatest"])
                 return .failed
             }
         }

@@ -8,10 +8,11 @@
 // Every case is a manual check. That path ignores the 24h throttle, "Skip
 // This Version" and the "Later" cooldown, so the outcome depends on the
 // reply alone and not on what the test host has stored. It still stamps
-// `lastUpdateCheckAt`, a real process-wide key, so each check runs inside
-// the shared gate (`RealDefaultsGate.swift`) and puts the key back —
-// otherwise a test run would silence the background check on the
-// developer's simulator for a day.
+// `lastUpdateCheckAt`, and an unreadable store version stamps
+// `lastReportedUnparseableStoreVersion`, both real process-wide keys, so
+// the checks run inside the shared gate (`RealDefaultsGate.swift`) and put
+// the keys back — otherwise a test run would silence the background check
+// on the developer's simulator for a day.
 import Defaults
 import Foundation
 import Testing
@@ -21,9 +22,25 @@ import Testing
 @MainActor
 struct UpdateCheckTests {
 
+    /// What the coordinator reported, in order.
+    private final class ReportRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _errors: [any Error] = []
+
+        var errors: [any Error] { lock.withLock { _errors } }
+
+        func record(_ error: any Error, _ context: [String: String]) {
+            lock.withLock { _errors.append(error) }
+        }
+    }
+
     /// A coordinator whose lookup is answered with `storeVersion`, exactly
-    /// as typed into App Store Connect.
-    private static func makeCoordinator(storeVersion: String) throws -> UpdateNotifyCoordinator {
+    /// as typed into App Store Connect, once per `replies`.
+    private static func makeCoordinator(
+        storeVersion: String,
+        replies: Int = 1,
+        reports: ReportRecorder = ReportRecorder()
+    ) throws -> UpdateNotifyCoordinator {
         let bundleId = "test.\(UUID().uuidString)"
         let url = try #require(URL(
             string: "https://itunes.apple.com/lookup?bundleId=\(bundleId)&country=\(AppConstants.appStoreLookupStorefront)"
@@ -32,18 +49,32 @@ struct UpdateCheckTests {
             "resultCount": 1,
             "results": [["version": storeVersion, "trackId": 6761084888]],
         ])
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: body), for: url)
+        for _ in 0..<replies {
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: body), for: url)
+        }
 
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
-        return UpdateNotifyCoordinator(bundleId: bundleId, session: URLSession(configuration: config))
+        return UpdateNotifyCoordinator(
+            bundleId: bundleId,
+            session: URLSession(configuration: config),
+            reportError: reports.record
+        )
     }
 
-    private static func checkManually(_ coordinator: UpdateNotifyCoordinator) async {
+    /// Runs `times` manual checks in a row, starting from nothing reported.
+    private static func checkManually(_ coordinator: UpdateNotifyCoordinator, times: Int = 1) async {
         await withExclusiveRealDefaults {
-            let saved = Defaults[.lastUpdateCheckAt]
-            defer { Defaults[.lastUpdateCheckAt] = saved }
-            await coordinator.checkManually()
+            let savedCheckAt = Defaults[.lastUpdateCheckAt]
+            let savedReported = Defaults[.lastReportedUnparseableStoreVersion]
+            defer {
+                Defaults[.lastUpdateCheckAt] = savedCheckAt
+                Defaults[.lastReportedUnparseableStoreVersion] = savedReported
+            }
+            Defaults[.lastReportedUnparseableStoreVersion] = nil
+            for _ in 0..<times {
+                await coordinator.checkManually()
+            }
         }
     }
 
@@ -74,11 +105,26 @@ struct UpdateCheckTests {
     /// installed build is current.
     @Test("an unreadable store version is a failed check, not up to date")
     func unreadableStoreVersionFailsTheCheck() async throws {
-        let coordinator = try Self.makeCoordinator(storeVersion: "2.3.0-beta")
+        let reports = ReportRecorder()
+        let coordinator = try Self.makeCoordinator(storeVersion: "2.3.0-beta", reports: reports)
 
         await Self.checkManually(coordinator)
 
         #expect(coordinator.lastManualCheckResult == .failed)
         #expect(coordinator.pendingUpdate == nil)
+        #expect(reports.errors.count == 1)
+    }
+
+    /// Manual checks skip the 24h throttle, so the throttle alone would let
+    /// every tap report the same unreadable version again.
+    @Test("repeated manual checks report an unreadable store version once")
+    func unreadableStoreVersionIsReportedOnce() async throws {
+        let reports = ReportRecorder()
+        let coordinator = try Self.makeCoordinator(storeVersion: "2.3.0-beta", replies: 3, reports: reports)
+
+        await Self.checkManually(coordinator, times: 3)
+
+        #expect(coordinator.lastManualCheckResult == .failed)
+        #expect(reports.errors.count == 1)
     }
 }
