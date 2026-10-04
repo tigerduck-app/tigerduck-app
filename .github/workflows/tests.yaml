@@ -21,7 +21,7 @@ name: Tests
 # of its 13-16 minutes, and one `xcodebuild test` step cannot say how much
 # of that is simulator boot and how much is the tests. So its phases run as
 # separate steps below, each with its own time in the job view, and the
-# summary step says where the test time itself went.
+# summary step says how long the tests themselves ran.
 #
 # Note there is no `CODE_SIGNING_ALLOWED=NO` here, the usual CI shorthand for
 # "this machine has no certificates". A simulator build signs ad-hoc and needs
@@ -161,10 +161,14 @@ jobs:
           ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"}
           -quiet
 
+      # bootstatus prints a status line about once a second until the device
+      # is up; only the last few say anything.
       - name: Boot the simulator
         env:
           UDID: ${{ steps.sim.outputs.udid }}
-        run: xcrun simctl bootstatus "$UDID" -b
+        run: |
+          set -o pipefail
+          xcrun simctl bootstatus "$UDID" -b | tail -n 3
 
       - name: Unit tests (${{ matrix.leg }})
         env:
@@ -190,11 +194,12 @@ jobs:
       # failed with no message attached — so a bare list of names cannot tell
       # "173 real failures" apart from "one crash, 172 casualties".
       #
-      # The timing section is how the test step's minutes get read. "Ran for"
-      # is the bundle's own start to finish; the test step's time minus it is
-      # app install, launch and teardown. Suite and test times are each test's
-      # own duration, and Swift Testing runs tests side by side, so they add up
-      # to more than the run took — read them as shares, not as wall time.
+      # "Ran for" is the bundle's own start to finish; the test step's time
+      # minus it is app install, launch and teardown. There is deliberately no
+      # per-suite or per-test breakdown: Swift Testing starts nearly every test
+      # at once and they queue for the main actor, so a test's recorded
+      # duration is mostly its wait. On the runner 964 of 1,060 "took" over a
+      # second inside a run that lasted 111 s.
       - name: Test summary
         if: always()
         # `set +e`: the job's verdict is the test step's, not this step's. It
@@ -220,23 +225,6 @@ jobs:
           echo "-- timing"
           echo "$summary" | jq -r '"ran for \((.finishTime - .startTime) | floor)s"' \
             || echo "could not read the run's start and finish"
-          jq -r '[.. | objects | select(.nodeType? == "Test Case") | .durationInSeconds // 0]
-                 | "\(length) tests adding up to \(add | floor)s; \(map(select(. >= 1)) | length) of them took 1s or more"' "$tests" \
-            || echo "could not read the test durations"
-          echo "slowest suites:"
-          jq -r 'def lpad($n): tostring | (" " * ($n - length)) + .;
-                 [.. | objects | select(.nodeType? == "Test Suite")
-                   | {name, d: [.children[]? | select(.nodeType? == "Test Case") | .durationInSeconds // 0]}
-                   | select(.d | length > 0)]
-                 | sort_by(-(.d | add)) | .[:15][]
-                 | "  \(.d | add | floor | lpad(5))s \(.d | length | lpad(4)) tests  \(.name)"' "$tests" \
-            || echo "could not read the suite durations"
-          echo "slowest tests:"
-          jq -r 'def lpad($n): tostring | (" " * ($n - length)) + .;
-                 [.. | objects | select(.nodeType? == "Test Case")]
-                 | sort_by(-(.durationInSeconds // 0)) | .[:10][]
-                 | "  \((.durationInSeconds // 0) * 10 | floor / 10 | lpad(5))s  \(.name)"' "$tests" \
-            || echo "could not read the test durations"
           exit 0
 
       # The summary above is a best effort against a JSON shape Apple changes
