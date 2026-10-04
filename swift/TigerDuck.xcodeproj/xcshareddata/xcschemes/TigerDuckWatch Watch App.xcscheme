@@ -70,6 +70,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B21DC6912FB887D900AE2430"
             BuildableName = "TigerDuckWatch Watch App.app"
+            BlueprintName = "TigerDuckWatch Watch App"
             ReferencedContainer = "container:TigerDuck.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -86,6 +87,7 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "B21DC6912FB887D900AE2430"
             BuildableName = "TigerDuckWatch Watch App.app"
+            BlueprintName = "TigerDuckWatch Watch App"
             ReferencedContainer = "container:TigerDuck.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
