@@ -22,6 +22,7 @@ struct TriggersDebugView: View {
     /// pop, which is what allowed the same button to spawn a second
     /// in-flight task when the user navigated away and back.
     @State private var armedTick = UUID()
+    @State private var samplePresentation: WhatsNewPresentation?
 
     var body: some View {
         Form {
@@ -33,10 +34,13 @@ struct TriggersDebugView: View {
                     )
                     statusMessage = "Cleared lastShownWhatsNewVersion. Cold-launch or scene-active fires the sheet."
                 }
+                Button("Preview sample flow") {
+                    samplePresentation = WhatsNewSampleFlow.presentation()
+                }
             } header: {
                 Text("What's New")
             } footer: {
-                Text("Clears the seen flag so `evaluateWhatsNewOnLaunch()` re-fires the latest registered entry on the next launch / foreground.")
+                Text("Trigger clears the seen flag so `evaluateWhatsNewOnLaunch(in:)` re-fires on the next launch / foreground — with no flag that's the running version's pages and summary only. Preview shows one page of every template plus a summary, writing no real setting.")
             }
 
             // MARK: - Update prompt
@@ -86,6 +90,12 @@ struct TriggersDebugView: View {
             }
         }
         .navigationTitle("Triggers")
+        .sheet(item: $samplePresentation) { presentation in
+            WhatsNewFlowView(presentation: presentation) {
+                samplePresentation = nil
+            }
+            .whatsNewSheetPresentation()
+        }
         // Intentionally NOT cancelling the arming task on disappear: the
         // 3-second delay exists so navigation away from this page is part
         // of the test (which tab the prompt overlays is part of what's
