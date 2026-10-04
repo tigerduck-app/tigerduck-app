@@ -68,12 +68,7 @@ struct MainTabView: View {
 
     /// Configured tabs filtered to hide library features when disabled
     private var visibleTabs: [AppFeature] {
-        appState.configuredTabs.filter { feature in
-            if AppFeature.libraryRelatedFeatures.contains(feature) {
-                return appState.libraryFeatureEnabled
-            }
-            return true
-        }
+        AppFeature.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled)
     }
 
     var body: some View {

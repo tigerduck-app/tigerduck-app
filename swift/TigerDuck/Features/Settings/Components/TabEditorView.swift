@@ -178,9 +178,7 @@ struct TabEditorView: View {
             }
         }
         .onAppear {
-            tabs = appState.configuredTabs.filter { feature in
-                appState.libraryFeatureEnabled || !AppFeature.libraryRelatedFeatures.contains(feature)
-            }
+            tabs = AppFeature.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled)
         }
     }
 

@@ -33,7 +33,7 @@ extension WhatsNewPage {
     /// pinned library tab hidden by the library opt-in doesn't make an
     /// already-default bar ask to be reset.
     static func offersBottomBarReset(configuredTabs: [AppFeature], libraryEnabled: Bool) -> Bool {
-        BottomBarResetDemo.visibleTabs(configuredTabs, libraryEnabled: libraryEnabled) != AppFeature.defaultTabs
+        AppFeature.visibleTabs(configuredTabs, libraryEnabled: libraryEnabled) != AppFeature.defaultTabs
     }
 }
 
@@ -49,14 +49,8 @@ private struct BottomBarResetDemo: View {
     private static let yoursCaption = WhatsNewText(en: "Your bottom bar", zhHant: "目前的底部功能列")
     private static let defaultCaption = WhatsNewText(en: "Default", zhHant: "預設")
 
-    /// Mirrors `MainTabView.visibleTabs`: library tabs drop out while the
-    /// library opt-in is off. "More" is always appended after these.
-    static func visibleTabs(_ tabs: [AppFeature], libraryEnabled: Bool) -> [AppFeature] {
-        tabs.filter { libraryEnabled || !AppFeature.libraryRelatedFeatures.contains($0) }
-    }
-
     private var yours: [AppFeature] {
-        Self.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled) + [.more]
+        AppFeature.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled) + [.more]
     }
 
     private var defaults: [AppFeature] {

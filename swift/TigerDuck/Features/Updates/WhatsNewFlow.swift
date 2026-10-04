@@ -47,9 +47,9 @@ enum WhatsNewFlowBuilder {
     ) -> WhatsNewPresentation? {
         let pages = parsed(releases)
             .filter { release in
-                guard !(current < release.version) else { return false }
+                guard release.version <= current else { return false }
                 if let lastSeen { return lastSeen < release.version }
-                return !(release.version < current)
+                return release.version == current
             }
             .flatMap(\.pages)
             .filter(isApplicable)
@@ -82,7 +82,7 @@ enum WhatsNewFlowBuilder {
         }
         guard let latestSummary, let summaryVersion else { return nil }
         let pages = parsed(releases)
-            .filter { !($0.version < summaryVersion) && !(summaryVersion < $0.version) }
+            .filter { $0.version == summaryVersion }
             .flatMap(\.pages)
         return make(version: latestSummary.version, language: language, pages: pages, summary: latestSummary)
     }

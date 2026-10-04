@@ -50,6 +50,13 @@ struct AppVersion: Comparable, Equatable {
         return false
     }
 
+    /// Equal under the same zero padding as `<`, so `1.7 == 1.7.0`. The
+    /// synthesized member-wise `==` would call those unequal while `<`
+    /// orders neither before the other, breaking `Comparable`'s contract.
+    static func == (lhs: AppVersion, rhs: AppVersion) -> Bool {
+        !(lhs < rhs) && !(rhs < lhs)
+    }
+
     /// Current marketing version baked into the app bundle. Falls back to
     /// `"0.0.0"` so the update check fails closed (newer-on-store wins)
     /// rather than treating a missing key as "infinitely new"; a DEBUG
