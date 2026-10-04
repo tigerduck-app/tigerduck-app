@@ -8,9 +8,9 @@ import SwiftUI
 ///
 /// Build pages with the static factories (`.feature`, `.optIn`,
 /// `.permission`, `.choice`, `.toggle`, `.custom`) rather than the
-/// memberwise init. Text is a localization key resolved through
-/// `String(localized:)`, so copy goes through `app-translation` like
-/// every other string; a literal with no matching key renders as-is.
+/// memberwise init. Copy is a ``WhatsNewText`` — Traditional Chinese and
+/// English side by side, the same two languages as the `whatsnew.json`
+/// summary — not an `app-translation` key.
 ///
 /// Everything here is model only and builds on every platform; the
 /// views that render it are iPhone/iPad-only (`WhatsNewFlowView`).
@@ -28,11 +28,11 @@ struct WhatsNewPage: Identifiable {
         /// Demo plus text; the only control is Next.
         case feature(Content)
         /// Confirm runs `apply`; both buttons move on.
-        case optIn(Content, confirm: String.LocalizationValue, decline: String.LocalizationValue,
+        case optIn(Content, confirm: WhatsNewText, decline: WhatsNewText,
                    apply: @MainActor (AppState) -> Void)
         /// Like `optIn`, but confirm awaits `request` — typically a system
         /// permission prompt — before moving on, whatever the answer.
-        case permission(Content, confirm: String.LocalizationValue, decline: String.LocalizationValue,
+        case permission(Content, confirm: WhatsNewText, decline: WhatsNewText,
                         request: @MainActor (AppState) async -> Void)
         /// Pick between looks. `current` seeds the selection; `select` is
         /// applied live on every tap, so moving on in any way keeps the
@@ -41,7 +41,7 @@ struct WhatsNewPage: Identifiable {
                     current: @MainActor (AppState) -> String,
                     select: @MainActor (AppState, String) -> Void)
         /// A switch under the demo, applied live as it flips.
-        case toggle(Content, label: String.LocalizationValue,
+        case toggle(Content, label: WhatsNewText,
                     get: @MainActor (AppState) -> Bool,
                     set: @MainActor (AppState, Bool) -> Void)
         /// Anything the templates don't cover. The page draws everything
@@ -53,18 +53,18 @@ struct WhatsNewPage: Identifiable {
     /// The demo-and-text block every template except `custom` shares.
     struct Content {
         let visual: WhatsNewVisual?
-        let title: String.LocalizationValue
-        let body: String.LocalizationValue
+        let title: WhatsNewText
+        let body: WhatsNewText
     }
 
     struct ChoiceOption: Identifiable {
         let id: String
-        let title: String.LocalizationValue
+        let title: WhatsNewText
         let preview: @MainActor () -> AnyView
 
         init<Preview: View>(
             id: String,
-            title: String.LocalizationValue,
+            title: WhatsNewText,
             @ViewBuilder preview: @escaping @MainActor () -> Preview
         ) {
             self.id = id
@@ -79,6 +79,8 @@ struct WhatsNewPage: Identifiable {
 /// What a `custom` page gets to work with.
 struct WhatsNewPageContext {
     let appState: AppState
+    /// The language the sheet is showing, for the page's own copy.
+    let language: WhatsNewLanguage
     /// Moves to the next page, or finishes the flow from the last one.
     let advance: @MainActor () -> Void
 }
@@ -108,8 +110,8 @@ extension WhatsNewPage {
     static func feature(
         id: String,
         visual: WhatsNewVisual?,
-        title: String.LocalizationValue,
-        body: String.LocalizationValue,
+        title: WhatsNewText,
+        body: WhatsNewText,
         isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable
     ) -> WhatsNewPage {
         WhatsNewPage(
@@ -122,10 +124,10 @@ extension WhatsNewPage {
     static func optIn(
         id: String,
         visual: WhatsNewVisual?,
-        title: String.LocalizationValue,
-        body: String.LocalizationValue,
-        confirm: String.LocalizationValue,
-        decline: String.LocalizationValue,
+        title: WhatsNewText,
+        body: WhatsNewText,
+        confirm: WhatsNewText,
+        decline: WhatsNewText,
         isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
         apply: @escaping @MainActor (AppState) -> Void
     ) -> WhatsNewPage {
@@ -142,10 +144,10 @@ extension WhatsNewPage {
     static func permission(
         id: String,
         visual: WhatsNewVisual?,
-        title: String.LocalizationValue,
-        body: String.LocalizationValue,
-        confirm: String.LocalizationValue,
-        decline: String.LocalizationValue,
+        title: WhatsNewText,
+        body: WhatsNewText,
+        confirm: WhatsNewText,
+        decline: WhatsNewText,
         isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
         request: @escaping @MainActor (AppState) async -> Void
     ) -> WhatsNewPage {
@@ -162,8 +164,8 @@ extension WhatsNewPage {
     static func choice(
         id: String,
         visual: WhatsNewVisual? = nil,
-        title: String.LocalizationValue,
-        body: String.LocalizationValue,
+        title: WhatsNewText,
+        body: WhatsNewText,
         options: [ChoiceOption],
         isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
         current: @escaping @MainActor (AppState) -> String,
@@ -182,9 +184,9 @@ extension WhatsNewPage {
     static func toggle(
         id: String,
         visual: WhatsNewVisual?,
-        title: String.LocalizationValue,
-        body: String.LocalizationValue,
-        label: String.LocalizationValue,
+        title: WhatsNewText,
+        body: WhatsNewText,
+        label: WhatsNewText,
         isApplicable: @escaping @MainActor (AppState) -> Bool = alwaysApplicable,
         get: @escaping @MainActor (AppState) -> Bool,
         set: @escaping @MainActor (AppState, Bool) -> Void

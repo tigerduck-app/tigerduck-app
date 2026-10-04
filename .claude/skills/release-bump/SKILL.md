@@ -176,7 +176,8 @@ Symbol, a short headline and one line of detail — Apple's What's New layout:
 Feature pages — a demo of a new feature, or a question such as "apply the
 recommended layout?" — come before the summary and are **not** part of a bump.
 They're Swift in `swift/TigerDuck/Features/Updates/WhatsNewCatalog.swift`, keyed
-by the same version, with text in `app-translation`; they land with the feature
+by the same version, with their copy inline in the same two languages
+(`WhatsNewText(en:zhHant:)`, not `app-translation`); they land with the feature
 work. A bump only checks that any catalog key it ships matches `<NEW>`.
 
 ### 6. Commit

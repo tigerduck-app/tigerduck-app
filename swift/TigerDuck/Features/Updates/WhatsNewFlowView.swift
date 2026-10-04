@@ -36,6 +36,7 @@ struct WhatsNewFlowView: View {
             pager
             footer
         }
+        .environment(\.whatsNewLanguage, presentation.language)
     }
 
     // MARK: - Layout
@@ -112,7 +113,11 @@ struct WhatsNewFlowView: View {
         if step < presentation.pages.count {
             WhatsNewPageContentView(
                 page: presentation.pages[step],
-                context: WhatsNewPageContext(appState: appState, advance: advance)
+                context: WhatsNewPageContext(
+                    appState: appState,
+                    language: presentation.language,
+                    advance: advance
+                )
             )
         } else if let summary = presentation.summary {
             WhatsNewSummaryContent(entry: summary)
@@ -131,15 +136,15 @@ struct WhatsNewFlowView: View {
                 }
             case .optIn(_, let confirm, let decline, let apply):
                 VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                    primaryButton(String(localized: confirm)) {
+                    primaryButton(confirm.resolved(for: presentation.language)) {
                         apply(appState)
                         advance()
                     }
-                    secondaryButton(String(localized: decline), action: advance)
+                    secondaryButton(decline.resolved(for: presentation.language), action: advance)
                 }
             case .permission(_, let confirm, let decline, let request):
                 VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                    primaryButton(String(localized: confirm), isBusy: isRequesting) {
+                    primaryButton(confirm.resolved(for: presentation.language), isBusy: isRequesting) {
                         isRequesting = true
                         Task {
                             await request(appState)
@@ -147,7 +152,7 @@ struct WhatsNewFlowView: View {
                             advance()
                         }
                     }
-                    secondaryButton(String(localized: decline), action: advance)
+                    secondaryButton(decline.resolved(for: presentation.language), action: advance)
                         .disabled(isRequesting)
                 }
             }

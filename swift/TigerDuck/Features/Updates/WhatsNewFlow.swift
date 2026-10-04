@@ -5,6 +5,9 @@ import Foundation
 /// returns `nil` instead of an empty flow.
 struct WhatsNewPresentation: Identifiable, Equatable {
     let version: String
+    /// The language the summary was looked up in; the pages show theirs
+    /// in the same one.
+    let language: WhatsNewLanguage
     let pages: [WhatsNewPage]
     let summary: WhatsNewRepository.ResolvedWhatsNew?
 
@@ -12,7 +15,7 @@ struct WhatsNewPresentation: Identifiable, Equatable {
     /// flow observed twice (e.g. a re-render between launch and present)
     /// keeps one sheet.
     var id: String {
-        ([version] + pages.map(\.id) + [summary == nil ? "-" : "summary"]).joined(separator: "|")
+        ([version, "\(language)"] + pages.map(\.id) + [summary == nil ? "-" : "summary"]).joined(separator: "|")
     }
 
     /// Pages hold closures, so equality goes by identity.
@@ -37,6 +40,7 @@ enum WhatsNewFlowBuilder {
         from lastSeen: AppVersion?,
         to current: AppVersion,
         version: String,
+        language: WhatsNewLanguage,
         releases: [String: [WhatsNewPage]],
         summary: WhatsNewRepository.ResolvedWhatsNew?,
         isApplicable: (WhatsNewPage) -> Bool
@@ -49,7 +53,7 @@ enum WhatsNewFlowBuilder {
             }
             .flatMap(\.pages)
             .filter(isApplicable)
-        return make(version: version, pages: pages, summary: summary)
+        return make(version: version, language: language, pages: pages, summary: summary)
     }
 
     /// The flow behind Settings → What's New: the newest release that has
@@ -60,6 +64,7 @@ enum WhatsNewFlowBuilder {
     /// looks one up for a specific version, used when the catalog's
     /// newest release is ahead of the JSON's.
     static func replay(
+        language: WhatsNewLanguage,
         releases: [String: [WhatsNewPage]],
         latestSummary: WhatsNewRepository.ResolvedWhatsNew?,
         summaryFor: (String) -> WhatsNewRepository.ResolvedWhatsNew?
@@ -68,13 +73,18 @@ enum WhatsNewFlowBuilder {
         let summaryVersion = latestSummary.flatMap { AppVersion($0.version) }
 
         if let newestPages, summaryVersion.map({ $0 < newestPages.version }) ?? true {
-            return make(version: newestPages.key, pages: newestPages.pages, summary: summaryFor(newestPages.key))
+            return make(
+                version: newestPages.key,
+                language: language,
+                pages: newestPages.pages,
+                summary: summaryFor(newestPages.key)
+            )
         }
         guard let latestSummary, let summaryVersion else { return nil }
         let pages = parsed(releases)
             .filter { !($0.version < summaryVersion) && !(summaryVersion < $0.version) }
             .flatMap(\.pages)
-        return make(version: latestSummary.version, pages: pages, summary: latestSummary)
+        return make(version: latestSummary.version, language: language, pages: pages, summary: latestSummary)
     }
 
     // MARK: - Private
@@ -98,10 +108,11 @@ enum WhatsNewFlowBuilder {
 
     private static func make(
         version: String,
+        language: WhatsNewLanguage,
         pages: [WhatsNewPage],
         summary: WhatsNewRepository.ResolvedWhatsNew?
     ) -> WhatsNewPresentation? {
         guard !pages.isEmpty || summary != nil else { return nil }
-        return WhatsNewPresentation(version: version, pages: pages, summary: summary)
+        return WhatsNewPresentation(version: version, language: language, pages: pages, summary: summary)
     }
 }

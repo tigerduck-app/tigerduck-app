@@ -20,7 +20,7 @@ struct WhatsNewPageContentView: View {
             }
         case .toggle(let content, let label, let get, let set):
             WhatsNewTemplateBody(content: content) {
-                WhatsNewToggleRow(label: String(localized: label), initial: get(context.appState)) {
+                WhatsNewToggleRow(label: label.resolved(for: context.language), initial: get(context.appState)) {
                     set(context.appState, $0)
                 }
             }
@@ -35,6 +35,7 @@ struct WhatsNewPageContentView: View {
 private struct WhatsNewTemplateBody<Accessory: View>: View {
     let content: WhatsNewPage.Content
     @ViewBuilder let accessory: Accessory
+    @Environment(\.whatsNewLanguage) private var language
 
     var body: some View {
         GeometryReader { proxy in
@@ -44,10 +45,10 @@ private struct WhatsNewTemplateBody<Accessory: View>: View {
                         WhatsNewVisualView(visual: visual)
                     }
                     VStack(spacing: TigerDuckTheme.Spacing.md) {
-                        Text(String(localized: content.title))
+                        Text(content.title.resolved(for: language))
                             .font(.title.bold())
                             .accessibilityAddTraits(.isHeader)
-                        Text(String(localized: content.body))
+                        Text(content.body.resolved(for: language))
                             .font(.body)
                             .foregroundStyle(.secondary)
                     }
@@ -125,6 +126,7 @@ private struct WhatsNewChoicePicker: View {
     let options: [WhatsNewPage.ChoiceOption]
     let select: (String) -> Void
     @State private var selection: String
+    @Environment(\.whatsNewLanguage) private var language
 
     init(options: [WhatsNewPage.ChoiceOption], initial: String, select: @escaping (String) -> Void) {
         self.options = options
@@ -152,7 +154,7 @@ private struct WhatsNewChoicePicker: View {
                                         lineWidth: isSelected ? 3 : 1
                                     )
                             }
-                        Text(String(localized: option.title))
+                        Text(option.title.resolved(for: language))
                             .font(.subheadline.weight(.semibold))
                             .multilineTextAlignment(.center)
                         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")

@@ -99,17 +99,6 @@ final class UpdateNotifyCoordinator {
 
     // MARK: - What's New
 
-    /// Resolved language tag passed to the What's New repository. Reads
-    /// the in-app override first (`AppLanguage`-keyed setting), then
-    /// falls back to the device locale. Wrapping this lets the manual
-    /// "Open What's New" Settings entry and the launch-time auto-open
-    /// stay in lockstep.
-    private var resolvedLanguageTag: String {
-        let stored = Defaults[.appLanguage]
-        if stored.lowercased() != "system" { return stored }
-        return Locale.current.identifier
-    }
-
     /// True iff there is anything to replay — catalog pages or a
     /// summary in `whatsnew.json` for the current locale resolution.
     /// Drives the Settings → What's New row's visibility.
@@ -121,8 +110,9 @@ final class UpdateNotifyCoordinator {
     /// `lastShownWhatsNewVersion`. Backs the Settings → What's New
     /// entry point, which is allowed to re-present the same content.
     var latestWhatsNew: WhatsNewPresentation? {
-        let languageTag = resolvedLanguageTag
+        let languageTag = WhatsNewLanguage.currentLanguageTag
         return WhatsNewFlowBuilder.replay(
+            language: WhatsNewLanguage(languageTag: languageTag),
             releases: WhatsNewCatalog.releases,
             latestSummary: repository.latestEntry(languageTag: languageTag),
             summaryFor: { repository.entry(forVersion: $0, languageTag: languageTag) }
@@ -152,13 +142,15 @@ final class UpdateNotifyCoordinator {
         if let lastShown, !(lastShown < current) { return }
 
         let version = bundleVersionString
+        let languageTag = WhatsNewLanguage.currentLanguageTag
         Defaults[.lastShownWhatsNewVersion] = version
         pendingWhatsNew = WhatsNewFlowBuilder.upgrade(
             from: lastShown,
             to: current,
             version: version,
+            language: WhatsNewLanguage(languageTag: languageTag),
             releases: WhatsNewCatalog.releases,
-            summary: repository.entry(forVersion: version, languageTag: resolvedLanguageTag),
+            summary: repository.entry(forVersion: version, languageTag: languageTag),
             isApplicable: { $0.isApplicable(appState) }
         )
     }

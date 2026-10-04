@@ -149,19 +149,14 @@ struct WhatsNewRepository {
         return trimmed
     }
 
-    /// ISO 639 codes treated as "Chinese-family" for locale fallback —
-    /// mirrors ``LanguageManager/chineseLanguageCodes`` (kept local
-    /// because that one is private). A reader of any of these prefers
-    /// Traditional Chinese over English when no closer block exists.
-    private static let sinitic: Set<String> = ["zh", "yue", "nan", "hak", "wuu", "lzh"]
-
     /// Ordered list of `whatsnew.json` locale keys to try for a given
     /// language tag. The lookup walks this until it finds an authored
     /// block; only the universal `en` tail catches non-Sinitic locales.
     private static func localeCandidates(for languageTag: String) -> [String] {
+        // A Chinese-family reader (``WhatsNewLanguage/isChineseFamily(_:)``)
+        // prefers Traditional Chinese over English when no closer block exists.
+        guard WhatsNewLanguage.isChineseFamily(languageTag) else { return ["en"] }
         let locale = Locale(identifier: languageTag)
-        let code = locale.language.languageCode?.identifier ?? ""
-        guard sinitic.contains(code) else { return ["en"] }
         // Simplified-script readers (`zh-Hans*`, `zh-CN`, `zh-SG`) prefer
         // an authored Simplified block when one exists; everyone in the
         // Sinitic family — including Cantonese, Wu, Hakka, etc. — falls
