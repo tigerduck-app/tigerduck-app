@@ -134,6 +134,7 @@ UpdateNotifySheetHost.swift
 UpdatePromptView.swift
 WhatsNewFlowView.swift
 WhatsNewPageViews.swift
+WhatsNewResetBottomBarPage.swift
 WhatsNewSummaryView.swift
 
 # LiveActivity/Models — ActivityKit — iOS only

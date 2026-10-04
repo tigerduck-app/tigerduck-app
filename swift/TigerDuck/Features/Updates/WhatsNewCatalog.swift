@@ -13,24 +13,27 @@ import SwiftUI
 ///     .feature(
 ///         id: "copy-course-code",
 ///         visual: .symbol("doc.on.doc", effect: .bounce),
-///         title: "whats_new_230_copy_title",
-///         body: "whats_new_230_copy_body"
-///     ),
-///     .optIn(
-///         id: "recommended-tabs",
-///         visual: .custom { RecommendedTabsDemo() },
-///         title: "whats_new_230_tabs_title",
-///         body: "whats_new_230_tabs_body",
-///         confirm: "whats_new_230_tabs_confirm",
-///         decline: "whats_new_230_tabs_decline",
-///         isApplicable: { !$0.hasRecommendedTabs },
-///         apply: { $0.applyRecommendedTabs() }
+///         title: WhatsNewText(en: "Copy a course code", zhHant: "複製課程代碼"),
+///         body: WhatsNewText(en: "Tap a course code to copy it.", zhHant: "點一下課程代碼即可複製。")
 ///     ),
 /// ],
 /// ```
 ///
-/// Page text keys live in `app-translation` (`shared` group) so every
-/// language picks them up.
+/// Copy is written inline in Traditional Chinese and English
+/// (``WhatsNewText``), the same two languages as the summary — not
+/// through `app-translation`. Longer pages, and any with a custom demo,
+/// get their own file (see `WhatsNewResetBottomBarPage.swift`).
+///
+/// The pages are iPhone/iPad-only, so the Mac — which shows no What's
+/// New — gets an empty catalog.
 enum WhatsNewCatalog {
-    static let releases: [String: [WhatsNewPage]] = [:]
+    static let releases: [String: [WhatsNewPage]] = {
+        #if os(iOS)
+        return [
+            "2.3.0": [.resetBottomBar],
+        ]
+        #else
+        return [:]
+        #endif
+    }()
 }
