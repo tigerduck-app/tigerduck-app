@@ -17,10 +17,20 @@ nonisolated enum SecureStore {
     ///
     /// Except the few secrets a locked-screen launch needs, which live in
     /// ``readableWhileLocked``.
-    private static let shared = Valet.valet(
+    private static var shared: any KeychainStore {
+        sharedForTesting ?? sharedValet
+    }
+
+    private static let sharedValet = Valet.valet(
         with: Identifier(nonEmpty: "org.ntust.app.TigerDuck")!,
         accessibility: .whenUnlockedThisDeviceOnly
     )
+
+    /// Replaces ``shared`` in a test. A simulator never locks, so a test of
+    /// the locked launch swaps in a store it can lock. A task local, so the
+    /// swap reaches only the test that makes it, not the suites running
+    /// beside it. Nothing else sets it.
+    @TaskLocal static var sharedForTesting: (any KeychainStore)?
 
     /// The secrets a launch behind a locked screen has to read.
     ///
@@ -53,7 +63,7 @@ nonisolated enum SecureStore {
     )
 
     /// The valet `key` is written to.
-    private static func home(forKey key: String) -> Valet {
+    private static func home(forKey key: String) -> any KeychainStore {
         readableWhileLockedKeys.contains(key) ? readableWhileLocked : shared
     }
 
@@ -244,3 +254,14 @@ nonisolated enum SecureStore {
         SecItemDelete(query as CFDictionary)
     }
 }
+
+/// The part of ``Valet`` that ``SecureStore`` uses, so a test can swap its
+/// own store in for one of the valets.
+nonisolated protocol KeychainStore: AnyObject, Sendable {
+    func object(forKey key: String) throws -> Data
+    func setObject(_ object: Data, forKey key: String) throws
+    func removeObject(forKey key: String) throws
+    func removeAllObjects() throws
+}
+
+nonisolated extension Valet: KeychainStore {}
