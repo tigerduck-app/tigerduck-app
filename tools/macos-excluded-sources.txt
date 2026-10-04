@@ -135,8 +135,9 @@ UpdateNotifySheetHost.swift
 UpdatePromptView.swift
 WhatsNewFlowView.swift
 WhatsNewPageViews.swift
-WhatsNewResetBottomBarPage.swift
+WhatsNewSchoolMailPages.swift
 WhatsNewSummaryView.swift
+WhatsNewTabBarMock.swift
 
 # LiveActivity/Models — ActivityKit — iOS only
 AssignmentReminderOffset.swift
@@ -239,6 +240,13 @@ PendingReminderPurgeMigration.swift
 # Features/Bulletins above), so a Mac build has never had a way to write the
 # ambiguous 2.0.x flag state this migration disambiguates.
 BulletinPushOptOutMigration.swift
+
+# DefaultTabsPinMigration.swift — keeps an untouched iPhone bottom bar on the
+# pre-2.3.0 default (Calendar) when the default became Mail. Called from the
+# `#if os(iOS)` block in `runPendingMigrations()`. iOS-only because the bar
+# is: the Mac sidebar keeps its own list (`macConfiguredTabs`), and School
+# Mail isn't on the Mac at all.
+DefaultTabsPinMigration.swift
 
 # Services/Sync — the `notification` settings-document model and its client.
 # Both sections `NotificationSettingsDocument` carries (`assignments`,
