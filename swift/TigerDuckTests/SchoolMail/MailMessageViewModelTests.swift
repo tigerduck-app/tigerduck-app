@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import SwiftUI
 import Testing
 import WebKit
 @testable import TigerDuck
@@ -663,6 +664,34 @@ struct MailMessageViewModelTests {
         let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false, theme: .light)
         #expect(document.contains(":root{color-scheme:light;}"))
         #expect(document.contains("background:#ffffff;color:#000000"))
+    }
+
+    /// The rule list depends only on the image allowance. A light mode switch keeps it, so there
+    /// is nothing to compile: the new page goes on at once, with no compile to wait behind. A
+    /// change of allowance still compiles and installs its own list.
+    @Test func aLightModeSwitchReusesTheInstalledRules() async {
+        let webView = WKWebView(frame: .zero, configuration: MailWebViewFactory.makeConfiguration(inlineImages: [:]))
+        var view = MailHTMLView(html: "<p>x</p>", linkCount: 0, inlineImages: [:], allowRemoteImages: false,
+                                contentHeight: .constant(1), onLinkTap: { _ in })
+        let coordinator = view.makeCoordinator()
+        coordinator.load(into: webView)
+        await coordinator.loadTask?.value
+        #expect(coordinator.installedRulesAllowRemoteImages == false)
+
+        view.theme = .light
+        coordinator.parent = view
+        coordinator.load(into: webView)
+        #expect(coordinator.loadTask == nil)
+        #expect(webView.scrollView.backgroundColor == MailHTMLTheme.light.backgroundColor)
+
+        var withImages = MailHTMLView(html: "<p>x</p>", linkCount: 0, inlineImages: [:], allowRemoteImages: true,
+                                      contentHeight: .constant(1), onLinkTap: { _ in })
+        withImages.theme = .light
+        coordinator.parent = withImages
+        coordinator.load(into: webView)
+        #expect(coordinator.loadTask != nil)
+        await coordinator.loadTask?.value
+        #expect(coordinator.installedRulesAllowRemoteImages == true)
     }
 
     /// Only the page is themed: a sender's own colours reach the document untouched.

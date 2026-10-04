@@ -69,7 +69,12 @@ struct MailHTMLView: UIViewRepresentable {
         /// Bumped by every load; a load whose compile finishes after a newer one started drops
         /// itself instead of installing its rules and document over the newer ones.
         private var loadGeneration = 0
-        private var loadTask: Task<Void, Never>?
+        /// The compile-and-install in flight, if any. Readable so a test can wait for it.
+        private(set) var loadTask: Task<Void, Never>?
+        /// The image allowance the rule list on the web view was compiled for — `nil` until one
+        /// is installed, and again after a compile fails, so the next load tries again. The rules
+        /// depend on nothing else, so a load that keeps the allowance keeps the list.
+        private(set) var installedRulesAllowRemoteImages: Bool?
         private var heightObservation: NSKeyValueObservation?
 
         init(parent: MailHTMLView) { self.parent = parent }
@@ -96,6 +101,11 @@ struct MailHTMLView: UIViewRepresentable {
         /// anything, and it installs its rules, its page colour and its document together — a
         /// switch to or from light mode repaints the view in the same step as the document that
         /// matches it, never around a document still drawn on the other page.
+        ///
+        /// A load that keeps the allowance the installed rules were compiled for — a light mode
+        /// switch, or new HTML under the same allowance — has nothing to compile, so it paints and
+        /// loads at once. It still cancels any compile in flight: that one was for an allowance
+        /// this newer load no longer asks for.
         func load(into webView: WKWebView) {
             let key = "\(parent.allowRemoteImages)|\(parent.theme)|\(parent.html.hashValue)"
             guard key != loadedKey else { return }
@@ -107,10 +117,17 @@ struct MailHTMLView: UIViewRepresentable {
             loadTask?.cancel()
             loadGeneration += 1
             let generation = loadGeneration
+            if installedRulesAllowRemoteImages == allowImages {
+                loadTask = nil
+                MailHTMLView.paint(webView, with: theme)
+                webView.loadHTMLString(document, baseURL: nil)
+                return
+            }
             loadTask = Task { @MainActor [weak self] in
                 let rules = await MailWebViewFactory.compileRules(allowRemoteImages: allowImages)
                 guard let self, !Task.isCancelled, generation == self.loadGeneration else { return }
                 MailWebViewFactory.installRules(rules, on: webView)
+                self.installedRulesAllowRemoteImages = rules == nil ? nil : allowImages
                 MailHTMLView.paint(webView, with: theme)
                 webView.loadHTMLString(document, baseURL: nil)
             }
