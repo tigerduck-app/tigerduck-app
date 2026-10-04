@@ -57,10 +57,11 @@ enum WhatsNewFlowBuilder {
     }
 
     /// The flow behind Settings → What's New: the newest release, at most
-    /// the installed one, that has either pages or a summary, shown whole —
-    /// no applicability filter, since a replay is the user asking to see
-    /// it again. Pages registered ahead of their release's bump stay out
-    /// until a build reports that version.
+    /// the installed one, that has either pages `isApplicable` keeps or a
+    /// summary — a page that wouldn't show after an upgrade doesn't show
+    /// on a replay either, and a release left with no pages that apply
+    /// counts as having none. Pages registered ahead of their release's
+    /// bump stay out until a build reports that version.
     ///
     /// `latestSummary` is the newest authored summary up to the same
     /// ceiling; `summaryFor` looks one up for a specific version, used
@@ -70,9 +71,15 @@ enum WhatsNewFlowBuilder {
         upTo current: AppVersion,
         releases: [String: [WhatsNewPage]],
         latestSummary: WhatsNewRepository.ResolvedWhatsNew?,
-        summaryFor: (String) -> WhatsNewRepository.ResolvedWhatsNew?
+        summaryFor: (String) -> WhatsNewRepository.ResolvedWhatsNew?,
+        isApplicable: (WhatsNewPage) -> Bool
     ) -> WhatsNewPresentation? {
-        let reached = parsed(releases).filter { $0.version <= current }
+        // Filtered before the newest release is picked, so one whose pages
+        // all drop out can't hide an older release's pages or summary.
+        let reached = parsed(releases)
+            .filter { $0.version <= current }
+            .map { Release(key: $0.key, version: $0.version, pages: $0.pages.filter(isApplicable)) }
+            .filter { !$0.pages.isEmpty }
         let newestPages = reached.last
         let summaryVersion = latestSummary.flatMap { AppVersion($0.version) }
 

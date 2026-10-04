@@ -105,18 +105,18 @@ final class UpdateNotifyCoordinator {
 
     // MARK: - What's New
 
-    /// True iff there is anything to replay — catalog pages or a
-    /// summary in `whatsnew.json` for the current locale resolution.
+    /// True iff there is anything to replay — catalog pages that apply
+    /// or a summary in `whatsnew.json` for the current locale resolution.
     /// Drives the Settings → What's New row's visibility.
-    var hasWhatsNewContent: Bool {
-        latestWhatsNew != nil
+    func hasWhatsNewContent(in appState: AppState) -> Bool {
+        latestWhatsNew(in: appState) != nil
     }
 
     /// Newest release's flow, up to the installed version, for the current
     /// locale — independent of `lastShownWhatsNewVersion`. Backs the
     /// Settings → What's New entry point, which is allowed to re-present
-    /// the same content.
-    var latestWhatsNew: WhatsNewPresentation? {
+    /// the same content; pages that don't apply to `appState` stay out.
+    func latestWhatsNew(in appState: AppState) -> WhatsNewPresentation? {
         let languageTag = WhatsNewLanguage.currentLanguageTag
         let current = AppVersion.current
         return WhatsNewFlowBuilder.replay(
@@ -124,7 +124,8 @@ final class UpdateNotifyCoordinator {
             upTo: current,
             releases: WhatsNewCatalog.releases,
             latestSummary: repository.latestEntry(languageTag: languageTag, upTo: current),
-            summaryFor: { repository.entry(forVersion: $0, languageTag: languageTag) }
+            summaryFor: { repository.entry(forVersion: $0, languageTag: languageTag) },
+            isApplicable: { $0.isApplicable(appState) }
         )
     }
 

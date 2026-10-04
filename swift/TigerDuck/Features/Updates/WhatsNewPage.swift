@@ -21,7 +21,7 @@ struct WhatsNewPage: Identifiable {
     let kind: Kind
     /// Upgrade-flow filter, evaluated when the flow is assembled — e.g.
     /// skip "apply the recommended layout?" for a user who already has
-    /// it. Replays from Settings ignore it and show every page.
+    /// it. Replays from Settings check it too.
     let isApplicable: @MainActor (AppState) -> Bool
 
     enum Kind {
