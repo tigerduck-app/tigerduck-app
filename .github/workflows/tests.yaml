@@ -157,6 +157,12 @@ jobs:
       # the other leg saw every package file as changed: the first warm run
       # rebuilt the watch leg's 1,846 Swift and 892 C files from scratch while
       # the phone leg, whose clone it was, compiled 2.
+      #
+      # The action's own list of files to restore mtimes on covers asset
+      # catalogs but not Icon Composer `.icon` bundles, and the app icon is
+      # one. Left out, it came back from every checkout looking new, and
+      # actool re-rendered it — 57-154 s of a warm phone build that
+      # otherwise compiled 2 files.
       - name: Restore the last build
         uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
         with:
@@ -165,6 +171,9 @@ jobs:
           deriveddata-directory: ${{ runner.temp }}/DerivedData
           sourcepackages-directory: ${{ runner.temp }}/SourcePackages
           swiftpm-cache-key: xcode-packages-${{ matrix.leg }}-${{ hashFiles('swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-mtime-targets: |
+            swift/**/*.icon
+            swift/**/*.icon/**/*
 
       # The next steps are what a single `xcodebuild test` does inside
       # itself: fetch packages, compile, wait for the simulator, run. Split,
