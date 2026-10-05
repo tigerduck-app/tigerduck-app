@@ -176,12 +176,26 @@ jobs:
             swift/**/*.icon/**/*
 
       # The next steps are what a single `xcodebuild test` does inside
-      # itself: compile, wait for the simulator, run. Split, the job view
-      # times each one; whole, it showed one 13-16 minute step and no way to
-      # tell which part was slow. There is no separate package-resolve step:
-      # the build resolves the package graph itself whether or not one ran
-      # first, so a step of its own only paid for the resolve twice.
+      # itself: fetch packages, compile, wait for the simulator, run. Split,
+      # the job view times each one; whole, it showed one 13-16 minute step
+      # and no way to tell which part was slow.
       #
+      # This step looks redundant, since the build resolves the package graph
+      # again, and it is the cheapest one in the job. It is the first
+      # xcodebuild to run, and it runs before the simulator starts booting:
+      # without it the build was the first, its start-up and package graph
+      # overlapped the boot, and they took 108 s and 84 s, against ~28 s and
+      # ~18 s after a resolve step of 16-29 s.
+      - name: Resolve packages
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        run: >
+          xcodebuild -resolvePackageDependencies
+          -project swift/TigerDuck.xcodeproj
+          -scheme "$SCHEME"
+          -derivedDataPath "$RUNNER_TEMP/DerivedData"
+          -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
+
       # The boot starts here and runs alongside the compile: `simctl boot`
       # returns once the boot is under way, and the "Wait for the simulator"
       # step after the build collects it. Not any earlier: a first boot takes
