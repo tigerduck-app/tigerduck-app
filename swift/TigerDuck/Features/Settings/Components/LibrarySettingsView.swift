@@ -52,7 +52,7 @@ struct LibrarySettingsView: View {
                         appState.libraryFeatureEnabled = true
                         // Auto-add library tab if there's room
                         if !appState.configuredTabs.contains(.library),
-                           appState.configuredTabs.count < 4 {
+                           appState.configuredTabs.count < AppFeature.maxTabs {
                             appState.configuredTabs.append(.library)
                         }
                         showLibraryWarning = false

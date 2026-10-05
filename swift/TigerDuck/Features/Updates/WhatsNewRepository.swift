@@ -1,16 +1,17 @@
 import Foundation
 
-/// Loads maintainer-authored "What's new" content from the bundled
+/// Loads maintainer-authored "What's new" summaries from the bundled
 /// `whatsnew.json` asset. Ported from the Android `WhatsNewRepository`:
 /// the JSON is a versionString → per-locale map; this repo picks the
 /// locale block that best matches the resolved app language tag and
-/// surfaces it as a ``ResolvedWhatsNew``.
+/// surfaces it as a ``ResolvedWhatsNew`` — the summary page that ends
+/// the What's New flow.
 ///
 /// **Maintainer ritual** (matches the Android side): every release
 /// worth surfacing in-app adds a new top-level entry to
 /// `whatsnew.json` BEFORE the version is tagged / merged to main. Pure
 /// bug-fix releases can be skipped — the gate stays quiet when no
-/// entry is registered.
+/// entry (and no ``WhatsNewCatalog`` page) is registered.
 ///
 /// **Locale resolution**: every Sinitic-family language (Mandarin
 /// `zh-Hant*` / `zh-Hans*`, Cantonese `yue`, Wu `wuu`, Min Nan `nan`,
@@ -27,7 +28,16 @@ struct WhatsNewRepository {
     struct ResolvedWhatsNew: Equatable {
         let version: String
         let title: String
-        let highlights: [String]
+        let items: [Item]
+
+        /// A summary row with its blanks already filtered out: at least
+        /// one of `title` / `body` is non-nil. A legacy `highlights`
+        /// sentence arrives as a body-only row with no symbol.
+        struct Item: Equatable {
+            let symbol: String?
+            let title: String?
+            let body: String?
+        }
     }
 
     private let bundle: Bundle
@@ -54,36 +64,31 @@ struct WhatsNewRepository {
         )
     }
 
-    /// Resolved entry for the newest registered version, ignoring the
-    /// running build's version. Backs the Settings → What's New entry,
-    /// which has to surface the latest authored content even on the
-    /// build that ships it.
-    func latestEntry(languageTag: String) -> ResolvedWhatsNew? {
+    /// Resolved entry for the newest registered version — at most
+    /// `upTo` when given. Backs the Settings → What's New entry, which
+    /// passes the running version so a build carrying the next release's
+    /// summary ahead of its bump keeps replaying its own.
+    func latestEntry(languageTag: String, upTo: AppVersion? = nil) -> ResolvedWhatsNew? {
         guard let byVersion = loadByVersion(), !byVersion.isEmpty else { return nil }
         // Sort by parsed AppVersion so "1.10.0" outranks "1.9.0" (lexical
-        // sort would invert them). Falls back to lexical ordering when
-        // any key fails to parse, which matters for a maintainer typo —
-        // surfacing *something* beats surfacing nothing.
+        // sort would invert them). With no ceiling, falls back to lexical
+        // ordering when every key fails to parse — a maintainer typo, where
+        // surfacing *something* beats surfacing nothing; a ceiling can't be
+        // checked against an unparseable key, so it skips them.
         let pairs = byVersion.keys.compactMap { key -> (String, AppVersion)? in
             guard let v = AppVersion(key) else { return nil }
+            if let upTo, upTo < v { return nil }
             return (key, v)
         }
         let latestKey: String? = pairs
             .max(by: { $0.1 < $1.1 })?
-            .0 ?? byVersion.keys.sorted().last
+            .0 ?? (upTo == nil ? byVersion.keys.sorted().last : nil)
         guard let latestKey else { return nil }
         return Self.select(
             versionEntry: byVersion[latestKey],
             version: latestKey,
             languageTag: languageTag
         )
-    }
-
-    /// True when the asset has at least one usable entry. Used by the
-    /// Settings row to hide the "What's New" button on a build that
-    /// shipped without any registered content yet.
-    func hasAnyContent(languageTag: String) -> Bool {
-        latestEntry(languageTag: languageTag) != nil
     }
 
     // MARK: - Internal
@@ -97,7 +102,26 @@ struct WhatsNewRepository {
         else {
             return nil
         }
-        return try? JSONDecoder().decode(ByVersion.self, from: data)
+        return Self.decodeByVersion(data)
+    }
+
+    /// Decodes each version on its own, so one malformed entry — `items`
+    /// written as an object, say — drops only that version's summary
+    /// rather than every one. Kept static for tests; the strict check that
+    /// the shipped file decodes whole lives in `WhatsNewRepositoryTests`.
+    static func decodeByVersion(_ data: Data) -> [String: [String: WhatsNewEntry]]? {
+        try? JSONDecoder()
+            .decode([String: Lenient<[String: WhatsNewEntry]>].self, from: data)
+            .compactMapValues(\.value)
+    }
+
+    /// A value that decodes to `nil` instead of failing its container.
+    private struct Lenient<Value: Decodable>: Decodable {
+        let value: Value?
+
+        init(from decoder: Decoder) throws {
+            value = try? Value(from: decoder)
+        }
     }
 
     /// Pure selector — kept static so tests can drive it without mounting
@@ -113,29 +137,47 @@ struct WhatsNewRepository {
             .compactMap { versionEntry[$0] }
             .first
         guard let entry,
-              let title = entry.title?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !title.isEmpty,
-              let highlights = entry.highlights,
-              !highlights.isEmpty
+              let title = nonBlank(entry.title)
         else {
             return nil
         }
-        return ResolvedWhatsNew(version: version, title: title, highlights: highlights)
+        let items = resolvedItems(of: entry)
+        guard !items.isEmpty else { return nil }
+        return ResolvedWhatsNew(version: version, title: title, items: items)
     }
 
-    /// ISO 639 codes treated as "Chinese-family" for locale fallback —
-    /// mirrors ``LanguageManager/chineseLanguageCodes`` (kept local
-    /// because that one is private). A reader of any of these prefers
-    /// Traditional Chinese over English when no closer block exists.
-    private static let sinitic: Set<String> = ["zh", "yue", "nan", "hak", "wuu", "lzh"]
+    /// `items` when the entry authors any usable row, otherwise the
+    /// legacy `highlights` sentences as body-only rows. Rows left with
+    /// neither a title nor a body are dropped rather than rendered as
+    /// an empty line.
+    private static func resolvedItems(of entry: WhatsNewEntry) -> [ResolvedWhatsNew.Item] {
+        let items: [ResolvedWhatsNew.Item] = (entry.items ?? []).compactMap { item in
+            let title = nonBlank(item.title)
+            let body = nonBlank(item.body)
+            guard title != nil || body != nil else { return nil }
+            return ResolvedWhatsNew.Item(symbol: nonBlank(item.symbol), title: title, body: body)
+        }
+        if !items.isEmpty { return items }
+        return (entry.highlights ?? []).compactMap { line in
+            nonBlank(line).map { ResolvedWhatsNew.Item(symbol: nil, title: nil, body: $0) }
+        }
+    }
+
+    private static func nonBlank(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
+    }
 
     /// Ordered list of `whatsnew.json` locale keys to try for a given
     /// language tag. The lookup walks this until it finds an authored
     /// block; only the universal `en` tail catches non-Sinitic locales.
     private static func localeCandidates(for languageTag: String) -> [String] {
+        // A Chinese-family reader (``WhatsNewLanguage/isChineseFamily(_:)``)
+        // prefers Traditional Chinese over English when no closer block exists.
+        guard WhatsNewLanguage.isChineseFamily(languageTag) else { return ["en"] }
         let locale = Locale(identifier: languageTag)
-        let code = locale.language.languageCode?.identifier ?? ""
-        guard sinitic.contains(code) else { return ["en"] }
         // Simplified-script readers (`zh-Hans*`, `zh-CN`, `zh-SG`) prefer
         // an authored Simplified block when one exists; everyone in the
         // Sinitic family — including Cantonese, Wu, Hakka, etc. — falls

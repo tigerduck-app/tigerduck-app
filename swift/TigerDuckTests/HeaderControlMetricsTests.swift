@@ -5,10 +5,10 @@ import UIKit
 
 @testable import TigerDuck
 
-/// The class table's header capsule is sized against the Calendar "Today"
+/// The class table's header ⋯ button is sized against the Calendar "Today"
 /// button — matching it below iOS 26, and deliberately ~1.3x it on 26, where
-/// `.buttonStyle(.glass)` is a much tighter control than a capsule holding
-/// two icon targets wants to be.
+/// `.buttonStyle(.glass)` is a much tighter control than a glass backing
+/// behind an icon wants to be.
 ///
 /// Today's height is Apple's number, not ours, and it resolves differently
 /// per OS version, so nothing but this test stops the relationship drifting
@@ -59,25 +59,23 @@ struct HeaderControlMetricsTests {
     /// Mirrors `ClassTableView.headerActions`, including its per-OS height.
     private var headerCapsule: some View {
         let cellHeight: CGFloat = if #available(iOS 26, *) { 36 } else { 40 }
-        let row = HStack(spacing: 0) {
-            ForEach(["arrow.triangle.2.circlepath", "plus"], id: \.self) { name in
-                Button {} label: {
-                    Image(systemName: name)
-                        .font(.subheadline.weight(.medium))
-                        .frame(width: 40, height: cellHeight)
-                }
-            }
+        let menu = Menu {
+            Button("") {}
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.subheadline.weight(.medium))
+                .frame(width: cellHeight, height: cellHeight)
         }
         return Group {
             if #available(iOS 26, *) {
-                row.glassEffect(.regular.interactive(), in: .capsule)
+                menu.glassEffect(.regular.interactive(), in: .circle)
             } else {
-                row.background(Capsule().fill(Color(uiColor: .secondarySystemFill)))
+                menu.background(Circle().fill(Color(uiColor: .secondarySystemFill)))
             }
         }
     }
 
-    @Test("the header capsule keeps its intended relationship to Today")
+    @Test("the header button keeps its intended relationship to Today")
     func capsuleTracksTodayButton() {
         let today = renderedHeight(todayButton)
         let capsule = renderedHeight(headerCapsule)
@@ -86,7 +84,7 @@ struct HeaderControlMetricsTests {
         if #available(iOS 26, *) {
             // Deliberately taller than Today here: `.buttonStyle(.glass)` is a
             // tight control sized for one short word, and at its 28.33pt the
-            // glass behind two icon targets read as a sliver. ~1.3x. The band
+            // glass behind an icon reads as a sliver. ~1.3x. The band
             // is wide because Today's height is Apple's number, not ours — it
             // exists to catch the capsule collapsing back to Today's size or
             // running away from it, not to pin a ratio to two decimals.
@@ -111,8 +109,12 @@ struct HeaderControlMetricsTests {
     }
 
     /// Matching outer heights is not enough on its own: a `.body` glyph in
-    /// the capsule is 17pt against Today's 14.33pt label, which reads as a
+    /// the button is 17pt against Today's 14.33pt label, which reads as a
     /// heavier control even when the pill around it is identical.
+    ///
+    /// Measured on `plus` rather than the `ellipsis` the button shows: the
+    /// dots are only a few points tall, so their frame says nothing about
+    /// the font, and a full-height glyph in the same font does.
     @Test("the header glyph carries the same optical weight as Today's label")
     func glyphMatchesTodayLabel() {
         let label = renderedHeight(

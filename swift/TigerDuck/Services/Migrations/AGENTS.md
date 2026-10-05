@@ -7,9 +7,9 @@ This folder is the ONLY location permitted for breaking-change compatibility cod
 1. One migration = one Swift file. No cross-file imports within this folder.
 2. Every migration is self-contained: it owns its done flag — a private `<Name>.v1.done` UserDefaults key declared in its own file, so deleting the file removes it (`MoodleTokenMigration` predates this and keeps its flag as a Defaults key in `AppDefaults.swift`) — its static `runIfNeeded()` entry point, and its failure handling.
 3. Trigger point: `AppState.runPendingMigrations()` called once per app launch from `AppState.init()`.
-4. Feature services (AuthService, MoodleService, MoodleTokenService, etc.) MUST NOT reference types declared here.
+4. Feature services (AuthService, MoodleAssignmentService, MoodleTokenService, etc.) MUST NOT reference types declared here.
 5. When a migration is no longer needed (all users have been through it), delete the entire file. Do not leave empty shells.
-6. File naming: `<Subject><Action>Migration.swift` (e.g., `MoodleTokenMigration`, `LibraryTokenResetMigration`).
+6. File naming: `<Subject><Action>Migration.swift` (e.g., `MoodleTokenMigration`, `DefaultTabsPinMigration`).
 
 ## When to add a migration here
 

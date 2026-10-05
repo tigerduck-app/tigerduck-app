@@ -6,7 +6,7 @@
 <br>
 
 [![License](https://img.shields.io/github/license/tigerduck-app/tigerduck-app?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v2.2.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.2.0)
+[![Version](https://img.shields.io/badge/Version-v2.3.0-00BB00?style=for-the-badge)](https://github.com/tigerduck-app/tigerduck-app/releases/tag/v2.3.0)
 [![iOS](https://img.shields.io/badge/iOS-18%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/ios)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/macos)
 [![watchOS](https://img.shields.io/badge/watchOS-11%2B-black?style=for-the-badge&logo=apple&logoColor=white)](https://apple.com/watchos)
@@ -22,8 +22,7 @@
 <img align="right" width="330" alt="IMG_9202-portrait" src="https://github.com/user-attachments/assets/cf13806f-3419-4b50-8b9f-13fd77f979ef" />
 
 TigerDuck is a campus companion app built by a group of students at **NTUST**.  
-It was created to solve common pain points: scattered resources, delayed notifications, and unintuitive interfaces.  
-Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard make you OAO!  
+It was created to solve common pain points: scattered resources, delayed notifications, and unintuitive interfaces.
 
 ### 📚 **Assignments**
 - See how many **assignments are still due** at a glance
@@ -48,6 +47,11 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 ### 🏛️ **Library** (Experimental)
 - Instant library entry QR code with zero delay
+
+### 📬 **School Mail** (iOS)
+- Read and send your NTUST Mail2000 mail in the app: Inbox, Sent, Drafts, Trash, Junk and All mail
+- Search, reply, forward, attachments, move and delete, with new-mail notifications
+- The phone talks to the school's mail server directly, never through TigerDuck's servers, and the password stays encrypted on this device
 
 ### ⌚ **Apple Watch**
 - **Now & Next** home screen: the current and next class, with progress for the one in session
@@ -111,6 +115,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
+| **`v2.3.0`** | 2026-10-04 | 🎨 **A new What's New** — after an update, animated pages introduce new features one at a time, catching up on any versions you skipped, then list the release's highlights; this release introduces School Mail and offers to put Mail on your bottom bar, in Calendar's place or left of More, unless it's already there; new installs start with Home, Class table and Mail on the bottom bar; the class table's top-right buttons become a ⋯ menu that can export the timetable as an image to save or share; notifications stack separately for classes, homework, mail and everything else, and new-mail notifications show just the subject; HTML mail can be viewed in light mode; class Live Activities that start while the phone is locked now end right after class; the app tells you again when a new version is on the App Store |
 | **`v2.2.0`** | 2026-09-30 | 📬 **School Mail** — the iOS app now reads and sends your NTUST Mail2000 mail: Inbox, Sent, Drafts, Trash, Junk and All mail, with search, reply, forward, attachments, move and delete; it checks for new mail every few minutes and notifies you; sign-in fills in your NTUST account, and the password is stored encrypted on this device only; the phone talks to the school's mail server directly, never through TigerDuck's servers; signing out or switching accounts takes the previous account's library QR code off the screen right away |
 | **`v2.1.4`** | 2026-09-25 | Class Live Activities no longer pop up on holidays: the schedule uploaded to the server skips holiday classes, and a holiday announced after the push (such as a typhoon day) dismisses the activities already on screen once the app is opened; Today's courses and the home Time machine no longer list a holiday's classes; flipping “Still have class?” in the calendar updates the schedule, widgets and class table right away |
 | **`v2.1.3`** | 2026-09-24 | A new Others page under About; open-source licenses are listed in full in the app, in a window of their own on the Mac; pages opened from More drop the back arrow; the library QR code is up the moment you return to the tab, its brightness boost follows the screen the code is actually on, and the screen no longer stays at full brightness after you leave; course details keep the GE dimension and course duration across a sync |
@@ -167,6 +172,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 ### 📣 Campus Information
 - [x] **Department & Office Announcements** — Aggregated announcements `v1.0`
 - [x] **LLM-classified bulletins + subscriptions** — Server-side classification & de-duplication, subscribable categories, unread filter `v1.5.0`
+- [x] **School Mail** — Read and send NTUST Mail2000 mail in the app, with new-mail notifications (iOS) `v2.2.0`
 - [ ] **Scholarships** — Filterable by eligibility (low-income, indigenous, etc.)
 - [ ] **Daily Club Activities** — Curated daily club event listings
 - [ ] **Empty Classroom Finder** — Quickly find currently available classrooms
@@ -224,8 +230,7 @@ Ever used [TAT](https://github.com/morris13579/tat_ntust)? We're working hard ma
 - **macOS**
 - Xcode 26+
 - Swift 5
-- [uv](https://github.com/astral-sh/uv) package manager (backend / POC scripts)
-- Docker Desktop (only required for the full push backend stack)
+- [uv](https://github.com/astral-sh/uv) package manager (only for the `api-poc/` scripts)
 
 ### iOS App
 ```bash
@@ -273,7 +278,7 @@ tigerduck-app/
 ├── swift/                              # iOS App + companion targets (Xcode 26+ / iOS 18+ / watchOS 11+)
 │   ├── TigerDuck/                      # Main iOS app sources
 │   │   ├── App/                        # Global state (AppState), language manager, push delegate
-│   │   ├── Bridge/                     # Service orchestration (KMP / native fetch bridge)
+│   │   ├── Bridge/                     # Fetch orchestration between services and SwiftData
 │   │   ├── Features/                   # Screen-level feature modules
 │   │   │   ├── Home/                   # Home (Time Slider, assignments, widgets)
 │   │   │   ├── ClassTable/             # Class table
@@ -281,20 +286,26 @@ tigerduck-app/
 │   │   │   ├── Bulletins/              # Server-driven, LLM-classified announcements
 │   │   │   ├── Score/                  # Historical GPA & rankings
 │   │   │   ├── Library/                # Library
+│   │   │   ├── SchoolMail/             # School Mail (iOS only)
 │   │   │   ├── More/                   # "More" hub + feature pinning
 │   │   │   ├── Settings/               # Settings (language, abbreviations, theme, source)
-│   │   │   └── Onboarding/             # First-run onboarding flow
+│   │   │   ├── Onboarding/             # First-run onboarding flow
+│   │   │   └── Updates/                # Update prompt + What's New
 │   │   ├── LiveActivity/               # Live Activity / Dynamic Island (in-app logic)
 │   │   │   ├── Models/  Preferences/  Providers/
-│   │   │   ├── Resolvers/  Runtime/  Scheduling/
+│   │   │   ├── Resolvers/  Runtime/
 │   │   ├── Models/
 │   │   │   ├── Domain/                 # Business logic models
 │   │   │   └── SwiftData/              # Local persistence models
 │   │   ├── Platform/Mac/               # macOS-only surfaces (sidebar, Mac page layouts, push delegate)
 │   │   ├── Services/
-│   │   │   ├── Auth/                   # NTUST SSO authentication
-│   │   │   ├── Network/                # Networking layer
-│   │   │   ├── Push/                   # APNs / push registration
+│   │   │   ├── API/                    # NTUST / Moodle / calendar / library / bulletin clients
+│   │   │   ├── Auth/                   # NTUST SSO authentication, backend tokens
+│   │   │   ├── Core/                   # Cache, HTML parsing, name abbreviations
+│   │   │   ├── Mail/                   # School Mail IMAP / SMTP
+│   │   │   ├── Push/                   # APNs / push registration, schedule sync
+│   │   │   ├── CloudSync/  Sync/       # Cloud sync and settings sync
+│   │   │   ├── Watch/                  # WatchConnectivity to the Watch app
 │   │   │   ├── Logging/                # Structured logging
 │   │   │   └── Migrations/             # One-shot migrations
 │   │   ├── SharedUI/                   # Reusable cross-feature views
@@ -304,11 +315,13 @@ tigerduck-app/
 │   ├── TigerDuckWatch Watch App/       # Apple Watch app (Now & Next / Today / detail / Library QR)
 │   ├── TigerDuckWatchWidget/           # Apple Watch complication
 │   ├── TigerDuckTests/                 # Unit tests (Swift Testing + XCTest, incl. widget / watch logic)
+│   ├── Packages/SwiftMail/             # Vendored IMAP / SMTP package used by School Mail
 │   ├── ci_scripts/                     # Xcode Cloud post-clone hook (fetches submodules)
 │   └── Shared/                         # Cross-target shared code (sensors, Watch comms, theme)
 ├── api-poc/                            # Third-party API validation scripts (NTUST / Moodle / Calendar)
-│   └── api/                            # ntust_sso / course_lookup / moodle / calendar
-├── tools/localization/                 # Localization sync and key-check scripts
+│   └── api/                            # moodle/ · ntust/ · public/ (calendar, bulletin)
+├── tools/                              # Localization, licence and macOS source checks
+├── .github/workflows/                  # PR checks: unit tests, version bump, What's New, localization
 ├── docs/                               # Planning docs, migration notes (iOS side)
 ├── app-translation/                    # ⤴ git submodule: 67 locale translations
 └── name-abbr/                          # ⤴ git submodule: course / classroom abbreviation dictionaries

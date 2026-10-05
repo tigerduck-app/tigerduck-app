@@ -77,7 +77,7 @@ struct MailMessageView: View {
             )
         }
         .sheet(item: $inAppURL) { item in InAppBrowserView(url: item.url).ignoresSafeArea() }
-        .sheet(item: $shareItem) { item in MailShareSheet(url: item.url) }
+        .sheet(item: $shareItem) { item in ShareSheet(url: item.url).presentationDetents([.medium, .large]) }
         .quickLookPreview($previewURL)
         .sheet(isPresented: $showMoveSheet) { moveSheet }
         .sheet(item: $compose) { context in
@@ -265,6 +265,7 @@ struct MailMessageView: View {
                         linkCount: linked.links.count,
                         inlineImages: viewModel.detail?.inlineImages ?? [:],
                         allowRemoteImages: viewModel.allowRemoteImages,
+                        theme: viewModel.htmlTheme,
                         contentHeight: $webHeight,
                         onLinkTap: { index in
                             if let target = viewModel.linkTarget(forIndex: index) { pendingLinkTarget = target }
@@ -330,6 +331,16 @@ struct MailMessageView: View {
                     Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
                         ForEach(viewModel.availableModes) { mode in
                             Text(mode.title).tag(mode)
+                        }
+                    }
+                }
+                // Right under the views it changes, but in a section of its own: a Picker and a
+                // Toggle both draw a checkmark, so sharing one would read as two selected views.
+                // On, the HTML is redrawn on white paper; off, back on the app's page.
+                if viewModel.offersLightMode {
+                    Section {
+                        Toggle(isOn: $viewModel.viewsInLightMode) {
+                            Label(String(localized: "school_mail_view_light_mode"), systemImage: "sun.max")
                         }
                     }
                 }

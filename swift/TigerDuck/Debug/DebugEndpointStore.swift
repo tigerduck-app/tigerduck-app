@@ -8,9 +8,10 @@ import Foundation
 /// Lives in Keychain (not UserDefaults) so the override survives an app
 /// uninstall + reinstall — useful for repeatedly wiping the app to retest
 /// fresh-install flows against a staging or self-hosted backend without
-/// having to re-enter the URL after every install. The underlying
-/// ``SecureStore`` uses `.whenUnlockedThisDeviceOnly`, so the value stays
-/// on the device it was set on and isn't restored via iCloud Keychain.
+/// having to re-enter the URL after every install. ``SecureStore`` keeps
+/// it at `.afterFirstUnlockThisDeviceOnly`: on the device it was set on,
+/// never restored via iCloud Keychain, and readable by a launch behind a
+/// locked screen, which would otherwise talk to the default backend.
 ///
 /// See ``PushServerConfig/resolveServerURL()`` for the full resolution
 /// chain this override participates in. All write paths funnel through

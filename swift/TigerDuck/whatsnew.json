@@ -240,5 +240,27 @@
         "Search, reply, reply all and forward, add attachments, and share or save the ones you receive"
       ]
     }
+  },
+  "2.3.0": {
+    "zh-TW": {
+      "title": "2.3.0 更新內容",
+      "items": [
+        { "symbol": "square.and.arrow.up", "title": "匯出課表圖片", "body": "可將課表存成圖片或分享。" },
+        { "symbol": "bell.badge", "title": "通知分類堆疊", "body": "課程、作業、信件與其他通知分開堆疊。" },
+        { "symbol": "envelope", "title": "信箱體驗優化", "body": "信箱介面與操作更順手。" },
+        { "symbol": "clock.badge.checkmark", "title": "修正課程動態島", "body": "下課後動態島會準時結束。" },
+        { "symbol": "arrow.down.app", "title": "修正新版本偵測", "body": "有新版本時會正確提醒你。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 2.3.0",
+      "items": [
+        { "symbol": "square.and.arrow.up", "title": "Export your class table", "body": "Save or share it as an image." },
+        { "symbol": "bell.badge", "title": "Notifications stack by kind", "body": "Classes, homework, mail and others stack separately." },
+        { "symbol": "envelope", "title": "A better mail experience", "body": "School Mail is smoother to use." },
+        { "symbol": "clock.badge.checkmark", "title": "Live Activity fix", "body": "Class Live Activities now end right after class." },
+        { "symbol": "arrow.down.app", "title": "Update check fixed", "body": "You'll be reminded when a new version is out." }
+      ]
+    }
   }
 }

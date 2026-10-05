@@ -10,8 +10,6 @@ struct TabEditorView: View {
     @State private var tabFingerOffset: CGSize = .zero
     @State private var tabFrames: [String: CGRect] = [:]
 
-    private let maxTabs = 4
-
     private var availableFeatures: [AppFeature] {
         AppFeature.pinnableFeatures
             // .more is the navigation root; never expose it as a tab the
@@ -113,7 +111,7 @@ struct TabEditorView: View {
                     }
 
                     // Available features to add
-                    if tabs.count < maxTabs && !availableFeatures.isEmpty {
+                    if tabs.count < AppFeature.maxTabs && !availableFeatures.isEmpty {
                         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
                             Text(String(localized: "tab_editor_section_available_tabs"))
                                 .font(TigerDuckTheme.Typography.headline)
@@ -178,9 +176,7 @@ struct TabEditorView: View {
             }
         }
         .onAppear {
-            tabs = appState.configuredTabs.filter { feature in
-                appState.libraryFeatureEnabled || !AppFeature.libraryRelatedFeatures.contains(feature)
-            }
+            tabs = AppFeature.visibleTabs(appState.configuredTabs, libraryEnabled: appState.libraryFeatureEnabled)
         }
     }
 

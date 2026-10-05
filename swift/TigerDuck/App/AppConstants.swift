@@ -205,6 +205,11 @@ nonisolated enum AppConstants {
         /// ``AppConstants/updateCheckThrottle`` so rapid foreground
         /// returns don't hammer Apple's endpoint.
         static let lastUpdateCheckAt = "lastUpdateCheckAt"
+        /// App Store version that last failed to parse and was reported.
+        /// Manual checks skip ``updateCheckThrottle``, so this is what
+        /// keeps an unreadable store version to one report per install
+        /// rather than one per "Check for Updates" tap.
+        static let lastReportedUnparseableStoreVersion = "lastReportedUnparseableStoreVersion"
         /// App Store version most recently surfaced via the prompt sheet.
         /// Paired with ``lastPromptedUpdateAt`` to implement the
         /// "don't nag" cooldown ported from Android's
@@ -212,11 +217,13 @@ nonisolated enum AppConstants {
         /// version inside ``updatePromptCooldown`` is suppressed.
         static let lastPromptedUpdateVersion = "lastPromptedUpdateVersion"
         static let lastPromptedUpdateAt = "lastPromptedUpdateAt"
-        /// App version associated with the most recent What's New sheet
-        /// acknowledgement. When the running bundle's
-        /// `CFBundleShortVersionString` is greater AND the running
-        /// version has a registered entry in `whatsnew.json`, the
-        /// sheet auto-presents on launch.
+        /// Last app version the What's New gate handled — in effect the
+        /// last version opened, since it advances on every launch past
+        /// it whether or not a sheet shows (the key name predates that).
+        /// When the running bundle's `CFBundleShortVersionString` is
+        /// greater, the sheet auto-presents with every release's
+        /// feature pages since this version plus the running version's
+        /// `whatsnew.json` summary, if any of that exists.
         static let lastShownWhatsNewVersion = "lastShownWhatsNewVersion"
     }
 

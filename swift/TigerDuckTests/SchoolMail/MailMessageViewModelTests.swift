@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import SwiftUI
 import Testing
 import WebKit
 @testable import TigerDuck
@@ -104,6 +105,50 @@ struct MailMessageViewModelTests {
         await h.model.load()
         #expect(h.model.availableModes == MailMessageViewModel.ViewMode.allCases)
         #expect(h.model.mode == .formatted)
+    }
+
+    /// Only the formatted view of an HTML mail is drawn on a page, so that is the only place
+    /// "View in light mode" would change anything — and before the body lands there is no HTML
+    /// to know about yet.
+    @Test func lightModeIsOfferedOnlyForTheFormattedViewOfAnHTMLMail() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
+        #expect(!h.model.offersLightMode)
+        await h.model.load()
+        #expect(h.model.offersLightMode)
+        h.model.mode = .plain
+        #expect(!h.model.offersLightMode)
+        h.model.mode = .source
+        #expect(!h.model.offersLightMode)
+    }
+
+    @Test func aPlainTextMailHasNoLightMode() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "只有純文字", html: nil))
+        await h.model.load()
+        #expect(!h.model.offersLightMode)
+    }
+
+    /// The app's own page until the reader asks, white paper while they want it, and the app's
+    /// page again when they turn it back off.
+    @Test func lightModeSwitchesThePageTheMailIsDrawnOn() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
+        await h.model.load()
+        #expect(h.model.htmlTheme == .app)
+        h.model.viewsInLightMode = true
+        #expect(h.model.htmlTheme == .light)
+        h.model.viewsInLightMode = false
+        #expect(h.model.htmlTheme == .app)
+    }
+
+    /// Never saved: the next mail opens on the app's page, whatever the last one was switched to.
+    @Test func lightModeBelongsToOneScreen() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, html: "<p>a</p>"),
+                             extra: [FakeMailClient.message(uid: 6, html: "<p>b</p>")])
+        await h.model.load()
+        h.model.viewsInLightMode = true
+        let next = h.anotherMessage(uid: 6)
+        await next.load()
+        #expect(!next.viewsInLightMode)
+        #expect(next.htmlTheme == .app)
     }
 
     @Test func unreadableMailFallsBackToSource() async {
@@ -611,6 +656,42 @@ struct MailMessageViewModelTests {
         let document = MailWebViewFactory.document(for: "", allowRemoteImages: false, theme: light)
         #expect(document.contains("color-scheme:light"))
         #expect(document.contains("background:#ffffff;color:#1a1a1a"))
+    }
+
+    /// "View in light mode" is white paper with black text, in the light scheme — the page a mail
+    /// that only sets its own dark text was written against.
+    @Test func lightModeIsWhitePaper() {
+        let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false, theme: .light)
+        #expect(document.contains(":root{color-scheme:light;}"))
+        #expect(document.contains("background:#ffffff;color:#000000"))
+    }
+
+    /// The rule list depends only on the image allowance. A light mode switch keeps it, so there
+    /// is nothing to compile: the new page goes on at once, with no compile to wait behind. A
+    /// change of allowance still compiles and installs its own list.
+    @Test func aLightModeSwitchReusesTheInstalledRules() async {
+        let webView = WKWebView(frame: .zero, configuration: MailWebViewFactory.makeConfiguration(inlineImages: [:]))
+        var view = MailHTMLView(html: "<p>x</p>", linkCount: 0, inlineImages: [:], allowRemoteImages: false,
+                                contentHeight: .constant(1), onLinkTap: { _ in })
+        let coordinator = view.makeCoordinator()
+        coordinator.load(into: webView)
+        await coordinator.loadTask?.value
+        #expect(coordinator.installedRulesAllowRemoteImages == false)
+
+        view.theme = .light
+        coordinator.parent = view
+        coordinator.load(into: webView)
+        #expect(coordinator.loadTask == nil)
+        #expect(webView.scrollView.backgroundColor == MailHTMLTheme.light.backgroundColor)
+
+        var withImages = MailHTMLView(html: "<p>x</p>", linkCount: 0, inlineImages: [:], allowRemoteImages: true,
+                                      contentHeight: .constant(1), onLinkTap: { _ in })
+        withImages.theme = .light
+        coordinator.parent = withImages
+        coordinator.load(into: webView)
+        #expect(coordinator.loadTask != nil)
+        await coordinator.loadTask?.value
+        #expect(coordinator.installedRulesAllowRemoteImages == true)
     }
 
     /// Only the page is themed: a sender's own colours reach the document untouched.

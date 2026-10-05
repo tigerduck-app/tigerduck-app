@@ -7,6 +7,7 @@
 * [ader0226](https://github.com/ader0226)
 * [SamWang8891](https://github.com/SamWang8891) (Ching Kai, Wang)
 * [slimuCS](https://github.com/slimuCS)
+* [stanleyowen](https://github.com/stanleyowen)
 * [xinshoutw](https://github.com/xinshoutw) (Yu Wei, Huang)
 * [yijiunchin](https://github.com/yijiunchin)
 

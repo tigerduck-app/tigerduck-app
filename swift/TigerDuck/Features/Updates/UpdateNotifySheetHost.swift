@@ -35,17 +35,11 @@ private struct UpdateNotifySheetHost: ViewModifier {
             )
         ) { sheet in
             switch sheet {
-            case .whatsNew(let entry):
-                WhatsNewSheetView(entry: entry) {
+            case .whatsNew(let presentation):
+                WhatsNewFlowView(presentation: presentation) {
                     coordinator.acknowledgeWhatsNew()
                 }
-                // Fraction picked to leave the icon + headline visible
-                // above the first highlight on a 4.7" iPhone SE without
-                // forcing scroll. The .large fallback accommodates
-                // Dynamic Type's larger sizes via a drag-to-expand
-                // gesture rather than capping the layout at the
-                // smaller detent.
-                .presentationDetents([.fraction(0.85), .large])
+                .whatsNewSheetPresentation()
             case .update(let pending):
                 UpdatePromptView(pending: pending) { action in
                     coordinator.handleUpdatePromptAction(action)
@@ -61,12 +55,12 @@ private struct UpdateNotifySheetHost: ViewModifier {
 /// ``UpdateNotifyCoordinator/activeNotifySheet`` decides priority when
 /// both flags are set simultaneously.
 enum NotifySheet: Identifiable, Equatable {
-    case whatsNew(WhatsNewRepository.ResolvedWhatsNew)
+    case whatsNew(WhatsNewPresentation)
     case update(UpdateNotifyCoordinator.PendingUpdate)
 
     var id: String {
         switch self {
-        case .whatsNew(let entry): return "whatsNew:\(entry.version)"
+        case .whatsNew(let presentation): return "whatsNew:\(presentation.id)"
         case .update(let pending): return "update:\(pending.latestVersion)"
         }
     }
@@ -88,11 +82,5 @@ extension UpdateNotifyCoordinator.PendingUpdate: Identifiable {
     /// point SwiftUI has cleared the previous sheet binding and reusing
     /// the same id is fine.
     var id: String { latestVersion }
-}
-
-extension WhatsNewRepository.ResolvedWhatsNew: Identifiable {
-    /// `version` is the natural primary key for the registry — one
-    /// entry per release.
-    var id: String { version }
 }
 #endif

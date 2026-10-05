@@ -3,7 +3,7 @@
 ## OVERVIEW
 `api-poc/` is a collection of POC scripts that validate NTUST / Moodle third-party endpoints *before* implementing them in the Swift client. Each script is runnable standalone and mirrors the Swift-side service layer, so Python output can be diffed against Swift behaviour.
 
-Not a server process; no HTTP surface; no Flask/FastAPI routes. Lives alongside `backend/` and `swift/` at the repo root, with its own `pyproject.toml` so POC dependencies (bs4, rich, ntust-courses) do not pollute the production server image.
+Not a server process; no HTTP surface; no Flask/FastAPI routes. Lives alongside `swift/` at the repo root with its own `pyproject.toml`. The production FastAPI backend is a separate repo (`tigerduck-app/tigerduck-backend`) and shares no code with these scripts.
 
 ## STRUCTURE
 ```text
@@ -13,20 +13,30 @@ api-poc/
 └── api/                        # the Python package — cd api-poc && uv run python -m api.xxx
     ├── __init__.py             # exports RUNTIME_DIR, ENV_FILE
     ├── .env / .env.template    # credentials (STUDENT_ID, PASSWORD)
-    ├── moodle/                 # Moodle-domain scripts (mirrors Swift Services/Moodle*)
+    ├── moodle/                 # Moodle-domain scripts (mirrors Swift Services/API/Moodle/)
     │   ├── auth.py             # Mobile App OIDC token client (long-lived token, json store)
-    │   ├── homework.py         # REST webservice homework fetch (main path)
+    │   ├── site_info.py        # core_webservice_get_site_info (functions.py makes the same call)
+    │   ├── enrolled_courses.py # core_enrol_get_users_courses
+    │   ├── assignments.py      # mod_assign_get_assignments — the path the app uses
+    │   ├── submission_status.py # mod_assign_get_submission_status
+    │   ├── enrolled_users.py   # classmates + teachers of a course
+    │   ├── course_files.py     # core_course_get_contents
+    │   ├── announcements.py    # news-forum discussions
+    │   ├── grades.py           # grade items per course, or the overview
     │   ├── notifications.py    # notification centre: list, unread counts, preferences
     │   ├── quizzes.py          # mod_quiz: quizzes, user attempts, best grade
     │   ├── forum_posts.py      # thread contents, edit-shaped post, forum capabilities
     │   ├── autologin.py        # browser handoff key + tokenpluginfile URL rewriting
     │   ├── writes.py           # every type=write wsfunction — DRY-RUN by default
     │   └── legacy/
-    │       └── homework_sso.py # old SSO + sesskey + ajax/service.php path (kept for diffing)
-    ├── ntust/                  # NTUST校务系 (mirrors Swift Services/NtustSSO*)
+    │       ├── homework_sso.py # old SSO + sesskey + ajax/service.php path (kept for diffing)
+    │       └── homework_calendar.py # calendar action-events homework fetch, superseded by assignments.py
+    ├── ntust/                  # NTUST 校務系統 (mirrors Swift Services/API/NTUST/)
     │   ├── sso.py              # NtustSsoBridge — cookie-based SSO, sqlite cookie store
     │   ├── course_list.py      # selected courses scrape
     │   ├── course_lookup.py    # course info via ntust-courses pypi package
+    │   ├── score_list.py       # stuinfosys score history (GPA, rankings, per-course grades)
+    │   ├── html_score_parser.py # score page HTML → JSON (also a CLI on a saved page)
     │   ├── classroom.py        # cour01 room occupancy (OIDC form_post + WebForms grid)
     │   ├── subsystem.py        # i.ntust portal service directory
     │   └── webmail.py          # mail.ntust IMAP/SMTP (stdlib imaplib/smtplib)
@@ -47,8 +57,12 @@ cd api-poc
 uv sync
 uv run python -m api.moodle.auth              # OIDC login + token smoke test
 uv run python -m api.moodle.auth --refresh    # force re-auth
-uv run python -m api.moodle.homework          # REST webservice homework list
+uv run python -m api.moodle.site_info         # token's site info + available functions
+uv run python -m api.moodle.enrolled_courses
+uv run python -m api.moodle.assignments [courseid ...]  # assignments, all enrolled courses by default
+uv run python -m api.moodle.submission_status [assignid]
 uv run python -m api.moodle.legacy.homework_sso   # legacy SSO path for comparison
+uv run python -m api.moodle.legacy.homework_calendar
 uv run python -m api.moodle.enrolled_users <courseid>   # classmates + teachers of a course
 uv run python -m api.moodle.course_files <courseid>     # downloadable files in a course
 uv run python -m api.moodle.announcements <courseid>    # news-forum announcements
@@ -61,6 +75,7 @@ uv run python -m api.moodle.writes                    # list every write payload
 uv run python -m api.moodle.writes <wsfunction> k=v   # dry-run one (add --commit to send)
 uv run python -m api.ntust.course_list
 uv run python -m api.ntust.course_lookup
+uv run python -m api.ntust.score_list                 # score history as JSON
 uv run python -m api.ntust.classroom                  # campuses + buildings
 uv run python -m api.ntust.classroom HQ EE [YYYY-MM-DD]   # one building's grid
 uv run python -m api.ntust.subsystem [--en]           # portal service directory
@@ -73,8 +88,9 @@ uv run python -m api.public.bulletin          # reads cached pages by default
 | Task | Location | Notes |
 |---|---|---|
 | Moodle auth (production) | `moodle/auth.py` | OIDC via launch.php — DO NOT replace with /login/token.php |
-| Moodle webservice calls | `moodle/homework.py` | uses `MoodleOidcAuthClient.call(wsfunction, ...)` |
-| Moodle legacy path | `moodle/legacy/homework_sso.py` | kept for parity diffing, not for new code |
+| Moodle webservice calls | `moodle/assignments.py`, `moodle/submission_status.py` | uses `MoodleOidcAuthClient.call(wsfunction, ...)` |
+| Moodle legacy paths | `moodle/legacy/` | kept for parity diffing, not for new code |
+| Score history | `ntust/score_list.py`, `ntust/html_score_parser.py` | mirrors Swift `NTUSTScoreService` / `NTUSTScoreParser` |
 | NTUST SSO session | `ntust/sso.py` | `NtustSsoBridge` cookie flow, sqlite persistence |
 | Course selection scrape | `ntust/course_list.py`, `ntust/course_lookup.py` | SSO + optional `ntust_courses` enrichment |
 | Academic calendar ICS | `public/calendar.py` | public page, no auth |
