@@ -176,20 +176,12 @@ jobs:
             swift/**/*.icon/**/*
 
       # The next steps are what a single `xcodebuild test` does inside
-      # itself: fetch packages, compile, wait for the simulator, run. Split,
-      # the job view times each one; whole, it showed one 13-16 minute step
-      # and no way to tell which part was slow. Not `-quiet`: with the clones
-      # restored this should fetch nothing, and the log is how to tell.
-      - name: Resolve packages
-        env:
-          SCHEME: ${{ matrix.scheme }}
-        run: >
-          xcodebuild -resolvePackageDependencies
-          -project swift/TigerDuck.xcodeproj
-          -scheme "$SCHEME"
-          -derivedDataPath "$RUNNER_TEMP/DerivedData"
-          -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
-
+      # itself: compile, wait for the simulator, run. Split, the job view
+      # times each one; whole, it showed one 13-16 minute step and no way to
+      # tell which part was slow. There is no separate package-resolve step:
+      # the build resolves the package graph itself whether or not one ran
+      # first, so a step of its own only paid for the resolve twice.
+      #
       # The boot starts here and runs alongside the compile: `simctl boot`
       # returns once the boot is under way, and the "Wait for the simulator"
       # step after the build collects it. Not any earlier: a first boot takes
@@ -206,8 +198,9 @@ jobs:
       # The full log goes to a file, each line stamped with the time it
       # arrived, and what the job prints is: the count of each kind of task
       # the build ran and of compiles per target (an up-to-date rebuild runs
-      # no SwiftCompile or CompileC at all), the longest silences in the log
-      # with the line that ended each, and xcodebuild's own timing summary.
+      # no SwiftCompile or CompileC at all), the step's whole time split by
+      # the kind of line that ended each stretch, the longest silences, and
+      # xcodebuild's own timing summary.
       - name: Build for testing
         env:
           SCHEME: ${{ matrix.scheme }}
@@ -216,6 +209,8 @@ jobs:
         run: |
           set -o pipefail
           log="$RUNNER_TEMP/build.log"
+          now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
+          start=$(now)
           if ! xcodebuild build-for-testing \
               -project swift/TigerDuck.xcodeproj \
               -scheme "$SCHEME" \
@@ -230,7 +225,20 @@ jobs:
             tail -n 30 "$log" | cut -d' ' -f2-
             exit 1
           fi
+          end=$(now)
           set +o pipefail
+          # A stretch of silence is charged to the next task line: the blank
+          # and command lines around a task print with it, not before it.
+          echo "-- where the $(perl -e "printf '%.0f', $end - $start") s went, by the task line that ended each stretch"
+          awk -v start="$start" -v end="$end" '
+              { line = substr($0, index($0, " ") + 1); gap = (NR == 1 ? $1 - start : $1 - prev); prev = $1 }
+              NR == 1 { sum["(xcodebuild starting up)"] += gap; next }
+              match(line, /^[A-Z][A-Za-z]+ /) { sum[substr(line, 1, RLENGTH - 1)] += pending + gap; pending = 0; next }
+              { pending += gap }
+              END {
+                sum["(after the last task)"] += pending + end - prev
+                for (k in sum) printf "%7.1f  %s\n", sum[k], k
+              }' "$log" | sort -rn 2>/dev/null | head -15
           echo "-- tasks run"
           cut -d' ' -f2- "$log" | grep -oE '^[A-Z][A-Za-z]+ ' | sort | uniq -c | sort -rn | head -20
           echo "-- compiles by target"
@@ -254,21 +262,23 @@ jobs:
           set -o pipefail
           xcrun simctl bootstatus "$UDID" -b | tail -n 3
 
+      # Run from the .xctestrun the build wrote rather than from the
+      # project, so xcodebuild does not load the project and resolve the
+      # package graph a second time. Newest first: the restored DerivedData
+      # can still hold one written against an older SDK.
       - name: Unit tests (${{ matrix.leg }})
         env:
-          SCHEME: ${{ matrix.scheme }}
           UDID: ${{ steps.sim.outputs.udid }}
           ONLY_TESTING: ${{ matrix.only_testing }}
-        run: >
-          xcodebuild test-without-building
-          -project swift/TigerDuck.xcodeproj
-          -scheme "$SCHEME"
-          -destination "id=$UDID"
-          ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"}
-          -derivedDataPath "$RUNNER_TEMP/DerivedData"
-          -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
-          -resultBundlePath Tests.xcresult
-          -quiet
+        run: |
+          xctestrun=$(ls -t "$RUNNER_TEMP"/DerivedData/Build/Products/*.xctestrun | head -n 1)
+          echo "$xctestrun"
+          xcodebuild test-without-building \
+            -xctestrun "$xctestrun" \
+            -destination "id=$UDID" \
+            ${ONLY_TESTING:+"-only-testing:$ONLY_TESTING"} \
+            -resultBundlePath Tests.xcresult \
+            -quiet
 
       # `-quiet` keeps the log readable but also hides the test count, and a
       # run that silently executed nothing exits 0 exactly like a real pass.
