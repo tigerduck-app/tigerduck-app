@@ -15,13 +15,20 @@ name: Tests
 #
 # The phone and watch suites run on runners of their own, side by side. They
 # used to run back to back in one job, so the gate took the sum of the two
-# (8-14 min) where it now takes the slower one. That was written when the
-# phone suite was ~200 tests that finished in seconds. At ~1,050 it takes a
-# dev Mac ~35 s, but the phone leg's test phase on the 3-core runner is 5-7
-# of its 13-16 minutes, and one `xcodebuild test` step cannot say how much
-# of that is simulator boot and how much is the tests. So its phases run as
-# separate steps below, each with its own time in the job view, and the
-# summary step says how long the tests themselves ran.
+# (8-14 min) where it now takes the slower one.
+#
+# Each leg reuses its last build. Without that, the phone leg was 9-15
+# minutes on the same code, almost none of it the tests (~90-140 s): a
+# runner here is a 3-core VM, and it spent the rest fetching packages,
+# compiling everything from nothing and booting a simulator. Now the build
+# compiles only what changed and the packages come from a cache; the boot
+# is still a minute or two. Caches are saved by runs on pushes to
+# dev and main, and a pull request reads the one its base branch saved:
+# GitHub scopes a cache to the ref that made it, so a PR's own would serve
+# no one else, and at ~1.5 GB a leg they would crowd the repo's 10 GB.
+#
+# The first run after a cache goes stale (a package bump, a new Xcode on
+# the runner image) builds from nothing, at the old 12-15 minutes.
 #
 # Note there is no `CODE_SIGNING_ALLOWED=NO` here, the usual CI shorthand for
 # "this machine has no certificates". A simulator build signs ad-hoc and needs
@@ -32,6 +39,10 @@ name: Tests
 
 on:
   pull_request:
+    branches: [main, dev]
+  # What lands on dev and main is tested too, and those runs are the only
+  # ones that save the build caches pull requests start from.
+  push:
     branches: [main, dev]
 
 concurrency:
@@ -51,6 +62,12 @@ jobs:
     name: unit-tests (${{ matrix.leg }})
     runs-on: macos-26
     timeout-minutes: 60
+    # `actions: write` lets a push run delete the cache it started from once
+    # it has saved a newer one. A fork's pull request gets a read-only
+    # token whatever this says, and pull requests never delete anyway.
+    permissions:
+      contents: read
+      actions: write
     strategy:
       # Let both legs report: a phone failure must not cancel the watch run
       # and hide whatever it would have found.
@@ -174,18 +191,15 @@ jobs:
           restore-mtime-targets: |
             swift/**/*.icon
             swift/**/*.icon/**/*
+          # See the header: only pushes save, and a push that saved a newer
+          # build deletes the one it restored, so each leg keeps one per branch.
+          cache-read-only: ${{ github.event_name != 'push' }}
+          delete-used-deriveddata-cache: ${{ github.event_name == 'push' }}
 
       # The next steps are what a single `xcodebuild test` does inside
-      # itself: fetch packages, compile, wait for the simulator, run. Split,
-      # the job view times each one; whole, it showed one 13-16 minute step
-      # and no way to tell which part was slow.
-      #
-      # This step looks redundant, since the build resolves the package graph
-      # again, and it is the cheapest one in the job. It is the first
-      # xcodebuild to run, and it runs before the simulator starts booting:
-      # without it the build was the first, its start-up and package graph
-      # overlapped the boot, and they took 108 s and 84 s, against ~28 s and
-      # ~18 s after a resolve step of 16-29 s.
+      # itself: fetch packages, compile, boot the simulator, run. Split, the
+      # job view times each one; whole, it showed one 13-16 minute step and
+      # no way to tell which part was slow.
       - name: Resolve packages
         env:
           SCHEME: ${{ matrix.scheme }}
@@ -196,25 +210,15 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/DerivedData"
           -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
 
-      # The boot starts here and runs alongside the compile: `simctl boot`
-      # returns once the boot is under way, and the "Wait for the simulator"
-      # step after the build collects it. Not any earlier: a first boot takes
-      # the runner's 3 cores for a minute or two, and started at the top of
-      # the job it slowed the cache download from ~70 MB/s to ~4.
-      - name: Start the simulator booting
-        env:
-          UDID: ${{ steps.sim.outputs.udid }}
-        run: xcrun simctl boot "$UDID"
-
       # No index store: it is what Xcode's jump-to-definition and search read,
       # nothing here does, and writing it costs compile time and cache space.
       #
       # The full log goes to a file, each line stamped with the time it
-      # arrived, and what the job prints is: the count of each kind of task
-      # the build ran and of compiles per target (an up-to-date rebuild runs
-      # no SwiftCompile or CompileC at all), the step's whole time split by
-      # the kind of line that ended each stretch, the longest silences, and
-      # xcodebuild's own timing summary.
+      # arrived, and the job prints three things from it: the step's time
+      # split by the task line that ended each stretch, compiles per target
+      # (a build that reused the cache well compiles little or nothing), and
+      # xcodebuild's own timing summary. When a warm build is slow, that is
+      # where to look first.
       - name: Build for testing
         env:
           SCHEME: ${{ matrix.scheme }}
@@ -252,24 +256,24 @@ jobs:
               END {
                 sum["(after the last task)"] += pending + end - prev
                 for (k in sum) printf "%7.1f  %s\n", sum[k], k
-              }' "$log" | sort -rn 2>/dev/null | head -15
-          echo "-- tasks run"
-          cut -d' ' -f2- "$log" | grep -oE '^[A-Z][A-Za-z]+ ' | sort | uniq -c | sort -rn | head -20
+              }' "$log" | sort -rn 2>/dev/null | head -8
           echo "-- compiles by target"
           cut -d' ' -f2- "$log" | grep -E '^(SwiftCompile|CompileC) ' \
-            | grep -oE "in target '[^']+' from project '[^']+'" | sort | uniq -c | sort -rn | head -40
-          echo "-- longest silences (seconds: the line before | the line after)"
-          awk '{ line = substr($0, index($0, " ") + 1) }
-               NR > 1 { printf "%7.1f  %.110s | %.110s\n", $1 - prev, last, line }
-               { prev = $1; last = line }' "$log" \
-            | sort -rn 2>/dev/null | head -15
+            | grep -oE "in target '[^']+' from project '[^']+'" | sort | uniq -c | sort -rn | head -15
           echo "-- xcodebuild timing summary"
-          cut -d' ' -f2- "$log" | sed -n '/Build Timing Summary/,$p' | head -40
+          cut -d' ' -f2- "$log" | sed -n '/Build Timing Summary/,$p' | grep -v '^$' | head -10
           true
 
+      # After the build, not alongside it. A first boot takes the runner's 3
+      # cores for a minute or two and slows whatever shares them about as
+      # much as it saves: started at the top of the job it took the cache
+      # download from ~70 MB/s to ~4, and started just before the build it
+      # left xcodebuild 68-171 s starting up and 33-96 s on the package graph,
+      # work the resolve step above does in 18-35 s with the runner to itself.
+      #
       # bootstatus prints a status line about once a second until the device
       # is up; only the last few say anything.
-      - name: Wait for the simulator
+      - name: Boot the simulator
         env:
           UDID: ${{ steps.sim.outputs.udid }}
         run: |
