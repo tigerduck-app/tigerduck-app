@@ -700,6 +700,14 @@ struct MailMessageViewModelTests {
         #expect(MailWebViewFactory.document(for: body, allowRemoteImages: false).contains(body))
     }
 
+    /// A picture wider than the page is narrowed to it, and its height follows. The sheet's
+    /// `height:auto` must outrank a sender's inline `height`, which Outlook writes on every
+    /// picture, or such a picture is drawn squeezed (#226).
+    @Test func aNarrowedPictureKeepsItsProportions() {
+        let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false)
+        #expect(document.contains("img{max-width:100%;height:auto !important;}"))
+    }
+
     @Test func themeColoursAreSixDigitHex() {
         #expect(MailHTMLTheme.css(0x00_0A_0B) == "#000a0b")
         #expect(MailHTMLTheme.css(0xFF_12_34_56) == "#123456")

@@ -118,6 +118,13 @@ enum MailWebViewFactory {
 
     /// The mail on `theme`'s page (§9.3 used to mean white paper in both themes; it now means
     /// the app's own surface — see `MailHTMLTheme`).
+    ///
+    /// A picture is never wider than the page, and its height follows the width it ends up
+    /// with, so it keeps its proportions. That takes `!important` on `height:auto`: a `style`
+    /// attribute outranks every ordinary rule in this sheet, and Outlook writes an inline
+    /// `width` and `height` on each picture, so `max-width` narrowed such a picture to the
+    /// page while its height stayed as written, and it was drawn squeezed (#226). A height the
+    /// sender marks `!important` itself still wins.
     static func document(for bodyHTML: String, allowRemoteImages: Bool, theme: MailHTMLTheme = .app) -> String {
         let imageSources = allowRemoteImages ? "tdcid: data: https: http:" : "tdcid: data:"
         let scheme = theme.isDark ? "dark" : "light"
@@ -125,7 +132,7 @@ enum MailWebViewFactory {
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src \(imageSources); style-src 'unsafe-inline'">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>:root{color-scheme:\(scheme);}html,body{margin:0;padding:12px;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}img{max-width:100%;height:auto;}table{max-width:100%;}</style>
+        <style>:root{color-scheme:\(scheme);}html,body{margin:0;padding:12px;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}img{max-width:100%;height:auto !important;}table{max-width:100%;}</style>
         </head><body>\(bodyHTML)</body></html>
         """
     }
