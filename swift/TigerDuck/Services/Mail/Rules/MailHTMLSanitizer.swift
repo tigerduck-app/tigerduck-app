@@ -72,6 +72,48 @@ nonisolated enum MailHTMLSanitizer {
         return dataImagePattern.firstMatch(in: source, options: [], range: range) != nil
     }
 
+    /// `width: 5.6875in` or `height: 772px !important`, written the way `MailCSSFilter.filter`
+    /// writes a declaration, in a CSS length unit. `%`, `auto`, unitless numbers and made-up
+    /// units don't match.
+    private static let fixedLengthPattern = try! NSRegularExpression(
+        pattern: #"^(?:width|height): ([0-9]*\.?[0-9]+)(px|pt|pc|in|cm|mm|em|rem|ex|ch|vw|vh|vmin|vmax)\s*(?:!\s*important)?$"#,
+        options: .caseInsensitive
+    )
+
+    /// An image's filtered `style` with its fixed `width` and `height` in one unit rewritten as
+    /// that width and their ratio, or nil to leave it alone (#226). The page's
+    /// `img{max-width:100%;height:auto}` narrows an image wider than the screen, but a fixed
+    /// inline height outranks `height:auto`, so the image kept its full height and came out
+    /// stretched; Outlook sizes inline images this way (`width:6.25in;height:8.84in`). With a
+    /// ratio, a narrowed image keeps its shape and any other keeps the sender's box, even while
+    /// it is held back.
+    ///
+    /// ponytail: `546px` by `8in` still stretches, and so does an inline height beside a `width`
+    /// attribute; converting absolute units to px, and reading the attribute, would cover them.
+    ///
+    /// Not `private`: unit-tested directly.
+    static func keepingAspectRatio(_ style: String) -> String? {
+        let declarations = style.components(separatedBy: "; ")
+        let widths = declarations.filter { $0.hasPrefix("width:") }
+        let heights = declarations.filter { $0.hasPrefix("height:") }
+        // Exactly one of each: given two, `!important` decides which one applies.
+        guard widths.count == 1, heights.count == 1,
+              let width = fixedLength(widths[0]), let height = fixedLength(heights[0]),
+              width.unit == height.unit else { return nil }
+        let kept = declarations.filter { !$0.hasPrefix("height:") }
+        return (kept + ["aspect-ratio: \(width.number) / \(height.number)"]).joined(separator: "; ")
+    }
+
+    private static func fixedLength(_ declaration: String) -> (number: String, unit: String)? {
+        let range = NSRange(declaration.startIndex..., in: declaration)
+        guard let match = fixedLengthPattern.firstMatch(in: declaration, options: [], range: range),
+              let numberRange = Range(match.range(at: 1), in: declaration),
+              let unitRange = Range(match.range(at: 2), in: declaration) else { return nil }
+        let number = String(declaration[numberRange])
+        guard let value = Double(number), value > 0 else { return nil }
+        return (number, declaration[unitRange].lowercased())
+    }
+
     static func sanitize(_ html: String, allowRemoteImages: Bool) -> SanitizedHTML {
         do {
             let dirty = try SwiftSoup.parse(html, "")
@@ -95,6 +137,10 @@ nonisolated enum MailHTMLSanitizer {
                 // 2026-09-16; mirrors Android's `img.removeAttr(REMOTE_SRC_ATTR)`). After this
                 // point, `data-remote-src` is only ever written by this loop, below.
                 try image.removeAttr(remoteImageAttribute)
+
+                if let style = keepingAspectRatio(try image.attr("style")) {
+                    try image.attr("style", style)
+                }
 
                 // Trim and write the value back before inspecting it, so a source like
                 // `src=" data:image/png;..."` is still recognised (controller ruling,

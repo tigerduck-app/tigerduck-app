@@ -79,6 +79,37 @@ struct MailHTMLSanitizerTests {
         #expect(!html.contains("data:image/pngx"))
     }
 
+    /// #226: a fixed inline height outranked the page's `height:auto`, so an image narrowed to
+    /// the screen kept its full height and came out stretched.
+    @Test func aFixedImageBoxBecomesAWidthAndARatio() {
+        let outlook = MailHTMLSanitizer.sanitize(
+            "<img src=\"cid:poster@x\" width=\"546\" height=\"772\" style=\"width:5.6875in;height:8.0416in\">",
+            allowRemoteImages: false
+        ).html
+        #expect(outlook.contains("style=\"width: 5.6875in; aspect-ratio: 5.6875 / 8.0416\""))
+        let heldBack = MailHTMLSanitizer.sanitize(
+            "<img src=\"https://x.example/p.png\" style=\"width:600px;height:848px\">",
+            allowRemoteImages: false
+        ).html
+        #expect(heldBack.contains("style=\"width: 600px; aspect-ratio: 600 / 848\""))
+        #expect(MailHTMLSanitizer.keepingAspectRatio("display: block; width: 3000PX; height: 1000px !important")
+            == "display: block; width: 3000PX; aspect-ratio: 3000 / 1000")
+    }
+
+    @Test(arguments: [
+        "height: 40px",
+        "height: 40px; width: auto",
+        "width: 100%; height: 2px",
+        "width: 546px; height: 8in",
+        "width: 546px; width: 100%; height: 772px",
+        "height: auto !important; width: 600px; height: 300px",
+        "width: 600foo; height: 300foo",
+        "width: 0px; height: 24px",
+    ])
+    func otherImageSizesAreLeftAlone(style: String) {
+        #expect(MailHTMLSanitizer.keepingAspectRatio(style) == nil)
+    }
+
     @Test func collectsLinksWithTheirText() {
         let result = MailHTMLSanitizer.sanitize("<p><a href=\"https://www.ntust.edu.tw\">學校首頁</a></p>", allowRemoteImages: false)
         #expect(result.links == [MailLink(text: "學校首頁", href: "https://www.ntust.edu.tw")])
