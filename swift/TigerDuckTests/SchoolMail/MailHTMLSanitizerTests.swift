@@ -1,6 +1,8 @@
 #if os(iOS)
 import Foundation
 import Testing
+import UIKit
+import WebKit
 @testable import TigerDuck
 
 struct MailHTMLSanitizerTests {
@@ -108,6 +110,62 @@ struct MailHTMLSanitizerTests {
     ])
     func otherImageSizesAreLeftAlone(style: String) {
         #expect(MailHTMLSanitizer.keepingAspectRatio(style) == nil)
+    }
+
+    /// The rewrite as WebKit draws it on the mail page: narrowed to a phone, a loaded picture and
+    /// a held-back one keep their ratio, and on a wide page both keep the sender's 546x772 box.
+    @MainActor
+    @Test(arguments: [375.0, 1280.0])
+    func aFixedImageBoxKeepsItsRatioOnThePage(pageWidth: Double) async throws {
+        let size = CGSize(width: 546, height: 772)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let png = UIGraphicsImageRenderer(size: size, format: format).pngData { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        let box = "style=\"width:5.6875in;height:8.0416in\""
+        let html = MailHTMLSanitizer.sanitize(
+            "<img src=\"data:image/png;base64,\(png.base64EncodedString())\" \(box)><img src=\"https://x.example/p.png\" \(box)>",
+            allowRemoteImages: false
+        ).html
+
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: pageWidth, height: 800))
+        let webView = WKWebView(frame: window.bounds)
+        window.addSubview(webView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        webView.loadHTMLString(MailWebViewFactory.document(for: html, allowRemoteImages: false), baseURL: nil)
+
+        let boxes = await Self.imageBoxes(in: webView, count: 2)
+        #expect(boxes.count == 2)
+        for box in boxes {
+            #expect(abs(box.width / box.height - size.width / size.height) < 0.005, "\(box)")
+            if pageWidth < size.width {
+                #expect(box.width < pageWidth, "narrowed to the page: \(box)")
+            } else {
+                #expect(abs(box.width - size.width) < 0.5 && abs(box.height - size.height) < 0.5, "the sender's box: \(box)")
+            }
+        }
+    }
+
+    /// Each `<img>`'s laid-out box once the page, and every picture on it, has loaded.
+    @MainActor
+    private static func imageBoxes(in webView: WKWebView, count: Int) async -> [CGSize] {
+        let probe = """
+            document.readyState == "complete" && document.images.length == \(count)
+                ? JSON.stringify(Array.from(document.images, i => { const r = i.getBoundingClientRect(); return [r.width, r.height]; }))
+                : ""
+            """
+        for _ in 0..<200 {
+            if let json = try? await webView.evaluateJavaScript(probe) as? String, !json.isEmpty,
+               let pairs = try? JSONDecoder().decode([[Double]].self, from: Data(json.utf8)) {
+                return pairs.map { CGSize(width: $0[0], height: $0[1]) }
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        Issue.record("the page never finished loading")
+        return []
     }
 
     @Test func collectsLinksWithTheirText() {
