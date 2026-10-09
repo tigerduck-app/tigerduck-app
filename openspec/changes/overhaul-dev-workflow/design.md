@@ -131,7 +131,7 @@ Every block that breaks the policy gets one of these outcomes:
 | Change history | Deleted |
 | Invariant or non-obvious constraint | Kept, condensed within the limit |
 | Rationale for a decision that spans files | ADR in `docs/decisions/NNNN-slug.md`, with a one-line pointer in the code; rationale for one file stays, condensed |
-| Procedure (pin generation and rotation, release steps) | Skill in `.agents/skills/<name>/`, linked from `.claude/skills/<name>/SKILL.md` |
+| Procedure (pin generation and rotation, release steps) | Skill in `.agents/skills/<name>/`, linked from `.claude/skills/<name>` |
 | Behavior described in prose | Test first, in an earlier commit; then the comment shrinks |
 | Rule addressed to agents | Nearest AGENTS.md |
 | Restates the code | Deleted |
