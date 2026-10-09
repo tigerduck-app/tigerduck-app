@@ -45,11 +45,11 @@ AGENTS.md, then verify `python3 tools/check_comments.py same-tokens <commit befo
 exits 0, `python3 tools/check_comments.py check PATH...` is clean for the area, the phone and
 watch unit tests and the macOS build pass, and a review subagent finds no lost or wrong statement.
 
-- [ ] 6.1 School Mail: `swift/TigerDuck/Features/SchoolMail/`, `swift/TigerDuck/Services/Mail/` and their tests
-- [ ] 6.2 Settings sync and Live Activity: `App/`, `Services/Sync/`, `Services/CloudSync/`, `Services/Push/`, `LiveActivity/`, `Features/Settings/`, `Platform/Mac/` and their tests
-- [ ] 6.3 The rest of the app: `swift/Shared/`, the remaining `Features/` and `Services/`, `Theme/`, `Bridge/`, `Shared/`, `swift/TigerDuckWidgets/`, `swift/TigerDuckLiveActivity/`, `swift/TigerDuckWatch Watch App/`, `swift/TigerDuckWatchWidget/`
-- [ ] 6.4 The remaining test files in `swift/TigerDuckTests/`, `swift/TigerDuckUITests/` and `swift/TigerDuckWatch Watch AppTests/`
-- [ ] 6.5 Verify `python3 tools/check_comments.py check --all` reports nothing after the last range
+- [x] 6.1 School Mail: `swift/TigerDuck/Features/SchoolMail/`, `swift/TigerDuck/Services/Mail/` and their tests
+- [x] 6.2 Settings sync and Live Activity: `App/`, `Services/Sync/`, `Services/CloudSync/`, `Services/Push/`, `LiveActivity/`, `Features/Settings/`, `Platform/Mac/` and their tests
+- [x] 6.3 The rest of the app: `swift/Shared/`, the remaining `Features/` and `Services/`, `Theme/`, `Bridge/`, `Shared/`, `swift/TigerDuckWidgets/`, `swift/TigerDuckLiveActivity/`, `swift/TigerDuckWatch Watch App/`, `swift/TigerDuckWatchWidget/`
+- [x] 6.4 The remaining test files in `swift/TigerDuckTests/`, `swift/TigerDuckUITests/` and `swift/TigerDuckWatch Watch AppTests/`
+- [x] 6.5 Verify `python3 tools/check_comments.py check --all` reports nothing after the last range
 
 ## 7. Enforcement
 
