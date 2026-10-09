@@ -342,6 +342,8 @@ tigerduck-app/
 3. 以 `feature/your-feature` 或 `fix/your-fix` 命名分支
 4. 發布 PR 時，目標分支為 `dev`，且必須勾選 Copilot 做 Revise
 5. 翻譯字串請改 `app-translation/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink
+6. 程式碼註解一律使用英文並保持精簡，只寫「為什麼」，不寫程式在做什麼或修改經過；完整規則見 [AGENTS.md](AGENTS.md) 的 Comments 段落，CI 會檢查語言、長度與引用來源
+7. 跨多次工作階段、影響架構，或需要兩位維護者共同同意的工作，請在 `openspec/changes/` 以 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 規劃，並與實作一起 commit；詳見 [AGENTS.md](AGENTS.md) 的 Planning 段落
 
 ## 授權
 本專案採用 [GNU Affero General Public License v3.0](LICENSE) 授權。

@@ -341,6 +341,8 @@ Before submitting, please make sure to:
 3. Name your branch using `feature/your-feature` or `fix/your-fix`
 4. Target the `dev` branch when opening a PR, and enable Copilot review
 5. For translation strings, open a separate PR against the `app-translation/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
+6. Write code comments in English and keep them short: say why, not what the code does or how it changed. The full rules are in the Comments section of [AGENTS.md](AGENTS.md); CI checks language, length and citations
+7. Plan work that spans sessions, changes the architecture or needs both maintainers to agree as an [OpenSpec](https://github.com/Fission-AI/OpenSpec) change in `openspec/changes/`, committed with the work; see the Planning section of [AGENTS.md](AGENTS.md)
 
 ## License
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).
