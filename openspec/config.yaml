@@ -1,32 +1,18 @@
 schema: spec-driven
 
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
+context: |
+  AGENTS.md (root and nested) is the rule source for every agent tool; read it before planning.
+  Write every artifact in English.
+  Specs may cite code paths. Code comments must never cite a change name, an openspec/ path or a
+  spec section, because archiving moves the files.
+  Use a change only for work that spans sessions, changes the architecture, or needs both
+  maintainers to agree. Smaller work goes through plan mode or /feature-dev.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
-
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+rules:
+  proposal:
+    - State what is out of scope.
+  design:
+    - Record each decision with the options that lost and why.
+  tasks:
+    - Group tasks by pull request, in merge order.
+    - Give every task the check that proves it done (a command, a test, or a CI run).
