@@ -80,22 +80,15 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         .padding(.top, TigerDuckTheme.Spacing.xxl)
         .padding(.bottom, TigerDuckTheme.Spacing.xxl * 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Pin the page to the device's geometry instead of the keyboard's
-        // safe area — when the user focuses a field on the login page, the
-        // default SwiftUI behavior is to push the whole VStack (and so the
-        // "Sign in" / "Skip for now" actions) up above the keyboard. That
-        // makes the buttons jump on focus; we'd rather leave them anchored
-        // and let users dismiss the keyboard with the tap-to-dismiss
-        // gesture already on this view (the inner ScrollView also has
-        // .scrollDismissesKeyboard(.interactively) for finger scroll).
+        // Lay the page out against the device, not the keyboard's safe area: by default, focusing a
+        // login field pushes the whole VStack, "Sign in" and "Skip for now" included, above the
+        // keyboard, so the buttons jump. Tap-to-dismiss and the ScrollView's scroll dismiss it.
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         #if canImport(UIKit)
-        // `dismissTapGesture` attaches via `.simultaneousGesture` (not
-        // `.onTapGesture`): a plain tap recognizer on the page root competes
-        // with — and on iOS 18 swallows — taps on the interactive `Link`s /
-        // `Button`s inside `content`, which is what left the lower welcome-page
-        // links (e.g. GitHub) dead. See View+ScrollSafeGesture.
+        // `dismissTapGesture` uses `.simultaneousGesture`, not `.onTapGesture`: a plain tap
+        // recognizer on the page root competes with, and on iOS 18 swallows, taps on the `Link`s
+        // and `Button`s in `content` (the welcome page's GitHub link). See View+ScrollSafeGesture.
         .dismissTapGesture { UIApplication.dismissKeyboard() }
         #endif
     }
@@ -104,10 +97,8 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
     private var iconView: some View {
         switch icon {
         case .image(let name):
-            // Sized larger than the symbol hero: the artwork fills its
-            // square edge to edge, where an SF Symbol carries its own
-            // optical padding, so matching point sizes would render the
-            // logo visibly smaller than the glyph it replaced.
+            // Larger than the symbol hero: the artwork fills its square edge to edge, where an SF
+            // Symbol has optical padding, so equal point sizes would make the logo look smaller.
             Image(name)
                 .resizable()
                 .scaledToFit()

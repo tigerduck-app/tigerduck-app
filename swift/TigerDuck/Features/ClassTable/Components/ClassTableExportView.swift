@@ -6,8 +6,8 @@ import UIKit
 /// term above, then the same grid the page draws.
 ///
 /// The grid is the live `TimetableGridView`, not a copy, so the image keeps
-/// whatever the page shows — colours, custom and abbreviated names, the
-/// start / 節 / end period column, the room hint when it is switched on.
+/// whatever the page shows: colours, custom and abbreviated names, the
+/// start / period / end column, the room hint when it is switched on.
 /// Only the assignment badge stays out; see
 /// ``TimetableGridView/showsAssignmentBadges``.
 struct ClassTableExportView: View {
@@ -146,12 +146,11 @@ enum ClassTableExporter {
         }
     }
 
-    /// "課表_114-2_B11315000.png": the name the file keeps wherever it is
-    /// saved or sent, so it says what it is and whose. Underscores, never
-    /// spaces — between the parts and inside them ("Class_table") — so the
-    /// name survives a URL or a command line without quoting or %20. The
-    /// student id is left out, not left as a trailing underscore, when
-    /// there is none.
+    /// "Class_table_114-2_B11315000.png": the name the file keeps wherever it
+    /// is saved or sent, so it says what it is and whose. Underscores, never
+    /// spaces, between the parts and inside them, so the name survives a URL
+    /// or a command line without quoting or %20. The student id is left out,
+    /// not left as a trailing underscore, when there is none.
     nonisolated static func fileName(title: String, semesterLabel: String, studentId: String?) -> String {
         let parts = [title, semesterLabel, studentId ?? ""]
             .map {

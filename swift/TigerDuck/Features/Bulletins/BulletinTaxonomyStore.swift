@@ -2,18 +2,13 @@ import Foundation
 import Observation
 import os
 
-/// Process-level cache for the taxonomy lookup. The orgs/tags set changes
-/// rarely (only when the server enums evolve), so we fetch on first use and
-/// keep the result in memory for the lifetime of the app.
+/// Process-level cache for the taxonomy lookup. The orgs and tags change only when the server
+/// enums evolve, so they are fetched on first use and kept in memory for the app's lifetime.
 ///
-/// Exposed as a shared singleton (`BulletinTaxonomyStore.shared`) so that
-/// navigating into `BulletinsView` from the Home widget — which re-creates
-/// the view on every push — does not re-fetch the taxonomy and block the
-/// filter chips behind a network round-trip on each entry.
-///
-/// Falls back to an empty taxonomy on error — the list view degrades
-/// gracefully (no filter chips) and the subscription editor surfaces the
-/// error so the user can retry.
+/// A shared singleton because the Home widget re-creates `BulletinsView` on every push, and
+/// re-fetching on each entry would block the filter chips behind a network round-trip. On error
+/// it falls back to an empty taxonomy: the list shows no filter chips, and the subscription
+/// editor surfaces the error so the user can retry.
 @MainActor
 @Observable
 final class BulletinTaxonomyStore {
@@ -78,10 +73,8 @@ final class BulletinTaxonomyStore {
     }
 
     func tagLabel(for rawId: String) -> String {
-        // Operator-issued "server" notifications need a per-locale label
-        // (unlike every other tag, which the server ships zh-only).
-        // Intercept that one id and return the localized string instead
-        // of whatever the server sent.
+        // Operator-issued "server" notifications need a per-locale label, unlike every other tag,
+        // which the server ships in Chinese only, so this one id gets the localized string.
         if rawId == "server_notification" {
             return String(localized: "tag_server_notification")
         }

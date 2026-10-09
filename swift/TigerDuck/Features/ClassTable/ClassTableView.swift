@@ -122,20 +122,16 @@ struct ClassTableView: View {
                     existingCourseNos: Set(viewModel.courses.map(\.courseNo)),
                     onAdd: { viewModel.addCourse($0) },
                     onRemove: { courseNo in
-                        // AddCourseSheet only invokes onRemove for courses// added in this session, so route through the
-                        // user-added-only path. Using deleteCourse here
-                        // would tombstone the courseNo in deletedCourseNos
-                        // and later hide any real enrolled course sharing
-                        // the same code from cache/network merges.
+                        // onRemove fires only for courses added this session. `deleteCourse`
+                        // would tombstone the courseNo, hiding any real enrolled course with
+                        // the same code from cache and network merges.
                         viewModel.removeUserAddedCourse(courseNo: courseNo)
                     }
                 )
                 .presentationDetents([.medium, .large])
-                // The conflict alert lives on the sheet's content, not the
-                // parent — when it lived on the parent, iOS dismissed the
-                // sheet to present the alert (only one presentation at a
-                // time per host view). Anchoring it here lets the alert
-                // surface above the search results without exiting search.
+                // The conflict alert hangs off the sheet's content: on the parent, iOS
+                // would dismiss the sheet to present it (one presentation per host
+                // view). Here it shows above the search results without leaving search.
                 .alert(
                     String(localized: "class_table_conflict_add_failed_title"),
                     isPresented: Binding(
@@ -253,40 +249,26 @@ struct ClassTableView: View {
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
 
-    /// Runtime-dependent, because the reference differs per OS.
+    /// Below iOS 26 this matches the Calendar "Today" button (40.33pt, a padded
+    /// `.bordered` from `GlassTextButtonModifier`), so both pages' header controls
+    /// are one size. On 26 it does not match Today's 28.33pt `.buttonStyle(.glass)`:
+    /// glass that short behind an icon reads as a sliver, not a button. 36pt, about
+    /// 1.3x, reads as a control and stays close to the pre-26 40pt.
     ///
-    /// Below 26 this tracks the Calendar "Today" button, which renders
-    /// 40.33pt there — a padded `.bordered` from `GlassTextButtonModifier`.
-    /// Matching it is what keeps the two pages' header controls the same
-    /// size on that OS.
-    ///
-    /// On 26 Today is only 28.33pt, because `.buttonStyle(.glass)` is a much
-    /// tighter control. Deliberately not matched: at Today's height the
-    /// glass behind an icon reads as a thin sliver rather than a button.
-    /// 36pt is ~1.3x that, enough glass to read as a control in its own
-    /// right — and close to the 40pt the pre-26 path already uses, so the
-    /// two OSes end up more alike than the underlying button styles are.
-    ///
-    /// `HeaderControlMetricsTests` measures both against the live Today
-    /// button, so it still catches Apple moving those metrics underneath us.
+    /// `HeaderControlMetricsTests` measures both against the live Today button,
+    /// so it catches Apple changing those metrics.
     private static var headerActionHeight: CGFloat {
         if #available(iOS 26, *) { 36 } else { 40 }
     }
 
-    /// Everything that acts on the timetable, behind one ⋯ button — the
-    /// same shape as a mail message's actions.
+    /// Every action on the timetable, behind one ⋯ button like a mail message's.
+    /// A menu names each action; unlabelled glyphs could not say "export".
     ///
-    /// Add and reset used to sit here as a pair of glyphs. A third action
-    /// would have made a row of three unlabelled icons, and export is not
-    /// something a glyph alone can say; a menu names each one.
+    /// The status dot stays outside: it reports on the servers and does not act
+    /// on the timetable.
     ///
-    /// The status dot stays outside it deliberately. It reports on the
-    /// servers, it does not act on the timetable, and folding it in would
-    /// claim a relationship that isn't there.
-    ///
-    /// Sits in the page's own header row rather than a toolbar, so nothing
-    /// supplies a backing unless we do — and a bare glyph over a dense
-    /// timetable reads as part of the grid instead of a control acting on it.
+    /// The page's header row, unlike a toolbar, supplies no backing, and a bare
+    /// glyph over the dense timetable reads as part of the grid, not a control.
     @ViewBuilder
     private var headerActions: some View {
         let menu = Menu {
@@ -320,24 +302,21 @@ struct ClassTableView: View {
         if #available(iOS 26, *) {
             menu.glassEffect(.regular.interactive(), in: .circle)
         } else {
-            // Below 26 there is no glass to supply a backing, and a bare
-            // glyph beside Today's filled pill reads as unfinished rather
-            // than as the same class of control. `.secondarySystemFill` is
-            // what `.bordered` — Today's own pre-26 style — fills with.
+            // Below 26 no glass supplies a backing, and a bare glyph reads as
+            // unfinished beside Today's filled pill. `.secondarySystemFill` is what
+            // `.bordered`, Today's pre-26 style, fills with.
             menu.background(Circle().fill(Color(uiColor: .secondarySystemFill)))
         }
     }
 
-    /// `contentShape` is explicit because the glyph is smaller than its
-    /// cell: without it the tappable area is the symbol's own bounds, and
-    /// the padding that makes the circle look right would not be tappable.
-    /// `.subheadline` rather than `.body`: Today's caption label renders
-    /// 14.33pt tall inside its 28.33pt pill, where a `.body` symbol is a
-    /// full 17pt. Matching the outer height alone still left the icon
-    /// visibly heavier than the button it sits next to a tab away —
-    /// `.subheadline` puts the glyph at 15.33pt, the same optical weight.
-    /// A semantic font, not a fixed size, so it scales with Dynamic Type
-    /// the way Today's label does.
+    /// `contentShape` is explicit because the glyph is smaller than its cell:
+    /// without it only the symbol's bounds are tappable, not the padding that
+    /// makes the circle look right.
+    ///
+    /// `.subheadline`, not `.body`: Today's caption label is 14.33pt tall in its
+    /// 28.33pt pill, while a `.body` symbol is 17pt and looks heavier even at the
+    /// same outer height. `.subheadline` gives 15.33pt, the same optical weight,
+    /// and as a semantic font it scales with Dynamic Type like Today's label.
     private func headerIcon(_ systemName: String) -> some View {
         Image(systemName: systemName)
             .font(.subheadline.weight(.medium))
@@ -388,14 +367,9 @@ struct ClassTableView: View {
                 showProgress: false,
                 ongoing: viewModel.ongoingCourses,
                 onSelect: { course in
-                    // Carousel only ever surfaces today's courses, so pin
-                    // the sheet's weekday context to today. Without this
-                    // `selectedCourseTimeRange` stays nil and the time
-                    // card collapses to `—`. Set weekday before course so
-                    // the sheet's first read sees both populated. Clear
-                    // the block-time override too — a prior Current-class
-                    // tap could otherwise leak its block range into the
-                    // sheet for an unrelated today card.
+                    // The carousel shows only today's courses: pin the weekday to today
+                    // or the time card shows a dash, set it before the course for the
+                    // sheet's first read, and clear any block range a Current-class tap left.
                     viewModel.selectedCourseBlockTimeRange = nil
                     viewModel.selectedPeriodId = nil
                     viewModel.selectedWeekday = AppClock.now().scheduleWeekday

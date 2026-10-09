@@ -1,12 +1,9 @@
 import SwiftUI
 import EventKit
 
-// `EKEventStore.requestFullAccessToEvents` invokes its callback off
-// the main actor; the previous `Task { ... }` (no @MainActor) then
-// mutated `calendarAccessGranted`, `events`, and `eventsByDay` from a
-// background context while SwiftUI was reading them — a real data
-// race on @Observable storage. Annotating the whole VM @MainActor
-// confines mutations correctly without sprinkling MainActor.run.
+// `EKEventStore.requestFullAccessToEvents` calls back off the main actor, and
+// mutating state from there races SwiftUI's reads of @Observable storage.
+// @MainActor on the whole type confines mutations without scattered `MainActor.run`.
 @MainActor
 @Observable
 final class CalendarViewModel {
@@ -21,13 +18,9 @@ final class CalendarViewModel {
     private let eventStore = EKEventStore()
     var calendarAccessGranted = false
     private var hasLoaded = false
-    // `nonisolated(unsafe)` so `deinit` (which is nonisolated under
-    // Swift 6 on a @MainActor class) can read this to remove the
-    // NotificationCenter observer at end-of-life. `@ObservationIgnored`
-    // is required for the isolation modifier to take effect — without
-    // it the `@Observable` macro replaces the stored var with a
-    // computed accessor, which strips the modifier and produces a
-    // "'nonisolated(unsafe)' has no effect" warning.
+    // `nonisolated(unsafe)` lets `deinit`, nonisolated under Swift 6, read this to
+    // remove the observer. `@ObservationIgnored` is required: without it `@Observable`
+    // makes this a computed accessor, and the modifier has no effect (a warning).
     @ObservationIgnored
     private nonisolated(unsafe) var dataObserver: Any? = nil
 
@@ -72,10 +65,9 @@ final class CalendarViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            // The notification is delivered on the main queue, but the
-            // closure crosses into the @MainActor class — hop explicitly
-            // so accessing `events` / calling `setEvents` is sound under
-            // Swift 6 strict concurrency.
+            // Delivered on the main queue, but the closure crosses into this
+            // @MainActor class, so hop explicitly to make touching `events` and
+            // calling `setEvents` sound under Swift 6 strict concurrency.
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let fresh = DataCache.shared.loadCalendarEvents()
@@ -209,11 +201,9 @@ final class CalendarViewModel {
     }
 
     private func setEvents(_ newEvents: [SDCalendarEvent]) {
-        // Merged here rather than at each call site because this is the one
-        // funnel every load path goes through, including the sign-out reset.
-        // Both academic sources are dropped and rebuilt from the feed, so a
-        // boundary left over from the build that still filed them under
-        // `.holiday` is not kept forever from the cache.
+        // Merged here because every load path, the sign-out reset included, goes
+        // through this funnel. Both academic sources are rebuilt from the feed, so a
+        // cached boundary an older build filed under `.holiday` does not linger.
         let newEvents = newEvents.filter { $0.source != .holiday && $0.source != .semester }
             + AcademicCalendarStore.shared.calendar.calendarEvents()
         events = newEvents

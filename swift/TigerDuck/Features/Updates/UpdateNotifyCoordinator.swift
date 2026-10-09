@@ -6,24 +6,14 @@ import UIKit
 import AppKit
 #endif
 
-/// Owns the "newer build on App Store?" check and the sheet-presentation
-/// flags it feeds. Lives as a child of ``AppState`` so SwiftUI views can
-/// observe `pendingUpdate` / `pendingWhatsNew` through the same
-/// `@Environment(AppState.self)` they already use for everything else.
+/// Owns the App Store "newer build?" check and the sheet flags it feeds. A child of ``AppState``
+/// so views observe `pendingUpdate` and `pendingWhatsNew` through `@Environment(AppState.self)`.
 ///
-/// **On the Mac**: the lookup answers for the bundle id with the one App
-/// Store record a universal purchase has, and carries no separate Mac
-/// version. The Mac is built from the same target with the same marketing
-/// version and ships alongside the iPhone release, so that version stands
-/// in for its own, and Update Now opens the record's page in the Mac App
-/// Store rather than Safari. What's New stays an iPhone surface; the Mac
-/// answers with an alert (`MacUpdateCheck.swift`) instead of the sheets.
-///
-/// **Cross-platform alignment**: the gating constants mirror Android's
-/// `UpdatePromptGate.COOLDOWN_MS` (7 days, same available version after
-/// "Later"), and the What's New flow — code-defined feature pages
-/// stacked across skipped versions, then a `whatsnew.json` summary —
-/// matches Android's, which keys the same idea by versionCode.
+/// On the Mac the lookup answers with the universal purchase's one record and no Mac version.
+/// The Mac ships the same marketing version from the same target, so that version stands in,
+/// and Update Now opens the Mac App Store page. What's New is iPhone-only; the Mac shows an
+/// alert (`MacUpdateCheck.swift`). The 7-day same-version "Later" cooldown mirrors Android's
+/// `UpdatePromptGate.COOLDOWN_MS`, and the What's New flow matches Android's, keyed by versionCode.
 @MainActor
 @Observable
 final class UpdateNotifyCoordinator {
@@ -129,23 +119,14 @@ final class UpdateNotifyCoordinator {
         )
     }
 
-    /// Call during app launch, after onboarding has completed, to decide
-    /// whether to surface the What's New sheet:
-    ///
-    /// 1. A marker at or past the running version means this version was
-    ///    already handled — nothing to do.
-    /// 2. Otherwise the marker advances to the running version right away,
-    ///    whether or not anything shows. That keeps it meaning "last version
-    ///    opened" (as Android's does), so a page skipped by its
-    ///    `isApplicable` check on this version can't resurface on a later
-    ///    upgrade, and makes repeat calls idempotent — `MainTabView.onAppear`
-    ///    re-fires on every language change, via `ContentView`'s
-    ///    `.id(rootLanguageId)` rebuild, and must not re-present the sheet.
-    /// 3. The flow stacks feature pages from every release since the marker,
-    ///    then the running version's summary. A missing marker — an upgrade
-    ///    from a build that predates it, since fresh installs are seeded —
-    ///    counts the running version only. Nothing to show (a bug-fix
-    ///    release) stays silent.
+    /// Call at launch, after onboarding, to decide whether to show What's New. A marker at or past
+    /// the running version means it was handled. Otherwise the marker moves to the running version
+    /// at once, shown or not, so it means "last version opened" as on Android: a page that
+    /// `isApplicable` skipped cannot resurface on a later upgrade, and repeat calls are idempotent;
+    /// `MainTabView.onAppear` re-fires on language changes (the `.id(rootLanguageId)` rebuild).
+    /// The flow stacks feature pages from every release since the marker, then this version's
+    /// summary. A missing marker (an upgrade from a build before it; fresh installs are seeded)
+    /// counts this version only. A bug-fix release with nothing to show stays silent.
     func evaluateWhatsNewOnLaunch(in appState: AppState) {
         let lastShown = Defaults[.lastShownWhatsNewVersion].flatMap(AppVersion.init)
         let current = AppVersion.current
@@ -177,44 +158,34 @@ final class UpdateNotifyCoordinator {
         pendingWhatsNew = nil
     }
 
-    /// Fresh-install seed: stamp the running bundle version so the
-    /// launch-time gate treats it as already seen and skips the auto
-    /// prompt. Called once from AppState's first-install branch —
-    /// without this seed, `lastShownWhatsNewVersion == nil` after a
-    /// brand-new install would fall through to "surface latest" and
-    /// present a "What's New in vN" sheet for a freshly downloaded
-    /// version.
+    /// Fresh-install seed: stamps the running bundle version so the launch-time gate treats it as
+    /// seen. Called once from AppState's first-install branch; without it, a brand-new install has
+    /// no `lastShownWhatsNewVersion` and would show a What's New sheet for the version just
+    /// downloaded.
     ///
-    /// `nonisolated` so it can be called from `AppState.init` (also
-    /// nonisolated) without a MainActor hop. Only writes through
-    /// `Defaults`, which is thread-safe.
+    /// `nonisolated` so `AppState.init`, also nonisolated, can call it without a MainActor hop.
+    /// It only writes through `Defaults`, which is thread-safe.
     nonisolated func seedWhatsNewOnFreshInstall() {
         Defaults[.lastShownWhatsNewVersion] = Self.bundleVersionString
     }
 
     // MARK: - Update check
 
-    /// Background check — respects the 24h throttle and only sets
-    /// `pendingUpdate` (never `lastManualCheckResult`). Safe to call on
-    /// every scene-active transition; the throttle eats the dupes.
+    /// Background check: respects the 24 h throttle and sets only `pendingUpdate`, never
+    /// `lastManualCheckResult`. Safe on every scene-active transition; the throttle eats repeats.
     ///
-    /// Refuses to fire while onboarding is still on screen, otherwise a
-    /// pending prompt set during onboarding would be stranded (the
-    /// sheet host only mounts on `MainTabView`) and then pop on top of
-    /// the user's first home screen the instant they complete the
-    /// onboarding hand-off. Calls during onboarding no-op silently; the
-    /// `MainTabView.onAppear` post-onboarding kicks off the first real
-    /// check. The Mac has no onboarding sheet to strand a prompt behind,
-    /// so it checks from the first launch, signed in or not.
+    /// A no-op while onboarding is on screen: the sheet host mounts only on `MainTabView`, so a
+    /// prompt set then would be stranded and pop over the first home screen when onboarding ends.
+    /// `MainTabView.onAppear` runs the first real check after onboarding. The Mac has no onboarding
+    /// sheet to strand a prompt behind, so it checks from the first launch, signed in or not.
     func checkInBackground() {
         #if os(iOS)
         guard Defaults[.hasCompletedOnboarding] else { return }
         #endif
         #if DEBUG
-        // Debug "Triggers" page can request a synthetic update prompt
-        // on next launch — consumed once and surfaced before any real
-        // throttle / iTunes Lookup so it works even when a recent real
-        // check has been throttled.
+        // The debug Triggers page can request a synthetic update prompt for the next launch. It is
+        // consumed once and surfaced before the throttle and the iTunes Lookup, so it works even
+        // right after a real check.
         if Self.consumeDebugSimulateUpdateFlag() {
             Task { await surfaceSyntheticUpdatePrompt() }
             return
@@ -222,11 +193,9 @@ final class UpdateNotifyCoordinator {
         #endif
         if let last = Defaults[.lastUpdateCheckAt] {
             let delta = Date().timeIntervalSince(last)
-            // `delta >= 0` filters a future-stamped timestamp (clock
-            // skew, restore-from-backup, manual Settings → Date & Time
-            // adjustment): a negative delta is `< throttle` trivially
-            // true, which would otherwise suppress checks until real
-            // time caught up to the bogus future stamp.
+            // `delta >= 0` ignores a future timestamp (clock skew, a backup restore, a manual date
+            // change): a negative delta is trivially `< throttle` and would suppress checks until
+            // real time caught up with the bogus stamp.
             if delta >= 0 && delta < AppConstants.updateCheckThrottle {
                 return
             }
@@ -283,16 +252,9 @@ final class UpdateNotifyCoordinator {
         } else {
             appStoreURL = URL(string: "https://apps.apple.com/")!
         }
-        // "99.0.0" is the sentinel version surfaced in the debug update
-        // prompt. Picked to be unambiguously larger than any shipping
-        // TigerDuck version for the foreseeable future, so:
-        //   1. The real iTunes Lookup pipeline (if it were running)
-        //      would also classify it as "newer than installed" — keeps
-        //      the simulated prompt structurally identical to a real
-        //      one rather than going through a special debug code path.
-        //   2. The version string reads as "obviously not a real
-        //      release" on screen, so the debug-triggered prompt is
-        //      visually distinguishable from a real available update.
+        // "99.0.0", the debug prompt's sentinel, is above any shipping version: the real lookup
+        // would also call it newer, so the prompt is built like a real one. It also reads as
+        // plainly not a release, so it cannot pass for a real update on screen.
         pendingUpdate = PendingUpdate(latestVersion: "99.0.0", appStoreURL: appStoreURL)
     }
     #endif
@@ -315,17 +277,14 @@ final class UpdateNotifyCoordinator {
             #else
             NSWorkspace.shared.open(pending.appStoreURL)
             #endif
-            // Clear the prompt immediately. The next foreground re-runs
-            // `checkInBackground()` and only re-arms if `latest >
-            // installed` still holds — once the App Store install
-            // completes, installed == latest and the prompt stays
-            // quiet without needing a separate "I updated" signal.
+            // Clear now: the next foreground re-runs `checkInBackground()`, which re-arms only if
+            // `latest > installed` still holds. Once the update installs they are equal, so no
+            // separate "I updated" signal is needed.
             pendingUpdate = nil
         case .later:
-            // Stamp the prompted version + timestamp so the same
-            // version is suppressed for ``AppConstants/updatePromptCooldown``.
-            // A NEWER version landing on the store re-arms the prompt
-            // immediately — only the same-version case is suppressed.
+            // Stamp the prompted version and time so that version is suppressed for
+            // ``AppConstants/updatePromptCooldown``. Only the same version is: a newer one on the
+            // store re-arms the prompt at once.
             Defaults[.lastPromptedUpdateVersion] = pending.latestVersion
             Defaults[.lastPromptedUpdateAt] = Date()
             pendingUpdate = nil
@@ -357,17 +316,13 @@ final class UpdateNotifyCoordinator {
         return nil
     }
 
-    /// Called by the sheet host when SwiftUI clears its binding (swipe
-    /// to dismiss, tap outside on iPad, etc). Mirrors the per-sheet
-    /// dismissal semantics each surface had when they lived in
-    /// independent `.sheet(item:)` modifiers:
-    ///   * What's New: advance `lastShownWhatsNewVersion` so the gate
-    ///     does not re-arm on the next launch (same as a Continue tap).
-    ///   * Update prompt: clear the pending flag without stamping the
-    ///     "Later" cooldown — the next throttle-elapsed background check
-    ///     is free to re-arm. Tapping a button on the prompt instead
-    ///     routes through ``handleUpdatePromptAction(_:)`` and DOES
-    ///     stamp.
+    /// Called by the sheet host when SwiftUI clears its binding (swipe to dismiss, tap outside on
+    /// iPad, etc.):
+    ///   * What's New: advance `lastShownWhatsNewVersion`, as a Continue tap does, so the gate
+    ///     does not re-arm on the next launch.
+    ///   * Update prompt: clear the pending flag without stamping the "Later" cooldown, so the
+    ///     next throttle-elapsed background check may re-arm. Tapping Later goes through
+    ///     ``handleUpdatePromptAction(_:)``, which does stamp it.
     func dismissActiveNotifySheet() {
         if pendingWhatsNew != nil {
             acknowledgeWhatsNew()
@@ -389,13 +344,9 @@ final class UpdateNotifyCoordinator {
         defer { if manual { isCheckingForUpdate = false } }
 
         let result = await sharedLookup()
-        // Stamp the throttle on ANY successful answer from Apple
-        // (including "no record yet" during the TestFlight phase) so
-        // the dormant lifecycle state does not generate one iTunes
-        // Lookup per scene-active. Real network failures (`.failed`)
-        // skip the stamp so a brief offline state at launch retries
-        // on the next foreground. Manual taps always stamp so the
-        // next background trigger respects the throttle.
+        // Any answer from Apple stamps the throttle, even "no record" during TestFlight, so not
+        // every scene-active runs an iTunes Lookup. A `.failed` lookup does not, so a brief offline
+        // launch retries next foreground. A manual check always stamps, so background ones wait.
         switch result {
         case .found, .noRecord:
             Defaults[.lastUpdateCheckAt] = Date()
@@ -408,11 +359,8 @@ final class UpdateNotifyCoordinator {
             if manual { lastManualCheckResult = .failed }
             return
         case .noRecord:
-            // Apple has no public record — TestFlight phase or
-            // unlisted region. Treat as "you're on the latest"
-            // for manual UX (the user is on whatever build they
-            // installed; nothing newer is publicly available) and
-            // quietly no-op for background checks.
+            // Apple has no public record (TestFlight, or an unlisted region), so nothing newer is
+            // public: a manual check reports up to date and a background check does nothing.
             if manual { lastManualCheckResult = .upToDate }
             return
         case .found:
@@ -421,10 +369,8 @@ final class UpdateNotifyCoordinator {
 
         guard case let .found(lookup) = result else { return }
 
-        // A store version that cannot be read says nothing about whether
-        // the installed build is current. Answering "up to date" here is
-        // how a "v2.2.0" on the store went unnoticed, so it is reported
-        // and a manual check fails instead.
+        // An unreadable store version says nothing about whether this build is current; calling it
+        // up to date would hide a real update, so it is reported and a manual check fails instead.
         guard let latest = AppVersion(lookup.version) else {
             reportUnparseableStoreVersion(lookup.version)
             if manual { lastManualCheckResult = .failed }
@@ -436,21 +382,15 @@ final class UpdateNotifyCoordinator {
             return
         }
 
-        // "Skip This Version" suppression. Manual checks deliberately
-        // ignore it — a user opening Settings → Check for Updates is
-        // explicitly re-asking, and we shouldn't pretend nothing is
-        // available because they previously waved off the same version.
+        // "Skip This Version" suppression, which manual checks ignore: a user who taps Check for
+        // Updates in Settings is asking again, and a version they skipped is still available.
         if !manual, Defaults[.skippedUpdateVersion] == lookup.version {
             return
         }
 
-        // 7-day same-version cooldown for "Later". Manual checks bypass
-        // (same reasoning as Skip). A NEWER version always re-arms —
-        // the cooldown only suppresses the exact `lookup.version`
-        // already presented via the sheet. The `delta >= 0` guard
-        // releases the cooldown for a future-stamped timestamp (clock
-        // skew); a negative delta is trivially `< cooldown` and would
-        // otherwise suppress the prompt indefinitely.
+        // The 7-day "Later" cooldown covers only the version the sheet showed; manual checks bypass
+        // it as with Skip, and a newer version re-arms. `delta >= 0` releases it for a future stamp
+        // (clock skew): a negative delta is trivially `< cooldown` and would last indefinitely.
         if !manual,
            Defaults[.lastPromptedUpdateVersion] == lookup.version,
            let lastPromptedAt = Defaults[.lastPromptedUpdateAt] {

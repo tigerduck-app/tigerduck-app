@@ -1,16 +1,13 @@
 #if os(iOS)
 import SwiftUI
 
-/// The demo for a page that offers to change the tab bar: the user's bar
-/// above the one they'd get, both on screen at once. Tabs leaving are
-/// tinted in Before, tabs arriving in After. `after` maps the bar the
-/// user sees to the offered one; when the two match — a replay on a bar
-/// that already is the offered one, or Back after confirming — just the
-/// one bar shows.
-///
-/// Before is read from the live setting each time the page becomes the
-/// current one, then held, so confirming doesn't redraw it as the page
-/// slides away. VoiceOver reads it as one element listing both bars, so
+/// Demo for a page that offers to change the tab bar: the user's bar above
+/// the one they'd get, both on screen. Leaving tabs are tinted in Before,
+/// arriving ones in After. `after` maps the bar the user sees to the offered
+/// one; when they match (a replay on the offered bar, or Back after
+/// confirming) only one bar shows. Before is read from the live setting each
+/// time the page becomes current, then held, so confirming doesn't redraw it
+/// as the page slides away. VoiceOver reads one element listing both bars, so
 /// the tab a change would remove is heard, not just seen.
 struct WhatsNewTabBarChangeDemo: View {
     let after: @MainActor ([AppFeature]) -> [AppFeature]

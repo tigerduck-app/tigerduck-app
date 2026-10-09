@@ -2,16 +2,13 @@ import Defaults
 import Foundation
 import Observation
 
-/// @Observable cache for the local "已讀" state of bulletins.
+/// @Observable cache for the local "read" state of bulletins.
 ///
-/// Backed by `Defaults[.bulletinReadIds]` so the set survives app
-/// re-launches without an extra SwiftData container. Local-only — the
-/// server never sees per-device read state, matching the user's MVP
-/// preference (no extra round-trip, no privacy footprint).
-///
-/// The hot read path (`isRead`) needs to be cheap because it fires for
-/// every visible card on every list refresh, so we keep an in-memory
-/// `Set<Int>` mirror and only touch UserDefaults on mutation.
+/// Backed by `Defaults[.bulletinReadIds]`, so the set survives relaunches without an extra
+/// SwiftData container. Local-only: the server never sees per-device read state, which saves a
+/// round-trip and leaves no privacy footprint. `isRead` runs for every visible card on every list
+/// refresh, so reads hit an in-memory `Set<Int>` mirror and UserDefaults is touched only on
+/// mutation.
 @MainActor
 @Observable
 final class BulletinReadStateStore {
@@ -61,7 +58,7 @@ final class BulletinReadStateStore {
     }
 
     /// Mark every supplied id as read in one atomic Defaults write. Used
-    /// by the list page's "全部標示為已讀" action so a stack of unreads
+    /// by the list page's "Mark all as read" action so a stack of unreads
     /// can be cleared without paging through. Ids already in the set are
     /// harmlessly included in the union.
     func markAllRead(_ ids: some Sequence<Int>) {

@@ -11,19 +11,13 @@ final class LibraryViewModel {
     var isLoggedIn = false
     var isLoggingIn = false
 
-    /// Invoked whenever this screen changes the *stored* library credential
-    /// state — a sign-in, or a token found expired.
+    /// Invoked whenever this screen changes the stored library credential state: a sign-in,
+    /// or a token found expired.
     ///
-    /// `AppState.isLibraryLoggedIn` reads the keychain behind an observable
-    /// revision counter, so a screen that changes the credential without
-    /// bumping that counter leaves every other screen rendering the previous
-    /// answer. Settings' own sign-in sheet already bumps it; this screen did
-    /// not, so signing in here and switching back to Settings still showed a
-    /// red dot and "not signed in" until something unrelated invalidated it.
-    ///
-    /// A stored closure rather than an `AppState` parameter because two of the
-    /// three call sites are timer-driven — the QR refresh discovering a dead
-    /// token has no view in the loop to hand one in.
+    /// `AppState.isLibraryLoggedIn` reads the keychain behind an observable revision counter, so a
+    /// change that does not bump it leaves every other screen, Settings included, showing the
+    /// previous answer. A closure rather than an `AppState` parameter, because the QR refresh that
+    /// finds a dead token runs off a timer and has no view to hand one in.
     var onLibraryStateChanged: (() -> Void)?
 
     // Manual login fields
@@ -83,10 +77,9 @@ final class LibraryViewModel {
             startQRRefreshCycle()
             return
         }
-        // If the token expired while the app was backgrounded (e.g. user
-        // returned after >24h), surface logged-out state up front so the
-        // user does not see a stale-token QR for up to 30 s before the
-        // next refresh tick collapses to logged-out.
+        // If the token expired while backgrounded (the user back after more than 24 h), show the
+        // logged-out state up front rather than a stale-token QR for up to 30 s until the next
+        // refresh tick collapses the page.
         if hasLoaded && isLoggedIn && !LibraryService.isTokenValid {
             isLoggedIn = false
             qrCodeImage = nil
@@ -120,10 +113,9 @@ final class LibraryViewModel {
         // NTUST endpoint with blank fields.
         let trimmedUsername = libUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedUsername.isEmpty, !libPassword.isEmpty, !isLoggingIn else { return }
-        // Flip the flag synchronously, before the Task is scheduled, so a
-        // second submit (e.g. Return + button tap landing on the same
-        // runloop turn) sees `isLoggingIn = true` and bails — otherwise
-        // both calls clear the guard before the first Task body runs.
+        // Set synchronously, before the Task is scheduled, so a second submit on the same runloop
+        // turn (Return plus a button tap) sees `isLoggingIn = true` and bails. Otherwise both calls
+        // pass the guard before the first Task body runs.
         isLoggingIn = true
         Task { @MainActor in
             errorMessage = nil
@@ -162,14 +154,9 @@ final class LibraryViewModel {
                 let image = await Task.detached(priority: .userInitiated) {
                     LibraryQRRenderer.image(from: payload)
                 }.value
-                // The user signed out — or signed in as someone else — while
-                // the request was in flight. This code belongs to whoever was
-                // signed in when it was asked for, so it must not reach the
-                // process-wide caches or the screen. Dropping it is enough:
-                // the next `onAppear` (or the refresh tick, whichever comes
-                // first) is what collapses the page to its logged-out state.
-                // `isLoadingQR` is left alone too: it belongs to whichever
-                // request is current, and a new session's may still be running.
+                // Sign-out or account switch mid-request: this code is the old session's. Keep it
+                // off the shared caches and the screen, and leave `isLoadingQR` to the current
+                // request. Returning is enough: the next onAppear or refresh tick shows logged-out.
                 guard LibraryService.loginGeneration == generation else { return }
                 LibraryQRCache.shared.store(payload)
                 if let image { LibraryQRImageCache.shared.store(image, for: payload) }
@@ -179,10 +166,9 @@ final class LibraryViewModel {
                 consecutiveErrors = 0
                 restartCountdown()
             } catch {
-                // Same rule as the success path: a failure from a session
-                // that has since ended must not show its error, back off the
-                // new session's refresh, clear the caches it now owns, or
-                // touch its loading state.
+                // As on the success path: a failure from an ended session must not show its error,
+                // back off the new session's refresh, clear the caches it now owns, or touch its
+                // loading state.
                 guard LibraryService.loginGeneration == generation else { return }
                 errorMessage = error.localizedDescription
                 isLoadingQR = false
@@ -228,33 +214,24 @@ final class LibraryViewModel {
             let remaining = cache.remaining()
             if qrPayload != payload || qrCodeImage == nil {
                 qrPayload = payload
-                // Already rendered this payload on an earlier visit to the
-                // page. Assign synchronously so the QR is on screen in the
-                // first frame instead of after a hop through a detached
-                // render.
+                // A payload rendered on an earlier visit is assigned synchronously, so the QR is on
+                // screen in the first frame instead of after a hop through a detached render.
                 if let memoized = LibraryQRImageCache.shared.image(for: payload) {
                     qrCodeImage = memoized
                     isLoadingQR = false
                 } else {
-                    // No memo: there is a render ahead of us, so say so.
-                    // Without this the card falls back to the inert
-                    // `qrcode` glyph, which reads as "no code" rather than
-                    // "loading" while the countdown is already running.
-                    // Only a card with nothing on it should show the
-                    // spinner; an already-displayed code stays put until the
-                    // new one lands. Same rule `fetchAndDisplayQR` uses.
+                    // No memo, so a render is ahead. An empty card shows the spinner: its inert
+                    // `qrcode` glyph would read as "no code" while the countdown runs. A card that
+                    // shows a code keeps it until the new one lands, as `fetchAndDisplayQR` does.
                     isLoadingQR = qrCodeImage == nil
                     let generation = LibraryService.loginGeneration
                     Task { @MainActor in
                         let image = await Task.detached(priority: .userInitiated) {
                             LibraryQRRenderer.image(from: payload)
                         }.value
-                        // The 30 s refresh can rotate the payload while this
-                        // render is in flight. Landing late must not put an
-                        // expired matrix on screen under the new code's
-                        // countdown — and must not store either, because a
-                        // single-slot cache would evict the current entry and
-                        // turn the next visit's memo hit into a miss.
+                        // The 30 s refresh can rotate the payload mid-render. A late render must
+                        // not show an expired matrix under the new code's countdown, nor be stored:
+                        // the single-slot cache would evict the current entry and miss next visit.
                         guard qrPayload == payload else { return }
                         // Same reasoning as `fetchAndDisplayQR`: a logout in
                         // this window already cleared both caches, and these

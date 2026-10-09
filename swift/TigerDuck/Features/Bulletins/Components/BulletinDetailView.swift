@@ -71,9 +71,9 @@ struct BulletinDetailView: View {
 
     // MARK: - Subviews
 
-    /// Meta row: understated "處室 · 日期" text so the department feels like
-    /// attribution rather than a tag. Category labels live at the article
-    /// foot as hashtags.
+    /// Meta row: understated "department · date" text, so the department reads
+    /// as attribution rather than a tag. Category labels sit at the article foot
+    /// as hashtags.
     @ViewBuilder
     private var metaRow: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {

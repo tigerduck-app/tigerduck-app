@@ -66,10 +66,9 @@ final class ScoreViewModel {
     func load(authService: AuthService) {
         guard let studentId = authService.storedStudentId else { return }
 
-        // Instant cache paint — avoids a blank flash while the background
-        // refresh resolves. Skipped once a report is in: `load` runs on
-        // every tab appearance and re-decoding the cache each time is
-        // wasted main-thread work.
+        // Paint the cache at once, avoiding a blank flash while the background refresh resolves.
+        // Skipped once a report is in: `load` runs on every tab appearance, and decoding the cache
+        // each time is wasted main-thread work.
         if report == .empty, let cached = NTUSTScoreService.cachedScoreReport(studentId: studentId) {
             apply(cached.report, cachedAt: cached.cachedAt)
         }
@@ -83,12 +82,9 @@ final class ScoreViewModel {
     /// live progress lives in the top-right ``SyncStatusDot`` instead.
     func triggerRefresh(authService: AuthService, force: Bool = true) {
         guard !isRefreshing else { return }
-        // `Task { ... }` without an explicit actor inherits the
-        // *enclosing* isolation; `refresh` mutates `manager.loadingState`
-        // and `@Observable` properties that SwiftUI reads on main, so
-        // pin the Task to MainActor explicitly (matches HomeViewModel /
-        // ClassTableViewModel). Without this, resumption after the
-        // network await may land on a background executor.
+        // Pinned to MainActor: `refresh` writes `manager.loadingState` and `@Observable` state that
+        // SwiftUI reads on main, and a `Task` without an actor inherits the enclosing isolation, so
+        // it could resume on a background executor after the network await.
         Task { @MainActor [weak self] in
             await self?.refresh(authService: authService, force: force)
         }
@@ -105,13 +101,9 @@ final class ScoreViewModel {
         isRefreshing = true
         errorMessage = nil
         let manager = NTUSTSessionManager.shared
-        // Captive-portal pre-flight: NTUSTScoreService rides the pinned
-        // SSO chain, so a login-required Wi-Fi would otherwise surface
-        // as a confusing TLS error. Reset state and bail clean.
-        // Mirror the manager.loadingState write the other migrated bail
-        // paths do (Home / ClassTable / Calendar / AppState) so the
-        // SyncStatusDot in ScoreView reflects the same offline
-        // state as every other tab.
+        // Captive-portal pre-flight: NTUSTScoreService rides the pinned SSO chain, so a portal
+        // would surface as a confusing TLS error. Setting `manager.loadingState` as the other tabs'
+        // bail paths do keeps ScoreView's SyncStatusDot in the same offline state as theirs.
         guard await NetworkMonitor.shared.isReachable() else {
             isRefreshing = false
             let message = String(localized: "error_network_unavailable")
@@ -121,10 +113,9 @@ final class ScoreViewModel {
         }
         manager.loadingState = .loading
 
-        // Capture the auth generation that owns this fetch. If the user
-        // logs out (or swaps accounts) before the network hop returns,
-        // the persist guard below will reject the cache write so the
-        // next user does not inherit the previous user's score report.
+        // The auth generation that owns this fetch: if the user logs out or swaps accounts before
+        // the network hop returns, the persist guard below rejects the cache write, so the next
+        // user does not inherit the previous user's score report.
         let auth = authService
         let capturedGeneration = auth.loginGeneration
         do {

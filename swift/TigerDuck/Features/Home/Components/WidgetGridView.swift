@@ -74,11 +74,9 @@ struct WidgetGridView: View {
                     )
                 )
         } else {
-            // `scrollSafeTapAction` wraps the card in a real `Button` so the tap
-            // wins iOS 18 arbitration against the enclosing ScrollView/LazyVGrid
-            // (registers on the first press, not the second). The edit-mode
-            // long-press rides alongside via `.simultaneousGesture` so it never
-            // blocks that tap. See View+ScrollSafeGesture for the rationale.
+            // `scrollSafeTapAction` uses a real `Button`, which wins the first press on
+            // iOS 18 against the enclosing ScrollView; the edit long-press rides along as
+            // a `.simultaneousGesture` and never blocks it. See View+ScrollSafeGesture.
             card
                 .scrollSafeTapAction { onTap?(widget.feature) }
                 .longPressToEdit(reduceMotion: reduceMotion) { isEditing = true }

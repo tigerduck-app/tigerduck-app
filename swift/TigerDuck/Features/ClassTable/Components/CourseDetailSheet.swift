@@ -6,15 +6,13 @@ import AppKit
 #endif
 
 /// Modal detail for a single course row. Visual structure:
-///   1. Color bar + course title (with optional Moodle jump button)
-///   2. Two emphasis cards side-by-side: 教室 (classroom) | 時間 (time)
-///   3. Flat InfoRow list: instructor / code / dimension / duration /
-///      credits / enrollment
-///   4. Outstanding assignments (unchanged)
+///   1. Color bar and course title, with an optional Moodle jump button
+///   2. Two emphasis cards side by side: classroom | time
+///   3. Flat InfoRow list: instructor, code, dimension, duration, credits, enrollment
+///   4. Outstanding assignments
 ///
-/// The emphasis cards exist because classroom & time are the two fields users
-/// glance at most often when tapping a course — they earn their own surface
-/// instead of being buried in the same flat list as the metadata rows.
+/// Classroom and time get their own cards because they are the fields users
+/// glance at most when tapping a course, so they stay out of the metadata list.
 struct CourseDetailSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
@@ -235,8 +233,8 @@ struct CourseDetailSheet: View {
         openURL(url)
     }
 
-    /// The course code is what students paste into 加退選, the portal search
-    /// and group chats, so the row that shows it also hands it over.
+    /// The course code is what students paste into course add/drop, the portal
+    /// search and group chats, so the row that shows it also hands it over.
     private func copyCourseCode() {
         #if canImport(UIKit)
         UIPasteboard.general.string = course.courseNo
@@ -284,11 +282,9 @@ private struct EmphasisCard: View {
             Text(value)
                 .font(.system(.title2, design: .rounded).weight(.semibold).monospacedDigit())
                 .foregroundStyle(Color.textPrimary)
-                // A classroom or a time range is one unit and reads wrong split
-                // across lines ("18:25 -" / "22:00"), so it shrinks to fit
-                // instead of wrapping. The floor is half size; the caller
-                // widens the card at accessibility sizes so that stays enough
-                // for a multi-room classroom rather than ellipsising it.
+                // A classroom or time range reads wrong split across lines, so it shrinks
+                // instead of wrapping, never below half size. The caller widens the card at
+                // accessibility sizes so a multi-room classroom still fits, not ellipsised.
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .allowsTightening(true)

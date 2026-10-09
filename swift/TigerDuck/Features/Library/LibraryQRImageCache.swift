@@ -1,21 +1,14 @@
 #if os(iOS)
 import UIKit
 
-/// Memoizes the *rendered* QR for the payload currently in flight.
+/// Memoizes the rendered QR for the payload currently in flight.
 ///
-/// `LibraryQRCache` deliberately stays a payload-and-countdown store: it is
-/// compiled into the Watch app too, which renders its own pixels at its own
-/// size, so putting a `UIImage` in there would drag UIKit across a boundary
-/// that is better left clean.
-///
-/// Without this, every trip back to the Library tab pays for a full
-/// CoreImage render of a code it already had — `LibraryView` holds its view
-/// model in `@State`, so leaving the tab destroys it and the next
-/// `startQRRefreshCycle()` sees `qrCodeImage == nil` and re-renders.
-///
-/// Single-entry by design: exactly one library code is live at a time, and
-/// keeping older renders around would only risk handing the user pixels the
-/// scanner will reject.
+/// `LibraryQRCache` stays a payload-and-countdown store: the Watch app compiles
+/// it too and renders its own pixels at its own size, so a `UIImage` there would
+/// drag UIKit across that boundary. `LibraryView` keeps its view model in
+/// `@State`, so leaving the tab destroys it, and without this cache the next
+/// `startQRRefreshCycle()` would re-render a code it already had. One entry: one
+/// code is live at a time, and older renders only risk pixels the scanner rejects.
 @MainActor
 final class LibraryQRImageCache {
     static let shared = LibraryQRImageCache()
@@ -26,11 +19,9 @@ final class LibraryQRImageCache {
     private var memoryWarningObserver: (any NSObjectProtocol)?
 
     init() {
-        // A scale-10 QR is roughly half a megabyte of backing bitmap, and
-        // `clear()` is otherwise only reachable from the logout paths — so a
-        // user who opens Library once would carry it for the rest of the
-        // session. Dropping it under pressure costs one re-render on the
-        // next visit, which is the thing this cache makes cheap anyway.
+        // A scale-10 QR is about half a megabyte of bitmap, and only the logout paths
+        // call `clear()` otherwise, so one Library visit would hold it all session.
+        // Dropping it under memory pressure costs one re-render on the next visit.
         memoryWarningObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,

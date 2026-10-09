@@ -46,12 +46,9 @@ struct HomeView: View {
     }
 
     private var content: some View {
-        // Touch AppClockState.version so SwiftUI tracks the override and
-        // re-renders the greeting when the debug clock flips while this
-        // tab is already on screen. Without this read, `AppClock.now()`
-        // is an untracked side-effect and the greeting can sit on the
-        // old fake/real time until something unrelated invalidates the
-        // view.
+        // Read the version so the greeting re-renders when the debug clock flips
+        // while this tab is on screen. `AppClock.now()` alone is untracked, so the
+        // greeting would keep the old time until something else invalidated the view.
         let _ = AppClockState.shared.version
         return ScrollView {
             VStack(spacing: TigerDuckTheme.Spacing.lg) {
@@ -93,21 +90,17 @@ struct HomeView: View {
                 )
             )
             .contentShape(Rectangle())
-            // Long-press anywhere in the scroll content (empty space, section
-            // headers, the course slider) enters edit mode. `longPressToEdit`
-            // attaches it via `.simultaneousGesture` so on iOS 18 it coexists
-            // with — rather than swallows — the first tap on every child
-            // (widgets, course cards). See View+ScrollSafeGesture.
+            // A long-press anywhere in the scroll content enters edit mode. As a
+            // `.simultaneousGesture` it does not swallow the first tap on widgets and
+            // course cards on iOS 18. See View+ScrollSafeGesture.
             .longPressToEdit(reduceMotion: reduceMotion) {
                 if !viewModel.isEditingHome { viewModel.isEditingHome = true }
             }
         }
         .refreshable {
-            // Fire-and-forget: the pull gesture should dismiss the
-            // UIRefreshControl spinner immediately once released.
-            // `triggerRefresh` coalesces rapid repeated pulls into a
-            // single in-flight fetch; status lives in the top-right
-            // SyncStatusDot.
+            // Fire-and-forget so the UIRefreshControl spinner dismisses on release.
+            // `triggerRefresh` coalesces repeated pulls into one in-flight fetch, and
+            // the top-right SyncStatusDot shows its status.
             viewModel.triggerRefresh(authService: appState.authService)
             if Defaults[.cloudSyncEnabled] {
                 Task { await appState.syncOverridesFromBackend() }

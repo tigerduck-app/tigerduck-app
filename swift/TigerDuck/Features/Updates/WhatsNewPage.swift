@@ -1,19 +1,13 @@
 import SwiftUI
 
-/// One feature page of the What's New flow — the pages that demo a new
-/// feature, and optionally ask the user about it, before the summary
-/// list from `whatsnew.json`. Pages are registered per release in
-/// ``WhatsNewCatalog``; a user who skipped versions sees every skipped
-/// release's pages, oldest first.
-///
-/// Build pages with the static factories (`.feature`, `.optIn`,
-/// `.permission`, `.choice`, `.toggle`, `.custom`) rather than the
-/// memberwise init. Copy is a ``WhatsNewText`` — Traditional Chinese and
-/// English side by side, the same two languages as the `whatsnew.json`
-/// summary — not an `app-translation` key.
-///
-/// Everything here is model only and builds on every platform; the
-/// views that render it are iPhone/iPad-only (`WhatsNewFlowView`).
+/// One feature page of the What's New flow: it demos a new feature, and
+/// may ask the user about it, before the `whatsnew.json` summary list.
+/// Pages are registered per release in ``WhatsNewCatalog``. Build them with
+/// the static factories (`.feature`, `.optIn`, `.permission`, `.choice`,
+/// `.toggle`, `.custom`), not the memberwise init. Copy is a ``WhatsNewText``
+/// in Traditional Chinese and English, not an `app-translation` key. The
+/// model builds on every platform; the views that render it
+/// (`WhatsNewFlowView`) are iPhone and iPad only.
 struct WhatsNewPage: Identifiable {
     /// Stable within its release. Also feeds the sheet identity, so two
     /// pages of one release must not share an id.

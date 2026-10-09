@@ -36,8 +36,8 @@ struct TimetableGridView: View {
     /// the timetable someone is being shown.
     var showsAssignmentBadges = true
     /// Overrides the environment's Differentiate Without Color, which marks
-    /// a 衝堂 cluster with a warning triangle; nil follows the environment.
-    /// For an export, whose renderer cannot set that value itself.
+    /// a schedule-conflict cluster with a warning triangle; nil follows the
+    /// environment. For an export, whose renderer cannot set that value itself.
     var differentiateWithoutColor: Bool? = nil
     @Environment(AppState.self) private var appState
 
@@ -45,12 +45,11 @@ struct TimetableGridView: View {
     private let colSpacing: CGFloat = 3
     private let headerHeight: CGFloat = 30
 
-    /// The period column stacks three lines — start / 節 / end — which fit a
-    /// 52pt row comfortably at the default text size. The row's height is
-    /// fixed, though, so past a certain Dynamic Type size the three lines
-    /// stop fitting. Grow the row and the column with the text instead:
-    /// unchanged up to roughly 1.3x, taller beyond — which is what someone
-    /// who asked for bigger text wants anyway.
+    /// The period column stacks three lines (start, period number, end), which
+    /// fit a 52pt row comfortably at the default text size. A fixed row height
+    /// stops fitting them past a certain Dynamic Type size, so the row and the
+    /// column grow with the text instead: unchanged up to roughly 1.3x, taller
+    /// beyond, which is what someone who asked for bigger text wants anyway.
     @ScaledMetric(relativeTo: .caption2) private var scaledCellHeight: CGFloat = 40
     @ScaledMetric(relativeTo: .caption2) private var scaledPeriodWidth: CGFloat = 28
     @ScaledMetric(relativeTo: .caption2) private var periodTimeSize: CGFloat = 9
@@ -62,20 +61,14 @@ struct TimetableGridView: View {
 
     @ScaledMetric(relativeTo: .caption2) private var courseNameBaseSize: CGFloat = 8
 
-    /// User multiplier from Settings → Font size. Multiplied into the
-    /// Dynamic-Type-scaled base so the cell respects both the system
-    /// Dynamic Type preference and the user's per-app override. Reads
-    /// from `AppState` (not the store directly) so SwiftUI tracks the
-    /// `@Observable` dependency and re-renders the grid the instant the
-    /// slider moves — without that hop the cells stayed at the old size
-    /// until the app was relaunched.
+    /// The Settings → Font size multiplier times the Dynamic-Type-scaled base, so
+    /// the cell follows both the system setting and the per-app override. Read
+    /// through `AppState`, not the store, so SwiftUI tracks the `@Observable`
+    /// dependency and redraws as the slider moves instead of after a relaunch.
     ///
-    /// We normalize the raw in-memory value here so the live timetable
-    /// stays consistent with the App-Group-persisted value the widgets
-    /// read. The Slider's `step:` snaps interactively, but any non-Slider
-    /// writer (debug menu, migration, tests) could land us at a
-    /// non-stepped raw value — normalizing at the read site keeps all
-    /// three surfaces (timetable / Settings readout / widget) in sync.
+    /// Normalized at the read site so the timetable, the Settings readout and the
+    /// App-Group value the widgets read agree: the Slider snaps to its `step:`, but
+    /// another writer (debug menu, migration, tests) can store an unstepped value.
     private var courseNameSize: CGFloat {
         courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(appState.courseCardFontScale))
     }
@@ -110,16 +103,9 @@ struct TimetableGridView: View {
             // Grid rows
             ForEach(Array(viewModel.activePeriods.enumerated()), id: \.element.id) { periodIndex, period in
                 HStack(spacing: colSpacing) {
-                    // Start above, the period number in the middle, end
-                    // below, so the row reads as the span it actually
-                    // occupies. Showing the number with a single timestamp
-                    // said nothing about which end of the period that time
-                    // was: a reader who did not already know had to infer it
-                    // from the next row, and the last row gives nothing to
-                    // infer from.
-                    //
-                    // Every line stays on one line and shrinks rather than
-                    // truncating — "08:…" would tell the reader nothing.
+                    // Start, period number, end: one timestamp would not say which end of
+                    // the period it marks, and the last row has no next row to infer from.
+                    // Each line shrinks rather than truncating, since "08:…" says nothing.
                     VStack(spacing: 0) {
                         Text(period.startTime)
                             .font(.system(size: periodTimeSize))
@@ -157,8 +143,8 @@ struct TimetableGridView: View {
         case .solo(let course, let spanCount):
             let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
             let totalHeight = CGFloat(spanCount) * cellHeight + CGFloat(spanCount - 1) * rowSpacing
-            // A 衝堂 cell never reaches this branch, so the hint is absent
-            // there by construction — a split cell has no free corner.
+            // A conflict cell never reaches this branch, so the hint is absent
+            // there by construction; a split cell has no free corner.
             let roomHint = appState.showClassroomInClassTable
                 ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
                 : nil
@@ -178,9 +164,8 @@ struct TimetableGridView: View {
                                 .minimumScaleFactor(0.7)
                                 .multilineTextAlignment(.center)
                                 .padding(2)
-                                // Hand the hint's line back to it. Without
-                                // this the centred name keeps the whole cell
-                                // and a two-line name in a one-period cell
+                                // Leave the hint its line, or the centred name keeps the
+                                // whole cell and a two-line name in a one-period cell
                                 // prints straight through the room.
                                 .padding(.bottom, roomHint == nil ? 0 : roomHintSize + 2)
                         }
@@ -303,30 +288,18 @@ private struct ConflictClusterView: View {
         if segments.count == 2 {
             lShapeLayout
         } else {
-            // 3+ chain (e.g. A on periods 1-2, B on 2-3, C on 3-4):
-            // the Γ / mirror-L geometry only resolves for two
-            // interlocking blocks, so fall back to the N-column layout
-            // the Mac and widget renderers use. Without this branch
-            // `cellRole` emits one cluster with N segments but only the
-            // first two drew, leaving C's tail covered by `.skip` with
-            // nothing on top.
-            //
-            // TODO: design a proper 衝堂 visual for transitive 3-course
-            // clusters. Today (e.g. PE115B022 @ 6-7, CS3005302 @ 6-8,
-            // FE1792702 @ 8-9) renders as three vertical bars side-by-
-            // side, which loses the interlocking-L look the 2-course
-            // case has.
+            // Γ / mirror-L geometry only resolves for two interlocking blocks, so a 3+
+            // chain takes the N-column layout the Mac and widget renderers use.
+            // TODO: design a 3-course conflict visual; side-by-side bars lose the L look.
             columnLayout
         }
     }
 
     private var lShapeLayout: some View {
         GeometryReader { proxy in
-            // Step matches the surrounding grid exactly (cell + rowSpacing),
-            // so each course's L sits where the corresponding solo block
-            // would have been. Dividing the cluster height by combinedSpan
-            // averages the spacing into every row and makes the seam drift
-            // farther as the cluster grows.
+            // Step by the grid's own cell + rowSpacing so each L sits where its solo
+            // block would. Dividing the cluster height by combinedSpan would spread
+            // the spacing into every row and drift the seam as the cluster grows.
             let step = cellHeight + rowSpacing
             let aTop = CGFloat(offsetA) * step
             let aHeight = CGFloat(spanA) * cellHeight + CGFloat(spanA - 1) * rowSpacing
@@ -373,14 +346,9 @@ private struct ConflictClusterView: View {
                 sharpBottomOuter: sharpBottom
             )
 
-            // `scrollSafeTapAction` wraps the cluster in a real `Button` so the
-            // first tap wins iOS 18 arbitration against the surrounding scroll
-            // view, matching the single-course cell above. One tap anywhere in
-            // the cluster opens the picker, which resolves which course to
-            // inspect — per-shape hit-testing would bypass the picker, but the
-            // Android version also routes through the sheet so the user sees
-            // both options. `Button` supplies the `.isButton` trait and hit
-            // shape. See View+ScrollSafeGesture.
+            // `scrollSafeTapAction` wraps the cluster in a real `Button` so the first tap
+            // wins iOS 18 scroll arbitration; see View+ScrollSafeGesture. Any tap opens
+            // the picker, not per-shape hit-testing, so the user sees both, as on Android.
             ZStack(alignment: .topLeading) {
                 courseRegion(
                     course: courseA,
@@ -519,12 +487,9 @@ private struct ConflictClusterView: View {
     @ViewBuilder
     private func conflictContextMenu() -> some View {
         ForEach(segments, id: \.course.courseNo) { segment in
-            // One section per course. The name alone does not always
-            // separate them -- two sections of the same course colliding is
-            // the ordinary reason to open this menu -- so the course's own
-            // colour, the fill the cell behind the menu is drawn in, rides
-            // on the "Pick color" row. See `colorDot` for why it lives
-            // there and not beside the name.
+            // One menu section per course. Names may not tell them apart, since two
+            // sections of one course clashing is the usual reason to open this menu, so
+            // the "Pick color" row carries its cell's fill colour; `colorDot` says why there.
             Section(segment.course.displayName) {
                 Button {
                     viewModel.startRename(segment.course)
@@ -551,14 +516,12 @@ private struct ConflictClusterView: View {
 
     /// A filled dot in the course's own colour, for use as a menu icon.
     ///
-    /// Drawn into a bitmap and marked `.alwaysOriginal` because UIKit
-    /// retints template images -- SF Symbols included -- to the menu's own
-    /// tint. An `Image(systemName: "circle.fill").foregroundStyle(...)`
-    /// therefore arrives grey, which is what the first attempt at this did.
+    /// Drawn into a bitmap and marked `.alwaysOriginal` because UIKit retints
+    /// template images, SF Symbols included, to the menu's own tint, so
+    /// `Image(systemName: "circle.fill").foregroundStyle(...)` arrives grey.
     ///
-    /// It rides on the "Pick color" row rather than beside the name in the
-    /// section header, because UIKit renders an inline menu's header from
-    /// its title alone and drops any image the header carries.
+    /// It rides on the "Pick color" row because UIKit renders an inline menu's
+    /// section header from its title alone and drops any image it carries.
     private static func colorDot(_ color: Color) -> Image {
         #if canImport(UIKit)
         let side: CGFloat = 16
@@ -582,10 +545,9 @@ private struct ConflictClusterView: View {
         return GeometryReader { boxProxy in
             ZStack(alignment: labelAlignment) {
                 course.color.opacity(0.4)
-                // Course name sits in the "bar" rectangle of the L —
-                // 72% width, `barFraction` height (matches Android's 28%
-                // tail width). Aligning top-right (Γ) / bottom-left (L)
-                // keeps the text inside the visible color region.
+                // The name sits in the L's bar: 72% wide, leaving Android's 28% tail, and
+                // `barFraction` tall. Aligning top-right (Γ) or bottom-left (L) keeps the
+                // text inside the visible color region.
                 Text(course.displayName)
                     .font(.system(size: courseNameSize, weight: .medium))
                     .foregroundStyle(Color.textPrimary)
