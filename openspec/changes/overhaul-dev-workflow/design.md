@@ -110,7 +110,7 @@ the cleanup but fails every pull request the day a limit tightens.
   (`check --base HEAD^1` on the merge commit, checked out with `fetch-depth: 2`, plus the unit
   tests) and for pushes to them (`check --all`).
 - Claude Code: a `PostToolUse` hook with matcher `Edit|Write` in `.claude/settings.json` reads
-  `.tool_input.file_path` from the hook's stdin with `jq`, runs
+  `.tool_input.file_path` from the hook's stdin with `python3` (no `jq` needed), runs
   `check --base HEAD "$file"` for `.swift` files, and on findings exits 2 with the report on
   stderr, which Claude Code shows to the agent.
 - Greptile: one rule in `.greptile/rules.md` that summarizes the policy, so pull requests from
