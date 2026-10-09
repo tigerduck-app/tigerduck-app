@@ -29,8 +29,15 @@ working in those directories.
   re-auth is expected. Use `ntustProtectedAccessState(isEmpty:)`.
 - Do not write the previous user's data back after logout. Bridge and service code check the
   login generation and cancellation before writing.
+- Do not contact the TigerDuck backend from launch code before onboarding completes; a fresh
+  install runs `AppState.init` before the user has seen a screen. Check `hasCompletedOnboarding`
+  as `AppState.init` does before `pushCoordinator.enable()` and as `backgroundSync()` does;
+  `completeOnboarding()` starts both.
 - Do not trigger a Live Activity refresh for presentation-only changes such as `visualPreset`.
 - Do not add one-off spacing or color systems next to the shared theme.
+- Do not put a plain `.onTapGesture` on content in a ScrollView or lazy grid, or a plain tap or
+  long-press over all of it; since iOS 18 the former fires only on a second tap and the latter
+  eats each child's first tap. Use the helpers in `Extensions/View+ScrollSafeGesture.swift`.
 - Do not add a file without assigning it a platform for the macOS build (see the root
   AGENTS.md).
 

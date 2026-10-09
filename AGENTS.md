@@ -60,6 +60,9 @@ two at once compete for the same build folder.
   The scripts in `tools/` have `unittest` tests next to them; `api-poc/` has none.
 - Localization covers 67 locales and is generated in the `app-translation` submodule. What's New
   feature-page copy is the exception: zh-Hant and English, written in the app.
+- The app and Watch app targets, unlike the others, default to `@MainActor`
+  (`SWIFT_DEFAULT_ACTOR_ISOLATION`). Mark a type used off the main actor there `nonisolated`, or
+  its synthesized conformances are main-actor isolated, a Swift 5 warning and a Swift 6 error.
 
 ## Anti-patterns
 
