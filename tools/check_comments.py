@@ -28,7 +28,7 @@ DOC_LIMIT = 8
 
 HAN = re.compile('[㐀-鿿豈-﫿]')
 TRACE = re.compile(
-    r'(?i)fix round \d|dispatch(,? [0-9-]+)? addition|\((critical|important|minor) \d+\)'
+    r'(?i)fix round \d|dispatch(,? [0-9-]+)? addition|\b(critical|important|minor) \d+[):]'
     r'|(?<!RFC \d{4} )(?<!RFC \d{3} )§ ?\d')
 # An `openspec/` path is the openspec rule's finding, not a second tool finding.
 TOOL = re.compile(

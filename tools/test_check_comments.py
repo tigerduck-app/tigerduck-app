@@ -77,7 +77,8 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(rules(f'let a = "{HAN_TEXT}" // English\n'), [])
 
     def test_trace_patterns(self) -> None:
-        for text in ('fix round 1', '(important 4)', 'dispatch addition 3',
+        for text in ('fix round 1', '(important 4)', 'Important 4: label', 'branch of critical 1:',
+                     'dispatch addition 3',
                      'dispatch, 2026-09-16 addition 1', f'spec {SECTION}6', f'design doc {SECTION}9.3'):
             with self.subTest(text=text):
                 self.assertEqual(rules(f'// {text}\n'), [(1, 'trace')])
