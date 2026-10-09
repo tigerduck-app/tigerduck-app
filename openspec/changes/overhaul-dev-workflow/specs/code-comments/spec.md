@@ -117,18 +117,18 @@ pinned by a test before the comment is shortened.
 
 #### Scenario: Behavior described in prose
 - **WHEN** a long comment describes a merge rule, such as treating an empty first mail page as "unknown" rather than "empty folder"
-- **THEN** a test pins the rule in an earlier pull request, and the comment shrinks to the reason
+- **THEN** a test pins the rule in an earlier commit, and the comment shrinks to the reason
 
 ### Requirement: Comment cleanups leave the code unchanged
-A pull request that only cleans up comments SHALL leave each changed Swift file's token sequence,
-with comments removed, identical to its base.
+A commit range that only cleans up comments SHALL leave each changed Swift file's token
+sequence, with comments removed, identical to the commit before the range.
 
-#### Scenario: Comment-only branch
-- **WHEN** `tools/check_comments.py same-tokens <base>` runs on a branch that changes only comments
+#### Scenario: Comment-only range
+- **WHEN** `tools/check_comments.py same-tokens <base>` runs on a range that changes only comments
 - **THEN** it exits zero
 
 #### Scenario: A code token changed
-- **WHEN** the branch also changes a code token or a string literal
+- **WHEN** the range also changes a code token or a string literal
 - **THEN** it names the file and exits non-zero
 
 ### Requirement: CI blocks findings

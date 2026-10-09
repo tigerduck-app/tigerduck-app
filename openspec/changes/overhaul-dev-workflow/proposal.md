@@ -25,7 +25,7 @@ included.
   markers.
 - Add `tools/check_comments.py`, a standard-library Python checker with a Swift lexer, and run it
   in CI, in a Claude Code hook and through a Greptile rule.
-- Clean up every existing comment that breaks the policy in comment-only pull requests, proven by
+- Clean up every existing comment that breaks the policy in comment-only commits, proven by
   an unchanged Swift token sequence. Cross-file rationale moves to ADRs in `docs/decisions/`,
   procedures to agent skills, agent rules to AGENTS.md, and described behavior gets a test first.
 - Rewrite all six AGENTS.md files so they hold only what an agent cannot discover from the code,
@@ -68,4 +68,4 @@ None. `openspec/specs/` is empty before this change.
 - Both maintainers install the OpenSpec CLI (`npm install -g @fission-ai/openspec`) for the
   OpenSpec skills to work.
 - SamWang8891 wrote 233 of the 235 process-trace lines and most long blocks; the comment policy
-  needs his agreement before the cleanup pull requests open.
+  needs his agreement on the pull request before it merges.

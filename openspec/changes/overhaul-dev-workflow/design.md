@@ -121,7 +121,7 @@ the cleanup but fails every pull request the day a limit tightens.
 Alternative: a git pre-commit hook. Every maintainer would have to install it, and an agent can
 bypass it.
 
-### Cleanup in comment-only pull requests, by area
+### Cleanup in comment-only commits, by area
 
 Every block that breaks the policy gets one of these outcomes:
 
@@ -132,19 +132,19 @@ Every block that breaks the policy gets one of these outcomes:
 | Invariant or non-obvious constraint | Kept, condensed within the limit |
 | Rationale for a decision that spans files | ADR in `docs/decisions/NNNN-slug.md`, with a one-line pointer in the code; rationale for one file stays, condensed |
 | Procedure (pin generation and rotation, release steps) | Skill in `.agents/skills/<name>/`, linked from `.claude/skills/<name>/SKILL.md` |
-| Behavior described in prose | Test first, in an earlier pull request; then the comment shrinks |
+| Behavior described in prose | Test first, in an earlier commit; then the comment shrinks |
 | Rule addressed to agents | Nearest AGENTS.md |
 | Restates the code | Deleted |
 | Chinese | Translated to English and condensed by the same rules |
 
-Areas, one pull request each, about 60 to 90 files: School Mail (`Features/SchoolMail`,
+Areas, one commit range each, about 60 to 90 files: School Mail (`Features/SchoolMail`,
 `Services/Mail` and their tests); settings sync and Live Activity (`App/`, `Services/Sync`,
 `Services/CloudSync`, `Services/Push`, `LiveActivity/`, `Features/Settings`, `Platform/Mac` and
 their tests); the rest of the app (`swift/Shared`, the other `Features` and `Services`, `Theme`,
-`Bridge`, widgets, the Live Activity extension, the Watch app); the remaining tests. A pull
-request may add Markdown (ADRs, skills, AGENTS.md lines) next to its comment edits; it changes no
-Swift token. Before each push a review subagent compares old and new comments for lost facts and
-wrong statements.
+`Bridge`, widgets, the Live Activity extension, the Watch app); the remaining tests. A range may
+add Markdown (ADRs, skills, AGENTS.md lines) next to its comment edits; it changes no Swift
+token. After each range a review subagent compares old and new comments for lost facts and wrong
+statements.
 
 Known ADR candidates: TLS pinning (threat model on campus Wi-Fi with a hostile MDM root, why a
 delegate rather than `NSPinnedDomains`, fail-soft expiry), merging the notification settings
@@ -152,9 +152,9 @@ document at the JSON level so other features' keys survive, and the locked-down 
 mail. Known test candidates: `MailListViewModel.mergeFreshPage` treating an empty first page as
 unknown rather than empty.
 
-Alternatives: one pull request for all files (too large to review, and every in-flight branch
-conflicts at once); cleaning only process traces and Chinese (leaves 1,032 long blocks that the
-changed-block rule would surface piecemeal for years).
+Alternatives: one pull request per area, the first plan, until the maintainer chose to keep the
+work local and ship it once; cleaning only process traces and Chinese (leaves 1,032 long blocks
+that the changed-block rule would surface piecemeal for years).
 
 ### Skills shared by Claude Code and Codex
 
@@ -205,36 +205,39 @@ poll with the existing `WaitUntil` helper. Booting the simulator in the backgrou
 build and removing `@MainActor` from pure-logic suites are both experiments, kept only if the
 measurements show a gain.
 
-### Order of pull requests
+### Order of work
 
-Each topic is its own pull request against `dev`, opened only after the maintainer approves the
-push.
+All work stays on one local branch until every group is done, then ships as one pull request
+against `dev` once the maintainer approves the push. Commits are grouped by topic in this order,
+so the pull request can be reviewed one commit range at a time and any range reverted on its own:
 
-1. This change and the OpenSpec setup (documentation only), so both maintainers can agree on the
-   policy before any cleanup.
+1. This change and the OpenSpec setup, so the policy is the first thing a reviewer reads.
 2. Agent settings: plugin set, `skills-lock.json`, `.gitignore` entries.
 3. AGENTS.md rewrite, README contributing sections, migration plan status note.
-4. Comment tooling: checker and its tests, not wired into CI.
+4. Comment tooling: checker and its tests.
 5. Characterization tests for behavior described in long comments.
-6. to 9. Comment cleanup, one pull request per area.
+6. to 9. Comment cleanup, one comment-only range per area.
 10. Enforcement: CI workflow, Claude Code hook, Greptile rule.
 11. CI path gating (and the comments in `tests.yaml` it touches, condensed).
 12. Tests without wall-clock waits.
-13. Simulator boot during the build (measured).
-14. Suites off the main actor (measured).
+13. Simulator boot during the build (measured on the pull request's runs).
+14. Suites off the main actor (measured locally).
 
-Steps 11 to 14 do not depend on 4 to 10 and can run in parallel with them. Every pull request can
-be reverted on its own.
+Steps 11 to 14 do not depend on 4 to 10. Measurements that only CI can give (path gating, boot
+overlap) come from the pull request's own runs; the rest are taken locally before the push.
 
 ## Risks / Trade-offs
 
-- [A repository-wide cleanup collides with in-flight branches] → Agree on the policy first, split
-  by area, keep each pull request short-lived, and rebase in-flight branches right after each
-  merge; comment-only edits conflict as text and are easy to resolve.
+- [One large pull request is hard to review and collides with in-flight branches] → Commits are
+  grouped by topic and area, the description maps each range to its task group, `same-tokens`
+  proves the comment-only ranges, and in-flight branches rebase right after the merge;
+  comment-only edits conflict as text and are easy to resolve.
+- [SamWang8891 reviews the policy only once the cleanup applies it] → The policy is the first
+  commit range; a change to it means reworking the cleanup ranges before the merge.
 - [The lexer misreads an unusual construct] → Unit tests for each construct; the full-repository
   run must reproduce the measured counts; `same-tokens` failures are inspected by hand.
 - [Condensing loses knowledge] → The outcomes table, ADRs and tests keep it; a review subagent
-  compares old and new comments in every cleanup pull request.
+  compares old and new comments after every cleanup range.
 - [Plain-wording rules depend on review] → Accepted; Greptile carries the rule.
 - [Editing one line of a long block forces a rewrite] → Intended; after the cleanup no long blocks
   remain.
@@ -248,8 +251,6 @@ be reverted on its own.
 
 ## Open Questions
 
-- Which personal plugins the maintainer keeps in `.claude/settings.local.json`. Assumed:
-  `code-review`, `commit-commands`, `hookify`, `ralph-loop`, `dev-browser` and `plugin-dev`.
 - Whether the OpenCode files (`oh-my-openagent.json`, the ignored `.sisyphus/`) are still used
   now that the team tools are Claude Code and Codex.
 - Which check names branch protection requires; the in-job gating works for any of them.

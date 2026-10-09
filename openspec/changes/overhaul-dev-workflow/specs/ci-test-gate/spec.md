@@ -66,11 +66,15 @@ A test suite SHALL be `@MainActor` only when it uses an API isolated to the main
 - **THEN** it carries no `@MainActor` annotation
 
 ### Requirement: Speed changes ship with measurements
-A CI or test change made for speed SHALL be merged only with step timings from at least three
-warm-cache pull-request runs after the change, compared with the baseline of three runs before
-it, in its pull request description. A change that does not shorten the phone leg SHALL be
-reverted.
+A CI or test change made for speed SHALL ship with timings from at least three warm runs with the
+change and three without it: pull-request runs for a workflow change, local runs for a test
+change. The numbers SHALL be in the pull request description, and a change that does not shorten
+the step it targets SHALL be reverted before the merge.
 
-#### Scenario: Speed pull request
-- **WHEN** a pull request changes the boot order to save time
-- **THEN** its description lists the phone leg times of three runs before and three after, and it merges only if the after times are lower
+#### Scenario: Workflow speed change
+- **WHEN** the pull request changes the boot order to save time
+- **THEN** its description lists the boot and test step times of three runs before and three after, and the change stays only if the after times are lower
+
+#### Scenario: Test speed change
+- **WHEN** the pull request removes `@MainActor` from test suites to save time
+- **THEN** its description lists three local "ran for" times with the change and three without it, and the change stays only if the times with it are lower
