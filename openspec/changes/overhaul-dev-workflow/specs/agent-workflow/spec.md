@@ -86,7 +86,7 @@ be committed. A pull request that changes the OpenSpec CLI version SHALL include
 
 ### Requirement: Repository skills reach both agents
 A skill written for this repository SHALL have its files in `.agents/skills/<name>/`, which Codex
-loads, and a `.claude/skills/<name>/SKILL.md` that resolves to the same content for Claude Code.
+loads, and `.claude/skills/<name>` SHALL be a relative symlink to that folder for Claude Code.
 
 #### Scenario: Adding a procedure skill
 - **WHEN** a procedure moves out of a comment into a skill

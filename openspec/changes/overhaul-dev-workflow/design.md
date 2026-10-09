@@ -159,10 +159,12 @@ that the changed-block rule would surface piecemeal for years).
 ### Skills shared by Claude Code and Codex
 
 Codex loads skills from `.agents/skills/`, Claude Code from `.claude/skills/`. A repository
-skill keeps its real files in `.agents/skills/<name>/`, and `.claude/skills/<name>/SKILL.md` is a
-relative symlink to the same file. Linking the file rather than the directory avoids depending on
-whether a tool follows directory links. OpenSpec writes its own copies into both places, which
-`openspec update` maintains. `release-bump` moves the same way so Codex can bump versions too.
+skill keeps its real files in `.agents/skills/<name>/`, and `.claude/skills/<name>` is a relative
+symlink to that folder, the form the Claude Code skills documentation describes ("a
+`<skill-name>` entry ... can be a symlink to a directory elsewhere on disk"). Linking the folder
+also carries any scripts or references the skill adds later. OpenSpec writes its own copies into
+both places, which `openspec update` maintains. `release-bump` moves the same way so Codex can
+bump versions too.
 
 ### Plugins and personal settings
 

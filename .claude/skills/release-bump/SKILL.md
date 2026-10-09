@@ -1,1 +1,0 @@
-../../../.agents/skills/release-bump/SKILL.md
