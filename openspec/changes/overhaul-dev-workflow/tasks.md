@@ -17,7 +17,7 @@ push (group 12). Local test destination: `platform=iOS Simulator,name=iPhone 17 
 - [x] 2.1 Set `enabledPlugins` in `.claude/settings.json` to `swift-lsp`, `feature-dev` and `pr-review-toolkit` from `claude-plugins-official`; verify `jq '.enabledPlugins | keys' .claude/settings.json` prints exactly those three
 - [x] 2.2 Put the maintainer's personal plugins (`code-review`, `commit-commands`, `hookify`, `ralph-loop`, `dev-browser`, `plugin-dev`) in `.claude/settings.local.json` (never committed) and drop its superpowers permission entries; verify a new Claude Code session lists the personal plugins and no superpowers or claude-mem
 - [x] 2.3 Delete `skills-lock.json`; verify `git ls-files skills-lock.json` prints nothing
-- [ ] 2.4 Delete the untracked local `docs/superpowers/` and `.superpowers/`, then remove both entries from `.gitignore`; verify `git check-ignore docs/superpowers .superpowers` prints nothing and `git status` shows no new files
+- [x] 2.4 Delete the untracked local `docs/superpowers/` and `.superpowers/`, then remove both entries from `.gitignore`; verify `git check-ignore docs/superpowers .superpowers` prints nothing and `git status` shows no new files
 - [ ] 2.5 Move `release-bump` to `.agents/skills/release-bump/` and make `.claude/skills/release-bump/SKILL.md` a relative symlink to it; verify Claude Code and Codex both list `release-bump` in a fresh session
 
 ## 3. AGENTS.md and contributor docs
