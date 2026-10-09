@@ -21,13 +21,9 @@ struct AppVersion: Comparable, Equatable {
         var parsed: [Int] = []
         parsed.reserveCapacity(parts.count)
         for part in parts {
-            // `Int(_:)` accepts a leading `+` or `-`, so `Int("+1")`
-            // returns 1 and the `n >= 0` check below would pass it
-            // through. Require pure digits before parsing so a typo'd
-            // key in `whatsnew.json` or a future iTunes Lookup
-            // response carrying a sign prefix is rejected cleanly
-            // (returns `nil`) rather than silently collapsing to the
-            // unsigned variant.
+            // `Int(_:)` accepts a sign, so `Int("+1")` is 1 and passes `n >= 0`. Require plain
+            // digits so a sign in a `whatsnew.json` key or an iTunes Lookup response gives
+            // `nil` instead of collapsing to the unsigned version.
             guard !part.isEmpty, part.allSatisfy(\.isASCII), part.allSatisfy(\.isNumber) else {
                 return nil
             }

@@ -2,44 +2,17 @@ import Foundation
 import os
 import SwiftUI
 
-/// Multiplier applied to the course-name font size in the class table
-/// (`TimetableGridView`) and the course-name labels inside the iOS /
-/// iPadOS home-screen widgets (Next Class, Today, Week). 1.0 = the
-/// baseline size every cell would render at without the user override.
-///
-/// Scope — Mac is intentionally excluded: `MacClassTableView` keeps its
-/// fixed `.callout.weight(.semibold)` baseline and `MacSettingsScene`
-/// exposes no slider, so this scale is a no-op for the Mac app and any
-/// Mac-native widgets. The Mac surfaces are sized for a desktop window
-/// and a per-app text-size override is redundant there — users who
-/// want larger text use the system-wide "Larger Text" accessibility
-/// setting instead. See `.greptile/rules.md` ("Course-name font scale
-/// is iOS/iPadOS only").
-///
-/// Scope — Watch is also excluded: the watchOS widgets use a separate
-/// App Group (`group.org.ntust.app.TigerDuck.watch`) and are NOT wired
-/// up to this scale. Watch font sizing is governed by Apple's
-/// complication ramps and a sync channel would need to be added before
-/// the user-facing toggle could honor Watch surfaces.
-///
-/// Persisted via ``CourseCardFontScaleStore`` in the App Group
-/// `UserDefaults` suite so the widget extension can read the same value
-/// the main app writes. Changing the value in the main app triggers a
-/// debounced widget timeline reload (see `AppState.courseCardFontScale`
-/// and `WidgetReloadCoordinator`) so widgets pick it up on their next
-/// render.
-///
-/// The user-facing scale is intentionally narrow (0.6…1.2×). It rides on
-/// top of ``baselineMultiplier``, so the rendered range is 0.84…1.68× of
-/// the original cell font: below that the names become unreadable inside
-/// the timetable cells, above it they overflow the cell before
-/// `minimumScaleFactor` rescues them — at which point the user is
-/// fighting the layout, not customizing it.
-// `nonisolated` because every member is a pure constant or pure function
-// (no actor state). Without it, the project's `SWIFT_DEFAULT_ACTOR_ISOLATION
-// = MainActor` makes the enum MainActor-isolated, which then can't be read
-// from the `nonisolated` `CourseCardFontScaleStore` below (or the widget
-// extension, which compiles without the MainActor default).
+/// Multiplier on the course-name font in the class table (`TimetableGridView`)
+/// and the iOS and iPadOS home-screen widgets (Next Class, Today, Week); 1.0 is
+/// the size with no user override. ``CourseCardFontScaleStore`` keeps it in the
+/// App Group so the widgets read what the app writes; a change reloads them,
+/// debounced. With ``baselineMultiplier``, 0.6…1.2× renders at 0.84…1.68× of the
+/// cell font: smaller is unreadable, larger overflows the cell before
+/// `minimumScaleFactor` rescues it. Mac and Watch surfaces do not apply it.
+/// See docs/decisions/0004-course-font-scale-ios-only.md.
+// `nonisolated`: every member is a pure constant or function. Otherwise the
+// project's `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` isolates the enum, and the
+// `nonisolated` store below and the widget extension, built without it, can't read it.
 nonisolated enum CourseCardFontScale {
     /// Inclusive bounds the slider operates over. Out-of-range stored
     /// values are clamped on read so a manually-edited UserDefaults value
@@ -75,19 +48,14 @@ nonisolated enum CourseCardFontScale {
     }
 }
 
-/// App-group-backed reader/writer for the course-card font scale. Used
-/// by both the main app (read + write) and the widget extension
-/// (read-only at view body render time).
+/// App Group reader and writer for the course-card font scale: the main app
+/// reads and writes it, the widget extension reads it at render time.
 ///
-/// In DEBUG we crash hard when the App Group is unreachable (a
-/// container-URL check, not a nil-suite check — see
-/// ``isAppGroupAvailable(_:)``) so an empty
-/// `com.apple.security.application-groups` regression cannot ship
-/// silently — same protocol as `WidgetSnapshotStore`. In release we
-/// still fall back to `.standard` with a loud error so a user with a
-/// provisioning hiccup still launches, but the divergence is no longer
-/// invisible (main app vs. widget extension would otherwise persist to
-/// different process-local stores).
+/// An unreachable App Group (a container-URL check, see ``isAppGroupAvailable(_:)``)
+/// asserts in DEBUG, as `WidgetSnapshotStore` does, so an empty
+/// `com.apple.security.application-groups` entitlement cannot ship unnoticed.
+/// Release falls back to `.standard` and logs an error so the app still launches,
+/// though the app and the widget extension then persist to separate stores.
 nonisolated final class CourseCardFontScaleStore {
     /// The shipping App Group. Named so the reachability requirement below
     /// can tell it apart from an injected test suite.
@@ -100,14 +68,13 @@ nonisolated final class CourseCardFontScaleStore {
     private let defaults: UserDefaults
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "FontScale")
 
-    /// Whether this process can actually reach the shared App Group.
+    /// Whether this process can reach the shared App Group.
     ///
-    /// `UserDefaults(suiteName:)` does NOT answer this — it returns nil only
-    /// for reserved names, and hands back a valid *process-local* store for a
-    /// group the process has no entitlement for. See
-    /// `WidgetSnapshotStore.isAppGroupAvailable(_:)` for the full rationale;
-    /// the check is duplicated rather than shared because the two files sit
-    /// in different synchronized folders and a common home would mean a new
+    /// `UserDefaults(suiteName:)` cannot tell: it returns nil only for reserved
+    /// names and hands back a process-local store for a group the process has no
+    /// entitlement for. See `WidgetSnapshotStore.isAppGroupAvailable(_:)` for the
+    /// full rationale. The check is duplicated because the two files sit in
+    /// different synchronized folders, and sharing it would need a new
     /// target-membership exception in the project file.
     static func isAppGroupAvailable(_ identifier: String) -> Bool {
         FileManager.default.containerURL(
@@ -136,11 +103,9 @@ nonisolated final class CourseCardFontScaleStore {
     /// returns a normalized value so callers can use it directly without
     /// re-normalizing at every render site.
     func read() -> Double {
-        // `double(forKey:)` returns `0.0` when the key is missing, which
-        // is a valid storage value but indistinguishable from "unset".
-        // Use `object(forKey:)` first to detect the unset case explicitly
-        // so a never-set user gets the actual default (1.0) instead of a
-        // clamped minimum.
+        // `double(forKey:)` returns 0.0 for a missing key, which would clamp to the
+        // minimum. `object(forKey:)` detects the unset case first, so a user who never
+        // set a scale gets the default (1.0).
         guard defaults.object(forKey: Self.storageKey) != nil else {
             return migrateLegacyValue() ?? CourseCardFontScale.default
         }

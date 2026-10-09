@@ -2,17 +2,8 @@ import SwiftUI
 
 /// Button label that swaps to a spinner without resizing.
 ///
-/// The original content stays in the layout (rendered transparent) so the
-/// button keeps the same intrinsic width and height during the loading
-/// state. Use as the `label:` of any `Button`:
-///
-/// ```
-/// Button { ... } label: {
-///     LoadingButtonLabel(isLoading: viewModel.isWorking, tint: .white) {
-///         Text("Save")
-///     }
-/// }
-/// ```
+/// The content stays in the layout, rendered transparent, so the button keeps its intrinsic
+/// width and height while loading. Use it as the `label:` of any `Button`.
 struct LoadingButtonLabel<Content: View>: View {
     let isLoading: Bool
     var tint: Color? = nil

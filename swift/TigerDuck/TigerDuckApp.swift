@@ -67,12 +67,9 @@ struct TigerDuckApp: App {
                 return try ModelContainer(for: schema, configurations: [modelConfiguration])
             } catch {
                 AppLogger.captureError(error, context: ["phase": "modelContainer.retryAfterReset"])
-                // Disk full / sandbox path locked / file-coordination
-                // failure all hardfault here, which would brick the app
-                // on launch with no recovery path. Fall back to an
-                // in-memory container so the app still launches; the
-                // user sees an empty state for one session, the next
-                // launch retries an on-disk container.
+                // A full disk, a locked sandbox path or a file-coordination failure ends up
+                // here; crashing would brick every launch. An in-memory container shows an
+                // empty state for this session, and the next launch retries on disk.
                 do {
                     let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
                     return try ModelContainer(for: schema, configurations: [memoryConfig])
@@ -119,11 +116,9 @@ struct TigerDuckApp: App {
                         widgetSnapshotWriter = WidgetSnapshotWriter(appState: appState)
                         widgetSnapshotWriter?.regenerate()
                     }
-                    // First-launch path. `.onChange(of: scenePhase)` does
-                    // not fire for the initial `.active` value, so the
-                    // first background check needs an explicit kickoff
-                    // here; subsequent foreground returns go through the
-                    // scene-phase observer.
+                    // `.onChange(of: scenePhase)` does not fire for the initial `.active`
+                    // value, so the first background check starts here; later foreground
+                    // returns go through the scene-phase observer.
                     appState.updateNotifyCoordinator.checkInBackground()
                     UNUserNotificationCenter.current().setBadgeCount(0)
                 }
@@ -143,28 +138,21 @@ struct TigerDuckApp: App {
                     default: break
                     }
                     if newPhase == .active {
-                        // Reset the app-icon badge but leave delivered
-                        // notifications in Notification Center — user can
-                        // still scroll back to them, the red badge just
-                        // stops nagging once they've opened the app.
+                        // Clear the app-icon badge but keep delivered notifications
+                        // in Notification Center, so the user can still scroll back
+                        // to them once the app is open.
                         UNUserNotificationCenter.current().setBadgeCount(0)
-                        // Cancel any still-running refresh from a previous
-                        // .active transition so rapid scene toggles do not
-                        // interleave and duplicate the Live Activity /
-                        // push-sync / Moodle-credential work below.
-                        // The school calendar, unconditionally: it is the
-                        // one backend call not gated on sign-in or cloud
-                        // sync, because suppressing class reminders on a
-                        // public holiday should not depend on either. A
-                        // change re-runs the surfaces that read it, since
-                        // the Live Activity and widgets may now be for a
-                        // day classes do not meet.
+                        // Calendar refresh is not gated on sign-in or cloud sync: holiday reminder
+                        // suppression must depend on neither. A change redraws the Live Activity
+                        // and widgets.
                         Task {
                             if await AcademicCalendarStore.shared.refresh() {
                                 await appState.refreshLiveActivity()
                                 widgetSnapshotWriter?.regenerate()
                             }
                         }
+                        // Cancel the previous activation's refresh so rapid scene toggles do not
+                        // repeat its push sync and Moodle credential work.
                         sceneRefreshTask?.cancel()
                         sceneRefreshTask = Task {
                             await appState.refreshLiveActivity()
@@ -174,11 +162,9 @@ struct TigerDuckApp: App {
                         }
                         appState.startRevisionPolling()
                         widgetSnapshotWriter?.regenerate()
-                        // Background "is there a newer build on the App
-                        // Store?" check. Internally throttled to once
-                        // per ``AppConstants/updateCheckThrottle`` so
-                        // rapid scene toggles don't generate iTunes
-                        // Lookup traffic.
+                        // App Store update check, throttled inside to once per
+                        // ``AppConstants/updateCheckThrottle`` so rapid scene
+                        // toggles don't generate iTunes Lookup traffic.
                         appState.updateNotifyCoordinator.checkInBackground()
                     } else if newPhase == .background {
                         appState.stopRevisionPolling()
@@ -188,17 +174,14 @@ struct TigerDuckApp: App {
         .modelContainer(Self.sharedModelContainer)
     }
 
-    /// Translates a tapped notification into the right AppState mutation.
-    /// Kept as a static helper so the SwiftUI body stays uncluttered and
-    /// the routing logic can be unit-tested independently of the App
-    /// scene plumbing.
+    /// Translates a tapped notification into the right AppState mutation. A
+    /// static helper keeps the SwiftUI body uncluttered and lets the routing
+    /// be unit-tested without the App scene plumbing.
     ///
-    /// - Note: `bulletin_id` is decoded through three paths (`Int`,
-    ///   `NSNumber.intValue`, and `String → Int`) because APNs / FCM /
-    ///   intermediate relays bridge JSON numbers inconsistently — some
-    ///   land as a tagged-int NSNumber that succeeds `as? Int`, others
-    ///   as a Double-tagged NSNumber where `as? Int` fails, and a few
-    ///   re-encode the value as a quoted string.
+    /// `bulletin_id` is decoded as `Int`, `NSNumber.intValue` and `String → Int`
+    /// because APNs, FCM and relays bridge JSON numbers inconsistently: an
+    /// int-tagged NSNumber passes `as? Int`, a Double-tagged one fails it, and
+    /// some relays re-encode the value as a quoted string.
     @MainActor
     private static func routeServerPushTap(
         response: UNNotificationResponse,
@@ -216,26 +199,18 @@ struct TigerDuckApp: App {
             guard let nid = info["notification_id"] as? String,
                   let title = info["title"] as? String,
                   let body = info["body"] as? String else { return }
-            // Only the *check* runs at routing time — the actual mark
-            // happens when the user dismisses the alert (see
-            // `ServerPushPopupHost`). That way a popup that's suppressed
-            // by a competing modal (mid-onboarding etc.) isn't permanently
-            // deduped before the user ever sees it.
+            // Only check here: `ServerPushPopupHost` marks the popup shown when the
+            // user dismisses it, so a popup hidden by a competing modal (such as
+            // onboarding) is not deduped before the user ever sees it.
             guard !appState.isServerPopupShown(nid) else { return }
             let payload = AppState.ServerPopupPayload(
                 id: nid,
                 title: title,
                 body: body
             )
-            // Force SwiftUI's `.alert(_:isPresented:presenting:)` to
-            // refresh when a second popup arrives while the first alert
-            // is still on screen: dismiss the current alert, then present
-            // the new payload on the next runloop tick so `isPresented`
-            // actually transitions false → true.
-            //
-            // Always cancel any previous swap first — if popup B's swap
-            // is mid-sleep when popup C arrives, the stale B task would
-            // otherwise wake up and overwrite C's payload with B's.
+            // A popup arriving over a shown alert clears it and presents a tick later, so
+            // `.alert(_:isPresented:presenting:)` sees `isPresented` go false → true. Cancel
+            // any pending swap first, or the stale task would overwrite the newer payload.
             appState.pendingServerPopupSwapTask?.cancel()
             appState.pendingServerPopupSwapTask = nil
             if appState.pendingServerPopup != nil {
@@ -300,11 +275,9 @@ struct TigerDuckApp: App {
             // Same on-disk-reset → in-memory fallback chain the iOS branch
             // uses.
             let storeURL = modelConfiguration.url
-            // SQLite sidecars use a "-wal" / "-shm" suffix on the full
-            // store filename (e.g. `default.store-wal`), not a
-            // dot-extension — `appendingPathExtension` would target
-            // `default.store.wal`, leaving the real sidecars behind and
-            // letting the retry hit the same stale data.
+            // SQLite sidecars append "-wal" / "-shm" to the full store filename
+            // (`default.store-wal`); `appendingPathExtension` would target
+            // `default.store.wal` and leave them, so the retry hits the same stale data.
             let relatedFiles = [
                 storeURL,
                 URL(fileURLWithPath: storeURL.path + "-wal"),
@@ -361,17 +334,9 @@ struct TigerDuckApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
-                        // The school calendar, unconditionally: it is the
-                        // one backend call not gated on sign-in or cloud
-                        // sync, because suppressing class reminders on a
-                        // public holiday should not depend on either. A
-                        // change re-runs the surfaces that read it, since
-                        // the Live Activity and widgets may now be for a
-                        // day classes do not meet.
-                        // No Live Activity call here: the Mac has none —
-                        // `AppState+LiveActivity.swift` is not compiled for
-                        // macOS — so the widgets are the only surface a
-                        // calendar change can move.
+                        // Calendar refresh is not gated on sign-in or cloud sync: holiday reminder
+                        // suppression must depend on neither. Only widgets redraw on a change:
+                        // `AppState+LiveActivity.swift` is not compiled for macOS.
                         Task {
                             if await AcademicCalendarStore.shared.refresh() {
                                 widgetSnapshotWriter?.regenerate()
@@ -410,19 +375,14 @@ struct TigerDuckApp: App {
         // fixed-size with no navigation stack, and licence texts are long.
         Window(String(localized: "settings_open_source_licenses"), id: MacLicensesView.windowID) {
             MacLicensesView()
-                // Same rebuild the main window does: String(localized:) is
-                // resolved once, so without this the window would sit in the
-                // old language until it was closed and reopened. Its title
-                // comes back with it, by way of the navigationTitle inside —
-                // the name in the Window menu is the scene's own and stays
-                // until relaunch.
+                // Rebuild on a language change, as the main window does: String(localized:)
+                // resolves once. The title follows through the navigationTitle inside; the
+                // Window menu name is the scene's own and stays until relaunch.
                 .id(rootLanguageId)
                 .environment(appState)
-                // Environments do not cross scene boundaries, so this window
-                // takes neither the tint MacSettingsScene applies nor the one
-                // on the main window: without it the links here would come up
-                // in the system accent while the rest of the app used the
-                // chosen one.
+                // Environments do not cross scene boundaries, so this window gets neither
+                // MacSettingsScene's tint nor the main window's; without this its links
+                // would use the system accent instead of the chosen one.
                 .tint(appState.accentColor)
                 .onReceive(
                     NotificationCenter.default.publisher(for: AppConstants.languageDidChange)

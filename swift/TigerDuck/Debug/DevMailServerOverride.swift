@@ -18,15 +18,14 @@ nonisolated struct MailServerOverrideSettings: Codable, Equatable, Sendable {
     var smtpPort = 465
     var smtpScheme: MailTransportScheme = .implicitTLS
 
-    /// Trimmed and lower-cased, with a leading `@` dropped from the domain (typing
-    /// `@example.com` is the natural thing to do and is what the page's label shows), or nil
-    /// when a field is missing or a port is out of range.
+    /// Trimmed and lower-cased, with a leading `@` dropped from the domain (typing `@example.com`
+    /// is natural and is what the page's label shows), or nil when a field is missing or a port is
+    /// out of range.
     ///
-    /// Nil is not an error state anyone has to handle: `MailServerConfig.resolve(override:)`
-    /// treats it exactly as "off" and hands back the school configuration, so an override that
-    /// was switched on before it was filled in never points the app at half a server. The
-    /// screen keeps its Apply button disabled until this is non-nil, so that fallback is a
-    /// backstop rather than the normal way through.
+    /// Nil needs no handling: `MailServerConfig.resolve(override:)` treats it as "off" and returns
+    /// the school configuration, so an override switched on before it was filled in never points
+    /// the app at half a server. The screen keeps Apply disabled until this is non-nil, so that
+    /// fallback is only a backstop.
     var normalized: MailServerOverrideSettings? {
         func clean(_ value: String) -> String {
             value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -58,17 +57,12 @@ nonisolated struct MailServerOverrideSettings: Codable, Equatable, Sendable {
 nonisolated extension MailServerConfig {
     /// The one place an override becomes a configuration.
     ///
-    /// Off, incomplete, or unparseable resolves to `school` — so "the override is on" and "the
-    /// app is pointed somewhere else" are the same fact, and `isOverridden` can be trusted by
-    /// the page banner.
-    ///
-    /// `organizationDomain` becomes the overridden address domain itself: on a test mailbox
-    /// there is no wider organization to speak of, and `user@gmail.com` writing to
-    /// `user@gmail.com` must not be badged External — which is the whole of requirement 4.
-    ///
-    /// Both schemes go through `transportScheme(for:requested:)`, which is what stops an
-    /// override naming `mail.ntust.edu.tw` from dropping the real school connection to
-    /// STARTTLS or plaintext.
+    /// Off, incomplete or unparseable resolves to `school`, so "the override is on" and "the app
+    /// points somewhere else" are the same fact and the page banner can trust `isOverridden`.
+    /// `organizationDomain` is the overridden address domain itself: a test mailbox has no wider
+    /// organization, and `user@gmail.com` writing to `user@gmail.com` must not be badged External.
+    /// Both schemes go through `transportScheme(for:requested:)`, which stops an override naming
+    /// `mail.ntust.edu.tw` from dropping the real school connection to STARTTLS or plaintext.
     static func resolve(override: MailServerOverrideSettings) -> MailServerConfig {
         guard override.isEnabled, let settings = override.normalized else { return .school }
         return MailServerConfig(
@@ -137,26 +131,14 @@ nonisolated final class DevMailServerOverride: @unchecked Sendable {
     }
 }
 
-/// The developer override as the UI holds it, and the one place a change to it takes effect.
-///
-/// Pointing the app at a different server invalidates every piece of state School Mail keeps,
-/// and none of that state carries an account or server dimension: `MailCache` is keyed by
-/// folder and UID alone, `MailListViewModel` holds resolved folder roles and loaded pages, and
-/// the new-mail check keeps a UIDVALIDITY/UIDNEXT marker in `Defaults`. Left in place, the
-/// test mailbox would open showing the previous server's mail, with swipe actions and Delete
-/// attached to it.
-///
-/// So a change signs out. That clears the Valet-stored password (which belongs to the school
-/// account and must never be offered to another server), wipes the cache directory, resets the
-/// markers and diagnostics, and — through `MailAccountManager`'s `onSignedOut` hook — cancels
-/// background refresh and removes every delivered mail notification. It also clears the §7.4
-/// `authFailed` lockout, which is the right answer rather than an oversight: that flag records
-/// that *one particular account's* password was rejected, and leaving it set would carry the
-/// lockout onto a server that never rejected anything, while clearing it without signing out
-/// would let the rejected password be retried. Signing out does both at once.
-///
-/// `generation` is what the School Mail page watches so it can drop the folder roles and pages
-/// its view model resolved against the previous server.
+/// The developer override as the UI holds it, and the one place a change to it takes effect. No
+/// School Mail state carries an account or server dimension (`MailCache` is keyed by folder and
+/// UID, `MailListViewModel` keeps folder roles and pages, the new-mail marker sits in `Defaults`),
+/// so a change signs out rather than show the old server's mail with Delete attached. That stops
+/// background refresh and clears the saved password, cache, markers, diagnostics, delivered
+/// notifications and, with the password it was about, the `authFailed` lockout, which would
+/// otherwise follow to a server that rejected nothing. `generation` lets the School Mail page drop
+/// what it resolved against the old server. See docs/decisions/0007-dev-mail-server-override.md.
 @MainActor
 @Observable
 final class DevMailServerSettings {
@@ -186,20 +168,14 @@ final class DevMailServerSettings {
     var stored: MailServerOverrideSettings { store.settings }
     var effectiveConfig: MailServerConfig { store.effectiveConfig }
 
-    /// Why `draft` may not be applied, or nil when it may.
-    ///
-    /// One rule, and it closes the residual hole in the probe's invariant.
-    /// `DevMailConnectionProbe.credentials(username:password:appliedIsOverridden:)` reasons
-    /// that if the *applied* configuration is an override then the saved password cannot be the
-    /// school's — but nothing enforced the premise. `MailServerConfig.resolve(override:)` never
-    /// refuses a school host, it only clamps its TLS scheme, so an override naming
-    /// `mail.ntust.edu.tw` resolved to the school server with `isOverridden` true. Sign in to it
-    /// with the real school credentials, edit the draft to a third-party host, tap Test
-    /// connection, and the premise is false and the real mail password goes out.
-    ///
-    /// Refusing to apply such an override makes "applied override" and "not the school account"
-    /// the same fact again. `transportScheme(for:requested:)` keeps clamping regardless — it
-    /// guards the draft `Test connection` resolves, which never reaches this.
+    /// Why `draft` may not be applied, or nil when it may. The probe's
+    /// `credentials(username:password:appliedIsOverridden:)` assumes an applied override means the
+    /// saved password is not the school's, but `MailServerConfig.resolve(override:)` only clamps a
+    /// school host's TLS. An applied override naming `mail.ntust.edu.tw` would be the school server
+    /// with `isOverridden` true: sign in, point the draft at a third-party host, tap Test
+    /// connection, and the school password goes out. Refusing it here keeps the premise true.
+    /// `transportScheme(for:requested:)` still clamps the draft Test connection resolves, which
+    /// never reaches this.
     static func applyRefusal(for draft: MailServerOverrideSettings) -> String? {
         guard draft.isEnabled, let settings = draft.normalized else { return nil }
         let school = [settings.imapHost, settings.smtpHost].filter(DevMailConnectionProbe.isSchoolHost)

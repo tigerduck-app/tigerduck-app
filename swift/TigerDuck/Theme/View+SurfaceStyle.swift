@@ -1,13 +1,8 @@
 import SwiftUI
 
-// Preset-aware surface modifiers.
-//
-// These are the preferred entry points for new styling work. They dispatch
-// on ``VisualStylePolicy`` so a single call site renders differently
-// under different visual presets without scattering `if preset == ...`
-// branches through view code. The legacy `glassCard()` / `glassChip()`
-// helpers in View+GlassEffect.swift continue to work for pages not yet
-// migrated, but new surfaces should go through this file.
+// Preset-aware surface modifiers: they dispatch on ``VisualStylePolicy`` so one call
+// site follows the visual preset without `if preset == ...` branches. New surfaces
+// use these; `glassCard()` / `glassChip()` in View+GlassEffect.swift serve unmigrated pages.
 
 extension View {
     /// Preset-aware card surface. Replaces ad-hoc `glassCard()` for
@@ -51,10 +46,9 @@ extension View {
 
 // MARK: - Implementation
 
-// Shadows go on the background shape, not on `content`: SwiftUI applies
-// `.shadow` to every leaf it can reach, so a card of thirty labels was
-// paying for thirty blurred halos (each an offscreen pass) on top of the
-// material. One shadow per card is visually the same and far cheaper.
+// Shadows go on the background shape, not on `content`: SwiftUI applies `.shadow`
+// to every leaf it reaches, adding a blurred halo (an offscreen pass) per label on
+// top of the material. One shadow per card looks the same and costs far less.
 
 private struct PresetCardModifier: ViewModifier {
     let policy: VisualStylePolicy

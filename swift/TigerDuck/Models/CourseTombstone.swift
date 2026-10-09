@@ -4,12 +4,10 @@ import Foundation
 /// `deleted_courses.json`.
 ///
 /// A key is `"<semester>:<courseNo>"`, so hiding a course in 115-1 leaves
-/// the same course number alone in every other term (a retaken course
-/// reuses its number). Entries written before the semester scope existed
-/// are a bare course number and are honoured as "hidden in every
-/// semester" rather than migrated — the per-term cache needed to attribute
-/// them is not guaranteed to exist at upgrade time. Un-hiding or resetting
-/// drops both shapes, after which every write is scoped.
+/// that number alone in other terms (a retaken course reuses its number).
+/// A legacy bare course number means hidden in every semester. It is not
+/// migrated: the per-term cache needed to attribute it may be missing at
+/// upgrade time. Un-hiding or resetting drops both shapes; every write is scoped.
 nonisolated enum CourseTombstone {
     static func key(semester: String, courseNo: String) -> String {
         "\(semester):\(courseNo)"

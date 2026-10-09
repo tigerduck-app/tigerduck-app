@@ -3,16 +3,12 @@ import SwiftUI
 
 /// Screen for picking which backend the app talks to.
 ///
-/// The backend is open source and self-hostable, so this is a supported
-/// user-facing setting rather than a developer hatch: any host is accepted,
-/// subject to ``PushServerConfig/isOverrideAllowed(_:)``'s transport rule
-/// (HTTPS unless the address is private/loopback) and to
-/// ``EndpointHealthCheck`` finding a TigerDuck backend actually answering.
-///
-/// Reached from Settings → Other settings on iPhone (every build), from
-/// onboarding's sign-in page, and from the macOS Settings → Developer tab,
-/// so it lives in its own file — the rest of `DebugSettingsView.swift`
-/// stays iPhone-only and DEBUG-only.
+/// The backend is open source and self-hostable, so this is a supported user setting, not a
+/// developer hatch. Any host is accepted, subject to ``PushServerConfig/isOverrideAllowed(_:)``
+/// (HTTPS unless the address is private or loopback) and to ``EndpointHealthCheck`` finding a
+/// TigerDuck backend answering. Reached from Settings → Other settings on iPhone (every build),
+/// onboarding's sign-in page and the macOS Settings → Developer tab, so it has its own file: the
+/// rest of `DebugSettingsView.swift` is iPhone-only and DEBUG-only.
 struct DebugEndpointView: View {
     @State private var viewModel = DebugEndpointViewModel()
     #if os(iOS)
@@ -63,11 +59,9 @@ struct DebugEndpointView: View {
                         Task { await viewModel.save() }
                     } label: {
                         if viewModel.isChecking {
-                            // The label swap keeps the row from resizing
-                            // mid-probe, and names what the wait is for —
-                            // a bare spinner on "Save" reads as a hang
-                            // when the address is simply unreachable and
-                            // we are sitting out the 10 s timeout.
+                            // Swapping the label keeps the row from resizing mid-probe and names
+                            // the wait: a bare spinner on "Save" reads as a hang while an
+                            // unreachable address sits out the 10 s timeout.
                             HStack(spacing: TigerDuckTheme.Spacing.sm) {
                                 ProgressView()
                                 Text(String(localized: "settings_api_endpoint_checking"))

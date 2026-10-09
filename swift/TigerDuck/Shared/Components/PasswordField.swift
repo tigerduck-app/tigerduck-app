@@ -1,38 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// Password input with a trailing eye toggle.
+/// Password input with an eye toggle.
 ///
-/// Backed by a single `UITextField` via `UIViewRepresentable` so toggling
-/// secure entry does not tear down the first responder. The field tracks
-/// `isVisible` directly: masked uses `isSecureTextEntry = true` (keyboard
-/// in passcode mode → no key-preview popovers, no QuickType bar, excluded
-/// from screen recording); revealed uses normal text entry (visible
-/// cleartext, native cursor positioning, selection, copy / paste, normal
-/// keyboard).
-///
-/// The reveal threat model: if the user has tapped the eye, the password
-/// is already on screen. The keyboard becoming a normal (visible-in-
-/// recording) keyboard at that point is consistent with the exposure the
-/// user just opted into — it isn't a new leak. To minimize the surface,
-/// the eye tap dismisses the keyboard first; the user can tap the field
-/// again to bring it up in whichever mode matches the current state.
-///
-/// Two extra defense-in-depth layers on top of the always-on
-/// `.screenCaptureProtected(true)` (which keeps the field's pixels out of
-/// screenshots/recording even when revealed):
-///
-/// - **Lock reveal during active capture.** While `UIScreen.main.isCaptured`
-///   is true (screen recording, mirroring, AirPlay), the eye button is
-///   disabled and any current reveal is force-masked. The user can't
-///   accidentally expose the password to whoever is on the other end of
-///   the stream.
-/// - **Auto-mask on screenshot.** iOS doesn't expose a pre-screenshot
-///   hook (only `userDidTakeScreenshotNotification`, which fires *after*
-///   the volume+power press). The secure canvas already blanks the
-///   password area in the captured image, but we additionally flip back
-///   to masked on the notification so any subsequent glance / second
-///   screenshot also sees the dots.
+/// One `UITextField` keeps the first responder across toggles. Masked, it uses the
+/// passcode keyboard: no key previews, no QuickType bar, hidden from recordings.
+/// Revealed, its normal keyboard leaks nothing new: the password is shown anyway.
+/// `.screenCaptureProtected(true)` blanks the field in any capture. Reveal is also
+/// locked and undone while the screen is captured (recording, mirroring, AirPlay),
+/// and a screenshot re-masks it for later glances: iOS reports one only afterwards.
 struct PasswordField<Field: Hashable>: View {
     let placeholder: String
     @Binding var text: String
@@ -77,10 +53,8 @@ struct PasswordField<Field: Hashable>: View {
 
             Button {
                 if isScreenCaptured {
-                    // Tapping the eye while capture is active surfaces an
-                    // inline popover explaining why reveal is unavailable
-                    // rather than just being inert. See the `.popover`
-                    // modifier below.
+                    // During capture the eye opens the `.popover` below, which
+                    // explains why reveal is unavailable, instead of doing nothing.
                     showsCaptureExplanation = true
                 } else {
                     handleEyeTap()
@@ -102,27 +76,21 @@ struct PasswordField<Field: Hashable>: View {
                 Text(String(localized: "password_eye_unavailable_during_capture"))
                     .font(.callout)
                     .multilineTextAlignment(.leading)
-                    // `.fixedSize(vertical: true)` lets the text grow
-                    // downward to fit; the surrounding `.frame(width:)`
-                    // gives it a stable horizontal budget. Without
-                    // fixedSize, the popover assigns a 1-line slot and
-                    // truncates with an ellipsis.
+                    // Without `.fixedSize(vertical: true)` the popover gives the
+                    // text one line and truncates it; with it the text grows
+                    // downward within the width `.frame(width:)` sets.
                     .fixedSize(horizontal: false, vertical: true)
                     .padding()
                     .frame(width: 260)
-                    // Forces a real popover with arrow on compact-width
-                    // (iPhone) instead of SwiftUI's default sheet
-                    // adaptation, so the arrow can actually point at the
-                    // eye glyph.
+                    // A real popover on compact width (iPhone) instead of the
+                    // default sheet adaptation, so the arrow points at the eye.
                     .presentationCompactAdaptation(.popover)
             }
         }
         .background(
-            // Reads the hosting window's `UIScreen.isCaptured` and
-            // observes change notifications scoped to that specific
-            // screen (not all screens) — handles multi-scene / external
-            // display correctly, and notifications fire only for the
-            // screen this field is actually showing on.
+            // Reads `isCaptured` from the hosting window's screen and observes only
+            // that screen's notifications, so multi-scene and external displays work
+            // and a capture on another screen does not affect this field.
             CapturedScreenReader { captured in
                 let wasCaptured = isScreenCaptured
                 isScreenCaptured = captured
@@ -136,10 +104,9 @@ struct PasswordField<Field: Hashable>: View {
             }
         )
         .onChange(of: showsCaptureExplanation) { _, isShown in
-            // Auto-dismiss after ~4s; users can also dismiss by tapping
-            // outside (default popover behavior). The gen counter
-            // prevents a stale timer from closing a newer popover that
-            // was opened after a quick re-tap.
+            // Auto-dismiss after ~4s, on top of the default tap-outside dismissal.
+            // The gen counter keeps a stale timer from closing a popover reopened
+            // by a quick re-tap.
             guard isShown else { return }
             captureExplanationGen &+= 1
             let gen = captureExplanationGen
@@ -165,16 +132,14 @@ struct PasswordField<Field: Hashable>: View {
         isVisible.toggle()
     }
 
-    /// Force-mask without changing focus state if there's nothing to
-    /// mask. Called from the capture / screenshot observers.
+    /// Masks a revealed password; when already masked it does nothing, focus
+    /// included. Called from the capture and screenshot observers.
     ///
-    /// IMPORTANT: only touches focus when *this* field is the focused
-    /// one. The same `@FocusState` is shared across the surrounding
-    /// form's username + password fields (e.g. LibraryView /
-    /// LoginSheet / OnboardingView all pass a single `$focusedField`
-    /// binding); unconditionally clearing it would yank focus off the
-    /// username field a user has just tabbed back to while the
-    /// password reveal was incidentally still on.
+    /// Dismisses the keyboard and clears focus only when this field holds it.
+    /// The form's username and password fields share one `@FocusState`
+    /// (`LibraryView`, `LoginSheet` and `OnboardingView` pass a single
+    /// `$focusedField`), so clearing it always would pull focus off a username
+    /// field the user just moved back to while the reveal was still on.
     private func forceMask() {
         guard isVisible else { return }
         let owningFocus = focusBinding.wrappedValue == focusValue
@@ -252,10 +217,8 @@ private final class CapturedScreenReaderView: UIView {
             queue: .main
         ) { [weak self, weak newScreen] _ in
             guard let newScreen else { return }
-            // iOS posts the notification a tick before `isCaptured`
-            // flips to its new value on `recording stopped`. Hop to
-            // the next runloop turn so the read picks up the updated
-            // value.
+            // When recording stops, iOS posts this a tick before `isCaptured`
+            // flips, so the read waits for the next runloop turn.
             DispatchQueue.main.async {
                 self?.onChange?(newScreen.isCaptured)
             }
@@ -315,14 +278,9 @@ private struct _PasswordTextField: UIViewRepresentable {
             applySecureTextEntry(isSecure, on: field)
         }
 
-        // Mirror @FocusState → UITextField for the BECOME direction only.
-        //
-        // We deliberately do not call `resignFirstResponder` from here. UIKit
-        // already transfers first responder automatically when another control
-        // is tapped or programmatically focused, and trying to resign in
-        // response to a transient `focusedField == nil` (which SwiftUI emits
-        // during a tap-driven focus migration from a sibling field) is what
-        // produced the brief keyboard collapse-and-expand on field switches.
+        // Mirror @FocusState into the field only to become first responder. Resigning
+        // here on the transient nil SwiftUI emits while focus moves between fields
+        // collapses and reopens the keyboard, and UIKit moves first responder itself.
         if isFocused {
             DispatchQueue.main.async { [weak field] in
                 guard let field, !field.isFirstResponder else { return }
@@ -332,10 +290,9 @@ private struct _PasswordTextField: UIViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextField, context: Context) -> CGSize? {
-        // Without this, the wrapped `UITextField` reports `noIntrinsicMetric`
-        // for width and SwiftUI's HStack will not necessarily hand it the
-        // remaining horizontal space the way it does for a native `TextField`.
-        // The field then collapses to ~zero width and taps never land on it.
+        // Without this the field reports `noIntrinsicMetric` width, the HStack may not
+        // give it the remaining space as it would a native `TextField`, and it collapses
+        // to about zero width where taps never land.
         let intrinsicHeight = uiView.intrinsicContentSize.height
         let height = intrinsicHeight > 0 ? intrinsicHeight : 30
         let width = proposal.width ?? UIView.noIntrinsicMetric
@@ -345,12 +302,11 @@ private struct _PasswordTextField: UIViewRepresentable {
     /// Flip `isSecureTextEntry` on the live field without losing typed text
     /// or moving first responder.
     ///
-    /// Apple's documented behaviour is that toggling `isSecureTextEntry`
-    /// while text is being entered clears the field. We work around it by
-    /// reassigning `text` (nil → saved value), which leaves the field in
-    /// a stable internal state without dropping first responder, then we
-    /// restore the caret/selection by character offset (the saved
-    /// `UITextRange` becomes invalid the moment `text` is reassigned).
+    /// Apple documents that toggling it during text entry clears the field.
+    /// Reassigning `text` (nil, then the saved value) keeps the field stable
+    /// without dropping first responder; the selection is then restored by
+    /// character offset, since the saved `UITextRange` is invalid once `text`
+    /// is reassigned.
     private func applySecureTextEntry(_ isSecure: Bool, on field: UITextField) {
         let savedText = field.text
         let savedOffsets: (start: Int, end: Int)? = {
@@ -390,13 +346,9 @@ private struct _PasswordTextField: UIViewRepresentable {
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {
-            // Defer to the next runloop tick for two reasons:
-            // 1) Avoid mutating SwiftUI state from inside the UIKit responder
-            //    transition stack frame.
-            // 2) Sequence our write AFTER SwiftUI's internal bridge for the
-            //    previously focused field (which may queue a transient
-            //    `focusedField = nil`). FIFO of `DispatchQueue.main.async`
-            //    means our write, queued later, wins.
+            // Deferred so SwiftUI state is not mutated inside UIKit's responder change,
+            // and so this write lands after the transient `focusedField = nil` SwiftUI
+            // may queue for the previous field: the main queue runs in FIFO order.
             DispatchQueue.main.async { [weak self, weak textField] in
                 guard let self, let textField, textField.isFirstResponder else { return }
                 if !self.parent.isFocused { self.parent.isFocused = true }
@@ -404,10 +356,9 @@ private struct _PasswordTextField: UIViewRepresentable {
         }
 
         func textFieldDidEndEditing(_ textField: UITextField) {
-            // Intentionally do not write `focusedField = nil` here. When a
-            // sibling field is taking over, its own SwiftUI focus bridge has
-            // already installed the correct value; writing nil here would
-            // race against it and clobber the new focus.
+            // No `focusedField = nil` here: when a sibling field takes over, its
+            // focus bridge has already set the right value, and writing nil would
+            // race it and clobber the new focus.
         }
 
         func textFieldShouldReturn(_ textField: UITextField) -> Bool {

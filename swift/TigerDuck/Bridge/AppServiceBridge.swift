@@ -44,9 +44,9 @@ enum AppServiceBridge {
     }
 
     static func warmAllSemesterCaches(authService: AuthService) async {
-        // Before anything else, so a newly-published term (and the term the
-        // 選課 system is serving) is known for both the warm list below and
-        // the enrolment attribution inside `fetchCourses`.
+        // Before anything else, so a newly published term (and the term the
+        // course-selection system serves) is known to both the warm list below
+        // and the enrolment attribution inside `fetchCourses`.
         await SemesterCatalog.refreshIfStale()
         let moodleEnrolledCourses = (try? await MoodleEnrolledCoursesService.fetchEnrolled()) ?? []
 
@@ -71,22 +71,17 @@ enum AppServiceBridge {
         forceRefresh: Bool,
         moodleEnrolledCourses: [MoodleEnrolledCourse]?
     ) async -> [SDCourse] {
-        // Snapshot the login generation before issuing the network call.
-        // Any logout that happens while we are awaiting will bump this
-        // counter, and the post-fetch save below skips the write so the
-        // previous user's data does not land in DataCache after
-        // `clearUserScopedData()` has already run.
+        // Snapshot before any network call: a logout while awaiting bumps the
+        // generation and the saves below then skip, so the previous user's data
+        // cannot land in DataCache after `clearUserScopedData()` has run.
         let startGeneration = authService.loginGeneration
         // Background sync fetches courses without going through
         // `warmAllSemesterCaches`, so resolve the catalogue here too — it is
         // TTL-throttled, so the concurrent warm fan-out costs one request.
         await SemesterCatalog.refreshIfStale()
-        // The 選課 system serves exactly one term and its 選課清單 page has no
-        // term marker, so its course numbers belong to whichever term the
-        // catalogue reports as open — not to whatever term is in session.
-        // Keying this off `currentSemesterCode()` mis-filed 115-1 enrolments
-        // into 114-2 for the weeks between 選課 opening and the month
-        // heuristic rolling over.
+        // The course-selection system serves one term and its list has no term
+        // marker, so its numbers belong to the term the catalogue reports open.
+        // `currentSemesterCode()` lags: its month heuristic would misfile them for weeks.
         let servesSelectionSemester = semester == SemesterCatalog.selectionSemesterCode()
         let display = CourseDisplayPreferences.current()
         let courseApiLanguage = display.language
@@ -103,16 +98,9 @@ enum AppServiceBridge {
             try await ServerFailureSimulator.shared.check(.courseSelection)
             #endif
             let session = NTUSTSessionManager.shared.session
-            // NTUST SSO is the "nice to have" source here — Moodle's long-lived
-            // OIDC token is the primary. If SSO is unreachable (cookies cleared,
-            // credentials rotated, portal flaky), swallow the failure so we
-            // still fall through to the Moodle path; otherwise the whole
-            // fetch would throw, the catch below would return an empty cache,
-            // and Home / Class Table / Time Machine would stay blank.
-            // nil = the 選課 system was not consulted (another term) or was
-            // unreachable; Moodle is the enrolment source then. When it
-            // answers, it is the authority for its term and Moodle only
-            // enriches — see `enrolledCourseNos`.
+            // nil when course selection serves another term or fails: Moodle is the
+            // source then; the error is swallowed so the course screens do not go blank.
+            // An answer owns its term and Moodle only enriches; see `enrolledCourseNos`.
             var courseSelectionNos: [String]?
             if servesSelectionSemester {
                 do {
@@ -138,10 +126,9 @@ enum AppServiceBridge {
                 }
             }
 
-            // Before anything overwrites the cache: a course that was in the
-            // portal roster and is not in this answer was dropped in 加退選,
-            // and the backend keeps serving it until someone deletes it by
-            // hand. See `DataCache.recordSelectionRoster`.
+            // Before anything overwrites the cache: a portal course missing from this
+            // answer was dropped in add/drop, and the backend keeps serving it until
+            // it is deleted by hand. See `DataCache.recordSelectionRoster`.
             if let courseSelectionNos {
                 DataCache.shared.recordSelectionRoster(
                     semester: semester, roster: courseSelectionNos)
@@ -152,17 +139,9 @@ enum AppServiceBridge {
             } else {
                 try await MoodleEnrolledCoursesService.fetchEnrolled()
             }
-            // Persist idnumber → numeric-id map so `SDCourse.moodleDeepLink`
-            // can build `?id=N` redirects (Moodle Mobile's in-app router
-            // rejects `?idnumber=…`). Whole-map overwrite — the fetched list
-            // is the authoritative snapshot, so any idnumber missing from
-            // it has been dropped on Moodle's side and we must not keep a
-            // stale numeric id pointing at a dead course. Guarded by the
-            // same login-generation + cancellation checks as the course
-            // cache write below: if the user logged out while this fetch
-            // was in flight, `clearUserScopedData` may have already wiped
-            // the map, and resuming this write would resurrect the
-            // previous user's enrolled-course ids on disk.
+            // Numeric ids for `SDCourse.moodleDeepLink`: Moodle Mobile rejects `?idnumber=`.
+            // Replace the whole map: an idnumber missing from this snapshot is a dropped
+            // course. The guard stops a mid-fetch logout from restoring the old user's ids.
             let moodleIdMap = moodleCourseIdMap(moodleAll)
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
@@ -170,14 +149,9 @@ enum AppServiceBridge {
             }
 
             let moodleForSemester = moodleAll.filter { $0.semester == semester }
-            // Deliberately keyed by the course's own number only, not by its
-            // co-listed aliases. Widening this would re-point the persisted
-            // `moodleIdNumber` of a 合開 course at the other department's id,
-            // and the cloud colour/rename overrides are keyed on that value
-            // (`AppState+BackendSync.applyCourseOverrides`) — existing rows
-            // would stop matching. The deep link does not need it: the
-            // synthesized `"\(Semester)\(CourseNo)"` fallback in
-            // `buildSDCourse` is already a key in `moodleCourseIdMap`.
+            // Own number only, no co-listed aliases: an alias would re-point the course's
+            // `moodleIdNumber`, so `applyCourseOverrides` would stop matching cloud rows.
+            // Deep links resolve through `buildSDCourse`'s fallback key without it.
             let moodleByNo = Dictionary(
                 moodleForSemester.compactMap { course -> (String, MoodleEnrolledCourse)? in
                     guard !course.courseNo.isEmpty else { return nil }
@@ -186,13 +160,9 @@ enum AppServiceBridge {
                 uniquingKeysWith: { first, _ in first }
             )
 
-            // Third enrollment source: historical transcript. The score
-            // report is the authoritative list for past semesters (選課
-            // system is current-semester-only and Moodle only covers
-            // Moodle-enabled classes), and for the current term it absorbs
-            // pending/exempted rows that the other sources may miss.
-            // Withdrew (二次退選) is excluded — those are cancelled
-            // enrollments and shouldn't render in the class table.
+            // Third source, the transcript: authoritative for past terms, since course
+            // selection serves one term and Moodle only its own classes, and it adds this
+            // term's pending or exempted rows. Withdrawn rows are cancelled, so skip them.
             let scoreCoursesForSemester: [CourseGrade] = DataCache.shared
                 .loadScoreReport(studentId: studentId)?
                 .report.courses
@@ -210,12 +180,9 @@ enum AppServiceBridge {
 
             let courseDataList = await withTaskGroup(of: CourseData?.self) { group in
                 for courseNo in orderedCourseNos {
-                    // Hop into MainActor for the body. `buildSDCourse` returns
-                    // a SwiftData-managed `SDCourse` whose accessors are
-                    // MainActor-isolated, and `NameAbbrService.shared` is a
-                    // MainActor singleton — running the closure on MainActor
-                    // avoids per-statement `MainActor.run` while leaving the
-                    // network `lookupCourse(…)` to suspend cooperatively.
+                    // MainActor: `SDCourse` accessors and `NameAbbrService.shared` are
+                    // MainActor-isolated, so this avoids a `MainActor.run` per statement.
+                    // The network `lookupCourse(…)` still suspends cooperatively.
                     group.addTask { @MainActor in
                         do {
                             let results = try await CourseLookupService.lookupCourse(
@@ -278,11 +245,9 @@ enum AppServiceBridge {
                 )
             }
 
-            // Drop the cache write when either the calling Task was
-            // cancelled (covers AppState.syncTask in the background sync
-            // path) or the login generation moved on (covers Home /
-            // ClassTable / Calendar refresh paths whose Task is not owned
-            // by AppState and therefore is not reached by syncTask?.cancel()).
+            // Skip the write if the Task was cancelled (`AppState.syncTask`) or the
+            // login generation moved on: Home, Class Table and Calendar refreshes run
+            // in Tasks that `syncTask?.cancel()` does not reach.
             if !courses.isEmpty,
                !Task.isCancelled,
                authService.loginGeneration == startGeneration {
@@ -334,16 +299,12 @@ enum AppServiceBridge {
 
     /// The course numbers a term renders, in source priority order, deduped.
     ///
-    /// A non-empty 選課 answer owns its term outright. Moodle keeps an
-    /// enrolment after the student drops the class, and the cached
-    /// transcript can predate the drop, so either top-up would put the
-    /// course back. Pass `selection` as nil for every other term and when
-    /// 選課 was unreachable: Moodle is the source then, and the transcript
-    /// tops up the non-Moodle classes it alone covers. An *empty* list is
-    /// treated the same way — the D01 scrape is a regex over HTML that
-    /// yields zero matches, not an error, when the layout drifts, and that
-    /// result is cached for a day, so it cannot be told apart from "no
-    /// enrolments" and must not blank the term.
+    /// A non-empty course-selection answer owns its term: Moodle keeps a dropped
+    /// class and the cached transcript can predate the drop, so either would bring
+    /// it back. Pass `selection` as nil for other terms or when it was unreachable;
+    /// Moodle leads then and the transcript adds non-Moodle classes. An empty list
+    /// counts as nil: the D01 regex scrape returns no matches, not an error, when the
+    /// page drifts, and that is cached for a day, so it must not blank the term.
     static func enrolledCourseNos(
         selection: [String]?,
         moodle: [String],
@@ -359,16 +320,14 @@ enum AppServiceBridge {
         return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
-    /// `idnumber` → Moodle's numeric course id, for every code a course
-    /// answers to. A 合開 course's second department code lives only in its
-    /// `fullname` (see ``MoodleEnrolledCourse/courseNos``), so a student who
-    /// enrolled through that code would otherwise find no numeric id here and
-    /// lose the "open in Moodle" button.
+    /// `idnumber` → Moodle's numeric course id, for every code a course answers
+    /// to. A co-listed course's second department code is only in its `fullname`
+    /// (see ``MoodleEnrolledCourse/courseNos``), so a student enrolled through it
+    /// would otherwise get no id and lose the "open in Moodle" button.
     ///
-    /// Aliases are laid down first and real `idnumber`s overwrite them, so a
-    /// course's own code always beats another course's fullname alias when
-    /// the two collide. Within the alias pass the first course wins; within
-    /// the primary pass the last does, as before.
+    /// Aliases go in first and real `idnumber`s overwrite them, so a course's own
+    /// code beats another course's alias. Among aliases the first course wins;
+    /// among real `idnumber`s the last does.
     static func moodleCourseIdMap(_ courses: [MoodleEnrolledCourse]) -> [String: Int] {
         var map: [String: Int] = [:]
         for course in courses {
@@ -383,15 +342,14 @@ enum AppServiceBridge {
         return map
     }
 
-    /// Which of a Moodle course's numbers an assignment should be filed
-    /// under. A 合開 course's `courseNo` is whichever department Moodle listed
-    /// first, which need not be the one the student enrolled through, so the
-    /// code the class table actually holds wins. Course colour, the Live
-    /// Activity's course lookup and the backend upload all join on this.
+    /// Which of a Moodle course's numbers an assignment is filed under. A
+    /// co-listed course's `courseNo` is whichever department Moodle lists first,
+    /// not always the one the student enrolled through, so the code the class
+    /// table holds wins. Course colour, the Live Activity's course lookup and
+    /// the backend upload all join on this.
     ///
-    /// Falls back to the course's own number when the class table has neither
-    /// — a cold launch before the course cache lands, where filing it under
-    /// the authoritative code is the best available answer.
+    /// Falls back to the course's own number when the class table has neither:
+    /// the best answer on a cold launch, before the course cache lands.
     static func assignmentCourseNo(
         for course: MoodleEnrolledCourse,
         localCourseNos: Set<String>
@@ -399,20 +357,14 @@ enum AppServiceBridge {
         course.courseNos.first(where: localCourseNos.contains) ?? course.courseNo
     }
 
-    /// The courses 選課 has stopped listing for one term, updated from one
-    /// successful, non-empty answer.
+    /// The courses the course-selection system stopped listing for one term,
+    /// updated from one successful, non-empty answer.
     ///
-    /// Only a drop this device actually witnessed goes in: `localPortalNos`
-    /// are the portal courses it holds right now, so the difference against
-    /// `roster` is exactly what 加退選 just removed. That temporal check is
-    /// the point — a snapshot cannot tell a dropped course from one another
-    /// device added by hand, since neither is in 選課 and the uploaded rows
-    /// are identical. A manual course from elsewhere was never in this
-    /// device's roster, so it never appears in the difference.
-    ///
-    /// Anything 選課 names again is cleared, so a re-add in 加退選 brings the
-    /// course straight back. An empty `roster` changes nothing: it means the
-    /// scrape was not consulted or drifted, never "everything was dropped".
+    /// Only drops this device saw count: `localPortalNos` are its portal courses
+    /// now, so their difference from `roster` is what add/drop just removed. A
+    /// snapshot could not tell a drop from another device's manual course: both
+    /// are unlisted, with identical rows. A course listed again is cleared, and an
+    /// empty `roster` (not consulted, or drifted) changes nothing.
     static func selectionDrops(
         previous: Set<String>,
         localPortalNos: [String],
@@ -696,32 +648,18 @@ enum AppServiceBridge {
             let currentCourses = DataCache.shared.loadCourses(semester: currentSemester)
 
             let moodleEnrolled = try await MoodleEnrolledCoursesService.fetchEnrolled()
-            // Same idnumber → numeric-id snapshot as the course-table path.
-            // Done here too because the assignments pipeline can run before
-            // the course pipeline on a cold launch, and the deep-link button
-            // shouldn't have to wait two cycles to light up. Whole-map
-            // overwrite for the same staleness reason — `moodleEnrolled` is
-            // the authoritative current-enrolment list. Guarded by the same
-            // login-generation + cancellation checks as the assignments
-            // cache write below: a fetch in flight when the user logs out
-            // must not resurrect that user's enrolled-course ids on disk.
+            // `fetchCourses` saves this map too, but assignments can finish first on a
+            // cold launch, and the deep-link button should not wait. Replaced whole as in
+            // `fetchCourses`, with the same guard against a mid-fetch logout.
             let moodleIdMapForAssignments = moodleCourseIdMap(moodleEnrolled)
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveMoodleCourseIdMap(moodleIdMapForAssignments)
             }
 
-            // On first launch the NTUST course cache is empty because
-            // backgroundSync runs assignments + courses in parallel.
-            // Without this fallback we'd filter against an empty set,
-            // short-circuit to cached-empty assignments, and 作業 would
-            // stay blank until a second launch. Prefer filtering to the
-            // current course roster when it exists (handles drops), else
-            // use the semester prefix on Moodle's idnumber.
-            // Kept separate from the widened set below: this is what the class
-            // table actually holds — portal rows plus the manually-added and
-            // cross-device-merged ones — and it is what decides which of a
-            // 合開 course's codes an assignment gets filed under.
+            // The course cache is empty on first launch (courses sync in parallel); rather
+            // than blank Assignments, filter by roster (handles drops), else Moodle's term.
+            // `localCourseNos` skips the Moodle widening; it picks a co-listed course's code.
             let localCourseNos = Set(currentCourses.map(\.courseNo)).union(
                 DataCache.shared.loadUserAddedCourses(semester: currentSemester).map(\.courseNo)
             )
@@ -863,11 +801,9 @@ enum AppServiceBridge {
         freshAssignments: [SDAssignment],
         cachedAssignments: [SDAssignment]
     ) -> [SDAssignment] {
-        // When the per-assignment submission-status fetch partially fails,
-        // we keep the previously known isCompleted so the UI does not
-        // regress from "已繳交" back to "未繳交". Preserve submittedAt too:
-        // without it we could not distinguish 已繳交 from 已遲交 after the
-        // transient failure.
+        // A partial submission-status failure keeps the known `isCompleted`, so the UI
+        // does not regress from "submitted" to "not submitted". Keep `submittedAt` too,
+        // or "submitted" and "submitted late" cannot be told apart afterwards.
         let previousById = Dictionary(
             uniqueKeysWithValues: cachedAssignments.map { ($0.assignmentId, $0) }
         )
@@ -884,9 +820,9 @@ enum AppServiceBridge {
         return freshAssignments
     }
 
-    /// Course-no prefix matcher used to strip the leading code from a
-    /// Moodle fullname like "EE3001 電子學". Hoisted to a static so it
-    /// isn't recompiled per assignment / per call.
+    /// Matches the course number that leads a Moodle fullname, so
+    /// `courseName(from:)` can strip it. Static so it compiles once, not per
+    /// assignment.
     private static let courseNoPrefixRegex: NSRegularExpression = {
         // Anchored: must match the whole token.
         try! NSRegularExpression(pattern: "^3?[A-Z]{2}[A-Z0-9]{6,7}$")

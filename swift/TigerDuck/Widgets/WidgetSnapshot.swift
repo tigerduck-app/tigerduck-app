@@ -10,17 +10,14 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let periodOrder: [String]
     let activeWeekdays: [Int]
     let activePeriodIds: [String]
-    /// `yyyy-MM-dd` keys on which classes do not meet — school holidays the
+    /// `yyyy-MM-dd` keys on which classes do not meet: school holidays the
     /// user has not opted back into.
     ///
-    /// Carried in the snapshot rather than read by the extension because the
-    /// calendar cache lives in the app's own `UserDefaults`, and this file
-    /// is already the app→extension channel.
+    /// Carried here rather than read by the extension: the calendar cache lives in
+    /// the app's own `UserDefaults`, and this file is already the app→extension channel.
     ///
-    /// Optional so a snapshot written by the previous build still decodes: a
-    /// non-optional field with no value fails the whole decode, and the
-    /// widget would fall back to its placeholder rather than lose one
-    /// feature. Same rule the persistence checklist applies on Android.
+    /// Optional so a snapshot from an older build still decodes; a missing
+    /// non-optional field fails the whole decode and leaves only the placeholder.
     var quietDayKeys: [String]? = nil
 
     // The empty-state snapshots each widget falls back to predate this

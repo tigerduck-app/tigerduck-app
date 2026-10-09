@@ -36,26 +36,26 @@ enum TigerDuckTheme {
     /// `courseColorHex(for:)` so its hex output stays in lockstep with what
     /// the phone renders.
     static let coursePaletteHexes: [UInt32] = [
-        0xFF6B6B, // 珊瑚紅
-        0x4ECDC4, // 青綠
-        0x45B7D1, // 天藍
-        0xF39C12, // 橘橙
-        0xDDA0DD, // 梅紫
-        0x2ECC71, // 翡翠綠
-        0xE74C3C, // 磚紅
-        0x3498DB, // 寶藍
-        0xF7DC6F, // 金黃
-        0x9B59B6, // 紫羅蘭
-        0x1ABC9C, // 碧綠
-        0xE67E22, // 南瓜橘
-        0x85C1E9, // 淺藍
-        0xD35400, // 焦橙
-        0x27AE60, // 森林綠
-        0xC0392B, // 酒紅
-        0x8E44AD, // 深紫
-        0x16A085, // 松綠
-        0xF1C40F, // 向日葵黃
-        0x2980B9, // 鈷藍
+        0xFF6B6B, // coral red
+        0x4ECDC4, // teal
+        0x45B7D1, // sky blue
+        0xF39C12, // orange
+        0xDDA0DD, // plum
+        0x2ECC71, // emerald green
+        0xE74C3C, // brick red
+        0x3498DB, // sapphire blue
+        0xF7DC6F, // golden yellow
+        0x9B59B6, // violet
+        0x1ABC9C, // jade green
+        0xE67E22, // pumpkin orange
+        0x85C1E9, // light blue
+        0xD35400, // burnt orange
+        0x27AE60, // forest green
+        0xC0392B, // wine red
+        0x8E44AD, // deep purple
+        0x16A085, // pine green
+        0xF1C40F, // sunflower yellow
+        0x2980B9, // cobalt blue
     ]
 
     static let courseColors: [Color] = coursePaletteHexes.map { Color(hex: UInt($0)) }
@@ -169,12 +169,9 @@ private final class ColorState: @unchecked Sendable {
     func ensureAssignments(courseNos: [String], palette: [UInt32]) {
         let didMutate: Bool = lock.withLock {
             var mutated = false
-            // Repair duplicate hexes left over from the legacy migration
-            // (the pre-uniqueness map could persist multiple courses on
-            // the same palette index). Walk by sorted courseNo so the
-            // keeper is deterministic, drop the rest from `map`, and let
-            // the missing-assignment loop below pick fresh unique colors
-            // for any of them still in the current roster.
+            // A map persisted before colors were unique can hold duplicate hexes.
+            // Keep the first course in sorted order, so the keeper is deterministic,
+            // and drop the rest; the loop below recolors those still in `courseNos`.
             var seenHexes: Set<UInt32> = []
             for courseNo in map.keys.sorted() {
                 guard let hex = map[courseNo] else { continue }
@@ -200,10 +197,9 @@ private final class ColorState: @unchecked Sendable {
     func setColor(hex newHex: UInt32, for courseNo: String, palette: [UInt32]) {
         let didMutate: Bool = lock.withLock {
             if map[courseNo] == newHex { return false }
-            // Find every other course holding this hex (normally at most one,
-            // but tolerate duplicates that could survive an aborted migration)
-            // and release them before reassignment so the picker can choose
-            // the just-freed hex if it ends up being the only valid option.
+            // Release every other course holding this hex (normally one, but an
+            // aborted migration can leave duplicates) before reassigning, so the
+            // picker can choose the just-freed hex if it is the only valid option.
             let displaced = map.compactMap { entry -> String? in
                 entry.key != courseNo && entry.value == newHex ? entry.key : nil
             }
@@ -268,11 +264,9 @@ private final class ColorState: @unchecked Sendable {
             let candidate = UInt32.random(in: 0...0xFFFFFF)
             if !used.contains(candidate) { return candidate }
         }
-        // Pathological fallback: nudge the hash-based pick by the used-set
-        // size so we still return *something* distinct from the input seed's
-        // first guess. Reaching here implies >16M assigned colors, which is
-        // physically impossible for the class roster but keeps the function
-        // total.
+        // Reaching here implies over 16M assigned colors, impossible for a class
+        // roster. To keep the function total, nudge the hash-based pick by the
+        // used-set size so the result still differs from the seed's first guess.
         return palette[start] ^ UInt32(truncatingIfNeeded: used.count)
     }
 

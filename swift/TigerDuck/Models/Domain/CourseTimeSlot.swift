@@ -24,15 +24,14 @@ struct CourseTimeSlot: Identifiable, Equatable {
     /// The calendar date this slot belongs to (for display purposes).
     let date: Date
 
-    /// Build slots for a single day. Emits one slot per contiguous run of
-    /// periods (consecutive in `AppConstants.Periods.chronologicalOrder`)
-    /// rather than one first-to-last span — otherwise a course scheduled
-    /// at P1 and P3 with P2 free would collapse into a single
-    /// 08:10-12:10 slot, and `CourseTimelineResolver` would report
-    /// `.inClass` during the P2 gap. The block-merge rule matches
-    /// `OngoingCourseInfo.ongoingCourses(weekday:minuteOfDay:)`, so the
-    /// time-slider, Live Activity, and Mac dashboard cards all draw
-    /// blocks consistently with the "Current class" carousel.
+    /// Build slots for a single day: one per contiguous run of periods
+    /// (consecutive in `AppConstants.Periods.chronologicalOrder`), not one
+    /// first-to-last span, which would merge a course at P1 and P3 with P2
+    /// free into one slot and make `CourseTimelineResolver` report `.inClass`
+    /// in the P2 gap. The merge rule matches
+    /// `OngoingCourseInfo.ongoingCourses(weekday:minuteOfDay:)`, so the time
+    /// slider, Live Activity and Mac dashboard cards draw the same blocks as
+    /// the "Current class" carousel.
     static func buildSlots(from courses: [SDCourse], weekday: Int, on date: Date = AppClock.now()) -> [CourseTimeSlot] {
         let calendar = AppConstants.taipeiCalendar
         var slots: [CourseTimeSlot] = []

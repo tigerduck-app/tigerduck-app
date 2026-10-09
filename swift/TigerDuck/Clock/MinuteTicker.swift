@@ -1,15 +1,13 @@
 import Foundation
 import Observation
 
-/// Observable 5-second pulse used by class-table / today-card views to
-/// re-derive minute-of-day state without listening on a Combine
-/// publisher. Reading `tick` somewhere in a view-model getter creates
-/// an Observation dependency; the timer increments `tick` on the main
-/// actor so SwiftUI re-evaluates the dependent body.
+/// Observable 5-second pulse that class-table and today-card views use to
+/// re-derive minute-of-day state without a Combine publisher. Reading `tick`
+/// in a view-model getter creates an Observation dependency, and the timer
+/// bumps it on the main actor so SwiftUI re-evaluates the body.
 ///
-/// Matches Android's 5-second poll in `ClassTableViewModel` so the
-/// "Current class" card transitions within a few seconds of the
-/// wall-clock minute boundary, not up to a minute later.
+/// Matches Android's 5-second poll in `ClassTableViewModel`, so the "Current
+/// class" card changes within seconds of the minute boundary, not a minute late.
 @MainActor
 @Observable
 final class MinuteTicker {

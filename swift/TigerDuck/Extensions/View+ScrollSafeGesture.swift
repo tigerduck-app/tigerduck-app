@@ -1,27 +1,17 @@
 import SwiftUI
 
-// iOS 18 changed scroll-view gesture arbitration: a plain `.onTapGesture`
-// placed on content inside a ScrollView / LazyVGrid loses to the scroll view
-// and only registers on the *second* tap, and a plain `.onTapGesture` /
-// `.onLongPressGesture` installed over the whole scroll content competes with —
-// and swallows — the *first* tap on every interactive child.
-//
-// The fix, centralized here so every scroll-embedded surface applies it the
-// same way (and new surfaces can't forget it):
-//   • wrap tap targets in a real `Button` — its tap wins arbitration;
-//   • attach whole-view recognizers (keyboard dismiss, edit-mode long-press)
-//     via `.simultaneousGesture` so they coexist without eating child taps.
+// Since iOS 18 a plain `.onTapGesture` inside a ScrollView or LazyVGrid loses to the scroll view
+// until the second tap, and a tap or long-press over all of it swallows each child's first tap.
+// These helpers make tap targets `Button`s and add whole-view gestures via `.simultaneousGesture`.
 extension View {
-    /// Wraps the view in a borderless `Button` whose tap wins iOS 18 gesture
-    /// arbitration against an enclosing scroll view. `.contentShape` keeps the
-    /// whole frame (including transparent padding) hittable; `Button` supplies
-    /// the `.isButton` accessibility trait automatically.
+    /// Wraps the view in a borderless `Button`, whose tap wins iOS 18 gesture arbitration against
+    /// an enclosing scroll view. `.contentShape` keeps the whole frame, transparent padding
+    /// included, hittable, and `Button` supplies the `.isButton` accessibility trait.
     ///
-    /// `onPressChanged`, when supplied, reports the Button's press state —
-    /// `true` at touch-down (before the tap action is delivered on release),
-    /// `false` when the press lifts or cancels. Callers that run a
-    /// `.simultaneousGesture` drag alongside the tap use the touch-down edge as
-    /// a per-interaction reset hook that doesn't depend on callback ordering.
+    /// `onPressChanged` reports the press state: `true` at touch-down, before the action fires on
+    /// release, and `false` when the press lifts or cancels. Callers running a
+    /// `.simultaneousGesture` drag alongside use the touch-down edge as a per-interaction reset
+    /// that does not depend on callback ordering.
     func scrollSafeTapAction(
         onPressChanged: ((Bool) -> Void)? = nil,
         _ action: @escaping () -> Void
