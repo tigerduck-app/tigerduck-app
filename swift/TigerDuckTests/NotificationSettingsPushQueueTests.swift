@@ -64,21 +64,23 @@ struct NotificationSettingsPushQueueTests {
         defer { Self.resetQueue() }
 
         let ran = RanLog()
+        let timer = ManualSleeper()
 
-        // Mirrors `scheduleNotificationSettingsPush()`: a short sleep that,
-        // if allowed to finish, enqueues a push.
-        NotificationSettingsPushQueue.pendingDebounce = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(20))
-            guard !Task.isCancelled else { return }
+        // What `scheduleNotificationSettingsPush()` debounces: once the wait ends, a push is
+        // enqueued.
+        NotificationSettingsPushQueue.debounce({
             NotificationSettingsPushQueue.enqueue { ran.append("accountA") }
-        }
+        }, sleep: { _ in await timer.sleep() })
+        let debounce = try #require(NotificationSettingsPushQueue.pendingDebounce)
+        await timer.waitUntilArmed()
 
         // The account logs out while the debounce is still sleeping.
         NotificationSettingsPushQueue.cancelAll()
 
-        // Longer than the debounce's own sleep: if cancellation failed, "accountA" would
-        // already be enqueued, and with nothing ahead of it almost certainly run, by now.
-        try? await Task.sleep(for: .milliseconds(200))
+        // The wait ends after the logout, as a sleep that raced its cancel would. Had the
+        // cancel not reached it, "accountA" would now be queued ahead of the next account.
+        await timer.fire()
+        await debounce.value
 
         // The next account signs in and makes its own edit.
         let taskB = NotificationSettingsPushQueue.enqueue { ran.append("accountB") }

@@ -110,11 +110,8 @@ extension AppState {
     /// marker survives and the next full sync repairs the cloud copy.
     func scheduleNotificationSettingsPush() {
         Defaults[.notificationSettingsPushPending] = true
-        NotificationSettingsPushQueue.pendingDebounce?.cancel()
-        NotificationSettingsPushQueue.pendingDebounce = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled, let self else { return }
-            self.enqueueNotificationSettingsPush()
+        NotificationSettingsPushQueue.debounce { [weak self] in
+            self?.enqueueNotificationSettingsPush()
         }
     }
 
@@ -179,6 +176,20 @@ enum NotificationSettingsPushQueue {
     /// next. Mirrors `HolidayUploadQueue.generation`
     /// (`AppState+PushServer.swift`).
     static var generation = 0
+
+    /// Replaces the sleeping debounce: `work` runs once 250 ms pass with no newer call and no
+    /// `cancelAll()`. The wait is injectable so a test can end it by hand.
+    static func debounce(
+        _ work: @escaping @MainActor () -> Void,
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) {
+        pendingDebounce?.cancel()
+        pendingDebounce = Task { @MainActor in
+            await sleep(.milliseconds(250))
+            guard !Task.isCancelled else { return }
+            work()
+        }
+    }
 
     /// Chains `work` behind whatever push is already queued, and only runs
     /// it if `cancelAll()` has not bumped the generation since it was
