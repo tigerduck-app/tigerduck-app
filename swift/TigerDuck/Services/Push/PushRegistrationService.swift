@@ -137,6 +137,10 @@ actor PushRegistrationService {
     private var deviceRegisterAttempts: Int = 0
     private let maxDeviceRegisterAttempts = 4
 
+    /// The registration debounce's wait, injectable so a test need not sleep through it. The
+    /// retry backoffs keep their own sleeps.
+    private let debounceSleep: @Sendable (Duration) async -> Void
+
     init(
         identity: PushIdentity,
         apiClient: PushAPIClient,
@@ -146,7 +150,8 @@ actor PushRegistrationService {
         // No default: `PushDeviceClass.resolvedForBuild` is `@MainActor`, and
         // an actor init evaluates default arguments in a nonisolated context.
         // Callers pass it from their own main-actor context.
-        deviceClass: String
+        deviceClass: String,
+        debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.identity = identity
         self.apiClient = apiClient
@@ -154,6 +159,7 @@ actor PushRegistrationService {
         self.attrsType = attrsType
         self.apnsEnv = apnsEnv
         self.deviceClass = deviceClass
+        self.debounceSleep = debounceSleep
     }
 
     // MARK: - Locale
@@ -510,8 +516,9 @@ actor PushRegistrationService {
 
         lastAttempt?.cancel()
         let logger = self.logger
+        let sleep = debounceSleep
         lastAttempt = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
+            await sleep(.milliseconds(250))
             if Task.isCancelled { return }
             guard let self else { return }
             await self.performRegister(logger: logger)

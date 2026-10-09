@@ -21,7 +21,10 @@ struct PushRegistrationServiceTests {
                 baseURLProvider: { baseURL },
                 session: URLSession(configuration: config)
             ),
-            deviceClass: "iphone"
+            deviceClass: "iphone",
+            // Each test awaits its attempt with `awaitPendingRegistration()`, so the debounce
+            // has nothing to merge and ends at once.
+            debounceSleep: { _ in }
         )
     }
 
