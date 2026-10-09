@@ -28,4 +28,4 @@ The pin table is `pinSets` in `swift/Shared/TLSPinningDelegate.swift`; the reaso
    `app/src/main/res/xml/network_security_config.xml`; both apps must ship the same pin set and
    expiration.
 4. Ship both builds before the old expiration date. After it, unrotated builds fall back to
-   system trust and log a warning.
+   system trust and log the expiry at `.fault` (`TLSPinningDelegate` and `MailTLSVerifier`).
