@@ -1,27 +1,6 @@
-// One-at-a-time access to the app's real, process-wide `Defaults` keys.
-//
-// `pushServerEnabled`, `bulletinPushEnabled` and `serverPushUserOptOut`
-// have no `Defaults.suite` override (see `AppDefaults.swift`), and neither
-// `BulletinPushOptOutMigration` nor `PushRegistrationService` takes them
-// through a seam — the migration's whole job is those keys, and the
-// register body and the bulletin PATCH read and write them directly. The
-// sync switches and `syncPreferencesPushPending` are the same for the
-// sync-preferences PATCH, as are the notification-settings keys
-// `LiveActivityPreferencesStore` keeps (`NotificationSettingsFixtures`).
-// So the only way to observe any of them is to write the real keys.
-//
-// `.serialized` is not enough on its own: it orders one suite's own tests
-// and nothing else, while Swift Testing runs suites concurrently. The
-// register tests hold a pinned value across a 250 ms debounce, which is
-// plenty of room for a migration test to reset the same keys underneath
-// them — observed as `rejectedBulletinPatchDoesNotPersist` failing
-// `Defaults[.bulletinPushEnabled] == true` in one full-suite run and
-// passing in the next.
-//
-// Every test that touches those keys goes through
-// `withExclusiveRealDefaults`, save and restore included, so only one of
-// them is ever inside that window. The gate is not reentrant: nothing
-// inside it may take it again.
+// One-at-a-time access to the real, process-wide `Defaults` keys tests can reach no other way.
+// `.serialized` orders one suite only, so every test touching them, save and restore included,
+// runs in `withExclusiveRealDefaults`, never nested. See docs/decisions/0020-real-defaults-gate.md.
 import Foundation
 
 /// Async mutual exclusion. An actor rather than a lock because callers hold
@@ -53,7 +32,8 @@ actor RealDefaultsGate {
     }
 }
 
-/// Runs `body` with exclusive use of the real push-preference keys.
+/// Runs `body` with exclusive use of the real `Defaults` keys the gated tests share: push and
+/// sync preferences, notification settings, the tab-bar migration keys and the update-check stamps.
 func withExclusiveRealDefaults<T>(_ body: () async throws -> T) async rethrows -> T {
     await RealDefaultsGate.shared.acquire()
     do {

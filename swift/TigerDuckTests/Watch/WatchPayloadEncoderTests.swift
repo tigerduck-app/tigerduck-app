@@ -107,10 +107,9 @@ final class WatchPayloadEncoderTests: XCTestCase {
     }
 
     func test_loggedOut_dropsCachedCourses() {
-        // Logout posts a data update before SwiftData rows are deleted, and
-        // the watch UI shows non-empty `courses` ahead of the signed-out
-        // empty state — so the encoder must strip courses when loggedIn is
-        // false to avoid leaking the previous user's schedule.
+        // Logout posts a data update before SwiftData rows are deleted, and the watch shows
+        // non-empty `courses` ahead of its signed-out state, so the encoder must strip courses
+        // when `loggedIn` is false or the previous user's schedule leaks.
         let c = makeCourse()
         let snap = WatchPayloadEncoder.encode(
             courses: [c], customNames: [:], accentHex: "#000",

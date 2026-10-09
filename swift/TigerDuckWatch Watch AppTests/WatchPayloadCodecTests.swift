@@ -81,12 +81,9 @@ final class WatchPayloadCodecTests: XCTestCase {
     }
 
     func test_jsonDecode_legacyDiskCacheWithoutVisualPreset_succeeds() throws {
-        // `ScheduleStore.loadFromDisk()` round-trips `WatchSnapshot` via
-        // `JSONDecoder`, not `WatchPayloadCodec`. Synthesised `Codable`
-        // ignores the init's default-value parameter, so a pre-upgrade
-        // on-disk JSON file that predates `visualPreset` must still
-        // decode — otherwise the watch falls back to its empty state on
-        // upgrade until a fresh WC push arrives.
+        // `ScheduleStore.loadFromDisk()` decodes with `JSONDecoder`, not `WatchPayloadCodec`,
+        // and synthesised `Codable` ignores the init's defaults. A cache from before `visualPreset`
+        // must still decode, or the upgraded watch shows its empty state until a fresh WC push.
         let legacyJSON = """
         {
             "version": 1,

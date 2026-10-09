@@ -1,8 +1,5 @@
-// The 2.3.0 School Mail What's New pages: which bar the "recommended
-// arrangement" question offers (Mail in Calendar's slot, else appended
-// when there's room, else nothing — every other tab stays), that they skip
-// a bar that already has Mail, and that both pages are registered for the
-// release.
+// The 2.3.0 School Mail What's New pages: the "recommended arrangement" puts Mail in Calendar's
+// slot, else appends it if there is room, else offers nothing. A bar with Mail skips both pages.
 // iPhone/iPad-only like the pages; the test target also builds for macOS.
 #if os(iOS)
 import Foundation

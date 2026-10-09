@@ -122,10 +122,9 @@ struct TimeSliderViewModelTests {
         }
     }
 
-    /// 衝堂: two courses on one period. Both belong on screen — keeping
-    /// only the first match showed one and dropped the other, and which
-    /// one survived came out of timeline order rather than any choice the
-    /// reader made.
+    /// Overlapping courses: two courses in one period. Both belong on screen.
+    /// Keeping only the first match would drop one, and which one survived
+    /// would come from timeline order rather than any choice the reader made.
     @Test func courseState_inClass_keepsEveryOverlappingCourse() {
         let vm = TimeSliderViewModel()
         let calendar = Calendar.current
@@ -154,7 +153,7 @@ struct TimeSliderViewModelTests {
     /// The same resolution backs the Live Activity, which can only show
     /// one class and so takes `first`. The order the overlap comes back in
     /// is therefore load-bearing, not cosmetic: it decides which of two
-    /// 衝堂 courses the lock screen names.
+    /// overlapping courses the lock screen names.
     @Test func timelineResolver_inClass_ordersOverlapsAsGiven() {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())

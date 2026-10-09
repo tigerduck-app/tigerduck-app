@@ -1,7 +1,6 @@
-// `SDCalendarEvent.isAllDay` — which calendar rows are a whole day, and so
-// show no time. A school-calendar row carries no flag of its own: a feed
-// date with no time is parsed to midnight in Taipei, and that is the only
-// trace it leaves.
+// `SDCalendarEvent.isAllDay`: which calendar rows are a whole day, and so show no time.
+// A school-calendar row carries no flag of its own: a feed date with no time is parsed to
+// midnight in Taipei, and that is the only trace it leaves.
 import Foundation
 import Testing
 @testable import TigerDuck
