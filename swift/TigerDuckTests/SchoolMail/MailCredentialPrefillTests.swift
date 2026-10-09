@@ -3,8 +3,8 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The three carve-outs the School Mail prefill is allowed to exist under (§7.1, §7.4), pinned
-/// against the pure function that decides them.
+/// The three carve-outs the School Mail prefill is allowed to exist under, pinned against the
+/// pure function that decides them.
 ///
 /// Everything here is a value: `isOverridden` is passed in rather than read from the real
 /// developer-override store, so no test in this file can leave another one pointed at a
@@ -54,9 +54,9 @@ struct MailCredentialPrefillTests {
     // MARK: Carve-out (a) — it never submits
 
     /// The decision hands back two strings and stops. A sign-in only happens because
-    /// `MailAccountManager.login` was called, which nothing on this path does — so seeding a
-    /// password, on any number of re-appearances, sends no `LOGIN` at all. That is the whole of
-    /// §7.4's protection here: repeated failures lock the school account and its campus Wi-Fi.
+    /// `MailAccountManager.login` was called, which nothing on this path does, so seeding a
+    /// password, on any number of re-appearances, sends no `LOGIN` at all. That is all that
+    /// guards the account here: repeated failures lock the school account and its campus Wi-Fi.
     @Test("Seeding a password sends nothing to the server")
     func theDecisionNeverSignsIn() async {
         let h = MailAccountManagerTests.harness()
@@ -139,9 +139,9 @@ struct MailCredentialPrefillTests {
 
     // MARK: A rejected password is never offered again
 
-    /// The regression: a Mail2000 password need not match the NTUST one, so a rejection is the
-    /// *expected* failure — and re-seeding the rejected password made the next rejected `LOGIN`
-    /// a single tap, on exactly the path §7.4 protects.
+    /// A Mail2000 password need not match the NTUST one, so a rejection is the expected failure.
+    /// Re-seeding the rejected password would make the next rejected `LOGIN` a single tap, and
+    /// repeated rejections lock the school account.
     @Test("A rejected password is not seeded again")
     func aRejectedPasswordIsNeverReoffered() {
         let fields = Self.fields(lastRejectedPassword: Self.ntustPassword)
@@ -174,8 +174,8 @@ struct MailCredentialPrefillTests {
 
         #expect(h.manager.loginError == .credentials)
         #expect(h.manager.lastRejectedPassword == Self.ntustPassword)
-        // §7.4's background lockout is deliberately untouched by a manual rejection; the
-        // prefill is what had to stop repeating it.
+        // A manual rejection leaves the background lockout (`authFailed`) unset; it is the
+        // prefill that must stop repeating the rejected password.
         #expect(!h.manager.authFailed)
 
         let fields = Self.fields(lastRejectedPassword: h.manager.lastRejectedPassword)

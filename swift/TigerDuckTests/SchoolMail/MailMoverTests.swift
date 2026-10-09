@@ -226,11 +226,8 @@ struct MailMoverTests {
         #expect(!MailMover.shouldRecordAfterFailure(serverConfirmsDeleted: false, wasAlreadyDeleted: false))
     }
 
-    // The "user search contract (no client-side fallback)" test that used to sit here only
-    // asserted that `FakeMailClient.search` throws the error the test had just assigned to
-    // `fake.searchError`: no `MailMover`, `LiveMailClient` or view-model code was involved, and
-    // it passed with all three deleted. The real contract — the list falling back to loaded mail
-    // when the server refuses SEARCH — is covered by
-    // `MailListViewModelTests.searchFallsBackToLoadedMailWhenTheServerRefuses`.
+    // Asserting that `FakeMailClient.search` throws its scripted `searchError` tests no app code.
+    // The real contract, the list falling back to loaded mail when the server refuses SEARCH, is
+    // covered by `MailListViewModelTests.searchFallsBackToLoadedMailWhenTheServerRefuses`.
 }
 #endif

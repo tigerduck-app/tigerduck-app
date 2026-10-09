@@ -1,8 +1,8 @@
 #if os(iOS)
 import Foundation
 
-/// IMAP modified UTF-7 (RFC 3501 §5.1.3): `&W8RO9lCZTv1TIw-` → `寄件備份匣`, the Sent folder.
-/// SwiftMail hands mailbox names back undecoded.
+/// IMAP modified UTF-7 (RFC 3501 §5.1.3): `&W8RO9lCZTv1TIw-` decodes to the Chinese name of
+/// the Sent folder. SwiftMail hands mailbox names back undecoded.
 nonisolated enum ModifiedUTF7 {
     static func decode(_ name: String) -> String {
         var output = ""

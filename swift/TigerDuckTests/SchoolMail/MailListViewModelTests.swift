@@ -263,7 +263,7 @@ struct MailListViewModelTests {
         #expect(h.script.calls == 0)
     }
 
-    // MARK: Fix round 1 (2026-09-18 review)
+    // MARK: Merging refreshes and discarding stale results
 
     /// Switching folders while a server search is still in flight must never let that stale
     /// search land on top of the folder the user actually switched to. `search` is gated so the
@@ -286,11 +286,11 @@ struct MailListViewModelTests {
     }
 
     /// A poll-triggered (or pull-to-refresh-triggered) reload must merge the refreshed first
-    /// page into what's loaded rather than replacing it — otherwise every automatic refresh
-    /// would silently throw away everything the user had paginated into. This also covers fix
-    /// round 2's "an entry older than the fresh page's window survives a refresh": every one
-    /// of the 10 paginated-in messages below is below `fresh.summaries.last?.uid` on the
-    /// second, poll-triggered fetch, and all 10 are still there afterwards.
+    /// page into what's loaded rather than replacing it; otherwise every automatic refresh
+    /// would silently throw away everything the user had paginated into. It also covers an
+    /// entry older than the fresh page's window surviving a refresh: every one of the 10
+    /// paginated-in messages below is below `fresh.summaries.last?.uid` on the second,
+    /// poll-triggered fetch, and all 10 are still there afterwards.
     @Test func pollingReloadDoesNotDiscardPaginatedOlderMail() async throws {
         let h = Self.harness()
         await h.model.load()
@@ -356,7 +356,7 @@ struct MailListViewModelTests {
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
     }
 
-    // MARK: Fix round 2 (2026-09-18 scoped re-review)
+    // MARK: Keeping the list in step with the server
 
     /// A message expunged, moved or `\Deleted` elsewhere (webmail, another device) is inside
     /// the fresh page's window (its UID is at or above `fresh.summaries.last?.uid`) but is no
@@ -372,8 +372,10 @@ struct MailListViewModelTests {
         #expect(h.cache.loadPage(folder: "INBOX")?.summaries.map(\.uid) == [5, 4, 2, 1])
     }
 
-    /// An empty fresh page (everything in the folder was deleted, or a transient empty read)
-    /// must empty the list rather than leaving stale entries behind indefinitely.
+    /// An empty fresh page from a folder the server reports as empty (`messageCount == 0`,
+    /// everything in it deleted) must empty the list and its cache rather than leave stale
+    /// entries behind. An empty window over a folder that still holds mail, all `\Deleted` or a
+    /// transient empty read, keeps the rows instead; the next test covers that case.
     @Test func anEmptyFreshPageEmptiesTheList() async throws {
         let h = Self.harness(inboxCount: 5)
         await h.model.load()
@@ -486,7 +488,7 @@ struct MailListViewModelTests {
         return h
     }
 
-    /// `收3` / `寄3` — the folder and the UID, which is the only honest name for a merged row.
+    /// Names each row by folder (inbox or sent) and UID, the only honest name for a merged row.
     static func labels(_ rows: [MailListRow]) -> [String] {
         rows.map { "\($0.folder == "INBOX" ? "收" : "寄")\($0.uid)" }
     }

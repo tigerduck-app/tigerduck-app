@@ -21,9 +21,9 @@ struct MailSettingsTests {
         #expect(!link.title.isEmpty)
     }
 
-    /// §7.4: after a rejected password nothing may re-arm a background check. The toggle used to
-    /// be gated on `isLoggedIn` alone, so a locked-out account could still switch notifications
-    /// on and schedule a task `MailBackgroundRefresh` then immediately refuses to reschedule.
+    /// After a rejected password nothing may re-arm a background check. Gated on `isLoggedIn`
+    /// alone, the toggle would let a locked-out account switch notifications on and schedule a
+    /// task that `MailBackgroundRefresh` then immediately refuses to reschedule.
     @Test func theNotificationsToggleIsOfferedOnlyWhenABackgroundCheckCouldRun() {
         #expect(MailNotificationSettingsView.notificationsToggleIsEnabled(isLoggedIn: true, authFailed: false))
         #expect(!MailNotificationSettingsView.notificationsToggleIsEnabled(isLoggedIn: false, authFailed: false))

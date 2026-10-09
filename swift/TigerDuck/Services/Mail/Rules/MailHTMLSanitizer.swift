@@ -14,11 +14,11 @@ nonisolated struct SanitizedHTML: Equatable, Sendable {
     var links: [MailLink]
 }
 
-/// HTML for the web view in which every `<a href>` is `https://link.invalid/<n>`, `links[n]`
-/// being the text and href that anchor had (message-screen dispatch, 2026-09-16 addition 1;
-/// mirrors Android's `LinkedHtml`/`MailHtmlDocument.rewriteLinks`). `links` is empty — and no
-/// `href` is left on any anchor at all — when the anchors couldn't be kept in lockstep with it;
-/// see `MailHTMLSanitizer.rewriteLinks`.
+/// HTML for the web view in which every `<a href>` is `https://link.invalid/<n>`, with
+/// `links[n]` holding the text and href that anchor had. Mirrors Android's
+/// `LinkedHtml`/`MailHtmlDocument.rewriteLinks`. When the anchors cannot be kept in lockstep
+/// with `links`, `links` is empty and no anchor has an `href` at all; see
+/// `MailHTMLSanitizer.rewriteLinks`.
 nonisolated struct LinkedHTML: Equatable, Sendable {
     var html: String
     var links: [MailLink]
@@ -58,10 +58,9 @@ nonisolated enum MailHTMLSanitizer {
         "ul": ["type"],
         "li": ["value"],
     ]
-    /// Matches Android's `DATA_IMAGE` regex exactly: the MIME subtype must be followed
-    /// immediately by `;` or `,` (the start of `;base64,` or a raw `,`-separated payload),
-    /// so a bypass like `data:image/pngx,AAAA` does not pass a naive prefix check
-    /// (fix round 1, 2026-09-16).
+    /// Same pattern as Android's `DATA_IMAGE` regex. The MIME subtype must be followed
+    /// immediately by `;` or `,` (the start of `;base64,` or of a raw `,`-separated payload),
+    /// so `data:image/pngx,AAAA`, which a plain prefix check would accept, is rejected.
     private static let dataImagePattern = try! NSRegularExpression(
         pattern: "^data:image/(png|jpeg|gif|webp)[;,]",
         options: .caseInsensitive
@@ -80,18 +79,14 @@ nonisolated enum MailHTMLSanitizer {
         options: .caseInsensitive
     )
 
-    /// An image's filtered `style` with its fixed `width` and `height` in one unit rewritten as
-    /// that width and their ratio, or nil to leave it alone (#226). The page's
-    /// `img{max-width:100%;height:auto}` narrows an image wider than the screen, but a fixed
-    /// inline height outranks `height:auto`, so the image kept its full height and came out
-    /// stretched; Outlook sizes inline images this way (`width:6.25in;height:8.84in`). With a
-    /// ratio, a narrowed image keeps its shape and any other keeps the sender's box, even while
-    /// it is held back.
-    ///
+    /// An image's filtered `style` with a fixed `width` and `height` in one unit rewritten as
+    /// that width and their `aspect-ratio`, or nil to leave it alone (#226). Not `private`:
+    /// unit-tested directly. The page's `img{max-width:100%;height:auto}` narrows a wide image,
+    /// but a fixed inline height outranks `height:auto`, so it would keep its height and stretch;
+    /// Outlook sizes inline images this way (`width:6.25in;height:8.84in`). With the ratio, a
+    /// narrowed image keeps its shape and any other keeps the sender's box, even while held back.
     /// ponytail: `546px` by `8in` still stretches, and so does an inline height beside a `width`
     /// attribute; converting absolute units to px, and reading the attribute, would cover them.
-    ///
-    /// Not `private`: unit-tested directly.
     static func keepingAspectRatio(_ style: String) -> String? {
         let declarations = style.components(separatedBy: "; ")
         let widths = declarations.filter { $0.hasPrefix("width:") }
@@ -131,11 +126,9 @@ nonisolated enum MailHTMLSanitizer {
 
             var blocked = 0
             for image in try clean.select("img") {
-                // `data-remote-src` is not in the whitelist above, so the Cleaner step already
-                // stripped any sender-supplied copy of it — this call is belt-and-braces so the
-                // guarantee holds even if the whitelist changes later (controller ruling,
-                // 2026-09-16; mirrors Android's `img.removeAttr(REMOTE_SRC_ATTR)`). After this
-                // point, `data-remote-src` is only ever written by this loop, below.
+                // Only this loop ever writes `data-remote-src`. The Cleaner already strips a
+                // sender's copy, since the whitelist lacks it; removing it here keeps that true if
+                // the whitelist changes. Mirrors Android's `img.removeAttr(REMOTE_SRC_ATTR)`.
                 try image.removeAttr(remoteImageAttribute)
 
                 if let style = keepingAspectRatio(try image.attr("style")) {
@@ -165,13 +158,9 @@ nonisolated enum MailHTMLSanitizer {
 
             var links: [MailLink] = []
             for anchor in try clean.select("a[href]") {
-                // Trim and write the value back before collecting it, mirroring the `src`
-                // ruling above. SwiftSoup's Whitelist validates a URL attribute's *trimmed*
-                // value but by default writes out the *original* bytes, so a leading/trailing
-                // space — or a decoded `&#x0a;`/`&#x09;` control character — would otherwise
-                // survive into both the serialized HTML and `href`, breaking `URL(string:)`
-                // downstream and silently disabling the A.4 link-mismatch warning while
-                // WebKit still navigates the untrimmed link (fix round 1, 2026-09-16).
+                // Trim and write back, as for `src`: SwiftSoup's Whitelist checks a trimmed URL but
+                // keeps the original, so a space or decoded `&#x0a;` stays in the HTML and `href`:
+                // `URL(string:)` fails, so no mismatch warning shows, yet WebKit follows the link.
                 let href = try anchor.attr("href").trimmingCharacters(in: .whitespacesAndNewlines)
                 try anchor.attr("href", href)
                 // A.3: link text loses bidi controls too, same as sender names/subjects,
@@ -182,9 +171,8 @@ nonisolated enum MailHTMLSanitizer {
 
             return SanitizedHTML(html: try clean.body()?.html() ?? "", blockedRemoteImages: blocked, links: links)
         } catch {
-            // Fail closed: fall back to escaped plain text. Log only the error's type, never
-            // its message or the mail content — mail content never leaves the device or reaches
-            // a log (fix round 1, 2026-09-16).
+            // Fail closed: fall back to escaped plain text. Log only the error's type, never its
+            // message or the mail content: mail content never leaves the device or reaches a log.
             logger.error("HTML sanitize failed, falling back to escaped plain text: \(String(describing: type(of: error)), privacy: .public)")
             let escaped = html
                 .replacingOccurrences(of: "&", with: "&amp;")
@@ -194,28 +182,14 @@ nonisolated enum MailHTMLSanitizer {
         }
     }
 
-    /// Replaces every `<a href>` in already-sanitized `html` with `https://link.invalid/<n>`
-    /// and returns, as `LinkedHTML.links`, the text and original href of anchor `n` — both
-    /// read off the very tree this walks and rewrites, never off `SanitizedHTML.links`. Those
-    /// two lists can disagree: the sanitizer's cleaner can drop elements while keeping their
-    /// children, building a tree the HTML parser never would from scratch, so parsing its
-    /// output again can shift an anchor's index (message-screen dispatch, 2026-09-16 addition
-    /// 1; mirrors Android's `MailHtmlDocument.rewriteLinks`).
-    ///
-    /// The web view parses this rewritten markup once more, so it is parsed here once more
-    /// too, and its anchors (synthetic href and text, in order) must equal the ones just
-    /// written. If they don't, nothing is guessed: every `href` is stripped from every `<a>`,
-    /// the list is empty, and no link in this mail can be tapped.
-    ///
-    /// Every failure path here — the initial parse failing, the `a[href]` select failing, or
-    /// the reparse lockstep check failing — routes through the same fail-closed strip, never
-    /// returning `html` with a live `href` still on it while also claiming `links: []` (fix
-    /// round 1, minor 5: the two earlier early-returns did exactly that, contradicting this
-    /// type's own contract).
-    ///
-    /// `.invalid` is IANA/RFC 2606-reserved and never resolves; the web view's navigation
-    /// delegate answers a tap with the index alone, never a URL, so no WebKit
-    /// canonicalization quirk can ever match a tap to the wrong entry.
+    /// Rewrites every `<a href>` in sanitized `html` to `https://link.invalid/<n>`; `links[n]`
+    /// holds anchor `n`'s text and original href, read off the tree this rewrites, never off
+    /// `SanitizedHTML.links`. The cleaner can drop an element but keep its children, a tree no
+    /// parser builds, so a reparse can shift an index. The web view reparses this output, so it
+    /// is reparsed here and must yield the same anchors, href and text, in order. On a mismatch
+    /// or any failure, every `href` is stripped and `links` is empty: live links never pair with
+    /// `links: []`. The navigation delegate answers a tap with the index alone, never a URL, so
+    /// no WebKit canonicalization quirk can misroute a tap. `.invalid` never resolves (RFC 2606).
     static func rewriteLinks(_ html: String) -> LinkedHTML {
         guard let doc = try? SwiftSoup.parseBodyFragment(html) else {
             return LinkedHTML(html: stripHrefsWithRegex(html), links: [])
@@ -245,26 +219,14 @@ nonisolated enum MailHTMLSanitizer {
         anchors.array().map { [((try? $0.attr("href")) ?? ""), ((try? $0.text()) ?? "")] }
     }
 
-    /// Last-resort fallback when there's no parsed `Document` left to strip `href` from
-    /// (`SwiftSoup.parseBodyFragment` itself failed): removes every `href="..."`, `href='...'`
-    /// AND unquoted `href=value` occurrence textually (HTML5 allows an unquoted attribute value
-    /// — fix round 2, minor 5: the quoted-only pattern left that form untouched, so this
-    /// defensive path could still leave a live link tappable), so nothing survives this path.
-    ///
-    /// Whitespace is not the only thing that can precede an attribute name. HTML5's
-    /// "before attribute name" state treats `/` as a separator too, so `<a/href="…">` carries
-    /// a real, live `href` that a `\s+`-only pattern walked straight past — under-stripping on
-    /// the one path whose entire job is that nothing survives it. After a quoted value the
-    /// tokenizer needs no separator at all (`<a href="a"href="b">` is two attributes), so a
-    /// quote is a valid start boundary as well; it is matched with a zero-width lookbehind so
-    /// the previous attribute's closing quote is not swallowed along with it.
-    ///
-    /// Over-stripping is deliberately the safe side here: this path's output is markup with no
-    /// live links, so removing an `href=` that was only ever text costs a few characters of a
-    /// mail that already failed to parse, while leaving one costs a tappable phishing link.
-    ///
-    /// Not `private`: this is the last line of defence for link addressing and is unit-tested
-    /// directly, because there is no input that makes SwiftSoup's own parser fail on demand.
+    /// Last resort when `SwiftSoup.parseBodyFragment` failed and no tree is left to strip: removes
+    /// every `href` as text, double-quoted, single-quoted or unquoted (HTML5 allows all three).
+    /// HTML5's "before attribute name" state also takes `/` as a separator, so `<a/href="…">`
+    /// carries a live `href`. After a quoted value no separator is needed (`<a href="a"href="b">`
+    /// is two attributes), so a quote also starts a match, via a zero-width lookbehind that keeps
+    /// the previous closing quote. Over-stripping is the safe side: removing an `href=` that was
+    /// only text costs a few characters, missing one costs a tappable phishing link. Not `private`:
+    /// unit-tested directly, since no input makes SwiftSoup's own parser fail on demand.
     static let hrefAttributePattern = try! NSRegularExpression(
         pattern: #"(?:[\s/]+|(?<=["']))href\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)"#, options: .caseInsensitive
     )

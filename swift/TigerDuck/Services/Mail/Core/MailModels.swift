@@ -38,21 +38,14 @@ nonisolated struct MailAddress: Codable, Hashable, Sendable {
         splitTopLevel(raw).compactMap(parseOne)
     }
 
-    /// The `From:` of an incoming mail, where the display name is worth keeping even when
-    /// the address beside it is not usable.
-    ///
-    /// `From: "Mail Deliver System" <MAILER-DAEMON>` — the shape Mail2000 puts on every
-    /// delivery-failure notice — has a bare local part and no domain, so `parseOne` drops
-    /// the whole token and the list row and the message header fall back to
-    /// "(No sender)", throwing away a name that was never in doubt. Here the name
-    /// survives and the address comes back **empty**: the raw token is deliberately not
-    /// carried through, because `address` is what `MailWarnings` classifies and what a
-    /// reply is addressed to, and `MAILER-DAEMON` is not routable. An empty address makes
-    /// `isPlausible` false, which is what keeps such a sender out of a reply's recipients
-    /// (`MailReplyComposer.replyRecipients`) and out of compose validation.
-    ///
-    /// Only the `From` header uses this. `Reply-To`, `To`, `Cc`, a `mailto:` target and the
-    /// compose fields stay on the strict `parseList`, because those all become recipients.
+    /// The `From:` of an incoming mail, keeping the display name when the address is unusable.
+    /// Mail2000 puts `From: "Mail Deliver System" <MAILER-DAEMON>` on every delivery-failure
+    /// notice; `parseOne` drops that domainless token, leaving "(No sender)". Here the name
+    /// survives with an empty address, not the raw token: `address` is what `MailWarnings`
+    /// classifies and what a reply goes to, and `MAILER-DAEMON` is not routable. An empty address
+    /// makes `isPlausible` false, so `MailReplyComposer.replyRecipients` and compose validation
+    /// leave the sender out. Only `From` uses this: `Reply-To`, `To`, `Cc`, `mailto:` and compose
+    /// fields become recipients, so they stay on the strict `parseList`.
     static func parseSender(_ raw: String) -> MailAddress? {
         if let parsed = parseList(raw).first { return parsed }
         return splitTopLevel(raw).lazy.compactMap(nameOnly).first

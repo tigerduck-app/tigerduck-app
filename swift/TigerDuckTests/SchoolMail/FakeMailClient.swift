@@ -104,12 +104,8 @@ actor FakeMailClient: MailClient {
     }
 
     // MARK: Command gates
-    //
-    // Interleavings — not input/output behaviour — are what several of the mail bugs are made
-    // of: a poll landing between two of `MailMover`'s steps, a second Delete tap landing between
-    // the first one's COPY and its EXPUNGE. `hold(_:)`/`waitForArrival(_:)`/`release(_:)` let a
-    // test park one call inside the client, run whatever else it wants to interleave, and then
-    // let the parked call continue — deterministically, with no wall-clock sleeps anywhere.
+    // Several mail bugs are interleavings: a poll between two `MailMover` steps, a second Delete
+    // tap between COPY and EXPUNGE. Tests park one call here and run the other, with no sleeps.
 
     /// Makes the named command (`"copy"`, `"setFlag"`, `"expunge"`, …) suspend when it arrives,
     /// until `release(_:)`.

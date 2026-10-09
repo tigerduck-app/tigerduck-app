@@ -3,16 +3,14 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// Controller addition (2026-09-16 dispatch): `MailPageSession` must never close the
-/// connection while a `use(_:)` command is in flight, a stale close timer must never act,
-/// and a network/certificate error must drop the connection so the next call reconnects —
-/// but only once every concurrent `use(_:)` is done with it (fix round 1).
+/// `MailPageSession` must never close the connection while a `use(_:)` command is in flight, a
+/// stale close timer must never act, and a network or certificate error must drop the
+/// connection so the next call reconnects, but only once every concurrent `use(_:)` is done.
 ///
 /// Nothing here waits on a clock. An in-flight `use(_:)` is parked inside the client on
 /// `FakeMailClient`'s command gate, and the idle-close timer is the injected `sleep:` below,
-/// which the test fires by hand — so "the delay has passed" and "the call is still in flight"
-/// are facts the test establishes rather than margins it hopes for. These two tests raced
-/// 300 ms of sleeps against a 350 ms body before, and flaked accordingly.
+/// which the test fires by hand, so "the delay has passed" and "the call is still in flight"
+/// are facts the test establishes rather than timing margins, which flake.
 @MainActor
 struct MailPageSessionTests {
     private static let idleClose: Duration = .milliseconds(200)
@@ -125,9 +123,9 @@ struct MailPageSessionTests {
         #expect(openCount == 1) // kept, so the next call reused it
     }
 
-    /// Fix round 1: a network/certificate error from one `use(_:)` must not yank the
-    /// connection out from under a *different* `use(_:)` still running concurrently on it —
-    /// the drop has to wait until every in-flight call is done.
+    /// A network or certificate error from one `use(_:)` must not yank the connection out from
+    /// under a different `use(_:)` still running on it: the drop waits until every in-flight
+    /// call is done.
     @Test func anErrorPathDropWaitsForEveryOtherInFlightUseBeforeClosing() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         let session = MailPageSession(idleClose: .seconds(30), open: { fake })
@@ -153,10 +151,10 @@ struct MailPageSessionTests {
         #expect(await fake.calls.contains("logout"))
     }
 
-    /// §7.4: a rejected password is never sent again. `MailAccountManager.openSession()` is the
+    /// A rejected password is never sent again. `MailAccountManager.openSession()` is the
     /// documented choke point for the IMAP sign-in, but SMTP `AUTH LOGIN` happens inside a
-    /// `use(_:)` body and never goes near it — so the session reports an authentication rejection
-    /// from *any* layer, not just the one it opened the connection with.
+    /// `use(_:)` body and never goes near it, so the session reports an authentication rejection
+    /// from any layer, not just the one it opened the connection with.
     @Test func anAuthenticationRejectionFromInsideAUseIsReported() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
         var failures = 0

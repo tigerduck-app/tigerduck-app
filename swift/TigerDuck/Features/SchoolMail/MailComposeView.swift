@@ -105,11 +105,9 @@ struct MailComposeView: View {
                     }
                 }
             }
-            // Every field, picker and swipe action, in one place: `send()`/`saveDraft()` read the
-            // fields into the message *before* the round trip starts, so a keystroke or an
-            // attachment added while the spinner runs would silently not be in what the server
-            // got — and the sheet then dismisses, with nothing left to recover it from. The
-            // toolbar's Cancel and Send are disabled separately (they live outside this `Form`).
+            // Covers every field, picker and swipe action: `send()`/`saveDraft()` read the fields
+            // before the round trip, so an edit made meanwhile is lost once the sheet dismisses.
+            // Cancel and Send are outside this `Form`, so the toolbar disables them itself.
             .disabled(viewModel.isSending)
             // Dragging the form down dismisses the keyboard. The body field is tall and the
             // recipient fields are above it, so without this there is no way back to the
@@ -136,11 +134,9 @@ struct MailComposeView: View {
                     .disabled(viewModel.isSending || viewModel.isLoading || pendingPicks > 0)
                 }
             }
-            // The inline message stays where it is; this is the same text again, in front of the
-            // user, because a failed Send or Save draft otherwise announces itself only as a
-            // line of small red text at the bottom of a form they are looking at the top of.
-            // Dismissing acknowledges the dialog and nothing more — the inline copy survives
-            // it, and the next identical failure raises this again (`errorNeedsAcknowledging`).
+            // Repeats the inline error in front of the user, who is looking at the top of the form
+            // while that small red text sits at the bottom. Dismissing keeps the inline copy, and
+            // the next identical failure raises this again (`errorNeedsAcknowledging`).
             .alert(String(localized: "feature_school_mail"), isPresented: Binding(
                 get: { viewModel.errorNeedsAcknowledging },
                 set: { if !$0 { viewModel.acknowledgeError() } })
@@ -185,8 +181,8 @@ struct MailComposeView: View {
             }
             .task { await viewModel.prepare() }
             // While a send/save is in flight, or there's something to lose, the sheet cannot be
-            // swiped away out from under it (dispatch addition 2): the send is never cancelled
-            // halfway, and Cancel (above) refuses the same way.
+            // swiped away: the send is never cancelled halfway, and Cancel (above) refuses the
+            // same way.
             .interactiveDismissDisabled(viewModel.hasChanges || viewModel.isSending)
         }
     }
@@ -211,11 +207,10 @@ struct MailComposeView: View {
 
     // MARK: Attachments
 
-    /// The security-scoped access, the read and the UTType lookup all run off the main actor
-    /// (dispatch addition 4) -- a failed read is reported the same way an over-budget attachment
-    /// is, never silently dropped (dispatch addition 3). The read itself is bounded (fix round 1,
-    /// important 1): a multi-GB pick is rejected as soon as it has read past the server's encoded
-    /// limit, never materialized in full just to be rejected a moment later.
+    /// The security-scoped access, the read and the UTType lookup all run off the main actor. A
+    /// failed read is reported the same way an over-budget attachment is, never silently dropped.
+    /// The read is bounded: a multi-GB pick is rejected as soon as it reads past the server's
+    /// encoded limit, never materialized in full just to be rejected.
     private func addFile(_ url: URL) async {
         let picked = await Task.detached {
             let scoped = url.startAccessingSecurityScopedResource()
@@ -242,25 +237,14 @@ struct MailComposeView: View {
         return readBounded(read: handle.read(upToCount:))
     }
 
-    /// The bounded-read loop itself, seamed on `read` (mirroring `FileHandle.read(upToCount:)`'s
-    /// own throw/`nil`-at-EOF/empty-`Data` contract exactly) so a test can inject a reader that
-    /// throws partway through without touching the filesystem -- not `private`, for that seam.
-    ///
-    /// `try?` on the read would flatten a thrown mid-read I/O error (a File Provider/iCloud URL
-    /// going unreachable partway through, say) to the same `nil` that a chunk at EOF's
-    /// `nil`-vs-empty-`Data` ambiguity already produces -- either way the loop would just end and
-    /// return whatever was read so far, silently mailing a truncated attachment at a
-    /// plausible-but-wrong size instead of failing (fix round 2, important). The explicit
-    /// `do`/`catch` below makes a throw end the whole read as a failure; only running out of bytes
-    /// to read (`nil` or empty `Data` from a call that didn't throw) ends the loop normally.
-    ///
-    /// `nonisolated` for the same reason its caller above is: without it the module default
-    /// (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`) puts it on the main actor, and the
-    /// `nonisolated` wrapper would be calling a main-actor method from off the main actor —
-    /// which the Swift 6 language mode rejects outright, and which today only "works" because
-    /// a synchronous call cannot hop, so the loop runs off-main in defiance of its own declared
-    /// isolation. Declaring it `nonisolated` makes running off the main actor the contract
-    /// rather than an accident; it reads nothing but its `read` parameter.
+    /// The bounded-read loop, seamed on `read` so a test can inject a reader that throws partway
+    /// through without touching the filesystem; not `private`, for that seam. `read` follows
+    /// `FileHandle.read(upToCount:)`: it may throw, and returns `nil` or empty `Data` at EOF. A
+    /// throw fails the whole read: `try?` would turn a mid-read I/O error (an iCloud URL going
+    /// unreachable, say) into the EOF `nil` and mail a truncated attachment at a plausible size.
+    /// `nonisolated` like its caller, because the module defaults to `MainActor` and the Swift 6
+    /// language mode rejects the `nonisolated` wrapper above calling a main-actor method. It
+    /// reads nothing but its `read` parameter.
     nonisolated static func readBounded(read: (Int) throws -> Data?) -> Data? {
         var data = Data()
         do {

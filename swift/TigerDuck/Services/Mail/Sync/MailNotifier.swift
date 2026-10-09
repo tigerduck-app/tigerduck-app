@@ -28,9 +28,8 @@ nonisolated struct SystemMailNotificationCenter: MailNotificationCenter {
 
 /// New-mail notifications: title = subject, body = sender, both as cleaned plain text; more
 /// than five at once collapse into one. Mail stacks in a thread of its own, so the title needs
-/// no `Email:` prefix to tell it apart. Design doc §8.6 has this reversed (title = sender,
-/// body = subject) — the ordering here is a deliberate, product-directed override of the spec,
-/// not a bug, and matches what the Android app produces for the same mail.
+/// no `Email:` prefix to tell it apart. Subject as the title is a product decision, not a bug,
+/// and matches what the Android app produces for the same mail.
 nonisolated struct MailNotifier: Sendable {
     static let summaryIdentifier = "school-mail-summary"
     static let authFailureIdentifier = "school-mail-auth-failed"
@@ -65,18 +64,14 @@ nonisolated struct MailNotifier: Sendable {
         }
     }
 
-    /// Returns the UIDs whose notification the system refused *and might yet accept*. The caller
-    /// holds its seen-UID marker at the lowest of them: §8.5's contract is notify, *then*
-    /// advance, and a refused `add` is as much a failure to notify as a process death is —
-    /// swallowing it while the marker moves on means that mail is never notified and never
-    /// reconsidered by any trigger. (`add` with `trigger: nil` throws on invalid content and
-    /// when the notification service is unavailable; it is not a never-happens path.)
+    /// Returns the UIDs whose notification the system refused but might yet accept. The caller
+    /// holds its seen-UID marker at the lowest of them: it notifies, then advances, and a refused
+    /// `add` is a failure to notify, so letting the marker pass it loses that mail for good. (`add`
+    /// with `trigger: nil` does throw, on invalid content or an unavailable notification service.)
     ///
-    /// A refusal that will be made again for the same reason is left out of the set. Holding the
-    /// marker for one of those never delivers the notification and never stops trying: the mail
-    /// is re-fetched and re-reported as new on every poll for as long as the student leaves
-    /// notification permission off, and every mail behind it waits in the same queue. Reporting
-    /// it once and moving on is the lesser loss, and the mail itself is still in the list.
+    /// A refusal that will recur for the same reason is left out. Holding the marker for it would
+    /// re-report the mail as new on every poll while permission stays off, and hold up every mail
+    /// behind it. Reporting it once is the lesser loss, and the mail is still in the list.
     @discardableResult
     func notify(_ messages: [MailSummary], uidValidity: UInt32) async -> Set<UInt32> {
         guard !messages.isEmpty else { return [] }

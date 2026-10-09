@@ -56,17 +56,14 @@ struct MailWarningsTests {
         #expect(MailWarnings.linkIssues(text: testCase.text, href: testCase.href).map(\.fixtureCode) == testCase.expect)
     }
 
-    // Parity gap (deferred iOS item, security-relevant, 2026-09-16): the shown-host
-    // pattern used to be ASCII-only, so Unicode homograph link text was never recognized
-    // as a host and never checked against the real href. These two are not fixture cases
-    // (the fixture stays byte-identical to Android's) but cover the same gap directly.
+    // The shown-host pattern must accept non-ASCII letters, as Android's does, or homograph
+    // link text is never recognized as a host and never checked against the real href. These
+    // two are not fixture cases because the shared fixture stays byte-identical to Android's.
     @Test
     func linkIssuesHomographShownHostMismatchesRealHost() {
-        // "n\u{0442}u\u{0455}\u{0442}.\u{0435}du.\u{0442}w" reads as "ntust.edu.tw" with Cyrillic te/dze/ie
-        // (U+0442/U+0455/U+0435) standing in for t/s/e -- a Unicode homograph, not ASCII.
-        // Fix round 1, Minor 1: assert the full exact value (not just "some mismatch"), to
-        // actually prove IDNA-to-ASCII ran and produced this specific punycode rather than
-        // something incidental.
+        // The homograph reads as "ntust.edu.tw" with Cyrillic te, dze and ie (U+0442, U+0455,
+        // U+0435) standing in for t, s and e. Asserting the full value, not just some mismatch,
+        // proves IDNA-to-ASCII ran and produced this punycode rather than something incidental.
         let homograph = "n\u{0442}u\u{0455}\u{0442}.\u{0435}du.\u{0442}w"
         let issues = MailWarnings.linkIssues(text: homograph, href: "https://ntust.edu.tw/")
         #expect(issues == [.mismatch(shownHost: "xn--nu-rmcb8g.xn--du-mlc.xn--w-8tb", realHost: "ntust.edu.tw")])
@@ -78,8 +75,6 @@ struct MailWarningsTests {
         #expect(issues.isEmpty)
     }
 
-    // Fix round 1, Minor 1: prove IDNA-to-ASCII actually runs and produces the exact
-    // punycode form, not just "some xn-- string".
     @Test
     func linkIssuesNonASCIIHostConvertsToExactPunycode() {
         // "nt\u{00FA}st.edu.tw" (u with acute, U+00FA) is a plausible lookalike
@@ -95,11 +90,9 @@ struct MailWarningsTests {
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "[::1]")])
     }
 
-    // Fix round 1, Important 1 (2026-09-18): host/authority scanning must be on
-    // `unicodeScalars`, not `Character` (extended grapheme cluster). A combining mark
-    // attaches to whatever scalar precedes it, so a `Character`-based scan can merge a
-    // separator like `/` into a cluster that no longer equals "/", letting the scan run
-    // straight past it to a forged terminator or `@` further along.
+    // Host and authority scanning must run on `unicodeScalars`, not `Character`. A combining
+    // mark joins the scalar before it, so a `Character` scan can merge a separator like `/`
+    // into a cluster that is not equal to "/" and run past it to a forged terminator or `@`.
     @Test
     func linkIssuesCombiningMarkAfterSlashCannotHideTheRealHost() {
         // The combining mark rides on the "/" right after "evil.example". A Character-based
@@ -122,20 +115,16 @@ struct MailWarningsTests {
     @Test
     func linkIssuesCombiningMarkCannotHideTheInsecureFlag() {
         // The mark rides on the second "/" of "http://", so a Character-based
-        // `hasPrefix("http://")` would fail to match at all and silently drop the insecure
-        // flag. IDNA mapping drops the combining mark itself (it is Unicode "ignored" for
-        // IDNA), so the real host still comes out as plain "evil.example".
+        // `hasPrefix("http://")` would not match and would drop the insecure flag. IDNA maps
+        // the mark as "ignored" and drops it, so the real host is still plain "evil.example".
         let href = "http://\u{034F}evil.example/"
         let issues = MailWarnings.linkIssues(text: "evil.example", href: href)
         #expect(issues == [.insecure])
     }
 
-    // Fix round 1, Important 2 (2026-09-18): ICU's `.` (used by NSRegularExpression)
-    // excludes U+000B/U+000C from "any character", unlike Java's `.` which matches them
-    // like ordinary characters. Both patterns now use an explicit
-    // "[^\n\r\u0085\u2028\u2029]" class so a vertical tab in link text does not break
-    // the whole-string match and silently suppress a real mismatch the way plain `.*` would
-    // have on iOS (but not on Android).
+    // ICU's `.` (NSRegularExpression) excludes U+000B and U+000C; Java's `.` matches them.
+    // Both patterns use "[^\n\r\u0085\u2028\u2029]" so a vertical tab in link text cannot break
+    // the whole-string match and hide a real mismatch, as plain `.*` would on iOS, not Android.
     @Test
     func linkIssuesVerticalTabInTextStillAllowsAMismatch() {
         let href = "https://evil.example/"
@@ -145,11 +134,10 @@ struct MailWarningsTests {
     }
 
     // MARK: Invisible characters (iOS-local; the shared fixture stays byte-identical to Android's)
-    //
-    // Every case below is the same shape: one character nobody can see makes a crafted mail
-    // produce FEWER warnings than an ordinary one. The four `invisible … after the shown host`
-    // rows in `warnings.json` cover the link-text half on both platforms; these cover the
-    // call sites the shared fixture does not reach.
+
+    // In every case below, one invisible character makes a crafted mail produce fewer warnings
+    // than an ordinary one. The four `invisible … after the shown host` rows in `warnings.json`
+    // cover the link-text half on both platforms; these cover the call sites they miss.
 
     /// A zero-width space *inside* the shown host, not after it. The fixture's trailing-ZWSP
     /// row happens to pass on Darwin because `CharacterSet.whitespaces` contains U+200B, so
@@ -336,9 +324,9 @@ struct MailWarningsTests {
     }
 
     /// The other half of the same rule, and the reason the suppression above is safe: keeping
-    /// the display name means a *claimed* address now reaches the screen, so a From the parser
-    /// could not read must not also silence the mismatch check. `"教務處 office@ntust.edu.tw"
-    /// <GARBAGE>` still warns.
+    /// the display name means a claimed address reaches the screen, so a From the parser could
+    /// not read must not also silence the mismatch check. A display name claiming
+    /// `office@ntust.edu.tw` over an unreadable `<GARBAGE>` address still warns.
     @Test
     func anEmptySenderAddressStillFailsTheDisplayNameCheck() {
         let input = MailWarningInput(
@@ -385,8 +373,8 @@ struct MailWarningsTests {
         )
     }
 
-    /// §9.5: HTML and SVG are never rendered in-process. With the extension mangled, the only
-    /// thing left is the attacker's own Content-Type.
+    /// HTML and SVG attachments are never rendered in-process. With the extension mangled, the
+    /// only thing left is the attacker's own Content-Type.
     @Test(arguments: ["report.ht\u{200B}ml", "diagram.sv\u{0001}g", "page.xhtm\u{2060}l"])
     func neverRenderedInAppSurvivesAnInvisibleCharacterInTheExtension(filename: String) {
         #expect(MailWarnings.neverRenderedInApp(filename: filename))
@@ -409,11 +397,10 @@ struct MailWarningsTests {
     }
 
     // MARK: Invisible characters outside `Cf`/`Cc`
-    //
-    // The cases above all use a format or control character. Those are not the whole invisible
-    // table: the combining grapheme joiner, the variation selectors, the reserved
-    // default-ignorables, the Hangul fillers and the blank braille pattern are none of them,
-    // and every one of them reached the same surfaces with the same effect.
+
+    // The cases above all use a format or control character. The combining grapheme joiner,
+    // the variation selectors, the reserved default-ignorables, the Hangul fillers and the
+    // blank braille pattern are neither, yet reach the same surfaces with the same effect.
 
     static let invisibleMarks = [
         "\u{034F}", "\u{FE0F}", "\u{FE00}", "\u{E0100}", "\u{2065}", "\u{3164}", "\u{2800}",
@@ -425,8 +412,9 @@ struct MailWarningsTests {
         #expect(issues == [.mismatch(shownHost: "ntust.edu.tw", realHost: "evil.example")])
     }
 
-    /// `report.ht<U+FE0F>ml` was the concrete §9.5 defeat left open: the extension is not `html`,
-    /// so the message screen falls back to the attacker's own Content-Type and renders in-process.
+    /// `report.ht<U+FE0F>ml` is the concrete attack: unless the mark is stripped, the extension
+    /// is not `html`, so the message screen falls back to the attacker's own Content-Type and
+    /// renders the file in-process.
     @Test(arguments: invisibleMarks)
     func neverRenderedInAppSurvivesAnInvisibleMarkInTheExtension(mark: String) {
         #expect(MailWarnings.neverRenderedInApp(filename: "report.ht\(mark)ml"))
@@ -463,7 +451,7 @@ struct MailWarningsTests {
     }
 
     // MARK: A host split across a line break
-    //
+
     // The sanitizer hands link text on already `clean`ed, and SwiftSoup's own `text()` has
     // normalized the anchor's whitespace before that, so a host wrapped across a line arrives
     // here joined by a space that `visibleText` cannot remove.

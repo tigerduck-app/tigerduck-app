@@ -100,13 +100,12 @@ struct MailStoreTests {
         #expect(prefs.ownedDeleted(folder: other, uidValidity: 3).uids.isEmpty)
     }
 
-    /// Task 9 fix round 1, Important #1: the get→filter→append→set round trip in
-    /// `setOwnedDeleted` raced across folders before it was locked — two concurrent calls for
-    /// different folders could read the same snapshot and each write back a list missing the
-    /// other's entry. `DispatchQueue.concurrentPerform` runs every folder's write from a true OS
-    /// thread pool, all against the same `prefs` instance; if any entry goes missing, the lock
-    /// isn't doing its job. (Verified this reproduces the loss reliably — 183/200 folders lost —
-    /// against a deliberately-unlocked build of `setOwnedDeleted` before restoring the lock.)
+    /// `setOwnedDeleted` is a read-modify-write (get, filter, append, set). Without its lock,
+    /// two concurrent calls for different folders can read the same snapshot and each write
+    /// back a list missing the other's entry. `DispatchQueue.concurrentPerform` runs every
+    /// folder's write on a real OS thread pool, all against the same `prefs` instance, so a
+    /// missing entry means the lock is not doing its job. Against an unlocked build this test
+    /// fails reliably (183 of 200 folders lost).
     @Test func concurrentSetOwnedDeletedCallsForDifferentFoldersLoseNoEntry() {
         let (prefs, cleanup) = Self.isolatedPreferences()
         defer { cleanup() }
@@ -121,11 +120,11 @@ struct MailStoreTests {
         #expect(lost.isEmpty, "lost \(lost.count)/\(folderCount): \(lost.prefix(10))")
     }
 
-    /// Task 11 dispatch addition: `MailChecker.shared` and `MailAccountManager.shared` each
-    /// construct their own `DefaultsMailPreferences()` instance over the same underlying
-    /// `UserDefaults` keys, so the lock guarding `setOwnedDeleted`'s read-modify-write must be
-    /// shared across every instance, not just within one — otherwise two instances racing over
-    /// the same suite lose entries the same way a single unlocked instance did (see
+    /// `MailChecker.shared` and `MailAccountManager.shared` each construct their own
+    /// `DefaultsMailPreferences()` over the same `UserDefaults` keys, so the lock guarding
+    /// `setOwnedDeleted`'s read-modify-write must be shared by every instance, not held per
+    /// instance. Otherwise two instances racing over the same suite lose entries the same way
+    /// a single unlocked instance does (see
     /// `concurrentSetOwnedDeletedCallsForDifferentFoldersLoseNoEntry` above).
     @Test func concurrentSetOwnedDeletedCallsAcrossTwoInstancesLoseNoEntry() {
         let suiteName = "MailStoreTests.\(UUID().uuidString)"
@@ -294,9 +293,9 @@ struct MailStoreTests {
         #expect(!FileManager.default.fileExists(atPath: temp.path))
     }
 
-    /// Task 9 fix round 1, Minor #3: a server-supplied filename of exactly `.` or `..` would
-    /// otherwise resolve `appendingPathComponent` up out of the fresh per-attachment UUID folder
-    /// this call creates — `.` back into `attachments/`, `..` a level above that.
+    /// A server-supplied filename of just `.` or `..` would otherwise make
+    /// `appendingPathComponent` resolve up out of the fresh per-attachment UUID folder this call
+    /// creates: `.` back into `attachments/`, `..` one level above that.
     @Test func temporaryFileURLMapsDotDotDotAndEmptyNamesToAttachment() throws {
         let cache = SchoolMailTestDoubles.temporaryCache()
         defer { cache.clearAll() }

@@ -21,8 +21,8 @@ actor Counter {
 }
 
 /// Records the inbox marker's value at the moment `notify` is awaited, to prove the checker
-/// notifies before it persists the marker (fix round 1: a background-task expiration or process
-/// kill during the awaited notify must never lose those notifications).
+/// notifies before it persists the marker: a background-task expiration or process kill during
+/// the awaited notify must never lose those notifications.
 final class OrderingNotificationCenter: MailNotificationCenter, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var wasCalled = false
@@ -160,8 +160,8 @@ struct MailCheckerTests {
         #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(2))
         #expect(h.prefs.inboxNextUID == 5)
         #expect(h.center.requests.map(\.identifier) == ["school-mail-1-3", "school-mail-1-4"])
-        // Title = subject, body = sender (design doc §8.6 has this reversed; the ordering
-        // here is a deliberate override — see MailNotifier).
+        // Title = subject, body = sender: a product decision, not a bug, and the order the
+        // Android app uses (see `MailNotifier`).
         let first = try #require(h.center.requests.first?.content)
         #expect(first.title == "Hi")
         #expect(first.body == "Someone")
@@ -276,9 +276,9 @@ struct MailCheckerTests {
         #expect(h.prefs.lastCheckAt != nil)
     }
 
-    /// §8.5's contract is notify, *then* advance. A notification the system refuses is a failure
-    /// the marker must respect too: advancing past it means that mail is never notified and never
-    /// reconsidered by any trigger.
+    /// The checker notifies, then advances the marker. A notification the system refuses is a
+    /// failure the marker must respect too: advancing past it means that mail is never notified
+    /// and never reconsidered by any trigger.
     @Test func aRefusedNotificationHoldsTheMarkerSoTheMailIsReconsidered() async {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"

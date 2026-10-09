@@ -1,14 +1,13 @@
 #if os(iOS)
 import SwiftUI
 
-/// The School Mail page (design doc §6.2).
+/// The School Mail page.
 ///
 /// The page header follows `HomeView` / `ClassTableView`, not the navigation-bar title
 /// `BulletinsView` uses: the title is the first row of the scrolling content, in
-/// `Typography.title`, with the status dot and the action buttons on the same row. That is
-/// what puts School Mail's title and its buttons at the same height as every other page —
-/// a `.navigationTitle` plus `.toolbar` items sits a navigation bar higher and one type
-/// size larger, which is the difference users were seeing.
+/// `Typography.title`, with the status dot and the action buttons on the same row. That puts
+/// School Mail's title and buttons at the same height as every other page; a `.navigationTitle`
+/// plus `.toolbar` items sits a navigation bar higher and one type size larger.
 struct SchoolMailView: View {
     var embedded: Bool = false
 
@@ -58,19 +57,14 @@ struct SchoolMailView: View {
     #if DEBUG
     private var isDeveloperServerOverridden: Bool { MailServerConfig.effective.isOverridden }
 
-    /// Requirement 5: the page itself has to say when it is not showing school mail.
+    /// The page itself has to say when it is not showing school mail.
     ///
-    /// Its own row, deliberately not a suffix inside `titleBar`: that row's height is measured
-    /// against Home and Class table so the three pages put their titles at the same height, and
-    /// nothing that could change its intrinsic size belongs in it. This sits underneath, reads
-    /// the whole effective configuration (a host and a domain say more than "override on"), and
-    /// is absent entirely when the override is off — and from Release builds, where neither the
-    /// banner nor the type it reads exists.
-    ///
-    /// Whether to show it is decided by the call sites rather than in here: inside a `List`, a
-    /// conditional that resolves to nothing still carries the row modifiers applied to it and
-    /// can leave an empty row, with a separator, in the mail list of every ordinary debug
-    /// build.
+    /// Its own row, not a suffix inside `titleBar`: that row's height is matched against Home and
+    /// Class table so the three titles sit at the same height, and nothing that could change its
+    /// size belongs in it. It reads the whole effective configuration (a host and a domain say
+    /// more than "override on") and is absent when the override is off and from Release builds.
+    /// Call sites decide whether to show it: in a `List`, a conditional that resolves to nothing
+    /// still carries its row modifiers and can leave an empty row and separator in debug builds.
     private var developerServerBanner: some View {
         let config = MailServerConfig.effective
         return Group {
@@ -179,13 +173,9 @@ struct SchoolMailView: View {
             .accessibilityLabel(String(localized: "school_mail_use_other_app"))
             Button { compose = MailComposeContext(mode: .new) } label: {
                 headerIcon("square.and.pencil")
-                    // Optical centring, not a stray layout tweak — please leave it in.
-                    // `square.and.pencil` is drawn with its rounded square 1.5pt *below*
-                    // the centre of its own 21pt layout box (the room above belongs to the
-                    // pencil), while the two circled glyphs beside it sit dead centre in
-                    // theirs. Centred by frame it therefore reads as hanging low next to
-                    // them; lifted by that 1.5pt the three line up. Horizontally the square
-                    // is already centred, so there is nothing to correct on x.
+                    // Optical centring, keep it: `square.and.pencil` draws its rounded square
+                    // 1.5pt below the centre of its 21pt box (the pencil takes the room above),
+                    // so it hangs low beside the centred circled glyphs. Already centred on x.
                     .offset(y: -composeGlyphLift)
             }
             .buttonStyle(.borderless)
@@ -203,14 +193,12 @@ struct SchoolMailView: View {
 
     /// Search, in the list's own content rather than `.searchable`.
     ///
-    /// `.searchable` puts its field in the navigation bar, and the bar only hides that field
-    /// at rest when the page has a large `.navigationTitle` to collapse it under. This page
-    /// deliberately has no navigation title — the title is content now, so that it and the
-    /// buttons sit where Home's and Class table's do — which left the search field alone in
-    /// the bar, holding the header a full bar's height lower than those two pages: the very
-    /// mismatch this page was reported for. As a row it scrolls with everything else, and like
-    /// that drawer on Announcements it stays hidden until the list is pulled down past its top
-    /// (`pullToRevealSearch`).
+    /// `.searchable` puts its field in the navigation bar, which hides it at rest only under a
+    /// large `.navigationTitle`. This page has no navigation title (its title is content, so it
+    /// and the buttons sit where Home's and Class table's do), so the field would sit alone in
+    /// the bar and hold the header a full bar's height lower than those pages. As a row it
+    /// scrolls with everything else and, like the drawer on Announcements, stays hidden until
+    /// the list is pulled down past its top (`pullToRevealSearch`).
     private var searchField: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
             Image(systemName: "magnifyingglass")

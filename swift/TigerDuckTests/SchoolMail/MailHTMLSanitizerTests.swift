@@ -72,9 +72,9 @@ struct MailHTMLSanitizerTests {
         #expect(!html.contains("svg+xml"))
     }
 
-    /// Fix round 1 (2026-09-16, minor): the data-image check requires the MIME subtype to be
-    /// followed immediately by `;` or `,`, matching Android's `DATA_IMAGE` regex exactly — a
-    /// naive prefix check would let a lookalike like `data:image/pngx,...` through.
+    /// The data-image check requires the MIME subtype to be followed immediately by `;` or `,`,
+    /// matching Android's `DATA_IMAGE` regex. A plain prefix check would let a lookalike such as
+    /// `data:image/pngx,...` through.
     @Test func dataImageCheckRequiresExactMimeBoundary() {
         let html = MailHTMLSanitizer.sanitize("<img src=\"data:image/pngx,AAAA\">", allowRemoteImages: false).html
         #expect(!html.contains(" src="))
@@ -174,9 +174,8 @@ struct MailHTMLSanitizerTests {
     }
 
     /// Ported from Android's `HtmlSanitizerTest` ("links are extracted with their visible
-    /// text"), fix round 1 (2026-09-16, minor): an evil href behind NTUST-looking visible
-    /// text, plus a `mailto:` link, so a sanitizer that dropped everything couldn't
-    /// accidentally pass the negative tests.
+    /// text"): an evil href behind NTUST-looking visible text, plus a `mailto:` link, so a
+    /// sanitizer that dropped everything could not pass the negative tests by accident.
     @Test func linksKeepEvilHrefsBehindTrustedLookingText() {
         let result = MailHTMLSanitizer.sanitize(
             "<a href=\"https://evil.example/login\">https://www.ntust.edu.tw</a> <a href=\"mailto:a@b.tw\">mail</a>",
@@ -188,13 +187,12 @@ struct MailHTMLSanitizerTests {
         ])
     }
 
-    /// Fix round 1 (2026-09-16, IMPORTANT): SwiftSoup's `Whitelist` validates a URL
-    /// attribute's *trimmed* value but by default writes out the *original* untrimmed bytes.
-    /// Left unfixed, `href=" https://evil.example/login"` (or an entity-decoded `&#x0a;`/
-    /// `&#x09;` control-character prefix) would survive into both `links[].href` and the
-    /// output HTML — `URL(string:)` on that returns nil, silently disabling the A.4
-    /// link-mismatch warning, while WebKit still navigates the untrimmed link. The fix
-    /// mirrors the `src` handling above: trim and write the value back before collecting it.
+    /// SwiftSoup's `Whitelist` validates a URL attribute's trimmed value but by default writes
+    /// out the original untrimmed bytes. Without trimming, `href=" https://evil.example/login"`
+    /// (or an entity-decoded `&#x0a;` or `&#x09;` prefix) would reach both `links[].href` and the
+    /// output HTML. `URL(string:)` returns nil for it, silently disabling the link-mismatch
+    /// warning, while WebKit still navigates the untrimmed link. Like the `src` handling above,
+    /// the sanitizer trims the value and writes it back before collecting it.
     @Test func trimsHrefWhitespaceBeforeChecking() {
         for prefix in [" ", "\t", "\n", "&#x0a;", "&#x09;"] {
             let html = "<a href=\"\(prefix)https://www.ntust.edu.tw\">x</a>"
@@ -204,10 +202,9 @@ struct MailHTMLSanitizerTests {
         }
     }
 
-    /// Fix round 1 (2026-09-16, minor): link text loses bidi controls too, the same as
-    /// sender names/subjects/attachment names (Task 3's `MailTextCleaner`), mirroring
-    /// Android's `TextCleaning.clean(it.text())` — so a bidi override can't disguise what a
-    /// link's visible text says.
+    /// Link text loses bidi controls too, like sender names, subjects and attachment names
+    /// (`MailTextCleaner`), mirroring Android's `TextCleaning.clean(it.text())`, so a bidi
+    /// override cannot disguise what a link's visible text says.
     @Test func linkTextLosesBidiControls() {
         let result = MailHTMLSanitizer.sanitize(
             "<a href=\"https://example.tw\">invoice\u{202E}fdp.exe</a>",
@@ -216,9 +213,9 @@ struct MailHTMLSanitizerTests {
         #expect(result.links == [MailLink(text: "invoicefdp.exe", href: "https://example.tw")])
     }
 
-    /// Ported from Android's `HtmlSanitizerTest` ("formatting and safe styles are kept"),
-    /// fix round 1 (2026-09-16, minor): a positive test so a sanitizer that dropped
-    /// everything couldn't accidentally pass the negative/corpus tests.
+    /// Ported from Android's `HtmlSanitizerTest` ("formatting and safe styles are kept"): a
+    /// positive test, so a sanitizer that dropped everything could not pass the negative and
+    /// corpus tests by accident.
     @Test func formattingAndSafeStylesAreKept() {
         let html = MailHTMLSanitizer.sanitize(
             "<p style=\"color: red; position: fixed\">Hi <b>there</b></p><table border=\"1\"><tr><td colspan=\"2\">x</td></tr></table>",
@@ -255,12 +252,8 @@ struct MailHTMLSanitizerTests {
 
 
     // MARK: rewriteLinks and its fail-closed strip
-    //
-    // `rewriteLinks` is what stands between the web view and a live sender-supplied URL: every
-    // `<a href>` becomes `https://link.invalid/<n>` and the real href is handed back out of
-    // band, so a tap is answered by index and WebKit never holds the attacker's URL. When the
-    // anchors can't be kept in lockstep with that list, nothing is guessed — every `href` is
-    // stripped. Until now only the happy path had any coverage at all.
+    // Every href becomes `https://link.invalid/<n>`, an index into a returned list, so WebKit never
+    // holds the sender's URL. If anchors and list fall out of lockstep, every href is stripped.
 
     @Test func rewriteLinksReplacesEveryHrefAndReportsTheOriginals() {
         let result = MailHTMLSanitizer.rewriteLinks(

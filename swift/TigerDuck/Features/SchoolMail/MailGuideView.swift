@@ -1,8 +1,8 @@
 #if os(iOS)
 import SwiftUI
 
-/// "Use another app" (design doc §5): the website's guide, embedded (`MailGuide`), with the
-/// @Mail2000 App Store link kept native underneath — the page does not carry it.
+/// "Use another app": the website's guide, embedded (`MailGuide`), with the @Mail2000 App Store
+/// link kept native underneath, because the page does not carry it.
 struct MailGuideView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
