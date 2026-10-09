@@ -43,6 +43,7 @@ xcodebuild build -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destinati
 python3 tools/check_macos_sources.py
 python3 tools/localization/check_keys.py
 python3 tools/generate_licenses.py --check
+python3 -m unittest discover -s tools -p 'test_*.py'
 ```
 
 Without `OS=`, xcodebuild picks the newest installed runtime, which may not have that device;
@@ -56,7 +57,7 @@ two at once compete for the same build folder.
   `api-poc/api/.env` (template: `.env.template`).
 - Test targets: `TigerDuckTests` (phone unit tests), `TigerDuckWatch Watch AppTests` (watch) and
   `TigerDuckUITests` (UI, not run in CI). The vendored SwiftMail package has its own tests.
-  `api-poc/` has no tests.
+  The scripts in `tools/` have `unittest` tests next to them; `api-poc/` has none.
 - Localization covers 67 locales and is generated in the `app-translation` submodule. What's New
   feature-page copy is the exception: zh-Hant and English, written in the app.
 
@@ -73,7 +74,9 @@ two at once compete for the same build folder.
 
 ## Comments
 
-Swift comments follow these rules; review applies them.
+Swift comments follow these rules. `tools/check_comments.py` enforces language, citations and
+length in CI and, in Claude Code, after every edit (`.claude/hooks/check-comments.sh`); review
+applies the rest. Before pushing, run `python3 tools/check_comments.py check --base origin/dev`.
 
 - Write comments in English. String literals may hold Chinese, comments may not.
 - Say why: a reason, an invariant or a non-obvious constraint. Do not restate the code or tell
