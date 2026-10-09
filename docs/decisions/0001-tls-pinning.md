@@ -4,10 +4,10 @@ Status: accepted
 
 ## Context
 
-The app sends NTUST SSO credentials, the long-lived Moodle `wstoken` and the library bearer
-token to NTUST hosts, and School Mail sends the mail password over IMAP and SMTP. The threat is
-campus Wi-Fi with a hostile MDM root CA installed in the device trust store: system trust
-accepts certificates issued by it, so it cannot refuse that man in the middle.
+The app's sessions with NTUST hosts carry NTUST SSO credentials, the long-lived Moodle `wstoken`
+and `privatetoken`, and the library bearer token; School Mail sends the mail password over IMAP
+and SMTP. The threat is campus Wi-Fi with a hostile MDM root CA installed in the device trust
+store: system trust accepts certificates issued by it, so it cannot refuse that man in the middle.
 
 The Android app pins the same hosts in `app/src/main/res/xml/network_security_config.xml`
 (`tigerduck-app-android`), with the same pin set and the same expirations.
@@ -26,9 +26,10 @@ The Android app pins the same hosts in `app/src/main/res/xml/network_security_co
   be in the host's pin set. Its custom verification callback replaces all of BoringSSL's
   checks, hostname included, so its own chain and hostname evaluation is the connection's only
   validation.
-- After a pin set's expiration date both fall back to system trust and log a warning instead
-  of failing, as Android's `expiration` attribute does, so a build that was never updated keeps
-  working when TWCA rotates the chain (issue #92).
+- After a pin set's expiration date both fall back to system trust instead of failing, as
+  Android's `expiration` attribute does, so a build that was never updated keeps working when
+  TWCA rotates the chain (https://github.com/tigerduck-app/tigerduck-app/issues/92). They log
+  it at `.fault`, which Console and sysdiagnose flag.
 - Nothing lets a user bypass a failed pin check.
 
 ## Alternatives
@@ -41,5 +42,5 @@ The Android app pins the same hosts in `app/src/main/res/xml/network_security_co
 
 - Pins must be rotated before they expire, in both repositories at once; diverging pin sets
   break one platform before the other. A release-calendar reminder before each expiration date
-  prompts a build with new pins, and the post-expiry warning in the system log shows a missed
+  prompts a build with new pins, and the post-expiry fault in the system log shows a missed
   rotation. The `tls-pin-rotation` skill has the steps.
