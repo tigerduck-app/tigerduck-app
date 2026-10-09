@@ -1,41 +1,8 @@
 name: Tests
 
-# Unit-test gate for PRs. Until this existed no workflow in the repo ever
-# invoked xcodebuild, so the ~200 tests in `swift/TigerDuckTests/` only ran when
-# someone remembered to press Cmd-U, and a break could sit there for weeks with
-# nothing saying so. The watch tests were worse off still: they were in no
-# shared scheme, so `xcodebuild -scheme TigerDuck` never even compiled them.
-# The Android repo has had the equivalent gate (.github/workflows/ci.yaml) for
-# a while; this is its counterpart.
-#
-# Deliberately unit tests only, matching that workflow's stance: no
-# TigerDuckUITests (simulator UI automation is the usual source of CI flake,
-# and its runner already fails to launch on some local simulators), and no
-# second pass on the macOS destination.
-#
-# The phone and watch suites run on runners of their own, side by side. They
-# used to run back to back in one job, so the gate took the sum of the two
-# (8-14 min) where it now takes the slower one.
-#
-# Each leg reuses its last build. Without that, the phone leg was 9-15
-# minutes on the same code, almost none of it the tests (~90-140 s): a
-# runner here is a 3-core VM, and it spent the rest fetching packages,
-# compiling everything from nothing and booting a simulator. Now the build
-# compiles only what changed and the packages come from a cache; the boot
-# is still a minute or two. Caches are saved by runs on pushes to
-# dev and main, and a pull request reads the one its base branch saved:
-# GitHub scopes a cache to the ref that made it, so a PR's own would serve
-# no one else, and at ~1.5 GB a leg they would crowd the repo's 10 GB.
-#
-# The first run after a cache goes stale (a package bump, a new Xcode on
-# the runner image) builds from nothing, at the old 12-15 minutes.
-#
-# Note there is no `CODE_SIGNING_ALLOWED=NO` here, the usual CI shorthand for
-# "this machine has no certificates". A simulator build signs ad-hoc and needs
-# none, and turning signing off drops the app's entitlements with it — which
-# takes the App Group container away, which makes the DEBUG guard in
-# `WidgetSnapshotStore` and friends trap during launch, which crashes the test
-# host before a single test runs.
+# Unit tests only: simulator UI automation flakes, so TigerDuckUITests stays out, and the
+# macOS destination is not tested here. The phone and watch suites run as parallel jobs.
+
 
 on:
   pull_request:
@@ -54,11 +21,8 @@ permissions:
 
 jobs:
   unit-tests:
-    # macOS is the only image that can run xcodebuild, and the sources need an
-    # Xcode 26 SDK — `glassEffect` and friends sit behind `if #available(iOS
-    # 26)`, which still has to *compile*. If a future image defaults to
-    # something older, select one explicitly with `sudo xcode-select -s`; the
-    # version is printed below so a failure says which one it got.
+    # The sources need the Xcode 26 SDK, because code behind `if #available(iOS 26)` must still
+    # compile; pick one with `sudo xcode-select -s` if an image defaults to an older Xcode.
     name: unit-tests (${{ matrix.leg }})
     runs-on: macos-26
     timeout-minutes: 60
@@ -79,13 +43,9 @@ jobs:
             runtime: iOS
             device: iPhone
             only_testing: TigerDuckTests
-          # The watch app is a companion app, so it needs its own scheme and
-          # its own destination; the phone scheme's test action does not reach
-          # it. Xcode pairs the watch simulator with a phone one on its own.
-          # That scheme builds the phone app for running only, not for
-          # testing: built for a watch destination, the phone app and all
-          # its packages came out for arm64 and x86_64 both, twice the phone
-          # leg's compile, for tests that never load it.
+          # The watch app is a companion app with its own scheme and destination; Xcode pairs the
+          # watch simulator with a phone one. The scheme builds the phone app for running only:
+          # built for testing on a watch destination it compiled twice the phone leg's code.
           - leg: watch
             scheme: TigerDuckWatch Watch App
             runtime: watchOS
@@ -107,25 +67,16 @@ jobs:
           xcodebuild -version
           sysctl -n machdep.cpu.brand_string hw.ncpu
 
-      # Every date in this app is a Taiwan school day: `AcademicCalendar.calendar`
-      # and `WidgetTaipei.calendar` are hard-pinned to Asia/Taipei, while the
-      # tests build their fixtures with `Calendar.current`. On the machines
-      # these were written on those agree. On a UTC runner they are eight hours
-      # apart, so a fixture meaning "Monday 09:30" arrives as Monday 17:30 —
-      # `.ongoing` comes back `.tomorrowFirst`, and `(comps.hour → 2) == 10`
-      # misses by exactly the offset. A simulator takes the host's zone, so
-      # this is the one place to say it — and it goes before the simulator
-      # starts booting, not after.
+      # Test fixtures use `Calendar.current` but the app pins Asia/Taipei (`AcademicCalendar`,
+      # `WidgetTaipei`), so a UTC runner shifts every fixture by eight hours. A simulator takes
+      # the host's zone when it boots, so this runs before the boot.
       - name: Run in the school's timezone
         run: |
           sudo systemsetup -settimezone Asia/Taipei
           date
 
-      # Naming a simulator is how this breaks six months from now: images add
-      # and drop devices, and `OS=latest` resolves to a runtime the named
-      # device may not exist on. (That exact mismatch — iPhone 17 Pro Max
-      # present on 26.5 while `latest` meant 27.0 — is what it does locally.)
-      # Take whichever devices the image actually has.
+      # Take whichever devices the image has instead of naming one: images add and drop devices,
+      # and `OS=latest` can resolve to a runtime the named device does not exist on.
       - name: Pick a simulator
         id: sim
         env:
@@ -133,11 +84,8 @@ jobs:
           DEVICE: ${{ matrix.device }}
         run: |
           set -euo pipefail
-          # Newest runtime wins. A runner image ships one matched set of
-          # runtimes per Xcode, so the newest watchOS pairs with the newest
-          # iOS the watch leg's phone half will come from; a dev machine that
-          # has accumulated several may not, and that is the case to notice if
-          # the watch leg ever fails to pair.
+          # Newest runtime wins. A runner image ships one matched set of runtimes per Xcode, so the
+          # newest watchOS pairs with the newest iOS; a machine with several sets may not.
           udid=$(xcrun simctl list devices available --json | jq -r --arg os "$RUNTIME" --arg name "$DEVICE" '
             [ .devices
               | to_entries[]
@@ -155,51 +103,31 @@ jobs:
           xcrun simctl list devices available | grep -E "$udid"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
-      # Brings back this leg's last build so only what changed recompiles.
-      # A cached DerivedData alone is not enough: a fresh checkout stamps
-      # every file with the checkout's time, Xcode reads a new mtime as a
-      # changed file, and everything rebuilds anyway. This action also keeps
-      # each source file's mtime next to its hash, and puts the old mtime back
-      # on every file whose contents still match. The package clones are a
-      # second cache keyed on Package.resolved, which both legs share.
-      #
-      # Both live in the runner's temp directory rather than in the checkout,
-      # so the action's mtime scan over the checkout does not walk into them;
-      # every xcodebuild below is pointed there.
-      #
-      # The package clones are per leg, not shared, though both legs clone
-      # the same packages. A leg's DerivedData remembers the mtimes of the
-      # clone it compiled, and the action restores mtimes only inside the
-      # checkout. Shared, the clones came from whichever leg saved first, and
-      # the other leg saw every package file as changed: the first warm run
-      # rebuilt the watch leg's 1,846 Swift and 892 C files from scratch while
-      # the phone leg, whose clone it was, compiled 2.
-      #
-      # The action's own list of files to restore mtimes on covers asset
-      # catalogs but not Icon Composer `.icon` bundles, and the app icon is
-      # one. Left out, it came back from every checkout looking new, and
-      # actool re-rendered it — 57-154 s of a warm phone build that
-      # otherwise compiled 2 files.
+      # Restores this leg's last build so only changed files recompile. A fresh checkout gives
+      # every file a new mtime, so the action also puts back the old mtime of each unchanged
+      # file. A stale cache (a package bump, a new Xcode) means a 12 to 15 minute build.
       - name: Restore the last build
         uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
         with:
           key: xcode-${{ matrix.leg }}-${{ github.sha }}
           restore-keys: xcode-${{ matrix.leg }}-
+          # Outside the checkout, so the action's mtime scan does not walk into them.
           deriveddata-directory: ${{ runner.temp }}/DerivedData
           sourcepackages-directory: ${{ runner.temp }}/SourcePackages
+          # Per leg: DerivedData remembers the mtimes of the package clone it compiled, so a clone
+          # shared by both legs made the other leg rebuild every package.
           swiftpm-cache-key: xcode-packages-${{ matrix.leg }}-${{ hashFiles('swift/TigerDuck.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          # The action skips Icon Composer bundles unless listed, and actool then re-renders the icon.
           restore-mtime-targets: |
             swift/**/*.icon
             swift/**/*.icon/**/*
-          # See the header: only pushes save, and a push that saved a newer
-          # build deletes the one it restored, so each leg keeps one per branch.
+          # Only pushes save, and a push that saved a newer build deletes the one it restored, so
+          # each leg keeps one cache per branch; per-PR caches would crowd the 10 GB limit.
           cache-read-only: ${{ github.event_name != 'push' }}
           delete-used-deriveddata-cache: ${{ github.event_name == 'push' }}
 
-      # The next steps are what a single `xcodebuild test` does inside
-      # itself: fetch packages, compile, boot the simulator, run. Split, the
-      # job view times each one; whole, it showed one 13-16 minute step and
-      # no way to tell which part was slow.
+      # The next steps split `xcodebuild test` into resolve, build, boot and run, so the job view
+      # times each part.
       - name: Resolve packages
         env:
           SCHEME: ${{ matrix.scheme }}
@@ -210,15 +138,9 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/DerivedData"
           -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages"
 
-      # No index store: it is what Xcode's jump-to-definition and search read,
-      # nothing here does, and writing it costs compile time and cache space.
-      #
-      # The full log goes to a file, each line stamped with the time it
-      # arrived, and the job prints three things from it: the step's time
-      # split by the task line that ended each stretch, compiles per target
-      # (a build that reused the cache well compiles little or nothing), and
-      # xcodebuild's own timing summary. When a warm build is slow, that is
-      # where to look first.
+      # No index store: nothing here reads it, and writing it costs compile time and cache space.
+      # The log goes to a file with arrival times; the step prints where the time went, compiles
+      # per target (a warm build compiles little) and xcodebuild's timing summary.
       - name: Build for testing
         env:
           SCHEME: ${{ matrix.scheme }}
@@ -229,6 +151,8 @@ jobs:
           log="$RUNNER_TEMP/build.log"
           now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
           start=$(now)
+          # Signing stays on: CODE_SIGNING_ALLOWED=NO drops the entitlements and with them the App
+          # Group container, and the DEBUG guard in `WidgetSnapshotStore` then crashes the test host.
           if ! xcodebuild build-for-testing \
               -project swift/TigerDuck.xcodeproj \
               -scheme "$SCHEME" \
@@ -264,15 +188,9 @@ jobs:
           cut -d' ' -f2- "$log" | sed -n '/Build Timing Summary/,$p' | grep -v '^$' | head -10
           true
 
-      # After the build, not alongside it. A first boot takes the runner's 3
-      # cores for a minute or two and slows whatever shares them about as
-      # much as it saves: started at the top of the job it took the cache
-      # download from ~70 MB/s to ~4, and started just before the build it
-      # left xcodebuild 68-171 s starting up and 33-96 s on the package graph,
-      # work the resolve step above does in 18-35 s with the runner to itself.
-      #
-      # bootstatus prints a status line about once a second until the device
-      # is up; only the last few say anything.
+      # Boot after the build, not during it: on the 3-core runner a first boot cut the cache
+      # download from about 70 MB/s to 4, and during the build it cost xcodebuild 68 to 171 s of
+      # start-up and 33 to 96 s of package graph. bootstatus prints a line a second.
       - name: Boot the simulator
         env:
           UDID: ${{ steps.sim.outputs.udid }}
@@ -280,10 +198,8 @@ jobs:
           set -o pipefail
           xcrun simctl bootstatus "$UDID" -b | tail -n 3
 
-      # Run from the .xctestrun the build wrote rather than from the
-      # project, so xcodebuild does not load the project and resolve the
-      # package graph a second time. Newest first: the restored DerivedData
-      # can still hold one written against an older SDK.
+      # Run from the .xctestrun the build wrote, so xcodebuild does not load the project and
+      # resolve packages again. Newest first: the restored DerivedData can hold an older one.
       - name: Unit tests (${{ matrix.leg }})
         env:
           UDID: ${{ steps.sim.outputs.udid }}
@@ -298,22 +214,9 @@ jobs:
             -resultBundlePath Tests.xcresult \
             -quiet
 
-      # `-quiet` keeps the log readable but also hides the test count, and a
-      # run that silently executed nothing exits 0 exactly like a real pass.
-      # Read the counts back out so the log says what actually ran. `always()`
-      # so a failing run still reports which tests failed.
-      #
-      # The per-failure detail matters more than it looks: `-quiet` also hides
-      # *why* a test failed, and a mid-run crash marks every remaining test
-      # failed with no message attached — so a bare list of names cannot tell
-      # "173 real failures" apart from "one crash, 172 casualties".
-      #
-      # "Ran for" is the bundle's own start to finish; the test step's time
-      # minus it is app install, launch and teardown. There is deliberately no
-      # per-suite or per-test breakdown: Swift Testing starts nearly every test
-      # at once and they queue for the main actor, so a test's recorded
-      # duration is mostly its wait. On the runner 964 of 1,060 "took" over a
-      # second inside a run that lasted 111 s.
+      # `-quiet` hides the test count and the failure messages, and a run that executed nothing
+      # exits 0, so this prints both. "Ran for" is the bundle's own run; the test step minus it is
+      # install, launch and teardown. Tests queue for the main actor, so per-test times mislead.
       - name: Test summary
         if: always()
         # `set +e`: the job's verdict is the test step's, not this step's. It
@@ -352,16 +255,9 @@ jobs:
           path: Tests.xcresult
           retention-days: 7
 
-  # The vendored SwiftMail carries nine local patches on top of upstream 1.11.0
-  # (see swift/Packages/SwiftMail/VENDORED.md). Its own SwiftPM test targets are
-  # in no Xcode scheme, so `xcodebuild -scheme TigerDuck` never compiled them and
-  # the tests pinning those patches ran only when someone typed `swift test` by
-  # hand. Patches 2, 5 and 6 happen to have cover in TigerDuckTests; patches 3
-  # (send CHARSET only for non-ASCII SEARCH criteria) and 4 had none at all, so a
-  # re-vendor could have dropped either with nothing going red.
-  #
-  # No simulator and no timezone step: these are pure SwiftPM tests against a
-  # loopback IMAP/SMTP server, so they need neither a device nor Asia/Taipei.
+  # The vendored SwiftMail carries local patches (swift/Packages/SwiftMail/VENDORED.md), and its
+  # SwiftPM tests are in no Xcode scheme, so only this job runs them. They need no simulator
+  # and no timezone: they run against a loopback IMAP and SMTP server.
   vendored-package:
     name: vendored SwiftMail
     runs-on: macos-26
