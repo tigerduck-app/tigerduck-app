@@ -59,8 +59,8 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 
 ## 8. CI path gating
 
-- [ ] 8.1 In both unit-test legs of `.github/workflows/tests.yaml`, check out with `fetch-depth: 2` on pull requests, compute `docs_only` from `git diff --name-only HEAD^1 HEAD`, run the later steps only when it is false, and log the skip; verify locally that the gating command calls a documentation-only file list skippable and a list with a Swift or workflow file not
-- [ ] 8.2 Gate the SwiftMail job's `swift test` on changes under `swift/Packages/SwiftMail/` or to `tests.yaml`, always running on pushes; verify locally that the gate skips for an app-only file list and runs for a SwiftMail or `tests.yaml` change
+- [x] 8.1 In both unit-test legs of `.github/workflows/tests.yaml`, check out with `fetch-depth: 2` on pull requests, compute `docs_only` from `git diff --name-only HEAD^1 HEAD`, run the later steps only when it is false, and log the skip; verify locally that the gating command calls a documentation-only file list skippable and a list with a Swift or workflow file not
+- [x] 8.2 Gate the SwiftMail job's `swift test` on changes under `swift/Packages/SwiftMail/` or to `tests.yaml`, always running on pushes; verify locally that the gate skips for an app-only file list and runs for a SwiftMail or `tests.yaml` change
 - [ ] 8.3 Condense the comments in `tests.yaml` that this work touches to the comment policy; verify the maintainer approves the diff
 
 ## 9. Tests without wall-clock waits

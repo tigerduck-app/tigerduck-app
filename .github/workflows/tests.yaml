@@ -58,11 +58,32 @@ jobs:
           # Without it the build fails on missing resources rather than on
           # anything this workflow is meant to catch.
           submodules: true
+          # Two commits on a pull request, the merge and its base, for the path check below.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      # A documentation-only pull request skips the steps below rather than the job: a skipped
+      # matrix job never reports `unit-tests (phone)` to a required check.
+      - name: Changed paths
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only HEAD^1 HEAD)
+            if [ -n "$files" ] && ! printf '%s\n' "$files" \
+                | grep -qvE '\.md$|^(docs|openspec|\.claude|\.agents|\.greptile)/'; then
+              run=false
+              echo "Documentation-only change: skipping the build and tests."
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
       # The core count is what the test timings below have to be read
       # against: Swift Testing runs tests side by side, so a suite a dev Mac
       # finishes in seconds can take minutes on a runner a quarter its size.
       - name: Xcode version
+        if: steps.changes.outputs.run == 'true'
         run: |
           xcodebuild -version
           sysctl -n machdep.cpu.brand_string hw.ncpu
@@ -71,6 +92,7 @@ jobs:
       # `WidgetTaipei`), so a UTC runner shifts every fixture by eight hours. A simulator takes
       # the host's zone when it boots, so this runs before the boot.
       - name: Run in the school's timezone
+        if: steps.changes.outputs.run == 'true'
         run: |
           sudo systemsetup -settimezone Asia/Taipei
           date
@@ -78,6 +100,7 @@ jobs:
       # Take whichever devices the image has instead of naming one: images add and drop devices,
       # and `OS=latest` can resolve to a runtime the named device does not exist on.
       - name: Pick a simulator
+        if: steps.changes.outputs.run == 'true'
         id: sim
         env:
           RUNTIME: ${{ matrix.runtime }}
@@ -107,6 +130,7 @@ jobs:
       # every file a new mtime, so the action also puts back the old mtime of each unchanged
       # file. A stale cache (a package bump, a new Xcode) means a 12 to 15 minute build.
       - name: Restore the last build
+        if: steps.changes.outputs.run == 'true'
         uses: irgaly/xcode-cache@4141f139f00e335c6e1031fb93e667181f86146f  # v1.9.2
         with:
           key: xcode-${{ matrix.leg }}-${{ github.sha }}
@@ -129,6 +153,7 @@ jobs:
       # The next steps split `xcodebuild test` into resolve, build, boot and run, so the job view
       # times each part.
       - name: Resolve packages
+        if: steps.changes.outputs.run == 'true'
         env:
           SCHEME: ${{ matrix.scheme }}
         run: >
@@ -142,6 +167,7 @@ jobs:
       # The log goes to a file with arrival times; the step prints where the time went, compiles
       # per target (a warm build compiles little) and xcodebuild's timing summary.
       - name: Build for testing
+        if: steps.changes.outputs.run == 'true'
         env:
           SCHEME: ${{ matrix.scheme }}
           UDID: ${{ steps.sim.outputs.udid }}
@@ -192,6 +218,7 @@ jobs:
       # download from about 70 MB/s to 4, and during the build it cost xcodebuild 68 to 171 s of
       # start-up and 33 to 96 s of package graph. bootstatus prints a line a second.
       - name: Boot the simulator
+        if: steps.changes.outputs.run == 'true'
         env:
           UDID: ${{ steps.sim.outputs.udid }}
         run: |
@@ -201,6 +228,7 @@ jobs:
       # Run from the .xctestrun the build wrote, so xcodebuild does not load the project and
       # resolve packages again. Newest first: the restored DerivedData can hold an older one.
       - name: Unit tests (${{ matrix.leg }})
+        if: steps.changes.outputs.run == 'true'
         env:
           UDID: ${{ steps.sim.outputs.udid }}
           ONLY_TESTING: ${{ matrix.only_testing }}
@@ -218,7 +246,7 @@ jobs:
       # exits 0, so this prints both. "Ran for" is the bundle's own run; the test step minus it is
       # install, launch and teardown. Tests queue for the main actor, so per-test times mislead.
       - name: Test summary
-        if: always()
+        if: always() && steps.changes.outputs.run == 'true'
         # `set +e`: the job's verdict is the test step's, not this step's. It
         # reads a JSON shape Apple reshuffles between Xcode releases, and a
         # green run must not turn red because jq could not find a key.
@@ -265,10 +293,31 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         # No submodules: this package does not read app-translation.
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      # On a pull request the package tests run only for a change to the package or to this
+      # file; pushes always run them.
+      - name: Changed paths
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ]; then
+            files=$(git diff --name-only HEAD^1 HEAD)
+            if ! printf '%s\n' "$files" | grep -qE '^swift/Packages/SwiftMail/|^\.github/workflows/tests\.yaml$'; then
+              run=false
+              echo "No change under swift/Packages/SwiftMail/ or to tests.yaml: skipping the package tests."
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
       - name: Xcode version
+        if: steps.changes.outputs.run == 'true'
         run: xcodebuild -version
 
       - name: Package tests
+        if: steps.changes.outputs.run == 'true'
         working-directory: swift/Packages/SwiftMail
         run: swift test
