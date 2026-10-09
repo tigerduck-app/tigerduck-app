@@ -36,8 +36,8 @@ the Xcode project's build settings and reports false errors.
 ## Commands
 
 ```bash
-xcodebuild test -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:TigerDuckTests
-xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch App' -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)'
+xcodebuild test -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' -only-testing:TigerDuckTests
+xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch App' -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm),OS=26.5'
 xcodebuild build -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=macOS'
 (cd swift/Packages/SwiftMail && swift test)
 python3 tools/check_macos_sources.py
@@ -45,7 +45,9 @@ python3 tools/localization/check_keys.py
 python3 tools/generate_licenses.py --check
 ```
 
-Run one `xcodebuild` at a time; two at once compete for the same build folder.
+Without `OS=`, xcodebuild picks the newest installed runtime, which may not have that device;
+`xcrun simctl list devices available` lists what is installed. Run one `xcodebuild` at a time;
+two at once compete for the same build folder.
 
 ## Conventions
 
