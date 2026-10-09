@@ -28,10 +28,8 @@ struct WeekProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WeekEntry>) -> Void) {
-        // Week grid only needs to refresh at midnight (to advance the
-        // "today" underline). The cells themselves are time-of-day
-        // independent, so a single entry + .after(midnight) policy
-        // is enough.
+        // The cells do not depend on time of day, so one entry refreshed at midnight, when the
+        // "today" underline moves, is enough.
         let snap = store.readSnapshot() ?? Self.emptySnapshot
         // Pin to Taipei so the refresh fires at Taiwan's midnight — that's
         // when the "today" underline rolls over in the rendered grid.
@@ -80,10 +78,9 @@ struct WeekWidget: Widget {
         }
         .configurationDisplayName(String(localized: "widget_week_light_label"))
         .description(String(localized: "widget_week_light_desc"))
-        // iPad gets the larger family; iPhone-only families are filtered
-        // automatically by WidgetKit. The grid view clamps its own minimum
-        // cell height so the edit-mode resize preview never collapses to
-        // an invisible state when iOS asks for an intermediate size.
+        // iPad gets the larger family; WidgetKit drops it on iPhone. The grid clamps its minimum
+        // cell height so the edit-mode resize preview never collapses to an invisible state when
+        // iOS asks for an intermediate size.
         .supportedFamilies([.systemLarge, .systemExtraLarge])
         .contentMarginsDisabled()
     }

@@ -3,14 +3,12 @@ import Combine
 
 /// Watch-side owner of library credentials, token, epoch, and TTL state.
 ///
-/// Lifecycle:
-/// * Receives `WatchLibraryCredentialPayload` from the WC delegate.
-/// * Persists username/password to the watch keychain (`WatchKeychain`).
-/// * Tracks the credential epoch in App Group `UserDefaults` so a fresh
-///   install resets it to 0 and a phone fresh-install reset re-syncs
-///   cleanly (see broadcaster's `republishIfCredentialed`).
-/// * Bounded-stale 7-day TTL purge prevents credentials from outliving
-///   the phone install indefinitely if WC delivery never lands.
+/// * Receives `WatchLibraryCredentialPayload` from the WC delegate and keeps
+///   username and password in the watch keychain (`WatchKeychain`).
+/// * Keeps the credential epoch in App Group `UserDefaults`, so a fresh install
+///   resets it to 0 and a phone reinstall re-syncs cleanly (`republishIfCredentialed`).
+/// * A 7-day TTL purge keeps credentials from outliving the phone install if
+///   WC delivery never lands.
 @MainActor
 final class WatchLibraryCredentialsStore: ObservableObject {
 
@@ -114,16 +112,14 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         Int64(defaults.double(forKey: DefaultsKey.issuedAtMs))
     }
 
-    /// Returns credentials only if they are within the 7-day TTL window.
-    /// Stale credentials trigger a local wipe so a subsequent push from
-    /// the phone re-establishes a fresh state.
+    /// Returns credentials only within the 7-day TTL window. Stale ones are
+    /// wiped locally so the next push from the phone starts a fresh state.
     ///
-    /// `issuedAtMs == 0` with credentials present means the keychain
-    /// outlived the App Group `UserDefaults` — watchOS preserves the
-    /// keychain across app uninstall/reinstall but resets defaults, so
-    /// we'd otherwise carry orphan credentials with no TTL anchor.
-    /// Treat the orphan state as expired and let the next phone push
-    /// re-establish a clean epoch + issuedAtMs.
+    /// `issuedAtMs == 0` with credentials present means the keychain outlived
+    /// the App Group `UserDefaults`: watchOS keeps the keychain across an
+    /// uninstall and reinstall but resets defaults. Such orphans have no TTL
+    /// anchor, so they count as expired until the next phone push sets a clean
+    /// epoch and `issuedAtMs`.
     func loadCredentialsRespectingTTL(now: Date = Date()) -> (username: String, password: String)? {
         guard let u = WatchKeychain.string(forKey: Keys.username),
               let p = WatchKeychain.string(forKey: Keys.password) else {

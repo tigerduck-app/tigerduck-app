@@ -2,17 +2,12 @@ import Foundation
 
 /// Pure-Swift QR Code matrix generator (ISO/IEC 18004, Model 2).
 ///
-/// CoreImage's `CIFilter.qrCodeGenerator()` is unavailable on watchOS, so we
-/// can't reuse the phone's renderer. This file produces the boolean module
-/// matrix; the caller renders it (we render to a `UIImage` via CoreGraphics
-/// in `LibraryQRViewModel.makeQRImage`).
-///
-/// Scope: byte (8-bit) mode, ECC levels L/M/Q/H, versions 1–40. No Kanji /
-/// numeric / alphanumeric mode-switching — the library API payload is
-/// arbitrary bytes so byte mode is fine.
-///
-/// Algorithm follows Project Nayuki's QR-Code-generator reference
-/// implementation (MIT). Cross-checked against the ISO QR matrix examples.
+/// CoreImage's `CIFilter.qrCodeGenerator()` is unavailable on watchOS. This file
+/// builds the boolean module matrix; `LibraryQRViewModel.makeQRImage` draws it
+/// into a `UIImage` with CoreGraphics. Byte mode only, ECC levels L/M/Q/H,
+/// versions 1–40: the library payload is arbitrary bytes, so no other mode is
+/// needed. The algorithm follows Project Nayuki's QR-Code-generator reference
+/// implementation (MIT), cross-checked against the ISO QR matrix examples.
 
 // MARK: - Public API
 

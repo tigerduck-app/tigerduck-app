@@ -21,11 +21,9 @@ struct TodayView: View {
     }
 
     var body: some View {
-        // `todaysCourses` reads `AppClock.now()` for weekday derivation,
-        // so the view needs a periodic rebuild to advance past midnight
-        // under real or ticking-fake time. Snapshot pushes already kick
-        // a rebuild via `@EnvironmentObject`; this handles the
-        // no-snapshot-change case. 60 s is plenty for daily granularity.
+        // `todaysCourses` takes its weekday from `AppClock.now()`, so the view needs this rebuild
+        // to pass midnight under real or ticking fake time; snapshot pushes already rebuild via
+        // `@EnvironmentObject`. 60 s is plenty for a change that happens once a day.
         TimelineView(.periodic(from: .now, by: 60)) { _ in
             Group {
                 if todaysCourses.isEmpty {
@@ -55,11 +53,8 @@ private struct TodayRow: View {
     var body: some View {
         let courseColor = Color(hex: course.colorHex) ?? .accentColor
         HStack(spacing: 8) {
-            // The accent stripe only earns its place in the Apple preset,
-            // where the rest of the card is intentionally neutral. The
-            // TigerDuck preset already carries the course identity via
-            // the tinted surface, so we drop the stripe to avoid a
-            // double-strong colour treatment.
+            // Only the Apple preset, with its neutral card, needs the stripe. The TigerDuck preset
+            // already shows the course colour on the tinted surface, and a stripe would double it.
             if !policy.usesTintedCardSurface {
                 Rectangle()
                     .fill(courseColor)

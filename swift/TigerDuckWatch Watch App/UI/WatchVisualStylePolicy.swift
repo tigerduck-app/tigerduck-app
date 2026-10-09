@@ -1,16 +1,13 @@
 import SwiftUI
 
-/// Watch-side counterpart to the phone's `VisualStylePolicy`. Resolves a
-/// `VisualPreset` (synced from the phone via `WatchSnapshot`) into the
-/// rendering decisions the watch course cards need: whether the course
-/// colour fills the card surface (TigerDuck) or just appears as a slim
-/// accent stripe next to a neutral card (Apple).
+/// Watch counterpart to the phone's `VisualStylePolicy`. Resolves a `VisualPreset` (synced
+/// from the phone via `WatchSnapshot`) into what the watch course cards need: whether the
+/// course colour fills the card (TigerDuck) or appears as a slim accent stripe beside a
+/// neutral card (Apple).
 ///
-/// Watch surfaces are intentionally simpler than the phone's — no glass
-/// material, no per-platform branching — so this struct only carries
-/// what the existing watch UI actually consumes. Adding a new preset
-/// means extending this resolver, not branching on the raw enum from
-/// every view.
+/// Watch surfaces are simpler than the phone's (no glass material, no per-platform
+/// branching), so this carries only what the watch UI consumes. A new preset extends this
+/// resolver instead of every view branching on the raw enum.
 struct WatchVisualStylePolicy {
     let preset: VisualPreset
 

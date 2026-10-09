@@ -11,11 +11,9 @@ public enum NextClassResolver {
     /// the class currently in progress (if any) and the next class the wearer
     /// still has to get to today (if any). Other weekdays are ignored.
     public static func resolve(courses: [WatchCourse], now: Date) -> Result {
-        // Pinned to Taipei: NTUST's class times are authored in Taiwan
-        // wall time, so the watch must answer "what's happening now" in
-        // that frame regardless of where the wearer is physically. Without
-        // the pin a student abroad would see no classes during what is
-        // morning in Taipei.
+        // Taipei, not the device zone: class times are Taiwan wall time, so a
+        // wearer abroad must still see "now" in that frame. Without the pin
+        // they would see no classes during the Taipei morning.
         let cal = SharedTaipei.calendar
         // Gregorian weekday: 1=Sun..7=Sat; convert to 1=Mon..7=Sun.
         let raw = cal.component(.weekday, from: now)
@@ -35,13 +33,9 @@ public enum NextClassResolver {
             return nowMin >= s && nowMin < e
         }
 
-        // "Still ahead of you", not "starts later" — the two only differ when
-        // two classes overlap, and there the second reading loses one of them
-        // entirely: it has already started, so it is not `next`, and `current`
-        // is a single value that the earlier-starting class already won.
-        // Conflicting enrolments are a modelled state in this app (the class
-        // table draws them as interlocking L-shapes), so a wearer with one
-        // would have seen the second class simply not appear.
+        // `next` is the first class not yet over, not the next to start: when two
+        // classes overlap, the later one has already started and `current` holds
+        // the earlier, so it would vanish. Conflicting enrolments are a modelled state.
         let next = today.first { c in
             c.id != current?.id && minutes(of: c.endHHmm) > nowMin
         }

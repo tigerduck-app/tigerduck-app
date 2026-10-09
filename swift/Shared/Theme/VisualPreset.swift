@@ -2,14 +2,12 @@ import Foundation
 
 /// Top-level visual presentation preset.
 ///
-/// This is intentionally a presentation concern only — it decides which
-/// rendering policy the UI applies, not which features exist, which data
-/// flows, or which tint the user picks. It is a different dimension from
-/// `AppState.accentColorHex` (the user's theme accent color).
+/// A presentation concern only: it picks the rendering policy the UI
+/// applies, not which features exist, which data flows, or which tint the
+/// user picks. The accent color, `AppState.accentColorHex`, is separate.
 ///
-/// Designed to grow: adding a new preset only requires adding a case here
-/// and extending ``VisualStylePolicy`` — no view is expected to branch on
-/// the raw enum directly.
+/// Adding a preset takes a case here and an extension of
+/// ``VisualStylePolicy``; views should not branch on the raw enum.
 public enum VisualPreset: String, CaseIterable, Identifiable, Sendable, Codable {
     /// TigerDuck's original visual language: saturated course colors on
     /// large surfaces, glass cards throughout, expressive time slider.

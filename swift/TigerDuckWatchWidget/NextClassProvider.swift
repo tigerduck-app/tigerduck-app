@@ -36,19 +36,14 @@ struct NextClassProvider: TimelineProvider {
 
         var entries: [NextClassEntry] = []
         let now = Date()
-        // Pin to Taipei so timeline boundaries (class start/end and the
-        // 04:00 reload) land on Taiwan wall time, matching the resolver
-        // and the iOS app. A device-TZ calendar would slide today/
-        // tomorrow's anchors and the reload trigger for a traveling
-        // wearer, leaving the face stale across class transitions and
-        // midnight.
+        // A Taipei calendar keeps class start/end and the 04:00 reload on Taiwan time, matching the
+        // resolver and the iOS app. A device-zone calendar would shift the day anchors and reload
+        // for a traveling wearer, leaving the face stale across class changes and midnight.
         let cal = SharedTaipei.calendar
 
-        // Build boundary timestamps for today + tomorrow so the post-midnight
-        // window doesn't strand the watch face on "no upcoming classes" until
-        // the 04:00 reload fires. NextClassResolver re-derives the weekday
-        // from each timestamp, so entries dated tomorrow morning naturally
-        // surface tomorrow's classes.
+        // Cover today and tomorrow so after midnight the face does not show "no upcoming classes"
+        // until the 04:00 reload. NextClassResolver derives the weekday from each timestamp, so
+        // entries dated tomorrow morning show tomorrow's classes.
         var boundaries: [Date] = [now]
         for dayOffset in 0...1 {
             guard let anchor = cal.date(byAdding: .day, value: dayOffset, to: now) else { continue }
@@ -100,11 +95,9 @@ struct NextClassProvider: TimelineProvider {
     }
 
     private func combine(hhmm: String, with anchor: Date) -> Date? {
-        // Must match the calendar used in `getTimeline(...)` so the
-        // year/month/day extracted from `anchor` and the hh:mm stitched
-        // back on are interpreted in the same frame — otherwise a
-        // device in a non-Taipei TZ produces start/end instants offset
-        // from what the resolver expects.
+        // Must match the calendar in `getTimeline(...)` so the date taken from `anchor` and the
+        // hh:mm put back share one time zone; otherwise a device outside Taipei time produces
+        // start and end instants offset from what the resolver expects.
         let cal = SharedTaipei.calendar
         let parts = hhmm.split(separator: ":")
         guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }

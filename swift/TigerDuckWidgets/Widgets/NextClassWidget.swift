@@ -27,11 +27,9 @@ struct NextClassProvider: TimelineProvider {
         let snap = store.readSnapshot() ?? Self.emptySnapshot
         let now = AppClock.now()
         let dates = WidgetTimelineDerivation.entryDates(snapshot: snap, after: now)
-        // `entryDates` are app-clock boundaries (possibly fake), but
-        // WidgetKit schedules entries on the real wall clock. Derive
-        // the displayed state from the app-clock date, then stamp the
-        // entry with the real-time equivalent so the timeline actually
-        // advances under a fake-clock override.
+        // `entryDates` are app-clock boundaries (possibly fake), but WidgetKit schedules entries
+        // on the real clock. Derive the state from the app-clock date and stamp the entry with its
+        // real-time equivalent so the timeline still advances under a fake-clock override.
         let entries = dates.map { appDate in
             NextClassEntry(
                 date: AppClock.realTime(forApp: appDate),
@@ -39,10 +37,8 @@ struct NextClassProvider: TimelineProvider {
                 derived: WidgetTimelineDerivation.derive(snapshot: snap, at: appDate)
             )
         }
-        // When the snapshot has no courses or the user isn't logged in,
-        // `.atEnd` would spin WidgetKit in an immediate-reload loop on
-        // the single placeholder entry. Refresh at midnight instead so
-        // we retry once per day.
+        // With no courses or no signed-in user, `.atEnd` would make WidgetKit reload the single
+        // placeholder entry in an immediate loop. Refreshing at midnight retries once a day.
         let hasCourses = snap.isLoggedIn && !snap.courses.isEmpty
         let policy: TimelineReloadPolicy
         if hasCourses {

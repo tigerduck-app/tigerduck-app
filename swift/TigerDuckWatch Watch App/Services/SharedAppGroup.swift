@@ -1,16 +1,14 @@
 import Foundation
 import os
 
-/// Single source of truth for App Group identifiers + paths shared between
+/// Single source of truth for the App Group identifier and paths shared by
 /// the watch app and the widget. Both targets must declare the App Group
 /// `group.org.ntust.app.TigerDuck.watch` in their entitlements.
 ///
-/// If the App Group resolves to nil (provisioning / entitlement mismatch),
-/// the helpers log the failure and fall back to the per-process Caches
-/// directory and a fresh `UserDefaults` instance. Those fallbacks aren't
-/// shared between the app and widget — they exist so a misconfigured
-/// build degrades to the existing "no snapshot yet" empty state instead
-/// of crashing the process.
+/// If the App Group resolves to nil (provisioning or entitlement mismatch),
+/// the helpers log it and fall back to the per-process Caches directory and
+/// a fresh `UserDefaults`. These are not shared with the widget; they let a
+/// misconfigured build show the "no snapshot yet" empty state, not crash.
 nonisolated enum SharedAppGroup {
     static let identifier = "group.org.ntust.app.TigerDuck.watch"
 

@@ -22,15 +22,12 @@ enum WidgetDerivedState: nonisolated Equatable, Sendable {
         let day: Day
     }
 
-    /// Which day a ``NextInfo`` falls on, relative to the instant the state
-    /// was derived for.
+    /// Which day a ``NextInfo`` falls on, relative to the instant the state was derived for.
     ///
-    /// `tomorrowFirst` scans up to seven days ahead, so it is routinely *not*
-    /// tomorrow: a Friday-evening viewer with no weekend classes is looking at
-    /// Monday, and a viewer whose only class today was cancelled is looking at
-    /// the same weekday next week. The view layer needs to tell those apart to
-    /// avoid captioning them "Tomorrow" — Android draws the same distinction
-    /// in `NextClassContent.futureDayLabel`.
+    /// `tomorrowFirst` scans up to seven days ahead, so it is often not tomorrow: with no
+    /// weekend classes a Friday-evening viewer sees Monday, and a viewer whose only class today
+    /// was cancelled sees the same weekday next week. The view tells these apart so it does not
+    /// caption them "Tomorrow". Android does the same in `NextClassContent.futureDayLabel`.
     enum Day: nonisolated Equatable, Sendable {
         case today
         case tomorrow
@@ -49,20 +46,14 @@ enum WidgetTimelineDerivation {
         let order = snapshot.periodOrder
         let todayKey = dateKey(for: date)
 
-        // Classes do not meet on a school holiday, so there is no "now" or
-        // "next" to show. The Today and Week grids render `snapshot.courses`
-        // directly and are untouched — the timetable itself stays useful on
-        // a day off.
-        //
-        // nil means a snapshot from a build that predates holidays; treat it
-        // as "no quiet days" rather than assuming silence.
+        // No class meets on a school holiday, so there is no now or next. The Today and Week grids
+        // read `snapshot.courses` directly and keep the timetable on a day off. A nil set means a
+        // snapshot from a build without holidays: treat it as no quiet days.
         if snapshot.quietDayKeys?.contains(todayKey) == true { return .noMoreClasses }
 
-        // 1. Ongoing courses — only when `nowMin` falls inside a contiguous run
-        // of scheduled periods. A course with non-adjacent slots (e.g. A and C
-        // with B unscheduled) splits into two singleton runs, so the gap
-        // between them correctly falls through to the next-class branch
-        // instead of marking the course as still ongoing across the gap.
+        // 1. Ongoing: only when `nowMin` falls inside a contiguous run of scheduled periods.
+        // Non-adjacent slots (A and C, B unscheduled) form separate runs, so the gap falls
+        // through to the next-class branch instead of keeping the course ongoing.
         let ongoing = snapshot.courses.compactMap { course -> WidgetDerivedState.OngoingInfo? in
             if course.skippedDates.contains(todayKey) { return nil }
             guard let raw = course.schedule[weekday] else { return nil }
@@ -110,11 +101,9 @@ enum WidgetTimelineDerivation {
             ))
         }
 
-        // 3. First class on the next day that has one, scanning up to a full
-        // week ahead. `offset == 7` lands back on today's weekday, which is
-        // what keeps a one-class-a-week timetable from collapsing to
-        // "no more classes" the moment that class is cancelled. Each result
-        // carries its `Day` so the view can caption it honestly.
+        // 3. First class on the next day that has one, up to a week ahead. `offset == 7` is
+        // today's weekday, so a one-class-a-week timetable does not drop to "no more classes"
+        // when that class is cancelled. Each result carries its `Day` for an accurate caption.
         let calendar = WidgetTaipei.calendar
         for offset in 1...7 {
             let target = ((weekday - 1 + offset) % 7) + 1
@@ -233,15 +222,13 @@ private extension Comparable {
 }
 
 extension WidgetTimelineDerivation {
-    /// Returns the set of `Date`s at which the widget should refresh:
+    /// Returns the dates at which the widget should refresh, deduplicated and sorted ascending:
     ///   - `now` itself
-    ///   - every remaining period start AND end today
+    ///   - the start and the end of every remaining period today
     ///   - midnight at the start of tomorrow
     ///
-    /// Deduplicated and sorted ascending. Callers feed these into
-    /// `TimelineEntry` construction so each entry's `derive(at:)` lands
-    /// exactly on a meaningful boundary (period start/end, day change),
-    /// avoiding wasted refreshes mid-period.
+    /// Callers build timeline entries from these so each entry's `derive(at:)` lands on a
+    /// boundary (period start or end, day change) and no refresh is spent mid-period.
     static func entryDates(
         snapshot: WidgetSnapshot,
         after now: Date,

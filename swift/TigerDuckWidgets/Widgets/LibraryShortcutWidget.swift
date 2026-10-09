@@ -18,11 +18,9 @@ struct LibraryShortcutProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<LibraryShortcutEntry>) -> Void) {
-        // Library Shortcut is static — single entry, refresh at midnight only
-        // so the date used by `containerBackground` rolls over for any future
-        // theme-tied logic. No dependency on snapshot freshness. The entry
-        // date itself stays on real wall time — WidgetKit treats it as
-        // scheduling metadata and a fake-future stamp would defer rendering.
+        // Static: one entry, refreshed at midnight only, so the date `containerBackground` sees
+        // rolls over should theme logic depend on it; snapshot freshness does not matter. The entry
+        // date is real time: WidgetKit schedules by it, and a fake future stamp defers rendering.
         let snapshot = store.readSnapshot()
         let entry = LibraryShortcutEntry(date: Date(), snapshot: snapshot)
         // Pin to Taipei — even with no time-of-day content here, day

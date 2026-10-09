@@ -6,10 +6,8 @@ import Security
 /// secret stays on the device (no iCloud restore) and is unreadable
 /// while the watch is locked.
 ///
-/// We use raw `SecItem*` rather than Valet because the watch target
-/// does not depend on Valet (phone-only Swift package). A 60-line
-/// wrapper is preferable to touching `project.pbxproj` to add a
-/// package dependency to the watch target.
+/// Raw `SecItem*` rather than Valet, a phone-only Swift package: a small
+/// wrapper beats adding a watch package dependency in `project.pbxproj`.
 nonisolated enum WatchKeychain {
 
     /// Per-app service name — distinct from the phone keychain's service.

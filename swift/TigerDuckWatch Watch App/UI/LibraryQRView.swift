@@ -1,12 +1,8 @@
 import SwiftUI
 
-// Express Transit suppression note:
-// PassKit's `requestAutomaticPassPresentationSuppression` is iOS-only —
-// watchOS exposes `PKPassLibrary` but not the suppression API, so there is
-// no public way to block a side-button double-press from invoking Apple
-// Pay / Express Transit while this view is on screen. If Apple ships an
-// equivalent watchOS API later, mirror `LibraryView`'s suppress / release
-// pattern here. (Last checked against the watchOS 11 SDK.)
+// watchOS has `PKPassLibrary` but not the iOS-only `requestAutomaticPassPresentationSuppression`
+// (checked against the watchOS 11 SDK), so nothing stops a side-button double-press from opening
+// Apple Pay or Express Transit here. If watchOS adds it, mirror `LibraryView`'s suppress/release.
 
 struct LibraryQRView: View {
     @State private var viewModel = LibraryQRViewModel()
@@ -73,13 +69,9 @@ struct LibraryQRView: View {
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .padding(.top, 4)
                 .accessibilityLabel(String(localized: "library_qr_content_description"))
-                // No-op on watchOS today: Apple has not exposed a
-                // window-level capture-exclusion API (the equivalent of
-                // FLAG_SECURE on Wear OS). Marked for parity with the
-                // phone — if a public API ever lands, the modifier will
-                // start enforcing without per-call-site changes. The
-                // residual exposure is bounded by the user's deliberate
-                // side-button + Digital Crown screenshot gesture.
+                // No-op on watchOS, which lacks a window capture-exclusion API like Wear OS's
+                // FLAG_SECURE. Kept for parity with the phone so a future API needs no call-site
+                // change. Capture still needs the user's own side button + Digital Crown press.
                 .screenCaptureProtected()
                 .onTapGesture(count: 2) {
                     isFullScreen = true
@@ -154,11 +146,9 @@ private struct FullScreenQRView: View {
     private static let dismissThreshold: CGFloat = 60
 
     var body: some View {
-        // White background runs corner-to-corner; the image gets a small
-        // top inset so the watchOS time strip doesn't overlap QR modules.
-        // The full safe-area override on the ZStack lets the matrix
-        // claim almost all of the screen. Reads viewModel.qrImage so the
-        // refresh timer's updates propagate while the cover is up.
+        // Ignoring the safe area runs the white field corner to corner and gives the matrix almost
+        // the whole screen; the top inset keeps the watchOS time strip off the QR modules. Reading
+        // viewModel.qrImage lets the refresh timer's updates show while the cover is up.
         ZStack {
             Color.white
             if let image = viewModel.qrImage {
