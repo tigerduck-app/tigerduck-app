@@ -54,7 +54,7 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 ## 7. Enforcement
 
 - [x] 7.1 Add `.github/workflows/comments.yaml` on `ubuntu-latest`: the unit tests, `check --base HEAD^1` on pull requests (checkout `fetch-depth: 2`) and `check --all` on pushes to `dev` and `main`; verify locally that `check --base HEAD^1` on a scratch commit with a planted `(fix round 1)` exits non-zero with a `::error` annotation and exits zero once it is removed
-- [ ] 7.2 Add the `PostToolUse` hook (matcher `Edit|Write`) to `.claude/settings.json`: read `.tool_input.file_path` with `jq`, run `check --base HEAD` on Swift files, exit 2 with the report on stderr; verify that editing a Swift file in Claude Code to add `(fix round 2)` brings the finding back to the agent
+- [x] 7.2 Add the `PostToolUse` hook (matcher `Edit|Write`) to `.claude/settings.json`: read `.tool_input.file_path` (with `python3`, so the hook needs nothing beyond the checker), run `check --base HEAD` on Swift files, exit 2 with the report on stderr; verify that editing a Swift file in Claude Code to add `(fix round 2)` brings the finding back to the agent
 - [x] 7.3 Add the comment rule to `.greptile/rules.md` and rewrite the last rule without its typo and complaint; verify on the pull request that Greptile applies it (12.3)
 
 ## 8. CI path gating
