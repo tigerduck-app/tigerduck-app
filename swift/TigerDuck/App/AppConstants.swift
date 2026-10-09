@@ -39,15 +39,13 @@ nonisolated enum AppConstants {
     static let dataDidUpdate = Notification.Name("TigerDuck.dataDidUpdate")
     static let liveActivityPreferencesDidChange = Notification.Name("TigerDuck.liveActivityPreferencesDidChange")
     /// `userInfo` flag on `liveActivityPreferencesDidChange` marking a post
-    /// whose values arrived FROM the `notification` settings document
-    /// rather than from a local edit.
+    /// whose values came from the `notification` settings document rather
+    /// than from a local edit.
     ///
-    /// Observers that react to the new values — the Live Activity refresh,
-    /// the push schedule sync — must still run for these; only the outgoing
-    /// settings push must not, or applying a pull would immediately queue a
-    /// push of the data it just arrived from. See
-    /// `LiveActivityPreferencesStore.applyFromNotificationSettingsDocument`
-    /// and the observer in `AppState.setupObservers`.
+    /// The Live Activity refresh and the push schedule sync must still run for
+    /// it; the outgoing settings push must not, or applying a pull would queue a
+    /// push of the data it just received. See the observer in `AppState.init()`
+    /// and `LiveActivityPreferencesStore.applyFromNotificationSettingsDocument`.
     static let liveActivityPreferencesRemoteOriginKey = "TigerDuck.liveActivityPreferencesRemoteOrigin"
     /// `userInfo` flag on `liveActivityPreferencesDidChange` marking a post
     /// for a preference the `notification` settings document does not
@@ -73,19 +71,14 @@ nonisolated enum AppConstants {
     static let courseColorMapDidChange = Notification.Name("TigerDuck.courseColorMapDidChange")
     static let moodleBaseURL = URL.knownGood("https://moodle2.ntust.edu.tw")
 
-    /// Wraps a site-relative Moodle path in the `moodlemobile://` envelope the
-    /// Moodle Mobile app expects: `moodlemobile://<site-url>?redirect=<path>`.
+    /// Wraps a site-relative Moodle path in the envelope the Moodle Mobile app
+    /// expects: `moodlemobile://<site-url>?redirect=<path>`.
     ///
-    /// Built by string rather than through `URLComponents` on purpose. The site
-    /// URL sits where the authority belongs, and `URLComponents` cannot express
-    /// that: setting `host = "https"` + `path = "//<host>"` serialises to
-    /// `moodlemobile://https//<host>` — the colon after the inner scheme is
-    /// dropped and the app can no longer parse a site out of it. Setting
-    /// `host = "https:"` makes `url` return nil outright.
-    ///
-    /// `=`, `&` and `+` are escaped out of the redirect so a multi-parameter
-    /// target stays inside the single `redirect` value instead of leaking into
-    /// the envelope's own query. Matches Android's `Assignment.moodleDeepLink`.
+    /// Built by string: `URLComponents` cannot put a site URL in the authority. With
+    /// `host = "https"` and `path = "//<host>"` it gives `moodlemobile://https//<host>`,
+    /// dropping the inner scheme's colon so the app cannot parse a site; `host = "https:"`
+    /// makes `url` nil. `=`, `&` and `+` are escaped so a multi-parameter target stays in
+    /// the single `redirect` value. Matches Android's `Assignment.moodleDeepLink`.
     static func moodleDeepLink(redirectingTo path: String) -> URL? {
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "=&+")

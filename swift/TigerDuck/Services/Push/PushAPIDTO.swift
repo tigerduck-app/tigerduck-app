@@ -117,9 +117,9 @@ enum PushAPI {
         /// Same shape as `syncAssignmentReminders`, for Live Activity.
         var syncLiveActivity: Bool?
         var cloudSyncEnabled: Bool?
-        /// Per-device bulletin opt-out (spec §6 item 5) — distinct from
-        /// `serverPushEnabled` above, which covers operator-issued pushes
-        /// only and never gates bulletin delivery.
+        /// Per-device bulletin opt-out. Separate from `serverPushEnabled`,
+        /// which covers operator-issued pushes only and never gates bulletin
+        /// delivery.
         var bulletinPushEnabled: Bool?
 
         enum CodingKeys: String, CodingKey {

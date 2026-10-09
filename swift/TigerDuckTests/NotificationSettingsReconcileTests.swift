@@ -1,36 +1,6 @@
-// `NotificationSettingsSync.reconcile` — the one routine that reads the
-// `notification` settings document — against a real
-// `LiveActivityPreferencesStore`, through the real `SettingsDocumentClient`
-// and `SettingsAPIStub`.
-//
-// Pins, for each section this device syncs:
-//
-//   1. no document at all: every synced section is written from the
-//      device's own values — reminders switched off included — as a
-//      create. This is an upgrading 2.0.x user's first run; until it lands
-//      the backend falls back to its own defaults.
-//   2. the section is on the server: it is adopted, and nothing is written.
-//   3. a partial document: the present section is adopted, only the missing
-//      one written, and every other key survives.
-//   4. a local edit still waiting to go up wins, whether it was there
-//      before the read or lands during it.
-//   5. a section whose device switch is off is neither adopted nor
-//      written; with nothing to sync nothing is requested at all.
-//   6. a 409 on the write settles against the winner and retries once.
-//   7. a malformed field keeps its local value; the fields beside it are
-//      adopted.
-//   8. sign-in reads the new account's document before any write.
-//
-// The logout guard is pinned with the queue it belongs to
-// (`NotificationSettingsPushQueueTests`), the once-after-upgrade trigger in
-// `NotificationSettingsSeedMigrationTests`.
-//
-// Where a regression would send a request the test does not expect, a
-// response for it is queued anyway, so the regression fails an assertion
-// below instead of surfacing as a transport error.
-//
-// `.serialized`, `@MainActor` and Defaults-restoring for the same reasons as
-// `NotificationSettingsApplyTests`.
+// `NotificationSettingsSync.reconcile`, the one reader of the `notification` document, on a
+// real store and `SettingsDocumentClient` over `SettingsAPIStub`. A request a regression
+// would add still gets a queued response, so it fails an assertion, not the transport.
 import Defaults
 import Foundation
 import Testing

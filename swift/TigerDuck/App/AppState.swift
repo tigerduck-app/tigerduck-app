@@ -46,13 +46,9 @@ final class AppState {
     /// Detect fresh install (no UserDefaults marker) and clear stale Keychain data
     /// so the app doesn't start with orphaned credentials from a previous install.
     init() {
-        // Keychain persists across uninstall/reinstall on iOS. Detect a fresh
-        // install (no UserDefaults marker) and purge stale Keychain credentials
-        // BEFORE constructing AuthTokenManager — its init eagerly caches the v3
-        // tokens into memory, so wiping the Keychain afterwards would leave the
-        // live manager holding a previous user's tokens and rewrite them on the
-        // next refresh, defeating the purge (a different user reinstalling could
-        // then sync the previous user's cloud data).
+        // On iOS, Keychain items survive a reinstall. Purge them before constructing
+        // AuthTokenManager: its init caches the v3 tokens, which it would rewrite on the
+        // next refresh, letting a different user sync the previous user's cloud data.
         let isFreshInstall = !Defaults[.appHasBeenInstalled]
         if isFreshInstall {
             // Fresh install — purge any leftover Keychain items.
@@ -92,12 +88,9 @@ final class AppState {
 
         #if os(iOS)
         if isFreshInstall {
-            // Stamp the running version as "already shown" so the What's New
-            // sheet does NOT fire on the very first launch after install — a
-            // freshly downloaded app has no upgrade history to summarise.
-            // Gated on fresh-install only (never on the wipe outcome above) so
-            // a partial wipe failure can't misroute the user into the "no
-            // lastShownWhatsNewVersion" fallback that pops "What's New in vN".
+            // Mark this version's What's New as shown: a fresh install has no upgrade
+            // history. Gated on fresh install, not the wipe outcome, so a partial wipe
+            // failure can't hit the missing-`lastShownWhatsNewVersion` fallback.
             updateNotifyCoordinator.seedWhatsNewOnFreshInstall()
         }
         #endif
@@ -118,11 +111,9 @@ final class AppState {
         ) { [weak self] note in
             self?.scheduleLiveActivityRefresh()
             self?.requestPushScheduleSync()
-            // The two refreshes above run for every change. The settings
-            // push does not: a remote-origin post carries values that just
-            // arrived from the `notification` settings document, so pushing
-            // would write the document straight back to itself, and a
-            // device-only post changed nothing the document carries.
+            // Unlike the refreshes above, skip the settings push for a remote-origin post
+            // (it would write the `notification` document back to itself) and for a
+            // device-only post (nothing the document carries changed).
             guard NotificationSettingsSync.changeNeedsDocumentPush(note.userInfo) else { return }
             self?.scheduleNotificationSettingsPush()
         }
@@ -136,10 +127,9 @@ final class AppState {
         }
 
         #if DEBUG
-        // Flipping the debug clock must drive an LA refresh; otherwise the
-        // coordinator only re-evaluates on scene-active and the user has
-        // to leave/re-enter the app to see the Dynamic Island appear at the
-        // fake instant.
+        // Flipping the debug clock must refresh the Live Activity. Otherwise the
+        // coordinator only re-evaluates on scene-active, and the Dynamic Island shows
+        // the fake instant only after leaving and re-entering the app.
         clockObserver = NotificationCenter.default.addObserver(
             forName: DebugClockController.didChangeNotification,
             object: nil,
@@ -164,30 +154,18 @@ final class AppState {
         }
         #endif
 
-        // Install the refresh-failure relogin handler BEFORE enabling the push
-        // stack, so a token refresh triggered by the first registration has a
-        // relogin path instead of falling through to logout() on a nil handler.
-        // `[weak self]` on the Task as well as the handler: the handler is
-        // stored on the long-lived AuthTokenManager, so a strong capture
-        // there would be an AppState <-> ATM cycle — but an implicit strong
-        // capture in the enclosing Task defeats the weak one inside it.
+        // Install before enabling push, so a refresh the first registration triggers can
+        // relogin instead of calling logout() on a nil handler. ATM keeps the handler, so
+        // capturing self strongly is a cycle; a strong Task capture defeats the inner weak one.
         Task { [weak self] in
             await atm.setRefreshFailedHandler { [weak self] in
                 await self?.attemptBackendRelogin() ?? false
             }
         }
 
-        // Auto-enable the push stack on every launch so the device row
-        // exists in the backend regardless of subscription state — that's
-        // what lets operator-issued custom pushes target the device. The
-        // coordinator is idempotent. Notification *permission* is still
-        // requested through onboarding, not here; users can opt out of
-        // server pushes via `serverPushUserOptOut`.
-        //
-        // Gated on onboarding for the same reason `backgroundSync()` is:
-        // enabling POSTs a device id and an Apple push token to our server,
-        // and on a fresh install `init` runs before the user has seen a
-        // single screen. `completeOnboarding()` enables it once they have.
+        // Enable every launch so the device row exists whatever the subscription state and
+        // operator pushes reach it. Idempotent; permission comes from onboarding and opt-out
+        // from `serverPushUserOptOut`. It POSTs device ids, so it waits for onboarding.
         if hasCompletedOnboarding {
             pushCoordinator.enable()
         }
@@ -198,10 +176,9 @@ final class AppState {
             self.pushCoordinator.refreshRegistrationAfterAuth()
             self.requestPushScheduleSync()
             #if os(iOS)
-            // Read the account's notification settings before anything
-            // writes them. A push here would overwrite the account's
-            // document with whatever this device holds, including values a
-            // previous account left behind.
+            // Read the account's notification settings before anything writes them.
+            // A push here would overwrite the account's document with this device's
+            // values, including ones a previous account left behind.
             self.reconcileNotificationSettings()
             #endif
         }
@@ -212,10 +189,9 @@ final class AppState {
             self?.cloudSyncEnabledDidChange(to: enabled)
         }
 
-        // Apply a stored in-app language override on launch so string lookups
-        // use the user's chosen locale. Skip when "system" — calling apply()
-        // there would removeObject(AppleLanguages), wiping the per-app override
-        // iOS Settings writes to that same key.
+        // Apply a stored in-app language override at launch so lookups use it. Skip
+        // "system": apply() would remove AppleLanguages, wiping the per-app override
+        // that iOS Settings writes to the same key.
         if appLanguage != LanguageManager.system {
             LanguageManager.apply(appLanguage)
         }
@@ -412,17 +388,14 @@ final class AppState {
         didSet { Defaults[.rememberAnnouncementFilter] = rememberAnnouncementFilter }
     }
 
-    /// Cross-device sync toggle (Sync course information). When OFF, all
-    /// backend sync calls (override download/upload, course upload,
-    /// assignment upload) are skipped and push notifications + Live Activity
-    /// are unavailable (spec §6).
+    /// Cross-device sync toggle (Sync course information). When off, every
+    /// backend sync call (override download and upload, course and assignment
+    /// upload) is skipped; push notifications and Live Activities are unavailable.
     ///
-    /// The preference itself, not a copy of it: this reads and writes
-    /// `Defaults[.cloudSyncEnabled]` through `cloudSyncPreference`, so it
-    /// cannot disagree with what onboarding, the settings switches or
-    /// sign-out wrote there. What a change sets off is in
-    /// `cloudSyncEnabledDidChange(to:)`, which runs for every change,
-    /// whichever writer made it.
+    /// Reads and writes `Defaults[.cloudSyncEnabled]` through
+    /// `cloudSyncPreference`, not a copy, so it cannot disagree with onboarding,
+    /// the settings switches or sign-out. `cloudSyncEnabledDidChange(to:)` runs
+    /// for every change, whichever writer made it.
     var cloudSyncEnabled: Bool {
         get { cloudSyncPreference.isEnabled }
         set { cloudSyncPreference.isEnabled = newValue }
@@ -436,17 +409,13 @@ final class AppState {
     /// Nothing in here writes the preference, and `CloudSyncCoordinator` only
     /// follows it, so no side effect can come back around as another change.
     private func cloudSyncEnabledDidChange(to enabled: Bool) {
-        // The status dot's backend row means a different thing on each
-        // side of this flip — a full sync result vs. a public GET's
-        // reachability — so the reading taken under the old meaning goes
-        // now rather than lingering as a green "Minimal" that no minimal
-        // fetch ever vouched for. The next fetch of either kind fills it
-        // back in, which on the off path is the next calendar refresh.
+        // The status dot's backend row means a full sync result with sync on and a
+        // public GET's reachability with it off. Drop the old reading so no unearned
+        // green "Minimal" lingers. The next fetch refills it; when off, the calendar refresh.
         ServerStatusTracker.shared.clearBackendStatus()
         cloudSyncCoordinator.followPreference()
-        // On, the schedule Live Activities are started from; off, an empty
-        // one, which cancels every start the server had queued for this
-        // device (spec §6).
+        // On: push the schedule Live Activities start from. Off: push an empty one,
+        // which cancels every start the server queued for this device.
         requestPushScheduleSync()
         if enabled {
             startRevisionPolling()
@@ -459,10 +428,9 @@ final class AppState {
         } else {
             stopRevisionPolling()
             #if os(iOS)
-            // An explicit privacy-style shutoff, the same as logout: end
-            // what is on screen now rather than at the next refresh.
-            // Anything the server still starts afterwards is ended on
-            // arrival — `LiveActivityCoordinator` checks the same rule.
+            // A privacy-style shutoff, like logout: end what is on screen now, not at
+            // the next refresh. `LiveActivityCoordinator` applies the same rule and ends
+            // anything the server still starts afterwards on arrival.
             Task { @MainActor in await liveActivityCoordinator.endAll() }
             #endif
         }
@@ -523,22 +491,16 @@ final class AppState {
     /// suite avoids a second source-of-truth for the widget side.
     var courseCardFontScale: Double = CourseCardFontScaleStore().read() {
         didSet {
-            // Compare on the normalized (snapped) values so the slider's
-            // every-frame writes during a drag don't all trigger a
-            // widget reload — only when the user crossed a step boundary
-            // do we persist + reload. The store always writes the
-            // normalized value, so downstream readers (widgets,
-            // TimetableGridView) see snapped sizes regardless of the
-            // raw in-memory binding state.
+            // Compare snapped values so a drag's per-frame writes persist and reload
+            // widgets only on crossing a step boundary. The store writes the snapped
+            // value, so widgets and TimetableGridView never see the raw binding state.
             let newSnapped = CourseCardFontScale.normalize(courseCardFontScale)
             let oldSnapped = CourseCardFontScale.normalize(oldValue)
             guard newSnapped != oldSnapped else { return }
             CourseCardFontScaleStore().write(newSnapped)
-            // Widgets render in a separate process; ask the coordinator
-            // for a debounced reload so a fast slider drag collapses
-            // into a single timeline refresh instead of one-per-step.
-            // Snapshot data is unchanged, so we skip the
-            // WidgetSnapshotWriter regenerate pipeline.
+            // Widgets render in another process, so request a debounced reload: a fast
+            // drag collapses into one timeline refresh. Snapshot data is unchanged, so
+            // the WidgetSnapshotWriter regenerate pipeline is skipped.
             let coordinator = widgetReloadCoordinator
             Task { @MainActor in
                 coordinator.requestReload()
@@ -562,11 +524,9 @@ final class AppState {
     var appLanguage: String = Defaults[.appLanguage] {
         didSet {
             guard appLanguage != oldValue else { return }
-            // Cancel any in-flight sync started under the previous locale.
-            // AppServiceBridge.fetchCourses snapshots the language at task
-            // start, so without this an orphaned task could land after the
-            // post-language-change refresh and overwrite DataCache with
-            // previous-locale names.
+            // AppServiceBridge.fetchCourses snapshots the language at task start, so a
+            // sync still in flight from the previous locale could land after the refresh
+            // and overwrite DataCache with old-locale names. Cancel it.
             syncTask?.cancel()
             syncTask = nil
             Defaults[.appLanguage] = appLanguage
@@ -612,15 +572,13 @@ final class AppState {
     // MARK: - Tab Configuration
 
     /// Pure decode step for `configuredTabs`: `Data → [String] → [AppFeature]`, filtered by
-    /// `isShown` (default: `isImplemented`) so the result never contains a raw value this build
-    /// doesn't recognise (an older build's saved/synced config replayed on a build that predates
-    /// a case — `compactMap` drops those) or a feature this build hides (e.g. `.schoolMail` on
-    /// macOS, where `SchoolMailAvailability.isEnabled` is false). Nothing
-    /// legitimately reaches `configuredTabs` while unimplemented already — `pinnableFeatures`,
-    /// what `TabEditorView` offers, is filtered the same way — so this only ever catches stale
-    /// data. Returns `nil` for missing/undecodable `data` or a result that filters down to
-    /// nothing, so callers can substitute their own default tabs; kept free of `Defaults` so it's
-    /// testable without touching UserDefaults.
+    /// `isShown` (default `isImplemented`). `compactMap` drops raw values this build does not
+    /// recognise in saved or synced config, and the filter drops features this build hides
+    /// (`.schoolMail` on macOS, where `SchoolMailAvailability.isEnabled` is false). What
+    /// `TabEditorView` offers (`pinnableFeatures`) is filtered the same way, so this only
+    /// catches stale data. Returns `nil` for missing or undecodable `data`, or when nothing
+    /// survives, so callers can substitute their own default tabs. Free of `Defaults`, so it
+    /// is testable without touching UserDefaults.
     nonisolated static func decodeConfiguredTabs(
         _ data: Data?,
         isShown: (AppFeature) -> Bool = { $0.isImplemented }

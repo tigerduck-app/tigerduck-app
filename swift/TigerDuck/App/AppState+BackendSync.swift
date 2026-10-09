@@ -1,10 +1,6 @@
-// Override synchronisation with the TigerDuck backend — split out of
-// AppState.swift.
-//
-// The assignment LIST always comes from Moodle-direct; what syncs here is
-// the user's own marks on top of it (done/ignored, course colour and name
-// overrides, manual courses). Pull is `syncOverridesFromBackend`, push is
-// the `sync*Override` / `upload*` / `delete*` family.
+// Sync of the user's own marks with the TigerDuck backend: done/ignored, course colour and name
+// overrides, manual courses. The assignment list itself always comes from Moodle directly.
+// Pull is `syncOverridesFromBackend`; push is the `sync*Override`, `upload*`, `delete*` family.
 
 import SwiftUI
 import SwiftData
@@ -18,10 +14,9 @@ extension AppState {
     /// semester filtering); this only syncs the user's swipe marks.
     func syncOverridesFromBackend(retried: Bool = false) async {
         guard Defaults[.cloudSyncEnabled] else { return }
-        // Reentrancy guard set before the first await so two MainActor callers
-        // can't both pass. The 401-retry (retried: true) is a controlled
-        // re-entry from our own catch, so it bypasses the guard and reuses the
-        // flag the outer call still holds.
+        // Reentrancy guard, set before the first await so two MainActor callers cannot both
+        // pass. The 401 retry (`retried: true`) re-enters from our own catch, so it skips the
+        // guard and reuses the flag the outer call still holds.
         if !retried {
             guard !isSyncingOverrides else {
                 AppLogger.sync.info("[syncOverrides] skipped — already in flight")
@@ -36,10 +31,9 @@ extension AppState {
         // race it, and the next sync applies the settled state.
         retryUnacknowledgedHolidayOverrides()
         #if os(iOS)
-        // Same shape, same reason: a reminder/Live Activity preference
-        // whose settings-document write never landed (dropped debounce,
-        // expired session, offline, 5xx) is re-sent here. No-ops unless
-        // something is actually outstanding.
+        // Same repair for a reminder or Live Activity preference whose settings document
+        // write never landed (dropped debounce, expired session, offline, 5xx). A no-op
+        // unless something is outstanding.
         retryUnacknowledgedNotificationSettings()
         #endif
         do {
@@ -78,11 +72,9 @@ extension AppState {
                 }
             }
 
-            // First-time migration: upload local overrides if server has none.
-            // Only skip the conflict-detection block — course overrides,
-            // hard-delete detection, and the dataDidUpdate notification must
-            // still run so the first sync after migration picks up colour /
-            // custom-name changes and cross-device deletions.
+            // First-time migration: upload local overrides when the server has none. This skips
+            // only conflict detection; course overrides, hard-delete detection and `dataDidUpdate`
+            // still run, to pick up colour and name changes and cross-device deletions.
             let localArchivedIds = DataCache.shared.loadArchivedAssignmentIds()
             let localCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
             let isMigrating = serverArchivedIds.isEmpty && serverCompletedIds.isEmpty
@@ -167,11 +159,9 @@ extension AppState {
                 applyCourseOverrides(courseOverrides, coursesArray: coursesArray)
             }
 
-            // Holiday exceptions. Not gated on any of the per-category sync
-            // toggles: this is a notification setting, not course or
-            // assignment data, and none of the categories the user can turn
-            // off covers it. An absent key means an older backend that does
-            // not send the section, so the local set stands.
+            // Holiday exceptions are a notification setting, not course or assignment data,
+            // so no per-category sync toggle gates them. An absent key means an older backend
+            // that does not send the section; the local set stands.
             if let holidayRows = json["holiday_overrides"] as? [[String: Any]] {
                 // `notify: false` rows exist server-side so a device can tell
                 // "turned it off" from "never set it"; only the true ones
@@ -203,11 +193,9 @@ extension AppState {
                 reconcileCourses(serverRows: coursesArray, tombstones: tombstoneArray, fetchedAt: fetchedAt)
             }
 
-            // Update the revision watermark so the poller doesn't
-            // immediately re-trigger after a full sync. When the reconcile was
-            // skipped (edit raced the fetch), leave it stale so the next poll
-            // re-pulls — the local op's drain can't be counted on to bump the
-            // server revision (its PATCH may fail).
+            // Advance the revision watermark so the poller does not re-trigger after a full
+            // sync. If an edit raced the fetch and the reconcile was skipped, leave it stale
+            // so the next poll re-pulls: the edit's PATCH may fail and never bump the revision.
             if overrideEditGeneration == editGenerationAtFetch,
                let rev = json["current_revision"] as? Int {
                 _lastKnownRevision = rev
@@ -218,12 +206,9 @@ extension AppState {
             ServerStatusTracker.shared.noteSyncResult(true)
             recordSyncSource(.backend)
             #if os(iOS)
-            // The fetch landed, so there is a network and a session: settle
-            // the notification settings document too, so a change made on
-            // another device shows up here. Down here rather than beside
-            // `retryUnacknowledgedNotificationSettings()` at the top: that
-            // retry is queued first, and the routine never reads over an
-            // edit still waiting to go up.
+            // The fetch landed, so there is a network and a session: settle the notification
+            // settings document too, so changes from other devices show up. This runs after the
+            // retry queued at the top, and the routine never reads over an edit waiting to go up.
             reconcileNotificationSettings()
             #endif
         } catch {
@@ -363,22 +348,9 @@ extension AppState {
         // Record the local delete so the sync reconcile's grace window doesn't
         // resurrect this course before the backend DELETE propagates (F).
         recentCourseDeletions[courseNo] = Date()
-        // DELETE /sync/courses/{key} matches on `course_key`, which is a
-        // different namespace from `moodle_id`. The server only ever mints
-        // two shapes: "client:{semester}:{course_no}"
-        // for a row a device uploaded, and "moodle:{numeric course id}" for a
-        // shell row its own Moodle mirror created. Every row this app owns is
-        // the first shape — /sync/courses/upload derives the key that way for
-        // enrolled and manual courses alike, and this app never writes a
-        // "moodle:" row.
-        //
-        // This used to send the bare Moodle *idnumber* ("1142CS5164701"),
-        // which is neither shape. DELETE matches on course_key exactly, so it
-        // returned {"deleted": 0} and wrote no tombstone, and the course came
-        // straight back on the next reconcile. The idnumber is the right
-        // handle for PATCH /sync/courses/{id}/override — that route resolves
-        // against the `moodle_id` column — which is what made the two look
-        // interchangeable.
+        // DELETE /sync/courses/{key} needs the exact `course_key`, and the server keys every row
+        // this app uploads "client:{semester}:{course_no}". The Moodle idnumber, which PATCH
+        // .../override takes, deletes nothing and writes no tombstone; the course comes back.
         let courseKey = "client:\(semester):\(courseNo)"
         let coordinator = pushCoordinator
         Task.detached {
@@ -391,16 +363,14 @@ extension AppState {
         }
     }
 
-    /// `semester` nil wipes every term; the class-table reset passes the
-    /// term it is on so the others survive. Returns false when the wipe did
-    /// not land, so the caller can hold off on a reset that the next sync
-    /// would otherwise undo by merging the stale server rows back.
-    /// Wipes the backend, then runs `resetLocally` — only then. Wiping
-    /// locally first and then failing the DELETE would leave an empty grid
-    /// with the server still full, to be merged back as hand-added rows.
-    /// The term stays in `resettingSemesters` across both steps, and the
-    /// reset is stamped once the DELETE has landed, so a snapshot fetched
-    /// before that instant is never reconciled into the term.
+    /// Wipes the backend and only then runs `resetLocally`: a local wipe followed by a
+    /// failed DELETE leaves an empty grid over a full server, which merges back as
+    /// hand-added rows. `semester` nil wipes every term; the class-table reset passes
+    /// its own term so the others survive. The term stays in `resettingSemesters`
+    /// across both steps, and the reset is stamped once the DELETE lands, so a snapshot
+    /// fetched before then is never reconciled into the term.
+    /// - Returns: false when the wipe did not land, so the caller can hold off on a reset
+    ///   the next sync would undo by merging the stale server rows back.
     @discardableResult
     func deleteBackendCourses(
         semester: String? = nil,
@@ -472,30 +442,19 @@ extension AppState {
                 classroomMap: c.classroomMap.isEmpty ? nil : c.classroomMap
             )
         }
-        // No `course_overrides` here, deliberately. This block used to send
-        // TigerDuckTheme.courseColorMap for every course, keyed by the bare
-        // Moodle idnumber — and the server matches that list on `course_key`,
-        // so every entry was silently dropped. Simply correcting the key would
-        // have been worse than the bug: the map holds auto-assigned colours
-        // alongside chosen ones with no way to tell them apart, and the upload
-        // route's upsert is create-only (`if override.color_hex is None`), so
-        // the first upload would have pinned a generated hex for every course
-        // server-side, permanently, on every device on the account. Android
-        // hit exactly this and now sends only real picks.
-        //
-        // Nothing is lost by dropping it: every path where the user actually
-        // chooses a colour already calls syncCourseOverride, and that PATCH
-        // sets the value outright instead of only filling a blank.
+        // No `course_overrides`: `courseColorMap` cannot tell generated colours from chosen ones,
+        // and an upload only fills a blank `color_hex`: generated ones would stick account-wide.
+        // Picks go through `syncCourseOverride`, whose PATCH overwrites; Android sends only those.
         return PushAPI.CourseUploadRequest(courses: entries, forceKeys: forceKeys)
     }
 }
 
 /// When this device may upload its course list.
 ///
-/// iPhone and iPad follow 同步課程資訊 alone: class reminders are built from
-/// what they upload, so it is more than sync for them. A Mac takes no push,
-/// so its upload serves cross-device sync and nothing else, and it follows
-/// the 同步內容 switches too — 所有課程 for the list, 課程顏色 for colours.
+/// iPhone and iPad follow "Sync course information" alone: class reminders are built
+/// from what they upload, so it is more than sync for them. A Mac takes no push, so
+/// its upload serves cross-device sync and nothing else, and it also follows the
+/// "Synced content" switches: "All courses" for the list, "Course colours" for colours.
 enum CourseUploadPolicy {
     static var uploadsCourses: Bool {
         guard Defaults[.cloudSyncEnabled] else { return false }

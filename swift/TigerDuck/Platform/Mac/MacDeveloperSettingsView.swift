@@ -1,10 +1,9 @@
 #if os(macOS)
 import SwiftUI
 
-// Developer tab and its clock-override view-model. DEBUG builds only —
-// the whole file body is inside `#if DEBUG`, so a release build compiles
-// it away and `MacSettingsScene` drops the tab with it. Plain `//`, not
-// `///`: the next thing down is `#if DEBUG`, not a declaration.
+// Developer tab and its clock-override view model, DEBUG builds only: the body is inside
+// `#if DEBUG`, so a release build compiles it away and `MacSettingsScene` drops the tab.
+// Plain `//`, not `///`: the next line is `#if DEBUG`, not a declaration.
 #if DEBUG
 /// Mac surface for the debug clock override. Mirrors iPhone's
 /// DebugSettingsView, minus the "fake local notification" button —
@@ -82,19 +81,10 @@ struct MacDeveloperSettingsView: View {
             }
 
             // MARK: TigerSync status
-            //
-            // Raw `PushDiagnostic` for engineering use — the corresponding
-            // iOS page is `TigerSyncStatusView`. The Account tab already
-            // shows the registration status to every user; this
-            // section adds the fields nothing else surfaces (isStarted,
-            // token lengths, resolved server URL). Device ID
-            // appears on both tabs — the Account tab's copy is already
-            // monospaced and selectable too, so this one is purely a
-            // convenience for not having to switch tabs mid bug report.
-            //
-            // Live Activities and notification authorization are omitted:
-            // macOS never registers for either, so both fields would only
-            // ever show one constant, meaningless value here.
+
+            // Raw `PushDiagnostic` fields the Account tab does not show; iOS has them in
+            // `TigerSyncStatusView`. Device ID repeats here to spare a tab switch in bug reports.
+            // No Live Activity or notification authorization rows: macOS registers for neither.
             Section("TigerSync status") {
                 if let s = snapshot {
                     LabeledContent("Started") { Text(s.isStarted ? "true" : "false") }

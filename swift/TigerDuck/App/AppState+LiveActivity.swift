@@ -1,13 +1,6 @@
-// Live Activity refresh and notification authorization — split out of
-// AppState.swift.
-//
-// iOS only: ActivityKit has no macOS counterpart. Assignment due reminders
-// used to be scheduled from here too, via a local UNUserNotificationCenter
-// scheduler; that moved server-side, and this file now only requests the
-// notification permission the server-sent reminders and Live Activity push
-// updates both still need. The whole file is inside `#if os(iOS)` rather
-// than each function, so the macOS build sees an empty extension instead of
-// a pile of individually-fenced members.
+// Live Activity refresh, and the notification permission that server-sent reminders
+// and Live Activity push updates need. iOS only, since ActivityKit has no macOS
+// counterpart: one `#if os(iOS)` fences the whole body, so macOS sees an empty extension.
 
 import SwiftUI
 import SwiftData
@@ -20,10 +13,10 @@ extension AppState {
     #if os(iOS)
     // MARK: - Live Activity refresh & notification authorization (iOS only)
 
-    /// Spec §6's answer for this device right now: the user's own switch AND
-    /// course sync, through `effectiveLiveActivityEnabled`. What
-    /// `LiveActivityCoordinator` asks before keeping, or registering the
-    /// update token of, any activity — the ones the server starts included.
+    /// Whether Live Activity is available on this device right now: the user's own switch
+    /// and cloud sync must both be on (`effectiveLiveActivityEnabled`).
+    /// `LiveActivityCoordinator` checks this before keeping, or registering the update
+    /// token of, any activity, including the ones the server starts.
     var isLiveActivityAvailable: Bool {
         effectiveLiveActivityEnabled(
             isLiveActivityEnabled: liveActivityPreferences.isLiveActivityEnabled,
@@ -76,11 +69,9 @@ extension AppState {
             assignments: assignments,
             now: now
         ) else { return }
-        // `boundary` is an app-clock instant; `Task.sleep` runs on the
-        // real clock, so under a frozen override the app-clock delta
-        // would never elapse and the refresh would re-arm itself
-        // forever. Translate to the real instant the boundary maps to
-        // before computing the sleep, mirroring the activity end task.
+        // `boundary` is an app-clock instant and `Task.sleep` uses the real clock; under a
+        // frozen override the app-clock delta never elapses and the refresh would re-arm
+        // forever. Sleep to the real instant it maps to, as the activity end task does.
         let realBoundary = AppClock.realTime(forApp: boundary)
         let delay = realBoundary.timeIntervalSinceNow + AppConstants.scenarioBoundarySlackSeconds
         guard delay > 0 else { return }

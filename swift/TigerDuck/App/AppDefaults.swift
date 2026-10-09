@@ -97,12 +97,9 @@ nonisolated extension Defaults.Keys {
         default: true
     )
     #if os(iOS)
-    // Defaults whose default value comes from the iOS-only
-    // LiveActivityPreferencesStore. Wrapped because the store itself
-    // depends on ActivityKit, which has no macOS equivalent. The reader
-    // side (`LiveActivityPreferencesStore.assignmentLiveActivityLeadTime`
-    // etc.) is also iOS-only, so consumers of these keys live entirely
-    // in the iOS code path.
+    // iOS-only: the default values come from LiveActivityPreferencesStore, which depends
+    // on ActivityKit, and ActivityKit has no macOS equivalent. Every reader of these keys
+    // is iOS-only too.
     static let assignmentLiveActivityLeadTime = Key<Double>(
         AppConstants.UserDefaultsKeys.assignmentLiveActivityLeadTime,
         default: LiveActivityPreferencesStore.defaultAssignmentLeadTime
@@ -147,36 +144,26 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.cloudSyncEnabled,
         default: true
     )
-    /// "This device has a reminder/Live Activity preference the
-    /// `notification` settings document has not acknowledged yet."
+    /// This device has a reminder or Live Activity preference that the
+    /// `notification` settings document has not acknowledged yet.
     ///
-    /// Set when the preference changes, cleared only when a write actually
-    /// lands. `AppState.retryUnacknowledgedNotificationSettings()` re-sends
-    /// on the strength of it at the next full sync — the same
-    /// mark-before / clear-on-success shape as
-    /// `holidayOverridesAwaitingUpload`. While it is set the document is
-    /// not read over the edit (`NotificationSettingsSync.reconcile`): the
-    /// edit wins. Default `false`: a fresh install has nothing outstanding.
+    /// Set when the preference changes and cleared only when a write lands, like
+    /// `holidayOverridesAwaitingUpload`. While it is set, the next full sync re-sends
+    /// (`AppState.retryUnacknowledgedNotificationSettings()`) and the edit wins over the
+    /// document (`NotificationSettingsSync.reconcile` does not read over it). False by
+    /// default: a fresh install has nothing outstanding.
     static let notificationSettingsPushPending = Key<Bool>(
         AppConstants.UserDefaultsKeys.notificationSettingsPushPending,
         default: false
     )
-    /// Mirrors "an NTUST account exists" outside the Keychain.
+    /// Mirrors "an NTUST account exists" outside the Keychain, for UI gating.
     ///
-    /// The Keychain answers nil for two unrelated reasons — the item is
-    /// absent, and the item cannot be read right now — and `SecureStore`
-    /// cannot tell them apart, because Valet reports both as a thrown error
-    /// that `try?` flattens. So a nil read is not evidence of being signed
-    /// out, and treating it as such is what put a signed-in user on the
-    /// login prompt until they pulled to refresh.
-    ///
-    /// UserDefaults is readable when the Keychain is not, which makes it the
-    /// right place to answer "is there an account" for UI gating. The
-    /// Keychain is still the only home of the secret itself.
-    ///
-    /// Raised by any successful credential read and by login; lowered only
-    /// by logout, the one moment a nil read is authoritative because we just
-    /// caused it.
+    /// The Keychain returns nil when the item is absent and when it cannot be read right now;
+    /// `SecureStore` cannot tell which, since Valet throws for both and `try?` flattens it.
+    /// So nil is not evidence of being signed out; treating it so sends a signed-in user to
+    /// the login prompt. UserDefaults stays readable when the Keychain is not, and the secret
+    /// itself lives only in the Keychain. Raised by login and any successful credential
+    /// read; lowered only by logout, the one time a nil read is authoritative.
     static let ntustCredentialsPresent = Key<Bool>(
         "ntustCredentialsPresent",
         default: false
@@ -230,30 +217,23 @@ nonisolated extension Defaults.Keys {
     )
 
     // MARK: Push server
-    /// **Not a gate any more — read it from nothing but the migration.**
+    /// Not a gate; read it only from `BulletinPushOptOutMigration`. A user can turn off
+    /// a delivery channel (`bulletinPushEnabled`, `serverPushUserOptOut`) but never the
+    /// registration, so every device past onboarding registers.
     ///
-    /// Up to 2.0.x this switched the whole push stack off, and a `false`
-    /// here meant one of two different things (spec §6 item 5). Nothing
-    /// gates on it now: what a user can turn off is a delivery channel —
-    /// `bulletinPushEnabled` below, or `serverPushUserOptOut` — never the
-    /// registration itself, so every device past onboarding registers.
-    ///
-    /// The key survives purely as `BulletinPushOptOutMigration`'s input:
-    /// a stored `false` is how that migration recognises a 2.0.x user who
-    /// switched something off, and its own write of `true` is how it
-    /// records that it has read it. It goes when that file goes, per the
-    /// lifecycle in `Services/Migrations/AGENTS.md` — leaving the stored
-    /// key behind as a harmless orphan.
+    /// A stored `false` is how the migration recognises a 2.0.x user who switched
+    /// something off, and its own write of `true` records that it has read the key.
+    /// Remove the key with the migration, per the lifecycle in `Services/Migrations/AGENTS.md`;
+    /// the stored value left behind is a harmless orphan.
     static let pushServerEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.pushServerEnabled,
         default: true
     )
-    /// Per-device bulletin push opt-out (spec §6 item 5) — distinct from
-    /// `serverPushUserOptOut` below, which is the operator-push channel
-    /// alone. Positive polarity to match the `user_devices.bulletin_push_
-    /// enabled` column this mirrors: do not invert it the way
-    /// `serverPushUserOptOut` inverts `server_push_enabled`, or the
-    /// bulletin page ends up double-negated.
+    /// Per-device bulletin push opt-out, separate from `serverPushUserOptOut` below,
+    /// which is the operator-push channel alone. Positive polarity to match the
+    /// `user_devices.bulletin_push_enabled` column it mirrors: do not invert it the way
+    /// `serverPushUserOptOut` inverts `server_push_enabled`, or the bulletin page ends up
+    /// double-negated.
     static let bulletinPushEnabled = Key<Bool>(
         AppConstants.UserDefaultsKeys.bulletinPushEnabled,
         default: true
@@ -300,11 +280,9 @@ nonisolated extension Defaults.Keys {
         default: "original"
     )
 
-    // MARK: App-update prompt + What's New (iOS only — declared at the
-    // cross-platform `Defaults.Keys` level because the keys themselves
-    // are plain `String?` / `Date?` and the macOS build of `AppState`
-    // does not reference any of these; the iOS-only update coordinator
-    // is the sole reader/writer.
+    // MARK: App-update prompt + What's New (iOS only)
+    // Declared for both platforms because the keys are plain `String?` / `Date?`;
+    // the iOS-only update coordinator is their only reader and writer.
 
     static let skippedUpdateVersion = Key<String?>(
         AppConstants.UserDefaultsKeys.skippedUpdateVersion

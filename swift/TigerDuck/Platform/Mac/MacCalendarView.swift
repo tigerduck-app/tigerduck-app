@@ -1,24 +1,14 @@
 #if os(macOS)
 import SwiftUI
 
-/// macOS Calendar surface.
+/// macOS Calendar surface: a hand-rolled grid laid out like the iPhone `MonthCalendarView`, with
+/// cells sized for a Mac sidebar surface; `DatePicker(.graphical)` looks cramped and unfamiliar.
 ///
-/// Visual contract follows the iPhone `MonthCalendarView` — month
-/// nav chevrons, weekday header row, day cells with event-source
-/// dots — but cells are sized for a Mac sidebar surface rather than
-/// a phone screen. `DatePicker(.graphical)` was tried first and
-/// looked cramped/unfamiliar at this scale; this hand-rolled grid
-/// matches the iPhone look the user already knows.
-///
-/// Source-of-truth is `DataCache.loadCalendarEvents()` (populated by
-/// `appState.backgroundSync()`) merged with the academic calendar's
-/// own rows — see `allEvents`. EventKit overlay (system Calendar
-/// events) is intentionally out of scope on Mac — keeps us out of
-/// the Mac Calendar TCC entitlement.
-///
-/// Holidays and semester boundaries are listed but not actionable: the
-/// iPhone puts a "still remind me" toggle on a holiday row, and macOS
-/// delivers no class reminders for one to switch back on.
+/// Events come from `DataCache.loadCalendarEvents()`, filled by `appState.backgroundSync()`, plus
+/// the academic calendar's own rows (`allEvents`). System Calendar (EventKit) events stay out on
+/// Mac, which keeps the app out of the Calendar TCC entitlement. Holidays and semester boundaries
+/// are shown but not actionable: the iPhone's "still remind me" toggle on a holiday turns class
+/// reminders back on, and macOS delivers no class reminders.
 struct MacCalendarView: View {
     @Environment(AppState.self) private var appState
 
@@ -40,15 +30,11 @@ struct MacCalendarView: View {
 
     /// Cached network events plus the academic calendar's own rows.
     ///
-    /// The academic rows have to be merged in here rather than read off
-    /// disk: they are never cached (`CalendarViewModel` rebuilds them on
-    /// every load for the same reason), so reading `DataCache` alone left
-    /// the Mac with no semester boundaries and no holidays at all. Same
-    /// merge as the iPhone — drop anything stale under those two sources,
-    /// then rebuild from the in-memory calendar.
-    ///
-    /// `AcademicCalendarStore` posts `dataDidUpdate` after a successful
-    /// fetch, so `cacheRevision` re-reads this when the calendar lands.
+    /// The academic rows are never cached, so they are merged in here, as `CalendarViewModel`
+    /// does on every load; `DataCache` alone has no semester boundaries or holidays. As on iPhone,
+    /// drop anything stale under those two sources, then rebuild from the in-memory calendar.
+    /// `AcademicCalendarStore` posts `dataDidUpdate` after a successful fetch, so `cacheRevision`
+    /// re-reads this when the calendar lands.
     private var allEvents: [SDCalendarEvent] {
         _ = cacheRevision
         let cached = DataCache.shared.loadCalendarEvents()
@@ -358,10 +344,8 @@ private struct DayCell: View {
             .frame(height: cellHeight)
             .contentShape(Rectangle())
             .background(
-                // Inset by 3pt so the cell highlight doesn't kiss the
-                // day-number circle or the neighbouring column — the bug
-                // in #135 was that the today/selected ring touched the
-                // outer rounded fill with zero breathing room.
+                // Inset by 3pt so the highlight clears the day-number circle and the neighbouring
+                // column; without it the today/selected ring touches the outer rounded fill.
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(.tint.opacity(isSelected ? 0.08 : 0))
                     .padding(3)

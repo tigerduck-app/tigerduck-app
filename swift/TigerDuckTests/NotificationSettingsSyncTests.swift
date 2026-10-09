@@ -1,32 +1,6 @@
-// `NotificationSettingsSync` (AppState+NotificationSettings.swift), end to
-// end through the real `SettingsDocumentClient` and `SettingsAPIStub`.
-//
-// Pins:
-//
-//   1. local -> document field mapping matches
-//      `NotificationSettingsSync.LocalPreferences`'s table exactly, field
-//      by field (not sampling a couple of fields).
-//   2. every key this app does NOT own round-trips untouched — `courses`
-//      (clearing it silently turns off the user's class reminders), whole
-//      sections another client added, and unknown keys *inside* the two
-//      sections this app does own.
-//   3. a 409 adopts the server's document and retries exactly once, never
-//      looping forever.
-//   4. `cloudSyncEnabled == false` sends no request at all, in either
-//      direction.
-//   5. a document written by a client that knows about fewer keys than
-//      this one degrades — it never wedges the push or resets a local
-//      preference to a guess.
-//   6. a pull can never delete a reminder offset the document structurally
-//      cannot describe.
-//
-// The read side, `NotificationSettingsSync.reconcile`, is pinned in
-// `NotificationSettingsReconcileTests`.
-//
-// Exercises `NotificationSettingsSync` directly rather than through
-// `AppState`, matching that type's own doc comment: nothing in this test
-// target constructs a full `AppState` (SwiftData, `AuthService`, live push
-// registration, etc.). The seam is `SettingsAPIStub` — see that file.
+// `NotificationSettingsSync` end to end through the real `SettingsDocumentClient` over
+// `SettingsAPIStub`, called directly: no test in this target builds a full `AppState` (SwiftData,
+// `AuthService`, push registration). `NotificationSettingsReconcileTests` covers the read side.
 import Defaults
 import Foundation
 import Testing
@@ -126,21 +100,17 @@ struct NotificationSettingsSyncTests {
 
     @Test("sub-hour offsets are dropped from reminder_offsets_hours, never truncated to a phantom 0")
     func subHourOffsetsDoNotCollideAtZero() {
-        // 30/15/10/5-minute offsets would all round down to "0 hours" if
-        // truncated instead of dropped, silently merging four distinct
-        // user choices into one value. `reminder_offsets_hours` is what
-        // readers that predate `reminder_offsets_minutes` use, and Android
-        // types it as `List<Int>`, so it stays whole hours only.
+        // Truncation would merge 30/15/10/5 minutes into one phantom "0 hours". Readers older
+        // than `reminder_offsets_minutes` read `reminder_offsets_hours`, and Android types it
+        // as `List<Int>`, so it holds whole hours only.
         let prefs = Self.local(assignmentReminderOffsets: [.min30, .min15, .min10, .min5])
         #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsHours == [])
     }
 
     @Test("assignments.reminder_offsets_minutes carries every offset, sub-hour included")
     func minutesCarryTheCompleteOffsetSet() {
-        // The lossless half of the pair: `reminder_offsets_hours` is a
-        // strict subset for old readers, `reminder_offsets_minutes` is the
-        // whole truth. Without it a pull has no way to learn about — or to
-        // turn off — a sub-hour offset.
+        // `reminder_offsets_hours` is a strict subset for old readers; `reminder_offsets_minutes`
+        // is the whole set. Without it a pull cannot learn about, or turn off, a sub-hour offset.
         let prefs = Self.local(assignmentReminderOffsets: [.hr24, .hr1, .min30, .min5])
         #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsMinutes == [1440, 60, 30, 5])
         #expect(prefs.assignmentsSection(preservingForeignMinutesFrom: [:]).reminderOffsetsHours == [24, 1])
@@ -215,10 +185,9 @@ struct NotificationSettingsSyncTests {
 
     @Test("push preserves every key it does not own — whole sections, and keys inside the sections it does own")
     func pushPreservesUnknownKeys() async throws {
-        // Android writes this same namespace (spec W6) and the route
-        // accepts any object at all, so schema growth from another client
-        // is planned, not hypothetical. A write that re-encodes a typed
-        // struct deletes all four of the keys asserted below.
+        // Android writes this namespace too and the route accepts any object, so another client
+        // growing the schema is expected. A write that re-encodes a typed struct deletes all four
+        // keys asserted below. See docs/decisions/0002-notification-settings-json-merge.md.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
@@ -285,13 +254,9 @@ struct NotificationSettingsSyncTests {
 
     @Test("a first-ever write sends only the two sections this app owns — it does not invent a courses section")
     func firstEverWriteOmitsCourses() async throws {
-        // Writing `courses: {enabled: false}` here would be a guess with
-        // teeth: the backend reads `enabled` literally
-        // (`server/push/course_reminders.py`, `bool(section.get("enabled",
-        // True))`), so inventing `false` for a user whose course reminders
-        // the server was happily sending from its own defaults turns them
-        // off. An absent `courses` key means "no opinion", which is the
-        // truth — this app does not own that section.
+        // `server/push/course_reminders.py` reads `courses.enabled` with a default of true, so
+        // inventing `false` would turn off course reminders the server sends from its defaults.
+        // An absent `courses` key means "no opinion": this app does not own that section.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
@@ -407,13 +372,9 @@ struct NotificationSettingsSyncTests {
         #expect(written)
     }
 
-    // MARK: - Step 6b: per-device-switch section gating
-    //
-    // `syncAssignmentRemindersEnabled` / `syncLiveActivityEnabled` gate
-    // `assignments` / `live_activity` independently: a section whose switch
-    // is off is left exactly as the server currently holds it (never
-    // overwritten with the local value), and when both are off nothing is
-    // sent at all — mirroring how `courses` is already preserved above.
+    // MARK: - Per-device-switch section gating
+    // `syncAssignmentRemindersEnabled` gates `assignments` and `syncLiveActivityEnabled` gates
+    // `live_activity`. An off section keeps the server's copy, and with both off nothing is sent.
 
     @Test("assignments off leaves that section exactly as the server holds it, but live_activity still updates")
     func assignmentsOffPreservesServerAssignmentsSection() async throws {
@@ -522,11 +483,9 @@ struct NotificationSettingsSyncTests {
         // drop the change forever.
         #expect(!NotificationSettingsSync.canClearPendingMarker(written: false, sent: sent, current: sent))
 
-        // Landed, but a newer edit arrived while the request was in
-        // flight. That edit is already queued behind this push
-        // (`enqueueNotificationSettingsPush`'s chain); clearing here would
-        // let a kill in the next 250 ms lose it with the marker already
-        // `false`.
+        // Landed, but a newer edit arrived in flight and is queued behind this push
+        // (`enqueueNotificationSettingsPush`'s chain). Clearing here would let a kill in the
+        // next 250 ms lose that edit with the marker already `false`.
         let editedWhileInFlight = Self.local(isAssignmentReminderEnabled: !sent.isAssignmentReminderEnabled)
         #expect(!NotificationSettingsSync.canClearPendingMarker(written: true, sent: sent, current: editedWhileInFlight))
     }
@@ -535,22 +494,13 @@ struct NotificationSettingsSyncTests {
 
     @Test("a device switch turning back on needs an extra push; turning it off does not")
     func shouldPushOnDeviceSwitchChangeOnlyFiresOnTheOffToOnTransition() {
-        // The off→on transition: `push`'s per-section gating above just
-        // re-included this section, but the device-preferences PATCH
-        // (`AppState.pushSyncPreferences()`, called unconditionally on
-        // every change either direction — not exercised here) only carries
-        // the switch itself, never the section's content. Without this,
-        // the section stays stale server-side until some unrelated local
-        // edit happens to trigger a push.
+        // Off to on: `push` includes the section again, but `AppState.pushSyncPreferences()`,
+        // the device-preferences PATCH sent on every change either way, carries only the switch.
+        // Without this push the section stays stale on the server until an unrelated edit pushes.
         #expect(NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: false, new: true))
 
-        // The on→off transition needs no extra push: the section goes back
-        // to being left exactly as the server holds it. Asserting this
-        // too — not just the on-transition above — is what stops an
-        // "always push regardless of direction" implementation from
-        // passing: that would look right on the on-transition case alone
-        // but reintroduce the unconditional-push shape this fix
-        // deliberately narrows away from.
+        // On to off needs no push: the section is left as the server holds it. Asserting this
+        // direction too stops an implementation that pushes on every change from passing.
         #expect(!NotificationSettingsSync.shouldPushOnDeviceSwitchChange(old: true, new: false))
     }
 
@@ -558,10 +508,9 @@ struct NotificationSettingsSyncTests {
 
     @Test("a document with no assignments and no courses still pushes")
     func pushToleratesMissingSections() async throws {
-        // Android's first write to this namespace carries `live_activity`
-        // only (spec W6). Decoding that into a type with non-optional
-        // `assignments`/`courses` threw, which made *every* push from this
-        // device throw, forever, with only a log line.
+        // Android's first write to this namespace carries only `live_activity`. A type with
+        // non-optional `assignments`/`courses` fails to decode that, which would make every push
+        // from this device throw, forever, with only a log line.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
@@ -616,12 +565,9 @@ struct NotificationSettingsSyncTests {
 
     @Test("a minute offset no local case represents is written back, not deleted")
     func pushKeepsForeignMinuteOffsets() async throws {
-        // `reminder_offsets_minutes` is a key this app writes outright, so
-        // `merging` cannot protect it the way it protects a key nobody
-        // mentions: whatever this device sends replaces the array. A value
-        // only a newer client's enum understands — or one a changed enum
-        // used to have — would be gone the moment this device edits any
-        // offset. Android already folds such values back in.
+        // `merging` keeps keys nobody mentions, but this app writes `reminder_offsets_minutes`
+        // outright. A value only another version's enum knows would vanish the moment this device
+        // edits any offset, so it is written back, as Android does.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
         let client = SettingsAPIStub.makeClient(baseURL: baseURL)
@@ -649,23 +595,17 @@ struct NotificationSettingsSyncTests {
 
         let assignments = try Self.sentAssignments(from: SettingsAPIStub.requests(for: url)[1])
         #expect(assignments["reminder_offsets_minutes"] as? [Int] == [1440, 180, 120, 45])
-        // And the lossy mirror is derived from that same merged set, so the
-        // 180 the document already held is still a whole number of hours in
-        // it. A separately-computed hours list would have dropped it and
-        // left the two fields describing different sets.
+        // The hours mirror derives from the same merged set, so the document's 180 stays in it
+        // as 3. A separately computed hours list would drop it, and the two fields would describe
+        // different sets.
         #expect(assignments["reminder_offsets_hours"] as? [Int] == [24, 3, 2])
     }
 
     @Test("a preserved zero or negative minute never reaches the legacy hours field")
     func foreignNonPositiveMinutesStayOutOfTheHoursMirror() {
-        // `reminder_offsets_hours` has meant "this many hours before the
-        // deadline" to every reader that predates the minutes field, and
-        // one hour is the smallest it has ever carried. `0` and negatives
-        // divide evenly by 60, so a bare whole-hour test mirrors them into
-        // it — where a reader with no `reminder_offsets_minutes` case acts
-        // on a reminder due at, or after, the deadline itself. They are
-        // still carried losslessly in the minutes array, which is where a
-        // reader that understands them can decide for itself.
+        // `reminder_offsets_hours` means hours before the deadline to older readers, and has never
+        // held less than 1. `0` and negatives divide evenly by 60, so a bare whole-hour test would
+        // mirror them as reminders at or after the deadline. The minutes array still carries them.
         let existing: [String: Any] = [
             "assignments": ["reminder_offsets_minutes": [1440, 0, -120]],
         ]
@@ -720,9 +660,8 @@ struct NotificationSettingsSyncTests {
 
     @Test("a conflict rebases the preserved values onto the winner's document, not the stale one")
     func pushRecomputesForeignOffsetsAfterAConflict() async throws {
-        // What this device preserves depends on what the document holds, so
-        // it has to be recomputed against the document that actually won —
-        // building the update once, before the loop, would write the loser's
+        // What this device preserves depends on the document, so it is recomputed against the
+        // one that won. Building the update once, before the retry loop, would write the loser's
         // foreign values and delete the winner's.
         let baseURL = SettingsAPIStub.uniqueBaseURL()
         let url = Self.documentURL(baseURL)
@@ -799,11 +738,9 @@ struct NotificationSettingsSyncTests {
 
     @Test("with only reminder_offsets_hours, the device's sub-hour offsets are kept, not deleted")
     func resolveOffsetsKeepsLocalSubHourWhenOnlyHoursArePresent() {
-        // `.min30` ships in
-        // `LiveActivityPreferencesStore.defaultOffsets`, and
-        // `reminder_offsets_hours` structurally cannot carry it, so a
-        // document that only has that field is not evidence the user
-        // turned it off — it is evidence the writer could not say.
+        // `reminder_offsets_hours` cannot carry `.min30`, which ships in
+        // `LiveActivityPreferencesStore.defaultOffsets`. A document with only that field shows the
+        // writer could not say, not that the user turned it off.
         let resolved = NotificationSettingsSync.resolveOffsets(
             documentMinutes: nil,
             documentHours: [48, 24, 8, 2, 1],
@@ -828,13 +765,9 @@ struct NotificationSettingsSyncTests {
 
     @Test("an hours value large enough to overflow on ×60 is skipped, not trapped")
     func resolveOffsetsToleratesOverflowingHours() {
-        // `Int.max` is straight off a hostile/corrupt document — the route
-        // does not validate `reminder_offsets_hours`. Pre-fix, `$0 * 60`
-        // was a Swift arithmetic trap (a crash) for any value this large;
-        // it must now just fail to match a case, same as any other
-        // unrecognised value, while `24` still resolves normally and the
-        // local sub-hour pick still survives (the unrelated sub-hour-
-        // preservation rule tested above).
+        // The route does not validate `reminder_offsets_hours`, so a hostile or corrupt document
+        // can hold `Int.max`, where `$0 * 60` traps. It must match no case, like any unknown value,
+        // while `24` still resolves and the local sub-hour pick survives.
         let resolved = NotificationSettingsSync.resolveOffsets(
             documentMinutes: nil,
             documentHours: [Int.max, 24],
@@ -883,18 +816,9 @@ struct NotificationSettingsSyncTests {
 
     @Test("every shape the backend's reader distinguishes resolves to the same offsets here")
     func resolvesEveryShapeTheBackendDistinguishes() throws {
-        // Mirrors `server/push/reminders.py`'s `_offsets_hours` / `_numbers`
-        // case for case — the backend is what actually delivers these
-        // reminders, so a document it reads one way and this device reads
-        // another means two phones on one account get different reminders.
-        //
-        // Its rule: `reminder_offsets_minutes` decides whenever the value
-        // *is a JSON array*, however messy its elements — elements that are
-        // not numbers are dropped, the array still stands, and an empty
-        // result really does mean "no offsets". Anything that is not an
-        // array (a string, a number, an object, `null`, absent) is not an
-        // answer, and the reader falls through to `reminder_offsets_hours`
-        // under the same element rule.
+        // Mirrors `_offsets_hours` / `_numbers` in `server/push/reminders.py`, which delivers these
+        // reminders. A JSON array at `reminder_offsets_minutes` decides, minus non-numbers, even
+        // when empty; anything else falls through to `reminder_offsets_hours`, read the same way.
         let shapes: [OffsetShape] = [
             .init(
                 name: "a plain minutes list decides",
@@ -908,10 +832,8 @@ struct NotificationSettingsSyncTests {
                 expected: []
             ),
             .init(
-                // The review's example. The backend drops `"15"` and
-                // schedules for `[30]`; discarding the whole list here
-                // meant this phone fell back to hours, or kept whatever it
-                // had, off the same document.
+                // The backend drops `"15"` and schedules for `[30]`. Discarding the whole list
+                // here would fall back to hours, or keep the local set, off the same document.
                 name: "one bad element does not discard the list",
                 section: #"{"reminder_offsets_minutes":[30,"15"],"reminder_offsets_hours":[24]}"#,
                 currentLocal: [.hr48],
@@ -1014,16 +936,13 @@ struct NotificationSettingsSyncTests {
 // MARK: - Applying a pull onto the real store
 
 /// `NotificationSettingsSync.apply` and
-/// `LiveActivityPreferencesStore.applyFromNotificationSettingsDocument`,
-/// against a real store.
+/// `LiveActivityPreferencesStore.applyFromNotificationSettingsDocument`, against a real store.
 ///
-/// `.serialized`, and every store made through
-/// `NotificationSettingsFixtures.withStore`: `LiveActivityPreferencesStore`
-/// reads and writes `UserDefaults.standard` through `Defaults`, and posts
-/// on `NotificationCenter.default` — both process-wide. Other suites
-/// construct stores too (the reconcile, seed-migration and push-queue
-/// tests), and those suspend mid-test, so the fixture's shared gate is what
-/// keeps one of them from running inside one of these.
+/// `.serialized`, and every store made through `NotificationSettingsFixtures.withStore`: the
+/// store reads and writes `UserDefaults.standard` through `Defaults` and posts on
+/// `NotificationCenter.default`, both process-wide. Other suites build stores too (the
+/// reconcile, seed-migration and push-queue tests) and suspend mid-test, so the fixture's
+/// shared gate keeps one of them from running inside one of these.
 @Suite("Notification settings apply", .serialized)
 @MainActor
 struct NotificationSettingsApplyTests {
@@ -1060,10 +979,8 @@ struct NotificationSettingsApplyTests {
         await NotificationSettingsFixtures.withStore { store in
             store.assignmentReminderOffsets = LiveActivityPreferencesStore.defaultOffsets
 
-            // Exactly what this app's own push writes to
-            // `reminder_offsets_hours` for the default offset set — and all
-            // an older build, or a client that only knows that field, would
-            // ever send.
+            // What this app's own push writes to `reminder_offsets_hours` for the default offsets,
+            // and all an older build, or a client that only knows that field, would ever send.
             let document = NotificationSettingsDocument(
                 assignments: .init(enabled: true, reminderOffsetsHours: [48, 24, 8, 2, 1])
             )
@@ -1150,12 +1067,9 @@ struct NotificationSettingsApplyTests {
                 )
             )
 
-            // Exactly one post, flagged remote-origin. One rather than one
-            // per assigned property, because seven posts would mean seven
-            // Live Activity refreshes and seven push-schedule syncs for a
-            // single pull. Flagged rather than suppressed, because
-            // `AppState`'s observer must still run those two — only the
-            // outgoing settings push sits out.
+            // One remote-origin post, not one per property: seven would mean seven Live Activity
+            // refreshes and push-schedule syncs for one pull. Flagged, not suppressed: `AppState`'s
+            // observer must still run those two; only the outgoing settings push sits out.
             #expect(Self.recordedOrigins { NotificationSettingsSync.apply(document, to: store) } == [true])
         }
     }

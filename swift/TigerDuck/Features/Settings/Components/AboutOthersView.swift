@@ -75,11 +75,10 @@ struct AboutOthersView: View {
     /// `SettingsView` puts on Official website and Check server status.
     ///
     /// Not `.foregroundStyle(.primary)`, which renders a Button's label as
-    /// ordinary settings text — nothing about the row would say it was
-    /// tappable, let alone that it opened a web page. The glyph follows the
-    /// browser preference for the same reason that one does: an arrow out
-    /// of the box when the link hands off to the browser, an arrow into a
-    /// card when it opens as a sheet over the app.
+    /// ordinary settings text, so nothing would mark the row as tappable or as
+    /// a web link. Like that glyph, this one follows the browser preference: an
+    /// arrow out of a box when the link hands off to the browser, an arrow into
+    /// a card when it opens as a sheet over the app.
     private func linkLabel(_ key: String.LocalizationValue) -> some View {
         HStack {
             Text(String(localized: key))

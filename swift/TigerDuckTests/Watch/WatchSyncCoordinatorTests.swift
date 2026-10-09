@@ -12,10 +12,9 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         func updateApplicationContext(_ context: [String: Any]) throws {
             pushedContexts.append(context)
         }
-        // The coordinator's application-context path is what these tests
-        // exercise; the message/user-info members exist only to satisfy the
-        // protocol and are never called here (WCSessionUserInfoTransfer has no
-        // constructible stub value).
+        // These tests cover only the application-context path. The message and user-info members
+        // satisfy the protocol and are never called; `WCSessionUserInfoTransfer` has no
+        // constructible stub value.
         func transferUserInfo(_ userInfo: [String: Any]) -> WCSessionUserInfoTransfer {
             fatalError("transferUserInfo is not exercised by WatchSyncCoordinatorTests")
         }

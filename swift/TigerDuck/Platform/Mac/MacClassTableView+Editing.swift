@@ -5,33 +5,26 @@ import Defaults
 /// Mutations the Mac grid can make to a schedule: add and remove a
 /// user-added course, rename one, and delete one.
 ///
-/// Every one of these writes an on-disk store keyed by `courseNo` alone, so
-/// they are gated on `isViewingCurrentSemester` at the call site — a rename
-/// made while looking at a past term would otherwise leak into the current
-/// schedule, the widgets, and the Live Activity for any course that reuses
-/// the code. iOS runs the same operations through `ClassTableViewModel`;
-/// the Mac view has no view-model, which is why they live on the view.
+/// Each writes an on-disk store keyed by `courseNo` alone, so call sites gate them on
+/// `isViewingCurrentSemester`: a rename made on a past term would otherwise leak into the current
+/// schedule, the widgets and the Live Activity for any course reusing the code. iOS runs these
+/// through `ClassTableViewModel`; the Mac view has no view-model, so they live on the view.
 extension MacClassTableView {
     // MARK: - User-added courses
 
     /// Append a user-added course to the on-disk store and refresh the grid.
-    /// Mirrors the parts of `ClassTableViewModel.addCourse(_:)` that are load-
-    /// bearing on macOS: tombstone clear, NameAbbr cache seeding so toggles
-    /// round-trip without a refetch, and a `dataDidUpdate` broadcast so the
-    /// Home page's widget cards also re-render. Returns `true` iff the
-    /// course was newly persisted so the AddCourseSheet only flips its
-    /// session checkmark on real adds — otherwise a duplicate-rejected tap
-    /// would route the next tap through `removeUserAddedCourse` and delete
-    /// the pre-existing user-added course for this semester.
+    /// Mirrors the parts of `ClassTableViewModel.addCourse(_:)` macOS relies on: the tombstone
+    /// clear, NameAbbr cache seeding so toggles round-trip without a refetch, and a
+    /// `dataDidUpdate` broadcast so the Home page's widget cards re-render too.
+    /// - Returns: `true` only when the course was newly persisted. AddCourseSheet flips its
+    ///   session checkmark on it; flipped after a rejected duplicate, the next tap would call
+    ///   `removeUserAddedCourse` and delete the course already added for this semester.
     @discardableResult
     func addUserCourse(_ course: SDCourse) -> Bool {
         let existing = DataCache.shared.loadUserAddedCourses()
-        // Dedupe within the selected semester only — the same `courseNo`
-        // legitimately recurs across terms (a recurring elective added
-        // manually in both 1131 and 1132), and `removeUserAddedCourse`
-        // already scopes its undo to `selectedSemester`. `courses`
-        // already reflects the current semester's roster so its
-        // duplicate check stays semester-scoped implicitly.
+        // Dedupe within the selected semester only: a `courseNo` can recur across terms, and
+        // `removeUserAddedCourse` scopes its undo to `selectedSemester`. `courses` holds only
+        // the current semester's roster, so its check is semester-scoped already.
         let isInSelectedSemester: (SDCourse) -> Bool = {
             $0.semester == selectedSemester || $0.semester.isEmpty
         }
@@ -39,12 +32,9 @@ extension MacClassTableView {
               !courses.contains(where: { $0.courseNo == course.courseNo })
         else { return false }
 
-        // Refuse if any slot the candidate would occupy already has 2
-        // courses. The shared `ClassTableLayout` can render N-way conflicts,
-        // but persisting 3+ in a slot is still a bug surface (Android caps
-        // at 2 and the iPhone path rejects too). Must run BEFORE tombstone
-        // clear, otherwise a rejected add leaves a tombstone cleared and the
-        // next reload would resurrect the course.
+        // Refuse a third course in any slot: `ClassTableLayout` can render N-way conflicts, but
+        // storing 3+ is a bug surface (Android caps at 2, iPhone rejects too). This runs before
+        // the tombstone clear, or a rejected add clears it and the next reload revives the course.
         if let err = firstTripleConflict(for: course) {
             tripleConflictError = err
             return false

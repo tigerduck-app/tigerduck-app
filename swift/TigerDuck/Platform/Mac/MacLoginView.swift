@@ -3,13 +3,11 @@ import SwiftUI
 
 /// macOS-native NTUST SSO login form.
 ///
-/// Mirrors the iOS login sheet's contract — calls
-/// `AuthService.login(studentId:password:)` and surfaces
-/// `authService.loginError` inline — but renders as a centered card in
-/// the main window instead of as a sheet (Mac apps don't expect a modal
-/// sheet on launch). On success, `AppState.backgroundSync()` fires a
-/// follow-on sync so cached data is fresh by the time the user lands on
-/// the sidebar.
+/// Same contract as the iOS login sheet: it calls `AuthService.login(studentId:password:)`
+/// and shows `authService.loginError` inline. It renders as a centered card in the main
+/// window, not a sheet, because Mac apps don't expect a modal sheet on launch. On success,
+/// `AppState.backgroundSync()` runs a follow-on sync so cached data is fresh by the time
+/// the user reaches the sidebar.
 struct MacLoginView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openURL) private var openURL
@@ -82,10 +80,9 @@ struct MacLoginView: View {
                     .accessibilityLabel(String(localized: isPasswordVisible ? "password_hide" : "password_show"))
                 }
                 .frame(maxWidth: 340)
-                // SecureField masks at the OS layer; plain TextField does
-                // not. While the user has the password revealed, flip the
-                // window's sharingType to .none so a concurrent screen
-                // share / recording does not leak the plaintext.
+                // SecureField masks at the OS layer; TextField does not. While the password is
+                // revealed, the window's sharingType is .none so a concurrent screen share or
+                // recording cannot capture the plaintext.
                 .screenCaptureProtected(isPasswordVisible)
             }
 
@@ -129,23 +126,18 @@ struct MacLoginView: View {
             }
             .padding(.top, 8)
 
-            // Shown whether or not the skip hatch is, and never disabled
-            // during a login: a sign-in that is hanging or failing is the
-            // one moment this answers a question the form itself cannot,
-            // and this view is also the Account re-login sheet, where skip
-            // is deliberately absent.
+            // Shown with or without the skip button, and never disabled during a login. A hanging
+            // or failing sign-in is when it answers what the form cannot, and this view is also
+            // the Account re-login sheet, which has no skip button.
             Button(String(localized: "settings_check_server_status")) {
                 openURL(AppURLs.serverStatus)
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
 
-            // Secondary, less-prominent escape hatch so users without
-            // NTUST credentials can still explore the public surfaces
-            // (e.g. bulletin board). The flag is intentionally in-memory
-            // only — first launch and post-logout return the user to
-            // this screen, matching the desktop convention of a login
-            // form on every launch until creds are saved.
+            // A low-key escape hatch so users without NTUST credentials can still browse the
+            // public surfaces. The flag lives in memory only: like other desktop apps, the login
+            // form returns on each launch and after logout until credentials are saved.
             if showsSkipButton {
                 Button(String(localized: "onboarding_skip_for_now")) {
                     appState.didSkipMacLogin = true

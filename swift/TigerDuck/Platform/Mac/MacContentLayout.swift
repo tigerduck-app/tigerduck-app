@@ -3,17 +3,12 @@ import SwiftUI
 
 /// Layout primitives shared by every Mac feature view.
 ///
-/// Mac windows are resizable and routinely span the full display width,
-/// so views that just `.padding()` and `.frame(maxWidth: .infinity)` end
-/// up either stretching long lines uncomfortably wide or — when an
-/// inner `maxWidth:` cap is applied — pinning content to the leading
-/// edge (the original "squeezes to the left" complaint).
+/// Mac windows are resizable and often span the whole display. A view that only pads and
+/// fills `maxWidth: .infinity` stretches lines too wide, and an inner `maxWidth:` cap alone
+/// pins the content to the leading edge.
 ///
-/// `.macReadableContent()` centres a column up to `maxWidth` so a small
-/// window uses the full width while a maximised window gets a sensible
-/// reading column flanked by background space. `kind` lets feature views
-/// pick a wider cap when their content naturally needs more horizontal
-/// room (grids, calendars).
+/// `.macReadableContent()` centres a column up to `maxWidth`, so a small window uses its full
+/// width and a maximised one gets a reading column. Grids and calendars use a wider cap.
 enum MacContentWidth {
     static let narrow: CGFloat = 720      // forms, settings tabs
     static let standard: CGFloat = 980    // home, bulletins, score

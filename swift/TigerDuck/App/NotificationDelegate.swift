@@ -56,11 +56,9 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if let routeTap {
             routeTap(response)
         } else {
-            // Cold-launch path: SwiftUI hasn't run onAppear yet, so the
-            // routing closure isn't installed. Hold the response until
-            // it is, then drain via `routeTap.didSet`. Only the most
-            // recent tap matters — cap to 1 so the buffer can't grow
-            // unbounded if onAppear is delayed.
+            // On a cold launch onAppear has not installed `routeTap` yet, so hold the
+            // response for `routeTap.didSet` to drain. Only the latest tap matters, and
+            // a single slot cannot grow if onAppear is delayed.
             pendingResponses = [response]
         }
         completionHandler()

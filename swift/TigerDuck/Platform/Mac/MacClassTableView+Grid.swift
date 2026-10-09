@@ -5,12 +5,10 @@ import SwiftUI
 ///
 /// A weekday is one VStack, not a Grid row, because consecutive periods of
 /// the same course render as a single spanning block and SwiftUI Grid has no
-/// row spanning. Each column therefore walks `visiblePeriods` top to bottom
-/// and decides per period whether it is a block start, a covered row, or
-/// empty — see `ClassTableCellRole`.
+/// row spanning. Each column walks `visiblePeriods` top to bottom and decides
+/// per period whether it is a block start, a covered row, or empty (`ClassTableCellRole`).
 ///
-/// Split out of MacClassTableView.swift, which keeps the state, the data
-/// reads, and the page chrome around this card.
+/// MacClassTableView.swift holds the state, data reads and page chrome around this card.
 extension MacClassTableView {
     // MARK: - Glass grid card
 
@@ -92,9 +90,9 @@ extension MacClassTableView {
     }
 
     /// One vertical stack of cells for `weekday`. Walks `visiblePeriods` one
-    /// row at a time; `ClassTableLayout.cellRole` tells us when a row is the
-    /// start of a multi-row block (solo or 衝堂 cluster) so contiguous runs
-    /// render as a single tall block — same partitioning the iPhone uses.
+    /// row at a time; `ClassTableLayout.cellRole` says when a row starts a
+    /// multi-row block (a solo course or a conflict cluster), so contiguous
+    /// runs render as one tall block, the same partitioning the iPhone uses.
     @ViewBuilder
     private func weekdayColumn(_ weekday: Int) -> some View {
         let periods = visiblePeriods
@@ -119,29 +117,24 @@ extension MacClassTableView {
         case .empty:
             emptyCell.frame(height: cellHeight)
         case let .solo(course, spanCount):
-            // Only the solo case gets the room hint: a 衝堂 cluster splits
+            // Only the solo case gets the room hint: a conflict cluster splits
             // the cell into columns with no room left for a third line.
             courseCell(course, roomHint: roomHint(course, weekday: weekday, periodId: periodId))
                 .frame(height: blockHeight(spanCount))
                 .onTapGesture { selectedSlot = SelectedSlot(course: course, weekday: weekday) }
         case let .conflictStart(a, spanA, offsetA, b, spanB, offsetB, combinedSpan):
-            // 衝堂 renders as a horizontal split where each half is a column
-            // sized to that course's actual span and positioned at its
-            // offset within the cluster. Without offset-aware columns,
-            // mismatched spans (e.g. A on periods 1–3 overlapping B only on
-            // period 2) would show B as a full-height column and make it
-            // clickable in rows where the two courses don't actually meet.
+            // A two-course conflict splits into two columns, each sized to its course's span
+            // and placed at its offset in the cluster. A full-height column would draw a shorter
+            // course, and make it clickable, in rows where the two courses do not meet.
             HStack(spacing: rowSpacing) {
                 conflictColumn(course: a, span: spanA, offset: offsetA, combinedSpan: combinedSpan, weekday: weekday)
                 conflictColumn(course: b, span: spanB, offset: offsetB, combinedSpan: combinedSpan, weekday: weekday)
             }
             .frame(height: blockHeight(combinedSpan))
         case let .conflictMany(segments, combinedSpan):
-            // Same offset-aware column layout as the 2-course case
-            // above, just N columns wide. Each segment gets a column
-            // sized to its own span and positioned at its offset, so a
-            // staircase like A(rows 0-1) / B(rows 1-2) / C(rows 2-3)
-            // paints each course only in the rows it actually occupies.
+            // The same offset-aware columns as the two-course case, N wide: each segment's
+            // column is sized to its own span and placed at its offset, so in a staircase of
+            // overlaps each course paints only the rows it occupies.
             HStack(spacing: rowSpacing) {
                 ForEach(segments, id: \.course.courseNo) { segment in
                     conflictColumn(
@@ -170,9 +163,9 @@ extension MacClassTableView {
         CGFloat(span) * cellHeight + CGFloat(max(span - 1, 0)) * rowSpacing
     }
 
-    /// One column of a 衝堂 cluster. Empty spacers above/below the course
-    /// block reserve the rows the course isn't scheduled in so an overlap
-    /// only meeting in part of the cluster doesn't extend to the rest.
+    /// One column of a conflict cluster. Empty spacers above and below the
+    /// course block reserve the rows the course isn't scheduled in, so an
+    /// overlap that meets in only part of the cluster doesn't extend to the rest.
     @ViewBuilder
     private func conflictColumn(course: SDCourse, span: Int, offset: Int, combinedSpan: Int, weekday: Int) -> some View {
         let bottom = max(combinedSpan - offset - span, 0)

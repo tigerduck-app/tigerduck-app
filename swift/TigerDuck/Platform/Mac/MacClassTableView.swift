@@ -2,23 +2,14 @@
 import SwiftUI
 import Defaults
 
-/// macOS Class Table — weekday × period grid that matches the iPhone
-/// visual contract.
+/// macOS Class Table: a weekday × period grid matching the iPhone's look, with the same
+/// glassy cells (`.ultraThinMaterial`, `course.color.opacity(0.4)`, a thin tinted stroke)
+/// and consecutive periods of one course drawn as a single block.
 ///
-/// Cells share the same glassy treatment as iOS (`.ultraThinMaterial`
-/// + `course.color.opacity(0.4)` + thin tinted stroke), and — like
-/// iPhone — *consecutive periods of the same course are rendered as a
-/// single block* spanning all of those rows rather than as repeated
-/// cells. The grid is implemented as one VStack per weekday so each
-/// weekday can independently span its cells without needing
-/// SwiftUI Grid row-spanning (which doesn't exist).
-///
-/// The grid drawing and the schedule mutations live next door in
-/// MacClassTableView+Grid.swift and MacClassTableView+Editing.swift. Swift's
-/// `private` is file-scoped, so the state below reads `internal` rather than
-/// `private` purely to be reachable from those two files — nothing outside
-/// this trio should touch it, and in particular nothing should feed these
-/// through the memberwise init, which would defeat `@State`.
+/// Drawing and schedule edits live in MacClassTableView+Grid.swift and
+/// MacClassTableView+Editing.swift. The state below is `internal` only so those files can
+/// reach it, since `private` is file-scoped. Nothing outside the three files should touch it,
+/// and nothing should set it through the memberwise init, which would defeat `@State`.
 struct MacClassTableView: View {
     @Environment(AppState.self) var appState
 
@@ -101,12 +92,9 @@ struct MacClassTableView: View {
 
     var courses: [SDCourse] {
         _ = cacheRevision
-        // Route through the canonical merge so the deletedCourseNos
-        // tombstone filter and customNames overlay apply here too. The Mac
-        // picker can target a past semester, so we can't call
-        // `CanonicalCourseProvider.currentCourses()` (which is pinned to
-        // the live `CourseSelectionService` semester) — feed the static
-        // `merge` directly with per-semester inputs instead.
+        // Use the canonical merge so the deletedCourseNos tombstones and customNames overlay
+        // apply. Not `currentCourses()`: it is pinned to the live `CourseSelectionService`
+        // semester, and the Mac picker can show a past one, so feed `merge` per-semester inputs.
         let cached = DataCache.shared.loadCourses(semester: selectedSemester)
         let userAdded = DataCache.shared.loadUserAddedCourses(semester: selectedSemester)
         return CanonicalCourseProvider.merge(
@@ -157,15 +145,9 @@ struct MacClassTableView: View {
                 Button {
                     showAddCourse = true
                 } label: {
-                    // A bare `Label(...)` in a macOS toolbar renders the
-                    // plus glyph and the title with mismatched baselines
-                    // (image floats high). Spelling out the HStack and
-                    // letting both views use their default alignment
-                    // produces the same row geometry as the semester picker
-                    // sitting beside this button. `.fixedSize` stops AppKit
-                    // from compressing the label down to icon-only (and
-                    // floating the glyph against the right edge) when the
-                    // semester picker grows wide.
+                    // A bare `Label` in a macOS toolbar draws the glyph on a higher baseline than
+                    // the title. The HStack matches the semester picker's row geometry, and
+                    // `.fixedSize` stops AppKit squeezing it to an icon when the picker widens.
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
                         Text(String(localized: "add_course_title"))
@@ -182,11 +164,9 @@ struct MacClassTableView: View {
                 onAdd: { addUserCourse($0) },
                 onRemove: { removeUserAddedCourse(courseNo: $0) }
             )
-            // Conflict alert lives on the sheet's content: on iPhone
-            // hosting an alert on the parent forces SwiftUI to dismiss the
-            // sheet to present it. macOS doesn't have the same dismissal,
-            // but keeping both platforms anchored to the sheet keeps the
-            // alert visually attached to the search results either way.
+            // The conflict alert sits on the sheet's content: on iPhone, an alert on the parent
+            // makes SwiftUI dismiss the sheet to present it. macOS does not, but anchoring to the
+            // sheet keeps the alert attached to the search results on both platforms.
             .alert(
                 String(localized: "class_table_conflict_add_failed_title"),
                 isPresented: Binding(
@@ -282,11 +262,9 @@ struct MacClassTableView: View {
                 timeRange: slot.course.timeRange(for: slot.weekday),
                 weekday: slot.weekday
             )
-            // Max-bound rather than fixed: a small window (e.g. MacBook Air
-            // with the inspector open) shrinks the overlay to fit, while
-            // larger windows give the inner ScrollView more room before it
-            // has to scroll. `CourseDetailSheet` enforces its own minWidth
-            // 460 / minHeight 360 so the lower bound is preserved.
+            // Max bounds, not a fixed size: a small window shrinks the overlay to fit, and a
+            // large one gives the inner ScrollView more room before it scrolls.
+            // `CourseDetailSheet` sets its own minWidth 460 and minHeight 360 for the lower bound.
             .frame(maxWidth: 560, maxHeight: 620)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.35), radius: 24, y: 8)

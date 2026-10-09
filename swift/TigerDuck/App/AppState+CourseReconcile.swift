@@ -1,9 +1,6 @@
-// Per-semester course reconcile against the backend snapshot — split out
-// of AppState+BackendSync.swift.
-//
-// Every term the app knows about is reconciled on its own, so a retaken
-// course number can be hidden in one semester and shown in another, and
-// nothing has to guess which term is "current" or "newest".
+// Course reconcile against the backend snapshot. Each known term is reconciled on its own, so a
+// retaken course number can be hidden in one semester and shown in another, and nothing has to
+// guess which term is "current" or "newest".
 
 import Foundation
 import Defaults
@@ -49,12 +46,9 @@ extension AppState {
         for semester in semesters.sorted() {
             if resettingSemesters.contains(semester) { continue }
             if let reset = resetAt[semester], reset > fetchedAt { continue }
-            // A misfiled row is neither a roster nor evidence of presence,
-            // and neither is a course 選課 has dropped: the backend still
-            // carries it because an upload only upserts, and merging it back
-            // would land it in `userAdded`, the one shape a portal refresh is
-            // required to preserve. Dropping it here also keeps it from
-            // un-hiding a course the user deleted by hand further down.
+            // Skip misfiled rows and courses dropped in course selection: neither is a roster nor
+            // evidence of presence, though uploads only upsert and leave the latter on the server.
+            // Kept, they would undo hand deletions and join `userAdded`, which portal refreshes keep.
             let droppedHere = Set(selectionDropped[semester] ?? [])
             let rows = (rowsBySemester[semester] ?? []).filter {
                 Self.isFiled($0, under: semester)
@@ -71,38 +65,24 @@ extension AppState {
                 deletedChanged = true
             }
 
-            // Explicit tombstones from other devices, applied before anything
-            // reads this term's emptiness. A semester reset is exactly the
-            // case where the server has no rows for the term and a tombstone
-            // for every course it used to hold. Reading the silence first
-            // kept the pre-reset roster on this device and re-uploaded it on
-            // every refresh — the backend refuses that upload, silently —
-            // which is how a reset on one device never reached the other.
-            //
-            // A reset tombstone does not bind the device that wrote it — the
-            // backend's own rule, whose next upload from that device releases
-            // the tombstones for the keys it names. Between the reset's
-            // DELETE and that upload, the server has an empty term and a
-            // tombstone per course, and a poll landing in the gap must not
-            // read them as "hide everything here": the refetch filters by
-            // the tombstone store, so it would upload nothing and never
-            // release them. A single delete binds its author like everyone.
+            // Apply tombstones before any emptiness check: a reset empties the term and tombstones
+            // each course, and reading the silence first would keep the old roster.
+            // See docs/decisions/0005-course-tombstones.md.
             for tombstone in tombstonesBySemester[semester] ?? [] {
                 guard let courseNo = tombstone["course_no"] as? String,
                       !serverNos.contains(courseNo), !isHidden(courseNo) else { continue }
+                // This device's own reset tombstones are skipped: its next upload releases them.
+                // Hiding the courses would leave the reset's refetch, which filters by the
+                // tombstone store, nothing to upload, so the tombstones would never be released.
                 let ownReset = (tombstone["deleted_by_reset"] as? Bool ?? false)
                     && (tombstone["deleted_by_this_device"] as? Bool ?? false)
                 if ownReset { continue }
                 hide(courseNo)
             }
 
-            // Nothing uploaded for this term yet (first sync, or another
-            // device is mid-reset): push what we have instead of treating
-            // every local course as deleted elsewhere. Only what the
-            // tombstones leave visible counts — after a reset the whole
-            // roster is tombstoned, and then there is nothing to push. A
-            // manual course the tombstones name goes the same way as in the
-            // populated branch below.
+            // Empty term on the server (first sync, or another device mid-reset): upload what the
+            // tombstones leave visible instead of treating every local course as deleted elsewhere.
+            // After a reset that is nothing; tombstoned manual courses go as in the branch below.
             guard !serverNos.isEmpty else {
                 let uploadable = localCourses.filter { !isHidden($0.courseNo) }
                 if !uploadable.isEmpty {
@@ -176,11 +156,10 @@ extension AppState {
         }
     }
 
-    /// Whether a server row really belongs to `semester`. Rows whose Moodle
-    /// id names another term ("1151CS…" filed under 1142) are leftovers of
-    /// the 2026-08 選課 attribution bug, when next-term enrolments were
-    /// uploaded under the heuristic current term; they are not a roster
-    /// and must neither be merged nor count as "on the server".
+    /// Whether a server row really belongs to `semester`. A row whose Moodle id names
+    /// another term ("1151CS…" filed under 1142) is left over from a bug that uploaded
+    /// next-term enrolments from course selection under the heuristic current term. It is
+    /// not a roster: never merge it or count it as "on the server".
     static func isFiled(_ row: [String: Any], under semester: String) -> Bool {
         guard semester.count == 4,
               let moodleId = row["moodle_id"] as? String,
@@ -191,16 +170,14 @@ extension AppState {
         return prefix == semester.uppercased()
     }
 
-    /// Known gap: the sync payload carries no `dimension` / `all_year`, so a
-    /// row merged from another device leaves both empty and the detail
-    /// sheet hides those two rows. The next QueryCourse refresh fills them
-    /// in for a current term; for a term the portal no longer serves they
-    /// stay empty until the backend starts sending them.
+    /// Known gap: the sync payload has no `dimension` or `all_year`, so a row merged from
+    /// another device leaves both empty and the detail sheet hides those two rows. The next
+    /// QueryCourse refresh fills them in for a current term; for a term the portal has stopped
+    /// serving they stay empty until the backend sends them.
     ///
-    /// Callers rebuilding a row they already hold must pass the values that
-    /// row already carries — a local record that once saw QueryCourse knows
-    /// its dimension, and the server row does not, so defaulting here would
-    /// spend a schedule merge to erase metadata this device had.
+    /// Callers rebuilding a row they already hold must pass the values it carries: a local
+    /// record that saw QueryCourse knows its dimension and the server row does not, so the
+    /// defaults would erase that metadata during a schedule merge.
     static func course(fromServerRow row: [String: Any], courseNo: String, semester: String, name: String?,
                                dimension: String = "", allYear: String = "") -> SDCourse {
         var schedule: [Int: [String]] = [:]

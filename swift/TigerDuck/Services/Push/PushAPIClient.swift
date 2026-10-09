@@ -17,15 +17,14 @@ final class PushAPIClient: Sendable {
     private let authHeaderProvider: @Sendable () async -> String?
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Push.API")
 
-    /// `baseURLProvider` is re-evaluated on every request so a Debug build
-    /// that switches the API endpoint at runtime (via `DebugEndpointView`)
-    /// takes effect on the next push call without an app relaunch.
+    /// `baseURLProvider` is re-evaluated on every request, so an endpoint
+    /// switched at runtime (`DebugEndpointView`) applies to the next push
+    /// call without an app relaunch.
     ///
-    /// `authHeaderProvider` is an async closure so callers can supply the
+    /// `authHeaderProvider` is async so callers can pass the
     /// `AuthTokenManager.authorizationHeader()` actor method directly. The
-    /// default closure returns `nil` (no auth header), matching the
-    /// pre-v3 behaviour for existing tests and Debug builds that have not
-    /// yet wired up an `AuthTokenManager`.
+    /// default returns `nil` and sends no auth header, for tests and builds
+    /// that have no `AuthTokenManager`.
     init(
         baseURLProvider: @escaping @Sendable () -> URL = { PushServerConfig.resolveServerURL() },
         session: URLSession? = nil,
@@ -386,16 +385,13 @@ final class PushAPIClient: Sendable {
     }()
 
     private static func percentEncoded(_ value: String) -> String {
-        // Strict allowlist: alphanumerics + a few unreserved punctuation.
-        // `urlPathAllowed` keeps `; , : @ & = + $`, several of which break
-        // parsers that treat `;` as matrix params or `&` as query
-        // separators. Keep `-_.~` because RFC 3986 explicitly marks them
-        // unreserved, and dashes are common in source-id formatting.
+        // Not `urlPathAllowed`: it keeps `; , : @ & = + $`, and some parsers
+        // read `;` as matrix params or `&` as a query separator. `-_.~` stay
+        // because RFC 3986 marks them unreserved; source ids often use dashes.
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
-        // Encoder fallback returns "" rather than the raw value: in the
-        // (vanishingly rare) UTF-16 surrogate-pair failure mode, shipping
-        // unencoded bytes into the URL path could path-inject. An empty
-        // segment yields a clean 404 instead.
+        // On failure (a rare UTF-16 surrogate-pair case) return "", not the
+        // raw value: unencoded bytes in the URL path could path-inject, while
+        // an empty segment yields a clean 404.
         guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
             assertionFailure("percentEncoded failed for value of length \(value.count)")
             return ""

@@ -3,14 +3,11 @@ import SwiftUI
 
 /// Root scene content for the macOS app.
 ///
-/// Routes between the login wall (`MacLoginView`) and the main sidebar
-/// layout (`MacContentView`) based on `authService.hasStoredCredentials`,
-/// with an in-session bypass via `appState.didSkipMacLogin` (set by the
-/// "Skip for now" button on `MacLoginView`). The bypass is intentionally
-/// transient: first launch and post-logout always show the login wall
-/// again. Silent re-auth failures keep the sidebar visible and surface
-/// through `appState.ntustReauthErrorMessage` instead, mirroring the
-/// iOS cached-first contract.
+/// Shows the login wall (`MacLoginView`) or the sidebar layout (`MacContentView`) by
+/// `authService.hasStoredCredentials`, bypassed for the session by `appState.didSkipMacLogin`
+/// ("Skip for now" on `MacLoginView`). The bypass is transient: first launch and logout show
+/// the wall again. Silent re-auth failures keep the sidebar and surface through
+/// `appState.ntustReauthErrorMessage`, as in the iOS cached-first contract.
 struct MacRootView: View {
     @Environment(AppState.self) private var appState
 
@@ -179,16 +176,12 @@ struct MacContentView: View {
 
 /// Switchboard between per-feature detail views.
 ///
-/// The global refresh toolbar lives here (rather than on the outer
-/// `NavigationSplitView` detail) so it follows the feature regardless of
-/// entry path — sidebar selection or pushed from `MacMoreView`. Putting
-/// it on the outer split detail loses the button as soon as More's inner
-/// `NavigationStack` pushes a destination, because that inner stack owns
-/// the toolbar slot for the pushed view on macOS.
+/// The global refresh toolbar lives here so it follows the feature whether the sidebar shows
+/// it or `MacMoreView` pushes it. On the outer `NavigationSplitView` detail, the button
+/// would vanish on a push: on macOS More's inner `NavigationStack` owns the pushed view's toolbar.
 ///
-/// Scores opts out: it already exposes its own per-feature refresh button
-/// (which re-fetches scores — `backgroundSync` doesn't touch the score
-/// service), so adding the global one would double up in `.primaryAction`.
+/// Scores opts out: its own refresh button re-fetches scores, which `backgroundSync` does not
+/// touch, and a second button would double up in `.primaryAction`.
 struct MacFeatureDetail: View {
     let feature: AppFeature
 

@@ -1,33 +1,6 @@
-// Shared `URLProtocol` double for `SettingsDocumentClient`.
-//
-// **Do not delete this as redundant.** Two suites drive the real client
-// through it and nothing else exercises `SettingsDocumentClient` at all:
-//
-// - `SettingsDocumentClientTests` — the client's own surface: the
-//   `{"schema_version","document","base_revision"}` envelope, 404 → `nil`,
-//   409 → `.conflict`, malformed bodies, the `APIVersionGate` hook.
-// - `NotificationSettingsSyncTests` — `NotificationSettingsSync` end to
-//   end, which reaches the same code paths from above.
-//
-// `PushRegistrationServiceTests` also routes a `PushAPIClient` through it:
-// that client takes a `URLSession` in its `init` the same way.
-//
-// `SettingsDocumentClient` is a concrete `actor`, not a protocol, so it
-// cannot be swapped for a lightweight fake; its `init` takes a
-// `URLSession`, which is the seam this uses.
-//
-// Explicitly `nonisolated`: this target defaults unannotated declarations
-// to `@MainActor` (`SWIFT_DEFAULT_ACTOR_ISOLATION`), but `startLoading()`
-// is invoked by `URLSession` on an arbitrary background queue,
-// synchronously — it has no way to `await` its way onto the main actor.
-// `nonisolated(unsafe)` on the two dictionaries is the manual-
-// synchronization escape hatch (guarded by `lock`), the same justification
-// `SettingsDocumentClient.swift` and `NotificationSettingsDocument.swift`
-// give for their own explicit `nonisolated`.
-//
-// Scoped per test via a unique base URL (`SettingsAPIStub.uniqueBaseURL()`)
-// rather than one shared queue, so Swift Testing's default parallel test
-// execution cannot let one test consume another's canned response.
+// `URLProtocol` double and the only test seam into `SettingsDocumentClient`, a concrete actor
+// whose `init` takes a `URLSession`. Must stay `nonisolated`: `URLSession` calls `startLoading()`
+// synchronously on a background queue. `lock` guards the two `nonisolated(unsafe)` dictionaries.
 import Foundation
 @testable import TigerDuck
 

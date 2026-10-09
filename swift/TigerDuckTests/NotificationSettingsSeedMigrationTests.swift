@@ -1,24 +1,6 @@
-// `NotificationSettingsSeedMigration` — the once-after-upgrade trigger for
-// the notification settings routine.
-//
-//   1. An upgrade with no document on the server seeds it from the device's
-//      own values, reminders switched off included.
-//   2. An upgrade where another device already wrote the document adopts it
-//      and writes nothing.
-//   3. The done flag is set only once the routine reports the document
-//      settled, so an upgrade whose first launch is offline, signed out or
-//      has course sync off tries again on the next.
-//   4. Once done, it never runs the routine again.
-//
-// 1 and 2 run the real routine (`NotificationSettingsSync.reconcile`)
-// through `SettingsAPIStub`, handing it the same `onSettled` the app's
-// wrapper does (`AppState.reconcileNotificationSettings`); nothing in this
-// target constructs a full `AppState`.
-//
-// `doneKey` mirrors the migration's private flag literal, the way
-// `PendingReminderPurgeMigrationTests` mirrors its own. `.serialized`, and
-// every test clears the key first, because the flag lives in real,
-// process-wide `UserDefaults.standard`.
+// `NotificationSettingsSeedMigration`, the once-after-upgrade trigger for the notification
+// settings reconcile. `.serialized`, and each test clears the done flag first, because
+// the flag lives in the real, process-wide `UserDefaults.standard`.
 import Defaults
 import Foundation
 import Testing

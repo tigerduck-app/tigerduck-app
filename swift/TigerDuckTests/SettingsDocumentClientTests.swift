@@ -1,21 +1,6 @@
-// `SettingsDocumentClient`'s own surface, driven through `SettingsAPIStub`.
-//
-// Everything risky in this client is wire-format handling with no type
-// system behind it: the `{"schema_version","document","base_revision"}`
-// request envelope, the `NSNull` base-revision-for-create encoding, 404 →
-// `nil`, 409 → `.conflict` parsed out of `server.document`/`server.revision`,
-// and the `revision` extraction on a successful write. Each of those is a
-// dictionary subscript against a contract defined in another repo
-// (`server/routes/settings_docs.py`, `server/sync/serializers.py`), so the
-// compiler has nothing to say about any of it.
-//
-// Response shapes are copied from the live backend:
-//   GET / PUT-success  `settings_document_to_dict` — {namespace,
-//                      schema_version, document, revision, updated_at}
-//   409                `_conflict_response` — {error, namespace,
-//                      server: {…the same…}}
-// The extra keys are included here deliberately: a parser that only works
-// on a trimmed-down body is not a parser that works.
+// `SettingsDocumentClient` through `SettingsAPIStub`. Its wire format is dictionary access against
+// a contract in the backend repo (`server/routes/settings_docs.py`, `server/sync/serializers.py`)
+// that no compiler checks. Bodies copy the live backend's in full: a parser must handle extra keys.
 import Foundation
 import Testing
 @testable import TigerDuck

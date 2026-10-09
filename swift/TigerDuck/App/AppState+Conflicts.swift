@@ -1,16 +1,6 @@
-// Conflict resolution for cloud sync — split out of AppState.swift.
-//
-// Two unrelated conflicts share this file because they share a shape: the
-// server and the device both changed something while the device was away,
-// and the user has to pick a winner.
-//
-//   * Assignment overrides (done/ignored) — `syncConflicts`.
-//   * Re-enabled sync categories — `reenableConflict`, raised when a
-//     category the user turned off has server state that predates the
-//     switch-off, so silently pulling it would resurrect stale rows.
-//
-// Backing storage stays on the class in AppState.swift; only the decision
-// logic lives here.
+// Sync conflicts: the server and this device both changed something while the device was away,
+// and the user picks a winner. Assignment overrides use `syncConflicts`; re-enabled sync
+// categories use `reenableConflict`, since silently pulling them would resurrect stale rows.
 
 import SwiftUI
 import SwiftData
@@ -80,16 +70,9 @@ extension AppState {
             AppLogger.sync.info("[reenable] checkPendingConflicts skip: pending=\(Defaults[.pendingConflictCategories].sorted(), privacy: .public) syncEnabled=\(Defaults[.cloudSyncEnabled], privacy: .public)")
             return
         }
-        // Serialize the check. It is a network round-trip whose verdict is only
-        // valid for the `pending` snapshot it started with, and it is driven by
-        // `onAppear`, `onDisappear` and every sync-category toggle — so two can
-        // easily overlap. The slower one then lands after the user has already
-        // resolved the faster one's dialog and re-presents it from a stale
-        // snapshot; dismissing that dialog re-runs the keep-local upload
-        // against categories the user never agreed to.
-        //
-        // Callers are views, so this guard-and-set pair runs on the main actor
-        // and cannot interleave; the flag is cleared back on the main actor.
+        // One check at a time: a verdict is valid only for its `pending` snapshot, and a slower
+        // second check re-presents a resolved dialog, whose dismissal re-runs keep-local unasked.
+        // Callers are views: guard, set and clear run on the main actor and cannot interleave.
         if !isRetry {
             guard !isCheckingConflicts else {
                 AppLogger.sync.info("[reenable] checkPendingConflicts skipped — already in flight")
@@ -107,11 +90,9 @@ extension AppState {
                 if !isRetry && !handedOffToRetry {
                     Task { @MainActor in
                         self.isCheckingConflicts = false
-                        // A category marked while this check was in flight was
-                        // turned away by the guard above. Pick it up now rather
-                        // than stranding it until the user next enters or
-                        // leaves Settings. This terminates: the re-run snapshots
-                        // the grown set, so its own completion sees no growth.
+                        // A category marked mid-check was turned away by the guard; re-run now
+                        // rather than strand it until the next Settings visit. This terminates:
+                        // the re-run snapshots the grown set, so its completion sees no growth.
                         let current = Defaults[.pendingConflictCategories]
                         if self.reenableConflict == nil, !current.subtracting(pending).isEmpty {
                             self.checkPendingConflicts()
@@ -126,10 +107,9 @@ extension AppState {
                 let coursesArray = json["courses"] as? [[String: Any]] ?? []
 
                 if pending.contains("courses") {
-                    // Compare term by term, including user-added courses (they
-                    // are uploaded, so the server lists them). A term one side
-                    // has never seen is not a conflict — the reconcile uploads
-                    // or merges it — so only terms both sides know count.
+                    // Compare term by term, user-added courses included (they are uploaded,
+                    // so the server lists them). Only terms both sides know count: the
+                    // reconcile uploads or merges a term only one side has seen.
                     let deletedNos = Set(DataCache.shared.loadDeletedCourseNos())
                     let serverSemesters = coursesArray.compactMap { $0["semester"] as? String }.filter { !$0.isEmpty }
                     var localOnly = 0
@@ -246,13 +226,9 @@ extension AppState {
 
                 AppLogger.sync.info("[reenable] result: \(diffs.count, privacy: .public) diffs → \(diffs.isEmpty ? "no conflict" : "SHOW POPUP", privacy: .public)")
                 await MainActor.run {
-                    // Only report on categories that are still pending. A
-                    // resolve that landed while this check was in flight
-                    // already cleared its own categories and changed the
-                    // server state the diffs above were computed from —
-                    // re-presenting them would show the user a dialog they
-                    // just dismissed, and dismissing it again would re-run
-                    // the keep-local upload.
+                    // Report only categories still pending: a resolve that landed mid-check
+                    // cleared its own and changed the server state behind these diffs. Showing
+                    // them again repeats a dismissed dialog, and dismissing it re-runs keep-local.
                     let stillPending = Defaults[.pendingConflictCategories]
                     let checked = pending.intersection(stillPending)
                     guard !checked.isEmpty else {
@@ -285,43 +261,27 @@ extension AppState {
         }
     }
 
+    /// Applies the user's answer to `reenableConflict`. Keeping local courses awaits every
+    /// term's upload after the wipe: until the uploads land the server holds no courses, so a
+    /// lost one would leave "keep local" having wiped the user's cloud copy. Other devices do
+    /// not mass-delete off the empty terms, because `reconcileCourses` uploads their portal
+    /// courses instead, but this device's user-added courses are not part of that upload and
+    /// would stay missing.
     func resolveReenableConflict(keepLocal: Bool) {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
-        // Subtract rather than clear. A category re-enabled after this check
-        // started was never part of this dialog, so clearing it would record a
-        // decision the user was never asked to make; leaving it pending lets
-        // the next check present it on its own.
+        // Subtract, not clear: a category re-enabled after this check started was not in this
+        // dialog, so clearing it would record a decision the user was never asked to make.
+        // Left pending, the next check presents it on its own.
         Defaults[.pendingConflictCategories].subtract(conflict.categories)
         let coordinator = pushCoordinator
         Task {
             if keepLocal {
                 if conflict.categories.contains("courses") {
-                    // Every term goes up, and each includes its user-added
-                    // courses (stored separately from the portal cache).
-                    // Uploading only the portal cache drops them from the
-                    // backend, and the next reconcile then deletes them
-                    // locally too — permanent loss on the path meant to
-                    // preserve local state. forceKeys re-asserts them past
-                    // any tombstone.
-                    // Wipe the server list first, THEN upload. uploadCourses
-                    // upserts (never replaces), so if the delete fails we must
-                    // not upload — that would layer local courses onto the stale
-                    // server state and resurrect the very courses the user
-                    // deleted locally, contradicting "keep local".
-                    //
-                    // Await the upload instead of firing it detached. Between
-                    // the delete and the upload the server holds no courses at
-                    // all, so a silently-dropped upload leaves "keep local"
-                    // having wiped the user's cloud copy — the exact opposite
-                    // of what they chose. Other devices do not mass-delete off
-                    // an empty server (the reconcile in `syncOverridesFromBackend`
-                    // is gated on `!coursesArray.isEmpty`, and the branch below
-                    // it re-uploads instead), but this device's user-added
-                    // courses are not covered by that auto-upload and would
-                    // stay missing. On failure put the category back so the
-                    // next check re-detects the divergence and re-prompts.
+                    // Wipe, then await each term's upload with its user-added courses, force-keyed
+                    // past any tombstone, or the next reconcile deletes them. No upload after a
+                    // failed wipe: upserts would restore deleted courses. Any failure re-prompts.
                     do {
                         try await coordinator.deleteAllCourses()
                         for semester in SemesterCatalog.availableSemesters() {
@@ -339,10 +299,9 @@ extension AppState {
                     }
                 }
                 if conflict.categories.contains("course_colors") || conflict.categories.contains("course_names") {
-                    // The color/name maps are keyed by courseNo, but the
-                    // override endpoint resolves moodle_id — map through the
-                    // cached course list (and skip courses without one, same
-                    // as the live edit paths).
+                    // The colour and name maps are keyed by courseNo, but the override endpoint
+                    // resolves moodle_id: map through the cached course list and skip courses
+                    // without one, as the live edit paths do.
                     let moodleIdByCourseNo = Dictionary(
                         SemesterCatalog.availableSemesters()
                             .flatMap { DataCache.shared.loadCourses(semester: $0) }

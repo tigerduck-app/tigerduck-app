@@ -1,26 +1,6 @@
-// Reads and writes the `notification` settings-document namespace —
-// split out of AppState.swift like the other sync surfaces
-// (AppState+PushServer.swift, AppState+BackendSync.swift).
-//
-// This owns exactly two of the document's keys — `assignments` and
-// `live_activity` (mapping fixed by the v2.1.0 sync-notifications design
-// spec §4.6 — see `NotificationSettingsSync.LocalPreferences` below; do not
-// add fields beyond that table). Everything else in the document belongs to
-// somebody else: `courses` to the course-reminder feature, and whatever
-// sections Android (spec W6) or a future build add to the same namespace.
-//
-// Writes therefore **merge at the JSON level** rather than re-encoding a
-// typed struct: read whatever the server currently holds as a dictionary,
-// splice the two keys this app owns over it, and PUT the result. Every
-// other key — top-level or nested inside a section — travels back exactly
-// as it arrived, including keys this build has never heard of. Re-encoding
-// a typed struct instead would silently delete them, and for `courses` that
-// means silently turning off the user's class reminders with nothing on
-// screen to show it.
-//
-// iOS only: every field this syncs lives on `LiveActivityPreferencesStore`,
-// which `AppState` only instantiates under `#if os(iOS)`
-// (`AppState+LiveActivity.swift`).
+// The `notification` settings document: this app owns only `assignments` and `live_activity`,
+// so writes merge at the JSON level, keeping `courses` and every other key. iOS only, like
+// `LiveActivityPreferencesStore`. See docs/decisions/0002-notification-settings-json-merge.md.
 
 import Foundation
 import Defaults
@@ -31,34 +11,14 @@ extension AppState {
 
     // MARK: - Public entry points
 
-    /// Pushes this device's `assignments` + `live_activity` preferences to
-    /// the backend. Gated on `cloudSyncEnabled`, and per-section on the
-    /// device switches `syncAssignmentReminders` / `syncLiveActivity`: a
-    /// section whose switch is off is left exactly as the server currently
-    /// holds it rather than overwritten with the local value, and if both
-    /// are off nothing is sent at all (see `NotificationSettingsSync.push`).
-    ///
-    /// Two preconditions decided up front rather than read off a failure,
-    /// matching `syncOverridesFromBackend` (`AppState+BackendSync.swift`):
-    /// cloud sync must be on, and there must be a session. Firing
-    /// unauthenticated and reading the 401 as the answer is exactly what
-    /// `PushAPIClient.hasAuthSession()` documents you must not do — "a 401
-    /// is also what a revoked or expired session looks like", and those
-    /// deserve different handling.
-    ///
-    /// Failures are logged rather than thrown: no caller awaits this. They
-    /// are not, however, dropped — `Defaults[.notificationSettingsPushPending]`
-    /// stays set until a write actually lands **and** nothing has changed
-    /// locally since, and `retryUnacknowledgedNotificationSettings()`
-    /// re-runs the push at the next full sync. Same mark-before /
-    /// clear-on-settled shape as the holiday-override queue
-    /// (`AppState+PushServer.swift`).
-    ///
-    /// `isCurrent` turns false once a logout has happened (see
-    /// `NotificationSettingsPushQueue.enqueuePush(_:)`). The push reads the
-    /// document before it writes it, so it is checked before every write and
-    /// before the pending marker is touched: the marker, like the session,
-    /// belongs to whoever signed in since.
+    /// Pushes this device's `assignments` and `live_activity` preferences, each section only
+    /// while its device switch is on (see `NotificationSettingsSync.push`). Cloud sync and a
+    /// session are checked first, not inferred from a 401: a revoked or expired session also
+    /// gets a 401 and needs different handling. Failures are logged, not thrown, since no
+    /// caller awaits this. The pending marker stays set until a write lands with nothing
+    /// changed locally since, and the next full sync retries. `isCurrent` turns false after a
+    /// logout. It is checked before every write and before the marker is touched, because the
+    /// marker, like the session, then belongs to whoever signed in.
     func pushNotificationSettings(isCurrent: @escaping @MainActor () -> Bool = { true }) async {
         guard Defaults[.cloudSyncEnabled] else { return }
         guard await authTokenManager.isLoggedIn, isCurrent() else { return }
@@ -77,14 +37,9 @@ extension AppState {
                 syncLiveActivityEnabled: Defaults[.syncLiveActivity],
                 isCurrent: isCurrent
             )
-            // Settled only if the store still matches what was just sent. A
-            // preference change that arrived while this request was in
-            // flight is already queued behind it
-            // (`enqueueNotificationSettingsPush`'s chain) and must stay
-            // marked pending until *that* push lands — clearing here would
-            // let a kill in the next 250 ms lose it. Mirrors
-            // `enqueueHolidayUpload`'s re-read-and-compare
-            // (`AppState+PushServer.swift`).
+            // Clear only if the store still matches what was sent. An edit made in
+            // flight is queued behind this push and must stay pending until its own
+            // push lands, or a kill in the next 250 ms would lose it.
             if isCurrent(), NotificationSettingsSync.canClearPendingMarker(
                 written: written,
                 sent: local,
@@ -99,25 +54,14 @@ extension AppState {
         }
     }
 
-    /// The one routine that reads the `notification` document: it reads
-    /// it, adopts each synced section the server has, and writes only the
-    /// sections it lacks (`NotificationSettingsSync.reconcile`). Runs as a
-    /// link on `NotificationSettingsPushQueue`, so it never interleaves
-    /// with a push's read-modify-write and never outlives a logout.
-    ///
-    /// Called once after upgrade (`NotificationSettingsSeedMigration`),
-    /// after each full sync that lands (`syncOverridesFromBackend`), when
-    /// either notification settings screen opens, and after sign-in.
-    /// Sign-in comes here rather than to a push on purpose: a push would
-    /// write this device's values over the account's document — values a
-    /// previous account may have left on the device — where reading first
-    /// adopts what the account already holds.
-    ///
-    /// A local edit the server has not acknowledged wins: the routine does
-    /// not read over it, and that edit's push runs instead. Gated on
-    /// `cloudSyncEnabled` and on having a session for the same reasons the
-    /// push is. `onSettled` runs only once the document has actually been
-    /// read and every synced section settled.
+    /// The one routine that reads the `notification` document: it adopts each synced section
+    /// the server has and writes only the ones it lacks (`NotificationSettingsSync.reconcile`).
+    /// It runs on the push queue, so it never interleaves with a push or outlives a logout.
+    /// Called after upgrade, after each successful full sync, when a notification settings
+    /// screen opens, and after sign-in, which must read first: a push could write a previous
+    /// account's values over the new account's document. An unacknowledged local edit wins and
+    /// its push runs instead. Gated on cloud sync and a session like the push; `onSettled` runs
+    /// only once the document was read and every synced section settled.
     func reconcileNotificationSettings(onSettled: (@MainActor () -> Void)? = nil) {
         NotificationSettingsPushQueue.enqueueReconcile { [weak self] isCurrent in
             guard let self, Defaults[.cloudSyncEnabled] else { return }
@@ -156,21 +100,14 @@ extension AppState {
 
     // MARK: - Debounced push trigger
 
-    /// Debounces bursts of `liveActivityPreferencesDidChange` (e.g. a
-    /// slider drag posts many in a row) into a single push, reusing
-    /// `scheduleLiveActivityRefresh`'s 250 ms convention
-    /// (`AppState+LiveActivity.swift`). Kept as its own timer rather than
-    /// folded into that function: `scheduleLiveActivityRefresh` also runs
-    /// off `dataDidUpdate` and `courseSkipStateDidChange`, neither of which
-    /// is a preference change this document cares about — piggy-backing on
-    /// it would fire a settings PUT on every data sync.
+    /// Debounces bursts of `liveActivityPreferencesDidChange` (a slider drag posts many) into
+    /// one push, with the same 250 ms as `scheduleLiveActivityRefresh`. It has its own timer
+    /// because that function also runs on `dataDidUpdate` and `courseSkipStateDidChange`, and
+    /// sharing it would send a settings PUT on every data sync.
     ///
-    /// The pending marker is set here, before the debounce rather than
-    /// after it, so the window the debounce itself opens is covered: the
-    /// preference is already durable in `Defaults` (the store's `didSet`
-    /// wrote it before posting), and if the app is suspended or killed
-    /// inside those 250 ms the marker survives and the next full sync
-    /// repairs the cloud copy.
+    /// The pending marker is set before the debounce: the store's `didSet` already wrote the
+    /// preference to `Defaults`, so if the app is suspended or killed within the 250 ms, the
+    /// marker survives and the next full sync repairs the cloud copy.
     func scheduleNotificationSettingsPush() {
         Defaults[.notificationSettingsPushPending] = true
         NotificationSettingsPushQueue.pendingDebounce?.cancel()
@@ -183,36 +120,25 @@ extension AppState {
 
     /// Runs one push, chained behind any push already in flight.
     ///
-    /// Chained rather than fired independently, for the same reason
-    /// `enqueueHolidayUpload` is (`AppState+PushServer.swift`): a push is a
-    /// read-modify-write pair, and `SettingsDocumentClient` is a reentrant
-    /// `actor`, so two overlapping pushes can both read revision *N* and
-    /// both PUT `base_revision: N` — the loser burns its single retry on a
-    /// conflict it created itself. Chaining also means the debounce's
-    /// `cancel()` can only ever land on a sleeping task, never inside an
-    /// in-flight PUT, and each link reads `liveActivityPreferences` at the
-    /// moment it runs, so the value that gets sent is the current one
-    /// rather than the one that was current when it was queued.
-    ///
-    /// Delegates the actual chaining/generation-guard to
-    /// `NotificationSettingsPushQueue.enqueue(_:)` so that logic can be
-    /// driven directly from a test without constructing an `AppState`.
+    /// A push is a read-modify-write and `SettingsDocumentClient` is a reentrant actor: two
+    /// overlapping pushes could both read revision N and PUT `base_revision: N`, and the loser
+    /// would spend its one retry on a conflict it caused. Chaining also keeps the debounce's
+    /// `cancel()` off an in-flight PUT, and each link reads `liveActivityPreferences` when it
+    /// runs, so it sends the current value. The chain and generation guard live on
+    /// `NotificationSettingsPushQueue` so a test can drive them without an `AppState`.
     func enqueueNotificationSettingsPush() {
         NotificationSettingsPushQueue.enqueuePush { [weak self] isCurrent in
             await self?.pushNotificationSettings(isCurrent: isCurrent)
         }
     }
 
-    /// Re-sends preferences whose last push never landed — a dropped
-    /// debounce, an expired session, being offline, a 5xx, or a conflict
-    /// that outlived its one retry.
+    /// Re-sends preferences whose last push never landed: a dropped debounce, an expired
+    /// session, being offline, a 5xx, or a conflict that outlived its one retry.
     ///
-    /// Called from `syncOverridesFromBackend`, right where
-    /// `retryUnacknowledgedHolidayOverrides()` is, because that is the
-    /// app's own "we have a network and a session again" moment. Also
-    /// covers the case where the preference was edited while cloud sync was
-    /// off: the marker was set then, nothing was sent, and the first full
-    /// sync after the user turns sync back on carries it up.
+    /// Called from `syncOverridesFromBackend`, beside `retryUnacknowledgedHolidayOverrides()`,
+    /// because that is when the app has a network and a session again. It also carries up an
+    /// edit made while cloud sync was off: the marker was set then and nothing was sent, so the
+    /// first full sync after the user turns cloud sync back on sends it.
     func retryUnacknowledgedNotificationSettings() {
         guard Defaults[.cloudSyncEnabled] else { return }
         guard Defaults[.notificationSettingsPushPending] else { return }
@@ -231,22 +157,14 @@ extension AppState {
     #endif // os(iOS)
 }
 
-/// Holds the debounce timer for `scheduleNotificationSettingsPush()` and
-/// the serialized chain every read and write of the document runs on —
-/// pushes and `reconcileNotificationSettings()` alike — plus the
-/// generation guard that keeps both from outliving a logout.
+/// The debounce timer for `scheduleNotificationSettingsPush()`, the serial chain every read
+/// and write of the document runs on (pushes and `reconcileNotificationSettings()` alike), and
+/// the generation guard that keeps both from outliving a logout.
 ///
-/// Stored properties on `AppState` would be the obvious home, but this is
-/// an extension and Swift does not allow them there — same constraint
-/// `HolidayUploadQueue` documents in `AppState+PushServer.swift`. Static is
-/// fine regardless: there is a single `AppState` per process.
-///
-/// Unlike `HolidayUploadQueue`, not `private`: `enqueue(_:)` and
-/// `cancelAll()` take a plain closure and touch nothing `AppState`-shaped,
-/// so `NotificationSettingsPushQueueTests` can drive the generation guard
-/// — the actual cross-account hazard — directly. Nothing in this test
-/// target constructs a full `AppState` (see `NotificationSettingsSync`'s
-/// own doc comment above).
+/// Static because an extension cannot add stored properties to `AppState`, and there is one
+/// `AppState` per process. Not `private`, unlike `HolidayUploadQueue`: it touches nothing on
+/// `AppState`, so `NotificationSettingsPushQueueTests` can drive the generation guard, the
+/// cross-account hazard, directly.
 @MainActor
 enum NotificationSettingsPushQueue {
     /// The sleeping debounce task. Cancelled and replaced by each new
@@ -282,17 +200,14 @@ enum NotificationSettingsPushQueue {
         return task
     }
 
-    /// Queues one read-before-write of the document
-    /// (`AppState.reconcileNotificationSettings()`) as a link on the same
-    /// chain, so it cannot interleave with a push's read-modify-write, and
-    /// a logout between queueing and running drops it like any other link.
+    /// Queues one read-before-write of the document (`AppState.reconcileNotificationSettings()`)
+    /// on the same chain, so it cannot interleave with a push's read-modify-write, and a logout
+    /// between queueing and running drops it like any other link.
     ///
-    /// `reconcile` is handed `isCurrent`, which turns false once a logout
-    /// bumps the generation. The guard in `enqueue(_:)` only covers the
-    /// wait before a link starts, and a reconcile makes round trips after
-    /// that: it checks `isCurrent` after each one, so the departing
-    /// account's document is never applied and nothing is written over
-    /// the next account's.
+    /// The guard in `enqueue(_:)` only covers the wait before a link starts, and a reconcile
+    /// makes round trips after that. So `reconcile` gets `isCurrent`, false once a logout bumps
+    /// the generation, and checks it after each round trip: the departing account's document is
+    /// never applied, and nothing is written over the next account's.
     @discardableResult
     static func enqueueReconcile(
         _ reconcile: @escaping @MainActor (_ isCurrent: @escaping @MainActor () -> Bool) async -> Void
@@ -336,17 +251,13 @@ enum NotificationSettingsPushQueue {
 
 // MARK: - Testable sync logic
 
-/// Push/pull logic for the `notification` settings document, factored out
-/// of the `AppState` extension above so it is unit-testable without
-/// constructing a full `AppState` — nothing in this test target does that
-/// (`AppState` pulls in SwiftData, `AuthService`, live push registration,
-/// etc.). Mirrors how `ScheduleSyncService` sits underneath
-/// `AppState+PushServer.swift`.
+/// Push and pull logic for the `notification` settings document, kept out of the `AppState`
+/// extension so tests can reach it without a full `AppState`, which pulls in SwiftData,
+/// `AuthService` and live push registration.
 ///
-/// `nonisolated`, matching `NotificationSettingsDocument` and
-/// `SettingsWriteResult`: this has no actor affinity of its own beyond the
-/// one function (`apply`) that touches the `@MainActor`
-/// `LiveActivityPreferencesStore`.
+/// `nonisolated`, like `NotificationSettingsDocument` and `SettingsWriteResult`: the type has
+/// no actor affinity of its own, and members that touch the `@MainActor`
+/// `LiveActivityPreferencesStore`, such as `apply`, are marked `@MainActor` one by one.
 nonisolated enum NotificationSettingsSync {
     static let namespace = "notification"
 
@@ -361,22 +272,13 @@ nonisolated enum NotificationSettingsSync {
         case sectionEncodingFailed
     }
 
-    /// Local preference snapshot, decoupled from `LiveActivityPreferencesStore`
-    /// so tests can construct one directly instead of standing up a real
-    /// store (which reads/writes `Defaults` / `UserDefaults`).
+    /// Local preference snapshot, apart from `LiveActivityPreferencesStore` so tests can build
+    /// one without a real store, which reads and writes `UserDefaults`.
     ///
-    /// Field mapping is fixed by the table below — do not add or infer
-    /// fields beyond these seven:
-    ///
-    /// | local                             | document field                               |
-    /// |------------------------------------|-----------------------------------------------|
-    /// | `isAssignmentReminderEnabled`       | `assignments.enabled`                          |
-    /// | `assignmentReminderOffsets`         | `assignments.reminder_offsets_hours` + `…_minutes` |
-    /// | `showClassPreparingScenario`        | `live_activity.show_class_preparing`           |
-    /// | `showInClassScenario`               | `live_activity.show_in_class`                  |
-    /// | `showAssignmentScenario`            | `live_activity.show_assignment`                |
-    /// | `classPreparingLeadTime`            | `live_activity.class_preparing_lead_seconds`   |
-    /// | `assignmentLiveActivityLeadTime`    | `live_activity.assignment_lead_seconds`        |
+    /// The field mapping is fixed: do not add or infer fields beyond these seven. Each maps to
+    /// one field of the `assignments` or `live_activity` section (`assignmentsSection(...)`,
+    /// `liveActivitySection`), except `assignmentReminderOffsets`, which fills both
+    /// `reminder_offsets_minutes` and `reminder_offsets_hours`.
     struct LocalPreferences: Equatable, Sendable {
         var isAssignmentReminderEnabled: Bool
         var assignmentReminderOffsets: Set<AssignmentReminderOffset>
@@ -427,50 +329,14 @@ nonisolated enum NotificationSettingsSync {
                 .sorted(by: >)
         }
 
-        /// The `assignments` section to write, given what the server
-        /// currently holds at `existing`.
-        ///
-        /// `reminder_offsets_minutes` is this device's complete selection
-        /// **plus** every minute value already in the document that no
-        /// `AssignmentReminderOffset` in this build represents. Without
-        /// that, a value only a different client's enum understands — a
-        /// newer build's, another platform's, or this one's after the enum
-        /// changes — is deleted the moment this device edits any offset and
-        /// pushes: this app writes that key outright, so `merging(_:into:)`'s
-        /// "leave keys you don't mention alone" cannot protect it. Android
-        /// folds the same values back in
-        /// (`push/NotificationSettingsSync.kt`'s `documentUpdates`).
-        ///
-        /// Deselection still works: a value this build *does* have a case
-        /// for and the user has turned off is not foreign, so it is not
-        /// preserved.
-        ///
-        /// `reminder_offsets_hours` is then derived from that merged set
-        /// rather than computed separately, so the lossy mirror never drifts
-        /// out of step with the complete one — including for a preserved
-        /// value that happens to be a whole number of hours. Whole hours
-        /// only, because that field has always meant whole hours to every
-        /// reader that predates `reminder_offsets_minutes`: the four
-        /// sub-hour cases (`min30`/`min15`/`min10`/`min5`) would collide on
-        /// truncation — all four → `0` — so they are left out of it and
-        /// carried losslessly in the minutes array instead. Both arrays are
-        /// descending, for a deterministic, readable document (`Set`
-        /// iteration order is not stable).
-        ///
-        /// An hour, not just a whole multiple of one, is the floor: `0` and
-        /// negatives divide evenly by 60 too, and a preserved foreign value
-        /// of either shape would otherwise be mirrored into the legacy
-        /// field as a reminder due at — or after — the deadline, for a
-        /// reader that has no `reminder_offsets_minutes` case to weigh it
-        /// against. They stay in the minutes array, where a reader that
-        /// understands that field decides for itself.
-        ///
-        /// A foreign value living only in a legacy `reminder_offsets_hours`
-        /// entry, with no `reminder_offsets_minutes` beside it, is not
-        /// separately preserved: every writer that knows the minutes field
-        /// mirrors into it, so that shape can only come from a client older
-        /// than this whole feature, and the hours field has always been the
-        /// lossy one by design.
+        /// The `assignments` section to write over `existing`, the document the server holds.
+        /// `reminder_offsets_minutes` is this device's selection plus every value in `existing`
+        /// that no `AssignmentReminderOffset` case represents, since this app writes the key
+        /// outright and the merge cannot keep them. A known value the user deselected is removed.
+        /// `reminder_offsets_hours` derives from it, holding whole hours of at least one: a
+        /// sub-hour value would truncate to 0, and 0 or a negative would read to an old client as
+        /// a reminder at or after the deadline. A foreign value only in the hours field is not
+        /// kept. See docs/decisions/0002-notification-settings-json-merge.md.
         func assignmentsSection(
             preservingForeignMinutesFrom existing: [String: Any]
         ) -> NotificationSettingsDocument.Assignments {
@@ -493,19 +359,13 @@ nonisolated enum NotificationSettingsSync {
             )
         }
 
-        /// The keys this app owns, as JSON objects ready to splice over
-        /// whatever the server currently holds. Each section is included
-        /// only when its device switch is on; a section left out here is
-        /// left exactly as the server currently holds it by
-        /// `merging(_:into:)` rather than overwritten with a local value
-        /// the device is not supposed to be syncing.
+        /// The keys this app owns, as JSON objects to splice over what the server holds. A
+        /// section is included only while its device switch is on; one left out stays as the
+        /// server holds it (`merging(_:into:)`), never overwritten with a local value.
         ///
-        /// `existing` is what the server currently holds — the same object
-        /// the result is about to be merged over. The `assignments` section
-        /// depends on it (see `assignmentsSection(preservingForeignMinutesFrom:)`),
-        /// so this must be recomputed against the document that is actually
-        /// being written to, including after a 409 rebase adopts a different
-        /// one.
+        /// `existing` is the object the result is merged over, and the `assignments` section
+        /// depends on it. Recompute this against the document actually being written, including
+        /// after a 409 rebase adopts a different one.
         func documentUpdates(
             existing: [String: Any],
             includeAssignments: Bool = true,
@@ -526,27 +386,13 @@ nonisolated enum NotificationSettingsSync {
 
     // MARK: - Forward-compatible merge
 
-    /// Splices `updates` over `existing`, key by key, and returns the
-    /// result. Any key `updates` does not mention survives untouched — at
-    /// the top level (a whole section a newer client or Android added) and,
-    /// because the merge recurses into nested objects, inside the sections
-    /// this app *does* own (a field added to `live_activity` by a build
-    /// that knows about it).
+    /// Splices `updates` over `existing` key by key, recursing into nested objects, so a key
+    /// `updates` does not mention survives: a section another client added, or a field a newer
+    /// build added inside a section this app owns.
     ///
-    /// Chosen over a typed struct carrying an unknown-keys bag for two
-    /// reasons. The client already hands the document over as opaque
-    /// `Data`, so the raw object is in hand at the exact moment it is
-    /// needed and costs nothing extra. And a bag would have to be threaded
-    /// through hand-written `init(from:)`/`encode(to:)` on
-    /// `NotificationSettingsDocument` *and* on each nested section —
-    /// unknown keys appear inside sections, not only beside them, so a
-    /// top-level-only bag would still erase them — plus a `Sendable`,
-    /// `Equatable` `AnyCodable` box to hold the values. That is a lot of
-    /// machinery for something six lines of dictionary merge do exactly.
-    ///
-    /// Arrays are replaced wholesale, not merged: every array in this
-    /// document is a complete set of user choices, and unioning them would
-    /// make a removal impossible to express.
+    /// Arrays are replaced whole, not merged: each is a complete set of user choices, and a
+    /// union could not express a removal. Chosen over a typed struct with an unknown-keys bag.
+    /// See docs/decisions/0002-notification-settings-json-merge.md.
     static func merging(_ updates: [String: Any], into existing: [String: Any]) -> [String: Any] {
         var merged = existing
         for (key, value) in updates {
@@ -584,36 +430,14 @@ nonisolated enum NotificationSettingsSync {
 
     // MARK: - Push
 
-    /// Read-modify-write cycle for `assignments` + `live_activity`.
-    /// Everything else in the document travels back exactly as read (see
-    /// ``merging(_:into:)``). On a 409, adopts the server's document and
-    /// its revision, then retries exactly once — never loops.
-    ///
-    /// `syncAssignmentRemindersEnabled` / `syncLiveActivityEnabled` gate
-    /// their sections independently: a section whose switch is off is
-    /// omitted from `updates`, so `merging(_:into:)` leaves the server's
-    /// current value for it untouched rather than overwriting it with a
-    /// local value the device is not supposed to be syncing. When both are
-    /// off there is nothing to write, so this returns `false` without
-    /// reading or writing anything — same as `cloudSyncEnabled == false`.
-    ///
-    /// Returns `true` only when a write actually landed on the server;
-    /// `false` when nothing was attempted (cloud sync off, or both section
-    /// switches off). The caller uses that to decide whether the pending
-    /// marker can be cleared — a "didn't run" must not read as "succeeded".
-    ///
-    /// Deliberately tolerant of whatever the server currently holds: a
-    /// document that is missing sections, or is not even a JSON object, is
-    /// merged over rather than decoded. Aborting on an unparseable document
-    /// would wedge this device's push permanently — every attempt throwing
-    /// with only a log line — the first time another client wrote a shape
-    /// this build doesn't model.
-    ///
-    /// `isCurrent()` turns false once a logout has happened. It is checked
-    /// before every write, as ``reconcile(store:client:cloudSyncEnabled:syncAssignmentRemindersEnabled:syncLiveActivityEnabled:isPushPending:isCurrent:)``
-    /// checks it after every round trip: the document was read under the
-    /// departing account, and writing it back would put that account's
-    /// whole document over the next one's. Abandoning reports `false`.
+    /// Read-modify-write of `assignments` and `live_activity`; every other key goes back as read
+    /// (``merging(_:into:)``). A 409 adopts the server's document and revision for one retry. A
+    /// section whose device switch is off is left as the server holds it. Returns `true` only if
+    /// a write landed, so a push that did not run cannot clear the pending marker: cloud sync
+    /// off, both switches off, or a logout. `isCurrent()` turns false on a logout and is checked
+    /// before every write, so the departing account's document never lands on the next one's.
+    /// The server's document is merged over, not decoded: aborting on a shape this build does
+    /// not model would wedge every later push.
     @MainActor
     @discardableResult
     static func push(
@@ -641,9 +465,8 @@ nonisolated enum NotificationSettingsSync {
         var attempt = 0
         while true {
             guard isCurrent() else { return false }
-            // Rebuilt every iteration, not once before the loop: the
-            // `assignments` section preserves offsets the *current*
-            // document holds, and after a 409 that is the winner's
+            // Rebuilt every iteration, not once before the loop: `assignments` preserves
+            // offsets the current document holds, and after a 409 that is the winner's
             // document, not the one this call started from.
             let updates = try local.documentUpdates(
                 existing: existing,
@@ -682,16 +505,10 @@ nonisolated enum NotificationSettingsSync {
     /// Whether `pushNotificationSettings(isCurrent:)` may clear
     /// `Defaults[.notificationSettingsPushPending]` after this push.
     ///
-    /// Only when the write actually landed (`written`) **and** the store
-    /// still matches what was sent (`current == sent`). A preference edit
-    /// that arrived while the request was in flight is already queued
-    /// behind it (`enqueueNotificationSettingsPush`'s chain) and must stay
-    /// marked pending until *that* push lands — clearing on any success
-    /// would let a kill in the next 250 ms lose the newer edit with the
-    /// marker already `false`. Mirrors `enqueueHolidayUpload`'s
-    /// re-read-and-compare (`AppState+PushServer.swift`), which only
-    /// acknowledges a holiday toggle if the server now holds what the user
-    /// still wants.
+    /// Only when the write landed (`written`) and the store still matches what was sent
+    /// (`current == sent`). An edit that arrived while the request was in flight is queued
+    /// behind it and must stay pending until its own push lands; clearing on any success would
+    /// let a kill in the next 250 ms lose that edit. Same rule as `enqueueHolidayUpload`.
     static func canClearPendingMarker(
         written: Bool,
         sent: LocalPreferences,
@@ -700,19 +517,14 @@ nonisolated enum NotificationSettingsSync {
         written && current == sent
     }
 
-    /// Whether a device switch's change (`syncAssignmentReminders` /
-    /// `syncLiveActivity`) should queue an extra settings push
-    /// (`AppState.scheduleNotificationSettingsPush()`) beyond the
-    /// unconditional device-preferences PATCH
-    /// (`AppState.pushSyncPreferences()`, which fires on every change either
-    /// direction and only carries the switch itself). True only on the
-    /// off→on transition: turning the switch back on ungates the section it
-    /// guards in `push(...)` above, and nothing else pushes that section's
-    /// now-current local value to the server until this fires. The on→off
-    /// direction needs no push — the section simply goes back to being left
-    /// exactly as the server holds it, which needs no write. Without it,
-    /// the just-ungated section stayed stale server-side until some
-    /// unrelated local edit happened to trigger a push.
+    /// Whether changing a device switch (`syncAssignmentReminders`, `syncLiveActivity`) should
+    /// queue a settings push (`AppState.scheduleNotificationSettingsPush()`) on top of the
+    /// device-preferences PATCH (`AppState.pushSyncPreferences()`), which fires on every change
+    /// and carries only the switch.
+    ///
+    /// Only off to on: that ungates the section in `push(...)`, and nothing else would send its
+    /// current local value until some unrelated edit. Turning a switch off needs no write: the
+    /// section is then left as the server holds it.
     static func shouldPushOnDeviceSwitchChange(old: Bool, new: Bool) -> Bool {
         new && !old
     }
@@ -752,34 +564,14 @@ nonisolated enum NotificationSettingsSync {
         case settled(adopted: Set<OwnedSection>, seeded: Set<OwnedSection>)
     }
 
-    /// Settles this device's synced sections against the server's
-    /// `notification` document, reading before it writes, section by
-    /// section:
-    ///
-    /// - the server has the section: it is adopted onto `store` through
-    ///   ``apply(_:to:)``, so a field that is absent or malformed keeps its
-    ///   local value;
-    /// - the document or the section is absent (a 404, or no such key):
-    ///   this device's local values for that section are written, merged
-    ///   over whatever else the document holds.
-    ///
-    /// A section syncs when its device switch is on
-    /// (`syncAssignmentRemindersEnabled` / `syncLiveActivityEnabled`). One
-    /// that does not is neither adopted nor written.
-    ///
-    /// A local edit the server has not acknowledged wins. While
-    /// `isPushPending()` is true nothing is read. It is checked again after
-    /// every round trip, together with the local values themselves (an
-    /// edit's marker may not be set yet). Either way nothing is adopted or
-    /// written, and the edit's own push carries it up.
-    ///
-    /// `isCurrent()` turns false once a logout has happened. It is checked
-    /// after every round trip, so nothing read under the departing account
-    /// is applied and nothing is written over the next account's document.
-    ///
-    /// A 409 on the write means another device wrote first. The winning
-    /// document is settled the same way — what it now has is adopted, what
-    /// it still lacks is written — and the write is retried once.
+    /// Settles each section whose device switch is on against the `notification` document, read
+    /// first. A section the server has is adopted through ``apply(_:to:)``, and an absent or
+    /// malformed field keeps its local value. A section it lacks is written from local values.
+    /// An unacknowledged local edit wins, and its own push carries it: nothing is read while
+    /// `isPushPending()`. After each round trip that and the local values are checked again, as
+    /// an edit's marker may not be set yet, and so is `isCurrent()`: nothing from a logged-out
+    /// account is applied or written. On a 409 the winner's document is settled the same way and
+    /// the write is retried once.
     @MainActor
     static func reconcile(
         store: LiveActivityPreferencesStore,
@@ -871,25 +663,14 @@ nonisolated enum NotificationSettingsSync {
 
     // MARK: - Applying what was read
 
-    /// Document offsets → the local `Set<AssignmentReminderOffset>` to
-    /// store. **Never returns less than the caller can justify losing.**
+    /// Maps the document's offsets to the local set, dropping only what the document justifies.
     ///
-    /// - `reminder_offsets_minutes` present: authoritative and complete,
-    ///   including the sub-hour offsets. An entry matching no case in this
-    ///   build (an offset a newer client added) is skipped rather than
-    ///   failing the pull — the same forward-compatibility stance the
-    ///   document type takes. An empty array is a real answer: the user
-    ///   turned everything off, and that must sync.
-    /// - only `reminder_offsets_hours`: written by a build, or a platform,
-    ///   that cannot express sub-hour offsets in it. The whole-hour offsets
-    ///   are taken from the document; the device's own sub-hour selections
-    ///   are **kept**, because a field that structurally cannot carry them
-    ///   is not evidence the user turned them off. This is the case that
-    ///   used to silently delete `.min30` — which ships in
-    ///   `LiveActivityPreferencesStore.defaultOffsets`, so it hit a default
-    ///   install on the first pull.
-    /// - neither: the document says nothing about offsets, so nothing
-    ///   changes.
+    /// - `reminder_offsets_minutes` present: authoritative, sub-hour offsets included. An entry
+    ///   no case matches (a newer client's) is skipped, not fatal. An empty array means all off.
+    /// - only `reminder_offsets_hours`: whole hours come from the document, and the device keeps
+    ///   its sub-hour offsets, since that field cannot carry them; dropping them would delete the
+    ///   default `.min30` on a fresh install's first pull.
+    /// - neither: nothing changes.
     static func resolveOffsets(
         documentMinutes: [Int]?,
         documentHours: [Int]?,
@@ -900,12 +681,9 @@ nonisolated enum NotificationSettingsSync {
         }
         guard let documentHours else { return currentLocal }
         let fromDocument = Set(documentHours.compactMap { hours -> AssignmentReminderOffset? in
-            // `hours` comes straight off the server's document, which the
-            // route does not validate (`SettingsPut.document: dict`). A
-            // value large enough that `hours * 60` overflows `Int` used to
-            // be an arithmetic trap — a crash, not a decode error. It now
-            // just fails to match any case, the same degradation an
-            // out-of-range value already gets below.
+            // `hours` comes from the server's document, which the route does not validate
+            // (`SettingsPut.document: dict`). `hours * 60` could overflow and trap, so an
+            // overflowing value matches no case instead, like any other out-of-range value.
             let (minutes, overflowed) = hours.multipliedReportingOverflow(by: 60)
             return overflowed ? nil : offset(forMinutes: minutes)
         })

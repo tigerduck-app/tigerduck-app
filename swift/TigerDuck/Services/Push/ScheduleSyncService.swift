@@ -1,20 +1,14 @@
 import Foundation
 import os
 
-/// Builds a 48-hour event list from the same resolver the on-device Live
-/// Activity uses, and POSTs it to `/v2/schedule/sync`.
+/// Builds a 48-hour event list from the resolver the on-device Live
+/// Activity uses and POSTs it to `/schedule/sync`. 48 hours covers overnight
+/// and the next day without letting the server hold a huge pending queue.
+/// The app is expected to re-sync on every foreground and every course or
+/// assignment cache update.
 ///
-/// Why 48 hours: enough headroom to cover overnight + next day without
-/// letting the server hold a huge pending queue. The app is expected to
-/// re-sync whenever it foregrounds (`scenePhase == .active`) and whenever
-/// the course / assignment cache updates.
-///
-/// Concurrency: event construction runs on `@MainActor` because it reads
-/// SwiftData-backed models (`SDCourse`, `SDAssignment`) which are not
-/// `Sendable`. The network call itself is `async` and safely handed off
-/// to `URLSession`. We don't need an actor wrapper — the service holds
-/// no mutable state beyond an inflight task handle, protected by
-/// `@MainActor` isolation.
+/// `@MainActor` because events read non-`Sendable` SwiftData models; that
+/// also guards `inflight`, the only mutable state, so no actor is needed.
 @MainActor
 final class ScheduleSyncService {
     struct Inputs {
@@ -59,15 +53,13 @@ final class ScheduleSyncService {
         self.horizonSeconds = horizonHours * 3600
     }
 
-    /// Main entry. Failures are logged but never thrown — schedule sync is
-    /// best-effort and must not block UI or app state.
+    /// Main entry. Failures are logged, never thrown: schedule sync is best
+    /// effort and must not block UI or app state.
     ///
-    /// `now` defaults to `AppClock.now()` so the server's push event window
-    /// stays consistent with what the on-device LA / widgets / watch are
-    /// displaying under a debug clock override. Auth/network timestamps
-    /// (session TTL, cache age) intentionally remain on real time — see
-    /// the AppClock docstring — but the schedule horizon itself is
-    /// display state.
+    /// `now` defaults to `AppClock.now()` so the server's event window matches
+    /// what the Live Activity, widgets and watch show under a debug clock
+    /// override. Auth and network timestamps (session TTL, cache age) stay on
+    /// real time (see `AppClock`); the schedule horizon is display state.
     func sync(inputs: Inputs, now: Date = AppClock.now()) {
         let end = now.addingTimeInterval(horizonSeconds)
         let events = Self.buildEvents(inputs: inputs, now: now, horizonEnd: end)
@@ -100,9 +92,8 @@ final class ScheduleSyncService {
         horizonEnd: Date,
         timelineResolver: CourseTimelineResolver? = nil
     ) -> [PushAPI.ScheduleEvent] {
-        // Spec §6: nothing for the server to start while Live Activity is
-        // unavailable. The empty list still goes out — it is what cancels
-        // the starts this device queued before.
+        // Without Live Activity there is nothing for the server to start. The
+        // empty list still goes out: it cancels the starts this device queued.
         guard inputs.liveActivityAvailable else { return [] }
 
         var events: [PushAPI.ScheduleEvent] = []
@@ -126,11 +117,9 @@ final class ScheduleSyncService {
                         slot: slot,
                         accentHex: inputs.accentHex
                     )
-                    // Server delivers pushes on the real wall clock — translate
-                    // app-clock fireAt to its real instant so a fake-time test
-                    // window produces a push that actually arrives during it.
-                    // Snapshot dates stay in app-clock; the device-side LA
-                    // handler already translates them (see staleDate fix).
+                    // The server pushes on the real clock, so `fireAt` goes out in
+                    // real time; snapshot dates stay app-clock, since the device's
+                    // Live Activity handler translates them.
                     events.append(PushAPI.ScheduleEvent(
                         sourceId: snapshot.sourceId,
                         scenario: .classPreparing,
@@ -182,17 +171,14 @@ final class ScheduleSyncService {
         return events
     }
 
-    /// Decide when a lead-time-driven scenario (classPreparing / assignmentUrgent)
-    /// should actually fire.
+    /// When a lead-time scenario (classPreparing, assignmentUrgent) fires.
     ///
-    /// - `desired` is `event - leadTime`. When it's in the future we use it.
-    /// - When it's already past but the underlying event is still in the
-    ///   future, we fire immediately (`now + 5s` — small offset so dispatcher
-    ///   sees it on its very next tick rather than skipping for being
-    ///   microseconds in the past). User still gets the "即將上課 / 作業將到期"
-    ///   heads-up, just later than the user's ideal lead time.
-    /// - When the event itself is past or within 60s, we skip — there's no
-    ///   useful warning left to deliver.
+    /// - `desired` (`event - leadTime`) when it is still in the future.
+    /// - Otherwise, if the event is more than 60 s away, `now + 5s`: the user
+    ///   still gets the "class starting soon" or "assignment due soon" notice,
+    ///   only late. The offset makes the dispatcher see it on its next tick
+    ///   instead of skipping it as microseconds past.
+    /// - `nil` when the event is past or within 60 s: no useful warning is left.
     private static func leadTimeFireAt(
         desired: Date,
         event: Date,
@@ -220,10 +206,9 @@ final class ScheduleSyncService {
 #if os(iOS)
 extension ScheduleSyncService.Inputs {
     /// This device's upload, read off the same preferences the on-device
-    /// resolver uses, with `liveActivityAvailable` answered by
-    /// `effectiveLiveActivityEnabled` (spec §6): course sync off, or the
-    /// user's own Live Activity switch off, leaves the server nothing to
-    /// start.
+    /// resolver uses, with `liveActivityAvailable` taken from
+    /// `effectiveLiveActivityEnabled`: with course sync off, or the user's own
+    /// Live Activity switch off, the server has nothing to start.
     init(
         courses: [SDCourse],
         assignments: [SDAssignment],

@@ -1,37 +1,25 @@
-// Cached-course relabeling sweep — split out of AppState.swift.
-//
-// Triggered by the course/classroom-abbreviation and Mandarin-display
-// toggles' `didSet` (still on the class itself, since the toggles are
-// stored properties). Walks the per-semester course cache plus the
-// user-added courses and rewrites display labels in place. `relabelTask`
-// — the in-flight-task guard this cancels/reassigns — stays a stored
-// property on `AppState` for the same reason; only the sweep logic moved
-// here, so both `relabelAllCachedCourses` and `relabelTask` widened from
-// `private` to internal.
+// Relabels cached courses when a course or classroom abbreviation or Mandarin-display toggle
+// changes. Stored properties stay on the class: the toggles with their `didSet`, and `relabelTask`.
+// The sweep rewrites the per-semester course cache and the user-added courses in place.
 
 import SwiftUI
 import Defaults
 
 extension AppState {
 
-    /// Re-derive course/classroom labels for every cached semester using the
-    /// current toggle settings, then post `dataDidUpdate` so visible views
-    /// reload from the freshly relabeled cache. Lives on `AppState` so the
-    /// relabel still runs when no `ClassTableViewModel` is alive (e.g., the
-    /// user toggled in Settings without ever opening the Class Table tab).
+    /// Re-derive course and classroom labels for every cached semester from the
+    /// current toggles, then post `dataDidUpdate` so visible views reload. Lives
+    /// on `AppState` so it runs even when no `ClassTableViewModel` exists.
     ///
-    /// Runs on a detached task so disk I/O (up to four cached semesters plus
-    /// user-added courses, plus a first-call JSON parse inside
-    /// ``NameAbbrService``) does not block the UI thread when the toggle is
-    /// flipped from a Settings view. Rapid toggling cancels the previous task
-    /// so the latest settings always win the save race.
+    /// Runs on a detached task so the disk I/O (up to four cached semesters plus
+    /// user-added courses, and ``NameAbbrService``'s first-call JSON parse) does
+    /// not block the UI when a Settings toggle flips. A new call cancels the
+    /// previous task so the latest settings win the save race.
     func relabelAllCachedCourses() {
         relabelTask?.cancel()
-        // `Task.detached` lets the loop body yield to the runtime between
-        // iterations, so a long relabel sweep doesn't pin the MainActor.
-        // The actual disk/SwiftData work hops to MainActor per iteration
-        // because `DataCache` and `NameAbbrService.relabelInPlace` touch
-        // SwiftData-managed types that are themselves MainActor-isolated.
+        // Detached so a long sweep yields between iterations instead of pinning the main actor.
+        // Each iteration's disk and SwiftData work hops to the main actor, because `DataCache` and
+        // `NameAbbrService.relabelInPlace` touch MainActor-isolated SwiftData types.
         relabelTask = Task.detached(priority: .userInitiated) {
             let courseAbbrEnabled = Defaults[.useEnglishCourseAbbreviation]
             let classroomAbbrEnabled = Defaults[.useEnglishClassroomAbbreviation]
@@ -42,10 +30,8 @@ extension AppState {
             var consecutiveEmpty = 0
             for _ in 0..<AppConstants.cachedSemesterRelabelDepth {
                 if Task.isCancelled { return }
-                // Snapshot `code` into a `let` so the Sendable closure passed
-                // to `MainActor.run` captures an immutable value — Swift 6
-                // rejects capturing the mutating outer `var` from a
-                // concurrently-executing context.
+                // A `let` copy for the Sendable `MainActor.run` closure: Swift 6 rejects
+                // capturing the mutating outer `var` from concurrently executing code.
                 let semesterCode = code
                 let iter = await MainActor.run { () -> (changed: Bool, wasEmpty: Bool) in
                     let courses = DataCache.shared.loadCourses(semester: semesterCode)
@@ -56,11 +42,9 @@ extension AppState {
                         classroomAbbrEnabled: classroomAbbrEnabled,
                         classroomMandarinDisplay: classroomMandarinDisplay
                     )
-                    // Re-check cancellation inside the MainActor body: a
-                    // newer toggle can have cancelled this task while it
-                    // was queued for the main actor, and persisting now
-                    // would clobber the newer task's save with stale
-                    // toggle values captured at the top of this closure.
+                    // Re-check cancellation on the main actor: a newer toggle may have cancelled
+                    // this task while it waited there, and saving now would overwrite the newer
+                    // task's save with the stale toggle values captured above.
                     if changed && !Task.isCancelled {
                         DataCache.shared.saveCourses(courses, semester: semesterCode)
                     }

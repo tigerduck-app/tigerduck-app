@@ -25,20 +25,14 @@ struct PushDiagnostic: Sendable {
     let uuid: String
 }
 
-/// Owns the push-server lifecycle for the app.
+/// Owns the push-server lifecycle: registering for remote notifications,
+/// handing APNs and push-to-start (`PushTokenRelay`) tokens to
+/// `PushRegistrationService`, and debouncing sync bursts into one POST.
 ///
 /// AppState holds a single instance. `enable()` brings the stack up
-/// idempotently at every launch past onboarding; `disable()` takes it down
-/// at sign-out, which is now the only way down. There is no stored flag
-/// gating either — what a user can turn off is a delivery channel
-/// (bulletins, operator pushes), never the registration itself.
-///
-/// Responsibilities:
-/// * Register for remote notifications on enable
-/// * Wire the APNs device token into `PushRegistrationService`
-/// * Start/stop the `PushTokenRelay` for Push-to-Start tokens
-/// * Debounce `sync()` calls so bursts of data-change notifications
-///   turn into one POST
+/// idempotently at every launch past onboarding; `disable()` at sign-out is
+/// the only way down. No stored flag gates either: a user can turn off a
+/// delivery channel (bulletins, operator pushes), never the registration.
 @MainActor
 final class PushCoordinator {
     private let identity: PushIdentity
@@ -64,10 +58,8 @@ final class PushCoordinator {
         authTokenManager: AuthTokenManager? = nil
     ) {
         self.identity = identity
-        // Build an `authHeaderProvider` closure from the supplied
-        // `AuthTokenManager`. When `authTokenManager` is nil (e.g. unit
-        // tests) the closure returns nil and no `Authorization` header is
-        // added — matching the pre-v3 no-auth path.
+        // The auth header comes from `authTokenManager`. Without one (unit
+        // tests, for example) the client sends no `Authorization` header.
         let resolvedClient: PushAPIClient
         if let apiClient {
             resolvedClient = apiClient
@@ -76,10 +68,9 @@ final class PushCoordinator {
                 authHeaderProvider: { await atm.authorizationHeader() }
             )
         } else {
-            // No `baseURL:` argument — `PushAPIClient` defaults to providers
-            // that re-resolve the URL through `PushServerConfig` on every
-            // request, so a Debug build's runtime endpoint override (Settings
-            // → Developer → API endpoint) takes effect without an app relaunch.
+            // Pass no URL: the default provider re-resolves `PushServerConfig`
+            // on every request, so a runtime endpoint override takes effect
+            // without an app relaunch.
             resolvedClient = PushAPIClient()
         }
         self.apiClient = resolvedClient
@@ -117,24 +108,16 @@ final class PushCoordinator {
 
     /// Enable the full push stack. Safe to call repeatedly.
     ///
-    /// - Parameter requestPermission: When `true`, the call also fires
-    ///   the iOS system permission prompt — appropriate for the explicit
-    ///   "turn on" Settings toggle, which needs visible feedback that the
-    ///   toggle "did something". Pass `false` for the silent auto-enable
-    ///   path that runs at every launch: it only calls
-    ///   `registerForRemoteNotifications`, which is a no-op until the
-    ///   user has granted permission elsewhere (typically onboarding).
-    ///   Auto-enable must NOT prompt — that would land the system alert
-    ///   on top of OnboardingView.
+    /// - Parameter requestPermission: `true` also shows the iOS permission
+    ///   prompt, as visible feedback for an explicit "turn on" tap. Pass
+    ///   `false` for the silent auto-enable at every launch: it only calls
+    ///   `registerForRemoteNotifications`, a no-op until the user grants
+    ///   permission elsewhere (usually onboarding). Auto-enable must not
+    ///   prompt, or the system alert would land on top of OnboardingView.
     func enable(requestPermission: Bool = false) {
-        // One-time stack bring-up: relay + `isStarted` flip happen on the
-        // first call only. The permission/register block below intentionally
-        // runs every time — auto-enable at launch (`requestPermission:
-        // false`) lands first and sets `isStarted = true`, so a later
-        // onboarding/Settings call with `requestPermission: true` must NOT
-        // return early; otherwise the system alert never appears and APNs
-        // is never asked to deliver a token, and the device never gets a
-        // server registration row even with notifications granted.
+        // Only the relay start is one-time. Launch auto-enable sets `isStarted`
+        // first, so a later `requestPermission: true` call must still prompt
+        // and register, or the device gets no APNs token or server registration.
         let firstStart = !isStarted
         if firstStart {
             isStarted = true
@@ -150,12 +133,9 @@ final class PushCoordinator {
                     .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
                 logger.info("notification authorization granted=\(granted, privacy: .public)")
             }
-            // registerForRemoteNotifications is safe to call regardless of
-            // permission state — it returns an APNs token if authorized
-            // and stays quiet otherwise. Calling it on every enable lets
-            // a later permission grant (via onboarding or iOS Settings)
-            // flow into the existing token-forwarding pipeline without
-            // another explicit hook.
+            // `registerForRemoteNotifications` is safe in any permission state
+            // and yields a token only when authorized. Calling it on every enable
+            // lets a later grant reach token forwarding with no extra hook.
             #if os(iOS)
             UIApplication.shared.registerForRemoteNotifications()
             #elseif os(macOS)
@@ -261,11 +241,9 @@ final class PushCoordinator {
         relay.stop()
         #endif
         pendingSyncTask?.cancel()
-        // Wait for any already-running debounced sync to finish before we
-        // unregister, so a stale POST can't recreate state we just deleted.
-        // `pendingSyncTask` only covers the debounce + builder; the actual
-        // HTTP POST is owned by `ScheduleSyncService.inflight`, so we await
-        // that separately — otherwise the POST can land *after* unregister.
+        // Let a running sync finish before unregistering so a stale POST cannot
+        // recreate deleted state. `pendingSyncTask` covers only the debounce
+        // and builder; the POST runs in `ScheduleSyncService.inflight`.
         await pendingSyncTask?.value
         await scheduleSync.awaitInflight()
         await registration.unregister()
@@ -295,13 +273,9 @@ final class PushCoordinator {
             #if os(iOS)
             guard UIApplication.shared.applicationState != .background else { return }
             #endif
-            // `/schedule/sync` is an authenticated endpoint, and this was the
-            // one sync path with no auth check at all — every scene
-            // activation and data change fired it while signed out, and each
-            // one could only come back 401 missing_bearer_token. Ask for a
-            // usable token rather than `isLoggedIn`, which only means "a
-            // refresh token exists" and is true for a stale one that no
-            // longer refreshes.
+            // `/schedule/sync` needs auth and would only 401 without a usable
+            // token. Not `isLoggedIn`: that only means a refresh token exists,
+            // and it stays true for a stale one that fails to refresh.
             guard await self?.apiClient.hasAuthSession() == true else { return }
             let inputs = inputsBuilder()
             self?.scheduleSync.sync(inputs: inputs)
@@ -321,17 +295,9 @@ final class PushCoordinator {
     nonisolated static func assertEnvConsistency() {
         let resolved = PushServerConfig.resolveServerURL()
         let host = resolved.host?.lowercased() ?? ""
-        // The host check only applies to the *built-in* default, and is
-        // skipped entirely once the user has set their own endpoint.
-        //
-        // It exists to catch someone flipping `PushAPNsEnv` or
-        // `AppConstants.productionPushServerURL` without the other. A
-        // self-hosted backend is a legitimate value we cannot enumerate,
-        // and asserting on it would hard-crash a Debug build at launch
-        // over a Keychain entry the user then has no UI left to clear.
-        // Pointing a Debug build at prod is still a real apns_env
-        // mismatch, but it surfaces as push failing at registration —
-        // not before the first frame renders.
+        // A user-set endpoint skips the host check: self-hosted backends are
+        // valid, and a launch crash would leave no UI to clear the Keychain
+        // entry. A Debug build aimed at prod then fails at push registration.
         let hostOK = DebugEndpointStore.currentOverride() != nil
             || host == "localhost"
             || host == "127.0.0.1"

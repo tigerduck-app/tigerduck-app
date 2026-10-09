@@ -2,22 +2,14 @@ import Defaults
 import Foundation
 import Observation
 
-/// 同步課程資訊, read and written through its only copy:
-/// `Defaults[.cloudSyncEnabled]`.
-///
-/// Several writers set that preference directly — onboarding, the
-/// `@Default`-bound switch in TigerSync settings, the Mac toggles through
-/// `AppState`, sign-out — and what a change sets off (Live Activity ending or
-/// resuming, the push schedule, `CloudSyncCoordinator` following) has to
-/// happen whichever of them made it. So there is no second copy to keep in
-/// step: `isEnabled` reads the preference every time, and every change to it
-/// in this process reaches the handler once. `AppState.cloudSyncEnabled`
-/// forwards here.
-///
-/// Observed synchronously: `Defaults.observe` is KVO, which calls back inside
-/// the write, so a change's side effects are under way before the writer's
-/// next line runs. UserDefaults reports only writes that change the value, so
-/// writing the value already there — its default included — reports nothing.
+/// The Sync course information preference. Its only copy is `Defaults[.cloudSyncEnabled]`;
+/// `AppState.cloudSyncEnabled` forwards here. Onboarding, the `@Default` switch in TigerSync
+/// settings, the Mac toggles (through `AppState`) and sign-out all write it, and a change's
+/// effects (Live Activity, the push schedule, `CloudSyncCoordinator`) must follow whichever
+/// wrote it. So `isEnabled` reads it every time, and each change in this process reaches the
+/// handler once. `Defaults.observe` is KVO and calls back inside the write, so effects start
+/// before the writer's next line. Writing the value already stored, its default included,
+/// reports nothing.
 @MainActor
 @Observable
 final class CloudSyncPreference {

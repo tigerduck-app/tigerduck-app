@@ -2,16 +2,14 @@
 import Foundation
 
 extension AppFeature {
-    /// Features deliberately not surfaced in the macOS UI.
+    /// Features not surfaced in the macOS UI.
     ///
-    /// Library lives behind the Library opt-in toggle on iOS and depends on
-    /// flows (Discussion Room booking, Lecture sign-up) that haven't been
-    /// designed for Mac; surfacing them in the Mac sidebar would create
-    /// dead taps. The underlying `LibraryService` still compiles so a
-    /// future Mac port can flip the switch without code changes.
+    /// Library sits behind an opt-in toggle on iOS and depends on flows not designed for Mac
+    /// (Discussion Room booking, Lecture sign-up) that would be dead taps in the sidebar.
+    /// `LibraryService` still compiles so a Mac port can flip the switch without code changes.
     ///
-    /// School Mail is iOS/iPadOS only (design doc §4) — its code is `#if os(iOS)` and
-    /// SwiftMail is not linked on macOS; `isImplemented` is already false there too.
+    /// School Mail is iOS and iPadOS only: its code is `#if os(iOS)`, SwiftMail is not
+    /// linked on macOS, and `isImplemented` is false there too.
     static let macHiddenFeatures: Set<AppFeature> = libraryRelatedFeatures.union([.schoolMail])
 
     /// True iff this feature should be visible anywhere in the macOS UI

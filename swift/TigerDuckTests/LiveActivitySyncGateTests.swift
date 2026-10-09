@@ -1,12 +1,6 @@
-// Live Activity must be unavailable while course sync (`cloudSyncEnabled`,
-// 同步課程資訊) is off — the app's own footnote
-// (`sync_courses_footer_platform_note`) already promises this. Spec §6.
-//
-// `effectiveLiveActivityEnabled` is the one place that combined answer is
-// computed; `LiveActivityScenarioResolver.resolve` is the reader covered
-// here, without constructing `AppState`, which this test target cannot do.
-// The schedule upload's reading is pinned in `ScheduleSyncServiceTests`, the
-// coordinator's in `LiveActivityCoordinatorTests`.
+// Live Activity is unavailable while course sync is off, as the footnote
+// `sync_courses_footer_platform_note` promises; `effectiveLiveActivityEnabled` decides it.
+// `ScheduleSyncServiceTests` and `LiveActivityCoordinatorTests` pin its other readers.
 import Foundation
 import Testing
 @testable import TigerDuck

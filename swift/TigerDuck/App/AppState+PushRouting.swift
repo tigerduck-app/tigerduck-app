@@ -1,11 +1,6 @@
-// Custom-push tap routing — split out of AppState.swift, iOS only.
-//
-// `NotificationDelegate` resolves an operator-issued push tap into one of
-// these targets and writes to the paired stored property — still on
-// `AppState` itself, since extensions can't hold stored properties; this
-// file is just the target types plus the shown/seen bookkeeping around
-// the popup variant. Not to be confused with AppState+PushServer.swift,
-// which is registration and preference plumbing, not tap handling.
+// Custom-push tap routing, iOS only: `NotificationDelegate` resolves an operator push tap
+// into one of these targets and writes the paired stored property on `AppState`, since an
+// extension cannot hold one. Registration and preferences are in AppState+PushServer.swift.
 
 import SwiftUI
 import Defaults

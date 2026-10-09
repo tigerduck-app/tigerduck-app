@@ -5,11 +5,9 @@ import Testing
 struct PushIdentityTests {
 
     @Test func loadOrCreate_producesWellFormedUUID() {
-        // The minted id must be a parseable UUID. v3 collapsed the former
-        // userId/deviceId pair into a single `uuid`. The Keychain persistence
-        // path itself is tested at the integration level — Valet silently
-        // no-ops in xctest host processes without Keychain entitlement, which
-        // would produce false-negative stability assertions here.
+        // The minted id must be a parseable UUID. Keychain persistence is tested at integration
+        // level: Valet silently no-ops in xctest hosts without the Keychain entitlement, which
+        // would give false-negative stability assertions here.
         let identity = PushIdentity.loadOrCreate()
 
         #expect(!identity.uuid.isEmpty)
