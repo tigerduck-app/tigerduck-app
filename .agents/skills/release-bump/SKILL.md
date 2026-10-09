@@ -133,14 +133,23 @@ If the version unlocks new product capability, also tick the matching item in th
 
 `swift/TigerDuck/whatsnew.json` holds the **summary** — the last page of the
 sheet the app shows on first launch after an update, and of the Settings →
-About "What's new" replay. **A version with no entry here shows no summary** —
-the decoder is defensive on purpose, so a missing entry is not an error you will
-see. Add it every marketing bump.
+About "What's new" replay. **A version with no entry here shows no summary**,
+and an upgrade that also brings no `WhatsNewCatalog` page shows no sheet at all.
+The decoder is defensive, so a missing entry is not an error you will see in the
+app. Add it every marketing bump, fix-only releases included, in the bump
+commit, so the entry is on `dev` before the release PR merges to `main` and the
+merge commit is tagged.
+
+CI catches a missing entry only on that PR:
+`.github/workflows/whatsnew-has-version.yaml` fails a `dev` → `main` pull
+request whose `MARKETING_VERSION` has no top-level key here. A hotfix PR from
+another branch straight to `main` skips the check, so confirm the key by hand.
 
 Top-level keys are `CFBundleShortVersionString` values, in ascending order.
-Each needs both locales — `zh-TW` and `en`; the repository falls back to `en`
-for every other language, so those two are the whole surface. Each row is an SF
-Symbol, a short headline and one line of detail — Apple's What's New layout:
+Each needs both locales — `zh-TW` and `en`; Chinese-family languages fall back
+to `zh-TW` and the rest to `en`, so those two are the whole surface. Each row
+is an SF Symbol, a short headline and one line of detail — Apple's What's New
+layout:
 
 ```json
   "<NEW>": {
@@ -161,6 +170,7 @@ Symbol, a short headline and one line of detail — Apple's What's New layout:
 
 - 3–5 rows, **user-facing outcomes only** — no internal refactors, no bug-fix
   plumbing the user never saw. This is App Store copy, not a changelog.
+- For a fix-only release, the rows are the fixes a user would notice.
 - `title` is a few words naming the feature; `body` is one sentence ending in
   `。` / `.`, same voice as the neighbouring entries.
 - `symbol` is an SF Symbol name that exists on the deployment target (check it
@@ -240,7 +250,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 
 - **Build number moves with every marketing bump.** `CURRENT_PROJECT_VERSION` +1 on all 16 lines, kept equal to the build number Xcode Cloud shows.
 - **Two READMEs always move together.** Never update one without the other.
-- **`whatsnew.json` moves with them.** Every marketing bump gets an entry, both locales.
+- **`whatsnew.json` moves with them.** Every marketing bump gets an entry, both locales, fix-only releases included.
 - **Badge color is `00BB00`** (green). Don't switch palette.
 - **Version cell format:** `` **`vX.Y.Z`** ``
 - **Date:** `YYYY-MM-DD` in the table.
@@ -265,7 +275,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 ## Anti-patterns
 
 - ❌ Updating only the Chinese README — the English one drifts and stops matching.
-- ❌ Shipping a marketing bump with no `whatsnew.json` entry — the update sheet just doesn't appear, and nothing warns you.
+- ❌ Shipping a marketing bump with no `whatsnew.json` entry — the update sheet loses its summary, or never appears when the upgrade brings no catalog page, and the app never warns you; only the `dev` → `main` CI check catches it.
 - ❌ Pasting the README highlight verbatim into `whatsnew.json` — the README row is a changelog, the JSON is App Store copy.
 - ❌ Writing a new `whatsnew.json` entry as `highlights` — it renders as plain bullets; new entries use `items` rows.
 - ❌ Bumping `MARKETING_VERSION = 1.0;` placeholders — these are test targets, not shippable.
