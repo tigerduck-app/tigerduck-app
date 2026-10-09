@@ -304,6 +304,24 @@ struct MailListViewModelTests {
         #expect(h.model.rows.last?.uid == 1)
     }
 
+    /// A refresh after the user paginated to the end keeps the merged page's cursor, so the next
+    /// scroll to the bottom does not fetch the older pages again.
+    @Test func aRefreshAfterPaginatingKeepsThePaginationCursor() async throws {
+        let h = Self.harness()
+        await h.model.load()
+        let last = try #require(h.model.rows.last)
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.rows.count == 60)
+        let pagesBeforePoll = await h.fake.calls.filter { $0 == "page INBOX" }.count
+        h.script.outcome = .newMail(1)
+        await h.model.pollOnce()
+        let pagesAfterPoll = await h.fake.calls.filter { $0 == "page INBOX" }.count
+        #expect(pagesAfterPoll > pagesBeforePoll)
+        let lastAfterPoll = try #require(h.model.rows.last)
+        await h.model.loadMoreIfNeeded(after: lastAfterPoll)
+        #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == pagesAfterPoll)
+    }
+
     /// Pagination merges the next page into the one already held and dedupes by UID — and a UID
     /// only means anything within one UIDVALIDITY generation. A folder recreated between the two
     /// requests reuses those numbers for entirely different messages, so merging across the two

@@ -35,7 +35,7 @@ push (group 12). Local test destination: `platform=iOS Simulator,name=iPhone 17 
 
 ## 5. Characterization tests
 
-- [ ] 5.1 List the long comments that describe testable behavior (start with `MailListViewModel.mergeFreshPage` and the JSON-level merge in `AppState+NotificationSettings.swift`) and add a test for each rule not yet covered; verify the phone unit tests pass locally
+- [x] 5.1 Check the rules described by the long comments on `MailListViewModel.mergeFreshPage` and `AppState+NotificationSettings.swift`'s `assignmentsSection` against the tests and add a test for each rule not yet covered (other behavior-describing comments are flagged during the cleanup in group 6); verify the phone unit tests pass locally and each new test fails when its rule is broken
 
 ## 6. Comment cleanup (one comment-only commit range per area)
 

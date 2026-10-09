@@ -676,6 +676,19 @@ struct NotificationSettingsSyncTests {
         #expect(section.reminderOffsetsHours == [24])
     }
 
+    @Test("a value only in the legacy hours field is not preserved")
+    func foreignHoursWithoutMinutesAreNotPreserved() {
+        // Only a client older than the minutes field writes this shape, and hours were always lossy.
+        let existing: [String: Any] = [
+            "assignments": ["reminder_offsets_hours": [24, 12]],
+        ]
+        let section = Self.local(assignmentReminderOffsets: [.hr24])
+            .assignmentsSection(preservingForeignMinutesFrom: existing)
+
+        #expect(section.reminderOffsetsMinutes == [1440])
+        #expect(section.reminderOffsetsHours == [24])
+    }
+
     @Test("an offset this build does know, but the user deselected, is still removed")
     func pushRemovesDeselectedOffsetsItDoesKnow() async throws {
         // The other half of the rule: "preserve what this enum cannot
