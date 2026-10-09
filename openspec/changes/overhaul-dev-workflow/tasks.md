@@ -31,7 +31,7 @@ push (group 12). Local test destination: `platform=iOS Simulator,name=iPhone 17 
 ## 4. Comment tooling
 
 - [x] 4.1 Write `tools/check_comments.py` with the lexer, `check` (rules `han`, `trace`, `tool`, `openspec`, `length`; options `--base`, `--all`) and `same-tokens`, as in design.md; verify `python3 tools/check_comments.py check --all` on the tree before the cleanup reports 235 `trace` lines in 78 files and 335 `han` lines in 81 files
-- [ ] 4.2 Write `tools/test_check_comments.py` with `unittest`: nested block comments, raw and multi-line strings, interpolation holding strings and parentheses, `#/.../#`, `//` inside strings, each rule, the RFC exemption, changed-block detection, and `same-tokens` ignoring a comment edit but catching a code edit; verify `python3 -m unittest discover -s tools -p 'test_*.py'` passes
+- [x] 4.2 Write `tools/test_check_comments.py` with `unittest`: nested block comments, raw and multi-line strings, interpolation holding strings and parentheses, `#/.../#`, `//` inside strings, each rule, the RFC exemption, changed-block detection, and `same-tokens` ignoring a comment edit but catching a code edit; verify `python3 -m unittest discover -s tools -p 'test_*.py'` passes
 
 ## 5. Characterization tests
 
