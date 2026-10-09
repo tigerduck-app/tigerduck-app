@@ -275,8 +275,7 @@ struct MailListViewModelTests {
         h.model.searchText = "公告 7"
         await h.fake.update { $0.holdSearch = true }
         let searchTask = Task { await h.model.submitSearch() }
-        // Give `submitSearch` a chance to actually start and reach the gate before switching.
-        try await Task.sleep(for: .milliseconds(50))
+        await h.fake.waitForArrival("search") // the search is held at the gate, really in flight
         await h.model.select(.real(MailFolderRole.trash.imapName))
         await h.fake.releaseSearch()
         await searchTask.value
