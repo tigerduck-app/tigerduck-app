@@ -35,18 +35,14 @@ nonisolated struct Holiday: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// The school's calendar, as the app reasons about it.
+/// The school's calendar, as the app reasons about it. A value type so
+/// the widget extension, Live Activity coordinator and views share one
+/// answer without coordinating. `AcademicCalendarStore` owns network and disk.
 ///
-/// A value type so the widget extension, the Live Activity coordinator and
-/// the views can all hold the same answer without coordinating. Everything
-/// that touches the network or disk lives in `AcademicCalendarStore`.
-///
-/// `empty` is the state before the first successful fetch, and every
-/// predicate is written so that state behaves exactly as the app did before
-/// this feature existed: nothing suppressed, term falls back to the caller's
-/// own guess. Failing open matters more than failing safe — silencing every
-/// class reminder because a server was unreachable is a far worse bug than
-/// ringing once on a holiday.
+/// Every predicate fails open on `empty`, the state before the first
+/// successful fetch: nothing is suppressed and the term falls back to the
+/// caller's own guess. Silencing every class reminder because a server was
+/// unreachable is far worse than ringing once on a holiday.
 nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
     let revision: Int
     let terms: [SemesterTerm]
@@ -58,14 +54,10 @@ nonisolated struct AcademicCalendar: Codable, Equatable, Sendable {
     ///
     /// `AcademicCalendarStore` is `@MainActor` because it owns the refresh
     /// task, but `CourseSelectionService.currentSemesterCode()` is
-    /// `nonisolated` and is called from background work. Both read the same
-    /// `Defaults` entry, so this is the same answer without hopping actors.
-    ///
-    /// That only holds because the type carries `nonisolated`: the target
-    /// builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so without
-    /// it every member here would be main-actor isolated and this would be
-    /// an error under the Swift 6 language mode rather than the free read
-    /// it is meant to be.
+    /// `nonisolated` and runs in background work; both read one `Defaults`
+    /// entry with no actor hop. That needs the type's `nonisolated`: the target
+    /// builds with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so without it
+    /// this read would be main-actor isolated, an error in Swift 6 mode.
     static var cached: AcademicCalendar {
         let data = Defaults[.academicCalendarCache]
         guard !data.isEmpty else { return .empty }

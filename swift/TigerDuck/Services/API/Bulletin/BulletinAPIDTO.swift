@@ -57,9 +57,9 @@ enum BulletinAPI {
         let id: Int
         let externalId: String
         let title: String
-        /// LLM-normalized title (≤24 全形 chars, no decorative prefixes,
-        /// no publisher prefix). `nil` for legacy rows that have not yet
-        /// been re-classified — fall back to `title`.
+        /// LLM-normalized title (at most 24 full-width characters, no
+        /// decorative or publisher prefix). `nil` for rows not yet
+        /// re-classified; fall back to `title`.
         let titleClean: String?
         let canonicalOrg: String?
         let contentTags: [String]

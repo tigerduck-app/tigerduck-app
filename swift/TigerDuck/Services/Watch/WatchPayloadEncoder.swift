@@ -16,11 +16,9 @@ enum WatchPayloadEncoder {
         languageTag: String?,
         visualPreset: VisualPreset
     ) -> WatchSnapshot {
-        // Drop cached courses on logout: SwiftData rows for the previous user
-        // may still be present when this push fires, and the watch UI prefers
-        // a non-empty `courses` over the `loggedIn` flag (NowNextView checks
-        // courses first), so emitting them would leave the previous user's
-        // schedule visible on a signed-out watch.
+        // No courses when logged out: the previous user's may still be cached when this push
+        // fires, and the watch's NowNextView checks `courses` before `loggedIn`, so it would
+        // keep showing their schedule on a signed-out watch.
         let watchCourses = loggedIn
             ? courses.flatMap { flatten($0, customNames: customNames) }
             : []
@@ -51,12 +49,9 @@ enum WatchPayloadEncoder {
     }
 
     private static func flatten(_ course: SDCourse, customNames: [String: String]) -> [WatchCourse] {
-        // A course meeting at non-contiguous periods on the same weekday
-        // (e.g. 3,4,6,7) must be emitted as separate runs — otherwise the
-        // watch and complication would render it as one block spanning the
-        // gap and report it as "current" during the unscheduled period.
-        // Mirrors `WidgetTimelineDerivation.contiguousRuns` used by the iOS
-        // widget.
+        // Split non-contiguous periods on one weekday (3,4,6,7) into runs, or the watch and
+        // complication show one block across the gap and call it "current" during the free
+        // period. Mirrors `WidgetTimelineDerivation.contiguousRuns` in the iOS widget.
         let order = AppConstants.Periods.chronologicalOrder
         let classroomMap = course.classroomMap
         let flatClassroom = SDCourse.dedup(course.classroom)

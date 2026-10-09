@@ -1,17 +1,13 @@
 import SwiftUI
 
-/// Hidden view that observes the phone's user-facing state (courses, accent
-/// color, language, login flag) and pushes a fresh `WatchSnapshot` whenever
-/// any of them changes. Lives in the view tree so the `@Observable` `AppState`
-/// reactivity drives pushes for free — TigerDuckApp hands us the activated
-/// `WatchSyncCoordinator` via init.
+/// Hidden view that pushes a fresh `WatchSnapshot` whenever the phone's courses, accent color,
+/// language or login flag change. Living in the view tree lets `AppState`'s `@Observable`
+/// tracking drive the pushes; `TigerDuckApp` passes in the activated `WatchSyncCoordinator`.
 ///
-/// Courses are read through `CanonicalCourseProvider` rather than a
-/// SwiftData `@Query`: this app caches the course list in `DataCache` files
-/// and never inserts `SDCourse` rows into the model container, so a `@Query`
-/// here would always return `[]`. Course-list changes are surfaced via
-/// `AppConstants.dataDidUpdate` (posted by `AppState.backgroundSync` after
-/// `DataCache.saveCourses`) — the bridge re-reads on that notification.
+/// Courses come from `CanonicalCourseProvider`: the course list lives in `DataCache` files,
+/// never in the model container, so a SwiftData `@Query` would return `[]`. The bridge re-reads
+/// on `AppConstants.dataDidUpdate`, posted by `AppState.backgroundSync` after
+/// `DataCache.saveCourses`.
 struct WatchSyncBridge: View {
 
     @Environment(AppState.self) private var appState
@@ -50,17 +46,14 @@ struct WatchSyncBridge: View {
             #endif
     }
 
-    /// Stable identity that flips whenever AppState-tracked state changes.
-    /// `.task(id:)` fires once on appear (initial push) and again on any
-    /// login / accent / language / visual-preset change. Course-list
-    /// changes route through `AppConstants.dataDidUpdate` instead —
-    /// `DataCache` writes aren't observable, so a digest here would just
-    /// be a stale snapshot.
+    /// Changes whenever AppState-tracked state does, so `.task(id:)` fires on appear and again
+    /// on any login, accent, language or visual-preset change. Course-list changes come through
+    /// `AppConstants.dataDidUpdate`: `DataCache` writes are not observable, so a digest here
+    /// would be a stale snapshot.
     ///
-    /// Gate on `hasStoredCredentials` rather than `isNTUSTLoggedIn` so a
-    /// transient cookie-TTL state (silent re-auth in progress) doesn't
-    /// flip the token and push an empty logged-out payload to the watch.
-    /// Mirrors the widget snapshot writer.
+    /// Uses `hasStoredCredentials`, not `isNTUSTLoggedIn`, so a transient cookie-TTL lapse
+    /// during silent re-auth does not flip the token and push an empty logged-out payload to
+    /// the watch. Mirrors the widget snapshot writer.
     private var changeToken: String {
         "\(appState.accentColorHex)|\(appState.appLanguage)|\(appState.authService.hasStoredCredentials)|\(appState.visualPreset.rawValue)"
     }
@@ -77,11 +70,9 @@ struct WatchSyncBridge: View {
             languageTag: lang,
             visualPreset: appState.visualPreset
         )
-        // Idempotent re-push so a TTL-purged watch (or a watch that
-        // never received the original transfer because it was off
-        // when the user logged in on the phone) gets credentials
-        // back the next time the phone foregrounds. Same epoch as
-        // last send → watch rejects as replay if it already has them.
+        // Idempotent re-push, so a TTL-purged watch, or one that was off when the user logged
+        // in on the phone, gets credentials back the next time the phone foregrounds. The epoch
+        // is the last one sent, so a watch that has them rejects it as a replay.
         WatchLibraryCredentialBroadcaster.shared.republishIfCredentialed()
     }
 }

@@ -46,7 +46,7 @@ enum CalendarService {
 
             let href = String(html[hrefRange])
             let rawText = String(html[textRange])
-            // Strip HTML tags to get plain text (e.g. <span>114學年度</span> → 114學年度)
+            // Strip tags: the link text can wrap its year label in a <span>.
             let text = rawText.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
 
             guard href.lowercased().hasSuffix(".ics") else { continue }
@@ -122,10 +122,9 @@ enum CalendarService {
                         ?? "school-\(title)-\(start.timeIntervalSince1970)"
 
                     if let end = dtEnd, !Self.icsCalendar.isDate(start, inSameDayAs: end.addingTimeInterval(-1)) {
-                        // Multi-day event: create one event per day.
-                        // Pin to gregorian + Asia/Taipei so devices set
-                        // to ROC / Buddhist calendars don't shift day
-                        // boundaries against ICS source data.
+                        // Multi-day event: one event per day, stepped with
+                        // `icsCalendar` so ROC or Buddhist device calendars
+                        // don't shift day boundaries against the ICS data.
                         var current = start
                         let lastDay = end.addingTimeInterval(-1) // ICS DTEND is exclusive
                         while current <= lastDay {

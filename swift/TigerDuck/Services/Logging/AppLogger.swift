@@ -2,11 +2,9 @@ import Foundation
 import Sentry
 import os
 
-// `nonisolated` so the static Loggers can be referenced from nonisolated
-// parsers / off-main URLSession handlers without crossing actor boundaries.
-// `os.Logger` is Sendable; the default-MainActor isolation Swift 6 applies
-// to module enums otherwise blocks every off-main caller (e.g.
-// `CourseLookupService.parseNodeToSchedule` is `nonisolated static`).
+// `nonisolated` so nonisolated parsers (`CourseLookupService.parseNodeToSchedule`) and off-main
+// URLSession handlers can use the static Loggers. `os.Logger` is Sendable; the module's default
+// MainActor isolation would block every off-main caller.
 nonisolated enum AppLogger {
     private static let subsystem = "org.ntust.app.TigerDuck"
 

@@ -81,10 +81,9 @@ enum SSOLoginService {
                 return true
             }
 
-            // Step 4: Clear SSO cookies only (preserve Moodle/service cookies to avoid device-change warnings).
-            // Cookies live in the NTUST-private jar — never touch
-            // `HTTPCookieStorage.shared` here, which would now be a no-op
-            // for NTUST and a foot-gun for unrelated callers.
+            // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
+            // device-change warnings. They are in the NTUST-private jar: clearing
+            // `HTTPCookieStorage.shared` would miss them and only hurt unrelated callers.
             let ntustJar = NTUSTSessionManager.shared.cookieStorage
             ntustJar.cookies?
                 .filter { $0.domain.contains("ssoam2.ntust.edu.tw") }
@@ -201,11 +200,9 @@ enum SSOLoginService {
         url: URL,
         fields: [(name: String, value: String)]
     ) async throws -> (Data, URLResponse) {
-        // 15 s per-request matches NTUSTSessionManager's session-level
-        // `timeoutIntervalForRequest`. Without it the request inherits
-        // `URLRequest`'s 60 s default and `URLSessionConfiguration`'s
-        // 7-day `timeoutIntervalForResource`, so a stalled SSO server
-        // could hang the login Task indefinitely.
+        // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
+        // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
+        // timeout, so a stalled SSO server could hang the login Task indefinitely.
         var request = URLRequest(url: url, timeoutInterval: 15)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -229,10 +226,8 @@ enum SSOLoginService {
     }()
 
     private static func urlEncode(_ string: String) -> String {
-        // Encoder fallback returns "" rather than the raw string. The raw
-        // string here is a username/password — silently shipping cleartext
-        // bytes on the wire is far worse than a failed login attempt, so
-        // an empty form value is the safer default.
+        // On encoder failure return "" rather than the raw string: the value is a username or
+        // password, and silently sending its cleartext bytes is far worse than a failed login.
         guard let percentEncoded = string
             .addingPercentEncoding(withAllowedCharacters: formAllowed) else {
             assertionFailure("urlEncode failed for value of length \(string.count)")

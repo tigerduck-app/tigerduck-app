@@ -4,15 +4,12 @@ import os
 
 /// Holds the school's academic calendar and keeps it fresh.
 ///
-/// Deliberately outside the cloud-sync gate that wraps every other backend
-/// call. The calendar carries no user, no device id and no account — it is
-/// the school's published dates — so it is fetched over an unauthenticated
-/// GET that signed-out and sync-off installs both make. Suppressing class
-/// reminders on a public holiday should not depend on whether someone opted
-/// into syncing their timetable.
-///
-/// The decoded calendar is cached so the widget extension and a cold launch
-/// with no network can still answer "is today a holiday".
+/// Outside the cloud-sync gate that wraps every other backend call: the
+/// calendar is the school's published dates, with no user, device id or
+/// account, so signed-out and sync-off installs fetch it with an
+/// unauthenticated GET. Holiday suppression of class reminders should not
+/// depend on opting into sync. The decoded calendar is cached so the widget
+/// extension and an offline cold launch can still answer "is today a holiday".
 @MainActor
 final class AcademicCalendarStore {
     static let shared = AcademicCalendarStore()
@@ -83,13 +80,11 @@ final class AcademicCalendarStore {
     /// Re-fetch, cheaply.
     ///
     /// Called on every foreground. The server answers 304 with no body when
-    /// nothing changed, so the common case costs one conditional GET. Any
-    /// failure leaves the cached calendar in place — an unreachable backend
-    /// must not turn suppression off for a device that already knows the
-    /// dates.
-    ///
-    /// Concurrent calls share one in-flight request: scene activation and a
-    /// pull-to-refresh landing together should not produce two.
+    /// nothing changed, so the common case is one conditional GET. A failure
+    /// keeps the cached calendar: an unreachable backend must not turn
+    /// suppression off for a device that already knows the dates. Concurrent
+    /// calls share one in-flight request, so scene activation and a
+    /// pull-to-refresh landing together make one.
     @discardableResult
     func refresh() async -> Bool {
         if let existing = refreshTask { return await existing.value }
@@ -104,10 +99,9 @@ final class AcademicCalendarStore {
     }
 
     private func performRefresh() async -> Bool {
-        // Which backend this request belongs to. Checked again before the
-        // response is committed: `Task.cancel()` cannot unsend a request, and
-        // a response that has already arrived is decoded and stored without
-        // ever asking whether it is still wanted.
+        // Which backend this request is for; checked again before committing,
+        // since `Task.cancel()` cannot unsend a request and an arrived response
+        // would be decoded and stored without asking whether it is still wanted.
         let generation = endpointGeneration
         let url = PushServerConfig.resolveServerURL()
             .appendingPathComponent("calendar")
@@ -122,11 +116,9 @@ final class AcademicCalendarStore {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return false }
-            // This GET carries no account and runs on every app open whatever
-            // TigerSync is set to, which makes it the one signal that can tell
-            // the status dot whether the backend is alive for a device that
-            // does not sync. 304 counts as reachable — a served answer, just
-            // an empty one.
+            // This account-free GET runs on every app open, TigerSync on or off:
+            // the one way the status dot learns whether the backend is up on a
+            // device that does not sync. 304 counts: a served, empty answer.
             ServerStatusTracker.shared.noteBackendReachable(
                 http.statusCode == 304 || (200..<300).contains(http.statusCode)
             )
@@ -148,11 +140,9 @@ final class AcademicCalendarStore {
             if let encoded = try? JSONEncoder().encode(parsed) {
                 Defaults[.academicCalendarCache] = encoded
             }
-            // The calendar screen builds its rows once per load and caches
-            // them by day; without this it would keep showing the calendar
-            // that was on disk when the tab appeared, and newly published
-            // dates would not surface until the next cold launch. This is
-            // the notification `CalendarViewModel.load` already listens on.
+            // The calendar screen builds its rows once per load and caches them
+            // by day; `CalendarViewModel.load` listens on this, or newly
+            // published dates would not show until the next cold launch.
             if changed {
                 NotificationCenter.default.post(
                     name: AppConstants.dataDidUpdate, object: nil
@@ -189,20 +179,12 @@ final class AcademicCalendarStore {
 
     /// Drop everything the previous backend told us, and refetch.
     ///
-    /// The cache and the ETag are both endpoint-scoped, and neither says so.
-    /// An ETag is opaque, so a different deployment can hand back one that
-    /// matches by coincidence — or the same one, if both are running the
-    /// upstream backend — and the 304 that follows would pin the old
-    /// server's dates. A refresh that simply fails leaves them in place for
-    /// the same reason: `performRefresh` keeps the cache on error on
-    /// purpose, so that an unreachable backend cannot switch suppression
-    /// off. Both behaviours are right while the endpoint is fixed and wrong
-    /// the moment it moves, which is what this exists for.
-    ///
-    /// The refresh is not awaited: the caller is a Save button, and an empty
-    /// calendar is the honest state until the new backend answers. Empty
-    /// fails open — no terms reads as in-session, no holidays suppresses
-    /// nothing — so the gap shows classes rather than hiding them.
+    /// The cache and ETag are endpoint-scoped but do not say so. Another
+    /// deployment can return a matching ETag (by chance, or on the same
+    /// upstream backend) whose 304 pins the old dates, and a failed refresh
+    /// keeps the cache so an outage cannot switch suppression off; both are
+    /// wrong once the endpoint moves. Not awaited: the caller is a Save button,
+    /// and until the new backend answers, the empty calendar fails open.
     func endpointDidChange() {
         forgetCachedCalendar()
         Task { await refresh() }
@@ -221,28 +203,12 @@ final class AcademicCalendarStore {
 
     /// Replace the local set from a cloud-sync snapshot taken at `fetchedAt`.
     ///
-    /// A sync response describes the server as it was when the request left,
-    /// so one that crosses a tap on the wire carries the state from *before*
-    /// that tap. Applying it flips the switch back under the user's finger
-    /// and leaves this device disagreeing with the server it has just told.
-    ///
-    /// Two conditions, because neither covers the other's gap:
-    ///
-    /// - `fetchedAt` older than the last local edit means the snapshot cannot
-    ///   possibly know about that edit, whether or not its upload has landed.
-    /// - A snapshot fetched *after* the tap can still predate the upload
-    ///   arriving, so it reports the old value with a newer timestamp; the
-    ///   pending count covers that window.
-    ///
-    /// Either way the local edit is the newer fact. The next sync settles it.
-    ///
-    /// Toggles the server has never acknowledged survive the snapshot
-    /// regardless. An upload that failed leaves the server honestly reporting
-    /// the old value, so applying it wholesale would hand the user's choice
-    /// back — and `setHolidayNotify` promises the opposite: the setting made
-    /// on this device stands whether or not the upload succeeded. They are
-    /// re-imposed on top of the snapshot rather than discarding it, so the
-    /// *other* holidays in the same payload still land.
+    /// A response that crosses a tap carries the pre-tap state and would flip
+    /// the switch back. So it is ignored unless `fetchedAt` is after the last
+    /// local edit and no upload is pending (a fetch after the tap can still
+    /// predate the upload); the next sync settles it. Unacknowledged toggles are
+    /// re-imposed on the snapshot, as `setHolidayNotify` promises a local setting
+    /// stands even if its upload failed; the payload's other holidays still land.
     func applySyncedOverrides(_ ids: Set<Int>, fetchedAt: Date) {
         guard pendingHolidayUploads == 0, fetchedAt > lastHolidayEditAt else {
             logger.info("holiday overrides from sync ignored — a local toggle is newer")

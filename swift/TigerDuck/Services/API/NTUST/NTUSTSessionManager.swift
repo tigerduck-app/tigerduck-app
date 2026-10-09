@@ -35,18 +35,14 @@ final class NTUSTSessionManager {
 
     private(set) var session: URLSession
 
-    /// NTUST-only cookie jar. Previously the session shared
-    /// `HTTPCookieStorage.shared`, so NTUST SSO cookies leaked into any
-    /// other URLSession on the same process (Library, future WKWebViews,
-    /// third-party SDKs) that didn't opt out of shared storage. Scope
-    /// every NTUST cookie to this private store; logout / explicit
-    /// purges only need to touch this jar.
+    /// NTUST-only cookie jar. In `HTTPCookieStorage.shared`, NTUST SSO cookies would leak into
+    /// every other URLSession in the process that does not opt out of shared storage (Library,
+    /// WKWebViews, third-party SDKs). Every NTUST cookie lives here, so logout and explicit
+    /// purges need only touch this jar.
     ///
-    /// `sharedCookieStorage(forGroupContainerIdentifier:)` returns a
-    /// per-identifier persistent store — distinct from `.shared` and
-    /// not visible to it. The identifier is namespaced to this bundle
-    /// and does NOT need to match any App Group entitlement; it's just
-    /// a key for the storage namespace.
+    /// `sharedCookieStorage(forGroupContainerIdentifier:)` returns a persistent store per
+    /// identifier, separate from `.shared` and invisible to it. The identifier only names the
+    /// storage namespace; it need not match an App Group entitlement.
     let cookieStorage: HTTPCookieStorage = HTTPCookieStorage
         .sharedCookieStorage(forGroupContainerIdentifier: "org.ntust.app.TigerDuck.ntust-session")
 
@@ -68,17 +64,13 @@ final class NTUSTSessionManager {
         return Date(timeIntervalSince1970: ts)
     }
 
-    /// Server-side probe (~30ms warm): GET `ssoam2.ntust.edu.tw/` and
-    /// look for a `302 Location: /Home/Index` redirect, which only
-    /// happens when the current cookie jar still authenticates the
-    /// user. Any other response (302 to `/account/login`, 200 rendering
-    /// the login page, network error) counts as expired.
+    /// Server-side probe (~30ms warm): GET `ssoam2.ntust.edu.tw/` and look for a
+    /// `302 Location: /Home/Index`, which only happens while the cookie jar still
+    /// authenticates the user. Any other response (302 to `/account/login`, 200 with
+    /// the login page, a network error) counts as expired.
     ///
-    /// This is far more accurate than the 1h timestamp TTL — obsoletes
-    /// "cookies said fresh but server already evicted them" and
-    /// "cookies still valid for hours but local timer flipped at 3600s"
-    /// in one shot. Use this from any async auth path instead of
-    /// ``cookiesValid``.
+    /// Use this from any async auth path instead of ``cookiesValid``: the 1h timestamp
+    /// TTL trusts cookies the server already evicted and expires ones it still honors.
     func probeCookiesValid() async -> Bool {
         var req = URLRequest(url: URL.knownGood("https://ssoam2.ntust.edu.tw/"))
         req.httpMethod = "GET"
@@ -96,11 +88,9 @@ final class NTUSTSessionManager {
                 return false
             }
             let valid = location.contains("/Home/Index")
-            // Slide the local TTL forward on a confirmed-good probe so
-            // synchronous UI consumers (`cookiesValid`) don't show
-            // "not authenticated" merely because the user has been idle
-            // longer than the static 1h window while the server still
-            // honors the cookie jar.
+            // A confirmed-good probe slides the local TTL forward, so synchronous UI that
+            // reads `cookiesValid` does not show "not authenticated" after an idle hour
+            // while the server still honors the cookie jar.
             if valid {
                 Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
             }
@@ -116,23 +106,18 @@ final class NTUSTSessionManager {
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
         config.timeoutIntervalForRequest = 15
-        // Default `timeoutIntervalForResource` is 7 days — far too long
-        // for an interactive SSO login. Cap the entire request lifetime
-        // at 60 s so a stalled or partially-responsive server cannot
-        // wedge a Task forever.
+        // The default `timeoutIntervalForResource` is 7 days, far too long for an interactive
+        // SSO login. Capping the whole request at 60 s keeps a stalled or partly responsive
+        // server from wedging a Task forever.
         config.timeoutIntervalForResource = 60
         config.httpAdditionalHeaders = [
             "User-Agent": Self.browserUserAgent,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9",
         ]
-        // SPKI pin against the *.ntust.edu.tw pin set so an MDM-pushed
-        // root CA on hostile campus Wi-Fi cannot MITM SSO credentials.
-        // The per-task `NoRedirectSessionDelegate` used by
-        // `probeCookiesValid()` forwards server-trust challenges to
-        // this same `TLSPinningDelegate.shared` explicitly — see the
-        // delegate definition below for why we don't rely on
-        // URLSession's task→session delegate fallthrough.
+        // SPKI pin against the *.ntust.edu.tw set, so an MDM-pushed root CA on hostile campus
+        // Wi-Fi cannot MITM SSO credentials. `NoRedirectSessionDelegate`, the per-task delegate
+        // of `probeCookiesValid()`, forwards trust challenges here explicitly; its doc says why.
         session = URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
@@ -170,18 +155,14 @@ private final class NoRedirectSessionDelegate: NSObject, URLSessionTaskDelegate,
         completionHandler(nil)
     }
 
-    /// Forward server-trust challenges to the session's pinning
-    /// delegate explicitly.
+    /// Forward server-trust challenges to the session's pinning delegate explicitly.
     ///
-    /// URLSession's documented behaviour is to fall through to the
-    /// session-level delegate for any task-level callback the per-task
-    /// delegate doesn't implement — but that's empirically fragile
-    /// (Apple has tweaked the rules across iOS versions) and any
-    /// future addition of a task-level method here that doesn't also
-    /// handle `didReceive challenge` would silently degrade this
-    /// pinned-host probe to system trust. Forward explicitly so SPKI
-    /// pinning on `ssoam2.ntust.edu.tw` is unconditional regardless of
-    /// what other URLSessionTaskDelegate methods get added later.
+    /// URLSession documents a fallthrough to the session delegate for task callbacks the
+    /// per-task delegate does not implement, but that is fragile in practice: Apple has
+    /// changed the rules across iOS versions, and a task-level method added here without
+    /// `didReceive challenge` would silently drop this probe to system trust. Forwarding
+    /// keeps SPKI pinning on `ssoam2.ntust.edu.tw` unconditional, whatever task delegate
+    /// methods get added later.
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,

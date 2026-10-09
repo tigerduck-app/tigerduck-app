@@ -63,29 +63,14 @@ struct MoodleEnrolledCourse: Sendable {
 }
 
 extension MoodleEnrolledCourse {
-    /// A 合開 (co-listed) course carries only ONE `idnumber` — the code of
-    /// whichever department is listed first. The second department's code
-    /// exists nowhere but the `fullname` text:
-    ///
-    ///     idnumber  1151AS5140701
-    ///     fullname  115.1【半導體研究所】AS5140701 電腦輔助晶片系統設計
-    ///               / 【資工系】CS5140701 電腦輔助晶片系統設計
-    ///
-    /// A student who enrolled through the second code (here CS5140701) is
-    /// therefore invisible to any exact match on `courseNo`, which is how
-    /// the class table lost its "open in Moodle" button for those courses.
-    ///
-    /// The digit after the letters is what keeps an all-caps English word in
-    /// a bilingual course title from being read as a course number, and the
-    /// optional leading `3` is the 進修部 form the rest of the codebase already
-    /// accepts (`CourseSelectionService.courseNoRegex`).
-    ///
-    /// Matched against whole tokens rather than scanned across the string:
-    /// scanning finds `CS3003302` *inside* `3CS3003302` and would mint an
-    /// alias for a course number that does not exist. Checked against 3697
-    /// catalogue rows — whole-token matching returns exactly what scanning
-    /// did on all of them, and still recovers the partner code in all 155
-    /// co-listed rows.
+    /// A co-listed course carries one `idnumber`, the first-listed department's code; the
+    /// other department's code appears only in `fullname`. A student enrolled through that code
+    /// misses an exact `courseNo` match, and the class table loses its "open in Moodle"
+    /// button. The digit after the letters keeps an all-caps English word in a bilingual
+    /// title from reading as a course number, and the optional leading `3` is the
+    /// continuing-education division form `CourseSelectionService.courseNoRegex` accepts.
+    /// Tokens are matched whole: a scan finds `CS3003302` inside `3CS3003302` and would mint
+    /// an alias for a course that does not exist.
     private static let courseNoToken = /3?[A-Z]{2,3}[0-9][A-Z0-9]{5,6}/
 
     /// Every NTUST course number this Moodle course answers to. The one in

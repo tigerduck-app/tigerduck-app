@@ -3,15 +3,12 @@ import SwiftSoup
 
 /// Parses the NTUST StuScoreQueryServ DisplayAll HTML into a ``ScoreReport``.
 ///
-/// Swift port of `backend/api/ntust/html_score_parser.py`. Layout selectors
-/// and regex patterns are kept 1:1 with the Python reference so both stay
-/// drop-in replacements for each other — any schema drift fixed in one side
-/// must be mirrored in the other.
+/// Swift port of `api-poc/api/ntust/html_score_parser.py`. Selectors and regexes stay 1:1
+/// with it so each is a drop-in for the other; mirror any schema-drift fix in both.
 ///
-/// `nonisolated` so the parse can run off the main actor: under the
-/// module's MainActor default isolation a multi-year transcript was being
-/// parsed on the UI thread, which is what stuttered the score page on
-/// older phones during a refresh.
+/// `nonisolated` so the parse runs off the main actor. Under the module's MainActor
+/// default, parsing a multi-year transcript on the UI thread stutters the score page
+/// on older phones during a refresh.
 nonisolated enum NTUSTScoreParser {
 
     // MARK: - Credit pattern registry
@@ -25,7 +22,7 @@ nonisolated enum NTUSTScoreParser {
             (#"^\[\s*(\d+(?:\.\d+)?)\s*\]$"#, .educationProgram),   // [3] / [0.5]
             (#"^<\s*(\d+(?:\.\d+)?)\s*>$"#,   .notCounted),         // <3>
             (#"^#\s*(\d+(?:\.\d+)?)\s*$"#,    .notRequired),        // #3
-            (#"^\(\s*(\d+(?:\.\d+)?)\s*\)$"#, .notEarned),          // (3) 不及格
+            (#"^\(\s*(\d+(?:\.\d+)?)\s*\)$"#, .notEarned),          // (3) failed
             (#"^(\d+(?:\.\d+)?)$"#,           .normal),             // 3
         ]
         return raw.compactMap { pattern, type in

@@ -1,26 +1,13 @@
 import Foundation
 
-/// Obtain and persist a Moodle Mobile App long-lived token via the NTUST
-/// OIDC SSO launch flow. Verified against a real Moodle iOS App HAR dump
-/// (2026-04-21).
+/// Obtains and persists a long-lived Moodle Mobile App token through the NTUST OIDC SSO
+/// launch flow, following a HAR capture of the Moodle iOS app: `launch.php`, the SSO login
+/// form, the OIDC `form_post` back to Moodle, then `moodlemobile://token=<base64>` on the
+/// final page.
 ///
-/// WARNING — do NOT replace this flow with a POST to `/login/token.php`.
-/// NTUST Moodle authenticates via OIDC-only (auth_oidc plugin); the
-/// local-password token endpoint counts every request as a failed login
-/// and triggers `login_lockout`, banning the account within ~10 attempts.
-///
-/// HAR-aligned steps:
-///   [1] GET  moodle2/admin/tool/mobile/launch.php?service=&passport=&urlscheme=
-///   [2] auto-follow 303 → login/index.php → auth/oidc/
-///   [3] auto-follow 303 → ssoam2/connect/authorize?... (OIDC PKCE)
-///   [4] auto-follow 302 → ssoam2/account/login
-///   [5] harvest __RequestVerificationToken + hidden fields
-///   [6] POST ssoam2/  with credentials
-///   [7] auto-follow 302 → ssoam2/connect/authorize returns form_post HTML
-///   [8] POST moodle2/auth/oidc/  with (code, state, iss)
-///   [9] auto-follow 303 → launch.php → launch.php?confirmed=0&oauthsso=0
-///   [10] parse `moodlemobile://token=<base64>` from final HTML
-///   [11] base64-decode → "<signature>:::<wstoken>:::<privatetoken>"
+/// Never POST to `/login/token.php` instead. NTUST Moodle is OIDC-only (auth_oidc), and that
+/// endpoint counts every request as a failed login and triggers `login_lockout`, banning the
+/// account within about 10 attempts. See docs/decisions/0019-moodle-oidc-token-flow.md.
 actor MoodleTokenService {
     static let shared = MoodleTokenService()
 
@@ -153,16 +140,9 @@ actor MoodleTokenService {
     func clearToken() async {
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
-        // Purge NTUST SSO cookies from the shared jar so stale anti-forgery /
-        // session cookies from this session don't bleed into the next login.
-        // Allowlist only the SSO + Moodle hosts the OIDC bridge actually
-        // touches. The previous suffix match nuked any unrelated NTUST
-        // subdomain cookie sharing the jar (e.g. WebView sessions).
-        //
-        // Purge any cookie whose domain (a) exactly matches a purge host
-        // OR (b) is a parent domain of one — e.g. `Domain=ntust.edu.tw`
-        // applies to `ssoam2.ntust.edu.tw`, so an exact-only check would
-        // leak a parent-scoped session cookie across logouts.
+        // Purge SSO and Moodle cookies so stale anti-forgery and session cookies do not bleed
+        // into the next login. Parent domains count, since `Domain=ntust.edu.tw` applies to
+        // ssoam2; other NTUST subdomains share the jar (WebView sessions) and keep theirs.
         let purgeHosts: Set<String> = ["ssoam2.ntust.edu.tw", "moodle2.ntust.edu.tw"]
         HTTPCookieStorage.shared.cookies?
             .filter { cookie in
@@ -188,13 +168,9 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func persist(triple: TokenTriple) {
-        // Detect a token-value swap so the per-user `cachedUserId` in
-        // MoodleSiteInfoService is invalidated even when the swap
-        // happens via `obtainToken` directly (account switch path) and
-        // `clearToken()` was never called. Without this, the next
-        // `wsfunction=core_webservice_get_site_info` call would return
-        // the previous account's userid from cache and assignments
-        // would fetch under the wrong identity.
+        // A token swap invalidates the per-user `cachedUserId` in MoodleSiteInfoService, even
+        // on an account switch through `obtainToken` that skips `clearToken()`. Otherwise
+        // `userId()` returns the previous account's cached userid and assignments load under it.
         let previous = KeychainManager.loadString(
             key: AppConstants.KeychainKeys.moodleToken
         )
@@ -221,11 +197,9 @@ actor MoodleTokenService {
         studentId: String,
         password: String
     ) async throws -> TokenTriple {
-        // Use the shared browser cookie store so the SSO anti-forgery /
-        // correlation cookies survive the launch.php -> login -> authorize
-        // redirect chain. A private jar on Apple's URLSession stack was
-        // dropping those cookies, which made the credential POST bounce back
-        // to /account/login as a false "login rejected".
+        // The shared cookie store keeps SSO anti-forgery and correlation cookies across the
+        // launch.php -> login -> authorize redirects. A private jar on Apple's URLSession stack
+        // drops them, and the credential POST bounces to /account/login as a false rejection.
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 20
         config.httpCookieAcceptPolicy = .always
@@ -237,11 +211,9 @@ actor MoodleTokenService {
                 "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
         ]
-        // SPKI pinning on the OIDC bootstrap session — this is where
-        // the raw NTUST password is POSTed and where the moodlemobile
-        // token triple gets handed back, so MITM here is the
-        // worst-case path. `invalidateAndCancel()` in the defer below
-        // releases the URLSession's strong retain on the delegate.
+        // SPKI pinning: this session POSTs the raw NTUST password and gets the moodlemobile
+        // token triple back, so a MITM here is the worst case. `invalidateAndCancel()` in the
+        // defer below releases the session's strong reference to the delegate.
         let session = URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
@@ -249,12 +221,9 @@ actor MoodleTokenService {
         )
         defer { session.invalidateAndCancel() }
 
-        // Step 1: GET launch.php — URLSession auto-follows 303s to SSO login.
-        // `String(Double)` can emit `1e-06` for very small values and is
-        // also locale-sensitive in some Foundation paths (`,` vs `.`),
-        // either of which Moodle's `weblogin` may reject. Format with
-        // `%.0f` (POSIX locale) for a stable, integer-only rendering —
-        // matches how the Moodle Mobile App generates this value.
+        // Step 1: GET launch.php; URLSession follows the 303s to the SSO login. The passport is
+        // an integer, matching how the Moodle Mobile App generates it: `String(Double)` can emit
+        // `1e-06` or a locale's `,`, either of which Moodle's `weblogin` may reject.
         let passport = Int(Double.random(in: 0..<1) * 1000)
         var launchComps = URLComponents(
             url: siteBaseURL.appendingPathComponent("admin/tool/mobile/launch.php"),
@@ -464,10 +433,9 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func decodeTokenTriple(from base64Token: String) throws -> TokenTriple {
-        // Convert URL-safe base64 (`_`/`-`) to standard alphabet and pad,
-        // since `Data(base64Encoded:)` only accepts the standard form.
-        // The extraction regex permits `_` and `-` to be tolerant of
-        // either encoding Moodle may emit.
+        // `Data(base64Encoded:)` takes only the standard padded alphabet, so map the URL-safe
+        // `-` and `_` and pad. The extraction regex allows `-` and `_` since Moodle may emit
+        // either encoding.
         var standardized = base64Token
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
@@ -624,10 +592,9 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func extractMoodleMobileToken(from html: String) -> String? {
-        // Anchor inside a quoted JS context (window.location = "moodlemobile://token=...")
-        // so a poisoned response cannot embed an arbitrary chosen token by
-        // dropping the literal string into page text. Strict base64 alphabet
-        // only — `decodeTokenTriple` then re-validates the decoded shape.
+        // Match only inside a quoted JS string (`window.location = "moodlemobile://token=..."`)
+        // so a poisoned page cannot plant a chosen token as plain page text. Base64 characters
+        // only; `decodeTokenTriple` then re-validates the decoded shape.
         let ns = html as NSString
         guard let m = moodleMobileTokenRegex.firstMatch(
             in: html,

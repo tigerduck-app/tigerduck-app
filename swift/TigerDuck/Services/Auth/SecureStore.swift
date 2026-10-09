@@ -3,20 +3,14 @@ import Security
 import Valet
 
 nonisolated enum SecureStore {
-    /// Per-app valet at the strictest accessibility class compatible with
-    /// our usage: foreground re-auth, settings reads, library QR refresh
-    /// (all happen while the app is active). The Live Activity widget
-    /// reads its snapshot via App Group `UserDefaults` (`SharedSnapshotStore`),
-    /// not Keychain, so no extension actually needs these secrets.
+    /// Per-app valet at the strictest class our usage allows.
     ///
-    /// `.whenUnlockedThisDeviceOnly`:
-    /// * not migrated to a new device via iCloud Keychain restore
-    /// * unreadable while the device is locked (background tasks running
-    ///   with the screen locked simply won't see credentials — acceptable
-    ///   given the threat model)
-    ///
-    /// Except the few secrets a locked-screen launch needs, which live in
-    /// ``readableWhileLocked``.
+    /// Re-auth, settings reads and library QR refresh run while the app is active, and no
+    /// extension needs these secrets: the Live Activity widget reads App Group `UserDefaults`
+    /// (`SharedSnapshotStore`). `.whenUnlockedThisDeviceOnly` keeps items out of an iCloud
+    /// Keychain restore to a new device, and background work behind a locked screen cannot read
+    /// them, which the threat model accepts. The few secrets a locked-screen launch needs live
+    /// in ``readableWhileLocked``.
     private static var shared: any KeychainStore {
         sharedForTesting ?? sharedValet
     }
@@ -34,18 +28,12 @@ nonisolated enum SecureStore {
 
     /// The secrets a launch behind a locked screen has to read.
     ///
-    /// iOS launches the app in the background for a push, and a locked
-    /// phone is the usual case: above all a Live Activity push-to-start,
-    /// which hands the app the new activity's update token to register so
-    /// the server can end the activity when the class does. Registering
-    /// reads the backend session, the device id and the endpoint the device
-    /// was pointed at. In ``shared`` none of them could be read there, so
-    /// that launch took itself for signed out, minted a throwaway device id
-    /// and fell back to the default endpoint — the activity was never
-    /// registered, and stayed up after class until the app was next opened.
-    ///
-    /// The NTUST, Moodle and library credentials stay in ``shared``:
-    /// nothing that runs in the background needs them.
+    /// A push launches the app in the background, usually on a locked phone. Above all, a Live
+    /// Activity push-to-start hands over the update token the server needs to end the activity
+    /// after class, and registering it reads the backend session, device id and endpoint
+    /// override. In ``shared`` they are unreadable then: the launch would act signed out, mint
+    /// a throwaway device id, use the default endpoint and leave the activity up. NTUST, Moodle
+    /// and library credentials stay in ``shared``: no background work needs them.
     private static let readableWhileLockedKeys: Set<String> = [
         AuthTokenManager.accessTokenKey,
         AuthTokenManager.refreshTokenKey,
@@ -92,20 +80,16 @@ nonisolated enum SecureStore {
 
     static func save(_ data: Data, forKey key: String) throws {
         let home = home(forKey: key)
-        // Only while home has no value yet. Once it has one, `load` never
-        // reads ``shared`` for this key, so a copy there buries nothing and
-        // the check could only refuse the save: a rotated refresh token
-        // behind a locked screen, lost if that phone reports even an item
-        // ``shared`` does not hold as unreadable.
+        // Only while home is empty: once it has a value, `load` never reads ``shared`` for this
+        // key. Checking anyway could only refuse saves, losing a refresh token rotated behind a
+        // locked screen if the phone reports even an absent item as unreadable.
         if home !== shared, (try? home.object(forKey: key)) == nil {
             try requireNoUnreadableCopyInShared(forKey: key)
         }
         try home.setObject(data, forKey: key)
-        // Best-effort cleanup: a previous build may still have the value
-        // sitting in another valet — the legacy / shared-group ones at a
-        // looser accessibility class, or ``shared`` for a key that has
-        // since moved to ``readableWhileLocked``. Strip any stale copies so
-        // the new write is the single source of truth.
+        // Best-effort: strip stale copies so this write is the single source of truth. An
+        // earlier build may have left one in the legacy or shared-group valet, at a looser
+        // class, or in ``shared`` for a key whose home is ``readableWhileLocked``.
         for store in [shared, legacyShared, legacySharedGroup] where store !== home {
             try? store.removeObject(forKey: key)
         }
@@ -113,14 +97,12 @@ nonisolated enum SecureStore {
 
     /// Throws when ``shared`` holds a copy of `key` this launch cannot read.
     ///
-    /// That is an earlier build's value on a locked phone, before its first
-    /// read after an unlock moved it. `load` could not see it, so the caller
-    /// is writing something in its place — `PushIdentity` mints a fresh
-    /// device id. ``readableWhileLocked`` takes writes behind a locked
-    /// screen and `load` reads it first, so that stand-in would replace the
-    /// real value for good. Refused instead, as the write to ``shared``
-    /// itself always was there; the real value moves on the next unlocked
-    /// read.
+    /// That is an earlier build's value on a locked phone, not yet moved by a read after an
+    /// unlock. `load` could not see it, so the caller writes a stand-in in its place
+    /// (`PushIdentity` mints a fresh device id). ``readableWhileLocked`` takes writes behind a
+    /// locked screen and `load` reads it first, so the stand-in would replace the real value
+    /// for good. It is refused instead, as a write to ``shared`` behind a locked screen always
+    /// is; the real value moves on the next unlocked read.
     private static func requireNoUnreadableCopyInShared(forKey key: String) throws {
         do {
             _ = try shared.object(forKey: key)
@@ -135,10 +117,9 @@ nonisolated enum SecureStore {
             return value
         }
 
-        // Every build before ``readableWhileLocked`` kept its keys in
-        // ``shared``. That cannot be read behind a locked screen, so the
-        // value moves on the first read after an unlock. Conditional
-        // delete, for the reason given below.
+        // Earlier builds kept these keys in ``shared``, which cannot be read behind a locked
+        // screen, so the value moves on the first read after an unlock. The delete waits for
+        // the write, for the reason given below.
         if home !== shared, let value = try? shared.object(forKey: key) {
             if (try? home.setObject(value, forKey: key)) != nil {
                 try? shared.removeObject(forKey: key)
@@ -146,15 +127,9 @@ nonisolated enum SecureStore {
             return value
         }
 
-        // Migrate from the previous `.afterFirstUnlock` per-app valet.
-        //
-        // The delete is conditional on the write, the way the `legacyLoad`
-        // branch below already does it. Unconditionally, this destroys
-        // credentials: the legacy valet is `.afterFirstUnlock` and readable
-        // behind a locked screen, while `shared` is
-        // `.whenUnlockedThisDeviceOnly` and cannot be written there — so a
-        // read taken while locked would succeed, fail to copy forward, and
-        // then delete the only remaining copy.
+        // Migrate from the legacy `.afterFirstUnlock` valet, deleting only once the write
+        // lands: the legacy valet is readable behind a locked screen and `shared` cannot be
+        // written there, so an unconditional delete would destroy the only copy.
         if let value = try? legacyShared.object(forKey: key) {
             if (try? home.setObject(value, forKey: key)) != nil {
                 try? legacyShared.removeObject(forKey: key)
@@ -209,18 +184,13 @@ nonisolated enum SecureStore {
         return ok
     }
 
-    /// Wipe every secret this app holds, across the current valet and both
-    /// legacy ones, keeping only the keys named in `preserving`.
+    /// Wipes every secret this app holds, across the current valets and both legacy ones,
+    /// keeping only the keys named in `preserving`.
     ///
-    /// Backs the erase-everything action. Enumerating
-    /// `AppConstants.KeychainKeys` instead would quietly miss whatever key
-    /// gets added next — and a leftover credential is precisely what makes
-    /// a "fresh install" not one.
-    ///
-    /// `preserving` exists for device configuration that is not user data:
-    /// the API endpoint override is stored here specifically so it outlives
-    /// a wipe, which is the whole reason it is in the Keychain rather than
-    /// `UserDefaults`.
+    /// Backs the erase-everything action. Enumerating `AppConstants.KeychainKeys` instead would
+    /// miss whatever key is added next, and a leftover credential makes a "fresh install" not
+    /// one. `preserving` is for device configuration that is not user data: the API endpoint
+    /// override is kept in the Keychain rather than `UserDefaults` so it outlives a wipe.
     static func removeAll(preserving preservedKeys: Set<String> = []) {
         let preserved: [String: Data] = preservedKeys.reduce(into: [:]) { acc, key in
             if let value = load(key: key) { acc[key] = value }
