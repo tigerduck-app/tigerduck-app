@@ -215,7 +215,7 @@ struct MailStoreTests {
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
-    @Test func bodyCacheStaysUnderItsLimit() {
+    @Test func bodyCacheStaysUnderItsLimit() async throws {
         let cache = SchoolMailTestDoubles.temporaryCache(bodyLimitBytes: 2_000)
         defer { cache.clearAll() }
         for uid in UInt32(1)...5 {
@@ -223,7 +223,9 @@ struct MailStoreTests {
                                            references: nil, parts: [], textBody: String(repeating: "x", count: 600),
                                            htmlBody: nil, inlineImages: nil)
             cache.saveDetail(detail, folder: "INBOX", uidValidity: 1)
-            Thread.sleep(forTimeInterval: 0.01)
+            // Eviction goes by modification date, so the next save must be stamped later.
+            let saved = Date()
+            try await waitUntil { Date() > saved }
         }
         #expect(cache.bodyBytes() <= 2_000)
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5) != nil)
