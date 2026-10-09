@@ -67,7 +67,7 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 
 - [x] 9.1 Give the Watch sync debounce an injectable clock or duration and rewrite `WatchSyncCoordinatorTests` without the 700 ms sleep; verify the suite passes 20 times with `-test-iterations 20`
 - [x] 9.2 Do the same for `WidgetReloadCoordinator` (200 ms), the notification settings push queue (200 ms and polling) and push registration (250 ms debounce); verify each suite passes 20 times
-- [ ] 9.3 Replace the fixed layout waits in `PagingScrollLockTests` and `PullToRevealSearchTests`, and the short `Thread.sleep` calls in `ClockCoreTests` and `MailStoreTests`, with condition polling or signals; verify a search of the test targets for `Task.sleep`, `Thread.sleep` and `usleep` only finds fakes and cancelled placeholders
+- [x] 9.3 Replace the fixed layout waits in `PagingScrollLockTests` and `PullToRevealSearchTests`, and the short `Thread.sleep` calls in `ClockCoreTests` and `MailStoreTests`, with condition polling or signals; verify a search of the test targets for `Task.sleep`, `Thread.sleep` and `usleep` only finds fakes and cancelled placeholders
 
 ## 10. Simulator boot during the build
 
