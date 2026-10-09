@@ -1,125 +1,89 @@
-# API POC KNOWLEDGE BASE
+# API probes
 
-## OVERVIEW
-`api-poc/` is a collection of POC scripts that validate NTUST / Moodle third-party endpoints *before* implementing them in the Swift client. Each script is runnable standalone and mirrors the Swift-side service layer, so Python output can be diffed against Swift behaviour.
+`api-poc/` holds standalone Python scripts that probe NTUST and Moodle endpoints before the Swift
+client implements them. Each script mirrors a Swift service, so its output can be compared with
+the app's. There is no server and no HTTP surface here; the production backend is the separate
+`tigerduck-app/tigerduck-backend` repository and shares no code with these scripts.
 
-Not a server process; no HTTP surface; no Flask/FastAPI routes. Lives alongside `swift/` at the repo root with its own `pyproject.toml`. The production FastAPI backend is a separate repo (`tigerduck-app/tigerduck-backend`) and shares no code with these scripts.
+## Running scripts
 
-## STRUCTURE
-```text
-api-poc/
-├── pyproject.toml              # workspace deps (bs4, httpx, rich, ntust-courses, ...)
-├── .python-version             # 3.13
-└── api/                        # the Python package — cd api-poc && uv run python -m api.xxx
-    ├── __init__.py             # exports RUNTIME_DIR, ENV_FILE
-    ├── .env / .env.template    # credentials (STUDENT_ID, PASSWORD)
-    ├── moodle/                 # Moodle-domain scripts (mirrors Swift Services/API/Moodle/)
-    │   ├── auth.py             # Mobile App OIDC token client (long-lived token, json store)
-    │   ├── site_info.py        # core_webservice_get_site_info (functions.py makes the same call)
-    │   ├── enrolled_courses.py # core_enrol_get_users_courses
-    │   ├── assignments.py      # mod_assign_get_assignments — the path the app uses
-    │   ├── submission_status.py # mod_assign_get_submission_status
-    │   ├── enrolled_users.py   # classmates + teachers of a course
-    │   ├── course_files.py     # core_course_get_contents
-    │   ├── announcements.py    # news-forum discussions
-    │   ├── grades.py           # grade items per course, or the overview
-    │   ├── notifications.py    # notification centre: list, unread counts, preferences
-    │   ├── quizzes.py          # mod_quiz: quizzes, user attempts, best grade
-    │   ├── forum_posts.py      # thread contents, edit-shaped post, forum capabilities
-    │   ├── autologin.py        # browser handoff key + tokenpluginfile URL rewriting
-    │   ├── writes.py           # every type=write wsfunction — DRY-RUN by default
-    │   └── legacy/
-    │       ├── homework_sso.py # old SSO + sesskey + ajax/service.php path (kept for diffing)
-    │       └── homework_calendar.py # calendar action-events homework fetch, superseded by assignments.py
-    ├── ntust/                  # NTUST 校務系統 (mirrors Swift Services/API/NTUST/)
-    │   ├── sso.py              # NtustSsoBridge — cookie-based SSO, sqlite cookie store
-    │   ├── course_list.py      # selected courses scrape
-    │   ├── course_lookup.py    # course info via ntust-courses pypi package
-    │   ├── score_list.py       # stuinfosys score history (GPA, rankings, per-course grades)
-    │   ├── html_score_parser.py # score page HTML → JSON (also a CLI on a saved page)
-    │   ├── classroom.py        # cour01 room occupancy (OIDC form_post + WebForms grid)
-    │   ├── subsystem.py        # i.ntust portal service directory
-    │   └── webmail.py          # mail.ntust IMAP/SMTP (stdlib imaplib/smtplib)
-    ├── public/                 # No-auth public endpoints
-    │   ├── calendar.py         # academic year .ics URL scraper
-    │   └── bulletin.py         # async bulletin page scraper (writes markdown)
-    └── runtime/                # Runtime artefacts (gitignored)
-        ├── moodle_tokens.json  # persisted Moodle tokens (chmod 0600)
-        ├── ntust_cookies.sqlite3   # SSO cookie store
-        └── bulletin_pages/     # scraped bulletin markdown
-```
-
-## RUNNING SCRIPTS
-Package imports (`from api.moodle.auth import ...`) stay unchanged from the pre-move era — the `api` folder is a Python package sitting inside this workspace. Run from `api-poc/`:
+`api` is a package inside the `api-poc/` workspace. Run modules from `api-poc/` with `-m`:
 
 ```bash
 cd api-poc
 uv sync
-uv run python -m api.moodle.auth              # OIDC login + token smoke test
+uv run python -m api.moodle.auth              # OIDC login and token smoke test
 uv run python -m api.moodle.auth --refresh    # force re-auth
-uv run python -m api.moodle.site_info         # token's site info + available functions
+uv run python -m api.moodle.site_info         # token's site info and available functions
 uv run python -m api.moodle.enrolled_courses
-uv run python -m api.moodle.assignments [courseid ...]  # assignments, all enrolled courses by default
+uv run python -m api.moodle.assignments [courseid ...]  # all enrolled courses by default
 uv run python -m api.moodle.submission_status [assignid]
-uv run python -m api.moodle.legacy.homework_sso   # legacy SSO path for comparison
+uv run python -m api.moodle.legacy.homework_sso   # legacy SSO path, kept for comparison
 uv run python -m api.moodle.legacy.homework_calendar
-uv run python -m api.moodle.enrolled_users <courseid>   # classmates + teachers of a course
-uv run python -m api.moodle.course_files <courseid>     # downloadable files in a course
-uv run python -m api.moodle.announcements <courseid>    # news-forum announcements
-uv run python -m api.moodle.grades [courseid]           # grade items, or overview when omitted
-uv run python -m api.moodle.notifications             # notification centre
-uv run python -m api.moodle.quizzes <courseid>        # quizzes + attempts + best grade
+uv run python -m api.moodle.enrolled_users <courseid>   # classmates and teachers
+uv run python -m api.moodle.course_files <courseid>
+uv run python -m api.moodle.announcements <courseid>
+uv run python -m api.moodle.grades [courseid]           # overview when omitted
+uv run python -m api.moodle.notifications
+uv run python -m api.moodle.quizzes <courseid>
 uv run python -m api.moodle.forum_posts <discussionid> [forumid]
-uv run python -m api.moodle.autologin [urltogo]       # browser handoff key
+uv run python -m api.moodle.autologin [urltogo]
 uv run python -m api.moodle.writes                    # list every write payload
-uv run python -m api.moodle.writes <wsfunction> k=v   # dry-run one (add --commit to send)
+uv run python -m api.moodle.writes <wsfunction> k=v   # dry-run one; --commit sends it
 uv run python -m api.ntust.course_list
 uv run python -m api.ntust.course_lookup
-uv run python -m api.ntust.score_list                 # score history as JSON
-uv run python -m api.ntust.classroom                  # campuses + buildings
+uv run python -m api.ntust.score_list
+uv run python -m api.ntust.classroom                  # campuses and buildings
 uv run python -m api.ntust.classroom HQ EE [YYYY-MM-DD]   # one building's grid
-uv run python -m api.ntust.subsystem [--en]           # portal service directory
-uv run python -m api.ntust.webmail [--limit N]        # IMAP folders + recent headers
+uv run python -m api.ntust.subsystem [--en]
+uv run python -m api.ntust.webmail [--limit N]
 uv run python -m api.public.calendar
 uv run python -m api.public.bulletin          # reads cached pages by default
 ```
 
-## WHERE TO LOOK
-| Task | Location | Notes |
-|---|---|---|
-| Moodle auth (production) | `moodle/auth.py` | OIDC via launch.php — DO NOT replace with /login/token.php |
-| Moodle webservice calls | `moodle/assignments.py`, `moodle/submission_status.py` | uses `MoodleOidcAuthClient.call(wsfunction, ...)` |
-| Moodle legacy paths | `moodle/legacy/` | kept for parity diffing, not for new code |
-| Score history | `ntust/score_list.py`, `ntust/html_score_parser.py` | mirrors Swift `NTUSTScoreService` / `NTUSTScoreParser` |
-| NTUST SSO session | `ntust/sso.py` | `NtustSsoBridge` cookie flow, sqlite persistence |
-| Course selection scrape | `ntust/course_list.py`, `ntust/course_lookup.py` | SSO + optional `ntust_courses` enrichment |
-| Academic calendar ICS | `public/calendar.py` | public page, no auth |
-| Bulletin scraper | `public/bulletin.py` | async httpx + rich progress, writes into `runtime/bulletin_pages/` |
-| Moodle notifications | `moodle/notifications.py` | two unread counters; pick by `site_info.functions[]` |
-| Moodle quizzes | `moodle/quizzes.py` | `status=all` is required to see in-progress attempts |
-| Forum thread / edit | `moodle/forum_posts.py` | display vs edit `moodlewssetting*` flags differ |
-| Browser handoff | `moodle/autologin.py` | needs a MoodleMobile UA; 6-minute rate limit |
-| Write endpoints | `moodle/writes.py` | payload + response-envelope reference, dry-run |
-| Room occupancy | `ntust/classroom.py` | OIDC `form_post`, ASP.NET ViewState, pager target varies |
-| Portal directory | `ntust/subsystem.py` | enumerates every campus service URL — good for discovery |
-| Campus webmail | `ntust/webmail.py` | IMAP 993 / SMTP 465 implicit TLS only |
+## Conventions
 
-## CONVENTIONS
-- Python `>=3.13`, deps in `api-poc/pyproject.toml`, venv at `api-poc/.venv`
-- Runtime artefacts (tokens, cookies, scraped pages) live under `api/runtime/` and are git-ignored
-- Credentials read from `api/.env` (preferred) or env vars (fallback)
-- Cross-module imports use absolute package form (`from api.moodle.auth import ...`)
+- Python 3.13 or later, dependencies in `api-poc/pyproject.toml`, virtualenv in `api-poc/.venv`.
+- Credentials come from `api/.env` (template: `api/.env.template`), with environment variables
+  as the fallback.
+- Tokens, cookies and scraped pages go under `api/runtime/`, which is gitignored.
+- Imports use the absolute package form (`from api.moodle.auth import ...`).
+- `moodle/assignments.py` (`mod_assign_get_assignments`) is the path the app uses.
+  `moodle/legacy/` exists for comparison only; new code does not build on it.
 
-## ANTI-PATTERNS
-- Do not POST `/login/token.php?service=moodle_mobile_app` to NTUST Moodle — triggers login_lockout and bans the account. Use `MoodleOidcAuthClient` (OIDC flow) instead.
-- Do not treat `runtime/bulletin_pages/` as source; it is generated markdown.
-- Do not commit real credentials or any file under `runtime/`.
-- Do not run scripts as plain file paths (`python api/moodle/auth.py`) — imports will fail. Always use `-m api.xxx` form.
-- Do not run `api.moodle.writes` with `--commit` casually: those endpoints post to course forums, submit assignments and change the profile picture on a real account.
-- Do not send `useridto=0` to the notification endpoints — unlike the quiz ones they have no "0 means current user" fallback and return accessdenied.
-- Do not hardcode the cour01 pager target (`showinfo_grd$_ctl54$_ctl1`): the middle index is derived from the row count and changes between pages.
-- Do not pick a cour01 building before selecting its campus — the site answers with an HTTP 500 error page that parses as "no grid", not as an error.
-- Do not treat an empty cour01 grid as "every room is free": no grid at all is a failure, a grid with no rows is what weekends legitimately return.
-- Do not send rendered forum text back on an edit. Read with `moodlewssettingraw=true` and filters off, or stored `@@PLUGINFILE@@` placeholders get replaced by absolute URLs permanently.
-- Do not append `?token=<wstoken>` to file URLs when `userprivateaccesskey` is available; rewrite to `/tokenpluginfile.php/<key>/` so the long-lived token stays out of logs and Referer headers.
-- Do not assume imaplib decodes mailbox names: they arrive as RFC 3501 modified UTF-7 (`&W8RO9lCZTv1TIw-`), and subjects as RFC 2047 (big5 still appears).
+## Anti-patterns
+
+- Do not POST `/login/token.php?service=moodle_mobile_app` to NTUST Moodle: it triggers the
+  login lockout and bans the account. Use `MoodleOidcAuthClient` (the OIDC flow in
+  `moodle/auth.py`).
+- Do not commit real credentials or anything under `runtime/`; do not treat
+  `runtime/bulletin_pages/` as source.
+- Do not run scripts as file paths (`python api/moodle/auth.py`); the imports fail. Use
+  `-m api.<module>`.
+- Do not run `api.moodle.writes` with `--commit` casually: those endpoints post to course
+  forums, submit assignments and change the profile picture of a real account.
+- Do not send `useridto=0` to the notification endpoints. Unlike the quiz ones they have no
+  "0 means the current user" fallback and return accessdenied.
+- Do not hardcode the cour01 pager target (`showinfo_grd$_ctl54$_ctl1`); the middle index comes
+  from the row count and changes between pages.
+- Do not pick a cour01 building before selecting its campus. The site answers with an HTTP 500
+  error page that parses as "no grid", not as an error.
+- Do not treat an empty cour01 grid as "every room is free". No grid at all is a failure; a grid
+  with no rows is what weekends return.
+- Do not send rendered forum text back on an edit. Read with `moodlewssettingraw=true` and
+  filters off, or stored `@@PLUGINFILE@@` placeholders are replaced by absolute URLs for good.
+- Do not append `?token=<wstoken>` to file URLs when `userprivateaccesskey` is available;
+  rewrite to `/tokenpluginfile.php/<key>/` so the long-lived token stays out of logs and
+  Referer headers.
+- Do not assume imaplib decodes mailbox names: they arrive as RFC 3501 modified UTF-7
+  (`&W8RO9lCZTv1TIw-`), and subjects as RFC 2047 (big5 still appears).
+
+## Gotchas
+
+- Moodle has two unread counters for notifications; pick by `site_info.functions[]`.
+- Quiz attempts in progress only show with `status=all`.
+- Forum display and edit use different `moodlewssetting*` flags.
+- The browser handoff key (`moodle/autologin.py`) needs a MoodleMobile user agent and is rate
+  limited to one every 6 minutes.
+- cour01 uses OIDC with `form_post` and ASP.NET ViewState.
+- Campus webmail is implicit TLS only: IMAP on 993, SMTP on 465.

@@ -1,28 +1,32 @@
-# Migrations — TigerDuck Compatibility Layer
+# Migrations
 
-This folder is the ONLY location permitted for breaking-change compatibility code.
+Compatibility code for breaking changes goes in this folder and nowhere else.
 
 ## Rules
 
-1. One migration = one Swift file. No cross-file imports within this folder.
-2. Every migration is self-contained: it owns its done flag — a private `<Name>.v1.done` UserDefaults key declared in its own file, so deleting the file removes it (`MoodleTokenMigration` predates this and keeps its flag as a Defaults key in `AppDefaults.swift`) — its static `runIfNeeded()` entry point, and its failure handling.
-3. Trigger point: `AppState.runPendingMigrations()` called once per app launch from `AppState.init()`.
-4. Feature services (AuthService, MoodleAssignmentService, MoodleTokenService, etc.) MUST NOT reference types declared here.
-5. When a migration is no longer needed (all users have been through it), delete the entire file. Do not leave empty shells.
-6. File naming: `<Subject><Action>Migration.swift` (e.g., `MoodleTokenMigration`, `DefaultTabsPinMigration`).
+1. One migration per Swift file, with no references between files in this folder.
+2. Each migration owns its done flag, its static `runIfNeeded()` entry point and its failure
+   handling. The flag is a private `<Name>.v1.done` UserDefaults key declared in the same file,
+   so deleting the file removes it. `MoodleTokenMigration` predates this rule and keeps its flag
+   as a Defaults key in `AppDefaults.swift`.
+3. `AppState.runPendingMigrations()` runs them, once per launch, from `AppState.init()`.
+4. Feature services (`AuthService`, `MoodleAssignmentService`, `MoodleTokenService`, ...) must
+   not reference types declared here.
+5. Name files `<Subject><Action>Migration.swift`, for example `MoodleTokenMigration` or
+   `DefaultTabsPinMigration`.
 
-## When to add a migration here
+## When a migration belongs here
 
-- Breaking change in stored data shape (Keychain / UserDefaults / SwiftData / JSON cache)
-- One-time bootstrap needed for existing users on app upgrade
-- Cleanup of deprecated artifacts left behind by previous versions
+- The shape of stored data changes (Keychain, UserDefaults, SwiftData, JSON cache).
+- Existing users need a one-time bootstrap on upgrade.
+- A previous version left artifacts that need cleaning up.
 
-## When NOT to use this folder
-
-- Regular feature code — belongs in `Features/` or `Services/<area>/`
-- Ongoing runtime policies (retry, refresh) — belongs in the relevant service
-- New features — never call anything in this folder from feature code
+Regular feature code, ongoing runtime policies such as retry or refresh, and new features do not
+belong here, and feature code never calls into this folder.
 
 ## Lifecycle
 
-Each migration file lives until all users in production have run it (typically 2–3 release cycles). After that, delete the file and remove its call from `runPendingMigrations()`. The idempotency flag in UserDefaults can be left as-is (harmless orphan) or cleaned up in a subsequent migration.
+A migration stays until every production user has run it, typically two to three release
+cycles. Then delete the whole file and its call in `runPendingMigrations()`; do not leave an
+empty shell. Its UserDefaults flag can stay as a harmless orphan or be cleaned up by a later
+migration.

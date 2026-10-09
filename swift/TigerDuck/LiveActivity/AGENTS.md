@@ -1,38 +1,32 @@
-# LIVE ACTIVITY KNOWLEDGE BASE
+# Live Activity
 
-## OVERVIEW
-`LiveActivity/` is a self-contained subsystem for Dynamic Island / lock-screen state and scenario resolution based on courses and assignments. Assignment reminders are sent by the backend since v2.1.0; nothing here schedules them.
+Rules for `swift/TigerDuck/LiveActivity/`, the app side of the Dynamic Island and lock-screen
+activities: scenario resolution from courses and assignments, preferences and the ActivityKit
+lifecycle. The extension UI is in `swift/TigerDuckLiveActivity/`. The backend sends assignment
+reminders; nothing here schedules them.
 
-## STRUCTURE
-```text
-LiveActivity/
-├── Models/        # snapshots, scenario kinds, reminder payloads, offsets
-├── Preferences/   # persisted user settings and invariants
-├── Providers/     # canonical course source for timeline logic
-├── Resolvers/     # scenario + course timeline computation
-└── Runtime/       # ActivityKit lifecycle + shared snapshot storage
-```
+## Conventions
 
-## WHERE TO LOOK
-| Task | Location | Notes |
-|---|---|---|
-| Activity lifecycle | `Runtime/LiveActivityCoordinator.swift` | One copy per `composedActivityId`, start/update/end, ends expired and duplicate copies |
-| Widget/app shared payload | `Runtime/SharedSnapshotStore.swift` | Shared data for extension |
-| Scenario decision logic | `Resolvers/LiveActivityScenarioResolver.swift` | Assignment/class/idle selection |
-| Course boundary timing | `Resolvers/CourseTimelineResolver.swift` | Computes in-class / preparing transitions |
-| User prefs and limits | `Preferences/LiveActivityPreferencesStore.swift` | Lead-time limits, toggle broadcasting |
+- `AppState` decides when to enter this subsystem; the rules for scenarios and scheduling live
+  here.
+- Preference changes broadcast `AppConstants.liveActivityPreferencesDidChange`, and the refresh
+  they trigger is debounced.
+- Courses come from `CanonicalCourseProvider`, so Home, Class Table and Live Activity agree.
 
-## CONVENTIONS
-- `AppState` orchestrates entry into this subsystem, but the subsystem owns the rules for scenario computation and scheduling behavior.
-- Preference changes broadcast through `AppConstants.liveActivityPreferencesDidChange`; refresh/reschedule is intentionally debounced.
-- The course source for this subsystem goes through `CanonicalCourseProvider` so Home, Class Table, and Live Activity stay aligned.
+## Anti-patterns
 
-## ANTI-PATTERNS
-- Do not end an activity only because it is not the current resolved target. Several can run at once: server push-to-start pre-starts later ones (a classPreparing activity and its inClass follow-up are distinct), and each is ended by its server end job or its own countdown. The coordinator ends only expired activities, duplicate copies of one `composedActivityId`, and class activities (classPreparing / inClass) on a day classes do not meet by the academic calendar and the user's "still have class" choices, and all of them while Live Activity is unavailable — see the header of `LiveActivityCoordinator.swift`.
-- Do not exceed the assignment lead-time invariant in `LiveActivityPreferencesStore` (8 hours).
-- Do not prompt for notification authorization from background-safe scheduling paths; explicit user intent is required.
-- Do not reschedule reminders for purely visual changes like accent-only updates.
+- Do not end an activity only because it is not the current resolved target. Several can run at
+  once: server push-to-start pre-starts later ones (a classPreparing activity and its inClass
+  follow-up are distinct), and each is ended by its server end job or its own countdown. The
+  coordinator ends only expired activities, duplicate copies of one `composedActivityId`, class
+  activities on a day classes do not meet (by the academic calendar and the user's "still have
+  class" choices), and all of them while Live Activity is unavailable.
+- Do not exceed the 8-hour assignment lead-time limit in `LiveActivityPreferencesStore`.
+- Do not ask for notification permission from background scheduling paths; it needs an explicit
+  user action.
+- Do not reschedule for purely visual changes such as accent-only updates.
 
-## NOTES
-- Foreground freshness uses boundary-based one-shot refresh tasks; true background correctness would require push-based updates.
-- Widget extension UI lives in `swift/TigerDuckLiveActivity/`, but this directory owns the app-side state and rules that feed it.
+## Gotchas
+
+- Foreground freshness relies on one-shot refresh tasks at class boundaries; correctness in the
+  background would need push updates.
