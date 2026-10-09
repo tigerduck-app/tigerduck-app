@@ -144,10 +144,30 @@ explicitly. The line above the check already says so. Flag a missing
 decode on the *other* responses; never on `capabilities`. This finding
 was raised twice on PR #199 and rejected both times.
 
-## Greptile review
+## Swift comments follow the comment rules in AGENTS.md
 
-**Rule:** For every review, please update confidence score as well as giving the suggestions (if any).
+**Rule:** Flag a Swift comment that a pull request adds or changes when it narrates history
+("previously", "used to", "no longer"), restates the code, records who decided something or
+what a discussion said, uses emphasis (bold, `IMPORTANT:` or `NOTE:`, em dashes,
+"deliberately", "intentionally", "note that"), or cites something a reader cannot open. Ask for
+the reason the comment stands for instead.
 
-**Why:** Becuase your so unstable that not every time you review correctly update the score as well as giving the suggestions.
+**Why:** Comments are read by people and agents who have only the repository. History lives in
+git, decisions in `docs/decisions/`, procedures in skills and agent rules in AGENTS.md.
+`tools/check_comments.py` already fails CI on Han characters, review rounds, dispatch numbers,
+sections of outside documents, `openspec/` paths, tool names and blocks over 3 regular or 8
+doc lines, so those need no review comment.
 
-**How to apply:** Just make sure that you update the confidence score and give suggestions (if any) every time you review a code.
+**How to apply:** Look only at comments the pull request adds or changes. A count such as
+"exactly one" is fine, and so is an invariant stated as a constraint. The full rules are in the
+Comments section of AGENTS.md.
+
+## Confidence score
+
+**Rule:** Every review sets the confidence score and lists its suggestions, if any.
+
+**Why:** Reviews have come back with suggestions but without an updated score, which leaves the
+pull request's state unclear.
+
+**How to apply:** On every review, including a follow-up after new commits, update the score and
+give the suggestions together.
