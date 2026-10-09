@@ -6,11 +6,14 @@ final class WatchSyncCoordinatorTests: XCTestCase {
 
     final class StubSession: WatchSessionPushing {
         var pushedContexts: [[String: Any]] = []
+        /// Called after each push, so a test can wait for one instead of sleeping.
+        var onPush: (() -> Void)?
         var isPaired = true
         var isWatchAppInstalled = true
         var isReachable = true
         func updateApplicationContext(_ context: [String: Any]) throws {
             pushedContexts.append(context)
+            onPush?()
         }
         // These tests cover only the application-context path. The message and user-info members
         // satisfy the protocol and are never called; `WCSessionUserInfoTransfer` has no
@@ -59,14 +62,21 @@ final class WatchSyncCoordinatorTests: XCTestCase {
     @MainActor
     func test_debounce_coalescesBurstWithin500ms() async throws {
         let session = StubSession()
-        let coord = WatchSyncCoordinator(session: session)
+        let timer = ManualSleeper()
+        let coord = WatchSyncCoordinator(session: session, sleep: { _ in await timer.sleep() })
+        let pushed = expectation(description: "the debounced push")
+        session.onPush = { pushed.fulfill() }
         coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#A",
                                     loggedIn: true, languageTag: nil, visualPreset: .default)
         coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#B",
                                     loggedIn: true, languageTag: nil, visualPreset: .default)
         coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#C",
                                     loggedIn: true, languageTag: nil, visualPreset: .default)
-        try await Task.sleep(nanoseconds: 700_000_000)
+        // All three waits are running; firing them together is the window passing.
+        await timer.waitUntilArmed(atLeast: 3)
+        XCTAssertTrue(session.pushedContexts.isEmpty)
+        await timer.fire()
+        await fulfillment(of: [pushed], timeout: 60)
         XCTAssertEqual(session.pushedContexts.count, 1)
         XCTAssertEqual(session.pushedContexts[0][WatchWireFormat.Key.accentHex] as? String, "#C")
     }

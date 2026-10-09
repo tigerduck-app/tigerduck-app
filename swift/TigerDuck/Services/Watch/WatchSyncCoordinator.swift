@@ -25,7 +25,9 @@ final class WatchSyncCoordinator: NSObject {
     private var debounceTask: Task<Void, Never>?
     private var pendingPayload: PendingPayload?
     private var pendingSnapshot: WatchSnapshot?
-    private let debounceInterval: TimeInterval = 0.5
+    private let debounceInterval: Duration = .milliseconds(500)
+    /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
+    private let sleep: @Sendable (Duration) async -> Void
 
     private struct PendingPayload {
         let courses: [SDCourse]
@@ -36,8 +38,12 @@ final class WatchSyncCoordinator: NSObject {
         let visualPreset: VisualPreset
     }
 
-    init(session: WatchSessionPushing = WCSession.default) {
+    init(
+        session: WatchSessionPushing = WCSession.default,
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) {
         self.session = session
+        self.sleep = sleep
         super.init()
     }
 
@@ -104,8 +110,10 @@ final class WatchSyncCoordinator: NSObject {
             visualPreset: visualPreset
         )
         debounceTask?.cancel()
+        let sleep = self.sleep
+        let interval = debounceInterval
         debounceTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64((self?.debounceInterval ?? 0.5) * 1_000_000_000))
+            await sleep(interval)
             guard !Task.isCancelled, let self, let p = self.pendingPayload else { return }
             self.pendingPayload = nil
             self.push(courses: p.courses, customNames: p.customNames, accentHex: p.accentHex,
