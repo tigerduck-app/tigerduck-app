@@ -396,7 +396,7 @@ extension AppState {
 
     func uploadCourses(_ courses: [SDCourse], semester: String, forceKeys: [String] = []) {
         guard CourseUploadPolicy.uploadsCourses else { return }
-        let request = courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
+        let request = Self.courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
         let coordinator = pushCoordinator
         Task.detached {
             do {
@@ -408,22 +408,7 @@ extension AppState {
         }
     }
 
-    /// Same payload as ``uploadCourses`` but awaits the POST and rethrows.
-    /// Use where the caller has to know whether the upload landed — notably
-    /// the keep-local conflict resolution, which wipes the server first and so
-    /// cannot treat a failed upload as fire-and-forget.
-    func uploadCoursesAwaitingResult(
-        _ courses: [SDCourse],
-        semester: String,
-        forceKeys: [String] = []
-    ) async throws {
-        guard CourseUploadPolicy.uploadsCourses else { return }
-        let request = courseUploadRequest(courses, semester: semester, forceKeys: forceKeys)
-        try await pushCoordinator.uploadCourses(request)
-        AppLogger.sync.info("uploadCourses: \(request.courses.count, privacy: .public) courses sent")
-    }
-
-    private func courseUploadRequest(
+    static func courseUploadRequest(
         _ courses: [SDCourse],
         semester: String,
         forceKeys: [String]

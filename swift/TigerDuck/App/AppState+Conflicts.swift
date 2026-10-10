@@ -262,11 +262,8 @@ extension AppState {
     }
 
     /// Applies the user's answer to `reenableConflict`. Keeping local courses awaits every
-    /// term's upload after the wipe: until the uploads land the server holds no courses, so a
-    /// lost one would leave "keep local" having wiped the user's cloud copy. Other devices do
-    /// not mass-delete off the empty terms, because `reconcileCourses` uploads their portal
-    /// courses instead, but this device's user-added courses are not part of that upload and
-    /// would stay missing.
+    /// request and asks again on any failure: until a term's upload lands, the server holds
+    /// none of its courses and the reset's tombstones hide them on every other device.
     func resolveReenableConflict(keepLocal: Bool) {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
@@ -278,21 +275,16 @@ extension AppState {
         let coordinator = pushCoordinator
         Task {
             if keepLocal {
-                if conflict.categories.contains("courses") {
-                    // Wipe, then await each term's upload with its user-added courses, force-keyed
-                    // past any tombstone, or the next reconcile deletes them. No upload after a
-                    // failed wipe: upserts would restore deleted courses. Any failure re-prompts.
+                if conflict.categories.contains("courses"), CourseUploadPolicy.uploadsCourses {
+                    let terms = SemesterCatalog.availableSemesters().map { semester in
+                        (semester: semester,
+                         courses: DataCache.shared.loadCourses(semester: semester)
+                            + DataCache.shared.loadUserAddedCourses(semester: semester))
+                    }
                     do {
-                        try await coordinator.deleteAllCourses()
-                        for semester in SemesterCatalog.availableSemesters() {
-                            let userAdded = DataCache.shared.loadUserAddedCourses(semester: semester)
-                            let courses = DataCache.shared.loadCourses(semester: semester) + userAdded
-                            guard !courses.isEmpty else { continue }
-                            try await uploadCoursesAwaitingResult(
-                                courses, semester: semester,
-                                forceKeys: userAdded.map { "client:\(semester):\($0.courseNo)" }
-                            )
-                        }
+                        try await Self.keepLocalCourses(
+                            terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: coordinator
+                        )
                     } catch {
                         AppLogger.sync.error("[reenable] keep-local course sync failed (server may be empty): \(error, privacy: .public)")
                         await MainActor.run { markCategoryReenabled("courses") }
@@ -351,4 +343,33 @@ extension AppState {
             }
         }
     }
+
+    /// "Use Local" for courses, term by term: reset the term, upload every course cached for it,
+    /// then delete the ones hidden here. The reset makes every tombstone in the term this device's,
+    /// which its upload releases. The deletes leave single-course tombstones, which bind this device
+    /// too, so the roster its next refresh uploads cannot bring a hidden course back. Not a full
+    /// reset: that erases every term's tombstones and sets `courses_reset_at`, which tells every
+    /// device, this one included, to drop its hidden and manual courses.
+    static func keepLocalCourses(
+        _ terms: [(semester: String, courses: [SDCourse])],
+        hiding deletedNos: Set<String>,
+        on backend: some CourseSyncBackend
+    ) async throws {
+        for (semester, courses) in terms where !courses.isEmpty {
+            try await backend.deleteAllCourses(semester: semester)
+            try await backend.uploadCourses(courseUploadRequest(courses, semester: semester, forceKeys: []))
+            for course in courses where CourseTombstone.isHidden(course.courseNo, semester: semester, in: deletedNos) {
+                try await backend.deleteCourse(courseKey: "client:\(semester):\(course.courseNo)")
+            }
+        }
+    }
 }
+
+/// The course requests "Use Local" sends, so a test can stand in for the backend.
+protocol CourseSyncBackend {
+    func deleteAllCourses(semester: String?) async throws
+    func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws
+    func deleteCourse(courseKey: String) async throws
+}
+
+extension PushCoordinator: CourseSyncBackend {}
