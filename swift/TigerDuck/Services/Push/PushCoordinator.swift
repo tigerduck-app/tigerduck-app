@@ -147,17 +147,6 @@ final class PushCoordinator {
         }
     }
 
-    /// Forward credential refresh to the API client.
-    func updateCredentials(
-        moodleToken: String,
-        moodlePrivateToken: String?
-    ) async throws -> PushAPI.UpdateCredentialsResponse {
-        try await apiClient.updateCredentials(
-            moodleToken: moodleToken,
-            moodlePrivateToken: moodlePrivateToken
-        )
-    }
-
     /// How often an unchanged Moodle token goes to the server again. The server checks each
     /// update against Moodle, and a resend is what revives a sync job it disabled.
     static let unchangedCredentialsInterval: TimeInterval = 3600
@@ -185,7 +174,7 @@ final class PushCoordinator {
         guard Self.credentialsUpdateIsDue(
             accepted: acceptedMoodleCredentials, fingerprint: fingerprint, now: now
         ) else { return }
-        let response = try await updateCredentials(
+        let response = try await apiClient.updateCredentials(
             moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken
         )
         acceptedMoodleCredentials = response.updated ? (fingerprint, now) : nil
