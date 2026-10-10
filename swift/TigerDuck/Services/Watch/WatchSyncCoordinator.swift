@@ -22,7 +22,7 @@ extension WCSession: WatchSessionPushing {}
 final class WatchSyncCoordinator: NSObject {
 
     private let session: WatchSessionPushing
-    private var debounceTask: Task<Void, Never>?
+    private(set) var debounceTask: Task<Void, Never>?
     private var pendingPayload: PendingPayload?
     private var pendingSnapshot: WatchSnapshot?
     private let debounceInterval: Duration = .milliseconds(500)

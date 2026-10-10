@@ -35,7 +35,7 @@ struct MailPageSessionTests {
         await fake.release("status")
         _ = try await useTask.value // the use is done; the deferred close is armed now
 
-        await timer.waitUntilArmed()
+        try await timer.waitUntilArmed()
         #expect(await timer.requestedDurations == [Self.idleClose])
         await timer.fire() // the whole idle delay, with no clock
         await fake.waitForArrival("logout")
@@ -48,12 +48,12 @@ struct MailPageSessionTests {
         let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { await timer.sleep(for: $0) })
         _ = try await session.use { _ in }
         session.releaseSoon() // arms a close at generation N
-        await timer.waitUntilArmed()
+        try await timer.waitUntilArmed()
         _ = try await session.use { _ in } // cancels it and bumps the generation; nothing re-arms it
 
-        // Fire the superseded timer anyway, exactly as a real `Task.sleep` that raced past its
-        // own `cancel()` by a tick would: whichever of the cancellation check or the generation
-        // guard catches it, no close may happen.
+        // The use's cancel ends the superseded timer's wait, as it ends a real `Task.sleep`; firing
+        // as well covers a timer the cancel never reached. Whichever of the cancellation check or
+        // the generation guard catches it, no close may happen.
         await timer.fire()
         await Task.yield()
         #expect(await fake.calls.contains("logout") == false)

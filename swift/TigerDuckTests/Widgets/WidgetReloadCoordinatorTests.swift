@@ -22,13 +22,18 @@ struct WidgetReloadCoordinatorTests {
         let fake = FakeReloader()
         let timer = ManualSleeper()
         let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { await timer.sleep(for: $0) })
-        for _ in 0..<5 { coordinator.requestReload() }
-        await timer.waitUntilArmed(atLeast: 5)
+        var windows: [Task<Void, Never>] = []
+        for _ in 0..<5 {
+            coordinator.requestReload()
+            windows.append(try #require(coordinator.pendingTask))
+        }
+        try await timer.waitUntilArmed(atLeast: 5)
         #expect(await timer.requestedDurations == [Duration](repeating: .milliseconds(300), count: 5))
         #expect(fake.callCount == 0)
-        // Every request's window ends at once; only the one no later request cancelled reloads.
+        // Each request cancelled the window before it, which ends that wait; firing ends the last.
+        // Counting once every window has finished leaves no late reload unseen.
         await timer.fire()
-        try await waitUntil { fake.callCount >= 1 }
+        for window in windows { await window.value }
         #expect(fake.callCount == 1)
     }
 
@@ -37,11 +42,11 @@ struct WidgetReloadCoordinatorTests {
         let timer = ManualSleeper()
         let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { await timer.sleep(for: $0) })
         coordinator.requestReload()
-        await timer.waitUntilArmed()
+        try await timer.waitUntilArmed()
         await timer.fire()
         try await waitUntil { fake.callCount == 1 }
         coordinator.requestReload()
-        await timer.waitUntilArmed(atLeast: 2)
+        try await timer.waitUntilArmed(atLeast: 2)
         #expect(await timer.requestedDurations == [.milliseconds(300), .milliseconds(300)])
         await timer.fire()
         try await waitUntil { fake.callCount == 2 }

@@ -21,7 +21,7 @@ final class WidgetReloadCoordinator {
     nonisolated private let debounce: TimeInterval
     /// The debounce wait, injectable so a test can end it by hand instead of sleeping through it.
     nonisolated private let sleep: @Sendable (Duration) async -> Void
-    private var pendingTask: Task<Void, Never>?
+    private(set) var pendingTask: Task<Void, Never>?
 
     nonisolated init(
         reloader: Reloader = WidgetKitReloader(),

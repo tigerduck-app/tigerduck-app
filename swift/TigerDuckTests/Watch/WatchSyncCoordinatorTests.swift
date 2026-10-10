@@ -7,14 +7,11 @@ final class WatchSyncCoordinatorTests: XCTestCase {
 
     final class StubSession: WatchSessionPushing {
         var pushedContexts: [[String: Any]] = []
-        /// Called after each push, so a test can wait for one instead of sleeping.
-        var onPush: (() -> Void)?
         var isPaired = true
         var isWatchAppInstalled = true
         var isReachable = true
         func updateApplicationContext(_ context: [String: Any]) throws {
             pushedContexts.append(context)
-            onPush?()
         }
         // These tests cover only the application-context path. The message and user-info members
         // satisfy the protocol and are never called; `WCSessionUserInfoTransfer` has no
@@ -65,21 +62,20 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         let session = StubSession()
         let timer = ManualSleeper()
         let coord = WatchSyncCoordinator(session: session, sleep: { await timer.sleep(for: $0) })
-        let pushed = expectation(description: "the debounced push")
-        session.onPush = { pushed.fulfill() }
-        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#A",
-                                    loggedIn: true, languageTag: nil, visualPreset: .default)
-        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#B",
-                                    loggedIn: true, languageTag: nil, visualPreset: .default)
-        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#C",
-                                    loggedIn: true, languageTag: nil, visualPreset: .default)
-        // All three waits are running; firing them together is the window passing.
-        await timer.waitUntilArmed(atLeast: 3)
-        let windows = await timer.requestedDurations
-        XCTAssertEqual(windows, [Duration](repeating: .milliseconds(500), count: 3))
+        var windows: [Task<Void, Never>] = []
+        for accent in ["#A", "#B", "#C"] {
+            coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: accent,
+                                        loggedIn: true, languageTag: nil, visualPreset: .default)
+            windows.append(try XCTUnwrap(coord.debounceTask))
+        }
+        try await timer.waitUntilArmed(atLeast: 3)
+        let durations = await timer.requestedDurations
+        XCTAssertEqual(durations, [Duration](repeating: .milliseconds(500), count: 3))
         XCTAssertTrue(session.pushedContexts.isEmpty)
+        // Each schedule cancelled the wait before it; firing ends the last. Counting once every
+        // wait has finished leaves no late push unseen.
         await timer.fire()
-        await fulfillment(of: [pushed], timeout: 60)
+        for window in windows { await window.value }
         XCTAssertEqual(session.pushedContexts.count, 1)
         XCTAssertEqual(session.pushedContexts[0][WatchWireFormat.Key.accentHex] as? String, "#C")
     }

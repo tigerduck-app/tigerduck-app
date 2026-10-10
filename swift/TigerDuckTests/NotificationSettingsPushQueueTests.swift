@@ -72,14 +72,14 @@ struct NotificationSettingsPushQueueTests {
             NotificationSettingsPushQueue.enqueue { ran.append("accountA") }
         }, sleep: { await timer.sleep(for: $0) })
         let debounce = try #require(NotificationSettingsPushQueue.pendingDebounce)
-        await timer.waitUntilArmed()
+        try await timer.waitUntilArmed()
         #expect(await timer.requestedDurations == [.milliseconds(250)])
 
         // The account logs out while the debounce is still sleeping.
         NotificationSettingsPushQueue.cancelAll()
 
-        // The wait ends after the logout, as a sleep that raced its cancel would. Had the
-        // cancel not reached it, "accountA" would now be queued ahead of the next account.
+        // The cancel ends the wait, as it ends a real `Task.sleep`. Firing as well covers a cancel
+        // that never reached the debounce, which would queue "accountA" ahead of the next account.
         await timer.fire()
         await debounce.value
 
