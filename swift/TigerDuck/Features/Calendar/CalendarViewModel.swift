@@ -85,8 +85,15 @@ final class CalendarViewModel {
         }
     }
 
+    private var isRefreshing = false
+
     func triggerRefresh(authService: AuthService) {
-        Task { await refresh(authService: authService) }
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        Task {
+            await refresh(authService: authService)
+            isRefreshing = false
+        }
     }
 
     func refresh(authService: AuthService) async {
@@ -128,15 +135,8 @@ final class CalendarViewModel {
     }
 
     private func fetchMoodleEvents(authService: AuthService) async -> [SDCalendarEvent] {
-        let assignments = await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
-        return assignments.map { assignment in
-            SDCalendarEvent(
-                eventId: "moodle-\(assignment.assignmentId)",
-                title: assignment.displayTitle,
-                date: assignment.dueDate,
-                source: .moodle
-            )
-        }
+        await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
+            .map(AppServiceBridge.moodleCalendarEvent)
     }
 
     private func fetchSchoolEvents() async -> [SDCalendarEvent] {

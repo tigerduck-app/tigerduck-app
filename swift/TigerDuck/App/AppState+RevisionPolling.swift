@@ -91,7 +91,7 @@ extension AppState {
 
             // Moodle-direct for the assignment list (proven, correct
             // semester filtering). Backend handles override sync only.
-            let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
+            _ = await AppServiceBridge.fetchAssignments(authService: authService)
             await syncOverridesFromBackend()
 
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
@@ -100,19 +100,15 @@ extension AppState {
             let fetchedSchoolEvents = await schoolEventsTask
             _ = await coursesTask
 
-            // Build moodle calendar events from assignments and merge with school events
-            let moodleEvents = fetchedAssignments.map {
-                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.displayTitle, date: $0.dueDate, source: .moodle)
-            }
             // Bail out before persisting if logout cancelled this sync mid-flight. The
             // merged calendar would otherwise land on the freshly purged cache and
             // resurface the previous user's events.
             guard !Task.isCancelled else { return }
 
+            // The assignment round rebuilt the Moodle rows; only the school's change here.
             var calendarCache = DataCache.shared.loadCalendarEvents()
-            calendarCache.removeAll { $0.source == .school || $0.source == .moodle }
+            calendarCache.removeAll { $0.source == .school }
             calendarCache.append(contentsOf: fetchedSchoolEvents)
-            calendarCache.append(contentsOf: moodleEvents)
             DataCache.shared.saveCalendarEvents(calendarCache)
 
             await MainActor.run {

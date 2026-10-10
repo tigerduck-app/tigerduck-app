@@ -1,11 +1,73 @@
 import Defaults
 import Foundation
 
+/// The result stays on the main actor, so a waiter reads it after the round's `Void` task ends
+/// instead of taking the non-Sendable models out of the task.
+private final class AssignmentRound {
+    let generation: Int
+    let rechecks: Bool
+    var task: Task<Void, Never>?
+    var assignments: [SDAssignment] = []
+
+    init(generation: Int, rechecks: Bool) {
+        self.generation = generation
+        self.rechecks = rechecks
+    }
+}
+
 extension AppServiceBridge {
 
+    private static var runningRound: AssignmentRound?
+
+    /// One Moodle assignment round at a time: launch, a return to the app and the Home, Class
+    /// Table and Calendar pulls write the same cache. A caller joins the round in flight for its
+    /// account, unless it wants submissions rechecked and that round does not.
+    ///
     /// `recheckSubmissions` asks Moodle about every submission. Without it a round skips the
     /// ones ``confirmedSubmissions(in:)`` lists, so a pull is what shows a reverted submission.
     static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
+        await sharedRound(generation: authService.loginGeneration, rechecks: recheckSubmissions) {
+            await runAssignmentRound(authService: authService, recheckSubmissions: recheckSubmissions)
+        }
+    }
+
+    static func sharedRound(
+        generation: Int,
+        rechecks: Bool,
+        run: @escaping @MainActor () async -> [SDAssignment]
+    ) async -> [SDAssignment] {
+        // A round that finished stays in `runningRound` until its starter resumes; the
+        // identity check keeps a waiter from taking that finished round for a new one.
+        var waitedFor: AssignmentRound?
+        while let round = runningRound, round.generation == generation, round !== waitedFor {
+            await round.task?.value
+            if round.rechecks || !rechecks { return round.assignments }
+            waitedFor = round
+        }
+        let round = AssignmentRound(generation: generation, rechecks: rechecks)
+        round.task = Task { round.assignments = await run() }
+        runningRound = round
+        await round.task?.value
+        if runningRound === round { runningRound = nil }
+        return round.assignments
+    }
+
+    /// Sign-out stops the departing account's round; its writes would be skipped anyway.
+    static func cancelAssignmentRound() {
+        runningRound?.task?.cancel()
+        runningRound = nil
+    }
+
+    static func moodleCalendarEvent(_ assignment: SDAssignment) -> SDCalendarEvent {
+        SDCalendarEvent(
+            eventId: "moodle-\(assignment.assignmentId)",
+            title: assignment.displayTitle,
+            date: assignment.dueDate,
+            source: .moodle
+        )
+    }
+
+    private static func runAssignmentRound(authService: AuthService, recheckSubmissions: Bool) async -> [SDAssignment] {
         let startGeneration = authService.loginGeneration
         guard authService.storedStudentId != nil,
               authService.storedPassword != nil else {
@@ -134,6 +196,12 @@ extension AppServiceBridge {
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignmentsToPersist)
+                // Rebuilt by every round, so a Home pull or a return to the app moves the
+                // calendar's Moodle rows too, not only a launch or a calendar pull.
+                var calendarEvents = DataCache.shared.loadCalendarEvents()
+                calendarEvents.removeAll { $0.source == .moodle }
+                calendarEvents.append(contentsOf: assignmentsToPersist.map(moodleCalendarEvent))
+                DataCache.shared.saveCalendarEvents(calendarEvents)
 
                 // Fire-and-forget: upload the assignment list to the backend
                 // so it can populate its assignments table for cross-device

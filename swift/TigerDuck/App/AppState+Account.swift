@@ -84,6 +84,7 @@ extension AppState {
         _lastKnownRevision = 0
         syncTask?.cancel()
         syncTask = nil
+        AppServiceBridge.cancelAssignmentRound()
         #if os(iOS)
         pendingRefreshTask?.cancel()
         pendingRefreshTask = nil
