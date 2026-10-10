@@ -122,6 +122,8 @@ nonisolated extension Defaults.Keys {
         default: true
     )
     static let ssoLoginTimestamp = Key<Double?>(AppConstants.UserDefaultsKeys.ssoLoginTimestamp)
+    /// When Moodle last answered a whole assignment round for the signed-in account.
+    static let schoolDataSyncedAt = Key<Date?>("schoolDataSyncedAt")
     static let moodleTokenMigrationDone = Key<Bool>(
         "moodleTokenMigrationDone",
         default: false

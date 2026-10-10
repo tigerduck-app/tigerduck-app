@@ -109,6 +109,11 @@ extension AppServiceBridge {
             }
             let relevantMoodleCourseIds = relevantCourses.map(\.id)
             guard !relevantMoodleCourseIds.isEmpty else {
+                // Moodle answered: nothing for this term yet. An answer with no courses at
+                // all says nothing about the term, so it leaves the data undated.
+                if !moodleEnrolled.isEmpty, authService.loginGeneration == startGeneration {
+                    Defaults[.schoolDataSyncedAt] = Date()
+                }
                 return DataCache.shared.loadAssignments()
             }
 
@@ -196,6 +201,9 @@ extension AppServiceBridge {
             if !Task.isCancelled,
                authService.loginGeneration == startGeneration {
                 DataCache.shared.saveAssignments(assignmentsToPersist)
+                if statuses.count == recordsToAsk.count {
+                    Defaults[.schoolDataSyncedAt] = Date()
+                }
                 // Rebuilt by every round, so a Home pull or a return to the app moves the
                 // calendar's Moodle rows too, not only a launch or a calendar pull.
                 var calendarEvents = DataCache.shared.loadCalendarEvents()
