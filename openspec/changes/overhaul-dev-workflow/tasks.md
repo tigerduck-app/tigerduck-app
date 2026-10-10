@@ -75,7 +75,7 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 
 ## 11. Suites off the main actor
 
-- [ ] 11.1 Remove `@MainActor` from each of the 49 annotated test files that uses no main-actor API; verify the phone and watch unit tests pass and three local runs' "ran for" times beat three runs without the change, and revert it otherwise
+- [x] 11.1 Remove `@MainActor` from each of the 49 annotated test files that uses no main-actor API; verify the phone and watch unit tests pass and three local runs' "ran for" times beat three runs without the change, and revert it otherwise (reverted, 2 suites: Swift Testing 2.94/2.57/2.47 s and wall 22.8/11.6/10.9 s without, 2.67/2.48/2.61 s and 20.9/11.0/11.2 s with)
 
 ## 12. Pull request
 
