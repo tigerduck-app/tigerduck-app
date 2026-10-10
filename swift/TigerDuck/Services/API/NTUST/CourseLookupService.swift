@@ -19,8 +19,43 @@ enum CourseLookupService {
         )
     }()
 
-    static func lookupCourse(semester: String, courseNo: String, language: String = "zh") async throws -> [CourseSearchResult] {
-        try await searchAPI(body: .forCourseNo(courseNo, semester: semester, language: language))
+    /// A course's rows change only when the school edits the course, and every course fetch
+    /// and class-table appearance looks each course up, so an answer is kept this long.
+    static let lookupLifetime: TimeInterval = 30 * 60
+
+    struct LookupKey: Hashable {
+        let semester: String
+        let courseNo: String
+        let language: String
+    }
+
+    private static var lookups: [LookupKey: (at: Date, results: [CourseSearchResult])] = [:]
+
+    /// `fresh` skips the kept answer; a class-table pull passes it.
+    static func lookupCourse(
+        semester: String,
+        courseNo: String,
+        language: String = "zh",
+        fresh: Bool = false
+    ) async throws -> [CourseSearchResult] {
+        let key = LookupKey(semester: semester, courseNo: courseNo, language: language)
+        return try await kept(key, now: Date(), fresh: fresh) {
+            try await searchAPI(body: .forCourseNo(courseNo, semester: semester, language: language))
+        }
+    }
+
+    static func kept(
+        _ key: LookupKey,
+        now: Date,
+        fresh: Bool,
+        search: () async throws -> [CourseSearchResult]
+    ) async throws -> [CourseSearchResult] {
+        if !fresh, let kept = lookups[key], now.timeIntervalSince(kept.at) < lookupLifetime {
+            return kept.results
+        }
+        let results = try await search()
+        lookups[key] = (now, results)
+        return results
     }
 
     static func searchCourses(semester: String, courseName: String, language: String = "zh") async throws -> [CourseSearchResult] {

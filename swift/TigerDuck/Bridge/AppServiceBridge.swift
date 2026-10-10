@@ -186,7 +186,8 @@ enum AppServiceBridge {
                     group.addTask { @MainActor in
                         do {
                             let results = try await CourseLookupService.lookupCourse(
-                                semester: semester, courseNo: courseNo, language: courseApiLanguage
+                                semester: semester, courseNo: courseNo, language: courseApiLanguage,
+                                fresh: forceRefresh
                             )
 
                             guard !results.isEmpty else {
@@ -461,7 +462,8 @@ enum AppServiceBridge {
             for (courseNo, moodleId, rowSemester) in seeds {
                 group.addTask { @MainActor in
                     guard let results = try? await CourseLookupService.lookupCourse(
-                        semester: rowSemester, courseNo: courseNo, language: display.language
+                        semester: rowSemester, courseNo: courseNo, language: display.language,
+                        fresh: true
                     ), !results.isEmpty else { return (courseNo, nil) }
                     return (courseNo, enrichedCourseData(
                         from: results, semester: rowSemester,
