@@ -160,6 +160,9 @@ struct TigerDuckApp: App {
                             appState.requestPushScheduleSync()
                             await appState.refreshMoodleCredentials()
                         }
+                        if appState.hasCompletedOnboarding {
+                            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
+                        }
                         appState.startRevisionPolling()
                         widgetSnapshotWriter?.regenerate()
                         // App Store update check, throttled inside to once per
@@ -346,6 +349,9 @@ struct TigerDuckApp: App {
                         sceneRefreshTask = Task {
                             appState.requestPushScheduleSync()
                             await appState.refreshMoodleCredentials()
+                        }
+                        if appState.hasCompletedOnboarding {
+                            Task { await AppServiceBridge.refreshAssignmentsIfDue(authService: appState.authService) }
                         }
                         appState.startRevisionPolling()
                         widgetSnapshotWriter?.regenerate()

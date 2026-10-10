@@ -1,6 +1,6 @@
 // The backend's monotonic revision counter answers "did anything change?" without
 // pulling the whole override set; a foreground timer polls it. `backgroundSync` is
-// the BGTaskScheduler entry point that fans out to the independent fetches.
+// the launch and sign-in sync that fans out to the independent fetches.
 
 import SwiftUI
 import SwiftData
@@ -72,7 +72,9 @@ extension AppState {
     /// lived OIDC token (no NTUST SSO dependency), the ICS calendar is
     /// public, and the courses track owns its own auth check so Moodle
     /// and ICS are never held up behind `ensureAuthenticated()`.
-    func backgroundSync() {
+    ///
+    /// `recheckSubmissions` is for Refresh on the Mac, which has no pull.
+    func backgroundSync(recheckSubmissions: Bool = false) {
         guard hasCompletedOnboarding else { return }
         startRevisionPolling()
         syncTask?.cancel()
@@ -91,7 +93,10 @@ extension AppState {
 
             // Moodle-direct for the assignment list (proven, correct
             // semester filtering). Backend handles override sync only.
-            let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
+            if recheckSubmissions { MoodleEnrolledCoursesService.dropSharedAnswer() }
+            _ = await AppServiceBridge.fetchAssignments(
+                authService: authService, recheckSubmissions: recheckSubmissions
+            )
             await syncOverridesFromBackend()
 
             async let schoolEventsTask = CalendarService.fetchAndParseICS()
@@ -100,19 +105,16 @@ extension AppState {
             let fetchedSchoolEvents = await schoolEventsTask
             _ = await coursesTask
 
-            // Build moodle calendar events from assignments and merge with school events
-            let moodleEvents = fetchedAssignments.map {
-                SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.displayTitle, date: $0.dueDate, source: .moodle)
-            }
             // Bail out before persisting if logout cancelled this sync mid-flight. The
             // merged calendar would otherwise land on the freshly purged cache and
             // resurface the previous user's events.
             guard !Task.isCancelled else { return }
 
+            // Moodle rows stay as they are: every assignment round writes them, and a pull's
+            // round may have written newer ones than this sync's while it fetched courses.
             var calendarCache = DataCache.shared.loadCalendarEvents()
-            calendarCache.removeAll { $0.source == .school || $0.source == .moodle }
+            calendarCache.removeAll { $0.source == .school }
             calendarCache.append(contentsOf: fetchedSchoolEvents)
-            calendarCache.append(contentsOf: moodleEvents)
             DataCache.shared.saveCalendarEvents(calendarCache)
 
             await MainActor.run {
@@ -123,14 +125,18 @@ extension AppState {
         }
     }
 
-    /// Runs the NTUST-SSO-authenticated portion of background sync
-    /// (course list refresh). Factored out so `backgroundSync` can
-    /// launch it via `async let` alongside the independent Moodle and
-    /// ICS fetches. Returns the auth result purely so the call site
-    /// can use it as an `async let` value.
+    /// Runs the course list refresh of background sync. Factored out so `backgroundSync` can
+    /// launch it via `async let` alongside the independent Moodle and ICS fetches. It signs in
+    /// to SSO only when the course-selection list is due; the rest needs no school session.
     private func syncCoursesIfAuthenticated() async -> Bool {
-        guard await authService.ensureAuthenticated() else { return false }
-        _ = await AppServiceBridge.fetchCourses(authService: authService)
+        guard let studentId = authService.storedStudentId else { return false }
+        let semester = CourseSelectionService.currentSemesterCode()
+        if CourseSelectionService.needsSchoolSession(studentId: studentId, semester: semester) {
+            guard await authService.ensureAuthenticated() else { return false }
+        } else {
+            await authService.ensureBackendSignedIn()
+        }
+        _ = await AppServiceBridge.fetchCourses(authService: authService, semester: semester)
         return true
     }
 }

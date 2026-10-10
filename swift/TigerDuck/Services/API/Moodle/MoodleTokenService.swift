@@ -30,6 +30,9 @@ actor MoodleTokenService {
     }
     private var inFlightTokenTask: (key: ObtainKey, task: Task<String, Error>)?
     private var inFlightRefreshTask: Task<String, Error>?
+    /// Moved by ``signOut()``: a harvest that started before a sign-out stores nothing, or
+    /// the departing account's token would be back in the keychain for the next one.
+    private var signInGeneration = 0
 
     // MARK: - Compiled regexes (compile once, reuse across login attempts)
 
@@ -93,16 +96,18 @@ actor MoodleTokenService {
             }
             _ = try? await existing.task.value
         }
+        let generation = signInGeneration
         let task = Task<String, Error> {
             let triple = try await Self.performOidcLogin(
                 studentId: normalizedId, password: password,
             )
+            guard signInGeneration == generation else { throw CancellationError() }
             Self.persist(triple: triple)
             return triple.wstoken
         }
         inFlightTokenTask = (key, task)
         defer {
-            if inFlightTokenTask?.key == key { inFlightTokenTask = nil }
+            if inFlightTokenTask?.task == task { inFlightTokenTask = nil }
         }
         return try await task.value
     }
@@ -113,6 +118,7 @@ actor MoodleTokenService {
         if let existing = inFlightRefreshTask {
             return try await existing.value
         }
+        let generation = signInGeneration
         let task = Task<String, Error> {
             let creds = (
                 KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
@@ -127,15 +133,29 @@ actor MoodleTokenService {
             let triple = try await Self.performOidcLogin(
                 studentId: normalizedId, password: pwd,
             )
+            guard signInGeneration == generation else { throw CancellationError() }
             Self.persist(triple: triple)
             return triple.wstoken
         }
         inFlightRefreshTask = task
-        defer { inFlightRefreshTask = nil }
+        defer {
+            if inFlightRefreshTask == task { inFlightRefreshTask = nil }
+        }
         return try await task.value
     }
 
-    /// Clear stored Moodle token. Called on logout.
+    /// Called on logout. A harvest in flight is cancelled and stores nothing.
+    func signOut() async {
+        signInGeneration += 1
+        inFlightTokenTask?.task.cancel()
+        inFlightTokenTask = nil
+        inFlightRefreshTask?.cancel()
+        inFlightRefreshTask = nil
+        await clearToken()
+    }
+
+    /// Clear stored Moodle token, also after Moodle rejects it. A harvest in flight goes on, so
+    /// the parallel calls that met the dead token join one harvest.
     func clearToken() async {
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
@@ -167,12 +187,6 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func persist(triple: TokenTriple) {
-        // A token swap invalidates the per-user `cachedUserId` in MoodleSiteInfoService, even
-        // on an account switch through `obtainToken` that skips `clearToken()`. Otherwise
-        // `userId()` returns the previous account's cached userid and assignments load under it.
-        let previous = KeychainManager.loadString(
-            key: AppConstants.KeychainKeys.moodleToken
-        )
         KeychainManager.saveString(
             key: AppConstants.KeychainKeys.moodleToken,
             value: triple.wstoken,
@@ -186,9 +200,6 @@ actor MoodleTokenService {
             KeychainManager.delete(
                 key: AppConstants.KeychainKeys.moodlePrivateToken,
             )
-        }
-        if previous != triple.wstoken {
-            Task { await MoodleSiteInfoService.shared.invalidateCache() }
         }
     }
 

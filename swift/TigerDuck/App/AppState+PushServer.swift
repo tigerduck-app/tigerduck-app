@@ -81,7 +81,8 @@ extension AppState {
     }
 
     /// Send the current Moodle token to the backend so the server-side
-    /// sync job has a fresh credential. Called on every app foreground.
+    /// sync job has a fresh credential. Called on every app foreground;
+    /// `updateCredentialsIfDue` holds an unchanged token back for an hour.
     /// Fire-and-forget — failure is silent (the sync job just uses the
     /// last-known token until the next successful refresh).
     func refreshMoodleCredentials() async {
@@ -92,7 +93,7 @@ extension AppState {
             key: AppConstants.KeychainKeys.moodlePrivateToken
         )
         do {
-            _ = try await pushCoordinator.updateCredentials(
+            try await pushCoordinator.updateCredentialsIfDue(
                 moodleToken: token,
                 moodlePrivateToken: privateToken
             )

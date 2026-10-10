@@ -51,13 +51,59 @@ enum SSOLoginService {
         "ssoam2.ntust.edu.tw",
     ]
 
+    private static var isLoginRunning = false
+    private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
+
+    /// Runs `body` once every login started before it has finished. A login that meets the
+    /// SSO page clears the ssoam2 cookies, so two at once break each other; the one that
+    /// waited then finds the session signed in and needs no credentials.
+    static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
+        if isLoginRunning {
+            await withCheckedContinuation { waitingLogins.append($0) }
+        } else {
+            isLoginRunning = true
+        }
+        defer {
+            if waitingLogins.isEmpty {
+                isLoginRunning = false
+            } else {
+                waitingLogins.removeFirst().resume()
+            }
+        }
+        return try await body()
+    }
+
     /// Ensure the user is logged in to the given service via NTUST SSO.
     /// Mirrors the Python `NtustSsoBridge.ensure_service_login` flow.
+    ///
+    /// `generation` is ``NTUSTSessionManager/generation`` when the credentials were read. Once
+    /// a sign-out moves it, the login throws `CancellationError` before its next request.
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
         studentId: String,
-        password: String
+        password: String,
+        generation: Int
+    ) async throws -> Bool {
+        try await oneAtATime {
+            try checkSignedIn(generation)
+            return try await performServiceLogin(
+                session: session, serviceURL: serviceURL, studentId: studentId, password: password,
+                generation: generation
+            )
+        }
+    }
+
+    private static func checkSignedIn(_ generation: Int) throws {
+        if NTUSTSessionManager.shared.generation != generation { throw CancellationError() }
+    }
+
+    private static func performServiceLogin(
+        session: URLSession,
+        serviceURL: URL,
+        studentId: String,
+        password: String,
+        generation: Int
     ) async throws -> Bool {
         do {
             // Step 1: Visit service URL (follows redirects automatically)
@@ -72,7 +118,7 @@ enum SSOLoginService {
             var currentHTML = html
             var currentURL = finalURL
             (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-                session: session, html: currentHTML, baseURL: currentURL
+                session: session, html: currentHTML, baseURL: currentURL, generation: generation
             )
 
             // Step 3: Check if we're on the SSO login page
@@ -100,7 +146,7 @@ enum SSOLoginService {
 
             if !HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
                 (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-                    session: session, html: currentHTML, baseURL: currentURL
+                    session: session, html: currentHTML, baseURL: currentURL, generation: generation
                 )
                 NTUSTSessionManager.shared.markLoginSuccess()
                 return true
@@ -131,7 +177,7 @@ enum SSOLoginService {
                 throw SSOLoginError.loginFailed
             }
             let (loginData, loginResponse) = try await postForm(
-                session: session, url: actionURL, fields: payload
+                session: session, url: actionURL, fields: payload, generation: generation
             )
             guard let loginResp = loginResponse as? HTTPURLResponse,
                   let loginHTML = decodeHTML(loginData, response: loginResp) else {
@@ -142,7 +188,7 @@ enum SSOLoginService {
 
             // Step 6: Resolve OIDC bridge forms after login
             (currentHTML, currentURL) = try await resolveOIDCBridgeForms(
-                session: session, html: currentHTML, baseURL: currentURL
+                session: session, html: currentHTML, baseURL: currentURL, generation: generation
             )
 
             // Step 7: Check if still on SSO page → login failed
@@ -165,6 +211,7 @@ enum SSOLoginService {
         session: URLSession,
         html: String,
         baseURL: URL,
+        generation: Int,
         maxSteps: Int = 3
     ) async throws -> (String, URL) {
         var currentHTML = html
@@ -181,7 +228,7 @@ enum SSOLoginService {
 
             let actionURL = resolveURL(form.action, base: currentURL)
             let (data, response) = try await postForm(
-                session: session, url: actionURL, fields: form.inputs
+                session: session, url: actionURL, fields: form.inputs, generation: generation
             )
             guard let newHTML = String(data: data, encoding: .utf8),
                   let resp = response as? HTTPURLResponse else {
@@ -194,12 +241,15 @@ enum SSOLoginService {
         return (currentHTML, currentURL)
     }
 
-    /// POST form-encoded data
+    /// POST form-encoded data. Each POST signs in, with the credentials or an OIDC form, so it
+    /// stops once a sign-out moves the generation.
     private static func postForm(
         session: URLSession,
         url: URL,
-        fields: [(name: String, value: String)]
+        fields: [(name: String, value: String)],
+        generation: Int
     ) async throws -> (Data, URLResponse) {
+        try checkSignedIn(generation)
         // 15 s matches NTUSTSessionManager's `timeoutIntervalForRequest`. Without it the
         // request takes `URLRequest`'s 60 s default and the configuration's 7-day resource
         // timeout, so a stalled SSO server could hang the login Task indefinitely.

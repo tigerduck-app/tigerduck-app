@@ -166,7 +166,8 @@ final class HomeViewModel {
         // Home refreshes only Moodle assignments, sparing the 3-5 s NTUST SSO round
         // trip. Courses come from AppState.backgroundSync at cold launch and from
         // ClassTable pull-to-refresh (`forceRefresh: true`); Home reads courseProvider.
-        let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
+        MoodleEnrolledCoursesService.dropSharedAnswer()
+        let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
         let allCourses = courseProvider.currentCourses()
         let todayFiltered = allCourses.coursesForToday()
         let semesterFiltered = filterToCurrentSemester(fetchedAssignments, courses: allCourses)

@@ -36,12 +36,14 @@ enum CourseSelectionService {
             return cached
         }
 
+        let generation = NTUSTSessionManager.shared.generation
         if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
         }
@@ -51,17 +53,19 @@ enum CourseSelectionService {
             throw CourseServiceError.noCourseData
         }
 
-        // Re-auth silently on an ssoam2 redirect or on an SSO login body served inline with
-        // HTTP 200 by the course-selection host. Checking the URL alone misses the inline case,
-        // and the regex then falls through to "no courses".
-        let landedOnSSO = (response as? HTTPURLResponse)?.url?.host == "ssoam2.ntust.edu.tw"
+        // Re-auth silently when the list came from another host (ssoam2, or the campus portal a
+        // lapsed course-selection session is sent to) or as an SSO login body served inline
+        // with HTTP 200. Either way the regex would fall through to "no courses".
+        let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != courseListURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
-        if landedOnSSO || bodyIsSSO {
+        if landedElsewhere || bodyIsSSO {
+            NTUSTSessionManager.shared.dropServiceCookies(for: courseListURL)
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
 
@@ -70,7 +74,7 @@ enum CourseSelectionService {
                 throw CourseServiceError.noCourseData
             }
             let retryHost = (retryResponse as? HTTPURLResponse)?.url?.host
-            if retryHost == "ssoam2.ntust.edu.tw" || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
+            if retryHost != courseListURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw CourseServiceError.redirectedToSSO
             }
             let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }
@@ -88,6 +92,13 @@ enum CourseSelectionService {
             saveEnrolledCoursesCache(studentId: studentId, semester: semester, courseNos: courseNos)
         }
         return courseNos
+    }
+
+    /// Whether fetching `semester` would scrape the course-selection list, the one sync fetch
+    /// that needs the SSO session. The list serves a single term, and a day-long cache covers it.
+    nonisolated static func needsSchoolSession(studentId: String, semester: String) -> Bool {
+        semester == SemesterCatalog.selectionSemesterCode()
+            && loadEnrolledCoursesCache(studentId: studentId, semester: semester) == nil
     }
 
     nonisolated static let enrolledCoursesCacheTTL: TimeInterval = 86_400

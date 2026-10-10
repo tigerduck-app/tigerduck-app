@@ -31,20 +31,29 @@ final class NTUSTSessionManager {
         return "Mozilla/5.0 (iPhone; CPU iPhone OS \(osVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(majorVersion).0 Mobile/15E148 Safari/604.1"
     }()
 
-    var loadingState: LoadingState = .idle
+    var loadingState: LoadingState = .idle {
+        didSet { if loadingState == .loading { loadingStarts &+= 1 } }
+    }
 
-    private(set) var session: URLSession
+    /// Counts every move to `.loading`, so a sync can tell that another one started after it and
+    /// now owns the indicator.
+    private(set) var loadingStarts = 0
+
+    let session: URLSession
+
+    /// Moved by ``invalidateSession()``. A sign-in flow checks it against the value it started
+    /// under, so a login for an account that signed out stops instead of signing it in again.
+    private(set) var generation = 0
 
     /// NTUST-only cookie jar. In `HTTPCookieStorage.shared`, NTUST SSO cookies would leak into
     /// every other URLSession in the process that does not opt out of shared storage (Library,
     /// WKWebViews, third-party SDKs). Every NTUST cookie lives here, so logout and explicit
     /// purges need only touch this jar.
     ///
-    /// `sharedCookieStorage(forGroupContainerIdentifier:)` returns a persistent store per
-    /// identifier, separate from `.shared` and invisible to it. The identifier only names the
-    /// storage namespace; it need not match an App Group entitlement.
+    /// The identifier must be an App Group in `TigerDuck.entitlements`. Any other gives a store
+    /// kept only in memory, which loses the SSO session on every relaunch.
     let cookieStorage: HTTPCookieStorage = HTTPCookieStorage
-        .sharedCookieStorage(forGroupContainerIdentifier: "org.ntust.app.TigerDuck.ntust-session")
+        .sharedCookieStorage(forGroupContainerIdentifier: "group.org.ntust.app.TigerDuck")
 
     private static let cookieTTL: TimeInterval = 3600 // 1 hour
 
@@ -101,6 +110,12 @@ final class NTUSTSessionManager {
     }
 
     private init() {
+        // A service keeps its server session behind a cookie that ends with the app, and a visit
+        // with only its persisted sign-in cookie signs the account out of SSO. Dropping those at
+        // launch lets the next visit sign the service in again through the SSO session.
+        for cookie in cookieStorage.cookies ?? [] where !Self.isSSOCookie(cookie) {
+            cookieStorage.deleteCookie(cookie)
+        }
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = cookieStorage
         config.httpCookieAcceptPolicy = .always
@@ -125,11 +140,33 @@ final class NTUSTSessionManager {
         )
     }
 
+    /// Cookies of ssoam2 and the parent domain carry the SSO session and the device the school
+    /// knows; every other host's belong to one service.
+    private static func isSSOCookie(_ cookie: HTTPCookie) -> Bool {
+        let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return domain == "ssoam2.ntust.edu.tw" || domain == "ntust.edu.tw"
+    }
+
+    /// A service that sent its page elsewhere has a session that no longer works, and its
+    /// cookies can send the login's visit elsewhere too. Dropping them, as the launch does for
+    /// every service, lets the next visit sign it in through the SSO session.
+    func dropServiceCookies(for url: URL) {
+        for cookie in cookieStorage.cookies ?? []
+        where cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == url.host {
+            cookieStorage.deleteCookie(cookie)
+        }
+    }
+
     func markLoginSuccess() {
         Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
     }
 
     func invalidateSession() {
+        // The departing account's requests would put its cookies back after the purge below.
+        // Flows keep this session, and a request on an invalidated one ends the app with an
+        // exception, so its tasks are cancelled instead.
+        generation &+= 1
+        session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
         // Cookies live in the NTUST-only jar now; clear it wholesale —
         // no host-filter tip-toeing required, and Moodle / Library /
         // WebView state in `HTTPCookieStorage.shared` is untouched.

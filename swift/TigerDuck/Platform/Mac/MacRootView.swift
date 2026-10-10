@@ -242,7 +242,7 @@ struct MacGlobalRefreshButton: View {
     var body: some View {
         ZStack {
             Button {
-                appState.backgroundSync()
+                appState.backgroundSync(recheckSubmissions: true)
             } label: {
                 Label(String(localized: "desktop_action_refresh"), systemImage: "arrow.clockwise")
             }

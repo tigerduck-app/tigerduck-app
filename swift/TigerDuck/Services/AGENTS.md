@@ -8,7 +8,13 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
 - `AuthService` coordinates auth. It tells cookie-valid auth apart from stored credentials, and
   keeps credentials through silent re-auth failures.
 - NTUST-protected requests use `NTUSTSessionManager.shared`, the browser-like session with its
-  own cookie jar; do not create another `URLSession` for them.
+  own cookie jar; do not create another `URLSession` for them. The jar lives in the App Group, so
+  the SSO session outlives a relaunch.
+- Sign in lazily. Only a fetch that needs a service's page logs in, and `ensureAuthenticated`
+  renews the SSO session alone. SSO logins queue through `SSOLoginService.oneAtATime`.
+- School answers are shared: `MoodleEnrolledCoursesService` keeps one per wstoken for a minute,
+  `MoodleSiteInfoService` keys the user id by token, and `CourseLookupService` keeps lookups for
+  30 minutes. A pull skips them, and so does Add Course, which shows seat counts.
 - Services write fetched results through `DataCache`, so features and background sync read the
   same persisted data.
 - New TigerDuck backend clients copy the request construction, auth header and error handling
@@ -21,7 +27,12 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
 
 - Do not clear every cookie during SSO flows; some service cookies are kept so the school does
   not warn about a new device.
+- Do not call `AuthService.login` to re-authenticate silently: it harvests a new Moodle token
+  and drops the course cache. The Moodle token renews itself on `.invalidToken`.
 - Do not ignore logout races; in-flight writes check cancellation and the login generation.
+- Do not invalidate `NTUSTSessionManager.session`: flows keep it, and a request on an
+  invalidated session ends the app with an exception. Sign-out cancels its tasks and moves
+  `generation`, which `SSOLoginService` checks before each POST.
 - Do not store secrets in `UserDefaults`; credentials live in the Keychain.
 - Do not route School Mail through the TigerDuck backend. The phone talks to the school's mail
   server directly, and the mail password stays on the device (`Mail/Store/MailCredentialStore.swift`).
@@ -35,6 +46,12 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
 - `DataCache.clearUserScopedData()` is a privacy boundary: logout purges the previous user's
   data before another login can use the app.
 - `NetworkMonitor` is observable state; some refresh paths read it before fetching.
+- Each school service keeps its server session behind a cookie that ends with the app. A visit
+  with only the service's persisted sign-in cookie signs the account out of SSO, so
+  `NTUSTSessionManager` drops every non-SSO cookie at launch.
+- A lapsed service session sends a page to the campus portal, `i.ntust.edu.tw`, not to ssoam2.
+  The course list and score fetches treat any final host but their own as a bounce: they drop
+  that service's cookies and sign in again.
 - `Push/ScheduleSyncService.swift` builds the 48-hour event list it sends to the backend with
   the Live Activity resolvers, so a resolver change also changes what the server pushes.
 - Services follow NTUST and Moodle page behavior closely, so a parser change can affect several

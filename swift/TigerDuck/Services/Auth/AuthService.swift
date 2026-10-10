@@ -142,20 +142,22 @@ final class AuthService {
         return KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
     }
 
+    private static let ssoServiceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
+
     func login(studentId: String, password: String) async -> Bool {
         isLoggingIn = true
         loginError = nil
 
         do {
             let session = NTUSTSessionManager.shared.session
-            let serviceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")
             let normalizedId = studentId.trimmingCharacters(in: .whitespaces).uppercased()
 
             let success = try await SSOLoginService.ensureServiceLogin(
                 session: session,
-                serviceURL: serviceURL,
+                serviceURL: Self.ssoServiceURL,
                 studentId: normalizedId,
-                password: password
+                password: password,
+                generation: NTUSTSessionManager.shared.generation
             )
 
             if success {
@@ -167,14 +169,7 @@ final class AuthService {
                 reauthErrorMessage = nil
                 markCredentialsChanged()
 
-                // Auto-attempt library login with same credentials (best-effort)
-                if !LibraryService.isTokenValid {
-                    do {
-                        _ = try await LibraryService.login(username: normalizedId, password: password)
-                    } catch {
-                        AppLogger.captureError(error, context: ["flow": "libraryAutoLogin"])
-                    }
-                }
+                await loginToLibraryIfNeeded(studentId: normalizedId, password: password)
 
                 // Obtain Moodle webservice token — non-fatal, never blocks NTUST login result
                 do {
@@ -234,6 +229,7 @@ final class AuthService {
         guard let studentId = storedStudentId, let password = storedPassword else {
             return false
         }
+        let generation = NTUSTSessionManager.shared.generation
 
         // Ask the server whether the cookies still unlock the SSO home (~30ms warm). The
         // local 1h TTL errs both ways: it drops working cookies after an hour and trusts
@@ -241,15 +237,15 @@ final class AuthService {
         if await NTUSTSessionManager.shared.probeCookiesValid() {
             NTUSTSessionManager.shared.markLoginSuccess()
             reauthErrorMessage = nil
-            if let atm = authTokenManager, !(await atm.isLoggedIn) {
-                await performV3Login(studentId: studentId, password: password)
-            }
+            await ensureBackendSignedIn()
             return true
         }
 
         isReauthenticating = true
         reauthErrorMessage = nil
-        let success = await login(studentId: studentId, password: password)
+        let success = await renewSchoolSession(
+            studentId: studentId, password: password, generation: generation
+        )
         isReauthenticating = false
 
         if !success {
@@ -261,11 +257,61 @@ final class AuthService {
         return success
     }
 
+    /// The silent counterpart of ``login(studentId:password:)`` for stored credentials: it
+    /// renews the SSO session only. The Moodle token outlives SSO cookies and every Moodle call
+    /// renews it on `.invalidToken`, and the enrolled-course cache is still this account's.
+    private func renewSchoolSession(studentId: String, password: String, generation: Int) async -> Bool {
+        isLoggingIn = true
+        loginError = nil
+        defer { isLoggingIn = false }
+        do {
+            guard try await SSOLoginService.ensureServiceLogin(
+                session: NTUSTSessionManager.shared.session,
+                serviceURL: Self.ssoServiceURL,
+                studentId: studentId,
+                password: password,
+                generation: generation
+            ) else { return false }
+        } catch is CancellationError {
+            // The account signed out meanwhile; the login screen shows no error for it.
+            return false
+        } catch {
+            if case SSOLoginError.loginFailed = error {} else {
+                AppLogger.captureError(error, context: ["flow": "ntustReauth"])
+            }
+            loginError = error.localizedDescription
+            return false
+        }
+        _revision &+= 1
+        await loginToLibraryIfNeeded(studentId: studentId, password: password)
+        await ensureBackendSignedIn()
+        return true
+    }
+
+    /// Signs in to the TigerDuck backend when its session is gone. It sends the stored
+    /// credentials and Moodle token and makes no request to the school's servers.
+    func ensureBackendSignedIn() async {
+        guard let atm = authTokenManager, !(await atm.isLoggedIn),
+              let studentId = storedStudentId, let password = storedPassword else { return }
+        await performV3Login(studentId: studentId, password: password)
+    }
+
+    /// Best-effort: the library account signs in with the same NTUST credentials.
+    private func loginToLibraryIfNeeded(studentId: String, password: String) async {
+        guard !LibraryService.isTokenValid else { return }
+        do {
+            _ = try await LibraryService.login(username: studentId, password: password)
+        } catch {
+            AppLogger.captureError(error, context: ["flow": "libraryAutoLogin"])
+        }
+    }
+
     func logout() {
         let loggingOutStudentId = storedStudentId
         KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
-        Task { await MoodleTokenService.shared.clearToken() }
+        Task { await MoodleTokenService.shared.signOut() }
+        MoodleEnrolledCoursesService.dropSharedAnswer()
         NTUSTSessionManager.shared.invalidateSession()
         // Drop the enrolled-courses cache so the next user does not see
         // the previous account's course list while their own data is

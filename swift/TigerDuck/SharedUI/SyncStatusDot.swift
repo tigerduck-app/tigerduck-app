@@ -49,6 +49,7 @@ struct SyncStatusDot: View {
     /// whatever word it already had until something unrelated forced a
     /// redraw, which is the opposite of what `isMinimal` is for.
     @Default(.cloudSyncEnabled) private var cloudSyncEnabled
+    @Default(.schoolDataSyncedAt) private var schoolDataSyncedAt
     @State private var showDetails = false
     @State private var spinning = false
     @State private var dimmed = false
@@ -229,6 +230,12 @@ struct SyncStatusDot: View {
             ForEach(sources) { source in
                 row(color: Self.color(source.status), icon: source.icon, name: source.name, text: source.text)
             }
+            if case .servers(let servers) = mode, servers.contains(.moodle) {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    row(color: .clear, icon: "clock", name: String(localized: "sync_status_last_synced"),
+                        text: Self.schoolDataAgeText(schoolDataSyncedAt, now: context.date))
+                }
+            }
             if let errorMessage {
                 Text(errorMessage)
                     .font(.footnote)
@@ -252,6 +259,22 @@ struct SyncStatusDot: View {
                 Spacer(minLength: 12)
                 Text(text).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// Short forms, so the age fits the row's trailing column.
+    static func schoolDataAgeText(_ syncedAt: Date?, now: Date) -> String {
+        guard let syncedAt else { return String(localized: "sync_status_never_synced") }
+        let seconds = max(0, now.timeIntervalSince(syncedAt))
+        switch seconds {
+        case ..<60:
+            return String(localized: "sync_status_just_now")
+        case ..<3600:
+            return String(format: String(localized: "sync_status_minutes_ago_short"), Int(seconds / 60))
+        case ..<86_400:
+            return String(format: String(localized: "sync_status_hours_ago_short"), Int(seconds / 3600))
+        default:
+            return String(format: String(localized: "sync_status_days_ago_short"), Int(seconds / 86_400))
         }
     }
 

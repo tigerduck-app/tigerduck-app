@@ -48,17 +48,21 @@ enum NTUSTScoreService {
             return cached.report
         }
 
+        let generation = NTUSTSessionManager.shared.generation
         if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: scoreRootURL,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             )
             guard loggedIn else { throw NTUSTScoreServiceError.notAuthenticated }
         }
 
-        let html = try await fetchHTML(session: session, studentId: studentId, password: password)
+        let html = try await fetchHTML(
+            session: session, studentId: studentId, password: password, generation: generation
+        )
         // Parse off the main actor — SwiftSoup over a full transcript is
         // tens of milliseconds on an older phone.
         let report = await Task.detached(priority: .userInitiated) {
@@ -96,24 +100,27 @@ enum NTUSTScoreService {
     private static func fetchHTML(
         session: URLSession,
         studentId: String,
-        password: String
+        password: String,
+        generation: Int
     ) async throws -> String {
         let (data, response) = try await session.data(from: scoreDisplayURL)
         guard let html = String(data: data, encoding: .utf8) else {
             throw NTUSTScoreServiceError.invalidResponse
         }
 
-        // SSO bounced us: re-login silently and retry once. The body check catches an SSO login
-        // form served inline with HTTP 200, as stuinfosys has done in Shibboleth maintenance;
-        // without it the parser falls through to "parse failed" instead of a re-auth prompt.
-        let landedOnSSO = (response as? HTTPURLResponse)?.url?.host == "ssoam2.ntust.edu.tw"
+        // Bounced to another host (ssoam2, or the portal a lapsed service session is sent to):
+        // re-login silently and retry once. The body check catches an SSO login form served
+        // inline with HTTP 200, as stuinfosys has done in Shibboleth maintenance.
+        let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != scoreDisplayURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
-        if landedOnSSO || bodyIsSSO {
+        if landedElsewhere || bodyIsSSO {
+            NTUSTSessionManager.shared.dropServiceCookies(for: scoreDisplayURL)
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: scoreRootURL,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             )
             guard loggedIn else { throw NTUSTScoreServiceError.notAuthenticated }
 
@@ -122,7 +129,7 @@ enum NTUSTScoreService {
                 throw NTUSTScoreServiceError.invalidResponse
             }
             let retryHost = (retryResp as? HTTPURLResponse)?.url?.host
-            if retryHost == "ssoam2.ntust.edu.tw" || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
+            if retryHost != scoreDisplayURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw NTUSTScoreServiceError.redirectedToSSO
             }
             return retryHTML

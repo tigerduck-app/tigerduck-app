@@ -404,7 +404,7 @@ struct AddCourseSheet: View {
     ) async throws -> [CourseSearchResult] {
         if isCourseCode {
             return try await CourseLookupService.lookupCourse(
-                semester: semester, courseNo: query, language: language
+                semester: semester, courseNo: query, language: language, fresh: true
             )
         }
         async let byNameTask = CourseLookupService.searchCourses(
@@ -444,7 +444,7 @@ struct AddCourseSheet: View {
             for no in missingZh {
                 group.addTask {
                     (try? await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: no, language: "zh"
+                        semester: semester, courseNo: no, language: "zh", fresh: true
                     )) ?? []
                 }
             }
@@ -454,7 +454,7 @@ struct AddCourseSheet: View {
             for no in missingEn {
                 group.addTask {
                     (try? await CourseLookupService.lookupCourse(
-                        semester: semester, courseNo: no, language: "en"
+                        semester: semester, courseNo: no, language: "en", fresh: true
                     )) ?? []
                 }
             }
