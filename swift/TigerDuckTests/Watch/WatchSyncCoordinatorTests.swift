@@ -1,3 +1,4 @@
+import Testing
 import WatchConnectivity
 import XCTest
 @testable import TigerDuck
