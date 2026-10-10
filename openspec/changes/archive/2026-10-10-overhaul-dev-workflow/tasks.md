@@ -83,7 +83,7 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 - [ ] 12.2 Ask SamWang8891 to review `specs/code-comments/spec.md` and the new `AppState` rule in `swift/TigerDuck/AGENTS.md`; verify both maintainers approve (deferred by the maintainer on 2026-10-10)
 - [x] 12.3 Address valid Greptile comments, pushing only with the maintainer's approval; verify Greptile's review applies the comment rule
 - [x] 12.4 Record the pull request's "ran for" times against the `dev` baseline (175 to 183 s) in the description; its whole-job times are not compared, because pull-request runs do not save caches (95 s and 191 s)
-- [ ] 12.5 After the merge, ask the maintainer to make the comment check required for `dev` and `main`, confirm that the first documentation-only pull request passes both unit-test legs in under two minutes, and archive the change with `openspec archive overhaul-dev-workflow`
+- [x] 12.5 After the merge, ask the maintainer to make the comment check required for `dev` and `main`, confirm that the first documentation-only pull request passes both unit-test legs in under two minutes, and archive the change with `openspec archive overhaul-dev-workflow` (#232 named the job `comments` for the ruleset; #234's legs took 12 s each)
 
 ## 13. Contributor templates and dependency bots
 
