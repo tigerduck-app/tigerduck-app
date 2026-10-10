@@ -53,6 +53,8 @@ two at once compete for the same build folder.
 ## Conventions
 
 - One-time upgrade compatibility code goes only in `swift/TigerDuck/Services/Migrations/`.
+- Label issues and pull requests as `docs/issue-triage.md` says: an issue gets a type, a pull
+  request a kind label.
 - `api-poc/` uses `uv` (`api-poc/pyproject.toml`, `uv.lock`) and reads credentials from
   `api-poc/api/.env` (template: `.env.template`).
 - Test targets: `TigerDuckTests` (phone unit tests), `TigerDuckWatch Watch AppTests` (watch) and

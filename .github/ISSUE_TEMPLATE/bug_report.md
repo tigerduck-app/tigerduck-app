@@ -2,7 +2,7 @@
 name: Bug report
 about: Something in the app is broken or does not work as expected
 title: "bug: "
-labels: bug
+type: Bug
 ---
 
 <!-- English or Chinese, either is fine. -->

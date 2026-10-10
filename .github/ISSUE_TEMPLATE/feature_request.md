@@ -2,7 +2,7 @@
 name: Feature request
 about: Suggest a new feature or an improvement
 title: "feat: "
-labels: enhancement
+type: Feature
 ---
 
 <!-- English or Chinese, either is fine. -->
