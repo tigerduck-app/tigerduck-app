@@ -147,8 +147,7 @@ final class PushCoordinator {
         }
     }
 
-    /// Forward credential refresh to the API client. Called from AppState
-    /// on every foreground so the server-side sync job has a fresh Moodle token.
+    /// Forward credential refresh to the API client.
     func updateCredentials(
         moodleToken: String,
         moodlePrivateToken: String?
@@ -157,6 +156,39 @@ final class PushCoordinator {
             moodleToken: moodleToken,
             moodlePrivateToken: moodlePrivateToken
         )
+    }
+
+    /// How often an unchanged Moodle token goes to the server again. The server checks each
+    /// update against Moodle, and a resend is what revives a sync job it disabled.
+    static let unchangedCredentialsInterval: TimeInterval = 3600
+
+    private var acceptedMoodleCredentials: (fingerprint: Int, at: Date)?
+
+    static func credentialsUpdateIsDue(
+        accepted: (fingerprint: Int, at: Date)?,
+        fingerprint: Int,
+        now: Date
+    ) -> Bool {
+        guard let accepted, accepted.fingerprint == fingerprint else { return true }
+        let age = now.timeIntervalSince(accepted.at)
+        return age >= unchangedCredentialsInterval || age < 0
+    }
+
+    /// Called on every return to the app. Sends a changed token at once and an unchanged one
+    /// hourly; a token the server did not accept goes again on the next return.
+    func updateCredentialsIfDue(moodleToken: String, moodlePrivateToken: String?) async throws {
+        var hasher = Hasher()
+        hasher.combine(moodleToken)
+        hasher.combine(moodlePrivateToken)
+        let fingerprint = hasher.finalize()
+        let now = Date()
+        guard Self.credentialsUpdateIsDue(
+            accepted: acceptedMoodleCredentials, fingerprint: fingerprint, now: now
+        ) else { return }
+        let response = try await updateCredentials(
+            moodleToken: moodleToken, moodlePrivateToken: moodlePrivateToken
+        )
+        acceptedMoodleCredentials = response.updated ? (fingerprint, now) : nil
     }
 
     func fetchRevision() async throws -> Int {
@@ -235,6 +267,7 @@ final class PushCoordinator {
     func disable() async {
         guard isStarted else { return }
         isStarted = false
+        acceptedMoodleCredentials = nil
         logger.info("disabling push stack")
 
         #if os(iOS)
