@@ -51,9 +51,44 @@ enum SSOLoginService {
         "ssoam2.ntust.edu.tw",
     ]
 
+    private static var isLoginRunning = false
+    private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
+
+    /// Runs `body` once every login started before it has finished. A login that meets the
+    /// SSO page clears the ssoam2 cookies, so two at once break each other; the one that
+    /// waited then finds the session signed in and needs no credentials.
+    static func oneAtATime<T>(_ body: () async throws -> T) async rethrows -> T {
+        if isLoginRunning {
+            await withCheckedContinuation { waitingLogins.append($0) }
+        } else {
+            isLoginRunning = true
+        }
+        defer {
+            if waitingLogins.isEmpty {
+                isLoginRunning = false
+            } else {
+                waitingLogins.removeFirst().resume()
+            }
+        }
+        return try await body()
+    }
+
     /// Ensure the user is logged in to the given service via NTUST SSO.
     /// Mirrors the Python `NtustSsoBridge.ensure_service_login` flow.
     static func ensureServiceLogin(
+        session: URLSession,
+        serviceURL: URL,
+        studentId: String,
+        password: String
+    ) async throws -> Bool {
+        try await oneAtATime {
+            try await performServiceLogin(
+                session: session, serviceURL: serviceURL, studentId: studentId, password: password
+            )
+        }
+    }
+
+    private static func performServiceLogin(
         session: URLSession,
         serviceURL: URL,
         studentId: String,
