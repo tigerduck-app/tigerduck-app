@@ -281,6 +281,14 @@ extension AppState {
                          courses: DataCache.shared.loadCourses(semester: semester)
                             + DataCache.shared.loadUserAddedCourses(semester: semester))
                     }
+                    // Latched and stamped as in `deleteBackendCourses`: a sync that read a term
+                    // mid-way would un-hide the courses the upload puts back before their deletes.
+                    let latched = Set(terms.filter { !$0.courses.isEmpty }.map(\.semester))
+                    resettingSemesters.formUnion(latched)
+                    defer {
+                        resettingSemesters.subtract(latched)
+                        for semester in latched { DataCache.shared.recordSemesterReset(semester) }
+                    }
                     do {
                         try await Self.keepLocalCourses(
                             terms, hiding: Set(DataCache.shared.loadDeletedCourseNos()), on: coordinator
