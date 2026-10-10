@@ -62,8 +62,8 @@ final class BulletinsViewModel {
     }
 
     /// What the last list ended with. More and Home build a new view model on every visit, so
-    /// the next one in this process shows it and resumes the cursor instead of fetching the
-    /// first page and walking every page behind it again. A pull refreshes it.
+    /// the next one in this process shows it and resumes the cursor instead of walking every
+    /// page again. It asks for the first page only. A pull refreshes it all.
     private struct ListSession {
         let items: [BulletinAPI.BulletinSummary]
         let nextCursor: Int?
@@ -93,9 +93,29 @@ final class BulletinsViewModel {
             loadState = .loaded
             refilter()
             resumePrefetchIfNeeded()
+            await refreshFirstPage()
             return
         }
         await refresh()
+    }
+
+    /// A kept list can be days old in a suspended app. A first page with no row the list has
+    /// means more was posted than a page holds, so the walk goes on behind that page.
+    private func refreshFirstPage() async {
+        let includeDeleted = showDeleted
+        guard let page = try? await apiClient.listBulletins(
+            limit: 30, cursor: nil, includeDeleted: includeDeleted
+        ), includeDeleted == showDeleted else { return }
+        let knownIds = Set(items.map(\.id))
+        let reachesKeptRows = page.items.contains { knownIds.contains($0.id) }
+        items = Self.merge(existing: items, incoming: page.items)
+        if !reachesKeptRows {
+            nextCursor = page.nextCursor
+            hasMore = page.nextCursor != nil
+            startBackgroundPrefetch()
+        }
+        refilter()
+        persistSummaries()
     }
 
     /// The list left the screen; its next appearance resumes from the cursor.
