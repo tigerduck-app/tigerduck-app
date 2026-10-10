@@ -225,7 +225,8 @@ extension AppServiceBridge {
             if statuses.count < recordsToAsk.count {
                 assignmentsToPersist = preserveCompletionState(
                     freshAssignments: freshAssignments,
-                    cachedAssignments: cachedAssignments
+                    cachedAssignments: cachedAssignments,
+                    answeredIds: Set(statuses.keys.map(String.init))
                 )
             } else {
                 assignmentsToPersist = freshAssignments
@@ -300,16 +301,17 @@ extension AppServiceBridge {
 
     static func preserveCompletionState(
         freshAssignments: [SDAssignment],
-        cachedAssignments: [SDAssignment]
+        cachedAssignments: [SDAssignment],
+        answeredIds: Set<String>
     ) -> [SDAssignment] {
-        // A partial submission-status failure keeps the known `isCompleted`, so the UI
-        // does not regress from "submitted" to "not submitted". Keep `submittedAt` too,
-        // or "submitted" and "submitted late" cannot be told apart afterwards.
+        // An assignment whose status request failed keeps its known `isCompleted` and
+        // `submittedAt`, so the UI neither shows "not submitted" nor loses whether it was late.
+        // One Moodle answered keeps the answer: a teacher may have reverted it to a draft.
         let previousById = Dictionary(
             uniqueKeysWithValues: cachedAssignments.map { ($0.assignmentId, $0) }
         )
 
-        for assignment in freshAssignments {
+        for assignment in freshAssignments where !answeredIds.contains(assignment.assignmentId) {
             guard let previous = previousById[assignment.assignmentId],
                   previous.isCompleted else { continue }
             assignment.isCompleted = true

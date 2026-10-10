@@ -20,4 +20,22 @@ struct ConfirmedSubmissionsTests {
         ]
         #expect(AppServiceBridge.confirmedSubmissions(in: cached) == ["1": submitted])
     }
+
+    @Test("a failed status keeps the cached submission, an answered one replaces it")
+    func onlyUnansweredAssignmentsKeepTheirState() {
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        let submitted = due - 3600
+        let cached = ["1", "2"].map {
+            SDAssignment(assignmentId: $0, courseNo: "CS1", courseName: "", title: "", dueDate: due,
+                         isCompleted: true, submittedAt: submitted)
+        }
+        let fresh = ["1", "2"].map {
+            SDAssignment(assignmentId: $0, courseNo: "CS1", courseName: "", title: "", dueDate: due)
+        }
+        let merged = AppServiceBridge.preserveCompletionState(
+            freshAssignments: fresh, cachedAssignments: cached, answeredIds: ["2"]
+        )
+        #expect(merged.map(\.isCompleted) == [true, false])
+        #expect(merged.map(\.submittedAt) == [submitted, nil])
+    }
 }
