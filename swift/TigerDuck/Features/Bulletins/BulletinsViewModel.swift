@@ -46,6 +46,9 @@ final class BulletinsViewModel {
     private var nextCursor: Int? = nil
     private var inflight: Task<Void, Never>?
     private var prefetchTask: Task<Void, Never>?
+    /// Set while the list is off screen, so a first page that lands after the screen left does
+    /// not start the walk behind it.
+    private var isPrefetchPaused = false
 
     init(apiClient: BulletinAPIClient? = nil) {
         // The default providers re-resolve PushServerConfig on every request, as the
@@ -82,6 +85,7 @@ final class BulletinsViewModel {
     /// Initial load. No-op if already loaded so tab re-selection does not
     /// thrash the network — call `refresh()` to force.
     func loadIfNeeded() async {
+        isPrefetchPaused = false
         if case .loaded = loadState {
             resumePrefetchIfNeeded()
             return
@@ -120,6 +124,7 @@ final class BulletinsViewModel {
 
     /// The list left the screen; its next appearance resumes from the cursor.
     func pausePrefetch() {
+        isPrefetchPaused = true
         prefetchTask?.cancel()
         prefetchTask = nil
     }
@@ -256,6 +261,8 @@ final class BulletinsViewModel {
     /// the chain.
     private func startBackgroundPrefetch() {
         prefetchTask?.cancel()
+        prefetchTask = nil
+        guard !isPrefetchPaused else { return }
         prefetchTask = Task { [weak self] in
             await self?.runBackgroundPrefetch()
         }
