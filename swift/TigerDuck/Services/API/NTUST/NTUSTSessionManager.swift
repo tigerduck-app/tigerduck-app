@@ -100,7 +100,20 @@ final class NTUSTSessionManager {
     }
 
     private init() {
+        // A service keeps its server session behind a cookie that ends with the app, and a visit
+        // with only its persisted sign-in cookie signs the account out of SSO. Dropping those at
+        // launch lets the next visit sign the service in again through the SSO session.
+        for cookie in cookieStorage.cookies ?? [] where !Self.isSSOCookie(cookie) {
+            cookieStorage.deleteCookie(cookie)
+        }
         session = Self.makeSession(cookieStorage: cookieStorage)
+    }
+
+    /// Cookies of ssoam2 and the parent domain carry the SSO session and the device the school
+    /// knows; every other host's belong to one service.
+    private static func isSSOCookie(_ cookie: HTTPCookie) -> Bool {
+        let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return domain == "ssoam2.ntust.edu.tw" || domain == "ntust.edu.tw"
     }
 
     private static func makeSession(cookieStorage: HTTPCookieStorage) -> URLSession {
