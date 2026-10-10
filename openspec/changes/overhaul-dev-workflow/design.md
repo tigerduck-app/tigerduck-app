@@ -205,7 +205,10 @@ The time-dependent types used by the slow tests take an injected clock or durati
 sync debounce, widget reload, notification settings push queue, push registration). Layout waits
 poll with the existing `WaitUntil` helper. Booting the simulator in the background during the
 build and removing `@MainActor` from pure-logic suites are both experiments, kept only if the
-measurements show a gain.
+measurements show a gain. Neither was kept. The boot overlap was dropped before it ran, because
+`tests.yaml` already records that booting during the build cost xcodebuild 68 to 171 s of
+start-up. Only 2 suites could leave the main actor, and that moved the local medians by under
+0.05 s, so it was reverted.
 
 ### Order of work
 
@@ -222,11 +225,12 @@ so the pull request can be reviewed one commit range at a time and any range rev
 10. Enforcement: CI workflow, Claude Code hook, Greptile rule.
 11. CI path gating (and the comments in `tests.yaml` it touches, condensed).
 12. Tests without wall-clock waits.
-13. Simulator boot during the build (measured on the pull request's runs).
-14. Suites off the main actor (measured locally).
+13. Simulator boot during the build (dropped).
+14. Suites off the main actor (measured locally, reverted).
 
-Steps 11 to 14 do not depend on 4 to 10. Measurements that only CI can give (path gating, boot
-overlap) come from the pull request's own runs; the rest are taken locally before the push.
+Steps 11 to 14 do not depend on 4 to 10. Path gating can only be measured on CI, on the first
+documentation-only pull request after the merge. Everything else is measured locally before the
+push.
 
 ## Risks / Trade-offs
 
@@ -247,9 +251,9 @@ overlap) come from the pull request's own runs; the rest are taken locally befor
   path still run both legs; pushes to `dev` and `main` always run everything.
 - [OpenSpec adds a CLI dependency and telemetry] → Install and opt-out are documented; the skills
   fail visibly without the CLI.
-- [The 5-minute phone leg is out of reach with these steps] → The estimate after path gating,
-  boot overlap and main-actor removal is around 8 minutes, unmeasured. Extracting a Swift package
-  or a larger runner would be a separate change.
+- [The 5-minute phone leg is out of reach with these steps] → Accepted. The boot overlap and the
+  main-actor removal did not pay off, so a code change still runs the full phone leg. Extracting
+  a Swift package or a larger runner would be a separate change.
 
 ## Open Questions
 

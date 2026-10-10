@@ -56,14 +56,7 @@ themselves, and layout waits SHALL poll for the condition they need.
 
 #### Scenario: Searching for sleeps
 - **WHEN** someone searches the test targets for `Task.sleep`, `Thread.sleep` and `usleep`
-- **THEN** the only hits are inside fakes or cancelled placeholder tasks
-
-### Requirement: Pure-logic suites run off the main actor
-A test suite SHALL be `@MainActor` only when it uses an API isolated to the main actor.
-
-#### Scenario: Suite without main-actor APIs
-- **WHEN** a suite only exercises value types and nonisolated functions
-- **THEN** it carries no `@MainActor` annotation
+- **THEN** the only hits are inside fakes, cancelled placeholder tasks and loops that poll for a condition
 
 ### Requirement: Speed changes ship with measurements
 A CI or test change made for speed SHALL ship with timings from at least three warm runs with the

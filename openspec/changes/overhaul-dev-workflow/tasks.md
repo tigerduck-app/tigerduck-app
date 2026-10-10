@@ -25,7 +25,7 @@ push (group 12). Local test destination: `platform=iOS Simulator,name=iPhone 17 
 - [x] 3.1 Rewrite the root AGENTS.md: rules agents cannot discover, a Comments section summarizing `specs/code-comments`, a Planning section (OpenSpec threshold, citation direction, `npm install -g @fission-ai/openspec`, `OPENSPEC_TELEMETRY=0`), setup for `(cd swift && xcode-build-server config -project TigerDuck.xcodeproj -scheme TigerDuck)`, which writes the ignored `swift/buildServer.json`, the verification commands, and the warning that CLAUDE.md or CLAUDE.local.md hides AGENTS.md from Claude Code; verify every command in the file runs as written
 - [x] 3.2 Rewrite `swift/TigerDuck/AGENTS.md` without the structure tree, replacing the `AppState` coordination convention with "add no new responsibilities to `AppState`; feature state lives in the feature's view model or service"; verify no AGENTS.md still tells agents to put shared coordination in `AppState`
 - [x] 3.3 Rewrite `swift/TigerDuck/Services/AGENTS.md`, `swift/TigerDuck/LiveActivity/AGENTS.md`, `swift/TigerDuck/Services/Migrations/AGENTS.md` and `api-poc/api/AGENTS.md` the same way; verify no file keeps a directory tree or file inventory
-- [ ] 3.4 Add the comment policy and OpenSpec usage to the contributing sections of `README.md` (in Chinese, as that file is) and `README.en.md`; verify the maintainer approves the exact wording before the push
+- [x] 3.4 Add the comment policy and OpenSpec usage to the contributing sections of `README.md` (in Chinese, as that file is) and `README.en.md`; verify the maintainer approves the exact wording before the push
 - [x] 3.5 Add a status note at the top of `docs/third-party-migration-plan.md`: which of the nine libraries are in, and which architecture-debt items still hold; verify each library against `Package.resolved`
 
 ## 4. Comment tooling
@@ -61,7 +61,7 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 
 - [x] 8.1 In both unit-test legs of `.github/workflows/tests.yaml`, check out with `fetch-depth: 2` on pull requests, compute `docs_only` from `git diff --name-only HEAD^1 HEAD`, run the later steps only when it is false, and log the skip; verify locally that the gating command calls a documentation-only file list skippable and a list with a Swift or workflow file not
 - [x] 8.2 Gate the SwiftMail job's `swift test` on changes under `swift/Packages/SwiftMail/` or to `tests.yaml`, always running on pushes; verify locally that the gate skips for an app-only file list and runs for a SwiftMail or `tests.yaml` change
-- [ ] 8.3 Condense the comments in `tests.yaml` that this work touches to the comment policy; verify the maintainer approves the diff
+- [x] 8.3 Condense the comments in `tests.yaml` that this work touches to the comment policy; verify the maintainer approves the diff
 
 ## 9. Tests without wall-clock waits
 
@@ -71,7 +71,7 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 
 ## 10. Simulator boot during the build
 
-- [ ] 10.1 Start `xcrun simctl boot` in the background before the build and wait with `simctl bootstatus -b` after it; verify locally that the step script boots a shut-down simulator and the test step finds it booted; the keep-or-revert decision comes from the pull request's runs (12.4)
+- [x] 10.1 Start `xcrun simctl boot` in the background before the build and wait with `simctl bootstatus -b` after it; verify locally that the step script boots a shut-down simulator and the test step finds it booted; the keep-or-revert decision comes from the pull request's runs (12.4) (dropped before it ran: `tests.yaml` records that booting during the build cost xcodebuild 68 to 171 s of start-up and 33 to 96 s of package graph)
 
 ## 11. Suites off the main actor
 
@@ -80,9 +80,9 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 ## 12. Pull request
 
 - [ ] 12.1 Ask the maintainer to approve the push, then push `chore/workflow-overhaul` and open one pull request to `dev` whose description maps each commit range to its task group; verify every check runs
-- [ ] 12.2 Ask SamWang8891 to review `specs/code-comments/spec.md` and the new `AppState` rule in `swift/TigerDuck/AGENTS.md`; verify both maintainers approve
+- [ ] 12.2 Ask SamWang8891 to review `specs/code-comments/spec.md` and the new `AppState` rule in `swift/TigerDuck/AGENTS.md`; verify both maintainers approve (deferred by the maintainer on 2026-10-10)
 - [ ] 12.3 Address valid Greptile and Copilot comments, pushing only with the maintainer's approval; verify Greptile's review applies the comment rule
-- [ ] 12.4 Re-run the unit-test workflow until the pull request has three warm runs and record each step's time against the `dev` baseline (phone leg 601 to 656 s, "ran for" 175 to 183 s) in the description; revert the boot overlap (10.1) unless its boot and test steps got shorter
+- [ ] 12.4 Record the pull request's "ran for" times against the `dev` baseline (175 to 183 s) in the description; its whole-job times are not compared, because pull-request runs do not save caches
 - [ ] 12.5 After the merge, ask the maintainer to make the comment check required for `dev` and `main`, confirm that the first documentation-only pull request passes both unit-test legs in under two minutes, and archive the change with `openspec archive overhaul-dev-workflow`
 
 ## Workflow follow-up
