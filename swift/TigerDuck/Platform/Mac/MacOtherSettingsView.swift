@@ -22,12 +22,9 @@ struct MacOtherSettingsView: View {
                 Text(String(localized: "settings_api_endpoint_effective_title"))
             }
 
-            // Surface a previously-saved override that no longer passes
-            // the allowlist (e.g. allowlist tightened in a later build).
-            // Mirrors the iOS DebugEndpointView — without this section,
-            // the Mac user only sees the effective URL silently fall
-            // through to the next priority with no breadcrumb explaining
-            // why their saved override stopped taking effect.
+            // Shows a saved override that fails the allowlist (a later build can tighten it), as
+            // iOS DebugEndpointView does. Without it the effective URL silently falls through to
+            // the next priority, with no hint why the saved override stopped taking effect.
             if let stale = endpointVM.staleOverride {
                 Section {
                     Text(stale)
@@ -43,12 +40,9 @@ struct MacOtherSettingsView: View {
             }
 
             Section {
-                // Show the example URL above the field instead of as the
-                // TextField's leading label — on macOS Form's grouped
-                // style the title-string initializer renders a left-side
-                // label that eats horizontal space and pushes the input
-                // into a sliver. Putting the hint on its own row keeps
-                // the input field full-width and easier to paste into.
+                // The example URL goes above the field, not in the TextField title: a grouped
+                // macOS Form renders that title as a leading label that squeezes the input to a
+                // sliver. On its own row the hint leaves the field full width for pasting.
                 Text(verbatim: String(localized: "settings_api_endpoint_placeholder"))
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)

@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+@MainActor
 struct WidgetTimelineDerivationTests {
     private func snapshot(courses: [SnapshotCourse]) -> WidgetSnapshot {
         WidgetSnapshot(
@@ -110,11 +111,10 @@ struct WidgetTimelineDerivationTests {
     /// `.ongoing` so the widget stops showing the cancelled class as the
     /// active slot.
     ///
-    /// It does *not* fall through to `.noMoreClasses`, which this asserted
-    /// until now: the course still meets next Monday and the seven-day scan
-    /// finds it, deliberately, so a one-class-a-week timetable does not read
-    /// as empty for six days. What the scan must not do is caption that
-    /// "Tomorrow" — hence the `day` assertion.
+    /// It does not fall through to `.noMoreClasses`: the course still meets
+    /// next Monday, and the seven-day scan finds it so a one-class-a-week
+    /// timetable does not read as empty for six days. The scan must not
+    /// caption that slot "Tomorrow", hence the `day` assertion.
     @Test func skippedToday_removesFromOngoing() {
         let now = monday(9, 30)
         let key = WidgetTimelineDerivation.dateKey(for: now)

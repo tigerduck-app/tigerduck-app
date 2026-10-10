@@ -13,10 +13,9 @@ enum MoodleEnrolledCoursesService {
             } else {
                 token = try await tokenService.refreshTokenIfNeeded()
             }
-            // userId() hits core_webservice_get_site_info with the same token,
-            // so it must live inside the retry block — otherwise a stale
-            // token that triggers .invalidToken on site_info bypasses the
-            // refresh path and the whole call fails.
+            // `userId()` calls core_webservice_get_site_info with the same token, so it stays
+            // inside the retry block: outside it, a stale token's `.invalidToken` from site_info
+            // would skip the refresh path and fail the whole call.
             let userId = try await MoodleSiteInfoService.shared.userId()
             return try await fetchEnrolledCourses(token: token, userId: userId)
         }

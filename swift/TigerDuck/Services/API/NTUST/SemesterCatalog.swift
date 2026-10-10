@@ -1,23 +1,13 @@
 import Foundation
 
-/// Server-driven semester list, sourced from the public `querycourse`
-/// catalogue.
+/// Server-driven semester list from the public `querycourse` catalogue. The month heuristic
+/// in `CourseSelectionService` lags when NTUST opens a term early. A walk-back from it then
+/// leaves the new term out of the picker, and course selection, which has already moved to
+/// that term and marks no term in its list HTML, gets its enrolments filed under the old one,
+/// rendering both terms into one grid.
 ///
-/// `CourseSelectionService.currentSemesterCode()` is a gregorian-month
-/// heuristic, so it lags whenever NTUST publishes a term early. On
-/// 2026-08-20 the heuristic still said 114-2 while the school had already
-/// opened 115-1, which broke the class table two ways:
-///
-/// 1. `availableSemesters` walked back four terms from the heuristic, so
-///    115-1 never appeared in the picker.
-/// 2. The 選課 system had *already* flipped to 115-1, and its 選課清單 page
-///    carries no term marker anywhere in the HTML — so those enrolments were
-///    filed under the heuristic's 114-2 and both terms rendered into one grid.
-///
-/// `api/semestersinfo` is the same endpoint the official course-query site
-/// uses to populate its own semester menu. `LoginEnable` marks the single
-/// term the 選課 system is operating on, which is exactly the attribution the
-/// 選課清單 scrape is missing.
+/// `api/semestersinfo` also feeds the official course-query site's semester menu. Its
+/// `LoginEnable` marks the one term course selection serves, which the list scrape lacks.
 enum SemesterCatalog {
     private static let semestersAPI = URL.knownGood(
         "https://querycourse.ntust.edu.tw/QueryCourse/api/semestersinfo"
@@ -32,10 +22,9 @@ enum SemesterCatalog {
     /// hot path when several semesters warm at once.
     private static let refreshTTL: TimeInterval = 3600
 
-    /// Picker depth when the student id is unknown. Six rather than the
-    /// previous four because the catalogue interleaves 暑期 terms (`114H`)
-    /// between the regular ones. With a known id the picker instead reaches
-    /// back to the admission term — see `terms(from:admissionYear:)`.
+    /// Picker depth when the student id is unknown: six, because the catalogue
+    /// interleaves summer terms (`114H`) between the regular ones. With a known id
+    /// the picker reaches back to the admission term; see `terms(from:admissionYear:)`.
     private nonisolated static let pickerDepth = 6
 
     // Capitalised to match the wire format, same as `CourseSearchResult`.
@@ -69,15 +58,14 @@ enum SemesterCatalog {
         return terms(from: cached, admissionYear: admissionYear(studentId: studentId))
     }
 
-    /// Catalogue terms from the admission year onwards; the fixed depth
-    /// when the id is unknown. Compared numerically: the catalogue pads
-    /// pre-100 years as `99 1`, and those sort *after* `1131` as strings,
-    /// which is how every term back to 95-1 leaked into the picker.
+    /// Catalogue terms from the admission year onwards; the fixed depth when the id is
+    /// unknown. Compared numerically: the catalogue pads pre-100 years as `99 1`, which
+    /// sorts after `1131` as a string and would let every term back to 95-1 into the picker.
     ///
-    /// Deliberately empty for a student admitted after the newest published
-    /// term: every catalogue term predates them, so offering (and warming)
-    /// any of it is wrong. `ClassTableViewModel.semesterOptions` keeps the
-    /// heuristic term selectable until NTUST publishes theirs.
+    /// Empty for a student admitted after the newest published term: every catalogue term
+    /// predates them, so offering (and warming) any of it is wrong.
+    /// `ClassTableViewModel.semesterOptions` keeps the heuristic term selectable until
+    /// NTUST publishes theirs.
     nonisolated static func terms(from catalogue: [String], admissionYear: Int?) -> [String] {
         guard let admissionYear else { return Array(catalogue.prefix(pickerDepth)) }
         return catalogue.filter { (academicYear(of: $0) ?? -1) >= admissionYear }
@@ -109,13 +97,12 @@ enum SemesterCatalog {
             ?? CourseSelectionService.currentSemesterCode()
     }
 
-    /// The term the 選課 system is currently serving — the one whose
-    /// enrolments `CourseSelectionService.fetchEnrolledCourseNos` returns.
+    /// The term the course-selection system is serving: the one whose enrolments
+    /// `CourseSelectionService.fetchEnrolledCourseNos` returns.
     ///
-    /// This runs *ahead* of the term actually in session (選課 for the next
-    /// term opens weeks before it starts), so it is deliberately not a
-    /// replacement for `currentSemesterCode()`; it answers "which bucket do
-    /// the 選課清單 course numbers belong in", nothing else.
+    /// It runs ahead of the term in session (selection for the next term opens weeks
+    /// before it starts), so it does not replace `currentSemesterCode()`. It only says
+    /// which term the selection list's course numbers belong to.
     nonisolated static func selectionSemesterCode() -> String {
         UserDefaults.standard.string(forKey: selectionKey)
             ?? CourseSelectionService.currentSemesterCode()

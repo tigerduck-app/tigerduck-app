@@ -13,11 +13,9 @@ struct FluidGlassTrackView: View {
         GeometryReader { geo in
             let width = geo.size.width
             let centerX = width / 2
-            // Track rendering uses positive xOffset = right = future. In RTL
-            // the gesture handler flips drag direction so a rightward swipe
-            // still advances time, which means visually future segments must
-            // also flip to the left side. Mirror every x-offset by this
-            // factor so gesture and visuals agree.
+            // Positive xOffset is right, the future. In RTL the gesture handler flips
+            // the drag so a rightward swipe still advances time, so future segments
+            // flip left too: every x-offset is mirrored so gesture and visuals agree.
             let rtlFactor: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
 
             ZStack {
@@ -143,8 +141,8 @@ struct FluidGlassTrackView: View {
         guard policy.timeSliderUsesCourseColoredThumb else {
             return .white
         }
-        // 衝堂 leaves the thumb one colour to glow: the first concurrent
-        // course, the same one the leftmost card shows.
+        // Overlapping classes leave the thumb one colour to glow: the first
+        // concurrent course, the same one the leftmost card shows.
         if case .inClass(let slots) = viewModel.currentCourseState, let slot = slots.first {
             return slot.course.color
         }

@@ -67,10 +67,9 @@ private struct LockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Row 1: status (leading, intrinsic width) + remaining countdown (trailing, intrinsic width)
-            // Canonical pattern: Spacer 吃掉中間所有伸縮，兩側用 intrinsic size 自然貼齊邊界。
-            // 注意：不可對右側 timer 或其容器使用 .fixedSize()，會破壞 Text(timerInterval:) 的
-            // widget reservation 機制。
+            // Row 1: status and countdown at intrinsic width, with the Spacer taking
+            // all the slack between them. Do not apply .fixedSize() to the timer or its
+            // container: it breaks the widget reservation of Text(timerInterval:).
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
                     Circle()
@@ -143,13 +142,11 @@ private struct ExpandedBottomView: View {
 
 /// OS-driven progress bar.
 ///
-/// 底層邏輯：Live Activity 的 View 是快照型——`ProgressView(value:)` 只會在
-/// 每次 push `Activity.update(...)` 時重繪。若僅靠 push 更新，既耗電又會被
-/// 系統節流，使用者會看到「進度條卡住不動」。
-///
-/// 正確作法：用 `ProgressView(timerInterval:countsDown:)`——告訴系統這是
-/// 一個時間區間，OS 在 widget extension 內部自動補間、零 CPU、零 push。
-/// 這跟 `Text(timerInterval:)` 自動倒數文字是同一套機制。
+/// Live Activity views are snapshots: `ProgressView(value:)` redraws only on
+/// each `Activity.update(...)`, and updating by push alone drains battery and
+/// gets throttled, so the bar looks stuck. `ProgressView(timerInterval:countsDown:)`
+/// hands the system a time interval that the OS interpolates inside the widget
+/// extension with no CPU or push cost, the mechanism `Text(timerInterval:)` uses.
 private struct AutoProgressBar: View {
     let snapshot: LiveActivitySnapshot
 
@@ -157,10 +154,9 @@ private struct AutoProgressBar: View {
         if let start = snapshot.progressStart,
            let target = snapshot.countdownTarget,
            start < target {
-            // `ProgressView(timerInterval:)` interpolates against the real
-            // wall clock, but the snapshot dates are in app-clock time
-            // (possibly fake). Translate the endpoints once so the bar
-            // animates over the matching real-time span.
+            // `ProgressView(timerInterval:)` interpolates against the real wall clock,
+            // but snapshot dates are app-clock time (possibly fake), so translate the
+            // endpoints to animate over the matching real-time span.
             let realStart = AppClock.realTime(forApp: start)
             let realTarget = AppClock.realTime(forApp: target)
             ProgressView(timerInterval: realStart...realTarget, countsDown: false) {
@@ -179,10 +175,10 @@ private struct AutoProgressBar: View {
 
 /// Scenario-aware bottom metadata row.
 ///
-/// - inClass / classPreparing: 地點 | 時間 | 老師
-/// - assignmentUrgent:         課程名稱(課本) |    | 指導老師
-///   `subtitle` 對作業場景存放課程名稱；instructor 目前 resolver 恆為 nil，
-///   故右側通常為空白（符合需求允許右側空白的備案）。
+/// - inClass / classPreparing: location | time | teacher
+/// - assignmentUrgent: course name (book icon) | blank | instructor
+///   For assignments `subtitle` holds the course name. `instructor` can be
+///   nil, and a blank right side is acceptable.
 private struct MetadataRowView: View {
     let snapshot: LiveActivitySnapshot
 
@@ -248,17 +244,12 @@ private struct MetadataRowView: View {
 
 /// The mark in the island's two small slots.
 ///
-/// In class this is the app icon rather than a glyph: those slots are where
-/// the system asks "which app is this?", and the tiger answers it in a way a
-/// borrowed SF Symbol never did — a mortarboard reads as *some* school app.
-/// The other two scenarios keep their glyph, which is carrying real
-/// information the countdown alone doesn't (a class about to start vs. an
-/// assignment about to be due).
-///
-/// Rendered at a fixed 20pt. The artwork is full-colour and detailed, so it
-/// is not tinted with the accent the way a symbol is, and it must be sized
-/// explicitly — an asset-catalog image in a widget otherwise lays out at its
-/// natural size and blows the slot open.
+/// In class it is the app icon: these slots answer "which app is this?", and
+/// an SF Symbol such as a mortarboard reads as any school app. The other two
+/// scenarios keep a glyph, which tells a class about to start from an
+/// assignment about to be due; the countdown alone cannot. The full-colour
+/// artwork is not accent-tinted and needs its fixed 20pt frame, or the widget
+/// lays the asset-catalog image out at natural size and blows the slot open.
 @ViewBuilder
 private func scenarioIcon(_ snapshot: LiveActivitySnapshot) -> some View {
     switch snapshot.scenario {
@@ -303,18 +294,12 @@ private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
 
 /// What the countdown slot reads once its target has passed.
 ///
-/// Reaching this branch means nothing has ended the activity yet, and that
-/// is a state the design has to survive rather than treat as impossible.
-/// An end push is the only remote removal path — ActivityKit has no
-/// expire-at-date API, and `staleDate` marks an activity stale without
-/// dismissing it (see `LiveActivityCoordinator`) — while the local end
-/// timer and the foreground prune both need the app to be running. So a
-/// user lands here whenever the server is down, the phone is offline past
-/// the push TTL, the push is dropped, or the app was force-quit.
-///
-/// `"—"` made every one of those read as a broken app. Naming the terminal
-/// state costs nothing and makes the worst case look deliberate: the class
-/// is over, and the island is saying so while it waits to be cleared.
+/// The activity can outlive its target: an end push is the only remote
+/// removal (ActivityKit has no expire-at-date API, and `staleDate` does not
+/// dismiss; see `LiveActivityCoordinator`), and the local end timer and the
+/// foreground prune need the app running. A down server, a phone offline past
+/// the push TTL, a dropped push or a force-quit all land here, and a dash would
+/// read as a broken app, so the label names the finished state instead.
 private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
     switch scenario {
     case .inClass:

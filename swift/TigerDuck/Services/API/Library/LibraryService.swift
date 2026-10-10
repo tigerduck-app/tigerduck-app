@@ -67,20 +67,14 @@ enum LibraryService {
         KeychainManager.loadString(key: AppConstants.KeychainKeys.libraryUsername)
     }
 
-    /// Bumped whenever the stored library identity changes — a logout, or a
-    /// different account signing in.
+    /// Bumped whenever the stored library identity changes: a logout, or a different
+    /// account signing in. Callers read it before their request and compare it before
+    /// storing anything. ``AuthService/loginGeneration`` guards the NTUST side the same way.
     ///
-    /// The QR path is asynchronous and untracked: `generateQRCode()` is a
-    /// network round trip, and the rasterise after it hops off the main
-    /// actor. A logout landing inside that window let the previous user's
-    /// code finish arriving afterwards and write itself back into the
-    /// process-wide caches and onto the screen — which is the
-    /// "do not write previous-user data back after logout" rule in
-    /// `swift/TigerDuck/AGENTS.md`. Callers read this before their request
-    /// and compare before storing anything.
-    ///
-    /// Mirrors ``AuthService/loginGeneration``, which guards the NTUST side
-    /// for the same reason.
+    /// The QR path is untracked async work: `generateQRCode()` is a network round trip,
+    /// and the rasterise after it hops off the main actor. Without the check, a logout in
+    /// that window lets the previous user's code land in the process-wide caches and on
+    /// screen, which `swift/TigerDuck/AGENTS.md` forbids.
     @MainActor private(set) static var loginGeneration: Int = 0
 
     /// Posted on the main actor whenever `loginGeneration` moves — a sign-out,
@@ -97,11 +91,9 @@ enum LibraryService {
     /// strict concurrency.
     @MainActor
     static func saveCredentials(username: String, password: String) {
-        // Only a genuine account change invalidates work in flight.
-        // `ensureToken()` re-logs in with the *stored* credentials when the
-        // token expires, and that lands here mid-request — bumping on every
-        // save would make a refresh discard the very QR request that
-        // triggered it.
+        // Only a real account change invalidates work in flight. `ensureToken()` re-logs in
+        // with the stored credentials on token expiry and lands here mid-request, so bumping
+        // on every save would discard the QR request that triggered the refresh.
         let accountChanged = storedUsername != username
         if accountChanged {
             loginGeneration &+= 1
@@ -110,9 +102,8 @@ enum LibraryService {
         KeychainManager.saveString(key: AppConstants.KeychainKeys.libraryPassword, value: password)
         if accountChanged {
             // A code cached for the previous account still scans as theirs, and
-            // `LibraryViewModel.startQRRefreshCycle` reuses a cached one that has
-            // time left — so a sign-in as someone else without a sign-out in
-            // between would put the previous account's code back on screen.
+            // `LibraryViewModel.startQRRefreshCycle` reuses a cached code with time left, so
+            // switching accounts without a sign-out would put the old code back on screen.
             LibraryQRCache.shared.clear()
             #if os(iOS)
             LibraryQRImageCache.shared.clear()
@@ -139,14 +130,9 @@ enum LibraryService {
         clearToken()
         LibraryQRCache.shared.clear()
         #if os(iOS)
-        // The rendered pixels are credential-derived too. Without this the
-        // previous user's QR image outlives their session in a process-wide
-        // singleton, which is the "do not keep previous-user data after
-        // logout" rule this repo holds elsewhere. iOS-only for the same
-        // reason as the broadcaster below: the cache holds a `UIImage`, and
-        // the Mac target compiles this file off an explicit source
-        // allowlist (`INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]`) that the
-        // cache — like the rest of the Library UI — is not on.
+        // The rendered QR image is credential-derived too and must not outlive the session in
+        // a process-wide singleton. iOS-only: the cache holds a `UIImage` and, like the rest of
+        // the Library UI, is not on the Mac allowlist `INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]`.
         LibraryQRImageCache.shared.clear()
         WatchLibraryCredentialBroadcaster.shared.broadcastWipe()
         #endif

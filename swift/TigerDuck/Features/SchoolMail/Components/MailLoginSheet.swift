@@ -58,10 +58,9 @@ struct MailLoginSheet: View {
     private let account = MailAccountManager.shared
 
     var body: some View {
-        // Prefilled from the NTUST sign-in for the user to submit or correct, never submitted
-        // automatically, never the school's password while the developer override is on, and
-        // never a password this server has already rejected — `MailCredentialPrefill` owns all
-        // of that and explains why.
+        // Prefilled from the NTUST sign-in for the user to submit or correct: never submitted
+        // automatically, never the school's password under the developer override, and never a
+        // password this server rejected. `MailCredentialPrefill` owns those rules and says why.
         let prefill = Self.initialFields(
             storedID: appState.authService.storedStudentId,
             storedPassword: appState.authService.storedPassword,

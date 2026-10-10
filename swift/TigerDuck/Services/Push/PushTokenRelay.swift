@@ -4,23 +4,13 @@ import Foundation
 import os
 
 /// Observes `Activity<TigerDuckActivityAttributes>.pushToStartTokenUpdates`
-/// and hands each new token off to `PushRegistrationService`.
+/// and hands each new token to `PushRegistrationService`. iOS rotates the
+/// token, so the latest value wins. Per-activity update tokens
+/// (`activity.pushTokenUpdates`) are not observed here.
 ///
-/// The async sequence is long-lived — we wrap it in a `Task` so callers can
-/// start/stop it around app scene lifecycle. iOS itself rotates the PTS
-/// token periodically, so we always take the latest value.
-///
-/// A PTS token only exists while Live Activities are enabled, and the user
-/// can switch them on in iOS Settings at any time. So `start()` waits for
-/// that instead of giving up: `PushCoordinator` starts the relay once per
-/// process, and a relay that returned early stayed off until the next
-/// launch. Device registration never waits for this relay —
-/// `PushRegistrationService` registers the standard APNs token on its own
-/// and attaches the PTS token when it arrives.
-///
-/// Note: this observes ONLY the push-to-start token. Per-activity update
-/// tokens (`activity.pushTokenUpdates`) are out of scope for the MVP since
-/// `timerInterval` on-device animation removes the need to push updates.
+/// A PTS token exists only while Live Activities are enabled, which the user
+/// can change in iOS Settings at any time, so `start()` waits for that rather
+/// than returning: `PushCoordinator` starts the relay once per process.
 @MainActor
 final class PushTokenRelay {
     private let registration: PushRegistrationService

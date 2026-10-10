@@ -1,36 +1,28 @@
 import Foundation
 import os
 
-/// Persists the latest `WidgetSnapshot` so the widget extension can render
-/// what the app writes via a shared App Group `UserDefaults` suite. Mirrors
-/// the `SharedSnapshotStore` pattern used by the Live Activity extension.
+/// Persists the latest `WidgetSnapshot` in a shared App Group `UserDefaults` suite so the
+/// widget extension can render what the app writes. Mirrors the Live Activity extension's
+/// `SharedSnapshotStore`.
 ///
-/// In DEBUG we crash hard when the App Group is unreachable — see
-/// ``isAppGroupAvailable(_:)`` for why that has to be a container-URL check
-/// rather than a nil-suite check — so the empty
-/// `com.apple.security.application-groups` regression cannot ship silently
-/// again. In release we still fall back to `.standard` with a loud error so
-/// a user with a provisioning hiccup still launches.
+/// DEBUG builds trap when the App Group is unreachable, checked by container URL (see
+/// ``isAppGroupAvailable(_:)``), so an empty `com.apple.security.application-groups`
+/// entitlement cannot ship unnoticed. Release builds log an error and fall back to
+/// `.standard` so a user with a provisioning problem still launches.
 nonisolated final class WidgetSnapshotStore {
     private let defaults: UserDefaults
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Widget")
 
-    /// Whether this process can actually reach the shared App Group.
+    /// Whether this process can reach the shared App Group.
     ///
-    /// `UserDefaults(suiteName:)` does NOT answer this. It returns nil only
-    /// for reserved names (this process's own bundle identifier,
-    /// `NSGlobalDomain`); for a group the process holds no entitlement for it
-    /// hands back a perfectly valid *process-local* store. The app's writes
-    /// then never reach the extension and the extension's reads are always
-    /// nil — which is precisely the regression the assertion below exists to
-    /// catch, and which it silently missed for as long as the suite was the
-    /// only check. The container URL is the one that actually fails: it is
-    /// nil unless the entitlement is present in the running binary.
-    ///
-    /// Static and non-private so `AppGroupEntitlementTests` can pin the
-    /// behaviour without constructing a store (the failure path traps).
+    /// `UserDefaults(suiteName:)` cannot tell. It returns nil only for reserved names (this
+    /// process's bundle identifier, `NSGlobalDomain`); for a group without the entitlement it
+    /// returns a process-local store, so app writes never reach the extension, the failure the
+    /// `init` assertion catches. The container URL is nil unless the running binary has the
+    /// entitlement. Static and non-private so `AppGroupEntitlementTests` can check it without
+    /// building a store, whose failure path traps.
     static func isAppGroupAvailable(_ identifier: String) -> Bool {
         FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: identifier

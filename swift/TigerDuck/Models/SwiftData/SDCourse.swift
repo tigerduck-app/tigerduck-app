@@ -132,10 +132,9 @@ final class SDCourse: Identifiable {
            let str = String(data: data, encoding: .utf8) {
             classroomMapJSON = str
         }
-        // On encode failure, keep the previously-persisted JSON rather
-        // than overwriting with "{}" — same rationale as `setSchedule`:
-        // SwiftData re-hydrating from "{}" would silently drop every
-        // per-period classroom entry on next launch.
+        // On encode failure, keep the persisted JSON instead of writing "{}",
+        // as `setSchedule` does: SwiftData re-hydrating "{}" would silently
+        // drop every per-period classroom entry on the next launch.
         _cachedClassroomMap = map
     }
 
@@ -150,12 +149,9 @@ final class SDCourse: Identifiable {
            let str = String(data: data, encoding: .utf8) {
             scheduleJSON = str
         }
-        // On encode failure, deliberately keep the previously-persisted
-        // `scheduleJSON` rather than overwriting with "{}". A stale-but-
-        // non-empty schedule on next launch is far better than every
-        // period silently disappearing because SwiftData re-hydrated
-        // from "{}". The in-memory cache still reflects this call so
-        // the current session sees the new value.
+        // On encode failure, keep the persisted `scheduleJSON` over "{}": a
+        // stale schedule beats every period vanishing when SwiftData
+        // re-hydrates "{}" next launch. The in-memory cache still updates.
         _cachedSchedule = schedule
     }
 
@@ -216,15 +212,11 @@ final class SDCourse: Identifiable {
     /// The 4-character term prefix of a Moodle `idnumber`, normalised, or
     /// `nil` when the id carries none.
     ///
-    /// A regular term is four digits (`1151`). A summer term's fourth
-    /// character is a letter — and the two systems disagree on its case:
-    /// NTUST's own `api/semestersinfo` publishes `114H`, while Moodle's
-    /// `idnumber` spells it `114h`. Every term check downstream is a string
-    /// comparison against NTUST's spelling, so the prefix is upper-cased
-    /// here, once, instead of at each comparison. Requiring all four digits
-    /// is what used to drop summer courses on the floor: `courseNo` and
-    /// `semester` both came back empty and the assignment pipeline filtered
-    /// the course out three times over.
+    /// A regular term is four digits (`1151`). A summer term ends in a letter,
+    /// `114H` in NTUST's `api/semestersinfo` but `114h` in Moodle. Downstream
+    /// term checks compare with NTUST's spelling, so the prefix is upper-cased
+    /// here once. Requiring four digits would give summer courses an empty
+    /// `courseNo` and `semester`, and the assignment pipeline would drop them.
     static func semesterPrefix(ofMoodleId moodleId: String) -> String? {
         guard moodleId.count > 4 else { return nil }
         let prefix = moodleId.prefix(4)
@@ -277,10 +269,9 @@ extension SDCourse {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.calendar = Calendar(identifier: .gregorian)
-        // Pin to Taipei so a traveler marking "today" as skipped still
-        // hits the same calendar day the widget/timeline derivation
-        // computes — both sides must agree on what `yyyy-MM-dd` resolves
-        // to or the skip silently misses.
+        // Pinned to Taipei so a traveler skipping "today" hits the day the
+        // widget and timeline compute: if they disagree on what `yyyy-MM-dd`
+        // resolves to, the skip silently misses.
         f.timeZone = AppConstants.taipeiTimeZone
         f.dateFormat = "yyyy-MM-dd"
         return f
@@ -314,27 +305,22 @@ extension SDCourse {
             dates.append(key)
         }
         skippedDates = dates
-        // Wake the LiveActivity refresh path so the lock-screen
-        // activity reflects the toggle without waiting for the next
-        // background sync tick. The resolver re-evaluates skip state
-        // only on a new resolve; without this nudge a user marking
-        // the in-progress class as skipped would still see it on the
-        // lock screen until something else triggers a refresh.
+        // Wake the Live Activity refresh path: the resolver re-evaluates skip
+        // state only on a new resolve, so a skipped in-progress class would
+        // stay on the lock screen until the next sync tick or other refresh.
         NotificationCenter.default.post(name: AppConstants.courseSkipStateDidChange, object: nil)
     }
 }
 
 extension SDCourse {
-    /// Deep link into the Moodle Mobile app for this course. Mirrors
-    /// ``SDAssignment/moodleDeepLink`` — same `moodlemobile://https://<host>?redirect=…`
-    /// envelope pointing at `/course/view.php?id=<N>`. The numeric id is
-    /// looked up from ``DataCache/lookupMoodleCourseId(idnumber:)``, which
-    /// ``AppServiceBridge`` keeps fresh off the enrolled-courses fetch.
-    ///
-    /// Returns `nil` when either no idnumber is recorded for the course
-    /// (e.g. user-added courses), or the id-map cache hasn't been populated
-    /// yet (cold launch before first sync) — UI hides the button in both
-    /// cases so the user never taps into an "app cannot open this URL" sheet.
+    /// Deep link into the Moodle Mobile app for this course, in the same
+    /// `moodlemobile://https://<host>?redirect=…` envelope as
+    /// ``SDAssignment/moodleDeepLink``, pointing at `/course/view.php?id=<N>`.
+    /// The numeric id comes from ``DataCache/lookupMoodleCourseId(idnumber:)``,
+    /// which ``AppServiceBridge`` keeps fresh off the enrolled-courses fetch.
+    /// `nil` with no idnumber (user-added courses) or before the id map fills
+    /// (cold launch before the first sync); the UI then hides the button, so
+    /// no tap lands on an "app cannot open this URL" sheet.
     var moodleDeepLink: URL? {
         guard let idnumber = moodleIdNumber, !idnumber.isEmpty,
               let numericId = DataCache.shared.lookupMoodleCourseId(idnumber: idnumber) else {

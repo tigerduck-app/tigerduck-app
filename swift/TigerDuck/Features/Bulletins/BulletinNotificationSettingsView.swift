@@ -2,34 +2,14 @@ import Defaults
 import SwiftUI
 import UserNotifications
 
-/// Per-device bulletin notification settings.
-///
-/// Three responsibilities:
-/// 1. Surface the OS push permission state and let the user request it.
-/// 2. Toggle our `bulletinPushEnabled` flag (a `Defaults` key) via a PATCH-
-///    first pattern: flipping it PATCHes `bulletin_push_enabled` on this
-///    device's row and only then updates the local Default, so a failed
-///    request leaves the toggle agreeing with the server. The device
-///    itself stays registered either way (spec §6 item 5) — only bulletin
-///    delivery is gated server-side; assignment reminders, Live Activities
-///    and sync triggers are unaffected. A request that does not land says
-///    so in the section footer instead of leaving the tap looking like a
-///    no-op; the page is reachable without a sign-in check of its own, and
-///    the PATCH needs a Bearer.
-/// 3. CRUD the device's subscription rules. There is no manual 儲存
-///    button — the page auto-persists in three situations:
-///    * on editor 完成 (upsert + save)
-///    * on editor 刪除規則 (remove + save)
-///    * on page `.onDisappear` if any unsaved change remains (catches
-///      swipe-to-delete on the list that didn't route through the
-///      editor). The user's mental model is "I tweaked something, I
-///      swipe back, it's saved" — matches the Settings / Notes app
-///      idiom.
-///
-/// Tapping 新增規則 does NOT mutate `pending` — the new rule starts life
-/// as a local draft held in view state and only enters the server-bound
-/// list when the user taps 完成 in the editor. Swiping back out of the
-/// editor discards the draft cleanly.
+/// Per-device bulletin notification settings. Turning bulletin push on or off PATCHes
+/// `bulletin_push_enabled` on this device's row before writing the `bulletinPushEnabled` Default,
+/// so a failed request leaves the page agreeing with the server, and the section footer reports the
+/// failure, since the page has no sign-in check and the PATCH needs a Bearer. The device stays
+/// registered either way: the server gates only bulletin delivery, not assignment reminders, Live
+/// Activities or sync triggers. Rules have no Save button: they persist on the editor's Done and
+/// Delete rule, and on leaving the page with unsaved changes. A new rule stays a draft in view
+/// state until Done, so swiping back out of the editor discards it.
 struct BulletinNotificationSettingsView: View {
     let taxonomy: BulletinTaxonomyStore
 
@@ -39,8 +19,7 @@ struct BulletinNotificationSettingsView: View {
     /// In-flight for the whole enable path — the permission prompt and the
     /// PATCH behind it.
     @State private var isAskingPermission: Bool = false
-    /// In-flight for the destructive 關閉公告推播 button, which is only the
-    /// PATCH.
+    /// In-flight for the destructive "Turn off bulletin push" button, which is only the PATCH.
     @State private var isDisablingPush: Bool = false
     /// Set when the bulletin PATCH throws — offline, or signed out. Reuses
     /// TigerSync's wording for the same kind of failure. Cleared by the
@@ -49,9 +28,8 @@ struct BulletinNotificationSettingsView: View {
     /// `pushEnabled` below never moved.
     @State private var pushUpdateFailed: Bool = false
     @State private var editingClientId: UUID?
-    /// Unpersisted rule that lives only while the editor is on screen.
-    /// Transitions to `store.pending` via `upsert` when the user taps
-    /// 完成. Replaced (or cleared) whenever the user navigates back out.
+    /// Unpersisted rule that lives only while the editor is on screen. Tapping Done moves it into
+    /// `store.pending` via `upsert`. Replaced or cleared whenever the user navigates back out.
     @State private var draftRule: BulletinAPI.SubscriptionRule?
     @State private var saveErrorMessage: String?
     /// Ensures the initial network load fires exactly once per view
@@ -93,10 +71,8 @@ struct BulletinNotificationSettingsView: View {
             }
         }
         .onDisappear {
-            // Auto-save when leaving the page (swipe back, tab switch,
-            // etc.). Guard against pushing the editor onto the stack —
-            // that also fires `onDisappear`, but `editingClientId`
-            // tells us we're just being covered, not popped.
+            // Auto-save on leaving the page (swipe back, tab switch). Pushing the editor also
+            // fires `onDisappear`; a non-nil `editingClientId` means the page is only covered.
             if editingClientId == nil, store.isDirty {
                 Task { await store.save() }
             }
@@ -236,7 +212,7 @@ struct BulletinNotificationSettingsView: View {
 
                 Button {
                     // Create a draft rule locally; don't touch `pending`
-                    // until 完成. Setting both state fields in the same
+                    // until Done. Setting both state fields in the same
                     // tick so SwiftUI batches a single render pass.
                     let draft = store.makeNewRule()
                     draftRule = draft
@@ -285,12 +261,9 @@ struct BulletinNotificationSettingsView: View {
                 }
             )
         } else if let draft = draftRule, draft.clientId == clientId {
-            // New rule path — the draft lives in view state until
-            // 完成 upgrades it into `pending`. Swiping back discards
-            // (the editingClientId binding flips to nil, draft remains
-            // in state but is simply replaced on the next 新增規則).
-            // No onDelete here: there's nothing on the server to
-            // delete and the swipe-back gesture is the discard.
+            // New rule: the draft lives in view state until Done moves it into `pending`. Swiping
+            // back discards it; the draft stays in state until the next Add rule replaces it. No
+            // onDelete: nothing is on the server yet, and swiping back is the discard.
             SubscriptionRuleEditorView(
                 rule: draft,
                 taxonomy: taxonomy,
@@ -389,27 +362,14 @@ struct BulletinNotificationSettingsView: View {
 
     // MARK: - Permission routing
 
-    /// Whether the off-state section has to spell out the permission
-    /// problem and offer iOS Settings, instead of leaving 開啟公告推播 as
-    /// the only control.
-    ///
-    /// `.denied` is the one status the enable button cannot move on its
-    /// own: iOS never re-prompts after a refusal, so `requestAuthorization`
-    /// returns `false` without showing anything and `enablePush()` returns
-    /// at its guard — a tap with nothing to show for itself. The status row
-    /// and the Settings button in the on-state branch above are unreachable
-    /// from here, so this section has to carry both. `.notDetermined` still
-    /// prompts, and `.authorized`/`.provisional`/`.ephemeral` let the enable
-    /// path through, so none of them needs the detour.
-    ///
-    /// An unknown future status errs toward offering the route rather than
-    /// repeating the dead end, matching
-    /// `NotificationPermissionSettingsView.notificationPermissionStatus(for:)`,
-    /// which resolves the same `@unknown default` to `.notGranted`.
-    ///
-    /// `static`, over a plain value, so the decision can be pinned without
-    /// constructing a view, an environment or an `AppState` — the same move
-    /// that view's two mappings already made.
+    /// Whether the off-state section must explain the permission problem and offer iOS Settings,
+    /// instead of leaving "Turn on bulletin push" as the only control. `.denied` is the one status
+    /// the enable button cannot move: iOS never re-prompts after a refusal, so
+    /// `requestAuthorization` returns `false` silently and `enablePush()` stops at its guard. The
+    /// on-state branch's status row and Settings button are unreachable from here, so this section
+    /// carries both. An unknown future status errs toward the route, matching
+    /// `NotificationPermissionSettingsView.notificationPermissionStatus(for:)`, which maps it to
+    /// `.notGranted`. `static` over a plain value so a test needs no view or `AppState`.
     static func requiresSystemSettingsRoute(for status: UNAuthorizationStatus) -> Bool {
         switch status {
         case .denied: return true

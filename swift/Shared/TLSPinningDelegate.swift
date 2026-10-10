@@ -2,52 +2,14 @@ import Foundation
 import CryptoKit
 import os
 
-/// SPKI-pinned URLSession server-trust delegate for the hosts that
-/// receive NTUST SSO credentials, the long-lived Moodle `wstoken`, and
-/// the library bearer token.
-///
-/// Mirrors Android's `app/src/main/res/xml/network_security_config.xml`
-/// (`tigerduck-app-android` repo) — same pin set, same expirations.
-/// Threat model assumed there: campus Wi-Fi with a hostile MDM root CA
-/// pushed into the device trust store; system CA chain would accept it,
-/// so a per-host SPKI check is required to refuse the MITM.
-///
-/// **Why programmatic instead of ATS `NSPinnedDomains`?** We tested
-/// both. `NSPinnedDomains` is the natural fit (declarative, single
-/// Info.plist key) but has no fail-soft expiration mechanism, and
-/// empirically a delegate's `useCredential(URLCredential(trust:))`
-/// CANNOT override a pin rejection — Apple enforces the check at a
-/// layer beneath `URLSessionDelegate`. Issue #92 calls for Android-
-/// style fail-soft after the pin set's expiration date (so users on
-/// un-updated builds don't get bricked when TWCA rotates the chain),
-/// which requires runtime control. Hence: delegate.
-///
-/// After a pin set's expiration date the delegate falls back to system
-/// trust evaluation rather than hard-failing — matches Android's
-/// `expiration` attribute semantics. Pin rotation discipline is
-/// enforced by release process: a release-calendar reminder fires
-/// before the expiration date to ship a new build with rotated pins.
-/// The `logger.warning` on the post-expiry path surfaces stale pins to
-/// system log so QA / monitoring catches a missed rotation.
-///
-/// Pin material is the SHA-256 of the SubjectPublicKeyInfo DER, the
-/// same value Android's `pin-set` accepts. Generate with:
-/// ```
-/// echo | openssl s_client -servername HOST -connect HOST:443 -showcerts \
-///   | openssl x509 -noout -pubkey \
-///   | openssl pkey -pubin -outform der \
-///   | openssl dgst -sha256 -binary \
-///   | openssl enc -base64
-/// ```
-///
-/// Wire onto any `URLSession` that posts NTUST SSO credentials, the
-/// Moodle wstoken / privatetoken, or library bearer tokens. Hosts
-/// outside the pin map fall through to system trust, so it's safe to
-/// install on a session that also talks to non-pinned hosts.
-///
-/// The class is `@unchecked Sendable` because URLSession invokes the
-/// challenge handler from arbitrary serial queues; the only mutable
-/// state in the file is the pin table built once at type load time.
+/// URLSession server-trust delegate that pins SPKI SHA-256 hashes. Install it on
+/// every session that carries NTUST SSO credentials, the Moodle `wstoken` or
+/// `privatetoken`, or the library bearer token; pins and expirations match the
+/// Android app. Hosts outside the pin table fall through to system trust, and an
+/// expired pin set falls back to system trust instead of failing.
+/// `@unchecked Sendable`: URLSession calls it on arbitrary serial queues, and the
+/// only mutable state, the pin table, is built once at type load.
+/// See docs/decisions/0001-tls-pinning.md.
 final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
 
     /// Shared instance — URLSession retains its delegate, so handing
@@ -155,11 +117,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         }
 
         if Date() >= pinSet.expiration {
-            // Fail-soft per the issue's acceptance criteria. Bricking
-            // a stale build is worse than reverting to system trust.
-            // `.fault` (not `.warning`) so sysdiagnose / Console flags
-            // this prominently — missed rotations have no other in-app
-            // surface, and stale-pin builds silently lose MITM defence.
+            // Fail soft: bricking a stale build is worse than falling back to
+            // system trust. `.fault`, not `.warning`, so Console and sysdiagnose
+            // flag it; a missed rotation shows nowhere else and silently drops MITM defence.
             logger.fault(
                 "TLS pin for \(host, privacy: .public) expired (\(pinSet.expiration, privacy: .public)) — falling back to system trust; rotate pins"
             )
@@ -172,10 +132,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         // only narrows which valid chains are acceptable.
         var trustError: CFError?
         guard SecTrustEvaluateWithError(trust, &trustError) else {
-            // CFError describe can carry the attacker cert's subject/
-            // issuer via `NSUnderlyingError`. Hash it so the host stays
-            // operationally useful but cert details don't leak into
-            // Console / sysdiagnose attachments.
+            // The CFError description can carry the attacker cert's subject and
+            // issuer via `NSUnderlyingError`. Hash it so those details stay out
+            // of Console and sysdiagnose; the host alone stays readable.
             logger.error(
                 "TLS trust evaluation failed for \(host, privacy: .public): \(String(describing: trustError), privacy: .private(mask: .hash))"
             )
@@ -183,11 +142,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
             return
         }
 
-        // Walk the chain — any cert (leaf, intermediate, or root)
-        // whose SPKI hash is in the pin set satisfies the pin. This
-        // mirrors Android's `pin-set` semantics: include both leaf +
-        // issuing CA so leaf rotation that keeps the same intermediate
-        // continues to validate.
+        // Any cert in the chain (leaf, intermediate or root) whose SPKI hash
+        // is pinned satisfies the pin, as with Android's `pin-set`. Pinning the
+        // leaf and its issuing CA keeps a leaf rotation on the same CA valid.
         let chain = (SecTrustCopyCertificateChain(trust) as? [SecCertificate]) ?? []
         for cert in chain {
             guard let hash = Self.sha256SPKIBase64(of: cert) else { continue }
@@ -206,10 +163,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
     // MARK: - Internals
 
     nonisolated private static func matchingPinSet(for host: String) -> PinSet? {
-        // Strip a trailing dot — some resolver / proxy paths inject
-        // FQDN form (`ssoam2.ntust.edu.tw.`) which would otherwise
-        // miss both the equality and the `.suffix` suffix branches and
-        // silently fall through to system trust on a pinned host.
+        // Strip a trailing dot: some resolver and proxy paths pass the FQDN
+        // form (`ssoam2.ntust.edu.tw.`), which would miss both match branches
+        // and silently fall through to system trust on a pinned host.
         var normalised = host.lowercased()
         if normalised.hasSuffix(".") { normalised.removeLast() }
         var best: PinSet?
@@ -224,12 +180,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                 matches = normalised == suffix
             }
             if matches {
-                // Most-specific match wins on LABEL count, not raw
-                // character count: `api.lib.ntust.edu.tw` has 5 labels
-                // vs `ntust.edu.tw`'s 3, so the library set is picked
-                // for the library host. Character-count tiebreaking
-                // would mis-rank a hypothetical short-label sibling
-                // sharing the library's distinct chain.
+                // Most specific match wins by label count, not character count:
+                // `api.lib.ntust.edu.tw` (5) beats `ntust.edu.tw` (3). Character count
+                // could mis-rank a short-label sibling on the library's chain.
                 let labelCount = suffix.split(separator: ".").count
                 if best == nil || labelCount > bestLabelCount {
                     best = set
@@ -254,14 +207,13 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
     }
 
     /// Reconstruct the DER-encoded SubjectPublicKeyInfo from a `SecKey`.
-    /// `SecKeyCopyExternalRepresentation` returns the raw key bits, not
-    /// the SPKI wrapper, so we prepend the well-known ASN.1
-    /// algorithm-identifier header for the matching key type.
+    /// `SecKeyCopyExternalRepresentation` returns the raw key bits, not the
+    /// SPKI wrapper, so prepend the ASN.1 algorithm-identifier header for
+    /// the key type.
     ///
-    /// Today's NTUST certs are RSA 2048 (TWCA); EC P-256/P-384 are
-    /// pre-wired so the obvious next algorithm migration does not
-    /// require a pinning code change. Anything else returns nil and
-    /// degrades to a chain-walk miss on that cert specifically.
+    /// NTUST's certs are RSA 2048 (TWCA). EC P-256 and P-384 are wired in so
+    /// the likely next algorithm migration needs no pinning code change. Any
+    /// other key returns nil, so only that cert misses in the chain walk.
     nonisolated private static func spkiData(from key: SecKey) -> Data? {
         guard let attrs = SecKeyCopyAttributes(key) as? [String: Any],
               let keyType = attrs[kSecAttrKeyType as String] as? String,
@@ -300,10 +252,9 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
                 0x03, 0x62, 0x00,
             ]
         default:
-            // `.fault` because a silent miss here mimics a generic pin
-            // mismatch — triage starts from the wrong hypothesis and
-            // delays rotating the spkiData table. Logging the type +
-            // size points straight at the missing header entry.
+            // `.fault`: a silent miss looks like a generic pin mismatch, which
+            // sends triage after the wrong cause and delays fixing `spkiData`.
+            // Logging the key type and size points at the missing header entry.
             staticLogger.fault(
                 "TLS pin: unsupported key (type=\(keyType, privacy: .public), bits=\(keySize, privacy: .public)) — add SPKI header to spkiData or this cert is silently skipped during chain walk"
             )

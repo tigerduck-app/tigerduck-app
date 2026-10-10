@@ -59,11 +59,9 @@ struct BulletinsView: View {
             _ = await (tax, bulletins)
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
-            // Only reset search after a meaningful background gap (>5 min);
-            // a brief jaunt to another app shouldn't lose the user's query.
-            // Use real wall time — this measures lifecycle idle, not the
-            // app's notion of "now", so a frozen debug clock must not
-            // prevent the timeout from firing.
+            // Reset search only after more than 5 minutes in the background, so a
+            // quick switch to another app keeps the query. Wall time, not the app
+            // clock: this measures idle time, and a frozen debug clock must not stop it.
             if oldPhase == .background, newPhase == .active,
                let last = lastBackgroundedAt,
                Date().timeIntervalSince(last) > 300 {
@@ -74,11 +72,9 @@ struct BulletinsView: View {
                 lastBackgroundedAt = Date()
             }
             #if os(iOS)
-            // Foregrounding is the natural retry point for a deep link that
-            // a previous tap couldn't resolve (poor signal at tap time, app
-            // suspended mid-fetch). The `pendingDeepLink` value itself
-            // hasn't changed, so the `onChange` observer below wouldn't
-            // re-fire on its own — kick the drain here.
+            // Retry a deep link an earlier tap could not resolve (poor signal,
+            // app suspended mid-fetch). `pendingDeepLink` has not changed, so the
+            // `onChange` observer below would not fire again on its own.
             if newPhase == .active {
                 drainPendingBulletinDeepLink()
             }
@@ -89,9 +85,8 @@ struct BulletinsView: View {
         .onChange(of: appState.pendingDeepLink) { _, _ in
             drainPendingBulletinDeepLink()
         }
-        // A successful list refresh indicates network is back AND may have
-        // pulled the target bulletin into `items`, so this is a cheap
-        // retry point for a deep link that was preserved through an
+        // A successful refresh means the network is back and may have pulled the
+        // target bulletin into `items`, so retry a deep link kept through an
         // earlier transient failure.
         .onChange(of: viewModel.loadState) { _, newState in
             if case .loaded = newState {
@@ -109,13 +104,9 @@ struct BulletinsView: View {
     /// cache, then falls back to the detail endpoint.
     private func drainPendingBulletinDeepLink() {
         guard case .bulletin(let id) = appState.pendingDeepLink else { return }
-        // Use an inflight guard instead of clearing the deep link eagerly:
-        //   * Prevents a SwiftUI re-render (e.g. a sibling onChange firing
-        //     for an unrelated state change) from re-entering this drain
-        //     for the same id while the fetch is still resolving.
-        //   * Leaves `pendingDeepLink` set during the network hop so a
-        //     transient failure / cold start doesn't permanently lose the
-        //     tap before any user-visible navigation happens.
+        // Guard with an inflight set rather than clearing the deep link first:
+        // a re-render cannot re-enter the drain for an id still in flight, and a
+        // transient failure or cold start leaves `pendingDeepLink` for a retry.
         guard !inflightDeepLinkIds.contains(id) else { return }
         inflightDeepLinkIds.insert(id)
         Task {
@@ -124,10 +115,9 @@ struct BulletinsView: View {
             do {
                 summary = try await viewModel.summary(forId: id)
             } catch {
-                // Transient failure (network drop, timeout, etc.) — leave
-                // `pendingDeepLink` set so a later drain (foreground return,
-                // list refresh) can re-attempt navigation. Without this the
-                // tap is lost on the first poor-connectivity attempt.
+                // Transient failure (network drop, timeout): keep `pendingDeepLink`
+                // so a later drain (foreground return, list refresh) retries instead
+                // of losing the tap on the first poor connection.
                 return
             }
             // Terminal outcome — either we have a summary or the bulletin
@@ -172,18 +162,14 @@ struct BulletinsView: View {
         .scrollContentBackground(.hidden)
         .background(Color.backgroundPrimary)
         .navigationTitle(String(localized: "feature_announcements"))
-        // Default placement on iOS 26 = navigation bar drawer that
-        // reveals on pull-down and collapses on scroll. Liquid Glass
-        // styling is applied automatically by the system; we don't
-        // call `.glassEffect()` ourselves per HIG guidance.
+        // Default placement on iOS 26 is the navigation bar drawer, revealed on
+        // pull-down and collapsed on scroll. The system applies Liquid Glass, so
+        // per the HIG this view does not call `.glassEffect()`.
         .searchable(text: $viewModel.searchText, isPresented: $searchIsPresented, prompt: String(localized: "bulletin_search_prompt"))
         .refreshable { await viewModel.refresh() }
         .toolbar {
-            // Surfaces only when the user has narrowed to unread AND
-            // there's actually something to clear. This replaces the
-            // prior long-press-on-filter → confirmation-dialog path:
-            // the conditional visibility is self-gating, so no extra
-            // confirmation step is needed.
+            // Shown only while filtering to unread with something unread. That gate
+            // is why marking all read needs no confirmation step.
             if unreadOnly, hasUnreadBulletins {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(String(localized: "bulletin_mark_all_read_action")) {
@@ -191,11 +177,9 @@ struct BulletinsView: View {
                     }
                 }
             }
-            // The dot opts out of the toolbar's shared background: the
-            // capsule spans neighbouring items and stays put while the dot
-            // fades on idle, which would leave an empty pill in the bar.
-            // Opting out also leaves it bare, which is what it is on the
-            // five pages that draw it in a plain header row.
+            // The dot opts out of the shared toolbar background: that capsule spans
+            // neighbouring items and stays while the dot fades on idle, leaving an
+            // empty pill. Bare also matches the pages that draw it in a plain header row.
             if #available(iOS 26, *) {
                 ToolbarItem(placement: .topBarTrailing) {
                     SyncStatusDot(servers: [.backend])
@@ -210,10 +194,8 @@ struct BulletinsView: View {
                 Button {
                     unreadOnly.toggle()
                 } label: {
-                    // Filter chevron swaps to the filled variant when the
-                    // "unread only" filter is active — a filter glyph reads
-                    // as "filtering the list" more directly than the prior
-                    // envelope, which conflated with notifications.
+                    // A filter glyph says "filtering the list" more directly than an
+                    // envelope, which reads as notifications. Filled while the filter is on.
                     Image(systemName: unreadOnly
                         ? "line.3.horizontal.decrease.circle.fill"
                         : "line.3.horizontal.decrease.circle")
@@ -307,11 +289,9 @@ struct BulletinsView: View {
             }
         } else {
             ForEach(displayedItems) { bulletin in
-                // Plain Button (not NavigationLink) so the row keeps the
-                // standard tap-to-highlight feedback without rendering
-                // the trailing chevron the user asked us to remove.
-                // Programmatic push via .navigationDestination(item:)
-                // attached to the parent List.
+                // A plain Button, not a NavigationLink, keeps the tap highlight without
+                // the trailing chevron. The push runs through the parent List's
+                // `.navigationDestination(item:)`.
                 Button {
                     detailingBulletin = bulletin
                 } label: {
@@ -334,8 +314,8 @@ struct BulletinsView: View {
                     Button {
                         readState.toggleRead(bulletin.id)
                     } label: {
-                        // Icon-only label per spec — system reads it as a
-                        // VoiceOver hint, no visible "已讀/未讀" text.
+                        // Icon only: the title is still read to VoiceOver, but no
+                        // "read/unread" text is visible.
                         Label(
                             readState.isRead(bulletin.id)
                                 ? String(localized: "bulletin_mark_as_unread_action")

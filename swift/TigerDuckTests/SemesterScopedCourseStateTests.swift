@@ -79,6 +79,7 @@ struct MisfiledServerRowTests {
     }
 }
 
+@MainActor
 struct ServerRowCourseMetadataTests {
     private static let row: [String: Any] = [
         "course_no": "GE1001",

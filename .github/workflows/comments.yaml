@@ -1,0 +1,40 @@
+name: Comments
+
+# The comment rules from AGENTS.md: a pull request is checked on the blocks it adds or changes,
+# a push to dev or main on every tracked Swift file.
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+concurrency:
+  group: comments-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # The merge commit and its base, for `--base HEAD^1`.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      - name: Checker tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
+
+      - name: Check comments
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            python3 tools/check_comments.py check --base HEAD^1
+          else
+            python3 tools/check_comments.py check --all
+          fi

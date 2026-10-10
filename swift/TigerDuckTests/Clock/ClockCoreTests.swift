@@ -44,15 +44,13 @@ struct ClockCoreTests {
         #expect(core.now() == fake)
     }
 
-    @Test func nowAdvancesUnderTickingOverride() throws {
+    @Test func nowAdvancesUnderTickingOverride() async throws {
         let core = makeCore()
         let fake = Date(timeIntervalSince1970: 1_700_000_000)
         core.setOverride(override(fake, frozen: false))
         let first = core.now()
-        Thread.sleep(forTimeInterval: 0.05)
-        let second = core.now()
         #expect(first >= fake)
-        #expect(second > first)
+        try await waitUntil { core.now() > first }
     }
 
     @Test func setOverrideNilRestoresRealClock() {

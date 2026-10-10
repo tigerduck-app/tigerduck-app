@@ -1,26 +1,6 @@
-// `NotificationSettingsPushQueue` (AppState+NotificationSettings.swift) —
-// the generation guard and debounce/tail cancellation that keep a queued
-// or in-flight notification-settings push from crossing a logout.
-//
-// The push queue introduced alongside `NotificationSettingsSync` copied
-// `enqueueHolidayUpload`'s chained-tail shape (`AppState+PushServer.swift`)
-// but not the half of `HolidayUploadQueue` that makes chaining safe across
-// a logout — a `generation` counter, bumped on logout, that a queued link
-// checks before running. Without it, a preference edit still sitting in
-// the 250 ms debounce or the push chain when the user logs out can land on
-// whichever account signs in next, once a pull makes those preferences
-// carry another account's data.
-//
-// These tests drive the actual hazard — enqueue work, "log out"
-// (`cancelAll()`), enqueue more work as if a different account had signed
-// in, and assert none of the first batch ran — rather than only checking
-// that `cancelAll()` flips a flag.
-//
-// Exercises `NotificationSettingsPushQueue` directly, matching
-// `NotificationSettingsSync`'s own doc comment: nothing in this test target
-// constructs a full `AppState`. The queue's mechanics are `internal` (not
-// `private`, unlike `HolidayUploadQueue`) precisely so this suite can reach
-// them without one.
+// A notification-settings edit still in the 250 ms debounce or the push chain at logout
+// must not land on the next account. These tests enqueue, log out (`cancelAll()`), enqueue
+// as another account, and check none of the first batch ran, not just that a flag flipped.
 import Foundation
 import Testing
 @testable import TigerDuck
@@ -84,23 +64,24 @@ struct NotificationSettingsPushQueueTests {
         defer { Self.resetQueue() }
 
         let ran = RanLog()
+        let timer = ManualSleeper()
 
-        // Mirrors `scheduleNotificationSettingsPush()`: a short sleep that,
-        // if allowed to finish, enqueues a push.
-        NotificationSettingsPushQueue.pendingDebounce = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(20))
-            guard !Task.isCancelled else { return }
+        // What `scheduleNotificationSettingsPush()` debounces: once the wait ends, a push is
+        // enqueued.
+        NotificationSettingsPushQueue.debounce({
             NotificationSettingsPushQueue.enqueue { ran.append("accountA") }
-        }
+        }, sleep: { await timer.sleep(for: $0) })
+        let debounce = try #require(NotificationSettingsPushQueue.pendingDebounce)
+        try await timer.waitUntilArmed()
+        #expect(await timer.requestedDurations == [.milliseconds(250)])
 
         // The account logs out while the debounce is still sleeping.
         NotificationSettingsPushQueue.cancelAll()
 
-        // Longer than the debounce's own sleep: if cancellation did not
-        // take, "accountA" has already been enqueued — and, with nothing
-        // ahead of it in the chain, almost certainly already run — by the
-        // time we get here.
-        try? await Task.sleep(for: .milliseconds(200))
+        // The cancel ends the wait, as it ends a real `Task.sleep`. Firing as well covers a cancel
+        // that never reached the debounce, which would queue "accountA" ahead of the next account.
+        await timer.fire()
+        await debounce.value
 
         // The next account signs in and makes its own edit.
         let taskB = NotificationSettingsPushQueue.enqueue { ran.append("accountB") }

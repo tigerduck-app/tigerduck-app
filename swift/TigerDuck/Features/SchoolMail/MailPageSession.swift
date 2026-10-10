@@ -1,16 +1,14 @@
 #if os(iOS)
 import Foundation
 
-/// The mail page's single IMAP connection (design doc §8.2): opened on first use, shared
-/// by the list and the open message, closed ~30 s after the page goes away.
+/// The mail page's single IMAP connection: opened on first use, shared by the list and the open
+/// message, closed ~30 s after the page goes away.
 ///
-/// Callers do their server work through `use(_:)`, which counts the whole call as in flight
-/// for as long as its body runs — so the idle-close timer can never act mid-command, and a
-/// network/certificate error can only close the connection once every other concurrent
-/// `use(_:)` has also finished — and drops the connection on such an error so the next call
-/// reconnects. There's no bare `client()`: every caller (`MailListViewModel` included) goes
-/// through `use(_:)`, which is also what keeps `inFlight` an accurate count of every call that
-/// currently holds (or is still resolving) a client.
+/// Server work goes through `use(_:)`, which counts the call as in flight while its body runs, so
+/// the idle-close timer never acts mid-command. A network or certificate error drops the
+/// connection so the next call reconnects, but only once every other concurrent `use(_:)` has
+/// finished. There is no bare `client()`: every caller, `MailListViewModel` included, uses
+/// `use(_:)`, which keeps `inFlight` counting every call that holds or is resolving a client.
 @MainActor
 final class MailPageSession {
     private let open: () async throws -> any MailClient
@@ -102,26 +100,25 @@ final class MailPageSession {
         }
     }
 
-    /// §7.4's choke point reaches everything the page does, not only the sign-in it opened the
-    /// connection with. SMTP `AUTH LOGIN` happens inside a `use(_:)` body and never goes near
-    /// `MailAccountManager.openSession()`, and so does the held connection's own relogin — both
-    /// used to leave `authFailed` unset, so the next tap sent the rejected password again. NTUST
-    /// locks the account (and its Wi-Fi) after repeated failures, so every layer reports here.
+    /// The choke point that keeps a rejected password from being sent again covers everything
+    /// the page does, not only the sign-in that opened the connection. SMTP `AUTH LOGIN` and the
+    /// held connection's own relogin run inside a `use(_:)` body, never through
+    /// `MailAccountManager.openSession()`, so without this they would leave `authFailed` unset
+    /// and the next tap would send the rejected password again. NTUST locks the account (and
+    /// its Wi-Fi) after repeated failures, so every layer reports here.
     private func reportIfAuthenticationRejected(_ error: any Error) {
         guard (error as? MailClientError) == .authenticationFailed else { return }
         reportAuthenticationRejection()
     }
 
-    /// Reports a rejected password a `use(_:)` body caught and deliberately did not rethrow.
+    /// Reports a rejected password a `use(_:)` body caught and did not rethrow.
     ///
-    /// `use(_:)` only hears about an authentication rejection that travels as a thrown error, and
-    /// one step of the page's work is best-effort by design: filing the sent copy must never fail
-    /// a send that already succeeded (`SentCopyFiler`), so its `.authenticationFailed` is caught
-    /// and turned into an outcome. §7.4 still has to hear about it — NTUST locks the account (and
-    /// its Wi-Fi) after repeated failures — so that caller reports it here instead, reaching the
-    /// same choke point a thrown one would have. Nothing else about `use(_:)`'s error path is
-    /// skipped by doing so: an authentication failure never drops the connection either way
-    /// (`dropsConnection`).
+    /// `use(_:)` only hears about a rejection thrown as an error, and filing the sent copy is
+    /// best-effort: it must never fail a send that already succeeded (`SentCopyFiler`), so its
+    /// `.authenticationFailed` is caught and turned into an outcome. NTUST locks the account (and
+    /// its Wi-Fi) after repeated failures, so that caller reports here, reaching the same choke
+    /// point a thrown error would. Nothing else in `use(_:)`'s error path is skipped: an
+    /// authentication failure never drops the connection either way (`dropsConnection`).
     func reportAuthenticationRejection() {
         onAuthFailure()
     }
@@ -147,12 +144,10 @@ final class MailPageSession {
     }
 
     /// Closes the connection the moment its student signs out, instead of leaving it for the
-    /// idle timer.
-    ///
-    /// The timer is not enough: `use(_:)` cancels it and `resolveClient` reuses a held client
-    /// as-is, and the client carries the credentials it logged in with. So a different student
-    /// signing in within the idle window, and opening the mail tab, would be handed the previous
-    /// student's session — their mailbox on screen, and a compose that sends *as them*.
+    /// idle timer. The timer is not enough: `use(_:)` cancels it, `resolveClient` reuses a held
+    /// client as-is, and the client carries the credentials it logged in with. A different
+    /// student who signs in within the idle window and opens the mail tab would get the previous
+    /// student's session: their mailbox on screen, and a compose that sends as them.
     ///
     /// Synchronous so it completes inside the sign-out itself; the `LOGOUT` round trip runs
     /// after. A call still in flight keeps the client it already has, and finishes against it.

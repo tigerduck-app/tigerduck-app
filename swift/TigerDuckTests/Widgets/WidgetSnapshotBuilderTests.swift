@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+@MainActor
 struct WidgetSnapshotBuilderTests {
     @Test func builds_emptyState_whenNotLoggedIn() {
         let input = WidgetSnapshotBuilder.Input(

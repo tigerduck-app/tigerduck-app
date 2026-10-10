@@ -28,8 +28,8 @@ struct MailMessageView: View {
     private enum PendingDelete { case toTrash, permanent }
 
     /// A risky (or HTML/SVG) attachment the user asked to open or share, waiting on the
-    /// confirmation dialog — `forSharing` remembers which action to resume once confirmed
-    /// (dispatch addition 5: confirm before opening OR saving, and actually do the one asked for).
+    /// confirmation dialog. Opening and sharing both ask first, and `forSharing` records which
+    /// one to carry out once confirmed.
     private struct RiskyAttachment: Identifiable {
         let part: MailBodyPart
         let forSharing: Bool
@@ -88,8 +88,9 @@ struct MailMessageView: View {
         .alert(String(localized: "school_mail_risky_title"), isPresented: Binding(
             get: { riskyAttachment != nil }, set: { if !$0 { riskyAttachment = nil } }), presenting: riskyAttachment
         ) { pending in
-            // HTML/SVG must never reach Quick Look (fix round 1, critical 1): whatever the user
-            // asked for, the confirm button — and what it does — is always "share" for those.
+            // HTML/SVG must never reach Quick Look, which renders it in-process with WebKit
+            // (JavaScript on, remote loads allowed). Whatever the user asked for, the confirm
+            // button for those says "share" and shares.
             let forcedToShare = viewModel.isNeverRenderedInApp(pending.part)
             Button((pending.forSharing || forcedToShare)
                 ? String(localized: "school_mail_attachment_share") : String(localized: "school_mail_open")) {
@@ -429,9 +430,9 @@ struct MailMessageView: View {
         Task { if let url = await viewModel.prepareAttachment(part) { shareItem = MailFileItem(url: url) } }
     }
 
-    /// Resumes whichever action (open or share) the risky confirmation was raised for (dispatch
-    /// addition 5) — except an HTML/SVG part is always forced to the share sheet regardless of
-    /// what was asked, never Quick Look (fix round 1, critical 1).
+    /// Resumes whichever action (open or share) the risky confirmation was raised for, except
+    /// that an HTML/SVG part always goes to the share sheet, never Quick Look, which renders it
+    /// in-process with WebKit (JavaScript on, remote loads allowed).
     private func proceedWithRiskyAttachment(_ pending: RiskyAttachment) {
         let forcedToShare = viewModel.isNeverRenderedInApp(pending.part)
         Task {

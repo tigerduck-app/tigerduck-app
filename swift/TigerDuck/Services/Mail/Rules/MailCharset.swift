@@ -19,24 +19,14 @@ nonisolated enum MailCharset {
         }
     }
 
-    /// The labelled charset, else strict UTF-8, then Big5-HKSCS, then ISO-8859-1
-    /// (which never fails, so no byte is lost).
-    ///
-    /// A *labelled* part that its own charset cannot read strictly is decoded leniently,
-    /// matching Android, where `String(bytes, charset)` substitutes U+FFFD for a malformed byte
-    /// and always returns. `String(data:encoding:)` is strict and returns nil instead, which
-    /// used to send a correctly labelled body with one truncated byte — an everyday shape in
-    /// real mail — down the guess chain below, where Big5-HKSCS accepts almost any byte string
-    /// and the whole message rendered as mojibake.
-    ///
-    /// The lenient decode comes *after* strict UTF-8, not straight after the strict labelled
-    /// one, because the other everyday shape is a part labelled `us-ascii` that carries UTF-8:
-    /// Mail2000 sends them constantly. Strict ASCII fails on those bytes, and a lenient ASCII
-    /// decode then succeeds on every one of them — turning a Chinese body such as `親愛的同學您好`
-    /// into `è¦ªæ„›çš„…`, which is the whole message lost. A body that is valid UTF-8 is UTF-8
-    /// whatever the header claims, so that possibility is settled before any byte is replaced.
-    /// Android has no fallback at all for a resolvable label and so still has the mojibake;
-    /// this side is deliberately not matching it there.
+    /// The labelled charset, else strict UTF-8, then the labelled charset leniently, then
+    /// Big5-HKSCS, then ISO-8859-1 (which never fails, so no byte is lost). Because
+    /// `String(data:encoding:)` is strict, a correctly labelled body with one truncated byte, an
+    /// everyday shape, would otherwise reach Big5-HKSCS, which accepts almost any bytes, and
+    /// render as mojibake. The lenient retry, like Android's `String(bytes, charset)`, substitutes
+    /// U+FFFD for a malformed byte. It runs after strict UTF-8 because Mail2000 constantly labels
+    /// UTF-8 parts `us-ascii`, which lenient ASCII would garble. Android, with no fallback after a
+    /// resolvable label, still garbles those; this side does not match it there.
     static func decode(_ data: Data, label: String?) -> String {
         let labelled = encoding(forLabel: label)
         if let labelled, let text = String(data: data, encoding: labelled) { return text }

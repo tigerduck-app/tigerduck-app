@@ -34,7 +34,7 @@ nonisolated enum AssignmentReminderOffset: String, CaseIterable, Identifiable, C
         }
     }
 
-    /// Short user-facing label for settings list, e.g. "24 小時前".
+    /// Short user-facing label for the settings list, such as "24 hours before".
     var label: String {
         switch self {
         case .hr48: return String(localized: "assignment_reminder_offset_48h")

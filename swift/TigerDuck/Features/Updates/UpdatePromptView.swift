@@ -1,19 +1,14 @@
 #if os(iOS)
 import SwiftUI
 
-/// Three-button "an update is ready" sheet. Owned by the
-/// ``UpdateNotifyCoordinator`` flow — view receives the pending update
-/// and dispatches the selected action through the closure passed in.
+/// Three-button "an update is ready" sheet in the ``UpdateNotifyCoordinator`` flow: it gets the
+/// pending update and sends the chosen action through the closure passed in.
 ///
-/// Why a custom sheet over `.alert`: the Update / Later / Skip choice
-/// triad doesn't fit the iOS alert primary/secondary/destructive
-/// rhetoric (Skip is destructive-ish but not OS-level "danger"), and a
-/// sheet lets us include the latest version string with proper
-/// hierarchy and a release-notes-style accent illustration. The
-/// existing `FirstTriggerPromptCenter` pattern is the closest cousin in
-/// the app but bakes in a per-feature "seen once" persistence model
-/// that doesn't apply here — Later re-arms the same version after the
-/// 24h throttle, only Skip suppresses it indefinitely.
+/// A sheet, not `.alert`: Update, Later and Skip do not fit the alert's primary, secondary and
+/// destructive roles (Skip is not an OS-level danger), and a sheet can show the latest version
+/// with hierarchy and an accent illustration. `FirstTriggerPromptCenter` is the closest pattern but
+/// persists "seen once" per feature, which does not fit: Later re-arms the same version after
+/// ``AppConstants/updatePromptCooldown``, and only Skip suppresses it for good.
 struct UpdatePromptView: View {
     let pending: UpdateNotifyCoordinator.PendingUpdate
     let onAction: (UpdateNotifyCoordinator.UpdatePromptAction) -> Void
@@ -62,10 +57,9 @@ struct UpdatePromptView: View {
                 }
                 .buttonStyle(.bordered)
 
-                // Skip is the destructive-tinted tail option so it reads
-                // as "this version specifically — never again" without
-                // looking like the primary action. Mirrors the iOS
-                // Settings → App Updates "Skip this version" placement.
+                // Skip comes last, tinted destructive, so it reads as "never this version" without
+                // looking like the primary action. Its placement mirrors "Skip this version" in iOS
+                // Settings > App Updates.
                 Button(role: .destructive) {
                     onAction(.skipThisVersion)
                 } label: {

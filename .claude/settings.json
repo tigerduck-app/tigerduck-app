@@ -1,13 +1,20 @@
 {
   "enabledPlugins": {
-    "dev-browser@dev-browser-marketplace": true,
-    "claude-mem@thedotmack": true,
-    "superpowers@superpowers-marketplace": true,
-    "code-review@claude-plugins-official": true,
-    "pr-review-toolkit@claude-plugins-official": true,
-    "commit-commands@claude-plugins-official": true,
-    "ralph-loop@claude-plugins-official": true,
-    "hookify@claude-plugins-official": true,
-    "plugin-dev@claude-plugins-official": true
+    "swift-lsp@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-comments.sh"
+          }
+        ]
+      }
+    ]
   }
 }

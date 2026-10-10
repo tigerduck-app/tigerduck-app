@@ -27,11 +27,10 @@ struct BulletinCardView: View {
 
     // MARK: - Rows
 
-    /// Top row: filled org badge on the left, importance/撤下/date on the right.
-    /// The badge now lands as a solid accent pill so it reads as the card's
-    /// primary metadata anchor — the category strip at the bottom
-    /// intentionally uses a lighter hashtag style so the two dimensions
-    /// don't compete for attention.
+    /// Top row: the filled org badge, then importance, withdrawn and the date.
+    /// The badge is a solid accent pill, the card's main metadata anchor, while
+    /// the category strip at the bottom uses a lighter hashtag style so the two
+    /// do not compete for attention.
     private var topRow: some View {
         HStack(alignment: .center, spacing: TigerDuckTheme.Spacing.sm) {
             if !isRead {
@@ -117,8 +116,8 @@ struct BulletinCardView: View {
         .lineLimit(1)
     }
 
-    /// Capsule-style "重要" badge — same capsule idiom as org badge but
-    /// tinted orange so it reads as a priority signal rather than a source.
+    /// "Important" badge: the org badge's capsule, tinted orange so it reads as a
+    /// priority signal rather than a source.
     private var importanceBadge: some View {
         Text(String(localized: "bulletin_importance_high_badge"))
             .font(TigerDuckTheme.Typography.caption2)

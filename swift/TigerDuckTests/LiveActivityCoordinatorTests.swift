@@ -2,11 +2,10 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// 釘住動態島的併存 invariant。
-///
-/// 這條 invariant 曾經翻過一次：d7843a2（2026-04-22）移除了 prune，
-/// b8d8ca9（2026-04-24）兩天後又整段加回來，而當時沒有任何測試擋得住。
-/// 若這些測試開始失敗，請先讀 spec §4.3 再決定要改程式還是改測試。
+/// Pins the coexistence invariant: several Live Activities can run at once, and
+/// none is ended only because it is not the current resolved target. If these
+/// tests start failing, read that rule in swift/TigerDuck/LiveActivity/AGENTS.md
+/// before deciding whether to change the code or the tests.
 @MainActor
 struct LiveActivityCoordinatorTests {
 
@@ -30,13 +29,13 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
-    // MARK: - 逾期判定
+    // MARK: - Expiry check
 
     @Test("伺服器預排的未來時段活動不會因為『不是當下目標』而被結束")
     func futurePrelaunchedActivitiesSurvive() {
-        // A 課進行中（30 分鐘後下課），B 課的 classPreparing 已由
-        // push-to-start 預先啟動（2 小時後開始）。resolver 一次只會回傳
-        // 其中一個，舊行為會把另一個殺掉。
+        // Class A is in progress (ends in 30 minutes) and class B's classPreparing was
+        // pre-started by push-to-start (starts in 2 hours). The resolver returns only
+        // one of them at a time, and the other must not be ended for that.
         let running = Self.facts(
             instanceId: "i1",
             activityId: "inClass-A",
@@ -109,7 +108,7 @@ struct LiveActivityCoordinatorTests {
         #expect(ended.isEmpty)
     }
 
-    // MARK: - 重複副本
+    // MARK: - Duplicate copies
 
     @Test("同一個 activityId 有兩份時，保留 APNs 已鑄出 token 的那一份")
     func duplicateKeepsCopyWithPushToken() {
@@ -126,13 +125,13 @@ struct LiveActivityCoordinatorTests {
             hasPushToken: false
         )
 
-        // 刻意把該保留的那份放在後面：「一律留第一份」的實作會在這裡失敗。
+        // The copy to keep comes last, so an "always keep the first" implementation fails.
         let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd(
             [withoutToken, withToken]
         )
 
-        // 即使 i1 的 instanceId 較小，有 token 的 i2 仍勝出——
-        // 它才是伺服器搆得到的那一份。
+        // i2 wins despite i1's smaller instanceId, because it has the push token: it is
+        // the copy the server can reach.
         #expect(ended == ["i1"])
     }
 
@@ -149,7 +148,7 @@ struct LiveActivityCoordinatorTests {
             countdownTarget: Self.now.addingTimeInterval(600)
         )
 
-        // 同上：instanceId 較小的 i1 放在後面。
+        // As above, i1, with the smaller instanceId, comes last.
         let ended = LiveActivityCoordinator.duplicateInstanceIdsToEnd([b, a])
 
         #expect(ended == ["i2"])
@@ -194,14 +193,13 @@ struct LiveActivityCoordinatorTests {
         #expect(ended.isEmpty)
     }
 
-    // MARK: - 即時動態不可用
+    // MARK: - Live Activity unavailable
 
     @Test("即時動態不可用時全部結束，包括伺服器預排、倒數還沒到的活動")
     func unavailableEndsEveryActivity() {
-        // 同步課程資訊關閉後，伺服器仍照先前上傳的排程，用 push-to-start
-        // 啟動了 B 課的 classPreparing（2 小時後開始）；A 課的 inClass 還有
-        // 30 分鐘；另有一個沒有倒數目標的。可用時三者都不該結束——這正是
-        // `futurePrelaunchedActivitiesSurvive` 釘住的——不可用時則全部結束。
+        // With course sync off, the server still push-starts B's classPreparing (in 2 h)
+        // from the uploaded schedule; A's inClass has 30 min left; one has no countdown.
+        // None ends while available (`futurePrelaunchedActivitiesSurvive`); all end otherwise.
         let prelaunched = Self.facts(
             instanceId: "i1",
             activityId: "classPreparing-B",
@@ -227,13 +225,13 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
-    // MARK: - 不上課的日子
+    // MARK: - Days without classes
 
     @Test("不上課的日子，課堂類活動會被結束，作業類留下")
     func quietDayEndsClassActivitiesOnly() {
-        // 伺服器照舊為一個不上課的日子啟動了課前與上課中的活動——例如
-        // 推播送出後才公布的颱風假。同一天還有一個作業即將到期的活動，
-        // 以及一個沒有倒數目標、無從判斷是哪一天的課堂活動。
+        // The server still starts pre-class and in-class activities on a day without
+        // classes, such as a typhoon day announced after the push. The same day has an
+        // assignment due soon, and a class activity with no countdown, so no known day.
         let preparing = Self.facts(
             instanceId: "i1",
             activityId: "classPreparing-B",
@@ -268,13 +266,13 @@ struct LiveActivityCoordinatorTests {
         )
     }
 
-    // MARK: - 單一活動的處置（prune 與新活動出現時共用）
+    // MARK: - Handling one activity (shared by prune and newly appearing activities)
 
     @Test("新出現的不上課日子課堂活動會被結束，不會留下來註冊 token")
     func quietDayClassIsEndedNotKept() {
-        // prune 與觀察者迴圈都只照 `endReason` 行事：有理由就結束，
-        // 沒有理由的才註冊 update token。所以不上課日子的課堂活動拿到
-        // 理由，就不會走到註冊那一步。
+        // Prune and the observer loop both act only on `endReason`: an activity with a
+        // reason is ended, and only one without registers its update token. So a class
+        // on a day without classes gets a reason and never reaches registration.
         let holidayEnds = Self.now.addingTimeInterval(12 * 3600)
         func reason(_ fact: LiveActivityCoordinator.RunningActivityFacts) -> LiveActivityCoordinator.EndReason? {
             LiveActivityCoordinator.endReason(
@@ -324,7 +322,7 @@ struct LiveActivityCoordinatorTests {
         #expect(reason(true) == .expired)
     }
 
-    // MARK: - apply 啟動或更新前的最後確認
+    // MARK: - Final check before apply starts or updates
 
     private static func snapshot(
         _ scenario: LiveActivityScenarioKind,
@@ -346,8 +344,9 @@ struct LiveActivityCoordinatorTests {
 
     @Test("prune 等待期間變成不上課的日子，apply 不會再啟動那堂課")
     func quietDayChangeStopsTheStart() {
-        // apply 先 prune 才啟動，prune 會 await，而 snapshot 是在那之前解析
-        // 的。期間使用者關掉「還要上課？」或校曆新增了假日，啟動前得再問一次。
+        // apply prunes before it starts, prune awaits, and the snapshot was resolved
+        // before that. If "Still have class?" is turned off or the academic calendar
+        // gains a holiday meanwhile, the start has to check again.
         let target = Self.now.addingTimeInterval(30 * 60)
         let quiet: (Date) -> Bool = { _ in true }
         let schoolDay: (Date) -> Bool = { _ in false }
@@ -372,7 +371,7 @@ struct LiveActivityCoordinatorTests {
 
     @Test("判斷的是課堂自己的那一天")
     func quietDayIsJudgedOnTheClassesOwnDay() {
-        // 一個活動的課落在放假日，另一個落在照常上課的日子；只有前者結束。
+        // One class falls on the holiday and the other on a school day; only the first ends.
         let onHoliday = Self.facts(
             instanceId: "i1",
             activityId: "inClass-A",

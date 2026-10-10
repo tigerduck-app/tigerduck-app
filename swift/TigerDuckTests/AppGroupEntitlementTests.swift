@@ -2,18 +2,14 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// The three App-Group-backed stores (`WidgetSnapshotStore`,
-/// `SharedSnapshotStore`, `CourseCardFontScaleStore`) each promise in their
-/// doc comments to crash in DEBUG rather than let a missing
-/// `com.apple.security.application-groups` entry ship silently.
+/// The three App-Group-backed stores (`WidgetSnapshotStore`, `SharedSnapshotStore`,
+/// `CourseCardFontScaleStore`) promise in their doc comments to crash in DEBUG
+/// rather than let a missing `com.apple.security.application-groups` entry ship.
 ///
-/// They used to gate on `UserDefaults(suiteName:) != nil`, which cannot
-/// deliver that promise: the initializer returns nil only for reserved names
-/// (this process's own bundle identifier, `NSGlobalDomain`). For a group the
-/// process holds *no entitlement for* it hands back a perfectly valid but
-/// process-local store — so the app's writes never reached the extension, the
-/// extension read back nil forever, the widget rendered its empty state, and
-/// neither the assertion nor the `logger.error` ever fired.
+/// A `UserDefaults(suiteName:) != nil` gate cannot keep that promise: the initializer
+/// returns nil only for reserved names (this process's bundle identifier, `NSGlobalDomain`).
+/// An unentitled group gets a valid but process-local store, so the extension never
+/// sees the app's writes and neither the assertion nor `logger.error` fires.
 struct AppGroupEntitlementTests {
     /// Shaped like a real App Group so nothing can pass this by sniffing the
     /// identifier, but no target in this project is entitled to it.

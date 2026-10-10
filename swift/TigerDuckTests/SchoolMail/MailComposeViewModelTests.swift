@@ -243,10 +243,10 @@ struct MailComposeViewModelTests {
         #expect(model.subject == "問題")
     }
 
-    /// §7.4: a password the server has rejected is never sent again — repeated failures lock the
-    /// school account. SMTP `AUTH LOGIN` happens inside `send()`, entirely outside the sign-in
-    /// path, so without routing it through the same choke point every Send tap is another login
-    /// attempt with the rejected password.
+    /// A password the server has rejected is never sent again: repeated failures lock the school
+    /// account. SMTP `AUTH LOGIN` happens inside `send()`, outside the sign-in path, so without
+    /// routing it through the same choke point every Send tap is another login attempt with the
+    /// rejected password.
     @Test func aRejectedSMTPPasswordIsRecordedAndNeverRetried() async {
         let fake = Self.fake()
         await fake.update { $0.sendError = .authenticationFailed }
@@ -261,8 +261,8 @@ struct MailComposeViewModelTests {
         #expect(!model.didFinish)
         #expect(prefs.authFailed)
 
-        // §8.4 keeps the sheet open with the content intact, so the next tap is expected — and
-        // must not reach the server.
+        // A failed send keeps the sheet open with the content intact, so another tap is
+        // expected, and it must not reach the server.
         await model.send()
         #expect((await fake.calls).filter { $0 == "send" }.count == 1)
         #expect(model.subject == "問題")
@@ -292,7 +292,7 @@ struct MailComposeViewModelTests {
         #expect(await fake.calls.isEmpty)
     }
 
-    // MARK: Dispatch addition 1 — non-ASCII recipients rejected in compose only
+    // MARK: Non-ASCII recipients, rejected in compose only
 
     @Test func nonASCIIRecipientsAreRejectedOnSend() async {
         let fake = Self.fake()
@@ -316,7 +316,7 @@ struct MailComposeViewModelTests {
         #expect(await !fake.calls.contains { $0.hasPrefix("append") })
     }
 
-    // MARK: Dispatch addition 3 — the same size check runs for save-draft as for send
+    // MARK: Save-draft runs the same size check as send
 
     @Test func oversizedDraftsAreBlockedTheSameWayAsSending() async {
         let fake = Self.fake()
@@ -329,12 +329,13 @@ struct MailComposeViewModelTests {
         #expect(await !fake.calls.contains { $0.hasPrefix("append") })
     }
 
-    // MARK: Dispatch addition 5 — a failed prefill offers a retry that keeps what was typed,
-    // never marks the original answered, and never discards/replaces a draft.
+    // MARK: A failed prefill
+    // It offers a retry that keeps what was typed, never marks the original answered, and never
+    // discards or replaces a draft.
 
-    // A failed Reply-To fetch no longer fails the whole prefill (fix round 1, important 4 --
-    // see `replyToFetchFailureIsBestEffortAndStillMarksAnswered` below), so this now uses a
-    // draft load (`detail`) failure, the remaining realistic way `prepare()` can fail.
+    // A failed Reply-To fetch does not fail the prefill (see
+    // `replyToFetchFailureIsBestEffortAndStillMarksAnswered` below), so this fails the draft
+    // load (`detail`) instead: the other realistic way `prepare()` can fail.
     @Test func retryPrepareKeepsTypedTextAndPickedAttachmentsAfterAFailure() async {
         let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
         await fake.update { $0.detailError = .unreachable }
@@ -366,11 +367,11 @@ struct MailComposeViewModelTests {
         #expect(await fake.folders[Self.drafts]?.map(\.summary.uid).sorted() == [1, 2])
     }
 
-    // MARK: Fix round 1
+    // MARK: Prefill fallbacks and the draft replacement guard
 
-    // Important 4: everything a reply prefill needs is already in `context.original`, so a
-    // failed Reply-To download must fall back to the sender's own address rather than emptying
-    // the whole form, and threading/"mark answered" must still work.
+    // Everything a reply prefill needs is already in `context.original`, so a failed Reply-To
+    // download must fall back to the sender's own address rather than emptying the whole form,
+    // and threading and "mark answered" must still work.
     @Test func replyToFetchFailureIsBestEffortAndStillMarksAnswered() async {
         let fake = Self.fake()
         await fake.update { $0.rawSourceError = .unreachable }
@@ -384,9 +385,9 @@ struct MailComposeViewModelTests {
         #expect(raw.contains("In-Reply-To: <m3@mail.ntust.edu.tw>"))
     }
 
-    // Important 3: after a successful retry, an edit made before it must still count as unsaved
-    // -- the baseline comes from the fresh prefill's own values, never from the fields as
-    // merged with the user's kept edit.
+    // After a successful retry, an edit made before it must still count as unsaved: the
+    // baseline comes from the fresh prefill's own values, never from the fields as merged with
+    // the user's kept edit.
     @Test func aSuccessfulRetryKeepsTheUsersEditCountingAsAnUnsavedChange() async {
         let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
         await fake.update { $0.detailError = .unreachable }
@@ -403,11 +404,9 @@ struct MailComposeViewModelTests {
         #expect(model.hasChanges)
     }
 
-    // Critical 1: without a cached page UIDVALIDITY for the drafts folder, the old-draft removal
-    // must refuse outright -- never fall back to reading a fresh UIDVALIDITY right before
-    // `MailMover`, which would make its own freshness guard compare a value against itself and
-    // could never catch a folder recreated server-side. The refusal sends no command at all and
-    // simply leaves the old copy behind (harmless: the new one already saved).
+    // Without a cached drafts-page UIDVALIDITY, old-draft removal refuses and sends nothing: a
+    // fresh value read before `MailMover` would make its guard compare a value with itself and
+    // miss a folder recreated server-side. Leaving the old copy is harmless: the new one is saved.
     @Test func draftReplacementRefusesWithoutACachedPageUIDValidity() async {
         let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
         // No cache.savePage(...): the model's own `SchoolMailTestDoubles.temporaryCache()` default
@@ -422,9 +421,9 @@ struct MailComposeViewModelTests {
         #expect(await fake.folders[Self.drafts]?.map(\.summary.uid).sorted() == [1, 2])
     }
 
-    // MARK: Dispatch addition 7 — the demo mailbox composes, saves, reopens, edits and sends
-    // entirely in memory, with no socket. Important 2 (fix round 1): a Chinese body and a
-    // recipient both survive DemoMailClient's own append → detail round trip.
+    // MARK: The demo mailbox
+    // It composes, saves, reopens, edits and sends in memory, with no socket. A Chinese body and
+    // a recipient both survive `DemoMailClient`'s own append and detail round trip.
 
     @Test func demoMailboxRoundTripsAComposedDraftAndSend() async throws {
         let sentFolder = MailFolderRole.sent.imapName
@@ -450,8 +449,8 @@ struct MailComposeViewModelTests {
         #expect(await first.saveDraft())
         let draftsAfterFirstSave = try await demo.page(folder: draftsFolder, olderThanSequence: nil, pageSize: 50)
         let draftUID = try #require(draftsAfterFirstSave.summaries.first?.uid)
-        // Mirrors the real list caching the page it just showed -- `removeDraft` needs this to
-        // ever act (fix round 1, critical 1).
+        // Mirrors the real list caching the page it just showed: without a cached page
+        // UIDVALIDITY, `removeDraft` refuses to act.
         cache.savePage(MailFolderPage(folder: draftsFolder, uidValidity: fixture.uidValidity, messageCount: 1,
                                       summaries: draftsAfterFirstSave.summaries, oldestLoadedSequence: nil))
 
@@ -480,9 +479,9 @@ struct MailComposeViewModelTests {
         #expect(draftsAfterSend.summaries.isEmpty)
     }
 
-    // MARK: Fix round 2
+    // MARK: Failed loads and bounded attachment reads
 
-    // Minor: a load that fails before ever prefilling anything must not leave the empty sheet
+    // A load that fails before ever prefilling anything must not leave the empty sheet
     // reporting unsaved changes.
     @Test func aFailedPrepareLeavesAnEmptySheetWithoutUnsavedChanges() async {
         let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
@@ -493,12 +492,9 @@ struct MailComposeViewModelTests {
         #expect(!model.hasChanges)
     }
 
-    // Important: `readBounded(read:)` is `MailComposeView`'s bounded picked-file read (fix round
-    // 1), seamed on a `FileHandle.read(upToCount:)`-shaped closure so these run without touching
-    // the filesystem. A thrown mid-read error must fail the whole read, never silently return
-    // whatever was read so far as if it had cleanly reached EOF (fix round 2, important) --
-    // `Data(contentsOf:)`'s pre-round-1 behavior routed a failed read to `attachmentReadFailed()`
-    // this way, and the bounded read must keep doing the same.
+    // `readBounded(read:)` is `MailComposeView`'s bounded picked-file read, seamed on a closure
+    // shaped like `FileHandle.read(upToCount:)` so these run without the filesystem. A throw
+    // mid-read must fail the whole read so `attachmentReadFailed()` runs, never pass for an EOF.
     @Test func readBoundedFailsOnAThrownMidReadErrorRatherThanTruncating() {
         struct ReadFailure: Error {}
         var calls = 0
@@ -674,11 +670,9 @@ struct MailComposeViewModelTests {
         #expect(!model.errorNeedsAcknowledging)
     }
 
-    // MARK: The sent copy (§8.4)
-    //
-    // The mail is gone before any of this runs, so none of these outcomes may fail the send —
-    // but none of them may be silent either, and the one that used to file a *second* copy of
-    // every mail is the reason this section exists.
+    // MARK: The sent copy
+    // The mail is gone before any of this runs, so no outcome here may fail the send. None may
+    // be silent either, and none may file a second copy of the mail.
 
     /// Sends the given form and returns the notice the sheet handed to the screen that presented
     /// it (nil when the copy was filed and there is nothing to say).
@@ -746,9 +740,9 @@ struct MailComposeViewModelTests {
         #expect(notice != nil)
     }
 
-    /// §7.4: the APPEND runs on the same connection with the same password, so a rejection there
-    /// is the same rejected password the sign-in path reports — and `try?` used to eat it, which
-    /// left the next Send tap free to offer it to the server again.
+    /// A rejected password is never sent again. The APPEND runs on the same connection with the
+    /// same password, so a rejection there is the one the sign-in path reports; swallowing it
+    /// would leave the next Send tap free to offer that password to the server again.
     @Test func aRejectedPasswordFromTheSentCopyAppendReachesTheAccount() async {
         let fake = Self.fake()
         await fake.update { $0.appendError = .authenticationFailed }
@@ -761,8 +755,8 @@ struct MailComposeViewModelTests {
         #expect(prefs.authFailed)
     }
 
-    /// The same, one command earlier: a probe can need a relogin too, and its rejection is just
-    /// as much §7.4's business even though the outcome it produces is only `.unknown`.
+    /// The same, one command earlier: a probe can need a relogin too, and its rejection must
+    /// reach the account even though the outcome it produces is only `.unknown`.
     @Test func aRejectedPasswordFromTheDedupeProbeAlsoReachesTheAccount() async {
         let fake = Self.fake()
         await fake.update { $0.containsMessageIDError = .authenticationFailed }

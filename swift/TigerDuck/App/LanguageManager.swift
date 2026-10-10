@@ -28,16 +28,14 @@ nonisolated enum LanguageManager {
         resolvedCourseApiLanguage(appLanguage: appLanguage) == "en"
     }
 
-    /// Whether the active UI language is non-Chinese (English, Japanese,
-    /// Korean, French, etc.). Used to gate UI that only makes sense outside
-    /// Chinese locales — e.g. the course-name abbreviation settings, which
-    /// transform Mandarin display strings.
+    /// Whether the active UI language is non-Chinese. Gates UI that only makes
+    /// sense outside Chinese locales, such as the course-name abbreviation
+    /// settings, which transform Mandarin display strings.
     ///
-    /// When the user picked an explicit `appLanguage`, trust that tag. For
-    /// "system", read `Bundle.main.preferredLocalizations` — this is the lproj
-    /// iOS resolved at launch (matching what `String(localized:)` actually
-    /// uses) and stays stable for the running process, unlike `Locale.current`
-    /// which re-resolves dynamically when `AppleLanguages` changes.
+    /// An explicit `appLanguage` tag is trusted. For "system" this reads
+    /// `Bundle.main.preferredLocalizations`: the lproj iOS resolved at launch,
+    /// which `String(localized:)` uses and which stays stable for the process,
+    /// unlike `Locale.current`, which re-resolves when `AppleLanguages` changes.
     static func isCurrentLanguageNonChinese(appLanguage: String) -> Bool {
         let tag: String
         if appLanguage == system {
@@ -79,11 +77,10 @@ nonisolated enum LanguageManager {
             .sorted()
     }
 
-    /// `tag`'s name in its own language — "日本語", "English (UK)",
-    /// "中文（台灣）" — so a list of them reads right to a speaker of each,
-    /// whatever the app is showing. The first letter is capitalized as that
-    /// language capitalizes it ("français" → "Français"). Falls back to the
-    /// tag itself.
+    /// `tag`'s name in its own language, so a list of them reads right to a
+    /// speaker of each, whatever the app is showing. The first letter is
+    /// capitalized the way that language does it ("français" → "Français").
+    /// Falls back to the tag itself.
     static func displayName(for tag: String) -> String {
         let locale = Locale(identifier: tag)
         guard let name = locale.localizedString(forIdentifier: tag),

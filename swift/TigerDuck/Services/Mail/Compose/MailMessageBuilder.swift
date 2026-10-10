@@ -26,8 +26,8 @@ nonisolated struct OutgoingMail: Sendable {
     }
 }
 
-/// Builds the 7-bit RFC 5322 message TigerDuck sends (design doc §8.4): UTF-8 plain text
-/// in quoted-printable, RFC 2047 headers, RFC 2231 attachment names.
+/// Builds the 7-bit RFC 5322 message TigerDuck sends: UTF-8 plain text in quoted-printable,
+/// RFC 2047 headers, RFC 2231 attachment names.
 nonisolated enum MailMessageBuilder {
     /// The effective domain, not the school constant: the sent-copy dedupe searches Sent for
     /// this exact Message-ID, so it has to be a value that makes sense on whichever server the
@@ -150,18 +150,14 @@ nonisolated enum MailMessageBuilder {
         String(raw.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
     }
 
-    /// One `In-Reply-To`/`References` `msg-id`, or `nil` for one that must not be written.
-    ///
-    /// These are the only header values this builder echoes back from a *received* mail, and a
-    /// received `Message-ID` is attacker-controlled free text. RFC 5322 defines `msg-id` as
-    /// ASCII, and the school's Mail2000 announces neither SMTPUTF8 nor 8BITMIME, so a UTF-8
-    /// byte here is the one way raw 8-bit data can still reach a 7-bit wire — everything else
-    /// is RFC 2047-encoded (subject, display name), quoted-printable (body) or validated
-    /// ASCII (the recipient addresses, at `MailComposeViewModel.parseRecipients`).
-    ///
-    /// Dropped whole rather than stripped down to its ASCII characters: a mangled `msg-id`
-    /// identifies no message on any server, so it would only be junk in the header while still
-    /// claiming to thread. Losing the threading reference is the lesser failure.
+    /// One `In-Reply-To`/`References` `msg-id`, or `nil` for one that must not be written. These
+    /// are the only header values this builder echoes from a received mail, where `Message-ID`
+    /// is attacker-controlled free text. RFC 5322 makes `msg-id` ASCII and Mail2000 announces
+    /// neither SMTPUTF8 nor 8BITMIME, so this is the one way raw 8-bit data could reach the 7-bit
+    /// wire. Everything else is RFC 2047-encoded (subject, display name), quoted-printable (body)
+    /// or validated ASCII (recipients, in `MailComposeViewModel.parseRecipients`). A non-ASCII
+    /// value is dropped whole, not stripped: a mangled `msg-id` identifies no message on any
+    /// server yet still claims to thread. Losing the threading reference is the lesser failure.
     private static func threadingToken(_ raw: String) -> String? {
         let sanitized = sanitizedHeaderValue(raw)
         guard !sanitized.isEmpty, isPlainASCII(sanitized) else { return nil }
@@ -241,18 +237,14 @@ nonisolated enum MailMessageBuilder {
 
     // MARK: Size estimate
 
-    /// A true upper bound on the byte size `build(_:messageID:date:boundary:)` would
-    /// produce for this body and these attachment sizes, used to gate the SMTP SIZE limit
-    /// (`MailConstants.maxEncodedMessageBytes`) before compose ever touches the network.
-    /// Simulates quoted-printable encoding byte-for-byte, counting real UTF-8 bytes rather
-    /// than UTF-16 code units: a printable ASCII byte (33-126, excluding `=`) costs 1
-    /// output byte, everything else (UTF-8 continuation/lead bytes of non-ASCII text,
-    /// control characters, `=` itself) costs 3 (`=XX`), and a soft line break (`=CRLF`, 3
-    /// bytes) is charged at the same `qpLineLength` column `encodeLine` itself wraps at.
-    /// Every rule here rounds toward the real encoder's worst case (or worse), so this can
-    /// only over-count, never under-count -- undercounting is what let CJK bodies (whose
-    /// UTF-8 encoding is already ~3 bytes/char, each of which then triples again under QP)
-    /// sail past a naive `characters * 3` estimate.
+    /// A true upper bound on the bytes `build(_:messageID:date:boundary:)` would produce for this
+    /// body and these attachment sizes, checked against the SMTP SIZE limit
+    /// (`MailConstants.maxEncodedMessageBytes`) before compose touches the network. It simulates
+    /// quoted-printable on the UTF-8 bytes, not UTF-16 code units: a printable ASCII byte (33-126,
+    /// except `=`) costs 1, any other byte 3 (`=XX`), and a soft line break (`=CRLF`, 3 bytes) is
+    /// charged at the `qpLineLength` column `encodeLine` wraps at. Every rule rounds toward the
+    /// encoder's worst case, so this can only over-count. A `characters * 3` estimate undercounts
+    /// CJK bodies: about 3 UTF-8 bytes per character, each tripled by quoted-printable.
     static func estimateEncodedSize(body: String, attachmentByteCounts: [Int] = []) -> Int {
         let text = quotedPrintableUpperBound(body)
         let attachments = attachmentByteCounts.reduce(0) { total, bytes in

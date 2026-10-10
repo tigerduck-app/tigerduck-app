@@ -145,11 +145,9 @@ struct DevMailServerView: View {
             }
         }
         .navigationTitle("Email")
-        // Two ways out of the keyboard, because one is not enough here. Swiping the form down
-        // dismisses interactively, which is the gesture people reach for first; the Done button
-        // is the one that is actually required, because the port fields use `.numberPad` and a
-        // number pad has no return key at all — without it a tap into a port field traps the
-        // keyboard open with no way to close it.
+        // Swiping the form down dismisses the keyboard, the gesture people try first. The Done
+        // button is the one required: the port fields use `.numberPad`, which has no return key,
+        // so without it a tap into a port field traps the keyboard open.
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -236,10 +234,9 @@ struct DevMailServerView: View {
             return
         }
         let config = MailServerConfig.resolve(override: settings.draft)
-        // Typed credentials win outright, and bypass the "only the host it was typed for" rule:
-        // that rule exists to stop the *saved* school password reaching a third-party server by
-        // accident, and a password typed into this screen for this test is neither saved nor an
-        // accident. Blank falls back to the account's own, still scoped.
+        // Typed credentials win and skip the scoping rule, which keeps the saved school password
+        // from reaching a third-party server by accident; a password typed here for this test is
+        // neither saved nor an accident. Blank falls back to the saved password, still scoped.
         let typedName = testUsername.trimmingCharacters(in: .whitespacesAndNewlines)
         let credentials: DevMailProbeCredentials = if !testPassword.isEmpty, !typedName.isEmpty {
             .use(username: typedName, password: testPassword)

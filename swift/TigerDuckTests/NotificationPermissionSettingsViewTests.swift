@@ -1,15 +1,6 @@
-// `NotificationPermissionSettingsView`'s two rows each collapse a system
-// authorization value down to granted or not granted (spec §6, owner's
-// ruling 2026-09-12, item 4). That collapse is the one piece of this
-// screen's own logic — everything else is either a SwiftUI Form or a
-// direct read of `UNUserNotificationCenter`/`ActivityAuthorizationInfo`,
-// neither of which this test target can construct or drive.
-//
-// `notificationPermissionStatus(for:)` and `liveActivityPermissionStatus(enabled:)`
-// were lifted from `private` computed properties to `static` functions
-// taking plain values, the same move `LiveActivitySettingsViewTests`
-// documents for `formatHoursAndMinutes` — no view, store, or environment
-// construction involved.
+// Each row of `NotificationPermissionSettingsView` collapses a system authorization to
+// granted or not granted, the one piece of the screen's own logic. Both mappings are
+// static functions of plain values, so no view, store or environment is built.
 import Testing
 import UserNotifications
 @testable import TigerDuck

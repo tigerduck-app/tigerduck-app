@@ -1,89 +1,126 @@
-# PROJECT KNOWLEDGE BASE
+# TigerDuck
 
-**Generated:** 2026-04-18 19:18 CST  
-**Updated:** 2026-10-05 (commit 42b8f21, v2.3.0)  
-**Branch:** dev
+Apple clients for TigerDuck, an NTUST campus assistant: the iOS app with a native macOS build,
+the Apple Watch app, and widget and Live Activity extensions, all in `swift/`. `api-poc/` holds
+Python probes for NTUST and Moodle endpoints. The push and sync backend is the separate
+`tigerduck-app/tigerduck-backend` repository, reached at `https://api.tigerduck.app/v3/*`.
 
-## OVERVIEW
-TigerDuck is an NTUST campus assistant. This repo holds the Apple clients — a SwiftUI iOS app with a native macOS build, an Apple Watch app, and widget / Live Activity extensions — all in `swift/`, plus `api-poc/`, Python scripts that probe NTUST / Moodle endpoints before the Swift client implements them. The production push / sync backend (FastAPI + APNs) lives in a separate repo, `tigerduck-app/tigerduck-backend`; the app reaches it over `https://api.tigerduck.app/v3/*`.
+`swift/TigerDuck/`, `swift/TigerDuck/Services/`, `swift/TigerDuck/Services/Migrations/`,
+`swift/TigerDuck/LiveActivity/` and `api-poc/api/` have their own AGENTS.md. Read it before
+editing files in that directory.
 
-## STRUCTURE
-```text
-./
-├── swift/                       # Xcode project and every Apple target
-│   ├── TigerDuck/               # Main app source (iOS + native macOS); see swift/TigerDuck/AGENTS.md
-│   ├── TigerDuckLiveActivity/   # Live Activity / Dynamic Island extension UI
-│   ├── TigerDuckWidgets/        # iOS / macOS home and lock screen widgets
-│   ├── TigerDuckWatch Watch App/  # Apple Watch app
-│   ├── TigerDuckWatchWidget/    # Watch complication sources (not referenced by project.pbxproj; no target builds them)
-│   ├── Shared/                  # Compiled into both the phone app and the Watch app (Watch wire format, VisualPreset, TaipeiCalendar, TLS pinning)
-│   ├── Packages/SwiftMail/      # Vendored IMAP/SMTP package used by School Mail; see its VENDORED.md
-│   ├── TigerDuckTests/  TigerDuckUITests/  TigerDuckWatch Watch AppTests/
-│   └── ci_scripts/              # Xcode Cloud post-clone hook (fetches submodules)
-├── api-poc/                     # Python endpoint probes; see api-poc/api/AGENTS.md
-├── app-translation/             # git submodule: localized strings, symlinked into the *.lproj folders
-├── name-abbr/                   # git submodule: course / classroom abbreviation dictionaries
-├── tools/                       # Localization, licence and macOS source-membership check scripts
-├── .github/workflows/           # PR gates (unit tests, version bump, What's New, localization, licences, ...)
-├── docs/                        # Migration notes and planning docs
-└── README.md / README.en.md     # Product overview, release history, setup, contribution rules
-```
+## Agent files
 
-## WHERE TO LOOK
-| Task | Location | Notes |
-|---|---|---|
-| App bootstrap | `swift/TigerDuck/TigerDuckApp.swift` | `@main`, SwiftData container, scene refresh behavior |
-| Global app state | `swift/TigerDuck/App/AppState.swift` + `AppState+*.swift` | Auth, settings, live activity, push, cloud sync; split by concern into extensions |
-| iOS feature work | `swift/TigerDuck/Features/` | Start in `swift/TigerDuck/AGENTS.md` |
-| Service/auth work | `swift/TigerDuck/Services/` | See `Services/AGENTS.md` for auth/API/mail/push boundaries |
-| School Mail | `swift/TigerDuck/Services/Mail/`, `Features/SchoolMail/` | iOS only; talks IMAP/SMTP to the school directly |
-| Live Activity work | `swift/TigerDuck/LiveActivity/` | Separate subsystem with its own invariants |
-| Watch app | `swift/TigerDuckWatch Watch App/`, `swift/Shared/Watch/`, `Services/Watch/` | Phone pushes schedule + library credentials over WatchConnectivity |
-| macOS-only surfaces | `swift/TigerDuck/Platform/Mac/` | macOS compiles an allow-list (`INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]` in `project.pbxproj`) |
-| What's New / releases | `swift/TigerDuck/whatsnew.json`, `Features/Updates/` | Use the `release-bump` skill (`.claude/skills/release-bump/`) to bump versions |
-| Endpoint probing | `api-poc/api/` | Standalone Python modules, `.env`-driven |
-| Product/setup context | `README.md` | Includes local setup, project structure, contribution checklist |
+- AGENTS.md files are the only rule files. Do not add a `CLAUDE.md`, `.claude/CLAUDE.md` or
+  `CLAUDE.local.md`: when one exists, Claude Code loads only the CLAUDE.md files and skips every
+  AGENTS.md, and Codex reads only AGENTS.md. Claude Code reads AGENTS.md from v2.1.277.
+- `.claude/settings.json` enables the plugins everyone uses: `swift-lsp`, `feature-dev` and
+  `pr-review-toolkit`. Personal plugins go in `.claude/settings.local.json`, which is not
+  committed.
+- Repository skills live in `.agents/skills/<name>/`, where Codex finds them, and
+  `.claude/skills/<name>` is a relative symlink to that folder for Claude Code.
 
-## CODE MAP
-| Symbol | Type | Location | Refs | Role |
-|---|---|---|---:|---|
-| `TigerDuckApp` | struct | `swift/TigerDuck/TigerDuckApp.swift` | — | App entry, SwiftData bootstrapping |
-| `AppState` | class | `swift/TigerDuck/App/AppState.swift` | high | App orchestration and shared state |
-| `HomeViewModel` | class | `swift/TigerDuck/Features/Home/HomeViewModel.swift` | feature-local | Home dashboard state |
-| `AuthService` | class | `swift/TigerDuck/Services/Auth/AuthService.swift` | shared | NTUST auth + silent reauth |
-| `NTUSTSessionManager` | class | `swift/TigerDuck/Services/API/NTUST/NTUSTSessionManager.swift` | shared | Shared URLSession + private NTUST cookie jar |
-| `LiveActivityCoordinator` | class | `swift/TigerDuck/LiveActivity/Runtime/LiveActivityCoordinator.swift` | subsystem | ActivityKit lifecycle |
-| `NtustSsoBridge` | class | `api-poc/api/ntust/sso.py` | poc-core | Python SSO/session foundation |
+## Setup
 
-## CONVENTIONS
-- iOS app work is centered on `@Observable` state objects plus SwiftUI views; shared app-wide coordination belongs in `AppState`, not per-feature duplicated logic.
-- Auth gating is cached-first: screens should derive NTUST access from `AppState.ntustProtectedAccessState(isEmpty:)`, not from cookie validity alone.
-- One-time upgrade compatibility code goes only in `swift/TigerDuck/Services/Migrations/` (see its AGENTS.md).
-- Python in `api-poc/` uses `uv` (`api-poc/pyproject.toml`, `uv.lock`) and credentials from `api-poc/api/.env` (template: `.env.template`).
-- Test surface is split by Xcode targets: `TigerDuckTests` (phone unit tests), `TigerDuckWatch Watch AppTests` (watch), `TigerDuckUITests` (UI, not run in CI). There is no Python test suite.
-
-## ANTI-PATTERNS (THIS PROJECT)
-- Do not edit the `*.lproj` files under `swift/`; they are symlinks into the `app-translation` submodule, which takes its own PRs.
-- Do not treat `api-poc/api/runtime/` (e.g. `bulletin_pages/`) as source; it is gitignored scraper output.
-- Do not trigger Live Activity refreshes for pure presentation changes like `visualPreset`; `AppState` explicitly keeps those concerns separate.
-- Do not gate protected NTUST screens directly on cookie validity; silent re-auth is expected.
-- Do not look for a web backend here; it lives in `tigerduck-backend`, and `api-poc/` is a toolbox of probe scripts.
-- Do not add a Swift file to the app target without assigning it a platform: either add it to both `INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]` arrays in `project.pbxproj` (Debug and Release) or list it in `tools/macos-excluded-sources.txt`. The `macOS source membership` workflow fails otherwise.
-
-## UNIQUE STYLES
-- The iOS app uses a distinct Live Activity subsystem plus separate widget and Watch app targets; cross-target code lives in `swift/Shared/`.
-- The Swift app mixes SwiftData persistence with JSON/user-scoped caches in `DataCache` rather than relying on a single storage mechanism.
-- Localization covers 67 locales and is generated in the `app-translation` submodule; What's New feature-page copy is the exception, written in zh-Hant and English in the app.
-
-## COMMANDS
 ```bash
-git submodule update --init --recursive   # required before the first build
-open swift/TigerDuck.xcodeproj
-xcodebuild test -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -only-testing:TigerDuckTests
-xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch App' -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm)'
-cd api-poc && uv sync
+git submodule update --init --recursive      # before the first build
+npm install -g @fission-ai/openspec@1.14.1   # the version the committed OpenSpec skills match
+export OPENSPEC_TELEMETRY=0                  # put in your shell profile; opts out of usage statistics
+brew install xcode-build-server
+(cd swift && xcode-build-server config -project TigerDuck.xcodeproj -scheme TigerDuck)
 ```
 
-## NOTES
-- Current Xcode targets: `TigerDuck`, `TigerDuckTests`, `TigerDuckUITests`, `TigerDuckLiveActivityExtension`, `TigerDuckWidgetsExtension`, `TigerDuckWatch Watch App`, `TigerDuckWatch Watch AppTests`, `TigerDuckWatch Watch AppUITests`.
-- GitHub Actions gate PRs to `main` / `dev`: `tests.yaml` runs the phone and watch unit tests on a `macos-26` runner in the Asia/Taipei timezone; other workflows check the version bump, the What's New entry, localization keys, licences, submodule pins and macOS source membership.
+The last line writes the gitignored `swift/buildServer.json`; without it `swift-lsp` cannot see
+the Xcode project's build settings and reports false errors.
+
+## Commands
+
+```bash
+xcodebuild test -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' -only-testing:TigerDuckTests
+xcodebuild test -project swift/TigerDuck.xcodeproj -scheme 'TigerDuckWatch Watch App' -destination 'platform=watchOS Simulator,name=Apple Watch Series 11 (46mm),OS=26.5'
+xcodebuild build -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=macOS'
+(cd swift/Packages/SwiftMail && swift test)
+python3 tools/check_macos_sources.py
+python3 tools/localization/check_keys.py
+python3 tools/generate_licenses.py --check
+python3 -m unittest discover -s tools -p 'test_*.py'
+```
+
+Without `OS=`, xcodebuild picks the newest installed runtime, which may not have that device;
+`xcrun simctl list devices available` lists what is installed. Run one `xcodebuild` at a time;
+two at once compete for the same build folder.
+
+## Conventions
+
+- One-time upgrade compatibility code goes only in `swift/TigerDuck/Services/Migrations/`.
+- Label issues and pull requests as `docs/issue-triage.md` says: an issue gets a type, a pull
+  request a kind label.
+- `api-poc/` uses `uv` (`api-poc/pyproject.toml`, `uv.lock`) and reads credentials from
+  `api-poc/api/.env` (template: `.env.template`).
+- Test targets: `TigerDuckTests` (phone unit tests), `TigerDuckWatch Watch AppTests` (watch) and
+  `TigerDuckUITests` (UI, not run in CI). The vendored SwiftMail package has its own tests.
+  The scripts in `tools/` have `unittest` tests next to them; `api-poc/` has none.
+- Localization covers 67 locales and is generated in the `app-translation` submodule. What's New
+  feature-page copy is the exception: zh-Hant and English, written in the app.
+- The app and Watch app targets, unlike the others, default to `@MainActor`
+  (`SWIFT_DEFAULT_ACTOR_ISOLATION`). Mark a type used off the main actor there `nonisolated`, or
+  its synthesized conformances are main-actor isolated, a Swift 5 warning and a Swift 6 error.
+
+## Anti-patterns
+
+- Do not edit the `*.lproj` files under `swift/`; they are symlinks into the `app-translation`
+  submodule, which takes its own pull requests.
+- Do not treat `api-poc/api/runtime/` (for example `bulletin_pages/`) as source; it is
+  gitignored scraper output.
+- Do not look for a web backend here; it lives in `tigerduck-backend`.
+- Do not add a Swift file to the app target without assigning it a platform: add it to both
+  `INCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]` arrays in `project.pbxproj` (Debug and Release) or
+  list it in `tools/macos-excluded-sources.txt`. `tools/check_macos_sources.py` fails otherwise.
+
+## Comments
+
+Swift comments follow these rules. `tools/check_comments.py` enforces language, citations and
+length in CI and, in Claude Code, after every edit (`.claude/hooks/check-comments.sh`); review
+applies the rest. Before pushing, run `python3 tools/check_comments.py check --base origin/dev`.
+
+- Write comments in English. String literals may hold Chinese, comments may not.
+- Say why: a reason, an invariant or a non-obvious constraint. Do not restate the code or tell
+  its history; git keeps the history.
+- Keep a regular comment block to 3 lines and a doc comment to 8.
+- Cite only what a reader can open: repository paths, RFC sections, Apple documentation, issue
+  and pull request URLs. Never cite review rounds, dispatch or task numbers, sections of
+  documents outside the repository, OpenSpec changes or paths, or agent and tool names.
+- Do not record who decided something or what a pull request discussion said; write the reason.
+- Use plain wording: no bold, no `IMPORTANT:` or `NOTE:`, no em dashes, and no "exactly",
+  "deliberately", "intentionally" or "note that" as emphasis.
+- Put longer knowledge where it belongs: rationale that spans files in an ADR under
+  `docs/decisions/` with a one-line pointer in the code, procedures in a skill, agent rules in
+  the nearest AGENTS.md, and described behavior in a test.
+
+## Planning
+
+- Use an OpenSpec change (the `openspec-propose` skill, `/opsx:propose` in Claude Code) only for
+  work that spans sessions, changes the architecture or needs both maintainers to agree. Plan
+  smaller work in plan mode or with `/feature-dev`.
+- Changes live in `openspec/changes/<name>/`, are written in English and are committed with the
+  work. Archive one with `openspec archive <name>` after its last pull request merges.
+- After upgrading the CLI, run `openspec update` and commit the regenerated skill files with the
+  new version in the install line above.
+- Specs may cite code; code never cites a change name, an `openspec/` path or a spec section,
+  because archiving moves the files.
+- Never write plans or specs to an ignored path.
+
+## Gotchas
+
+- CI runs the unit tests on a `macos-26` runner in the Asia/Taipei timezone.
+- Every pull request to `main` or `dev` fails while a submodule is behind its upstream branch;
+  bump the submodule first.
+- Pull requests from `dev` to `main` must raise `MARKETING_VERSION` by one SemVer step, or keep
+  it and raise `CURRENT_PROJECT_VERSION` by exactly 1, and `swift/TigerDuck/whatsnew.json` must
+  have an entry for the marketing version. The `release-bump` skill does this.
+- `swift/TigerDuckWatchWidget/` is not referenced by `project.pbxproj`; no target builds it.
+- `swift/Packages/SwiftMail/` is vendored; read its `VENDORED.md` before changing it.
+- Xcode Cloud runs `swift/ci_scripts/ci_post_clone.sh` after cloning; it fetches the submodules.
+- Dependabot updates the Swift packages (`.github/dependabot.yml`) and Renovate the rest
+  (`.github/renovate.json`). A Swift update fails `licenses.yaml` until
+  `python3 tools/generate_licenses.py` runs on its branch and the result is committed.

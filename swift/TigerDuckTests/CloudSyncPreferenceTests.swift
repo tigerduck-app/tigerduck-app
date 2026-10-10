@@ -1,15 +1,6 @@
-// 同步課程資訊 has one copy, `Defaults[.cloudSyncEnabled]`, and several
-// writers: onboarding, the `@Default`-bound switch in TigerSync settings, the
-// Mac toggles through `AppState`, and sign-out. `AppState` has to act on every
-// change whichever of them made it — Live Activity ending or resuming, the
-// push schedule, `CloudSyncCoordinator` following — and has to read the same
-// value they wrote. `CloudSyncPreference` is how it does both; `AppState`
-// holds one and forwards `cloudSyncEnabled` to it.
-//
-// This target cannot construct an `AppState`, so these drive the preference
-// directly, on a key of their own in a suite of their own: the running app's
-// `AppState` observes the real key and would act on anything written to it
-// here.
+// Course sync (`Defaults[.cloudSyncEnabled]`) has several writers, and `AppState` must
+// act on each change through `CloudSyncPreference`. These tests use a key and suite of
+// their own, because the host app's `AppState` would act on writes to the real key.
 import Defaults
 import Foundation
 import Observation

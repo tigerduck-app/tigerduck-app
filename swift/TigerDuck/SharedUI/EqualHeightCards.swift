@@ -9,25 +9,14 @@ struct MaxCardHeightKey: PreferenceKey {
     }
 }
 
-/// Horizontal row that forces every child to the height of the tallest
-/// natural-height child seen so far. The locked height only grows during
-/// a single on-screen visit — when a later-arriving child renders taller,
-/// the row grows to match. It resets to zero on `.onDisappear` so the
-/// next time the page is shown the row re-measures from scratch; that
-/// matters in `TabView`, where SwiftUI keeps the view identity (and its
-/// `@State`) alive across tab switches, so a one-time tall child like
-/// the "current class" card wouldn't otherwise release its grip on the
-/// row height after the user leaves and comes back.
+/// Horizontal row that pins every child to the tallest natural height seen so
+/// far. The height only grows during one on-screen visit and resets on
+/// `.onDisappear`, because `TabView` keeps `@State` across tab switches and a
+/// once-tall child, like the "current class" card, would otherwise keep it.
 ///
-/// Implementation: a visible HStack pinned to `lockedHeight` is shadowed
-/// by a hidden HStack rendering the same `content()` at its intrinsic
-/// (natural) height. The hidden layer feeds the max natural height back
-/// through `MaxCardHeightKey`, the consumer monotonically grows
-/// `lockedHeight`, and the visible layer pins every child to it. We
-/// can't measure the visible layer directly because its `.frame(height:)`
-/// echoes the locked value back — re-rendering `content()` in a hidden
-/// `.fixedSize(vertical:)` layer is the simplest way to get a true
-/// natural measurement without a custom Layout.
+/// A hidden copy of `content()` at natural height reports the max through
+/// `MaxCardHeightKey`, the simplest measure short of a custom Layout; the visible
+/// row cannot measure itself, as its `.frame(height:)` echoes the locked value.
 struct EqualHeightHStack<Content: View>: View {
     var alignment: VerticalAlignment = .top
     var spacing: CGFloat? = nil
@@ -51,10 +40,9 @@ struct EqualHeightHStack<Content: View>: View {
         HStack(alignment: alignment, spacing: spacing) {
             content()
         }
-        // `.fixedSize(vertical: true)` lets each child report its
-        // intrinsic height regardless of what `.frame(height:)` would
-        // otherwise propose down — that's what makes the natural-height
-        // measurement independent of the visible layer's lock.
+        // `.fixedSize(vertical: true)` lets each child report its intrinsic height
+        // whatever `.frame(height:)` proposes, so the measurement does not depend
+        // on the visible layer's lock.
         .fixedSize(horizontal: false, vertical: true)
         .background(
             GeometryReader { proxy in

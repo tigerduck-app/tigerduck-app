@@ -10,12 +10,11 @@ struct MailMessageRoute: Hashable {
     var uidValidity: UInt32? = nil
 }
 
-/// One tapped link — judged, shown and opened as the SAME canonicalized string (message-screen
-/// dispatch, 2026-09-16 additions 1–2). `canOpen` is false for an http(s) href a browser-style
-/// parse rejects, and for any scheme outside `openableSchemes`; the dialog then still shows the
-/// href (bidi-stripped) but without an Open action. `id` is the href itself: this value only
-/// ever backs one transient confirmation sheet at a time, never a list, so a repeated href
-/// across separate taps is not a problem.
+/// One tapped link, judged, shown and opened as the same canonicalized string. `canOpen` is
+/// false for an http(s) href a browser-style parse rejects, and for any scheme outside
+/// `openableSchemes`; the dialog then still shows the href (bidi-stripped) but without an Open
+/// action. `id` is the href itself: this value only ever backs one transient confirmation sheet
+/// at a time, never a list, so a repeated href across separate taps is not a problem.
 nonisolated struct MailLinkTarget: Equatable, Sendable, Identifiable {
     var href: String
     var issues: [MailLinkIssue]
@@ -24,14 +23,12 @@ nonisolated struct MailLinkTarget: Equatable, Sendable, Identifiable {
 
     /// The only schemes a link in a mail may be opened with.
     ///
-    /// `MailWarnings.canonicalHref` returns anything that is not `http`/`https` unchanged — it
-    /// canonicalizes those two and judges nothing else — so without this every scheme was
-    /// openable. The HTML path is closed further up by the sanitizer's
-    /// `addProtocols("a", "href", "http", "https", "mailto")`, but the plain-text path is not:
-    /// what becomes a link there is whatever `NSDataDetector` decides is one. `InAppBrowserView`
-    /// refuses non-http(s), so the hole was the `openURL(url)` branch, which would have handed
-    /// the system an arbitrary scheme — `tigerduck://` included, i.e. a mail able to drive the
-    /// app's own deep links from a single confirmed tap.
+    /// `MailWarnings.canonicalHref` canonicalizes `http`/`https` and returns any other scheme
+    /// unchanged, judging nothing else, so without this set every scheme would be openable. The
+    /// sanitizer's `addProtocols("a", "href", "http", "https", "mailto")` closes the HTML path,
+    /// but in plain text a link is whatever `NSDataDetector` finds. `InAppBrowserView` refuses
+    /// non-http(s); the `openURL(url)` branch would hand the system any scheme, `tigerduck://`
+    /// included, so a mail could drive the app's own deep links with one confirmed tap.
     static let openableSchemes: Set<String> = ["http", "https", "mailto"]
 
     /// Whether `href` names a scheme this app will open. A relative or scheme-less href is not
@@ -93,21 +90,15 @@ final class MailMessageViewModel {
     private(set) var warnings: [MailWarning] = []
     /// Nothing this screen can render: no text body, no HTML body, no attachments. Drives the
     /// "Couldn't read this mail's format. Showing its source instead." banner and the forced
-    /// source view below.
-    ///
-    /// Still a statement about what there is to show, not about why — deliberately. It used to
-    /// fire for any message whose `BODYSTRUCTURE` Mail2000 botched, because the client believed
-    /// the server's description of the message and that description was empty; `LiveMailClient`
-    /// now parses such a message's MIME itself, so those open normally and this stays false.
-    /// What is left under it is the honest residue: a message that really carries nothing, and
-    /// one whose structure was unusable *and* which was too large to download whole for a local
-    /// parse (`MailConstants.maxLocalParseBytes`). Both cases put the user in the same place —
-    /// the raw source, which is all there is — so they read the same banner.
+    /// source view below. It says what there is to show, not why: `LiveMailClient` parses the
+    /// MIME itself when Mail2000 gets a `BODYSTRUCTURE` wrong, so such a mail opens normally.
+    /// What is left is a mail that carries nothing, and one with an unusable structure that is
+    /// too large to download whole for a local parse (`MailConstants.maxLocalParseBytes`). Both
+    /// leave only the raw source, so they read the same banner.
     private(set) var parseFailed = false
     private(set) var source: String?
-    /// Set when `loadSource` throws, cleared at the start of the next attempt — lets the
-    /// source view show a retryable failed state instead of spinning forever (fix round 1,
-    /// minor 6).
+    /// Set when `loadSource` throws, cleared at the start of the next attempt. Lets the source
+    /// view show a retryable failed state instead of spinning forever.
     private(set) var sourceLoadFailed = false
     private(set) var allowRemoteImages = false
     private(set) var actionError: String?
@@ -133,12 +124,11 @@ final class MailMessageViewModel {
     /// callback is about a folder it is no longer showing.
     @ObservationIgnored var onSeenChanged: ((String, UInt32, Bool) -> Void)?
     @ObservationIgnored var onRemoved: ((String, UInt32) -> Void)?
-    /// A move/delete hit `MailClientError.folderChanged`: the folder's UIDVALIDITY moved
-    /// server-side. This view model no longer drops the folder's cache itself — that bare
-    /// `Task.detached` raced the list's own queued cache-write chain and could be undone by a
-    /// write already in flight (fix round 1, important 2) — it only reports the folder name so
-    /// the caller can route the recovery through `MailListViewModel.recoverFromFolderChange(_:)`,
-    /// which drops through that same chain.
+    /// A move/delete hit `MailClientError.folderChanged`: the folder's UIDVALIDITY changed
+    /// server-side. This view model does not drop the folder's cache itself, since a bare
+    /// `Task.detached` would race the list's queued cache-write chain and could be undone by a
+    /// write already in flight. It reports the folder name, and the caller recovers through
+    /// `MailListViewModel.recoverFromFolderChange(_:)`, which drops it through that same chain.
     @ObservationIgnored var onFolderChanged: ((String) -> Void)?
     /// `prepareDelete()` created a missing role folder and re-resolved the map: the list holds
     /// its own copy, resolved once per session, and would otherwise keep handing every later
@@ -149,23 +139,22 @@ final class MailMessageViewModel {
     @ObservationIgnored private let prefs: any MailPreferences
     @ObservationIgnored private let notifier: MailNotifier
     /// The UIDVALIDITY the cached page for this folder was built from, read once in `load()`
-    /// and reused by `move`/`delete` — never re-fetched right before a move, which would make
-    /// `MailMover`'s own freshness check moot (dispatch addition 3).
+    /// and reused by `move`/`delete`. Never re-fetched right before a move: that would make
+    /// `MailMover`'s own freshness check moot.
     @ObservationIgnored private var pageUIDValidity: UInt32?
     /// Bumped every time `apply`/`loadImages` starts an off-main HTML (re)computation, so a
-    /// slower, now-superseded one can't overwrite a result a later call already applied — e.g.
-    /// a retry `load()` racing a `loadImages()` tap, either order (fix round 2, minors 2–3).
+    /// slower, superseded one can't overwrite a result a later call already applied, such as a
+    /// retry `load()` racing a `loadImages()` tap, in either order.
     @ObservationIgnored private var htmlGeneration = 0
 
-    /// `cache` and `prefs` are injectable purely so a test can drive throwaway storage instead
-    /// of the app's real singleton (which reaches the real `UserDefaults` and cache directory).
+    /// `cache` and `prefs` are injectable only so a test can use throwaway storage instead of
+    /// the app's real singleton, which reaches the real `UserDefaults` and cache directory.
     ///
-    /// Both are optionals defaulted to `nil` rather than `= MailAccountManager.shared.…`: a
-    /// default argument expression is type-checked in a nonisolated context, and
-    /// `MailAccountManager.shared` is main-actor isolated, so spelling the singleton there is an
-    /// isolation violation in the Swift 6 language mode. Resolving them in this (main-actor)
-    /// body keeps the seam identical — a caller that passes a value still gets that value, and
-    /// one that doesn't still gets the singleton's.
+    /// Both default to `nil` rather than `= MailAccountManager.shared.…`: a default argument
+    /// expression is type-checked in a nonisolated context, and `MailAccountManager.shared` is
+    /// main-actor isolated, so naming it there is an isolation violation in the Swift 6
+    /// language mode. Resolving them in this main-actor body keeps the seam the same: a passed
+    /// value is used, and an omitted one gets the singleton's.
     init(
         route: MailMessageRoute,
         session: MailPageSession,
@@ -209,14 +198,13 @@ final class MailMessageViewModel {
     /// The page the formatted view draws the mail on.
     var htmlTheme: MailHTMLTheme { viewsInLightMode ? .light : .app }
 
-    /// Delete means "move to Trash"; inside Trash — or with no Trash folder resolved — it is
-    /// permanent (§8.3).
+    /// Delete means "move to Trash"; inside Trash, or with no Trash folder resolved, it is
+    /// permanent.
     ///
-    /// Still `true` for an account with no Trash, deliberately: this says what the delete the
-    /// user is about to confirm *will* do, and until a Trash folder actually exists that is a
-    /// permanent delete. `prepareDelete()` is what gets one created, and it runs before either
-    /// confirmation is raised, so this is read after any creation has already succeeded or
-    /// failed — never in the hope that one will.
+    /// `true` for an account with no Trash: this says what the delete the user is about to
+    /// confirm will do, and until a Trash folder exists that is a permanent delete.
+    /// `prepareDelete()` creates one and runs before either confirmation is raised, so this is
+    /// read after any creation has already succeeded or failed, never in the hope that one will.
     var deleteIsPermanent: Bool {
         guard let trash = folderRoles[.trash] else { return true }
         return route.folder == trash
@@ -226,11 +214,9 @@ final class MailMessageViewModel {
         guard let detail else { return nil }
         let summary = detail.summary
         return MailOriginal(
-            // A cached bounce has a name and no address (`MailAddress.parseSender`), and the
-            // name is still what a forward's header block and a reply's "… wrote:" line
-            // should print — so `from` is built whenever either half survives, not only when
-            // there is an address. The empty address is what stops `replyRecipients` from
-            // turning it into a recipient.
+            // A cached bounce has a name and no address (`MailAddress.parseSender`). A forward's
+            // header and a reply's "… wrote:" line still print the name, so `from` is built when
+            // either half survives. The empty address keeps it out of `replyRecipients`.
             from: sender(of: summary),
             to: (summary.to ?? []).flatMap(MailAddress.parseList),
             cc: (summary.cc ?? []).flatMap(MailAddress.parseList),
@@ -257,10 +243,9 @@ final class MailMessageViewModel {
         let uid = route.uid
         let account = prefs.studentID
         let cachedPage = await Task.detached { cache.loadPage(folder: folder) }.value
-        // A route that names its generation pins to that, not to whatever page is cached now:
-        // after a folder recreation the same UID is another mail, which the pinned fetch below
-        // refuses with `folderChanged` instead of opening it and marking it read. A page from
-        // another generation says nothing about this mail, so its row is not used either.
+        // Pins to the route's generation when it names one, and ignores a page from any other:
+        // after a folder recreation the same UID is another mail, which the pinned fetch refuses
+        // with `folderChanged` instead of opening it and marking it read.
         let validity = route.uidValidity ?? cachedPage?.uidValidity
         let page = cachedPage?.uidValidity == validity ? cachedPage : nil
         pageUIDValidity = validity
@@ -275,12 +260,9 @@ final class MailMessageViewModel {
             if let cached { await apply(cached) }
         }
         do {
-            // Pinned to the cached page's generation, the same one `move`/`delete`/`toggleSeen`
-            // pin their commands to. Without it the folder+UID this screen was opened for can
-            // name a *different* message after the folder was recreated server-side — and that
-            // message would be rendered here and written into the cache under the old
-            // generation's key. The mark-as-seen `setFlag` below is pinned already, but it only
-            // runs for an unread mail, so an already-read one had nothing checking it at all.
+            // Pinned to the generation `move`/`delete`/`toggleSeen` use. After a server-side folder
+            // recreation this UID can name another message, which would render here and be cached
+            // under the old generation's key. The `setFlag` below is pinned but skips read mail.
             let fresh = try await session.use { client in
                 try await client.detail(folder: folder, uid: uid, expectedUIDValidity: validity)
             }
@@ -301,9 +283,8 @@ final class MailMessageViewModel {
                 }
             }
         } catch MailClientError.folderChanged {
-            // Fix round 2, minor 4: the live fetch or the mark-as-seen `setFlag` above can also
-            // hit `folderChanged` — the list needs to recover the same way a move/delete would
-            // trigger.
+            // The live fetch or the mark-as-seen `setFlag` above can hit `folderChanged` too, and
+            // the list has to recover the same way as after a move or delete.
             onFolderChanged?(folder)
             if detail == nil {
                 loadState = .failed(MailAccountManager.LoginError(MailClientError.folderChanged).message)
@@ -311,9 +292,8 @@ final class MailMessageViewModel {
                 actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
             }
         } catch {
-            // A cached detail may already be showing (fix round 1, minor 7): a failed refresh
-            // or a failed mark-as-seen must still surface, not be silently swallowed just
-            // because there's something on screen already.
+            // A cached detail may already be showing. A failed refresh or mark-as-seen must still
+            // surface, not be swallowed because something is on screen.
             if detail == nil {
                 loadState = .failed(MailAccountManager.LoginError(error).message)
             } else {
@@ -322,9 +302,9 @@ final class MailMessageViewModel {
         }
     }
 
-    /// Off the main actor, like `apply` (fix round 2, minor 3) — the same SwiftSoup work runs
-    /// here (a full re-sanitize plus a link rewrite), so it belongs on the same detached path,
-    /// guarded by the same generation token.
+    /// Off the main actor, like `apply`: the same SwiftSoup work runs here (a full re-sanitize
+    /// plus a link rewrite), so it takes the same detached path, guarded by the same generation
+    /// token.
     func loadImages() async {
         allowRemoteImages = true
         guard let html = detail?.htmlBody else { return }
@@ -333,16 +313,14 @@ final class MailMessageViewModel {
         linkedDocument = computed.1
     }
 
-    /// `BODY.PEEK[]`: never marks the mail read. No size prompt — `MailSourceTextView` lays out
+    /// `BODY.PEEK[]`: never marks the mail read. No size prompt: `MailSourceTextView` lays out
     /// only the visible viewport, so a multi-megabyte source costs a download, not a frozen
-    /// screen, and asking about it was only ever a way to apologise for the freeze.
+    /// screen.
     ///
-    /// Cache-first, exactly like the body in `load()` and keyed the same way (folder, this
-    /// folder's cached-page UIDVALIDITY, UID), into the same directory and the same LRU budget.
-    /// Dropping the prompt without this would have been a straight downgrade: the source was
-    /// re-downloaded whole on every visit, which on cellular is precisely what the prompt was
-    /// apologising for. Without a cached page there is no UIDVALIDITY to key by, so the fetch
-    /// still works and simply isn't saved — the same rule `load()` applies to a body.
+    /// Cache-first like the body in `load()` and keyed the same way (folder, this folder's
+    /// cached-page UIDVALIDITY, UID), in the same directory and LRU budget, so a visit does not
+    /// download the whole source again. Without a cached page there is no UIDVALIDITY to key
+    /// by, so the fetch still works but is not saved, the same rule `load()` applies to a body.
     func loadSource() async {
         sourceLoadFailed = false
         let cache = self.cache
@@ -383,8 +361,8 @@ final class MailMessageViewModel {
             detail?.summary.isSeen = !seen
             onSeenChanged?(folder, uid, !seen)
         } catch MailClientError.folderChanged {
-            // Fix round 2, minor 4: `setFlag` can hit the same `folderChanged` a move/delete
-            // would — the list needs to recover here too, not only from `performMove`.
+            // `setFlag` can hit the same `folderChanged` a move or delete would, and the list has
+            // to recover here too, not only from `performMove`.
             actionError = MailAccountManager.LoginError(MailClientError.folderChanged).message
             onFolderChanged?(folder)
         } catch {
@@ -398,23 +376,14 @@ final class MailMessageViewModel {
         }
     }
 
-    /// Run when Delete is tapped, before either confirmation dialog is raised. Creates a Trash
-    /// folder if the account has none, and answers `deleteIsPermanent` as it stands afterwards —
-    /// which is the question that picks the dialog.
-    ///
-    /// Creating here rather than inside `delete()` is what keeps the dialog honest. The two
-    /// confirmations say different things: one warns the mail is about to be destroyed, the
-    /// other that it is about to be moved to Trash. Creating the folder after the user has
-    /// answered would mean asking them to confirm destruction and then not destroying it — and
-    /// the forever dialog is the last thing standing between the user and unrecoverable mail, so
-    /// it has to mean what it says. This is still not speculative: nothing gets created until the
-    /// user has actually asked to delete a mail, and the only cost of their then cancelling is an
-    /// empty Trash folder the next delete will use.
-    ///
-    /// A failed CREATE leaves `deleteIsPermanent` true, so the flow lands on the permanent-delete
-    /// confirmation exactly as it does today. What must never happen — a Trash folder that could
-    /// not be created turning Delete into a silent hard delete — is unreachable: this never
-    /// deletes anything, and `delete()` below only ever runs from behind one of the two dialogs.
+    /// Run when Delete is tapped, before either confirmation is raised. Creates a Trash folder if
+    /// the account has none and returns the resulting `deleteIsPermanent`, which picks the
+    /// dialog: one says the mail will be destroyed, the other that it moves to Trash. Creating
+    /// the folder after the user answered would confirm a destruction that does not happen, and
+    /// the permanent-delete dialog, the last guard before unrecoverable mail, must mean what it
+    /// says. Nothing is created until the user asks to delete, and a cancel costs an empty Trash.
+    /// A failed CREATE leaves `deleteIsPermanent` true, so the permanent-delete dialog shows.
+    /// This never deletes anything, and `delete()` only runs from behind one of the two dialogs.
     func prepareDelete() async -> Bool {
         guard folderRoles[.trash] == nil, !isMoving else { return deleteIsPermanent }
         isMoving = true
@@ -467,30 +436,18 @@ final class MailMessageViewModel {
         actionError = message
     }
 
-    /// Uses the folder's cached page UIDVALIDITY (read once in `load()`) to build the
-    /// owned-deleted set, runs `operation` through the shared page session (dispatch addition
-    /// 7), and persists whatever it reports still pending.
-    ///
-    /// Without a cached page validity there is nothing honest to compare against — fetching one
-    /// fresh right here would make `MailMover`'s own freshness check compare a value against
-    /// itself, silently defeating it on (for instance) the deep-link-straight-into-a-folder
-    /// path. Refuses instead, with the same folder-changed error a real mismatch would show
-    /// (fix round 1, minor 8): the user is told to open the folder (from the list) first.
-    ///
-    /// `MailClientError.folderChanged` reports the folder via `onFolderChanged` rather than
-    /// touching the cache itself — see that property's doc (fix round 1, important 2).
-    ///
-    /// A failure part-way through is not just a failure: COPY and STORE may already have landed,
-    /// and a `\Deleted` UID this app flagged but does not claim makes `shouldExpunge` false in
-    /// that folder from then on — every later delete there degrades to "hide" and Trash stops
-    /// deleting anything. So the `catch` asks the server once, through
-    /// `MailMover.recoverAfterFailure`, whether the flag actually took, and persists the claim.
+    /// Builds the owned-deleted set from the folder's cached-page UIDVALIDITY (read once in
+    /// `load()`), runs `operation` through the shared page session, and persists whatever it
+    /// reports still pending. With no cached validity it refuses with the folder-changed error:
+    /// a fresh fetch here would make `MailMover`'s freshness check compare a value with itself.
+    /// On `folderChanged` it calls `onFolderChanged` and leaves the cache alone. A failure
+    /// part-way may leave a `\Deleted` flag of ours unclaimed, which keeps `shouldExpunge` false
+    /// in that folder for good, so the `catch` asks the server once, through
+    /// `MailMover.recoverAfterFailure`, whether the flag took, and persists the claim.
     private func performMove(_ operation: @escaping (any MailClient, OwnedDeleted) async throws -> MailMoveResult) async -> Bool {
-        // Move and delete are four to five round trips with no progress indication, so a second
-        // tap is expected behaviour. Without this the second COPYs the same mail again — it
-        // lands in both Trash and the move target — and both calls read `ownedDeleted` before
-        // either writes it back, dropping one call's pending UID and wedging the folder exactly
-        // as above. Set before the first `await`, so the two can never both get past it.
+        // Four or five round trips with no progress shown, so a second tap is expected: it would
+        // COPY the mail again, and both calls would read `ownedDeleted` before either writes back,
+        // wedging the folder. `isMoving` is set before the first `await`, so only one gets past.
         guard !isMoving else { return false }
         let folder = route.folder
         guard let uidValidity = pageUIDValidity else {
@@ -526,16 +483,15 @@ final class MailMessageViewModel {
 
     // MARK: Attachments and links
 
-    /// The download and the write are both off the main actor (dispatch addition 6): the
-    /// fetch hops to the `MailClient` actor already, and the temp-file write is detached
-    /// explicitly since `MailCache` does synchronous disk I/O.
+    /// The download and the write both run off the main actor: the fetch hops to the
+    /// `MailClient` actor already, and the temp-file write is detached since `MailCache` does
+    /// synchronous disk I/O.
     func prepareAttachment(_ part: MailBodyPart) async -> URL? {
         let folder = route.folder
         let uid = route.uid
-        // The same pin `load()` fetched `part` itself under. Without it the download that follows
-        // a folder recreated server-side returns a different message's bytes, and this method
-        // hands them straight to Quick Look or the share sheet under the filename on screen —
-        // the one place in this screen where the wrong mail leaves the app entirely.
+        // The same pin `load()` fetched `part` under. Without it, after a server-side folder
+        // recreation the download returns another message's bytes, which go to Quick Look or the
+        // share sheet under the filename on screen: the wrong mail would leave the app entirely.
         let validity = pageUIDValidity
         do {
             let data = try await session.use { client in
@@ -554,8 +510,8 @@ final class MailMessageViewModel {
         }
     }
 
-    /// Risky, or never rendered in the app — either way, opening OR saving goes through a
-    /// warning first (§9.5; dispatch addition 5: confirmation before either, not just open).
+    /// Risky, or never rendered in the app. Either way, opening and saving both go through a
+    /// warning first, not only opening.
     func isRisky(_ part: MailBodyPart) -> Bool {
         let filename = part.filename ?? ""
         let context = (detail?.summary.subject ?? "") + "\n" + plainText
@@ -563,28 +519,25 @@ final class MailMessageViewModel {
         return isNeverRenderedInApp(part)
     }
 
-    /// HTML/SVG (by extension or by content type) is never rendered in the app at all (§9.5:
-    /// save it or hand it to another app, never render it) — unlike a merely risky file, "open"
-    /// must always take the share-sheet hand-off path regardless of what the user asked for,
-    /// never Quick Look, which renders HTML/SVG in-process with WebKit (JavaScript on, remote
-    /// loads allowed) — exactly what the locked-down message web view exists to prevent (fix
-    /// round 1, critical 1).
+    /// HTML/SVG (by extension or by content type) is never rendered in the app, only saved or
+    /// handed to another app. Unlike a merely risky file, "open" always takes the share-sheet
+    /// hand-off, whatever the user asked for, never Quick Look: Quick Look renders HTML/SVG
+    /// in-process with WebKit (JavaScript on, remote loads allowed), which is what the
+    /// locked-down message web view exists to prevent.
     func isNeverRenderedInApp(_ part: MailBodyPart) -> Bool {
         let filename = part.filename ?? ""
         if MailWarnings.neverRenderedInApp(filename: filename) { return true }
-        // Real parts carry parameters (SwiftMail appends `; charset=…`) — comparing the whole
-        // string left this inert against them (fix round 2, critical 1 leftover): an HTML part
-        // declaring `text/html; charset=UTF-8` compared equal to neither branch below and went
-        // straight to Quick Look uncontested, the exact mislabeled-extension case this predicate
+        // Real parts carry parameters (SwiftMail appends `; charset=…`), and a whole-string match
+        // would send `text/html; charset=UTF-8` to Quick Look, the mislabeled-extension case this
         // exists for. `contentTypeWithoutParameters` is the same helper `attachmentRisk` uses.
         let type = MailWarnings.contentTypeWithoutParameters(part.contentType) ?? ""
         return type == "text/html" || type == "image/svg+xml"
     }
 
     /// `index` is `n` from a tapped `https://link.invalid/<n>` (the web view range-checks it
-    /// itself before calling back), addressing `linkedDocument.links` — the list read off the
-    /// very anchors the web view shows, never `sanitized.links`, whose indices a second HTML
-    /// parse could shift (dispatch addition 1). `nil` for an index with no link.
+    /// itself before calling back). It addresses `linkedDocument.links`, the list read off the
+    /// anchors the web view shows, never `sanitized.links`, whose indices a second HTML parse
+    /// could shift. `nil` for an index with no link.
     func linkTarget(forIndex index: Int) -> MailLinkTarget? {
         guard let links = linkedDocument?.links, links.indices.contains(index) else { return nil }
         let link = links[index]
@@ -612,15 +565,14 @@ final class MailMessageViewModel {
 
     // MARK: Internals
 
-    /// `MailHTMLSanitizer.sanitize` + `.rewriteLinks` together run SwiftSoup's parser up to
+    /// `MailHTMLSanitizer.sanitize` and `.rewriteLinks` together run SwiftSoup's parser up to
     /// three times (a parse, a rewrite-and-reserialize, and the rewrite's own reparse for its
-    /// lockstep check); doing that inline here would block the main actor on a large or complex
-    /// mail. Computed inside a detached task instead (fix round 1, minor 9).
+    /// lockstep check). Inline, that would block the main actor on a large or complex mail, so
+    /// it runs in a detached task.
     ///
-    /// Bumps and captures `htmlGeneration` before the detached work starts, and only returns a
-    /// result (instead of `nil`) if that generation is still the current one once the work
-    /// finishes — so whichever of `apply`/`loadImages` started *last* is the only one whose
-    /// result a caller ever applies, regardless of completion order (fix round 2, minors 2–3).
+    /// Bumps and captures `htmlGeneration` before the work starts and returns `nil` unless it is
+    /// still current when the work finishes, so only the last-started of `apply`/`loadImages`
+    /// has its result applied, whatever the completion order.
     private func recomputeSanitizedHTML(html: String?, textBody: String?, allowImages: Bool) async -> (SanitizedHTML?, LinkedHTML?, String)? {
         htmlGeneration += 1
         let generation = htmlGeneration
@@ -628,14 +580,9 @@ final class MailMessageViewModel {
             guard let html else { return (nil, nil, textBody ?? "") }
             let sanitized = MailHTMLSanitizer.sanitize(html, allowRemoteImages: allowImages)
             let linked = MailHTMLSanitizer.rewriteLinks(sanitized.html)
-            // The *sanitized* document, matching Android's
-            // `SchoolMailMessageViewModel` — never the raw body. Text the sanitizer drops
-            // with its container (`<noscript>`, `<form>`, `<script>`) is invisible in the
-            // formatted view, so building the plain view from the raw html would show it
-            // (and linkify URLs inside it) only in the plain view: two views of one mail
-            // saying different things, which is exactly the bait-and-switch shape the
-            // warning layer exists to catch. It also feeds the password-bait keyword
-            // haystack, which would otherwise fire on text the user is never shown.
+            // Built from the sanitized document, like Android's `SchoolMailMessageViewModel`. From
+            // the raw body, text dropped with its container would show only in the plain view,
+            // linkified (a bait-and-switch), and fire the password-bait check on text never shown.
             let plain = textBody ?? MailHTMLSanitizer.plainText(fromHTML: sanitized.html)
             return (sanitized, linked, plain)
         }.value

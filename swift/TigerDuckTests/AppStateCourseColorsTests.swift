@@ -1,13 +1,6 @@
-// `AppState.courseColorsAfterCoursesChange` (AppState+CourseColors.swift) —
-// the spec §6 course-sync → course-colours cascade: dropping it left a
-// greyed-out, un-reachable colours toggle stuck reading ON while
-// `AppState+BackendSync.swift`'s `applyCourseOverrides` kept applying
-// server colours underneath it.
-//
-// Exercises the decision function directly rather than through either
-// settings view's `onChange`/Binding — this codebase has no SwiftUI
-// view-inspection facility, and the function takes plain `Bool`s precisely so
-// a test can reach it without touching `Defaults` or rendering a view.
+// Course colours follow course sync both ways (`AppState+CourseColors.swift`); without
+// that, the disabled colours toggle stays ON while `applyCourseOverrides` keeps applying
+// server colours. Tested on the function: there is no SwiftUI view inspection here.
 import Testing
 @testable import TigerDuck
 

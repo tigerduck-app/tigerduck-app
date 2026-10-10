@@ -1,11 +1,6 @@
-// Grid geometry and 衝堂 resolution for the class table — split out of
-// ClassTableViewModel.swift.
-//
-// A course spans contiguous periods; two or more can share a slot; and
-// three or more can chain transitively through a bridging course, so the
-// whole cluster has to be laid out together. Selecting a cell that holds
-// a conflict routes through the picker rather than guessing which course
-// the tap meant.
+// Grid geometry and schedule-conflict resolution for the class table. Courses
+// whose period blocks overlap, directly or via a bridging course, form one cluster
+// laid out together. Tapping a conflict cell opens the picker rather than guessing.
 
 import Defaults
 import SwiftUI
@@ -79,10 +74,9 @@ extension ClassTableViewModel {
             return .empty
         }
 
-        // Build transitive closure of courses whose blocks overlap with any
-        // course already in the cluster, rooted at the courses present in
-        // this cell. This guarantees we emit a `conflictStart` at the
-        // earliest row of the union and `.skip` thereafter.
+        // Transitive closure of courses whose blocks overlap any course in the
+        // cluster, seeded with this cell's courses, so the union's earliest row
+        // emits `conflictStart` and the rest of the union `.skip`.
         var closure: [(course: SDCourse, first: Int, span: Int)] = []
         var seen: Set<String> = []
 
@@ -113,14 +107,9 @@ extension ClassTableViewModel {
             return role
         }
 
-        // Emit a segment per course in the closure so a 3+ chain
-        // (e.g. A on periods 1-2, B on 2-3, C on 3-4) keeps every
-        // scheduled period visible. Earlier code capped the cluster at
-        // two segments, which left the third course's tail covered by
-        // `.skip` but not drawn over — hiding scheduled class time.
-        // Anchored-slot courses lead the array so the rendering order
-        // matches the cell the user tapped; the rest follow in
-        // closure-insertion order.
+        // One segment per course: capping a 3+ chain at two would leave the third
+        // course's rows under `.skip` with nothing drawn. This cell's courses
+        // lead, so the order matches the tapped cell; the rest keep closure order.
         let anchoredNos = Set(coursesHere.map(\.courseNo))
         let anchoredFirst = closure.filter { anchoredNos.contains($0.course.courseNo) }
         let rest = closure.filter { !anchoredNos.contains($0.course.courseNo) }
@@ -179,11 +168,9 @@ extension ClassTableViewModel {
     }
 
     func presentConflictPicker(courseA: SDCourse, courseB: SDCourse, weekday: Int, periodId: String) {
-        // Surface every course in the cluster's transitive closure — the
-        // L-render is capped at two courses, but a 3+ chain (e.g. A+C
-        // anchored here and A+B at the next period) must keep all of
-        // them reachable through the picker so the third never becomes
-        // unselectable.
+        // Offer every course in the cluster's transitive closure. The L render
+        // shows only two, so in a 3+ chain the picker must list them all or the
+        // third becomes unselectable.
         var resolved = conflictClosureCourses(weekday: weekday, periodId: periodId)
         if resolved.isEmpty {
             resolved = [courseA, courseB]

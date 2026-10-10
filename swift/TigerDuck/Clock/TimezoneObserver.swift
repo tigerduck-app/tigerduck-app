@@ -1,18 +1,14 @@
 import Foundation
 import Observation
 
-/// Observable signal for "is the device's wall clock currently offset from
-/// Taipei?". Read `TimezoneObserver.shared.isNonTaipei` somewhere in a view's
-/// dependency graph and SwiftUI re-evaluates when:
-///   - The system posts `NSSystemTimeZoneDidChange` (traveler crosses a
-///     timezone boundary, or settings toggles automatic time).
-///   - The debug clock flips — DST status changes across the year, so the
-///     same device can be in/out of Taipei offset depending on "now".
+/// Observable "is the device's clock offset from Taipei?". Read
+/// `TimezoneObserver.shared.isNonTaipei` in a view's dependency graph and
+/// SwiftUI re-evaluates on `NSSystemTimeZoneDidChange` (travel, or automatic
+/// time toggled) and when the debug clock moves, since DST can flip the answer.
 ///
-/// Compares the offset (not the identifier) at the current instant: a device
-/// set to `Asia/Hong_Kong` shares Taipei's offset year-round and should not
-/// trip the banner; a device set to `Europe/London` switches between BST and
-/// GMT, so DST flips matter.
+/// Compares offsets at the current instant, not identifiers: `Asia/Hong_Kong`
+/// shares Taipei's offset all year and must not trip the banner, while
+/// `Europe/London` moves between BST and GMT.
 @MainActor
 @Observable
 final class TimezoneObserver {

@@ -7,6 +7,7 @@ import Testing
 /// (`start` / `stop`) is intentionally not exercised — `nextState` is the
 /// piece with non-trivial branching, and the file header documents it as
 /// designed to be unit-testable.
+@MainActor
 struct FlipDetectorTests {
 
     private static let debounce = FlipDetector.debounceInterval

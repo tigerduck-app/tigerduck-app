@@ -89,9 +89,8 @@ struct CourseColorPickerSheet: View {
                     suppressNextColorChange = true
                     customColor = Color(hex: UInt(hex))
                     onSelect(hex)
-                    // Preset tap is a one-shot pick — close the sheet
-                    // now. The custom ColorPicker path deliberately does
-                    // *not* dismiss here because its `.onChange` fires on
+                    // A preset tap is a one-shot pick, so close the sheet now. The
+                    // custom ColorPicker does not dismiss: its `.onChange` fires on
                     // every drag tick.
                     dismiss()
                 } label: {
@@ -111,10 +110,9 @@ struct CourseColorPickerSheet: View {
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
             HStack(spacing: TigerDuckTheme.Spacing.md) {
-                // Inline ColorPicker with no label — the section header above
-                // labels it instead, leaving the row full-width for the swatch
-                // + readout. `supportsOpacity: false` because the renderer
-                // (and the on-disk hex map) is 24-bit only.
+                // The label is hidden: the section header above labels the picker,
+                // leaving the row for the swatch and readout. `supportsOpacity: false`
+                // because the renderer and the on-disk hex map are 24-bit only.
                 ColorPicker(
                     String(localized: "course_color_picker_custom_label"),
                     selection: $customColor,
@@ -146,10 +144,9 @@ struct CourseColorPickerSheet: View {
                     return
                 }
                 let hex = hexFrom(color: newValue)
-                // Guard against the no-op tick SwiftUI emits when the picker
-                // is first shown with the current course color — without this,
-                // simply opening the sheet would issue a needless setColor
-                // call and broadcast.
+                // Skip the no-op tick SwiftUI emits when the picker first shows the
+                // current course color, or just opening the sheet would issue a
+                // needless setColor call and broadcast.
                 guard hex != currentHex else { return }
                 onSelect(hex)
             }
@@ -183,16 +180,14 @@ struct CourseColorPickerSheet: View {
         .contentShape(Circle())
     }
 
-    /// Extract a 24-bit RGB hex from a SwiftUI `Color`. The picker hands us
-    /// a `Color` that resolves through the active environment.
+    /// Extract a 24-bit RGB hex from a SwiftUI `Color`. The picker's `Color`
+    /// resolves through the active environment.
     ///
-    /// On macOS, `NSColor(color)` may land in a color space whose
-    /// `cgColor` representation isn't directly available — the API is
-    /// declared non-optional but is documented to return nil in that
-    /// case, and the picker's output catalog colors trip this in
-    /// practice. Convert through `.sRGB` first so we always read RGBA
-    /// from a well-defined space, and treat an unresolved CGColor as
-    /// black (0) rather than crashing.
+    /// On macOS, `NSColor(color)` may land in a color space with no direct
+    /// `cgColor`: the API is declared non-optional but documented to return
+    /// nil then, and the picker's catalog colors trip this. Converting through
+    /// `.sRGB` first reads RGBA from a well-defined space, and an unresolved
+    /// CGColor becomes black (0) instead of a crash.
     private func hexFrom(color: Color) -> UInt32 {
         #if canImport(UIKit)
         let resolved: CGColor? = UIColor(color).cgColor

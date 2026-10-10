@@ -1,17 +1,14 @@
 import Foundation
 import os
 
-/// Persists the latest `LiveActivitySnapshot` so the Widget Extension can
-/// render it via a shared App Group. The App Group is required: without
-/// it the widget extension reads its own per-process defaults and never
-/// sees what the app writes — i.e. Live Activity silently renders empty.
+/// Persists the latest `LiveActivitySnapshot` so the Widget Extension can render it through the
+/// shared App Group. Without the group the extension reads its own per-process defaults, never
+/// sees what the app writes, and Live Activity silently renders empty.
 ///
-/// In DEBUG we crash hard when the App Group is unreachable (a
-/// container-URL check, not a nil-suite check — see
-/// ``isAppGroupAvailable(_:)``) so the empty
-/// `com.apple.security.application-groups` regression cannot ship
-/// silently again. In release we still fall back to `.standard` with a
-/// loud error so a user with a provisioning hiccup still launches.
+/// Debug builds crash when the group is unreachable (a container-URL check, see
+/// ``isAppGroupAvailable(_:)``), so an empty `com.apple.security.application-groups`
+/// entitlement cannot ship unnoticed. Release falls back to `.standard` with a loud error, so a
+/// user with a provisioning hiccup still launches.
 nonisolated final class SharedSnapshotStore {
     // Bump this when LiveActivitySnapshot's wire shape changes incompatibly.
     // The widget extension and main app must agree on the version key so a
@@ -26,14 +23,12 @@ nonisolated final class SharedSnapshotStore {
 
     /// Whether this process can actually reach the shared App Group.
     ///
-    /// `UserDefaults(suiteName:)` does NOT answer this — it returns nil only
-    /// for reserved names, and hands back a valid *process-local* store for a
-    /// group the process has no entitlement for, which is exactly the
-    /// "renders empty" failure the doc comment above describes. See
-    /// `WidgetSnapshotStore.isAppGroupAvailable(_:)` for the full rationale;
-    /// the check is duplicated rather than shared because the two files sit
-    /// in different synchronized folders and a common home would mean a new
-    /// target-membership exception in the project file.
+    /// `UserDefaults(suiteName:)` cannot tell: it returns nil only for reserved names and hands
+    /// back a valid process-local store for a group the process has no entitlement for, which is
+    /// the "renders empty" failure described above. `WidgetSnapshotStore.isAppGroupAvailable(_:)`
+    /// has the full rationale. The check is duplicated because the two files sit in different
+    /// synchronized folders, and a shared home would need a new target-membership exception in
+    /// the project file.
     static func isAppGroupAvailable(_ identifier: String) -> Bool {
         FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: identifier

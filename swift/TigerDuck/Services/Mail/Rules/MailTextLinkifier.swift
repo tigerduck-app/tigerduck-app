@@ -2,7 +2,7 @@
 import Foundation
 
 /// Text-only mail in the formatted view: URLs become links. The view routes every tap
-/// through the link confirmation (§6.3), never straight to the browser.
+/// through the link confirmation, never straight to the browser.
 nonisolated enum MailTextLinkifier {
     static func attributed(_ text: String) -> AttributedString {
         var result = AttributedString(text)

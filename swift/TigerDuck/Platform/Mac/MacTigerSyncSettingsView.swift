@@ -2,16 +2,14 @@
 import SwiftUI
 import Defaults
 
-/// TigerSync tab — the Mac's counterpart of the iPhone/iPad TigerSync
-/// screen (spec §6), minus what a Mac cannot use: no server-push opt-out
-/// and none of the notification rows, because macOS takes no
-/// notifications. One of the tabs assembled by `MacSettingsScene`.
+/// TigerSync tab: the Mac's counterpart of the iPhone and iPad TigerSync screen, minus what a
+/// Mac cannot use. No server-push opt-out and no notification rows, since macOS takes no
+/// notifications. One of the tabs `MacSettingsScene` assembles.
 ///
-/// Synced content is a parent switch with no stored value of its own, as
-/// on iPhone, iPad and Android: it reads on while any class-table row is
-/// on, flipping it sets all three, and the rows are hidden while it is
-/// off. The whole group is hidden while Sync course information is off,
-/// so a category the user cannot see can never pick up a re-enable mark.
+/// Synced content is a parent switch with no stored value, as on iPhone, iPad and Android: it
+/// reads on while any class-table row is on, flipping it sets all three, and the rows hide
+/// while it is off. The group hides while Sync course information is off, so a category
+/// the user cannot see never picks up a re-enable mark.
 struct MacTigerSyncSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.syncCourses) private var syncCourses
@@ -175,10 +173,9 @@ struct MacTigerSyncSettingsView: View {
     private func setCourses(_ on: Bool) {
         if on && !syncCourses { appState.markCategoryReenabled("courses") }
         syncCourses = on
-        // Spec §6's course-sync → course-colours dependency, through the
-        // decision function every platform's class-table rows share, and
-        // through colours' own setter so turning them back on this way
-        // marks them for the re-enable check too.
+        // Colours follow course sync both ways, through the decision function every platform's
+        // class-table rows share, and through colours' own setter so turning them back on this
+        // way marks them for the re-enable check too.
         setCourseColors(AppState.courseColorsAfterCoursesChange(coursesNowOn: on))
     }
 

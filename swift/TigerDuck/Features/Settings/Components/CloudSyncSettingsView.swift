@@ -1,10 +1,9 @@
 import Defaults
 import SwiftUI
 
-/// TigerSync settings (spec §6): essential-info notice, the course-sync
-/// toggle with its "Synced content" drill-down, the server-push opt-out,
-/// and an inline status section. See `SyncContentSettingsView` for the
-/// six-toggle drill-down this screen links to.
+/// TigerSync settings: essential-info notice, the course-sync toggle with its
+/// "Synced content" drill-down, the server-push opt-out, and an inline status
+/// section. See `SyncContentSettingsView` for the six-toggle drill-down.
 struct CloudSyncSettingsView: View {
     @Environment(AppState.self) private var appState
     @Default(.cloudSyncEnabled) private var syncEnabled
@@ -22,9 +21,8 @@ struct CloudSyncSettingsView: View {
     /// In-flight server-push opt-out PATCH, held so a rapid second tap can
     /// cancel the prior request before starting a new one.
     @State private var serverPushOptOutTask: Task<Void, Never>?
-    /// Backs the inline TigerSync-status section below (spec §6, owner's
-    /// ruling 2026-09-12, item 3). Owned here rather than by a pushed
-    /// destination now that the section lives directly in this screen.
+    /// Backs the inline TigerSync-status section below. Owned here because the
+    /// section lives in this screen, not in a pushed destination.
     @State private var statusSnapshot: PushDiagnostic?
     @State private var statusRefreshTimer: Timer?
 
@@ -69,9 +67,8 @@ struct CloudSyncSettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(String(localized: "settings_server_push_footer"))
                     if serverPushOptOutFailed {
-                        // Surfaces the rollback so the user knows the tap
-                        // didn't take. The Toggle has already snapped back
-                        // to the server-agreeing value because the actor
+                        // Tells the user the tap didn't take. The Toggle has already
+                        // snapped back to the server-agreeing value, because the actor
                         // only writes Defaults on success.
                         Text(String(localized: "settings_server_push_update_failed"))
                             .foregroundStyle(.orange)
@@ -79,13 +76,9 @@ struct CloudSyncSettingsView: View {
                 }
             }
 
-            // Unconditional per spec §6's tree: registration status, the
-            // latest error and the device ID are exactly what a user needs
-            // while investigating why sync isn't working, which is
-            // disproportionately likely to be a moment course sync is off.
-            // Owner's ruling, 2026-09-12 (spec §6, item 3): reads inline as
-            // a section titled with `sync_status_nav_label` itself rather
-            // than a destination reached through it.
+            // Always shown: registration status, the latest error and the device ID are
+            // what a user needs when investigating why sync isn't working, which is
+            // disproportionately likely while course sync is off.
             Section(String(localized: "sync_status_nav_label")) {
                 if let s = statusSnapshot {
                     syncStatusRow(

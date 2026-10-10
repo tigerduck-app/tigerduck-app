@@ -136,10 +136,10 @@ final class ClassTableViewModel {
         LanguageManager.resolvedCourseApiLanguage(appLanguage: Defaults[.appLanguage])
     }
 
-    /// weekday → period ID → [SDCourse]. A list (not single) so the grid can
-    /// surface 衝堂 (conflict) instead of the previous behaviour where the
-    /// second course in a slot was silently overwritten. Order matches the
-    /// `courses` array so conflict role-assignment (A vs B) is stable.
+    /// weekday → period ID → [SDCourse]. A list so the grid can show a
+    /// schedule conflict; one course per slot would silently overwrite the
+    /// second. Order matches the `courses` array so conflict role assignment
+    /// (A vs B) is stable.
     private var courseLookup: [Int: [String: [SDCourse]]] = [:]
 
     /// Cell-tap state when the user taps a conflict cell. The grid view
@@ -153,12 +153,9 @@ final class ClassTableViewModel {
 
     var hasLoaded = false
     var isUpdatingFromNetwork = false
-    // `nonisolated(unsafe)` so `deinit` (which runs nonisolated even on a
-    // `@MainActor` class) can read these to remove the observers at end-
-    // of-life. `@ObservationIgnored` is required for the isolation
-    // modifier to take effect — without it the `@Observable` macro
-    // replaces the storage with a computed accessor and strips the
-    // modifier. Same pattern as `CalendarViewModel.dataObserver`.
+    // `nonisolated(unsafe)` lets `deinit`, nonisolated even on a `@MainActor`
+    // class, read these to remove the observers. Without `@ObservationIgnored`
+    // the `@Observable` macro makes the storage computed and strips the modifier.
     @ObservationIgnored
     private nonisolated(unsafe) var dataObserver: Any?
     @ObservationIgnored
@@ -198,24 +195,18 @@ final class ClassTableViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            // Notification is delivered on the main queue, but the closure
-            // is `@Sendable` and crosses into a `@MainActor` class — hop
-            // explicitly so accessing `isUpdatingFromNetwork` / calling
-            // `reloadFromCache` is sound under strict concurrency.
+            // Delivered on the main queue, but the closure is `@Sendable`; hop to
+            // the main actor explicitly so touching `isUpdatingFromNetwork` and
+            // calling `reloadFromCache` is sound under strict concurrency.
             Task { @MainActor [weak self] in
                 guard let self, !self.isUpdatingFromNetwork else { return }
                 self.reloadFromCache()
             }
         }
 
-        // Invalidating alongside the mirror is not optional: `cellRoleCache`
-        // is keyed by index into `activePeriods`, so a row set that just grew
-        // makes every cached entry point at the wrong period.
-        //
-        // `initial: true` because this task subscribes a hop after the
-        // property initializer copied the key: a write in between would never
-        // arrive, and the grid would keep the old row set for good. The
-        // replayed value usually matches the copy and is skipped.
+        // Invalidate with the mirror: `cellRoleCache` is keyed by index into
+        // `activePeriods`, so a new row set points every entry at the wrong period.
+        // `initial: true` so a write made before this task subscribes is not lost.
         periodVisibilityTask = Task { [weak self] in
             for await value in Defaults.updates(.alwaysShowAllPeriods, initial: true) {
                 guard let self else { return }
@@ -264,12 +255,9 @@ final class ClassTableViewModel {
     }
 
     func reloadFromCache() {
-        // Re-read the per-user customization sets from disk on every reload
-        // so that a logout (which deletes the backing files and posts
-        // dataDidUpdate) actually clears the in-memory state. Loading from
-        // disk just once at init left the previous account's deletions and
-        // renames applied to the next user's class table for the rest of
-        // the app session.
+        // Re-read the per-user customizations on every reload: logout deletes
+        // their files and posts dataDidUpdate, and a copy read once at init
+        // would apply the last account's deletions and renames to the next user.
         deletedCourseNos = Set(DataCache.shared.loadDeletedCourseNos())
         courseCustomNames = DataCache.shared.loadCourseCustomNames()
         TigerDuckTheme.reload()
@@ -339,18 +327,14 @@ final class ClassTableViewModel {
     }
 
     var todayCourses: [SDCourse] {
-        // `coursesForToday()` reads `AppClock.now()`, which Observation
-        // can't track because `AppClock` is an enum. Pulling
-        // `AppClockState.shared.version` into the read keeps SwiftUI
-        // dependency tracking aware of debug-time-override flips.
+        // Observation can't track `AppClock.now()` (`AppClock` is an enum) inside
+        // `coursesForToday()`, so reading `AppClockState.shared.version` here keeps
+        // SwiftUI aware of debug time-override flips.
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
-        // ponytail: outside the term there is no "today" worth showing —
-        // the carousel would either be empty or surface a stale day. Nor on
-        // a holiday the user has not opted back into, the rule the Live
-        // Activity and the widgets follow. Empty here also hides the
-        // section, which keys off `todayCourses.isEmpty`, and the 5 s tick
-        // above picks up a toggle flipped on the calendar tab.
+        // Empty outside the term, where the carousel would show a stale day, and on a
+        // holiday the user has not opted back into, as the Live Activity and widgets do.
+        // Empty hides the section; the 5 s tick above catches a calendar-tab toggle.
         guard isClassDay(AppClock.now()) else { return [] }
         return currentSemesterCourses.coursesForToday()
     }

@@ -1,18 +1,10 @@
-// `PushRegistrationService` registers the device as soon as it holds any
-// APNs token, and attaches the push-to-start (PTS) token when that arrives.
-//
-// The standard APNs token is where the backend sends assignment reminders,
-// and the registration is how the server learns this device's app version,
-// locale and cloud-sync flag. A PTS token only exists while Live Activities
-// are enabled. Registration used to wait for one, so a device with Live
-// Activities switched off never registered at all — and, with reminders no
-// longer scheduled locally, received none.
-//
-// Driven through the real `PushAPIClient` over `SettingsAPIStub`, so the
-// assertions read the request bodies that actually went out.
+// `PushRegistrationService` registers on any APNs token and never waits for a push-to-start
+// (PTS) token, which exists only while Live Activities are on. Assignment reminders arrive only
+// by push to the standard token, and the register carries app version, locale and cloud-sync flag.
 import Defaults
 import Foundation
 import Testing
+import os
 @testable import TigerDuck
 
 @Suite("Push device registration")
@@ -21,7 +13,10 @@ struct PushRegistrationServiceTests {
 
     // MARK: - Fixtures
 
-    private static func makeService(baseURL: URL) -> PushRegistrationService {
+    private static func makeService(
+        baseURL: URL,
+        debounces: OSAllocatedUnfairLock<[Duration]> = .init(initialState: [])
+    ) -> PushRegistrationService {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         return PushRegistrationService(
@@ -30,7 +25,10 @@ struct PushRegistrationServiceTests {
                 baseURLProvider: { baseURL },
                 session: URLSession(configuration: config)
             ),
-            deviceClass: "iphone"
+            deviceClass: "iphone",
+            // Each test awaits its attempt with `awaitPendingRegistration()`, so the debounce
+            // has nothing to merge: it ends at once and only records the window it asked for.
+            debounceSleep: { window in debounces.withLock { $0.append(window) } }
         )
     }
 
@@ -92,14 +90,10 @@ struct PushRegistrationServiceTests {
     /// Runs `body` with the two delivery-preference flags the register body
     /// carries pinned to their non-default values, then puts both back.
     ///
-    /// Pinned rather than re-read live at assertion time, because what
-    /// needs pinning is the expression at the call site: the register sends
-    /// the *inverse* of `serverPushUserOptOut`, and an expectation that
-    /// re-derived its expected value the same way would still pass if the
-    /// `!` were lost. Both keys live in process-wide `UserDefaults` (no
-    /// `Defaults.suite` override — see `AppDefaults.swift`), so this takes
-    /// the shared gate and puts both back as found: this suite's own tests
-    /// run concurrently with each other and with
+    /// Pinned rather than re-read at assertion time: the register sends the inverse of
+    /// `serverPushUserOptOut`, and an expectation derived the same way would pass without the `!`.
+    /// Both keys live in process-wide `UserDefaults` (see `AppDefaults.swift`), so this takes the
+    /// shared gate: this suite's tests run concurrently with each other and with
     /// `BulletinPushOptOutMigrationTests`, which arranges the same keys.
     private static func withPinnedDeliveryPreferences(
         _ body: () async throws -> Void
@@ -219,12 +213,14 @@ struct PushRegistrationServiceTests {
     func registersWithoutPushToStartToken() async throws {
         try await Self.withPinnedDeliveryPreferences {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
-            let service = Self.makeService(baseURL: baseURL)
+            let debounces = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+            let service = Self.makeService(baseURL: baseURL, debounces: debounces)
             Self.expectAttempt(baseURL, registrations: 1)
 
             // Live Activities are off, so iOS never hands over a PTS token.
             await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
             await service.awaitPendingRegistration()
+            #expect(debounces.withLock { $0 } == [.milliseconds(250)])
 
             let sent = try Self.sentRegistrations(baseURL)
             try #require(sent.count == 1)
@@ -242,12 +238,9 @@ struct PushRegistrationServiceTests {
             #expect(registration["locale"] as? String == PushRegistrationService.currentLocaleTag)
             #expect(registration["cloud_sync_enabled"] as? Bool == Defaults[.cloudSyncEnabled])
 
-            // The two delivery preferences, carried on every register so a
-            // migrated value or a PATCH the server missed self-heals. Both
-            // are pinned above to the opposite of their shipped default:
-            // a register that stopped reading the bulletin flag, or that
-            // lost the `!` in front of `serverPushUserOptOut`, would write
-            // the inverse of the user's choice back on every launch.
+            // Every register carries both, so a migrated value or a missed PATCH self-heals. Both
+            // are pinned opposite their shipped defaults: ignoring the bulletin flag, or losing the
+            // `!` before `serverPushUserOptOut`, would invert the user's choice on every launch.
             #expect(registration["bulletin_push_enabled"] as? Bool == false)
             #expect(registration["server_push_enabled"] as? Bool == false)
 
@@ -258,20 +251,21 @@ struct PushRegistrationServiceTests {
     @Test("a push-to-start token that arrives later is attached by a second registration")
     func laterPushToStartTokenIsAttached() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let service = Self.makeService(baseURL: baseURL)
+        let debounces = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+        let service = Self.makeService(baseURL: baseURL, debounces: debounces)
 
         Self.expectAttempt(baseURL, registrations: 1)
         await service.update(deviceToken: Data([0x01, 0x02]))
         await service.awaitPendingRegistration()
         try #require(try Self.sentRegistrations(baseURL).map(Self.tokenKind) == ["standard"])
 
-        // The user turns Live Activities on and iOS hands over a PTS token.
-        // `/devices/register` carries exactly one `push_token` per request,
-        // so attaching it takes a registration of its own; the attempt
-        // re-sends the standard token too, which the server upserts.
+        // Live Activities turn on and iOS hands over a PTS token. `/devices/register` takes a
+        // single `push_token` per request, so attaching it needs a registration of its own; the
+        // attempt re-sends the standard token too, which the server upserts.
         Self.expectAttempt(baseURL, registrations: 2)
         await service.update(ptsTokenHex: "a1b2")
         await service.awaitPendingRegistration()
+        #expect(debounces.withLock { $0 } == [.milliseconds(250), .milliseconds(250)])
 
         let secondAttempt = Array(try Self.sentRegistrations(baseURL).dropFirst())
         let pts = try #require(secondAttempt.first { Self.tokenKind($0) == "push_to_start" })
@@ -297,11 +291,9 @@ struct PushRegistrationServiceTests {
                 try await service.updateBulletinPushEnabled(false)
             }
 
-            // The page reads this key through `@Default`. Persisting ahead
-            // of the response — say, to make the tap feel instant — would
-            // leave it showing bulletins off while the server keeps
-            // sending them, with nothing to correct it until the next
-            // register.
+            // The page reads this key through `@Default`. Persisting before the response would
+            // show bulletins off while the server keeps sending them, with nothing to correct it
+            // until the next register.
             #expect(Defaults[.bulletinPushEnabled] == true)
         }
     }
@@ -327,11 +319,9 @@ struct PushRegistrationServiceTests {
         await Self.withBulletinPreference(startingAt: true) {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
             let service = Self.makeService(baseURL: baseURL)
-            // A backend without the column — rolled back, self-hosted, or
-            // simply older than this build — ignores the request key it
-            // does not know and answers 200 without it. Nothing changed
-            // server-side, so treating that as success would leave the
-            // page saying bulletins are off while they keep arriving.
+            // A backend without the column (rolled back, self-hosted, or older than this build)
+            // ignores the key and answers 200 without it. Nothing changed server-side, so treating
+            // it as success would leave the page saying bulletins are off while they keep arriving.
             SettingsAPIStub.enqueue(
                 .init(statusCode: 200, body: Self.preferencesBody(bulletinPushEnabled: nil)),
                 for: Self.preferencesURL(baseURL)

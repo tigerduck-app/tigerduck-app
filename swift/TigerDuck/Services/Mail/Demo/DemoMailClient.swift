@@ -43,8 +43,8 @@ nonisolated struct MailDemoFixture: Decodable, Sendable {
     }
 }
 
-/// `MailClient` over the demo fixture. Never opens a socket (design doc §7.6). State lives
-/// for the app's lifetime so read/move actions stick while a reviewer explores.
+/// `MailClient` over the demo fixture. Never opens a socket. State lives for the app's
+/// lifetime so read/move actions stick while a reviewer explores.
 actor DemoMailClient: MailClient {
     static let shared: DemoMailClient? = MailDemoFixture.shared.map { DemoMailClient(fixture: $0) }
 
@@ -242,14 +242,13 @@ actor DemoMailClient: MailClient {
     }
 
     /// Re-derives the plain-text body TigerDuck itself built, decoded by its own
-    /// Content-Transfer-Encoding rather than stored as the raw wire bytes (fix round 1,
-    /// important 2) -- without this, a saved non-ASCII draft reopened as its literal
-    /// quoted-printable escapes (`=E9=82=84...`) instead of the original text. Never exposed to
-    /// real incoming mail (SwiftMail already decodes that before this app sees it) -- only to
-    /// messages this same app built with `MailMessageBuilder.build`, which always writes the
-    /// text/plain part first, whether the message is multipart or not, so locating the first
-    /// blank line -- and, for a multipart message, the text part's own header block right after
-    /// the opening boundary line -- is enough; nothing here needs a general MIME parser.
+    /// Content-Transfer-Encoding rather than kept as the raw wire bytes. Without this, a saved
+    /// non-ASCII draft reopens as its literal quoted-printable escapes (`=E9=82=84...`). Only
+    /// ever applied to messages this app built with `MailMessageBuilder.build`, never to real
+    /// incoming mail, which SwiftMail decodes before the app sees it. That builder always writes
+    /// the text/plain part first, multipart or not, so finding the first blank line (and, for
+    /// multipart, the text part's header block right after the opening boundary) is enough;
+    /// nothing here needs a general MIME parser.
     private static func decodedTextBody(from message: Data) -> String {
         guard let firstBlank = message.range(of: Data("\r\n\r\n".utf8)) else { return "" }
         let headerText = String(decoding: message[message.startIndex..<firstBlank.lowerBound], as: UTF8.self)

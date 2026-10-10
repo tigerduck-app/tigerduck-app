@@ -3,13 +3,12 @@ import Foundation
 enum CourseState: Equatable {
     /// Every slot whose window contains the resolved time.
     ///
-    /// A list rather than one slot because two courses can 衝堂 — occupy
-    /// the same period — and keeping only the first match showed one of
-    /// them and silently dropped the other, with which one survived
-    /// falling out of timeline order rather than anything the reader could
-    /// see. Ordered by start, so a consumer that genuinely wants a single
-    /// class (a Live Activity shows one) takes `first` and gets the
-    /// earliest. Never empty: the no-class cases are the other four.
+    /// A list because two courses can clash (occupy the same period), and
+    /// keeping only the first match would silently drop one, picked by
+    /// timeline order rather than anything the reader can see. Ordered by
+    /// start, so a consumer that wants one class (a Live Activity shows one)
+    /// takes `first` and gets the earliest. Never empty: the other cases cover
+    /// having no class.
     case inClass([CourseTimeSlot])
     case between(previous: CourseTimeSlot?, next: CourseTimeSlot?)
     case beforeFirst(next: CourseTimeSlot)

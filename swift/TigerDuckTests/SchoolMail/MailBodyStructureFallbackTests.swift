@@ -6,17 +6,12 @@ import Testing
 
 /// A mail whose `BODYSTRUCTURE` the server botches must still open.
 ///
-/// Mail2000 sometimes describes its own message in a way no IMAP parser can read. NIOIMAP does
-/// not fail the FETCH over it — it reports `MessageAttribute.BodyStructure.invalid` — but until
-/// vendored patch 6 that verdict was dropped on the floor, so `MessageInfo.parts` came back empty
-/// and `LiveMailClient.detail` iterated nothing: no `textBody`, no `htmlBody`, no attachments.
-/// The message screen then showed "Couldn't read this mail's format. Showing its source
-/// instead." and, because `MailWarnings` reads a haystack built from the subject and the body,
-/// the delivery-failure warning that belonged on that very mail could not fire either.
-///
-/// Android never had the bug: Angus Mail fetches the message and parses the MIME itself rather
-/// than trusting the server's description of it. This is iOS doing the same, on the one path
-/// where the description turned out to be worthless.
+/// Mail2000 sometimes describes a message in a way no IMAP parser can read. NIOIMAP does not
+/// fail the FETCH but reports `MessageAttribute.BodyStructure.invalid`, kept by vendored patch 6
+/// as `MessageInfo.bodyStructureUnusable`. With `parts` empty, `LiveMailClient.detail` finds no
+/// body or attachments: the screen would show only the source, and `MailWarnings`, which reads
+/// the subject and body, could not raise the delivery-failure warning. On that path only, the
+/// client fetches the whole message and parses the MIME itself, as Android's Angus Mail does.
 struct MailBodyStructureFallbackTests {
 
     /// What the detail fetch comes back with for such a message: everything except the structure.
@@ -49,15 +44,9 @@ struct MailBodyStructureFallbackTests {
     }
 
     @Test func theMailThatPromptedThisRecoveryIsActuallyRecovered() {
-        // Regression, and the whole point of the feature. This test previously asserted the
-        // opposite — that a 28 MB message is refused — because the ceiling was borrowed from
-        // `MailCache`'s per-entry limit (10 MB). The real Mail2000 bounce is 28.2 MB, so the
-        // guard turned away the one message the recovery exists for, and it went on showing
-        // "Couldn't read this mail's format" on a device after the fix shipped.
-        //
-        // Refusing to parse saves nothing: `parseFailed` forces the source view and the screen
-        // immediately calls `loadSource()`, so the whole message is fetched either way. The only
-        // thing the old ceiling bought above 10 MB was an unreadable dump for the same bytes.
+        // The Mail2000 bounce this recovery exists for is 28.2 MB, so the ceiling cannot be
+        // `MailCache`'s 10 MB entry limit. Refusing saves nothing: `parseFailed` forces the source
+        // view, and the screen's `loadSource()` fetches the whole message for an unreadable dump.
         #expect(LiveMailClient.recoversByLocalParse(Self.unusableStructureInfo(size: 28 * 1024 * 1024)))
     }
 
@@ -71,11 +60,9 @@ struct MailBodyStructureFallbackTests {
     }
 
     @Test func bothDetailFetchesCarryWhatTheCeilingAndTheFlagNeed() {
-        // The two halves compose: `detailInfo` retries a protocol error with the summary
-        // attributes, and those still ask for BODYSTRUCTURE — so a message whose structure is
-        // unusable is still recognised as such after the header section has been dropped. Both
-        // sets ask for RFC822.SIZE, which is what makes the ceiling knowable before any body
-        // byte is fetched.
+        // `detailInfo` retries a protocol error with the summary attributes, which still ask for
+        // BODYSTRUCTURE, so an unusable structure is recognised without the header section. Both
+        // sets ask for RFC822.SIZE, so the ceiling is known before any body byte is fetched.
         for options in [LiveMailClient.detailOptions, LiveMailClient.summaryOptions] {
             #expect(options.contains(.bodyStructure))
             #expect(options.contains(.size))

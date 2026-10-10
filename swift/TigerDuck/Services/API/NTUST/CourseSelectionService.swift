@@ -29,9 +29,8 @@ enum CourseSelectionService {
         forceRefresh: Bool = false,
         persistGuard: (@Sendable () -> Bool)? = nil
     ) async throws -> [String] {
-        // The D01 page returns whichever term 選課 is open for, which runs
-        // ahead of the term in session — cache it under that term, not under
-        // the month heuristic's guess.
+        // The D01 page returns whichever term course selection is open for, which runs ahead
+        // of the term in session, so cache under that term, not the month heuristic's guess.
         let semester = SemesterCatalog.selectionSemesterCode()
         if !forceRefresh, let cached = loadEnrolledCoursesCache(studentId: studentId, semester: semester) {
             return cached
@@ -52,10 +51,9 @@ enum CourseSelectionService {
             throw CourseServiceError.noCourseData
         }
 
-        // Trigger silent re-auth on either an ssoam2 redirect *or* an
-        // inline-rendered SSO login body returned with HTTP 200 from
-        // the course-selection host. URL-only detection misses the
-        // inline case and the regex falls through to "no courses".
+        // Re-auth silently on an ssoam2 redirect or on an SSO login body served inline with
+        // HTTP 200 by the course-selection host. Checking the URL alone misses the inline case,
+        // and the regex then falls through to "no courses".
         let landedOnSSO = (response as? HTTPURLResponse)?.url?.host == "ssoam2.ntust.edu.tw"
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
         if landedOnSSO || bodyIsSSO {
@@ -162,10 +160,9 @@ enum CourseSelectionService {
     /// During those windows callers may briefly see the previous term's
     /// data; if precision is required, prefer a server-driven term code.
     nonisolated static func currentSemesterCode() -> String {
-        // The school's published calendar, not a guess and not a pinned
-        // constant. The heuristic below still says 114-2 through August,
-        // which mislabels a term the school opened early — it is the
-        // last resort for a device that has never reached the backend.
+        // The school's published calendar comes first, not a guess or a pinned constant. The
+        // month heuristic mislabels a term the school opens early, so it is only the last
+        // resort for a device that has never reached the backend.
         AcademicCalendar.cached.currentTerm()?.code ?? heuristicSemesterCode()
     }
 

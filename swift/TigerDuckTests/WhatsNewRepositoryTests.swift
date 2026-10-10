@@ -1,7 +1,6 @@
-// `WhatsNewRepository` — decoding the `whatsnew.json` summary: the item
-// rows, the legacy `highlights` list they replaced, the blanks the selector
-// filters out, and the locale fallback. Drives the static selector directly,
-// plus one check that the JSON actually shipped in the bundle still decodes.
+// `WhatsNewRepository`, decoding the `whatsnew.json` summary: item rows, the legacy
+// `highlights` list, the blanks the selector filters out, and the locale fallback.
+// Drives the static selector directly, plus one check that the bundled JSON decodes.
 import Foundation
 import Testing
 @testable import TigerDuck

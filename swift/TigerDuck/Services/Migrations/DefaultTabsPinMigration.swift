@@ -1,18 +1,14 @@
 import Defaults
 import Foundation
 
-/// One-shot migration: keeps the bottom bar of an existing user who never
-/// customized it, now that the default bar has changed.
+/// One-shot migration: keeps the bottom bar of an existing user who never customized it.
 ///
-/// Context: an untouched bar is never stored — `configuredTabs` falls back
-/// to `AppFeature.defaultTabs` on every launch. 2.3.0 changed that default
-/// from Home, Class table, Calendar to Home, Class table, Mail, so without
-/// this an existing user's Calendar tab would silently turn into Mail.
-/// Instead the old default is stored as their own bar, and 2.3.0's What's
-/// New asks whether to swap Calendar for Mail. A fresh install has
-/// nothing to keep and starts on the new default.
-///
-/// Keep while a device can still arrive here from a build before 2.3.0.
+/// An untouched bar is never stored: `configuredTabs` falls back to `AppFeature.defaultTabs` on
+/// every launch. 2.3.0 changed that default from Home, Class table, Calendar to Home, Class
+/// table, Mail, which would silently turn an existing user's Calendar tab into Mail. This
+/// stores the old default as their own bar instead, and 2.3.0's What's New asks whether to swap
+/// Calendar for Mail. A fresh install starts on the new default. Keep while a device can still
+/// arrive here from a build before 2.3.0.
 enum DefaultTabsPinMigration {
     /// The default bar before 2.3.0, as stored raw values. A copy, so this
     /// file doesn't depend on what `AppFeature.defaultTabs` later becomes.

@@ -1,9 +1,6 @@
-// Revision polling and background refresh — split out of AppState.swift.
-//
-// The backend exposes a monotonic revision counter so the app can ask
-// "did anything change?" without pulling the whole override set. The
-// foreground timer polls it; `backgroundSync` is the BGTaskScheduler
-// entry point that fans out to the independent fetches.
+// The backend's monotonic revision counter answers "did anything change?" without
+// pulling the whole override set; a foreground timer polls it. `backgroundSync` is
+// the BGTaskScheduler entry point that fans out to the independent fetches.
 
 import SwiftUI
 import SwiftData
@@ -80,11 +77,9 @@ extension AppState {
         startRevisionPolling()
         syncTask?.cancel()
         syncTask = Task {
-            // Captive-aware reachability — under a hotel / campus Wi-Fi
-            // login page the link is "satisfied" but actual egress is
-            // blocked, and the pinned NTUST hosts would hard-fail with
-            // an ATS error. Bail early with a clean "no internet"
-            // message instead.
+            // Behind a hotel or campus Wi-Fi login page the link is "satisfied" but
+            // egress is blocked, and the pinned NTUST hosts would hard-fail with an ATS
+            // error. Bail early with a clean "no internet" message instead.
             guard await NetworkMonitor.shared.isReachable() else {
                 await MainActor.run {
                     sessionManager.loadingState = .error(String(localized: "error_network_unavailable"))
@@ -109,10 +104,9 @@ extension AppState {
             let moodleEvents = fetchedAssignments.map {
                 SDCalendarEvent(eventId: "moodle-\($0.assignmentId)", title: $0.displayTitle, date: $0.dueDate, source: .moodle)
             }
-            // Bail out before persisting if logout cancelled this sync while
-            // the network calls were in flight. Without the guard the merged
-            // calendar would be written back on top of a freshly purged cache
-            // and the previous user's events would resurface.
+            // Bail out before persisting if logout cancelled this sync mid-flight. The
+            // merged calendar would otherwise land on the freshly purged cache and
+            // resurface the previous user's events.
             guard !Task.isCancelled else { return }
 
             var calendarCache = DataCache.shared.loadCalendarEvents()

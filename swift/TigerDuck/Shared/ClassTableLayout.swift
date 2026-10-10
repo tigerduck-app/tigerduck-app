@@ -129,11 +129,9 @@ public enum ClassTableLayout {
             )
         }
 
-        // 3+ closure: emit one cluster with per-course offset/span so
-        // renderers can place each course only in the rows it actually
-        // occupies. Anchored-slot courses lead the array so column
-        // order matches the cell the user tapped — recursive insertion
-        // order can otherwise put a later-period course first.
+        // 3+ closure: one cluster with per-course offset and span, so renderers place each
+        // course only in its own rows. Anchored-slot courses lead so column order matches the
+        // tapped cell; recursive insertion could put a later-period course first.
         let anchoredKeys = Set(coursesHere.map(keyOf))
         let anchoredFirst = closure.filter { anchoredKeys.contains(keyOf($0.course)) }
         let rest = closure.filter { !anchoredKeys.contains(keyOf($0.course)) }

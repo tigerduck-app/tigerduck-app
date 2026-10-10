@@ -53,11 +53,9 @@ struct CurrentClassCard: View {
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
         }
-        // Inner frame fixes the card's width; outer `maxHeight: .infinity`
-        // lets the colored surface stretch to whatever row height
-        // `EqualHeightHStack` settled on. Harmless when this is the
-        // tallest card in the row, and matches the pattern used in
-        // `TodayCourseCard` so shorter siblings can grow to match.
+        // The inner frame fixes the width; the outer `maxHeight: .infinity` lets the
+        // surface stretch to the row height `EqualHeightHStack` settled on, so a
+        // shorter card grows to match its siblings, as in `TodayCourseCard`.
         .frame(width: width, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .cardPadding()

@@ -31,10 +31,9 @@ struct AssignmentReminderSettingsView: View {
             // Show what another device last saved, not only this one's
             // copy. Queued, so it does not wait behind the prompt below.
             appState.reconcileNotificationSettings()
-            // This screen is now the assignment-reminder feature's explicit
-            // entry point, so the notification permission prompt lives here.
-            // Refresh paths (theme tweaks, foreground transitions, background
-            // syncs) intentionally never prompt.
+            // This screen is the assignment-reminder feature's explicit entry point,
+            // so the notification permission prompt lives here. Refresh paths (theme
+            // tweaks, foreground transitions, background syncs) never prompt.
             await appState.requestNotificationAuthorization()
         }
     }

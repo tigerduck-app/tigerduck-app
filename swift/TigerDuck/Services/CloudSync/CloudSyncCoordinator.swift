@@ -87,8 +87,8 @@ final class CloudSyncCoordinator {
     /// they run to completion one at a time.
     @ObservationIgnored private var lifecycleTask: Task<Void, Never>?
 
-    /// Brings the lifecycle in line with 同步課程資訊. `AppState` calls this on
-    /// every change to the preference, whichever writer made it.
+    /// Brings the lifecycle in line with the Sync course information preference.
+    /// `AppState` calls this on every change to it, whichever writer made it.
     ///
     /// Queued behind any transition still running, and the preference is read
     /// when its turn comes rather than when it was asked for, so a burst of
@@ -169,13 +169,9 @@ final class CloudSyncCoordinator {
     private func performDisable() async {
         stop()
 
-        // Leave the push stack up: the device stays registered with
-        // cloud_sync_enabled=false so bulletins and operator pushes keep
-        // arriving — neither is gated on this flag. Live Activity is not in
-        // that list any more: spec §6 makes it unavailable with sync off, and
-        // the schedule this device uploads goes empty. (Relaunch re-enables
-        // the push stack anyway, so tearing it down here only ever produced a
-        // temporary mismatch.)
+        // Keep the push stack up, registered with cloud_sync_enabled=false: bulletins and
+        // operator pushes are not gated on the flag, and a relaunch restores the stack anyway.
+        // Live Activity is unavailable with sync off; the schedule this device uploads goes empty.
         await pushCoordinator.registration.updateCloudSyncEnabled(false)
 
         await outbox.clearAll()

@@ -18,10 +18,9 @@ struct MacAppearanceSettingsView: View {
                 .padding(.vertical, 4)
             }
 
-            // Course colours are assigned automatically and can drift into
-            // near-neighbours as courses come and go across semesters;
-            // this is the way back to a clean spread. Confirmed first —
-            // it discards every colour the user picked by hand.
+            // Course colours are assigned automatically and can drift into near-neighbours as
+            // courses come and go across semesters; this restores a clean spread. It asks first,
+            // as it discards every colour the user picked by hand.
             Section {
                 Button(String(localized: "settings_reset_course_colors")) {
                     isConfirmingReassign = true

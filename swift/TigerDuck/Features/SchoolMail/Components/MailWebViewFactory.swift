@@ -40,19 +40,19 @@ nonisolated struct MailHTMLTheme: Equatable, Hashable, Sendable {
     }
 }
 
-/// The locked-down WKWebView of design doc §9.3: no JavaScript, a non-persistent store,
-/// every network load blocked by a content rule (images only after "Load images"), inline
-/// `cid:` images from a custom scheme, and a CSP as a second layer.
+/// The locked-down WKWebView that renders mail: no JavaScript, a non-persistent store, every
+/// network load blocked by a content rule (images only after "Load images"), inline `cid:`
+/// images from a custom scheme, and a CSP as a second layer.
+/// See docs/decisions/0003-mail-webview-lockdown.md.
 @MainActor
 enum MailWebViewFactory {
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.WebView")
 
-    /// Exactly what `MailHTMLSanitizer.rewriteLinks` emits: `https://link.invalid/<decimal
-    /// index>`, no leading zeros, no userinfo/port/query/fragment, nothing else. Anything that
-    /// doesn't match this precisely fails closed rather than being treated as some link
-    /// (message-screen dispatch, 2026-09-16 addition 1). `\z` (absolute end), not `$` — ICU's
-    /// `$` also matches immediately before a trailing line terminator, which would let
-    /// `"https://link.invalid/0\n"` slip through as index 0 (fix round 1, minor 10).
+    /// Matches only the form `MailHTMLSanitizer.rewriteLinks` emits: `https://link.invalid/<decimal
+    /// index>`, no leading zeros, no userinfo, port, query or fragment. Anything else fails
+    /// closed rather than being treated as some link. `\z` (absolute end), not `$`: ICU's `$`
+    /// also matches before a trailing line terminator, which would let
+    /// `"https://link.invalid/0\n"` slip through as index 0.
     private static let linkIndexPattern = try! NSRegularExpression(pattern: #"^https://link\.invalid/(0|[1-9][0-9]*)\z"#)
 
     /// Returns the link index only for the exact synthetic form, in range `[0, linkCount)`.
@@ -88,13 +88,12 @@ enum MailWebViewFactory {
     }
 
     /// Compiles the rule list for one load. If compiling fails, the CSP still blocks remote
-    /// loads; the failure's type is logged (never mail content, mirroring `MailHTMLSanitizer`'s
-    /// own logger — fix round 1, minor 11) so a silently-degraded CSP-only mode is at least
-    /// visible.
+    /// loads; only the failure's type is logged, never mail content (as in `MailHTMLSanitizer`'s
+    /// logger), so a silently degraded CSP-only mode is at least visible.
     ///
-    /// Compiling is the only asynchronous step, and it is kept apart from installing
-    /// (`installRules(_:on:)`) so a caller can install a list and load the document it belongs to
-    /// in one main-actor step — see `MailHTMLView.Coordinator.load`.
+    /// Compiling is the only asynchronous step. It is kept apart from `installRules(_:on:)` so a
+    /// caller can install a list and load the document it belongs to in one main-actor step, as
+    /// `MailHTMLView.Coordinator.load` does.
     static func compileRules(allowRemoteImages: Bool) async -> WKContentRuleList? {
         let identifier = allowRemoteImages ? "school-mail-images" : "school-mail-block-all"
         do {
@@ -116,8 +115,7 @@ enum MailWebViewFactory {
         if let list { controller.add(list) }
     }
 
-    /// The mail on `theme`'s page (§9.3 used to mean white paper in both themes; it now means
-    /// the app's own surface — see `MailHTMLTheme`).
+    /// The mail on `theme`'s page, by default the app's own surface (see `MailHTMLTheme`).
     static func document(for bodyHTML: String, allowRemoteImages: Bool, theme: MailHTMLTheme = .app) -> String {
         let imageSources = allowRemoteImages ? "tdcid: data: https: http:" : "tdcid: data:"
         let scheme = theme.isDark ? "dark" : "light"

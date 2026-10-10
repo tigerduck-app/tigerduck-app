@@ -109,9 +109,9 @@ struct MailAccountManagerTests {
         #expect(h.manager.authFailed)
         #expect(h.prefs.authFailed)
         #expect(h.hooks.authFailed == 1)
-        // Spec §7.4: a rejected password is never retried. The second `openSession()` throws
-        // without creating a client or sending another LOGIN — the fake's login call count
-        // must not grow past what the first rejection already left it at.
+        // A rejected password is never retried: repeated failures lock the school account and its
+        // Wi-Fi. The second `openSession()` throws without a new client or LOGIN, so the fake's
+        // login count stays where the first rejection left it.
         #expect(await h.fake.calls.filter { $0.hasPrefix("login") }.count == loginCallsAfterFirstRejection)
     }
 
@@ -185,15 +185,14 @@ struct MailAccountManagerTests {
         #expect(h.hooks.signedOut == 1)
     }
 
-    /// What signing out does to the §7.4 lockout, and why pointing the app at a different mail
-    /// server goes through a sign-out rather than around one.
+    /// What signing out does to the auth-failure lockout, and why pointing the app at another
+    /// mail server goes through a sign-out rather than around one.
     ///
-    /// `authFailed` records that *one particular account's* password was rejected, and nothing
-    /// about it names the account. Carried across a server change it would lock out a server
-    /// that never rejected anything; cleared on its own it would let the rejected password be
-    /// retried against the account that did reject it, which is exactly what §7.4 forbids
-    /// because repeated failures lock the school account and its Wi-Fi. Signing out settles
-    /// both at once: the flag goes and so does the password it applied to.
+    /// `authFailed` records that one account's password was rejected, without naming the account.
+    /// Kept across a server change, it would lock out a server that never rejected anything.
+    /// Cleared alone, it would let the rejected password be retried against the account that
+    /// rejected it, and repeated failures lock the school account and its Wi-Fi. Signing out
+    /// clears both: the flag and the password it applied to.
     @Test func signingOutClearsTheAuthFailureLockoutTogetherWithThePasswordItApplied() async {
         let h = Self.harness()
         await h.manager.login(studentID: "B10000000", password: "pw")
@@ -357,10 +356,9 @@ struct MailAccountManagerTests {
         #expect(!(try await demo.rawSource(folder: "INBOX", uid: 4)).isEmpty)
     }
 
-    /// §7.5: the sign-out cache wipe is a directory delete on a detached task, so a process
-    /// death part-way through used to leave the signed-out student's mail on disk with nothing
-    /// left to finish the job. The marker outlives `prefs.reset()` and the next launch resumes
-    /// the wipe through the same handle `login()` already waits on.
+    /// The sign-out cache wipe is a directory delete on a detached task, so a process death
+    /// part-way through would leave the signed-out student's mail on disk. The marker outlives
+    /// `prefs.reset()`, and the next launch resumes the wipe through the handle `login()` waits on.
     @Test func anInterruptedSignOutCacheWipeIsFinishedAtTheNextLaunch() async {
         let prefs = InMemoryMailPreferences()
         let cleared = Counter()

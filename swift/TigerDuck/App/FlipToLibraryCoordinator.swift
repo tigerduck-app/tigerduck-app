@@ -19,10 +19,9 @@ private struct FlipToLibraryModifier: ViewModifier {
             .onChange(of: appState.flipToLibraryEnabled) { _, _ in reconcile() }
             .onChange(of: appState.libraryFeatureEnabled) { _, _ in reconcile() }
             .onChange(of: scenePhase) { _, new in
-                // Only tear down on .background — .inactive happens for
-                // transient interruptions (Control Center pull, banner) and
-                // tearing down on those would wipe in-progress debounce
-                // state and churn CoreMotion several times per minute.
+                // Tear down only on .background. .inactive comes with transient
+                // interruptions (Control Center, a banner), and tearing down then would
+                // wipe in-progress debounce state and churn CoreMotion several times a minute.
                 if new == .background || new == .active {
                     reconcile()
                 }
@@ -44,10 +43,9 @@ private struct FlipToLibraryModifier: ViewModifier {
     private func reconcile() {
         if shouldBeActive {
             if detector == nil {
-                // Capture appState explicitly rather than relying on the
-                // modifier struct's @Environment wrapper inside an escaping
-                // closure (Apple's guidance: snapshot env values into local
-                // bindings before passing into long-lived closures).
+                // Snapshot appState into a local, as Apple advises for environment values,
+                // instead of reading the modifier's @Environment wrapper inside this
+                // long-lived escaping closure.
                 let appState = self.appState
                 detector = FlipDetector { handleFaceDown(appState: appState) }
             }
@@ -65,36 +63,22 @@ private struct FlipToLibraryModifier: ViewModifier {
         guard appState.libraryFeatureEnabled,
               appState.flipToLibraryEnabled else { return }
 
-        // Don't fight any already-open modal. The first-trigger prompt is
-        // a root-level sheet, and presenting it over another sheet (NTUST
-        // login, Settings flows, tab editor, in-app browser, feedback,
-        // course pickers, etc.) lands in SwiftUI's undefined
-        // sheet-stacking territory — SwiftUI may reject or defer the
-        // presentation, leaving the prompt invisible while `pending` is
-        // already set. Navigation is also unhelpful while a modal covers
-        // the TabView: a steady-state flip would switch tabs behind the
-        // modal so the user has to dismiss the sheet to find the QR.
-        //
-        // Sheets are not centrally tracked (most use local `@State` in
-        // their owning view), so query UIKit's presentation chain — every
-        // SwiftUI sheet is a UIKit modal underneath.
+        // Skip while a modal is up: SwiftUI may reject or defer the root-level prompt sheet
+        // over it, leaving `pending` set, and a tab switch would land behind it. Sheets are
+        // not tracked centrally, so ask UIKit's presentation chain; each one is a UIKit modal.
         guard !Self.isAnyModalPresented() else { return }
 
-        // First-trigger UX: the toggle defaults to ON so the user discovers
-        // the feature on their first accidental flip. The prompt explains
-        // what just happened and lets them keep or disable it — no
-        // navigation happens on this first event so the user is not
-        // jump-scared into an unfamiliar tab.
+        // The toggle defaults to on so users discover the feature on their first
+        // accidental flip. That flip shows a prompt to keep or disable it and does
+        // not navigate, so the user is not thrown into an unfamiliar tab.
         if !FirstTriggerPromptCenter.shared.hasSeen(.flipToLibrary) {
             FlipToLibraryPromptPresenter.requestFirstTriggerPrompt(appState: appState)
             return
         }
 
-        // Steady-state: navigate. Library session is not a registration gate
-        // — when logged out, the existing `openFromWidget(.library)` drain
-        // surfaces the login flow inside the Library tab, which is the
-        // correct UX (Android silently no-ops, but the iOS Library view
-        // already handles the unauth case gracefully).
+        // Navigate even without a library session: the `openFromWidget(.library)`
+        // drain shows the login flow inside the Library tab. Android no-ops here,
+        // but the iOS Library view handles the signed-out case.
         appState.openFromWidget(.library)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }

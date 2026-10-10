@@ -72,39 +72,16 @@ struct MoreView: View {
             } message: {
                 Text(String(localized: "settings_library_feature_disabled_message"))
             }
-            // A feature opened from More should read as the same page the
-            // user would get by tapping it in the tab bar, so the push
-            // chevron goes away. Most of these destinations carry their
-            // own in-content title bar and sit under an empty nav bar as
-            // a tab root; BulletinsView is the exception, with a real
-            // `.navigationTitle` plus toolbar items — dropping the
-            // chevron is what makes it match its own tab root too.
-            //
-            // The bar itself stays, because those titles and toolbar
-            // items need it. See `MoreFeatureDestination` below for why
-            // the chevron's replacement is an escape action rather than
-            // nothing at all.
-            //
-            // Settings is deliberately untouched: it is pushed by its own
-            // NavigationLink in the header above, never through this
-            // AppFeature destination, so it keeps its back button.
+            // Features pushed from here match their tab-bar pages: no back chevron, with the escape
+            // action in `MoreFeatureDestination`. The nav bar stays for titles and toolbar items.
+            // Settings is pushed by its own NavigationLink above, so it keeps its back button.
             .navigationDestination(for: AppFeature.self) { feature in
                 MoreFeatureDestination { moreDestination(for: feature) }
             }
         }
-        // Consume deep-links from callers that can't reach this view's
-        // local navigationPath directly (e.g. the flip-to-Library
-        // coordinator routing here when Library is enabled but not pinned
-        // as a top-level tab, or a custom-push tap routing into
-        // Announcements). `initial: true` covers cold-launch / tab-switch
-        // ordering where the flag is already set by the time the body
-        // re-renders.
-        //
-        // We REPLACE the navigation path instead of appending: cross-
-        // context deep links mean "go to X", not "push X on top of
-        // whatever the user was already viewing in More". Appending was
-        // surfacing the target view stacked underneath an unrelated
-        // earlier destination, leaving the user with an extra back-tap.
+        // Deep links from callers that cannot reach `navigationPath`: flip-to-Library when Library
+        // is not a tab, or a custom-push tap into Announcements. `initial: true` catches one set
+        // before the body renders. The path is replaced, not appended: a link means "go to X".
         .onChange(of: appState.pendingMoreDeepLink, initial: true) { _, new in
             guard let new else { return }
             var path = NavigationPath()
@@ -131,30 +108,14 @@ struct MoreView: View {
     }
 }
 
-/// Chrome for a feature page pushed from the More tab: no back chevron, so
-/// the page reads like the same feature reached from the tab bar.
-///
-/// Two things have to hold for that to be safe, and neither is local to
-/// this file:
-///
-/// 1. The left-edge swipe is what replaces the chevron for most users, and
-///    it survives `navigationBarBackButtonHidden` only because
-///    `Extensions/UINavigationController+Swipeback.swift` re-points the
-///    `interactivePopGestureRecognizer` delegate app-wide. Stock UIKit
-///    disables that gesture *precisely* when the back button is hidden, so
-///    deleting that extension strands users on every destination here —
-///    not just on the bulletin detail page its comment names.
-/// 2. A screen-edge pan has no Switch Control equivalent and is not how
-///    VoiceOver users go back, so the swipe alone would make these pages a
-///    dead end for assistive tech. `.escape` restores the route the
-///    chevron used to provide — VoiceOver's two-finger scrub lands here.
-///
-/// This has to be a wrapper `View`: `@Environment(\.dismiss)` read in
-/// `MoreView`'s own body resolves to MoreView's dismissal, not the pushed
-/// page's. `dismiss()` rather than trimming `navigationPath` on purpose —
-/// the features below push their own second-level destinations with
-/// `item:`/`isPresented:`, which never enter the bound path, so mutating
-/// the path directly could desync the stack.
+/// Chrome for a feature page pushed from More: no back chevron, so it reads like the same
+/// feature reached from the tab bar. Hiding the back button makes stock UIKit disable the edge
+/// swipe; it survives only because `Extensions/UINavigationController+Swipeback.swift` re-points
+/// the `interactivePopGestureRecognizer` delegate app-wide. Switch Control and VoiceOver users
+/// do not go back with that swipe, so `.escape` (VoiceOver's two-finger scrub) is their way back.
+/// A wrapper view: `@Environment(\.dismiss)` read in `MoreView` resolves to MoreView, not the page.
+/// `dismiss()` rather than trimming `navigationPath`: features push their own destinations with
+/// `item:`/`isPresented:`, which never enter the bound path, so editing it could desync the stack.
 private struct MoreFeatureDestination<Content: View>: View {
     @Environment(\.dismiss) private var dismiss
 

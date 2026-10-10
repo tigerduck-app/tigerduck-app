@@ -292,10 +292,9 @@ final class BulletinAPIClient: Sendable {
         // any of which can path/query-inject if a device id ever embeds
         // them.
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
-        // Encoder fallback returns "" rather than the raw value: in the
-        // (vanishingly rare) UTF-16 surrogate-pair failure mode, shipping
-        // unencoded bytes into a URL path could path-inject. An empty
-        // segment yields a clean 404 instead.
+        // On failure return "", not the raw value: in the rare UTF-16
+        // surrogate-pair failure, unencoded bytes in a URL path could
+        // path-inject. An empty segment yields a clean 404 instead.
         guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
             assertionFailure("percentEncoded failed for value of length \(value.count)")
             return ""

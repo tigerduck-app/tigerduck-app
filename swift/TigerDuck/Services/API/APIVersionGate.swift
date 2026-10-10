@@ -2,22 +2,12 @@ import Foundation
 
 /// Latches when our backend answers `410 Gone`.
 ///
-/// The server retires an API version by answering every request to it with
-/// 410 rather than 404, precisely so a build talking to a version that no
-/// longer exists gets an unambiguous "this app is too old" instead of a
-/// shapeless network failure. Nothing the app can do fixes it — the only
-/// remedy is a newer build — so it is worth telling the user plainly
-/// rather than letting every screen fail on its own.
-///
-/// Only clients that talk to *our* backend report in here. The NTUST,
-/// Moodle and library clients deliberately do not: a 410 from the school's
-/// servers means one of their pages moved, which says nothing about the
-/// app's version.
-///
-/// One-way on purpose. Once the server has said a version is gone, no
-/// amount of retrying brings it back, and a banner that came and went as
-/// unrelated requests happened to succeed would read as a glitch rather
-/// than as the permanent state it is.
+/// The server retires an API version with 410 rather than 404, so an old
+/// build learns it is too old instead of seeing a vague network failure.
+/// Only a newer build fixes that, so the user is told plainly. Clients of
+/// NTUST, Moodle and the library do not report here: their 410 means a page
+/// moved. One-way: retries never revive a retired version, and a banner
+/// that came and went would read as a glitch.
 @MainActor
 @Observable
 final class APIVersionGate {

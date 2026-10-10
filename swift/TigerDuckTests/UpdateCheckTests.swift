@@ -1,18 +1,6 @@
-// Pins what "Check for Updates" concludes from the App Store's answer.
-//
-// Driven through the real `UpdateNotifyCoordinator` and
-// `AppStoreUpdateService` over `SettingsAPIStub`, so the lookup's wire
-// format is part of what is tested. Each test uses a bundle id of its own:
-// the stub is keyed by URL, and the bundle id is in the lookup's query.
-//
-// Every case is a manual check. That path ignores the 24h throttle, "Skip
-// This Version" and the "Later" cooldown, so the outcome depends on the
-// reply alone and not on what the test host has stored. It still stamps
-// `lastUpdateCheckAt`, and an unreadable store version stamps
-// `lastReportedUnparseableStoreVersion`, both real process-wide keys, so
-// the checks run inside the shared gate (`RealDefaultsGate.swift`) and put
-// the keys back — otherwise a test run would silence the background check
-// on the developer's simulator for a day.
+// Bundle ids are per test because the stub is keyed by URL, which holds the id. Manual checks
+// skip the 24h throttle, "Skip This Version" and "Later", so the reply alone decides. They still
+// stamp real keys, so they run gated and restore them; a leftover stamp mutes background checks.
 import Defaults
 import Foundation
 import Testing
@@ -35,7 +23,8 @@ struct UpdateCheckTests {
     }
 
     /// A coordinator whose lookup is answered with `storeVersion`, exactly
-    /// as typed into App Store Connect, once per `replies`.
+    /// as typed into App Store Connect, once per `replies`. The stub answers
+    /// the real lookup request, so its wire format is part of what is tested.
     private static func makeCoordinator(
         storeVersion: String,
         replies: Int = 1,

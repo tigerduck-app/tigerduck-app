@@ -83,7 +83,7 @@ struct MacScoreView: View {
     }
 
     /// The GPA line and its readout, scoped by the toolbar picker. Every
-    /// term with grades has a point: the school's ranking once 排名 is
+    /// term with grades has a point: the school's ranking once it is
     /// posted, and until then the GPA worked out from the grades in so far,
     /// marked as an estimate.
     @ViewBuilder
@@ -233,7 +233,7 @@ struct MacScoreView: View {
         .padding(.vertical, 10)
     }
 
-    /// Map NTUST term codes ("1131") to a friendlier "113 學年 第 1 學期".
+    /// Map NTUST term codes ("1131") to a friendlier "academic year 113, semester 1".
     private func displayTerm(_ raw: String) -> String {
         guard raw.count == 4 else { return raw }
         let year = String(raw.prefix(3))

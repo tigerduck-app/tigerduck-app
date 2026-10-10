@@ -2,28 +2,21 @@ import Foundation
 
 /// The room preview the class table prints in the corner of a course cell.
 ///
-/// A cell is ~50pt wide and already spends its space on the course name, so
-/// only a short room *code* can be shown there: the building-and-number
-/// forms NTUST's portal reports ("TR-313", "IB-409-1"), the spaced form the
-/// classroom-display toggle produces, and the Chinese building-and-number
-/// form the co-listed NTU / NTNU rooms use ("共101", "人文B106"). Everything
-/// else the portal calls a classroom is prose — "Heping Cheng 101",
-/// "Gongguan Track and Field Ground", "綜合大講堂", "系上自行安排" — and
-/// would shrink past legibility or truncate, so no hint is drawn for those.
-/// The detail sheet still shows the full room.
+/// A cell is ~50pt wide and the course name uses most of it, so only a short room
+/// code fits: NTUST's building-and-number forms ("TR-313", "IB-409-1"), the
+/// spaced form the classroom-display toggle produces, and the Chinese
+/// building-and-number form of co-listed NTU and NTNU rooms. Other values are
+/// prose ("Heping Cheng 101", facility names) that would shrink past legibility
+/// or truncate, so they get no hint. The detail sheet still shows the full room.
 enum CourseRoomHint {
-    /// `AA-999`, `AA-999-9`, `AA 9 999`, or a Chinese building name followed
-    /// by a room number (`共101`, `博雅205`, `人文B106`, `農化二B10-1`).
+    /// `AA-999`, `AA-999-9`, `AA 9 999`, or a Chinese building name followed by
+    /// a room number; see `CourseRoomHintTests` for examples.
     ///
-    /// The Chinese branch insists on trailing digits, which is what keeps
-    /// the placeholders and facility names out: "系上自行安排" and "林一"
-    /// are rooms in the same field but nothing a student can walk to by
-    /// reading four characters off a grid cell.
-    ///
-    /// The Latin branches spell the character class out instead of using
-    /// `\w`, which ICU reads as *any* Unicode word character — "體育-游泳池"
-    /// and "綜合-大講堂" both matched `\w\w-\w\w\w`, which is the prose
-    /// this type exists to reject.
+    /// The Chinese branch requires trailing digits, which keeps out placeholders
+    /// and facility names: they share the field but name nothing a student can
+    /// find from four characters in a grid cell. The Latin branches spell out the
+    /// character class because ICU reads `\w` as any Unicode word character, so
+    /// hyphenated Chinese prose would match `\w\w-\w\w\w`.
     private static let shortRoomCode = try! NSRegularExpression(
         pattern: #"^([A-Za-z0-9]{2}-[A-Za-z0-9]{3}(-[A-Za-z0-9])?|[A-Za-z0-9]{2} [A-Za-z0-9] [A-Za-z0-9]{3}|\p{Han}{1,3}[A-Za-z]?\d{2,4}(-\d)?)$"#
     )
@@ -31,14 +24,11 @@ enum CourseRoomHint {
     /// The hint for one timetable slot, or `nil` when the slot has no room
     /// or its room is not one of the short codes above.
     ///
-    /// The whole-day value is only a fallback for a course with no per-slot
-    /// map at all. Once a course has one, a slot missing from it is a slot
-    /// whose room the portal did not give — falling back there would label
-    /// the block with the *other* block's room, which is worse than saying
-    /// nothing.
-    ///
-    /// Callers must not ask for a slot inside a 衝堂 cluster: the cell is
-    /// then split between courses and there is no corner left to print in.
+    /// The whole-day room is only a fallback for a course with no per-slot map.
+    /// With a map, a missing slot is one whose room the portal did not give, and
+    /// falling back would label it with the other block's room, worse than nothing.
+    /// Callers must not ask for a slot in a conflict cluster (overlapping courses):
+    /// the cell is split between courses and has no corner left to print in.
     static func room(for course: SDCourse, weekday: Int, periodId: String) -> String? {
         let room = course.classroomMap.isEmpty
             ? course.classroom(for: weekday)

@@ -28,19 +28,14 @@ final class AuthService {
 
     private var credentialObservers: [any NSObjectProtocol] = []
 
-    /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``),
-    /// so every keychain read taken while the device is locked comes back
-    /// nil. A process started behind a locked screen — push, background
-    /// refresh, widget timeline reload — therefore comes up with
-    /// ``hasStoredCredentials`` false, and protected surfaces render their
-    /// "not signed in" prompt for a user who is signed in perfectly well.
+    /// Secrets live at `.whenUnlockedThisDeviceOnly` (see ``SecureStore``), so keychain reads
+    /// return nil while the device is locked. A process started behind a locked screen (push,
+    /// background refresh, widget timeline reload) reads no credentials, and protected
+    /// surfaces can show "not signed in" to a signed-in user.
     ///
-    /// Nothing corrected that afterwards. ``_revision`` moved only on login
-    /// and logout, so once the device was unlocked SwiftUI had no reason to
-    /// re-read the keychain: the Class Table sat on the login prompt until
-    /// some unrelated state change forced a redraw, which in practice meant
-    /// pull-to-refresh. Re-check when protected data comes back and when the
-    /// app activates.
+    /// So this re-checks when protected data becomes available and when the app activates.
+    /// Otherwise ``_revision`` moves only on login and logout, and after an unlock the Class
+    /// Table stays on the login prompt until an unrelated redraw such as pull-to-refresh.
     init() {
         let present = storedStudentId != nil && storedPassword != nil
         lastKnownHasCredentials = present
@@ -94,15 +89,14 @@ final class AuthService {
         return NTUSTSessionManager.shared.cookiesValid && storedStudentId != nil
     }
 
-    /// True when the keychain still holds credentials. Protected surfaces
-    /// gate on this rather than on ``isNTUSTAuthenticated`` so that a
-    /// returning user whose cookies have simply TTL'd does NOT see the
-    /// interactive login prompt — ``ensureAuthenticated()`` will silently
-    /// re-authenticate on the next fetch.
-    /// The rule behind ``hasStoredCredentials``, split out so it can be
-    /// tested without a keychain — and so the direction is pinned. It is an
-    /// OR, deliberately: the keychain wins when it has an answer, and the
-    /// mirror covers it when it does not.
+    /// The rule behind ``hasStoredCredentials``, which is true while the keychain still holds
+    /// credentials. Protected surfaces gate on that rather than ``isNTUSTAuthenticated``, so a
+    /// returning user whose cookies merely expired does not see the interactive login prompt;
+    /// ``ensureAuthenticated()`` re-authenticates silently on the next fetch.
+    ///
+    /// Split out so it can be tested without a keychain, and so the direction is pinned: an
+    /// OR, where the keychain wins when it has an answer and the mirror covers it when it
+    /// does not.
     static func resolveHasCredentials(keychainSaysPresent: Bool, mirrorSaysPresent: Bool) -> Bool {
         keychainSaysPresent || mirrorSaysPresent
     }
@@ -110,16 +104,9 @@ final class AuthService {
     var hasStoredCredentials: Bool {
         _ = _revision
         if storedStudentId != nil && storedPassword != nil { return true }
-        // A nil read is ambiguous — absent, or unreadable right now — so it
-        // is not allowed to be the answer on its own. `ntustCredentialsPresent`
-        // is readable when the keychain is not and is lowered only by an
-        // actual logout, so it is what a nil read falls back to.
-        //
-        // This is what stops a launch that could not reach the keychain from
-        // parking a signed-in user on the login prompt with no re-check
-        // scheduled: `revalidateStoredCredentials` bumps `_revision` only
-        // when its answer *changes*, so two nil reads in a row left nothing
-        // to correct it short of the re-auth a pull-to-refresh triggers.
+        // A nil read means absent or just unreadable, so fall back to `ntustCredentialsPresent`:
+        // readable when the keychain is not, lowered only by a real logout. Revalidation bumps
+        // `_revision` only on change, so two nil reads would strand a signed-in user at login.
         return Self.resolveHasCredentials(
             keychainSaysPresent: false,
             mirrorSaysPresent: Defaults[.ntustCredentialsPresent]
@@ -174,10 +161,8 @@ final class AuthService {
             if success {
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: normalizedId)
                 KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: password)
-                // Drop any cached enrolled course list for this account
-                // so the first post-login fetch scrapes fresh data;
-                // prevents showing stale courses after e.g. an end-of-
-                // semester crossover.
+                // Drop this account's cached enrolled courses so the first fetch after login
+                // scrapes fresh data, not stale courses from before a semester crossover.
                 CourseSelectionService.invalidateEnrolledCoursesCache(for: normalizedId)
                 reauthErrorMessage = nil
                 markCredentialsChanged()
@@ -250,11 +235,9 @@ final class AuthService {
             return false
         }
 
-        // Ask the server directly whether our cookies still unlock the
-        // SSO home (~30ms warm). Obsoletes the local 1h TTL check which
-        // was both paranoid (kicked fresh cookies off the cliff after
-        // an hour) and optimistic (could trust cookies the server had
-        // already evicted).
+        // Ask the server whether the cookies still unlock the SSO home (~30ms warm). The
+        // local 1h TTL errs both ways: it drops working cookies after an hour and trusts
+        // ones the server has already evicted.
         if await NTUSTSessionManager.shared.probeCookiesValid() {
             NTUSTSessionManager.shared.markLoginSuccess()
             reauthErrorMessage = nil

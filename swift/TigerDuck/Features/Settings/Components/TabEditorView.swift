@@ -190,10 +190,9 @@ struct TabEditorView: View {
             if frame.contains(point),
                let feature = AppFeature(rawValue: rawValue),
                let toIndex = tabs.firstIndex(of: feature) {
-                // Drag onChanged fires on every gesture tick; animating
-                // here stacks animations and shimmers. Move without
-                // animation during drag — the gesture itself provides
-                // visual continuity.
+                // onChanged fires on every gesture tick, and animating here stacks
+                // animations that shimmer. Move without animation during the drag;
+                // the gesture itself gives visual continuity.
                 tabs.move(fromOffsets: IndexSet(integer: fromIndex),
                           toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
                 return

@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import Testing
 @testable import TigerDuck
 
 /// In-memory `MailClient` for tests. Configure with `update { $0.… = … }`.
@@ -89,10 +90,8 @@ actor FakeMailClient: MailClient {
     private var heldCommands: Set<String> = []
     /// One suspended, held command per name, waiting for `release(_:)`.
     private var releaseGates: [String: CheckedContinuation<Void, Never>] = [:]
-    /// A test suspended in `waitForArrival(_:)`, waiting for that command to reach the gate.
-    private var arrivalGates: [String: CheckedContinuation<Void, Never>] = [:]
-    /// Commands that have reached the gate at least once, so a `waitForArrival(_:)` that runs
-    /// after the fact returns immediately instead of hanging.
+    /// Commands that have reached the gate at least once, which `waitForArrival(_:)` polls, so
+    /// one that runs after the fact returns at once.
     private var arrivedCommands: Set<String> = []
 
     init(folders: [String: [Message]] = [:]) {
@@ -104,12 +103,8 @@ actor FakeMailClient: MailClient {
     }
 
     // MARK: Command gates
-    //
-    // Interleavings — not input/output behaviour — are what several of the mail bugs are made
-    // of: a poll landing between two of `MailMover`'s steps, a second Delete tap landing between
-    // the first one's COPY and its EXPUNGE. `hold(_:)`/`waitForArrival(_:)`/`release(_:)` let a
-    // test park one call inside the client, run whatever else it wants to interleave, and then
-    // let the parked call continue — deterministically, with no wall-clock sleeps anywhere.
+    // Several mail bugs are interleavings: a poll between two `MailMover` steps, a second Delete
+    // tap between COPY and EXPUNGE. Tests park one call here and run the other, with no sleeps.
 
     /// Makes the named command (`"copy"`, `"setFlag"`, `"expunge"`, …) suspend when it arrives,
     /// until `release(_:)`.
@@ -123,16 +118,15 @@ actor FakeMailClient: MailClient {
         if let gate = releaseGates.removeValue(forKey: command) { gate.resume() }
     }
 
-    /// Returns once the named command has reached its gate — i.e. the call really is in flight,
-    /// rather than the test merely hoping it is.
-    func waitForArrival(_ command: String) async {
-        if arrivedCommands.contains(command) { return }
-        await withCheckedContinuation { arrivalGates[command] = $0 }
+    /// Returns once the named command has reached its gate, so the call really is in flight
+    /// rather than the test merely hoping it is. If it never arrives, this records an issue at
+    /// the caller after `waitUntil`'s timeout and returns, so the test fails instead of hanging.
+    func waitForArrival(_ command: String, sourceLocation: SourceLocation = #_sourceLocation) async {
+        try? await waitUntil({ arrivedCommands.contains(command) }, sourceLocation: sourceLocation)
     }
 
     private func gate(_ command: String) async {
         arrivedCommands.insert(command)
-        if let waiter = arrivalGates.removeValue(forKey: command) { waiter.resume() }
         guard heldCommands.contains(command) else { return }
         await withCheckedContinuation { releaseGates[command] = $0 }
     }

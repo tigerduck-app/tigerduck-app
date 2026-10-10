@@ -6,19 +6,13 @@ import UIKit
 @testable import TigerDuck
 
 /// The class table's header ⋯ button is sized against the Calendar "Today"
-/// button — matching it below iOS 26, and deliberately ~1.3x it on 26, where
-/// `.buttonStyle(.glass)` is a much tighter control than a glass backing
-/// behind an icon wants to be.
+/// button: equal below iOS 26, about 1.3x on 26, where `.buttonStyle(.glass)`
+/// is much tighter than a glass backing behind an icon wants to be. Today's
+/// height is Apple's and differs per OS version, so only this test keeps the
+/// two from drifting when either side changes.
 ///
-/// Today's height is Apple's number, not ours, and it resolves differently
-/// per OS version, so nothing but this test stops the relationship drifting
-/// when either side is touched.
-///
-/// Heights are measured from a laid-out window rather than `sizeThatFits`.
-/// The ideal size a hosting controller reports is not what a button style
-/// actually lays out to: on iOS 18 Today reports one thing and renders
-/// 40.33pt, and an earlier version of this test passed on iOS 26 while the
-/// two were 12pt apart on iOS 18.
+/// Heights come from a laid-out window, not `sizeThatFits`: the ideal size a
+/// hosting controller reports is not what a button style lays out to.
 @MainActor
 @Suite("Header control metrics")
 struct HeaderControlMetricsTests {
@@ -82,12 +76,9 @@ struct HeaderControlMetricsTests {
         let os = UIDevice.current.systemVersion
 
         if #available(iOS 26, *) {
-            // Deliberately taller than Today here: `.buttonStyle(.glass)` is a
-            // tight control sized for one short word, and at its 28.33pt the
-            // glass behind an icon reads as a sliver. ~1.3x. The band
-            // is wide because Today's height is Apple's number, not ours — it
-            // exists to catch the capsule collapsing back to Today's size or
-            // running away from it, not to pin a ratio to two decimals.
+            // About 1.3x Today here: `.buttonStyle(.glass)` is sized for one short word, and at
+            // its 28.33pt the glass behind an icon reads as a sliver. The band is wide because
+            // Today's height is Apple's; it catches a collapse to Today's size or a runaway.
             let ratio = capsule / today
             #expect(
                 ratio > 1.15 && ratio < 1.45,

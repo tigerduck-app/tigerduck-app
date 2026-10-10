@@ -40,10 +40,9 @@ final class TimeSliderViewModel {
     init(isQuietDay: @escaping (Date) -> Bool = { _ in false }) {
         self.isQuietDay = isQuietDay
         hapticGenerator.prepare()
-        // Which days are quiet can change while the courses do not: a
-        // "still have class" toggle, or a holiday published — the calendar
-        // store posts `dataDidUpdate` when its dates change. Rebuild then,
-        // rather than wait for the slider to reappear.
+        // Quiet days can change while the courses do not: a "still have class"
+        // toggle, or a holiday published (the calendar store then posts
+        // `dataDidUpdate`). Rebuild then, rather than wait for the slider to reappear.
         quietDayObservers = [AppConstants.holidayNotifyDidChange, AppConstants.dataDidUpdate]
             .map { name in
                 NotificationCenter.default.addObserver(
@@ -199,10 +198,9 @@ final class TimeSliderViewModel {
     // MARK: - Course State Resolution
 
     func courseState(at time: Date) -> CourseState {
-        // Every slot containing `time`, not just the first to match: 衝堂
-        // puts two courses on one period and both belong on screen, each
-        // tappable for its own room and assignments. `timeSlots` is sorted
-        // by start, so the cards come out in timeline order.
+        // Every slot containing `time`, not only the first: overlapping classes put
+        // two courses in one period, each tappable for its own room and assignments.
+        // `timeSlots` is sorted by start, so the cards come out in timeline order.
         let active = timeSlots.filter { time >= $0.start && time <= $0.end }
         if !active.isEmpty {
             return .inClass(active)

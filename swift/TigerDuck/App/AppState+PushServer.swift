@@ -1,10 +1,6 @@
-// Push-server enrolment and preference propagation — split out of
-// AppState.swift.
-//
-// This is the control plane: binding the APNs delegate, turning the
-// server relay on and off, and pushing preference changes up so the
-// server stops sending categories the user muted. The data plane — the
-// actual override pull/push — is in AppState+BackendSync.swift.
+// Push-server control plane: binding the APNs delegate, turning the server relay on and off,
+// and pushing preference changes up so the server stops sending muted categories. The data
+// plane, the override pull and push, is in AppState+BackendSync.swift.
 
 import SwiftUI
 import SwiftData
@@ -25,13 +21,12 @@ extension AppState {
         }
     }
 
-    /// Sync the next-48h event list to the push server. No-ops when the user
-    /// has not enabled server push. Safe to call from any scene / data
-    /// transition — `PushCoordinator` debounces bursts into a single POST.
+    /// Sync the next-48h event list to the push server. Safe to call from any scene or data
+    /// transition: `PushCoordinator` debounces bursts into a single POST.
     ///
-    /// While Live Activity is unavailable (spec §6) the list is empty, and
-    /// the server cancels every start this device had queued — so this also
-    /// has to run when the rule turns off, not only when data changes.
+    /// While Live Activity is unavailable (its switch or cloud sync is off) the list is empty,
+    /// and the server cancels every start this device had queued, so this must also run when
+    /// Live Activity becomes unavailable, not only when data changes.
     func requestPushScheduleSync() {
         pushCoordinator.requestSync { [weak self] in
             guard let self else {
@@ -58,12 +53,9 @@ extension AppState {
                 optedInHolidayIDs: AcademicCalendarStore.shared.optedInHolidayIDs
             )
             #else
-            // A Mac uploads no schedule. The backend never delivers a Live
-            // Activity or any push to macOS, so a list would only put course
-            // and assignment titles on the server for nothing — with TigerSync
-            // off, data the user asked us not to keep. The empty list still
-            // goes up: it is what cancels any starts an older build queued
-            // for this Mac.
+            // Empty on a Mac: no push reaches macOS, so a list would only put course and
+            // assignment titles on the server, against the user's wish with TigerSync off.
+            // It is still sent, to cancel any starts an older build queued for this Mac.
             return ScheduleSyncService.Inputs(
                 courses: [],
                 assignments: [],
@@ -110,29 +102,19 @@ extension AppState {
     }
 
 
-    /// Wire the settings toggle to the registration actor. The actor
-    /// PATCHes the backend and only then persists the local pref so a
-    /// transient failure doesn't leave the UI claiming agreement with
-    /// the server. Throws on failure so the caller can roll back.
     /// Record whether the user wants class reminders on one holiday.
     ///
-    /// The local write is what makes the guard behave — it happens whether
-    /// or not cloud sync is on, and whether or not the upload succeeds. The
-    /// upload only makes the user's other devices agree, so a failure there
-    /// is logged rather than rolled back: the setting the user just made on
-    /// this device should stand either way.
+    /// The local write is what makes the guard behave. It happens whether or not cloud sync is
+    /// on, and whether or not the upload succeeds. The upload only makes the user's other devices
+    /// agree, so its failure is logged rather than rolled back: the user's choice on this device
+    /// stands either way.
     func setHolidayNotify(_ notify: Bool, holidayID: Int) {
         guard AcademicCalendarStore.shared.setNotify(notify, forHoliday: holidayID) else {
             return
         }
-        // The Live Activity, the schedule the server starts it from, and the
-        // widgets all read the same set, so they have to be told: today may
-        // have just become loud, or quiet. `scheduleLiveActivityRefresh`
-        // re-resolves the activity and re-sends the schedule, whose class
-        // events follow the set too. iOS only — `AppState+LiveActivity.swift`
-        // is not compiled for macOS, and the Mac has no class reminders for
-        // the toggle to affect anyway. The widgets regenerate from their own
-        // writer on the notification.
+        // The Live Activity, the server's schedule and the widgets all read this set. On iOS,
+        // `scheduleLiveActivityRefresh` re-resolves the activity and re-sends the schedule; a
+        // Mac has no class reminders. The widgets regenerate on the notification.
         #if os(iOS)
         scheduleLiveActivityRefresh()
         #endif
@@ -141,16 +123,8 @@ extension AppState {
         enqueueHolidayUpload(holidayID: holidayID)
     }
 
-    /// Re-send toggles the backend never acknowledged.
-    ///
-    /// A failed upload leaves the server honestly reporting the old value, and
-    /// `AcademicCalendarStore` keeps re-imposing the local one over every sync
-    /// snapshot until that changes — correct, but it is a standoff, not a
-    /// resolution. This ends it. Called at the top of a full sync, which is
-    /// the app's own "we have a network again" signal.
-    /// Abandon queued holiday uploads. Called at logout: the queue holds the
-    /// departing account's edits, and the session they would travel on now
-    /// belongs to whoever signs in next.
+    /// Abandon queued holiday uploads. Called at logout: the queue holds the departing account's
+    /// edits, and the session they would travel on now belongs to whoever signs in next.
     func cancelHolidayUploads() {
         HolidayUploadQueue.generation += 1
         HolidayUploadQueue.tail?.cancel()
@@ -166,13 +140,11 @@ extension AppState {
 
     /// Queue one holiday override upload.
     ///
-    /// Chained rather than fired independently: two taps inside one round trip
-    /// would otherwise be two unordered Tasks racing to PATCH the same row,
-    /// and the server would keep whichever landed last rather than whichever
-    /// the user meant last. Each link also re-reads the flag at the moment it
-    /// runs, so a tap that arrived while an earlier upload was in flight is
-    /// the one that gets sent — and so a retry sends today's value, not the
-    /// one that failed.
+    /// Chained, not fired independently: two taps inside one round trip would otherwise be two
+    /// unordered Tasks racing to PATCH the same row, and the server would keep whichever landed
+    /// last rather than whichever the user meant last. Each link re-reads the flag when it runs,
+    /// so a tap made while an earlier upload was in flight is the one sent, and a retry sends
+    /// today's value, not the one that failed.
     private func enqueueHolidayUpload(holidayID: Int) {
         let previous = HolidayUploadQueue.tail
         let generation = HolidayUploadQueue.generation
@@ -194,11 +166,9 @@ extension AppState {
                 try await self.pushCoordinator.registration.uploadHolidayOverride(
                     holidayID: holidayID, notify: sent
                 )
-                // Settled only if the server now holds what the user still
-                // wants. A toggle made while this request was in flight is
-                // queued behind it and has to stay protected until *it*
-                // lands — clearing on any success would hand the newer
-                // choice back at the next sync if that upload then failed.
+                // Settled only if the server holds what the user still wants. A toggle made
+                // mid-request is queued behind this one and stays protected until it lands;
+                // clearing now would let the next sync undo it if that upload failed.
                 if AcademicCalendarStore.shared.optedInHolidayIDs.contains(holidayID) == sent {
                     AcademicCalendarStore.shared.setHolidayAcknowledged(true, holidayID: holidayID)
                 }

@@ -99,7 +99,7 @@ struct ScheduleSyncServiceTests {
         #expect(events.isEmpty)
     }
 
-    // MARK: - Live Activity availability (spec §6)
+    // MARK: - Live Activity availability
 
     /// The server starts a Live Activity from every event this device
     /// uploads, whether or not the app is running. With course sync off, or

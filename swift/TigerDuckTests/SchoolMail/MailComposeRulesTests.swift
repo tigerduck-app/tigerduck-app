@@ -182,11 +182,10 @@ struct MailComposeRulesTests {
         #expect(MailReplyComposer.quotedBody(of: original, dateText: "2026/09/16").hasSuffix("\n> a\n> b"))
     }
 
-    /// The forward header block's exact wording comes from `app-translation` (Task 18) and
-    /// isn't available yet at this point in the plan, so — like `quotesTheOriginalBody`
-    /// above — this only checks the structure: two blank lines, a 5-line header block
-    /// (forwarded-message marker, From, Date, Subject, To — design doc §6.4, matches
-    /// Android's `ComposePrefill.forward`), a blank line, then the original text unquoted.
+    /// The forward header block's wording comes from `app-translation`, so, like
+    /// `quotesTheOriginalBody` above, this checks only the structure: two blank lines, a 5-line
+    /// header block (forwarded-message marker, From, Date, Subject, To, matching Android's
+    /// `ComposePrefill.forward`), a blank line, then the original text unquoted.
     @Test func forwardsWithAStructuredHeaderBlock() {
         let original = MailOriginal(
             from: MailAddress(name: "教務處", address: "a@mail.ntust.edu.tw"),

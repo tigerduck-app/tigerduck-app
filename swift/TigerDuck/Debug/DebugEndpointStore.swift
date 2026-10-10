@@ -1,28 +1,13 @@
 import Foundation
 
-/// Keychain-backed storage for the user-set API endpoint override
-/// (Settings → Other settings → API endpoint, and the same screen offered
-/// from onboarding's sign-in page). Honoured by every build; the name
-/// predates the row leaving the Developer section.
-///
-/// Lives in Keychain (not UserDefaults) so the override survives an app
-/// uninstall + reinstall — useful for repeatedly wiping the app to retest
-/// fresh-install flows against a staging or self-hosted backend without
-/// having to re-enter the URL after every install. ``SecureStore`` keeps
-/// it at `.afterFirstUnlockThisDeviceOnly`: on the device it was set on,
-/// never restored via iCloud Keychain, and readable by a launch behind a
-/// locked screen, which would otherwise talk to the default backend.
-///
-/// See ``PushServerConfig/resolveServerURL()`` for the full resolution
-/// chain this override participates in. All write paths funnel through
-/// ``PushServerConfig/isOverrideAllowed(_:)`` and
-/// ``EndpointHealthCheck/probe(_:)``, so a value that no longer meets the
-/// transport rules — or that nothing is serving — cannot be stored.
-///
-/// Both write paths also call ``AcademicCalendarStore/endpointDidChange()``:
-/// the academic calendar is cached with an opaque ETag that says nothing
-/// about which backend issued it, so without this the next server's
-/// conditional GET can be answered 304 against the previous server's dates.
+/// Keychain-backed API endpoint override, set in Settings → Other settings → API endpoint or on
+/// onboarding's sign-in page, and honoured by every build. Keychain, not UserDefaults, so it
+/// survives the reinstalls done to retest fresh installs against another backend. ``SecureStore``
+/// keeps it `.afterFirstUnlockThisDeviceOnly`: never restored via iCloud Keychain, and readable by
+/// a launch behind the lock screen, which would otherwise use the default backend. A value is
+/// stored only if ``PushServerConfig/isOverrideAllowed(_:)`` and ``EndpointHealthCheck/probe(_:)``
+/// accept it. Set and clear call ``AcademicCalendarStore/endpointDidChange()``: the calendar's ETag
+/// does not name its backend, so the next server could answer 304 against the old server's dates.
 nonisolated enum DebugEndpointStore {
     /// Internal (not private) so the erase-everything action can name the
     /// one key it deliberately preserves.
@@ -53,15 +38,12 @@ nonisolated enum DebugEndpointStore {
         return raw
     }
 
-    /// Returns a value that was previously saved but no longer passes
-    /// ``PushServerConfig/isOverrideAllowed(_:)`` (e.g. the transport rules
-    /// tightened in a later build). Lets the UI explain why the override
-    /// the user set last week silently stopped taking effect, instead of
-    /// just falling back to the default without a breadcrumb.
+    /// Returns the stored override when it fails ``PushServerConfig/isOverrideAllowed(_:)``, for
+    /// example after a later build tightened the transport rules, so the UI can explain why a
+    /// saved override stopped taking effect instead of falling back to the default without a word.
     ///
-    /// Note this is a *validation* check, not a liveness one: an endpoint
-    /// that is merely down still reads as the active override, because
-    /// that is what the app is genuinely still trying to talk to.
+    /// This checks validation, not liveness: an endpoint that is merely down still reads as the
+    /// active override, because the app is still trying to talk to it.
     static func storedButRejectedOverride() -> String? {
         guard let raw = KeychainManager.loadString(key: keychainKey),
               !raw.isEmpty

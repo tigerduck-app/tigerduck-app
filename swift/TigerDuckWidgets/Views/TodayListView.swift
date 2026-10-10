@@ -106,13 +106,9 @@ struct TodayListView: View {
         let endTime = snapshot.periodTimes[last]?.end ?? ""
         let range = first == last ? first : "\(first)–\(last)"
 
-        // The ongoing row is painted from the course color rather than from a
-        // palette token, so the rendering-mode branch has to happen here too.
-        // Outside `.fullColor` it drops to the same 0.25 wash the week grid
-        // uses for a course block — enough to still read as "this one is
-        // running" without putting an opaque slab on the material — and the
-        // label colors come back off the palette, because white was only ever
-        // chosen for contrast against a saturated fill that is no longer there.
+        // The ongoing row uses the course color, not a token, so it branches on rendering mode
+        // here. Outside `.fullColor` it takes the week grid's 0.25 wash (still reads as running,
+        // no opaque slab) and palette label colors, since white only suited the saturated fill.
         let rowFill: Color
         let primary: Color
         let secondary: Color

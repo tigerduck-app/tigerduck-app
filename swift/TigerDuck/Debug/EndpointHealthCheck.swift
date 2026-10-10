@@ -2,20 +2,12 @@ import Foundation
 
 /// Probes a candidate API endpoint before the app commits to it.
 ///
-/// The endpoint row lets anyone point the app at their own deployment of
-/// the (open source) TigerDuck backend. Without a probe, a typo — a wrong
-/// port, a stale LAN address, a host that answers but isn't the backend —
-/// is only discovered later as every screen failing to load, from a
-/// Settings row the user has already navigated away from. Checking here
-/// turns that into an inline error at the moment of saving.
-///
-/// ## What counts as healthy
-///
-/// The server must answer `GET {origin}/health` with `200` and a JSON body
-/// whose `status` is `"ok"`. That is the backend's own contract
-/// (`server/main.py`), so requiring the shape — rather than accepting any
-/// `200` — is what distinguishes "your backend is up" from "something on
-/// this address served us a captive-portal page".
+/// Anyone can point the app at their own deployment of the open source backend. Without a probe,
+/// a wrong port, a stale LAN address or a host that is not the backend shows up only later, as
+/// every screen failing to load; here it is an inline error at save time. Healthy means
+/// `GET {origin}/health` answers `200` with a JSON body whose `status` is `"ok"`, the backend's
+/// contract (`server/main.py`). Requiring that shape, not any `200`, tells a running backend
+/// apart from a captive-portal page.
 nonisolated enum EndpointHealthCheck {
 
     enum Result: Equatable {
@@ -37,13 +29,10 @@ nonisolated enum EndpointHealthCheck {
 
     /// The health URL for a given API base.
     ///
-    /// `/health` is mounted at the FastAPI app root, a **sibling** of the
-    /// version prefix rather than a child of it — so `…/v3` maps to
-    /// `…/health`, and a deployment behind a path prefix
-    /// (`…/tigerduck/v3`) maps to `…/tigerduck/health`. Dropping the last
-    /// path component and appending `health` gets both right, where
-    /// appending to the base would produce `…/v3/health` (404) and going
-    /// to the bare origin would miss the prefixed deployment.
+    /// `/health` is mounted at the FastAPI app root, a sibling of the version prefix: `…/v3` maps
+    /// to `…/health`, and a deployment behind a path prefix (`…/tigerduck/v3`) maps to
+    /// `…/tigerduck/health`. Dropping the last path component gets both right. Appending to the
+    /// base would give `…/v3/health` (404), and the bare origin would miss the prefixed deployment.
     static func healthURL(for base: URL) -> URL? {
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
             return nil

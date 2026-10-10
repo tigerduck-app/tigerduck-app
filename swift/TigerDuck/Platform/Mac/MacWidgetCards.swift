@@ -3,14 +3,10 @@ import SwiftUI
 
 /// In-app widget cards for the Mac home page.
 ///
-/// macOS WidgetKit desktop widgets would require pbxproj surgery on
-/// `TigerDuckWidgetsExtension` (currently `SUPPORTED_PLATFORMS =
-/// "iphoneos iphonesimulator"`). Until that target picks up Mac, the
-/// same TigerDuck Widgets payload is surfaced inside the app as cards
-/// on the home page — scoped to the two widgets the user actually
-/// asked for: today's schedule and the next class. They read the same
-/// underlying `DataCache` the iPhone widgets read so a refresh in the
-/// app updates them.
+/// macOS desktop widgets would need pbxproj changes to `TigerDuckWidgetsExtension`, whose
+/// `SUPPORTED_PLATFORMS` is `"iphoneos iphonesimulator"`. Until that target supports Mac,
+/// two of its widgets, today's schedule and the next class, render here as cards. They
+/// read the same `DataCache` as the iPhone widgets, so a refresh in the app updates them.
 struct MacHomeWidgetsRow: View {
     let courses: [SDCourse]
 
@@ -85,10 +81,9 @@ private struct TodayScheduleWidgetCard: View {
         let color = TigerDuckTheme.courseColor(for: slot.course.courseNo)
         let isPast = slot.end < now
         let isLive = slot.start <= now && now < slot.end
-        // Mirror the iPhone Today widget treatment: live row is a solid
-        // course-color pill, upcoming rows get a thin colored leading bar
-        // so the per-course palette reads at a glance instead of being
-        // hidden behind a 6pt dot.
+        // Like the iPhone Today widget: the live row is a solid course-color pill and upcoming
+        // rows get a thin colored leading bar, so the course palette reads at a glance instead
+        // of hiding behind a 6pt dot.
         let primary: Color = isLive ? .white : .primary
         let secondary: Color = isLive ? Color.white.opacity(0.85) : .secondary
         return HStack(spacing: 10) {
@@ -136,21 +131,16 @@ private struct NextClassWidgetCard: View {
                 let color = TigerDuckTheme.courseColor(for: primary.course.courseNo)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        // Render the chosen slot's bounds, not the day's
-                        // first-to-last span — the countdown above counts
-                        // down to `primary.start`, so a split same-day
-                        // course (e.g. P3-P4 + P7-P8) would otherwise show
-                        // a gap-spanning time that doesn't match the timer.
+                        // The chosen slot's bounds, not the day's first-to-last span: the
+                        // countdown targets `primary.start`, so for a course split across the
+                        // day (P3-P4, P7-P8) a span across the gap would not match the timer.
                         Text("\(primary.start.timeString) - \(primary.end.timeString)")
                             .font(.title3.monospacedDigit().weight(.semibold))
                             .foregroundStyle(.primary)
                         Spacer()
-                        // Only show a badge when the class is actively in
-                        // session — the "next up" caption used to duplicate
-                        // the card title (#136) and the white-on-course-color
-                        // pill was also hard to read for several palette
-                        // entries. The live-state label is genuinely
-                        // distinct info, so it stays.
+                        // Badge only a class in session: a "next up" caption repeats the card
+                        // title, and the white-on-course-color pill is hard to read for several
+                        // palette entries. The live state is distinct information, so it keeps one.
                         if case .live = target.kind {
                             Text(String(localized: "live_activity_status_in_class").uppercased())
                                 .font(.caption2.weight(.bold))
@@ -161,9 +151,9 @@ private struct NextClassWidgetCard: View {
                         }
                     }
                     if target.slots.count >= 2 {
-                        // 衝堂: list every overlapping course on its own line so
-                        // neither is hidden. Names line-limit individually to
-                        // keep the card height roughly stable.
+                        // Conflict: list every overlapping course on its own line so
+                        // none is hidden. Each name has its own line limit to keep
+                        // the card height roughly stable.
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(target.slots, id: \.course.courseNo) { slot in
                                 Text(slot.course.displayName)
@@ -197,11 +187,10 @@ private struct NextClassWidgetCard: View {
     }
 
     /// Returns every slot that shares the same "current" or "next" start
-    /// time so 衝堂 (two simultaneous classes) shows both courses instead of
-    /// silently dropping one. The live branch picks the most-recently-started
-    /// live slot as the target so a long-running class that happens to still
-    /// be in progress doesn't get grouped with a different class the user
-    /// just transitioned into.
+    /// time, so a conflict (two simultaneous classes) shows both courses
+    /// instead of silently dropping one. The live branch targets the most
+    /// recently started live slot, so a long class still in progress is not
+    /// grouped with a different class the user just moved into.
     private var nextOrCurrent: NextClassTarget? {
         let liveSlots = slots.filter { $0.start <= now && now < $0.end }
         if let targetStart = liveSlots.map(\.start).max() {
@@ -221,11 +210,10 @@ private struct NextClassTarget {
         case upcoming
     }
 
-    /// 1 entry for solo classes, 2+ for 衝堂 (every slot sharing the same
-    /// start). Countdown reads start from `slots[0]` (all members share it)
-    /// and end from the latest finishing slot so a conflict block built from
-    /// courses with different period spans still ticks down to the moment
-    /// the block is fully over.
+    /// 1 entry for a solo class, 2+ for a conflict (every slot sharing the same
+    /// start). The countdown reads start from `slots[0]` (all members share it)
+    /// and end from the latest finishing slot, so a conflict block of courses with
+    /// different period spans still counts down to the moment the block is fully over.
     let slots: [CourseTimeSlot]
     let kind: Kind
 

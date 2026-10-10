@@ -4,12 +4,12 @@ struct UpcomingAssignmentsView: View {
     private static let listChangeAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
     let assignments: [SDAssignment]
-    /// In-memory course roster used to resolve the canonical display name
-    /// and course code for the third row line. Without this, the row falls
-    /// back to `assignment.courseName` (Moodle fullname with the code
-    /// stripped, fragile) and `assignment.courseNo` (empty when Moodle's
-    /// `idnumber` lacks the semester prefix), so the "課名 • 課程ID" line
-    /// looked wrong or dropped the ID entirely.
+    /// In-memory course roster that resolves the canonical display name and
+    /// course code for the row's third line. Without it the row falls back to
+    /// `assignment.courseName` (the Moodle fullname with the code stripped,
+    /// fragile) and `assignment.courseNo` (empty when Moodle's `idnumber` lacks
+    /// the semester prefix), so the "course name • course ID" line can look
+    /// wrong or lose the ID.
     var courses: [SDCourse] = []
     var filter: AssignmentFilter = .incomplete
     var showAbsoluteTime: Bool = false
@@ -36,13 +36,9 @@ struct UpcomingAssignmentsView: View {
 
     private func assignmentList(for now: Date) -> some View {
         let policy = appState.visualStylePolicy
-        // For the 全部 tab the view model hands us a time-agnostic
-        // candidate list; the past/future partition runs here against the
-        // `TimelineView` clock so a row whose `dueDate` just crossed `now`
-        // re-buckets on the next minute tick instead of staying frozen
-        // against whichever `Date()` the view model captured at filter
-        // change. Other tabs already sort by `dueDate` only, no live-clock
-        // dependency — pass them through as-is.
+        // The All tab gets a time-agnostic list, split into past and future here on
+        // the `TimelineView` clock, so a row whose `dueDate` just passed moves on the
+        // next minute tick. Other tabs sort by `dueDate` alone and pass through as is.
         let rows = filter == .all
             ? assignments.partitionedByDueDate(now: now)
             : assignments
@@ -56,17 +52,12 @@ struct UpcomingAssignmentsView: View {
         }
     }
 
-    /// Card layout was previously a `List` with `scrollDisabled(true)` and an
-    /// explicit `.frame(height:)` derived from per-row measurements. Two real
-    /// problems forced the move to `LazyVStack`:
-    ///   • Switching tabs while rows animated in/out fed `PreferenceKey`
-    ///     updates back into `@State`, racing with the `.animation` on the
-    ///     `assignments` identity and hanging the UI.
-    ///   • `List` + `.swipeActions` inside a parent `ScrollView` rendered a
-    ///     transient black slab above the first row mid-swipe — a `List`
-    ///     edge artifact that no inset / background tweak silenced.
-    /// `LazyVStack` sizes itself to its children and the custom `SwipeableRow`
-    /// (below) replaces `.swipeActions` so neither issue can recur.
+    /// A `LazyVStack`, not a `List`. A non-scrolling `List` needs a `.frame(height:)`
+    /// from per-row `PreferenceKey` measurements fed into `@State`, which on a tab
+    /// switch race the list's `.animation` and hang the UI. Its `.swipeActions`
+    /// inside the parent `ScrollView` also flash a black slab above the first row
+    /// mid-swipe, which no inset or background tweak silences. `LazyVStack` sizes
+    /// itself to its children, and `SwipeableRow` below replaces `.swipeActions`.
     private func cardLayout(rows: [SDAssignment], policy: VisualStylePolicy, now: Date) -> some View {
         LazyVStack(spacing: TigerDuckTheme.Spacing.sm) {
             ForEach(rows, id: \.assignmentId) { assignment in
@@ -158,9 +149,9 @@ struct UpcomingAssignmentsView: View {
     @ViewBuilder
     private func assignmentRow(assignment: SDAssignment, now: Date, policy: VisualStylePolicy) -> some View {
         let status = assignment.status(now: now)
-        // Default `.center` alignment vertically centres the trailing status
-        // even when the title wraps to two lines (third "課名 • 課程ID" line
-        // makes the leading column taller than the badge + time stack).
+        // Default `.center` alignment keeps the trailing status vertically centred
+        // even when the title wraps to two lines and the "course name • course ID"
+        // line makes the leading column taller than the badge and time stack.
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(assignment.displayTitle)
@@ -293,19 +284,14 @@ private struct SwipeActionDescriptor {
     let action: () -> Void
 }
 
-/// Custom horizontal-drag swipe row.
+/// Custom horizontal-drag swipe row, standing in for `List.swipeActions` so the
+/// assignment list can live in the home `ScrollView` without a `List`: its
+/// `.swipeActions` flash a black slab above the first row, and its row diff on
+/// a tab switch races `PreferenceKey` height measurement until the UI hangs.
 ///
-/// Reproduces the swipe-to-act behaviour we previously got from
-/// `List.swipeActions` so the assignment list can live inside the home
-/// `ScrollView` without the surrounding `List` (whose first-row
-/// `.swipeActions` consistently flashed a black slab above the row, and
-/// whose row diff during tab switches raced with `PreferenceKey`-based
-/// height measurement until it hung).
-///
-/// Threshold-based: drag past `triggerThreshold` in either direction to
-/// execute the corresponding action; release below the threshold to snap
-/// back. The action callback fires before the spring-back animation so the
-/// owning view can remove the row on the same frame the spring kicks off.
+/// Drag past `triggerThreshold` either way to run that side's action; release
+/// short of it to snap back. The action fires before the spring-back animation
+/// so the owning view can remove the row on the frame the spring starts.
 private struct SwipeableRow<Content: View>: View {
     let leadingAction: SwipeActionDescriptor?
     let trailingAction: SwipeActionDescriptor?

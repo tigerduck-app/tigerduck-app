@@ -4,9 +4,9 @@ import SwiftMail
 import Testing
 @testable import TigerDuck
 
-/// Feeds the shared `.eml` corpus (design doc §12.4; also Android's
-/// `AngusMailSessionReadTest`) through SwiftMail's offline `EMLParser`, so nested
-/// multipart, Big5 and RFC 2231 parsing get real coverage without a socket.
+/// Feeds the `.eml` corpus shared with Android's `AngusMailSessionReadTest` through SwiftMail's
+/// offline `EMLParser`, so nested multipart, Big5 and RFC 2231 parsing get real coverage without
+/// a socket.
 struct LiveMailClientParsingTests {
     @Test func decodesNestedMultipartAlternative() throws {
         let data = try SchoolMailFixtures.rawEML("multipart-alternative")
@@ -24,9 +24,8 @@ struct LiveMailClientParsingTests {
         #expect(message.attachments.count == 1)
         let attachment = try #require(message.attachments.first)
         #expect(attachment.contentType == "application/pdf")
-        // See Step 7: EMLParser prefers Content-Type's plain `name=` here; the live IMAP
-        // path (used by LiveMailClient) prefers Content-Disposition's `filename*=` and
-        // would read `報告.pdf` instead — checked manually in Task 19.
+        // EMLParser prefers Content-Type's plain `name=`; the live IMAP path in LiveMailClient
+        // prefers Content-Disposition's `filename*=` and would read the UTF-8 Chinese name instead.
         #expect(attachment.filename == "report.pdf")
         let bytes = try #require(attachment.decodedData())
         #expect(String(decoding: bytes, as: UTF8.self) == "%PDF-1.4\n")

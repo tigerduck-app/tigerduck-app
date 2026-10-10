@@ -8,15 +8,9 @@ struct NowNextView: View {
     }
 
     var body: some View {
-        // `NextClassResolver.resolve(now:)` reads `AppClock.now()`, but
-        // SwiftUI has no way to know the clock advanced unless a state
-        // change pokes the view. Without this periodic rebuild, the
-        // watch would freeze on the resolution computed at snapshot
-        // arrival even as real (or ticking-fake) time moves past the
-        // next boundary. Snapshot-driven override flips already kick a
-        // rebuild via `@EnvironmentObject`, so this only needs to cover
-        // the no-snapshot-change case. 60 s matches class-boundary
-        // granularity and keeps watch power use trivial.
+        // SwiftUI cannot observe `AppClock.now()`. Without this rebuild the view keeps the result
+        // from snapshot arrival as real or fake time passes a boundary; snapshot pushes (override
+        // flips too) rebuild via `@EnvironmentObject`. 60 s fits class boundaries at low power.
         TimelineView(.periodic(from: .now, by: 60)) { _ in
             ScrollView {
                 VStack(spacing: 12) {

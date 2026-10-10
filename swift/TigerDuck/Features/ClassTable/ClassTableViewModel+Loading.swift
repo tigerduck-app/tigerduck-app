@@ -1,9 +1,6 @@
-// Loading and refresh for the class table — split out of
-// ClassTableViewModel.swift.
-//
-// Also the local-change broadcast: Class Table edits have to wake Home
-// and the Live Activity coordinator, which they do by posting the same
-// `dataDidUpdate` notification a network sync would.
+// Loading and refresh for the class table, plus the local-change broadcast:
+// Class Table edits must wake Home and the Live Activity coordinator, so they
+// post the same `dataDidUpdate` notification a network sync would.
 
 import Defaults
 import SwiftUI
@@ -69,11 +66,9 @@ extension ClassTableViewModel {
         isRefreshing = true
         Task { [weak self] in
             guard let self else { return }
-            // Pre-flight gates BOTH the fetchData round-trip and the
-            // semester-rollover fetchCourses below — gating only
-            // fetchData leaves the rollover path firing pinned-host
-            // calls under captive Wi-Fi, surfacing the exact TLS-pin
-            // error the pre-flight is meant to hide.
+            // Gate both fetchData and the semester-rollover fetchCourses below.
+            // Gating only fetchData lets rollover hit pinned hosts on captive
+            // Wi-Fi, surfacing the TLS-pin error the pre-flight is meant to hide.
             guard await NetworkMonitor.shared.isReachable() else {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
@@ -105,20 +100,18 @@ extension ClassTableViewModel {
     private func fetchData(authService: AuthService, semester: String? = nil) async {
         let manager = NTUSTSessionManager.shared
         let targetSemester = semester ?? currentSemester
-        // Pre-flight here too so the `refresh(authService:)` entry
-        // point (used outside triggerRefresh) is also gated. The probe
-        // is memoised inside NetworkMonitor so paying for it twice on
-        // the triggerRefresh path is effectively free.
+        // Pre-flight here too so `refresh(authService:)`, used outside
+        // triggerRefresh, is gated as well. NetworkMonitor memoises the probe,
+        // so the second check on the triggerRefresh path is effectively free.
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
         }
         await MainActor.run { manager.loadingState = .loading }
 
-        // ClassTable pull-to-refresh is the explicit "show me the
-        // latest enrolment" gesture — bust the CourseService cache so
-        // add/drop shows up immediately instead of waiting out the 24h
-        // TTL that absorbs cheaper background refreshes.
+        // Class Table's pull-to-refresh asks for the latest enrolment, so skip
+        // the CourseService cache: add/drop shows up at once instead of after
+        // the 24h TTL that absorbs cheaper background refreshes.
         async let coursesTask = AppServiceBridge.fetchCourses(
             authService: authService,
             semester: targetSemester,

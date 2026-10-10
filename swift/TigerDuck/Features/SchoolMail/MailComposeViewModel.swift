@@ -19,9 +19,9 @@ nonisolated struct MailComposeContext: Identifiable, Sendable {
     var to: [MailAddress] = []
 }
 
-/// Plain-text compose (design doc §6.4) and sending (§8.4). Nothing here stages files to disk —
-/// every attachment (locally picked or carried from the original) is held as `Data` in memory for
-/// the lifetime of the sheet, unlike the Android reference's lazy `InputStream`/staged-file model.
+/// Plain-text compose and sending. Nothing here stages files to disk: every attachment (locally
+/// picked or carried from the original) is held as `Data` in memory for the lifetime of the
+/// sheet, unlike the Android reference's lazy `InputStream`/staged-file model.
 @MainActor
 @Observable
 final class MailComposeViewModel {
@@ -49,16 +49,14 @@ final class MailComposeViewModel {
     /// A send or save failure the user has not dismissed yet: small red text under a long form is
     /// easy to scroll past, so the same message is also put in a dialog they have to acknowledge.
     ///
-    /// This is a flag rather than something derived from `error`, because `error` is a `String?`
-    /// — a value. Tap Send, dismiss "Attachments are over the 50 MB limit", change nothing, tap
-    /// Send again, and the second failure is character-for-character the first: anything that
-    /// compared error values (a `.alert(item:)`, an `onChange(of:)`) would see no change and
-    /// swallow the second dialog, leaving a tap that visibly did nothing. Raised unconditionally
-    /// on every assignment to `error` instead, and lowered only by `acknowledgeError()`.
+    /// A flag rather than something derived from `error`: tapping Send again after dismissing an
+    /// error, with nothing changed, sets the same `String`, so anything comparing error values
+    /// (`.alert(item:)`, `onChange(of:)`) would see no change and swallow the second dialog. Any
+    /// non-nil `error` assignment raises it; `acknowledgeError()` or clearing `error` lowers it.
     private(set) var errorNeedsAcknowledging = false
     /// A failed `prepare()`/`retryPrepare()`, kept entirely separate from `error`: an attachment
     /// change or a send/save validation error or failure must never clear the Retry action this
-    /// drives, and a successful load is the only thing that clears it (dispatch addition 5).
+    /// drives. Only a successful load clears it.
     private(set) var loadError: String?
     private(set) var invalidRecipients: [String] = []
     private(set) var didFinish = false
@@ -88,15 +86,14 @@ final class MailComposeViewModel {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var baseline = ""
     @ObservationIgnored private var prepareStarted = false
-    /// True only once `prepare()`/`retryPrepare()` actually finished loading the original mail or
-    /// the draft being edited -- gates marking an original "answered" and replacing/removing a
-    /// draft, so a load that never finished (or failed) can never do either (dispatch addition 5).
+    /// True only once `prepare()`/`retryPrepare()` finished loading the original mail or the
+    /// draft being edited. It gates marking an original "answered" and replacing or removing a
+    /// draft, so a load that never finished (or failed) can do neither.
     @ObservationIgnored private var sourceLoaded = false
     /// The Drafts page's UIDVALIDITY as cached by the list (`.draft` mode only), read once during
-    /// `prepare()`/`retryPrepare()`. `removeDraft` uses this -- never a value read fresh right
-    /// before `MailMover` runs, which would make its own freshness guard compare a value against
-    /// itself and could never refuse (fix round 1, critical 1; mirrors
-    /// `MailMessageViewModel.pageUIDValidity`).
+    /// `prepare()`/`retryPrepare()`. `removeDraft` uses this, never a value read fresh right
+    /// before `MailMover` runs: its freshness guard would then compare a value against itself
+    /// and could never refuse. Mirrors `MailMessageViewModel.pageUIDValidity`.
     @ObservationIgnored private var draftPageUIDValidity: UInt32?
     /// Whether the draft being edited was already `\Deleted` when it was loaded — a message
     /// someone else deleted must never become one TigerDuck claims just because its own STORE
@@ -146,8 +143,8 @@ final class MailComposeViewModel {
     }
 
     /// Retries after a failed `prepare()`. Refuses to overlap a load already running, or a
-    /// send/save in flight (fix round 1, minor 6), but is otherwise unguarded -- the view only
-    /// ever wires this to the Retry affordance it shows while `loadError` is set.
+    /// send/save in flight, but is otherwise unguarded: the view only wires this to the Retry
+    /// affordance it shows while `loadError` is set.
     func retryPrepare() async {
         guard !isLoading, !isSending else { return }
         await runPrepare()
@@ -210,10 +207,9 @@ final class MailComposeViewModel {
             let dateText = original.date.map(MailDateFormatter.detailString(for:)) ?? ""
             switch mode {
             case .reply, .replyAll:
-                // Best-effort: everything a reply prefill needs is already in `context.original`,
-                // so one failed Reply-To download must never empty the whole form or drop
-                // threading (fix round 1, important 4) -- it only means replies fall back to the
-                // sender's own address, same as no Reply-To header existing at all.
+                // Best-effort: everything else a reply prefill needs is in `context.original`, so a
+                // failed Reply-To download must not empty the form or drop threading. Replies then
+                // go to the sender's own address, as if the mail had no Reply-To header.
                 var replyTo: [MailAddress] = []
                 if let folder, let uid, let raw = try? await session.use({ client in try await client.rawSource(folder: folder, uid: uid) }) {
                     replyTo = MailRawHeaders.value(named: "Reply-To", in: raw).map(MailAddress.parseList) ?? []
@@ -230,14 +226,9 @@ final class MailComposeViewModel {
                 )
                 sourceLoaded = true
             case .forward:
-                // `MailComposeContext` carries no generation, and giving it one would mean every
-                // screen that can present this sheet (the list, the message screen) had to hand
-                // over a pin it keeps privately. The cached page is where this screen already
-                // learns the generation — the draft branch above reads exactly this — and it is
-                // the same value the message screen pinned its own `detail` to, since that screen
-                // reads `pageUIDValidity` from this very page. So the parts being forwarded and
-                // the pin they are fetched under come from one generation, with nothing threaded
-                // through a third type to fall out of step.
+                // The pin comes from the cached page, as in the draft branch: the message screen
+                // pinned its `detail` to that page's `pageUIDValidity`, so parts and pin share one
+                // generation, with no pin threaded through `MailComposeContext` by each presenter.
                 var pin: UInt32?
                 if let folder { pin = await cachedPageUIDValidity(of: folder) }
                 let downloaded: [Attachment] = try await session.use { client in
@@ -262,12 +253,9 @@ final class MailComposeViewModel {
             }
         } catch {
             loadError = MailAccountManager.LoginError(error).message
-            // The empty-form value, not `snapshot()` (current fields) -- a retry that fails again
-            // after the user already typed something must not fold that edit into the baseline
-            // the same way a successful `applyPrefill` must not (fix round 1, important 3); this
-            // only fixes the common case `snapshot()` would already match here anyway (nothing
-            // typed yet), without also reintroducing that bug for the rarer one (fix round 2,
-            // minor).
+            // The empty-form value, not `snapshot()`: a retry that fails again after the user typed
+            // must not fold that edit into the baseline, as a successful `applyPrefill` must not.
+            // With nothing typed yet, `snapshot()` would match this anyway.
             baseline = Self.snapshotString(to: "", cc: "", bcc: "", subject: "", body: "", attachmentIDs: [])
         }
     }
@@ -291,18 +279,14 @@ final class MailComposeViewModel {
         suppressEditTracking = false
     }
 
-    /// Applies a freshly computed prefill: an edited field keeps the user's current value; a
-    /// `nil` `to`/`cc` (forward, which never prefills recipients) leaves that field untouched
-    /// either way. Newly downloaded attachments are always added alongside whatever the user
-    /// already picked -- never replacing that list (dispatch addition 5).
+    /// Applies a freshly computed prefill. Edited fields keep the user's value, a `nil` `to`/`cc`
+    /// (forward never prefills recipients) stays untouched, and downloaded attachments join the
+    /// user's own instead of replacing them.
     ///
-    /// `baseline` is rebuilt from these fresh prefill values alone, never from the fields as
-    /// merged above -- a field the user already edited must keep contributing to `hasChanges`
-    /// even after a successful (re)prefill, or Cancel would silently discard it (fix round 1,
-    /// important 3). `bcc` is always "" in the baseline: a prefill never restores it, and a
-    /// draft never stored it either (Bcc is never written as a header). The attachment portion
-    /// is only this prefill's own `newAttachments` -- not the merged list -- so a file the user
-    /// picked before a retry stays "dirty" too, exactly like Android's baseline.
+    /// `baseline` is built from the prefill values alone, not the merged fields, so a field the
+    /// user edited still counts toward `hasChanges` and Cancel cannot silently discard it. Its
+    /// `bcc` is "" since no prefill sets it and Bcc is never written as a header. As on Android,
+    /// its attachments are only `newAttachments`, so a file picked before a retry stays dirty too.
     private func applyPrefill(to: String?, cc: String?, subject: String, body: String, showCcBcc: Bool, newAttachments: [Attachment]) {
         suppressEditTracking = true
         if let to, !editedTo { self.to = to }
@@ -341,9 +325,9 @@ final class MailComposeViewModel {
         attachments.removeAll { $0.id == id }
     }
 
-    /// A locally picked file whose bytes couldn't be read off the main actor -- shown the same
-    /// way an over-budget attachment would be (dispatch addition 3: never silently dropped, never
-    /// treated as a 0-byte attachment).
+    /// A locally picked file whose bytes couldn't be read off the main actor. It is shown the
+    /// same way an over-budget attachment would be: never silently dropped, never treated as a
+    /// 0-byte attachment.
     func attachmentReadFailed() {
         error = String(localized: "school_mail_too_large")
     }
@@ -365,11 +349,9 @@ final class MailComposeViewModel {
     /// and the confirmation is reserved for a mail that really is about to go out. `send()` runs
     /// it again for itself, so the check is never something a caller can skip.
     private func validate() -> (to: [MailAddress], cc: [MailAddress], bcc: [MailAddress])? {
-        // §7.4: once the server has rejected the saved password it is never sent again — repeated
-        // failures lock the school account and its Wi-Fi. SMTP `AUTH LOGIN` happens inside the
-        // send below, entirely outside `MailAccountManager.openSession()`, so without this the
-        // sheet staying open per §8.4 turns every further Send tap into another login attempt
-        // with a password the server already refused.
+        // A password the server rejected is never sent again: repeated failures lock the school
+        // account and its Wi-Fi. SMTP `AUTH LOGIN` runs outside `MailAccountManager.openSession()`,
+        // and a failed send keeps the sheet open, so each Send tap would be another login attempt.
         guard !prefs.authFailed else {
             error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError.credentials.message
             return nil
@@ -412,10 +394,9 @@ final class MailComposeViewModel {
         guard let (toList, ccList, bccList) = validate() else { return }
 
         let isReply = context.mode == .reply || context.mode == .replyAll
-        // Threading only needs `context.original` -- it's synchronous, in-memory data, never
-        // network-dependent -- so it must not be gated on `sourceLoaded` (fix round 1, important
-        // 4): a reply whose Reply-To fetch failed (now best-effort, see `runPrepare`) still goes
-        // out In-Reply-To the right message.
+        // Threading needs only `context.original`, in-memory data, so it is not gated on
+        // `sourceLoaded`: a reply whose Reply-To fetch failed (best-effort, see `runPrepare`)
+        // still goes out In-Reply-To the right message.
         let threading = isReply ? context.original.map(MailReplyComposer.threadingHeaders(for:)) : nil
         let mail = outgoing(to: toList, cc: ccList, bcc: bccList, threading: threading)
 
@@ -432,8 +413,8 @@ final class MailComposeViewModel {
         let sleepFn = sleep
         let prefsRef = prefs
 
-        // The busy state is set before the (now off-main) build so the sheet can't be dismissed
-        // or re-sent while a large message is still being assembled (fix round 1, important 1).
+        // The busy state is set before the off-main build so the sheet can't be dismissed or
+        // re-sent while a large message is still being assembled.
         isSending = true
         defer { isSending = false }
         let message = await Task.detached { MailMessageBuilder.build(mail, messageID: messageID, date: sendDate) }.value
@@ -446,10 +427,9 @@ final class MailComposeViewModel {
             let filing = try await session.use { client -> SentCopyFiler.Filing in
                 try await client.send(message, from: senderAddress, to: recipients)
                 if let replyFolder, let replyUID {
-                    // No pin: compose holds the *drafts* page's UIDVALIDITY, never the original's
-                    // folder's. The worst a recreated folder costs here is an `\Answered` flag on
-                    // the wrong message — cosmetic, and already best-effort — where the pinned
-                    // calls below would destroy mail, which is why only those require one.
+                    // No pin: compose has the Drafts page's UIDVALIDITY, not the original folder's.
+                    // A recreated folder costs at most a cosmetic `\Answered` flag on the wrong
+                    // message; the pinned calls below could destroy mail, so only they require one.
                     try? await client.setFlag(.answered, on: true, folder: replyFolder, uids: [replyUID],
                                               expectedUIDValidity: nil)
                 }
@@ -462,11 +442,9 @@ final class MailComposeViewModel {
                 return filing
             }
             if let refreshedRoles = filing.roles { adoptFolderRoles(refreshedRoles) }
-            // §7.4 again: an APPEND (or a probe) the server answered with a rejected password is
-            // the same rejected password the sign-in path reports, and it has to reach the same
-            // choke point. It cannot get there by being thrown — filing the copy is best-effort
-            // and must not fail a send that already succeeded — so it is reported explicitly.
-            // `try?` used to eat it entirely, and the next Send tap sent that password again.
+            // A rejected password on the APPEND (or a probe) must reach the sign-in path's choke
+            // point, or the next Send tap sends it again. Filing the copy is best-effort and must
+            // not fail a send that succeeded, so it is reported here instead of thrown.
             if filing.rejectedPassword { session.reportAuthenticationRejection() }
             // The copy is a notice, never a failure: the mail went out either way, so `send()`
             // reports success and the screen that presented this sheet shows what became of the
@@ -475,8 +453,8 @@ final class MailComposeViewModel {
             if let notice = Self.notice(for: filing.outcome) { onSentCopyNotice?(notice) }
             didFinish = true
         } catch {
-            // The mail is never retried here on any error, `folderChanged` included -- the list
-            // recovers through its own path the next time the user opens it (dispatch addition 6).
+            // The mail is never retried here on any error, `folderChanged` included: the list
+            // recovers through its own path the next time the user opens it.
             self.error = String(localized: "school_mail_send_failed") + "\n" + MailAccountManager.LoginError(error).message
         }
     }
@@ -503,18 +481,18 @@ final class MailComposeViewModel {
     }
 
     /// Saves to Drafts with `\Draft`; editing a draft saves a new one and deletes the old. Runs the
-    /// same recipient and size validation `send()` does (dispatch addition 1 and 3) -- a draft may
-    /// legitimately have no recipients yet, only a token that couldn't be parsed, or an over-budget
-    /// attachment, blocks saving.
+    /// same recipient and size validation `send()` does, except that a draft may have no
+    /// recipients yet: only a token that couldn't be parsed, or an over-budget attachment, blocks
+    /// saving.
     ///
-    /// An account with no Drafts folder gets one created, but only once every one of those checks
-    /// has passed and the message has been built: a save that was never going to happen must not
-    /// leave a folder behind. A CREATE that fails surfaces the same error a missing Drafts folder
-    /// always did — the user has to know the draft was not kept.
+    /// A missing Drafts folder is created only once every check has passed and the message is
+    /// built, so a save that was never going to happen leaves no folder behind. A failed CREATE
+    /// shows the missing-Drafts error, because the user has to know the draft was not kept.
     @discardableResult
     func saveDraft() async -> Bool {
         guard !isSending else { return false }
-        // Saving a draft is an IMAP APPEND, which needs the same rejected password (§7.4).
+        // Saving a draft is an IMAP APPEND, which needs the saved password, and a password the
+        // server rejected is never sent again: repeated failures lock the account and its Wi-Fi.
         guard !prefs.authFailed else {
             error = MailAccountManager.LoginError.credentials.message
             return false
@@ -531,11 +509,9 @@ final class MailComposeViewModel {
             return false
         }
         let mail = outgoing(to: toList, cc: ccList, bcc: bccList, threading: nil)
-        // The baseline this save is entitled to claim, taken from the same reading of the fields
-        // that just went into `mail` — never `snapshot()` after the append returns, which reads
-        // them as they are *then*. Anything added in between is content the server does not have,
-        // and folding it in here would make `hasChanges` report clean and let the leave dialog
-        // dismiss the sheet over it.
+        // Taken from the same reading of the fields that went into `mail`, not after the append:
+        // anything added in between is not on the server, and counting it as saved would make
+        // `hasChanges` report clean and let the leave dialog dismiss the sheet over it.
         let savedBaseline = snapshot()
         let attachmentBytes = attachments.map(\.data.count)
         guard MailMessageBuilder.estimateEncodedSize(body: body, attachmentByteCounts: attachmentBytes) <= MailConstants.maxEncodedMessageBytes else {
@@ -576,8 +552,8 @@ final class MailComposeViewModel {
             baseline = savedBaseline
             return true
         } catch is MailFolderUnavailable {
-            // Set an error rather than failing silently -- the confirmation dialog's Save
-            // button would otherwise do nothing with no explanation (fix round 1, minor 4).
+            // Set an error rather than failing silently: the confirmation dialog's Save button
+            // would otherwise do nothing with no explanation.
             error = String(localized: "school_mail_error_generic")
             return false
         } catch {
@@ -605,14 +581,13 @@ final class MailComposeViewModel {
         )
     }
 
-    /// Uses `prefs.ownedDeleted(folder:uidValidity:)`/`setOwnedDeleted(_:)` with the *page's*
-    /// UIDVALIDITY (dispatch addition 6) -- never one read fresh right here, which would make
-    /// `MailMover.deletePermanently`'s own freshness guard compare a value against itself and
-    /// could never refuse (fix round 1, critical 1; same shape as `MailMessageViewModel.performMove`).
-    /// Refuses (does nothing, leaving the old draft copy behind -- harmless, the new one already
-    /// saved) when no cached page UIDVALIDITY is available to check against. `static` and taking
-    /// every dependency as a parameter so it never captures `self` across the `session.use`
-    /// closure it runs inside.
+    /// Uses `prefs.ownedDeleted(folder:uidValidity:)`/`setOwnedDeleted(_:)` with the page's
+    /// UIDVALIDITY, never one read fresh here: `MailMover.deletePermanently`'s freshness guard
+    /// would then compare a value against itself and could never refuse (the same shape as
+    /// `MailMessageViewModel.performMove`). With no cached page UIDVALIDITY to check against it
+    /// does nothing, leaving the old draft behind, which is harmless as the new one is saved.
+    /// `static`, with every dependency as a parameter, so it never captures `self` across the
+    /// `session.use` closure it runs inside.
     private static func removeDraft(uid: UInt32, folder: String, client: any MailClient, prefs: any MailPreferences,
                                     pageUIDValidity: UInt32?, wasAlreadyDeleted: Bool) async {
         guard let pageUIDValidity else { return }
@@ -649,13 +624,13 @@ final class MailComposeViewModel {
         }.joined(separator: ", ")
     }
 
-    /// Splits on top-level commas/semicolons (mirroring `MailAddress.parseList`'s own quote- and
-    /// angle-bracket-aware algorithm, duplicated here because that call silently drops a token it
-    /// can't parse -- compose needs the raw token back to report it) and keeps a token's original
-    /// text as invalid when it doesn't parse to a plausible address, or does but its local part or
-    /// domain carries a non-ASCII character -- the school SMTP server has no SMTPUTF8, so such a
-    /// token is only ever rejected here, in compose validation, never in the shared address parser
-    /// incoming mail uses to show a "From" (dispatch addition 1).
+    /// Splits on top-level commas and semicolons, mirroring `MailAddress.parseList`'s quote- and
+    /// angle-bracket-aware algorithm. It is duplicated because that call silently drops a token it
+    /// can't parse, and compose needs the raw token back to report it. A token's original text is
+    /// kept as invalid when it doesn't parse to a plausible address, or its local part or domain
+    /// carries a non-ASCII character. The school SMTP server has no SMTPUTF8, so such a token is
+    /// rejected only here, in compose validation, never in the shared address parser incoming mail
+    /// uses to show a "From".
     private static func parseRecipients(_ raw: String) -> (addresses: [MailAddress], invalid: [String]) {
         var addresses: [MailAddress] = []
         var invalid: [String] = []

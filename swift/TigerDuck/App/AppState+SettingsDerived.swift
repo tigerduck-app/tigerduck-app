@@ -1,11 +1,6 @@
-// Pure derivations over persisted settings — split out of AppState.swift.
-//
-// Each of these reads a stored, Defaults-backed property that has to stay
-// on the class itself and computes something from it; none of them hold
-// state of their own, so unlike their backing properties they're free to
-// live in an extension. Grouped together because they're small and
-// otherwise unrelated: accent color, the announcement-filter department
-// set, and the resolved visual-preset policy.
+// Pure derivations over Defaults-backed stored properties, which must stay on the
+// class. These hold no state, so they can live in an extension. They are small and
+// otherwise unrelated: accent color, announcement-filter departments, visual preset.
 
 import SwiftUI
 import Defaults

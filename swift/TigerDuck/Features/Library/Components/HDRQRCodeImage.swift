@@ -3,18 +3,14 @@ import SwiftUI
 import MetalKit
 import UIKit
 
-/// Renders a black/white QR `UIImage` into a `CAMetalLayer` that has
-/// `wantsExtendedDynamicRangeContent` enabled, so the "white" modules emit
-/// luminance well above the SDR clip point on EDR-capable displays
-/// (iPhone XS and newer).
+/// Renders a black/white QR `UIImage` into a `CAMetalLayer` with
+/// `wantsExtendedDynamicRangeContent` enabled, so the white modules emit
+/// luminance above the SDR clip point on EDR displays (iPhone XS and newer).
 ///
-/// We drive Metal directly because SwiftUI's `Image(...).allowedDynamicRange(.high)`
-/// modifier doesn't reliably promote synthetic UIImages — CoreImage's filter
-/// chain clamps to `0...1` in non-extended working spaces, and even when
-/// the resulting `UIImage` carries extended-range pixels, the SwiftUI
-/// recognizer doesn't always tag it as HDR. Bypassing the Image pipeline
-/// is the supported path documented in Apple's "EDR for video" / Core
-/// Animation HDR sessions.
+/// Metal, not `Image(...).allowedDynamicRange(.high)`, which does not reliably
+/// promote synthetic UIImages: CoreImage clamps to `0...1` in non-extended
+/// working spaces, and SwiftUI does not always tag even an extended-range one as HDR.
+/// Bypassing `Image` is the supported path in Apple's EDR and Core Animation HDR sessions.
 struct HDRQRCodeImage: UIViewRepresentable {
     /// `true` when this device exposes a Metal device — i.e. the EDR-backed
     /// renderer can run. When `false`, callers should fall back to the
@@ -91,10 +87,9 @@ final class EDRMetalQRView: UIView {
     }
 
     private func commonInit() {
-        // Transparency is configured unconditionally: the stack may never
-        // arrive — no Metal device, or a shader that will not compile — and
-        // the SDR fallback the caller stacks underneath has to stay visible
-        // when it doesn't.
+        // Transparency is set unconditionally: the Metal stack may never arrive (no
+        // device, or a shader that fails to compile), and the SDR fallback the
+        // caller stacks underneath must stay visible then.
         backgroundColor = .clear
         metalLayer.isOpaque = false
         metalLayer.pixelFormat = .rgba16Float
@@ -208,19 +203,12 @@ final class EDRMetalQRView: UIView {
 }
 /// The Metal objects, built once per process instead of once per view.
 ///
-/// `makeLibrary(source:)` invokes the Metal compiler at runtime. It used to
-/// run from `commonInit`, which UIKit reaches through
-/// `UIViewRepresentable.makeUIView` on the main thread — so every visit to
-/// the Library page paid a synchronous shader compile, and the whole UI, tab
-/// bar included, waited on it. A cold compile is the expensive one, and the
-/// view is recreated on every visit, so it was paid again and again.
-///
-/// Now it is built on a background queue and shared, so at worst one visit
-/// per launch waits, and that one does not block the main thread either.
-/// `MTKTextureLoader` moves here for the same reason it should never have
-/// been per-call: it is stateless and cheap to keep, not to make.
-///
-/// Only ever touched on the main queue, so the mutable statics need no lock.
+/// `makeLibrary(source:)` runs the Metal compiler. From `commonInit`, reached
+/// through `makeUIView` on the main thread, it would stall the whole UI on every
+/// Library visit, since the view is recreated each time. Built on a background
+/// queue and shared, at most one visit per launch waits, off the main thread.
+/// `MTKTextureLoader` lives here too: it is stateless, cheap to keep, not to make.
+/// The mutable statics are only touched on the main queue, so they need no lock.
 final class EDRMetalStack {
     let device: MTLDevice
     let commandQueue: MTLCommandQueue

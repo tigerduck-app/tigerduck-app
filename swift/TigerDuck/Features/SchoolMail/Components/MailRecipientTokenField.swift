@@ -6,9 +6,9 @@ import SwiftUI
 nonisolated enum MailRecipientTokens {
     /// Splits what has been typed into the recipients it finishes and what is still being typed.
     ///
-    /// `,` and `;` always end a recipient. A space ends one only once what came before it holds
-    /// an `@` — so `王大明 <wang@mail.ntust.edu.tw>` can still be typed name first — and never
-    /// inside quotes or angle brackets, where it is part of the name or the address.
+    /// Nothing inside quotes or angle brackets ends a recipient: it is part of the name or the
+    /// address. Outside them `,` and `;` always do, and a space does once what came before it
+    /// holds an `@`, so `Da-Ming Wang <wang@mail.ntust.edu.tw>` can still be typed name first.
     static func consume(_ typed: String) -> (finished: [String], remainder: String) {
         var finished: [String] = []
         var current = ""

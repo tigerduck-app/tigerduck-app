@@ -45,7 +45,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 - Per-semester / cumulative GPA, rankings, and per-course grades in one place
 - Interactive charts to track grade trends over time
 
-### 🏛️ **Library** (Experimental)
+### 🏛️ **Library**
 - Instant library entry QR code with zero delay
 
 ### 📬 **School Mail** (iOS)
@@ -115,33 +115,33 @@ It was created to solve common pain points: scattered resources, delayed notific
 
 | Version | Date | Highlights |
 |:---:|:---:|---|
-| **`v2.3.0`** | 2026-10-04 | 🎨 **A new What's New** — after an update, animated pages introduce new features one at a time, catching up on any versions you skipped, then list the release's highlights; this release introduces School Mail and offers to put Mail on your bottom bar, in Calendar's place or left of More, unless it's already there; new installs start with Home, Class table and Mail on the bottom bar; the class table's top-right buttons become a ⋯ menu that can export the timetable as an image to save or share; notifications stack separately for classes, homework, mail and everything else, and new-mail notifications show just the subject; HTML mail can be viewed in light mode; class Live Activities that start while the phone is locked now end right after class; the app tells you again when a new version is on the App Store |
-| **`v2.2.0`** | 2026-09-30 | 📬 **School Mail** — the iOS app now reads and sends your NTUST Mail2000 mail: Inbox, Sent, Drafts, Trash, Junk and All mail, with search, reply, forward, attachments, move and delete; it checks for new mail every few minutes and notifies you; sign-in fills in your NTUST account, and the password is stored encrypted on this device only; the phone talks to the school's mail server directly, never through TigerDuck's servers; signing out or switching accounts takes the previous account's library QR code off the screen right away |
-| **`v2.1.4`** | 2026-09-25 | Class Live Activities no longer pop up on holidays: the schedule uploaded to the server skips holiday classes, and a holiday announced after the push (such as a typhoon day) dismisses the activities already on screen once the app is opened; Today's courses and the home Time machine no longer list a holiday's classes; flipping “Still have class?” in the calendar updates the schedule, widgets and class table right away |
-| **`v2.1.3`** | 2026-09-24 | A new Others page under About; open-source licenses are listed in full in the app, in a window of their own on the Mac; pages opened from More drop the back arrow; the library QR code is up the moment you return to the tab, its brightness boost follows the screen the code is actually on, and the screen no longer stays at full brightness after you leave; course details keep the GE dimension and course duration across a sync |
-| **`v2.1.2`** | 2026-09-19 | 📋 **The class table previews the classroom in each cell** — with a toggle in Settings; course details gain the GE dimension and the course duration, and a tap copies the course code; half-credit courses no longer count as zero in credit totals, the transcript or your GPA |
-| **`v2.1.1`** | 2026-09-18 | 📚 **Fixed cross-listed classes breaking the Moodle and assignment links** |
-| **`v2.1.0`** | 2026-09-12 | 🔔 **Assignment reminders move to the server** — iOS no longer depends on local scheduling, so a reminder arrives on time even when the app is closed; assignments already submitted on Moodle stop reminding; notification settings sync across devices; the expired-Moodle-login notification finally carries text and translations instead of arriving blank; the TigerSync settings screen is reorganised on all three platforms |
-| **`v2.0.3`** | 2026-09-11 | The class table can pin every period, redraws the moment a period is toggled, and the evening period clock is corrected; the Dynamic Island uses the app icon, names the end state instead of showing a dash, and registers its end time against the real clock; widgets stop painting opaque surfaces outside full-colour rendering, and Now and Today share the class table's capsule; TigerSync is listed properly in sync status and among the calendar's sync sources; a sign-in made on the Library screen is visible in Settings right away |
-| **`v2.0.2`** | 2026-09-10 | 📅 **Academic calendar** — the school's published term dates, holidays and make-up days, on iOS and Mac; Live Activities now start from a server push, so a class appears on time even from the background; a semester reset on another device empties this one and refills it from the portal; class table gains per-period start/end times, period 10 and A/B/C display options; the custom API endpoint is a supported, validated setting |
-| **`v2.0.1`** | 2026-09-07 | Semester picker lists only terms from the admission year on, so space-padded legacy codes no longer leak in; theme colour reaches icons, the library QR countdown ring, the GPA trend line and the Mac Settings window; the course-selection term is owned by its enrolment list, so dropped courses stop coming back from Moodle |
-| **`v2.0.0`** | 2026-08-23 | 🚀 **Cloud sync GA** — real-time course & assignment upload, macOS push & account sync, 401 auto-recovery, server push channel settings |
-| **`v1.8.1`** | 2026-08-21 | The library QR leans on HDR local highlighting again instead of overriding whole-device brightness — the EDR check read "is HDR content on screen right now", which is always false before the QR has drawn, so EDR devices still ended up pinned at full brightness |
-| **`v1.8.0`** | 2026-08-20 | 🔔 **Bulletin push notifications** — device registration, push preferences and bulletin deep links end to end; update prompts plus a What's New sheet after installing; flip the phone face-down to open the library QR; passwords and the library QR masked in screenshots and recordings; TLS SPKI pinning on NTUST and Library traffic; course-name font-size slider, Settings reordered to match Android, macOS surfaces and colour-blind-friendly conflict marking |
-| **`v1.7.3`** | 2026-08-20 | Manually added courses stay in the semester they were added to — they previously showed up in every semester's timetable, Home and widgets |
-| **`v1.7.2`** | 2026-08-20 | 📋 **Term-window gating** — Home's time slider and the class table's today carousel appear only while classes are in session (2026-09-07 – 2026-12-25), so neither shows a blank or wrong-term day outside it; the current term is pinned to 115-1 |
-| **`v1.7.1`** | 2026-08-20 | 📋 **Class-table semester fixes** — the semester list now comes from the university's course-query API, so a term released early (115-1) is selectable right away; 選課 enrolments are filed under the term that system actually has open, so 114-2 and 115-1 no longer render into one grid; the picker reopens on your last pick, or the newest term if you never picked one; one-shot clear of course caches written under the wrong term |
-| **`v1.7.0`** | 2026-05-18 | 🔔 **Apple Watch app launch** — Library QR as the leftmost tab, WatchConnectivity credential push, fullscreen QR + idle-fade page dots, localized QR-page strings; macOS dashboard and class-table unified through `CanonicalCourseProvider`, longer next-class time range; Home / class-table card rows lock to the tallest seen, conflicting (衝堂) classes laid out side-by-side at their own offsets; max screen brightness while Library QR is shown; onboarding keyboard anchoring + post-grant push enablement fixes; backend split into a dedicated `tigerduck-backend` repo; bumped to Xcode 26.4 with Swift 6 strict concurrency clean |
-| **`v1.6.1`** | 2026-05-01 | 🤖 **Android FCM push delivery** (groundwork for the Android client; batched fan-out, bad-token classification), API base path bumped from `/v1` to `/v2` (`/v1` kept as deprecated alias), iOS device registration now reports `platform=apple` |
-| **`v1.6.0`** | 2026-05-01 | 🌏 **i18n (67+ locales)**, in-app language switcher, RTL layout fixes, course/classroom **abbreviation** submodule, locale-scoped course cache |
-| **`v1.5.2`** | 2026-04-24 | Live Activity push-token retry/cleanup, scheduler token pruning, mismatched-snapshot guard |
-| **`v1.5.1`** | 2026-04-24 | Class-table "today's courses" pinning + assignment list cleanup fixes |
-| **`v1.5.0`** | 2026-04-24 | 📣 **Bulletins overhaul** — server-driven, LLM-classified & de-duped, subscribable categories, NULL-safe pagination |
-| **`v1.4.0`** | 2026-04-22 | 🚀 **Push backend launched** — FastAPI + APNs Push-to-Start, schedule sync, shared-secret auth |
-| **`v1.3.6`** | 2026-04-22 | 📊 **GPA & Rankings** wired into the main tab + interactive charts |
-| **`v1.3.3`** | 2026-04-21 | Assignment-status semantic color badges, submission timemodified plumbing |
-| **`v1.3.2`** | 2026-04-21 | Moodle OIDC migration, `30ms` server probe replacing `1h` TTL, 24h course cache |
-| **`v1.3.0`** | 2026-04-17 | Dynamic Island (Live Activity) redesign, Settings polish |
+| `v2.3.0` | 2026-10-04 | Redesigned What's New, class table export as an image, notifications stacked by type, light mode for HTML mail, update prompt fix |
+| `v2.2.0` | 2026-09-30 | School Mail on iOS: read and send NTUST Mail2000 mail, with new-mail notifications |
+| `v2.1.4` | 2026-09-25 | No class Live Activities or class lists on holidays |
+| `v2.1.3` | 2026-09-24 | New Others page with open-source licenses in the app, library QR display and brightness fixes |
+| `v2.1.2` | 2026-09-19 | Classroom preview in class table cells, GE dimension and course duration in course details, half-credit courses counted correctly |
+| `v2.1.1` | 2026-09-18 | Fixed cross-listed classes not linking to Moodle and assignments |
+| `v2.1.0` | 2026-09-12 | Assignment reminders sent by the server, no reminders for submitted assignments, notification settings synced across devices |
+| `v2.0.3` | 2026-09-11 | Option to show every period in the class table, evening period times fixed, Live Activity and widget appearance fixes |
+| `v2.0.2` | 2026-09-10 | Academic calendar, class Live Activities started by server push, period start and end times in the class table |
+| `v2.0.1` | 2026-09-07 | Semester picker lists only terms since admission, theme color in more places, dropped courses no longer come back |
+| `v2.0.0` | 2026-08-23 | Cloud sync: courses and assignments synced in real time, macOS push and account sync |
+| `v1.8.1` | 2026-08-21 | The library QR no longer locks the whole device at full brightness |
+| `v1.8.0` | 2026-08-20 | Bulletin push notifications, update prompts, flip the phone face down to open the library QR, passwords and the QR hidden in screenshots and recordings |
+| `v1.7.3` | 2026-08-20 | Manually added courses stay in the semester they were added to |
+| `v1.7.2` | 2026-08-20 | Home time slider and Today's courses shown only during the semester |
+| `v1.7.1` | 2026-08-20 | Semester list from the university's course query API, two semesters no longer merged into one class table |
+| `v1.7.0` | 2026-05-18 | Apple Watch app with the library QR, conflicting classes shown side by side, library QR at full brightness |
+| `v1.6.1` | 2026-05-01 | Android push delivery on the backend, API path moved to `/v2` |
+| `v1.6.0` | 2026-05-01 | 67+ languages with an in-app switcher, right-to-left layout fixes, course and classroom abbreviations |
+| `v1.5.2` | 2026-04-24 | Better Live Activity push token retry and cleanup |
+| `v1.5.1` | 2026-04-24 | Today's courses and assignment list fixes |
+| `v1.5.0` | 2026-04-24 | Bulletins redesign: served by the server, classified and de-duplicated, subscribable categories |
+| `v1.4.0` | 2026-04-22 | Push backend, Live Activities started by push |
+| `v1.3.6` | 2026-04-22 | GPA and rankings in the main tabs, with interactive charts |
+| `v1.3.3` | 2026-04-21 | Color-coded assignment status |
+| `v1.3.2` | 2026-04-21 | Support for the new Moodle sign-in, course cache extended to 24 hours |
+| `v1.3.0` | 2026-04-17 | Redesigned Live Activity, Settings polish |
 
 <br/>
 
@@ -339,8 +339,10 @@ Before submitting, please make sure to:
 - watchOS 11 / 26 (/ 27 if possible)
 - macOS 15 / 26 (/ 27 if possible)
 3. Name your branch using `feature/your-feature` or `fix/your-fix`
-4. Target the `dev` branch when opening a PR, and enable Copilot review
+4. Target the `dev` branch when opening a PR, and keep fixing the code until Greptile's confidence score reaches 5/5; a review stuck at 3 or 4 for an unexpected reason is handled case by case
 5. For translation strings, open a separate PR against the `app-translation/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
+6. Write code comments in English and keep them short: say why, not what the code does or how it changed. The full rules are in the Comments section of [AGENTS.md](AGENTS.md); CI checks language, length and citations
+7. Plan work that spans sessions, changes the architecture or needs both maintainers to agree as an [OpenSpec](https://github.com/Fission-AI/OpenSpec) change in `openspec/changes/`, committed with the work; see the Planning section of [AGENTS.md](AGENTS.md)
 
 ## License
 This project is licensed under the [GNU Affero General Public License v3.0](LICENSE).

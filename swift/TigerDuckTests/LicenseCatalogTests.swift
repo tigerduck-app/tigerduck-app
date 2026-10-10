@@ -6,6 +6,7 @@ import Testing
 /// The bundled `licenses.json` that Settings → Others → Open-source licences
 /// reads, as `tools/generate_licenses.py` writes it.
 @Suite("Open-source licences")
+@MainActor
 struct LicenseCatalogTests {
 
     @Test("the bundled list loads, TigerDuck's own licence first")

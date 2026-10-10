@@ -15,11 +15,11 @@ final class SDAssignment {
     var moodleUrl: String?
     /// Final cutoff from Moodle. When `nil`, the assignment keeps accepting
     /// late submissions indefinitely; when non-`nil`, submissions past this
-    /// instant are rejected ("逾期拒收").
+    /// instant are rejected (``AssignmentStatus/overdueRejected``).
     var cutoffDate: Date?
     /// Time the submission was last modified on Moodle. When `isCompleted`
     /// is true and this is greater than `dueDate`, the submission was late
-    /// ("已遲交").
+    /// (``AssignmentStatus/submittedLate``).
     var submittedAt: Date?
 
     init(

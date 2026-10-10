@@ -3,8 +3,8 @@ import BackgroundTasks
 import Foundation
 import UserNotifications
 
-/// School Mail's Background App Refresh (design doc §8.5). iOS decides when it runs —
-/// often hours apart — so the UI never promises timing.
+/// School Mail's Background App Refresh. iOS decides when it runs, often hours apart, so the
+/// UI never promises timing.
 nonisolated enum MailBackgroundRefresh {
     /// Must run before `application(_:didFinishLaunchingWithOptions:)` returns.
     static func register() {
@@ -95,7 +95,7 @@ nonisolated enum MailForegroundCheck {
         return now.timeIntervalSince(lastCheck) >= throttle
     }
 
-    /// Every return to the foreground, at most once a minute (§8.5).
+    /// Every return to the foreground, at most once a minute.
     static func runIfDue(prefs: any MailPreferences = DefaultsMailPreferences(), now: Date = Date()) async {
         guard SchoolMailAvailability.isEnabled, isDue(lastCheck: prefs.lastCheckAt, now: now) else { return }
         _ = await MailChecker.shared.check(trigger: .foreground)

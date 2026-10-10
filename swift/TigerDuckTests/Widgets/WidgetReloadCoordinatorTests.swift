@@ -14,28 +14,41 @@ struct WidgetReloadCoordinatorTests {
         func reloadAllTimelines() { count.withLock { $0 += 1 } }
     }
 
-    // Waits on the reload count rather than on fixed sleeps: on a loaded runner
-    // a 50 ms debounce can take far longer than 120 ms to fire, and a second
-    // request made before it fires cancels it — a correct coordinator then
-    // reads as broken.
+    // The debounce wait is a `ManualSleeper`, so a window ends when the test fires it: on a
+    // loaded runner a real one can take far longer to end, and a second request made before
+    // it ends cancels it, so a correct coordinator would read as broken.
 
     @Test func collapses_rapidCalls_intoOne() async throws {
         let fake = FakeReloader()
-        let coordinator = WidgetReloadCoordinator(reloader: fake, debounceMs: 50)
-        for _ in 0..<5 { coordinator.requestReload() }
-        try await waitUntil { fake.callCount >= 1 }
-        // Several more debounce windows: long enough for any request that was
-        // not collapsed to have fired as well.
-        try await Task.sleep(for: .milliseconds(200))
+        let timer = ManualSleeper()
+        let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { await timer.sleep(for: $0) })
+        var windows: [Task<Void, Never>] = []
+        for _ in 0..<5 {
+            coordinator.requestReload()
+            windows.append(try #require(coordinator.pendingTask))
+        }
+        try await timer.waitUntilArmed(atLeast: 5)
+        #expect(await timer.requestedDurations == [Duration](repeating: .milliseconds(300), count: 5))
+        #expect(fake.callCount == 0)
+        // Each request cancelled the window before it, which ends that wait; firing ends the last.
+        // Counting once every window has finished leaves no late reload unseen.
+        await timer.fire()
+        for window in windows { await window.value }
         #expect(fake.callCount == 1)
     }
 
     @Test func fires_oncePerWindow() async throws {
         let fake = FakeReloader()
-        let coordinator = WidgetReloadCoordinator(reloader: fake, debounceMs: 50)
+        let timer = ManualSleeper()
+        let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { await timer.sleep(for: $0) })
         coordinator.requestReload()
+        try await timer.waitUntilArmed()
+        await timer.fire()
         try await waitUntil { fake.callCount == 1 }
         coordinator.requestReload()
+        try await timer.waitUntilArmed(atLeast: 2)
+        #expect(await timer.requestedDurations == [.milliseconds(300), .milliseconds(300)])
+        await timer.fire()
         try await waitUntil { fake.callCount == 2 }
     }
 }

@@ -16,12 +16,9 @@ struct TimeSliderSection: View {
         .onAppear {
             viewModel.configure(courses: courses)
         }
-        // Reconfigure whenever any field the slot rendering depends on shifts
-        // — not just enrolment changes. After a sync the same courseNo can
-        // carry a new schedule, classroom map, or rename, and slots tapped
-        // from the slider now ferry the whole `CourseTimeSlot` into the
-        // detail sheet; keeping stale slot data here would surface old
-        // weekday / time / classroom / name in the sheet.
+        // Reconfigure on every field a slot renders, not only on enrolment: a sync
+        // can give the same courseNo a new schedule, classroom map or name, and the
+        // detail sheet shows whatever `CourseTimeSlot` the tapped slot holds.
         .onChange(of: courses.map { course in
             "\(course.courseNo)|\(course.scheduleJSON)|\(course.classroomMapJSON)|\(course.displayName)"
         }) {
@@ -64,10 +61,9 @@ struct TimeSliderSection: View {
                     viewModel.returnToNow()
                 }
                 .font(.caption.weight(.semibold))
-                // Padding belongs to the modifier, which applies it on the
-                // pre-26 branch only. Repeating it here double-padded this
-                // button below iOS 26 and left it visibly larger than
-                // Calendar's "Today", which uses the same modifier bare.
+                // No padding here: the modifier pads the pre-26 branch itself,
+                // and more would make this button larger than Calendar's
+                // "Today", which uses the same modifier bare.
                 .modifier(GlassTextButtonModifier())
                 .transition(.opacity.combined(with: .scale(0.85, anchor: .trailing)))
             }
@@ -97,17 +93,9 @@ struct TimeSliderSection: View {
                     )
                 }
             }
-            // Drive `tick` from `.onChange(of: context.date)` rather
-            // than directly inside the body. Mutating `selectedTime` /
-            // rebuilding the timeline as a side effect of view-body
-            // evaluation triggers SwiftUI's "Modifying state during
-            // view update" warning on recent SDKs and is a documented
-            // anti-pattern with `TimelineView`.
-            //
-            // The TimelineView itself is just a real-wall-clock driver
-            // for re-renders; pass `AppClock.now()` (not `context.date`)
-            // so a debug override pins the slider to fake time instead
-            // of being overwritten back to real time on the next tick.
+            // Tick from `.onChange`, not the body: mutating state during body evaluation
+            // trips "Modifying state during view update". Pass `AppClock.now()`, not
+            // `context.date`, so the next tick does not undo a debug time override.
             .onChange(of: context.date) { _, _ in
                 viewModel.tick(AppClock.now())
             }

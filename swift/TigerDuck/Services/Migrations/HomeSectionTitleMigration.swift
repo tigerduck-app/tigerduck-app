@@ -1,13 +1,8 @@
 import Defaults
 import Foundation
 
-/// One-shot migration: renames any persisted "待辦作業" section title to "作業".
-///
-/// Context: The `homeSectionLayoutData` Defaults key stores an array of
-/// `HomeSection` structs as JSON. When this migration runs, it reads that
-/// array, patches the `upcomingAssignments` entry's title if it still says
-/// "待辦作業", writes it back, and sets a completion flag so it never runs
-/// again.
+/// One-shot migration: renames a persisted `upcomingAssignments` section title still set to the
+/// old Chinese label ("To-do assignments", the literal below) to its `defaultTitle`.
 enum HomeSectionTitleMigration {
     private static let doneKey = "HomeSectionTitleMigration.v1.done"
 

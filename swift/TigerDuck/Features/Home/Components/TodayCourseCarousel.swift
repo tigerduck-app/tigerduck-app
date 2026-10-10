@@ -11,17 +11,12 @@ private let carouselOngoingPeek: CGFloat = 36
 
 /// Where the today's-courses row should sit so the ongoing class leads it.
 ///
-/// `isOngoing` is per card, in display order, because a card's width depends
-/// on which kind it is — two classes can overlap, so a wide ongoing card can
-/// sit before the one being scrolled to.
+/// `isOngoing` is per card, in display order, because width depends on the card
+/// kind and overlapping classes can put a wide ongoing card before the target.
 ///
-/// Returns 0 when nothing is ongoing (`firstOngoingIndex` < 0) or when the
-/// ongoing class is already first: the day should then be read from its
-/// start, not nudged off the edge.
-///
-/// Reads the card widths off the cards themselves rather than repeating the
-/// numbers, so a resized card cannot silently desync the scroll from the
-/// layout.
+/// Returns 0 when nothing is ongoing (`firstOngoingIndex` < 0) or the ongoing
+/// class is already first, so the day reads from its start. Widths come from the
+/// cards' own constants, so resizing a card cannot desync the scroll from the layout.
 func carouselScrollTarget(isOngoing: [Bool], firstOngoingIndex: Int) -> CGFloat {
     guard firstOngoingIndex > 0 else { return 0 }
     var x: CGFloat = 0
@@ -64,10 +59,9 @@ struct TodayCourseCarousel: View {
     #endif
 
     var body: some View {
-        // The body and its helpers (`today`, `courseProgress`, etc.) read
-        // `AppClock.now()`, which Observation can't track. Pulling
-        // `AppClockState.shared.version` here wires the view's dependency
-        // graph to debug time-override flips.
+        // The body and its helpers read `AppClock.now()`, which Observation cannot
+        // track. Reading `AppClockState.shared.version` here makes the view re-render
+        // when the debug time override flips.
         let _ = AppClockState.shared.version
         if courses.isEmpty {
             noCourseView
@@ -116,16 +110,13 @@ struct TodayCourseCarousel: View {
             .padding(.horizontal, carouselEdgeInset)
         }
 
-        // Only iOS presents this view — the Mac draws its timetable from
-        // MacClassTableView — and ScrollPosition needs macOS 15 against a
-        // macOS 14 deployment target, so the self-scroll is compiled in for
-        // iOS alone rather than version-gated at runtime.
+        // Only iOS presents this view (the Mac uses MacClassTableView), and
+        // ScrollPosition needs macOS 15 against a macOS 14 deployment target, so
+        // the self-scroll is compiled for iOS alone instead of gated at runtime.
         #if os(iOS)
-        // Scroll the ongoing class to the front, leaving a sliver of the one
-        // before it so the row reads as "you are here" rather than as the
-        // start of the day. Keyed on the index alone, not on the course list:
-        // that list is rebuilt every minute from the clock tick, and keying
-        // on it would yank the row back under anyone who had scrolled away.
+        // Scroll the ongoing class to the front with a sliver of the one before, so
+        // the row reads as "you are here". Keyed on the index alone: the course list
+        // is rebuilt every minute, so keying on it would undo the user's own scrolling.
         return row
             .scrollPosition($scrollPosition)
             .onChange(of: firstOngoingIndex, initial: true) { _, index in
@@ -255,11 +246,9 @@ private struct TodayCourseCard: View {
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
 
-            // Push the time row to the bottom so the card visually fills
-            // when stretched to match a taller sibling (e.g. the
-            // `CurrentClassCard`'s progress + time block). `minLength: 0`
-            // keeps short cards from forcing extra height when nothing is
-            // stretching them.
+            // Push the time row to the bottom so a card stretched to a taller sibling,
+            // such as `CurrentClassCard`, still looks filled. `minLength: 0` adds no
+            // height when nothing stretches the card.
             Spacer(minLength: 0)
 
             if let progress, isActive {
@@ -271,12 +260,9 @@ private struct TodayCourseCard: View {
                 .font(TigerDuckTheme.Typography.caption)
                 .foregroundStyle(Color.textSecondary)
         }
-        // Inner frame fixes the card's width; outer `maxHeight: .infinity`
-        // lets the colored surface stretch to whatever row height
-        // `EqualHeightHStack` settled on, so a short card visually
-        // matches a taller sibling like `CurrentClassCard`. `.topLeading`
-        // keeps content anchored to the top while the background grows
-        // downward.
+        // The inner frame fixes the width; the outer one stretches the surface to the
+        // row height `EqualHeightHStack` settled on, so a short card matches a taller
+        // sibling. `.topLeading` keeps content at the top while the background grows.
         .frame(width: Self.width, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .cardPadding()

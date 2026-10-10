@@ -135,11 +135,9 @@ actor SyncOutbox {
     func drain(
         execute: @Sendable (ResolvedSyncOp) async throws -> Void
     ) async -> Bool {
-        // Iterate over a snapshot: the actor is reentrant at `await execute`,
-        // so `enqueue` can mutate `entries` mid-drain. Entries added during
-        // the drain are merged back at the end and handled on the next tick.
-        // A `clearAll()` during the drain bumps `generation`: stop executing
-        // and never merge back, or the drain would resurrect cleared entries.
+        // Iterate a snapshot: the actor is reentrant at `await execute`, so `enqueue` can change
+        // `entries` mid-drain; new entries merge back at the end for the next tick. A `clearAll()`
+        // mid-drain bumps `generation`: stop and never merge back, or cleared entries resurrect.
         let snapshot = entries
         let snapshotIds = Set(snapshot.map(\.id))
         let startGeneration = generation
@@ -150,11 +148,9 @@ actor SyncOutbox {
             guard generation == startGeneration else { return }
             kept.append(contentsOf: snapshot[fromIndex...])
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
-            // A mid-drain enqueue may share a dedupKey with a retained entry
-            // (e.g. a new color pick while the old PATCH was still failing).
-            // The newly-enqueued op is the last writer, so drop any retained
-            // entry it supersedes — otherwise both persist and the next drain
-            // PATCHes the stale value before the fresh one.
+            // A mid-drain enqueue can share a dedupKey with a retained entry. The new op is the
+            // last writer, so drop the retained entry it supersedes; keeping both would make the
+            // next drain PATCH the stale value before the fresh one.
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
             entries = kept.filter { !freshKeys.contains($0.op.dedupKey) } + newlyEnqueued
             persist()

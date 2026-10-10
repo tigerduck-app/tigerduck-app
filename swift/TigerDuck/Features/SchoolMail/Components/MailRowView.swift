@@ -30,10 +30,9 @@ struct MailRowView: View {
                 }
                 Spacer(minLength: 0)
                 if summary.hasAttachments {
-                    // Labelled rather than hidden: it is the only thing in the row that says the
-                    // mail has attachments. Unlabelled, VoiceOver read "paperclip" between the
-                    // sender and the date. (The unread dot above is hidden instead — the
-                    // semibold sender already carries that.)
+                    // Labelled, not hidden: nothing else in the row says the mail has attachments,
+                    // and unlabelled, VoiceOver reads "paperclip". The unread dot above is hidden
+                    // instead, because the semibold sender already carries that.
                     Image(systemName: "paperclip")
                         .font(TigerDuckTheme.Typography.caption)
                         .foregroundStyle(Color.textSecondary)

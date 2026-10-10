@@ -95,10 +95,9 @@ final class HomeViewModel {
         case .incomplete:
             upcomingAssignments = allAssignmentsCache.upcomingSorted()
         case .all:
-            // Time-agnostic on purpose — the past/future partition runs in
-            // `UpcomingAssignmentsView` under its `TimelineView`, so rows
-            // re-bucket as the clock advances instead of staying frozen
-            // against the `Date()` captured here.
+            // Time-agnostic: `UpcomingAssignmentsView` splits past from future under
+            // its `TimelineView`, so rows re-bucket as the clock advances instead of
+            // freezing at a `Date()` captured here.
             upcomingAssignments = allAssignmentsCache.allCandidates()
         case .ignored:
             upcomingAssignments = allAssignmentsCache.ignoredSorted()
@@ -154,11 +153,9 @@ final class HomeViewModel {
     private func fetchData(authService: AuthService) async {
         let manager = NTUSTSessionManager.shared
 
-        // `isReachable()` adds Apple's captive-portal probe on top of
-        // the bare interface-up check, so refreshing under a hotel /
-        // campus login Wi-Fi surfaces "no internet" instead of the
-        // ATS pin failure that would otherwise come from the actual
-        // NTUST / Moodle call.
+        // `isReachable()` adds Apple's captive-portal probe to the interface-up check,
+        // so a hotel or campus login Wi-Fi shows "no internet" rather than the pin
+        // failure the NTUST or Moodle call would hit.
         guard await NetworkMonitor.shared.isReachable() else {
             await MainActor.run { manager.loadingState = .error(String(localized: "error_network_unavailable")) }
             return
@@ -166,13 +163,9 @@ final class HomeViewModel {
 
         await MainActor.run { manager.loadingState = .loading }
 
-        // Per product spec, Home pull-to-refresh only re-fetches Moodle
-        // assignments. The course list is populated by
-        // AppState.backgroundSync on cold launch and refreshed on demand
-        // from ClassTable pull-to-refresh (which passes
-        // `forceRefresh: true`); Home reads it via courseProvider. This
-        // avoids paying the 3–5s NTUST SSO round-trip whenever the user
-        // just wants to see if any new assignments landed.
+        // Home refreshes only Moodle assignments, sparing the 3-5 s NTUST SSO round
+        // trip. Courses come from AppState.backgroundSync at cold launch and from
+        // ClassTable pull-to-refresh (`forceRefresh: true`); Home reads courseProvider.
         let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
         let allCourses = courseProvider.currentCourses()
         let todayFiltered = allCourses.coursesForToday()

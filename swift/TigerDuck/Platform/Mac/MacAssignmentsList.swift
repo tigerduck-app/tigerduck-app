@@ -24,10 +24,9 @@ struct MacAssignmentsList: View {
     }
 
     var body: some View {
-        // TimelineView so "due in 2h" labels and the past/present
-        // partition for the "All" tab tick on real wall time. AppClock
-        // is what gets read inside — same contract as iPhone — so a
-        // debug clock override flows through to both.
+        // TimelineView re-renders the "due in 2h" labels and the "All" tab's past/present split
+        // on real wall time; the content reads `AppClock`, as on iPhone, so a debug clock
+        // override flows through to both.
         TimelineView(.periodic(from: .now, by: 60)) { _ in
             content(now: AppClock.now())
         }
@@ -235,9 +234,8 @@ final class AssignmentStore {
     /// archived list sorted reverse-chronological, all-tab partitioned
     /// past-vs-future like the iPhone view does.
     func visibleAssignments(filter: AssignmentFilter, now: Date) -> [SDAssignment] {
-        // Touch `version` so SwiftUI's body re-runs when a mutation
-        // bumps it. Without this read, archive / complete from the
-        // context menu would update the cache but not the visible list
+        // Reading `version` makes SwiftUI re-run the body when a mutation bumps it. Without it,
+        // archive or complete from the context menu updates the cache but not the visible list
         // until the next AppState data notification.
         _ = version
         let all = DataCache.shared.loadAssignments()

@@ -1,31 +1,23 @@
 import Defaults
 import Foundation
 
-/// Cross-platform resolver for the push backend URL.
+/// Cross-platform resolver for the push backend URL, plus the
+/// `Secrets.plist` helper that reads the optional `DebugServerURL` LAN
+/// backend override.
 ///
-/// Also provides the `Secrets.plist` helper used to read the optional
-/// `DebugServerURL` LAN-backend override.
-///
-/// Extracted from `PushCoordinator` so non-push HTTP clients
-/// (e.g. `BulletinAPIClient`, which talks to the same backend for the
-/// bulletin board) can resolve the same URL/credentials without
-/// importing the iOS-only ActivityKit-coupled coordinator.
+/// Kept apart from `PushCoordinator` so other clients of the same backend,
+/// such as `BulletinAPIClient`, can resolve its URL and credentials without
+/// importing the iOS-only, ActivityKit-coupled coordinator.
 nonisolated enum PushServerConfig {
 
-    /// Resolves the backend URL for this build.
-    ///
-    /// Every build honours ``DebugEndpointStore/currentOverride()`` first
-    /// (Keychain — set via Settings → Other settings → API endpoint;
-    /// persists across reinstall, gated by ``isOverrideAllowed(_:)``).
-    ///
+    /// Resolves the backend URL for this build. Every build first honours
+    /// ``DebugEndpointStore/currentOverride()``, a Keychain value set in
+    /// Settings > Other settings > API endpoint that survives reinstall.
     /// Without one, Release returns ``AppConstants/productionPushServerURL``
-    /// and Debug resolves in priority order:
-    ///   1. `Defaults[.pushServerURLOverride]` (UserDefaults escape hatch,
-    ///      gated by ``isOverrideAllowed(_:)``)
-    ///   2. `Secrets.plist["DebugServerURL"]` (per-developer LAN backend;
-    ///      file is gitignored so each contributor sets their own Mac's IP)
-    ///   3. ``AppConstants/fallbackDebugPushServerURL`` (Simulator-friendly
-    ///      `http://localhost:40000/v3`)
+    /// and Debug tries `Defaults[.pushServerURLOverride]`, then the gitignored
+    /// per-developer LAN URL in `Secrets.plist["DebugServerURL"]`, then the
+    /// Simulator-friendly ``AppConstants/fallbackDebugPushServerURL``. The
+    /// Keychain and Defaults values must pass ``isOverrideAllowed(_:)``.
     static func resolveServerURL() -> URL {
         if let raw = DebugEndpointStore.currentOverride(),
            let url = URL(string: raw),
@@ -48,30 +40,14 @@ nonisolated enum PushServerConfig {
         #endif
     }
 
-    /// Whether `url` may be used as a runtime override.
-    ///
-    /// TigerDuck's backend is open source and self-hostable, so the host is
-    /// deliberately **not** restricted to an allowlist — anyone may point
-    /// the app at their own deployment. What is enforced is transport:
-    ///
-    /// - **Private / loopback / link-local addresses** (see
-    ///   ``isPrivateOrLoopbackHost(_:)``) accept `http://` as well as
-    ///   `https://`. A backend on your own LAN or in the Simulator
-    ///   typically terminates no TLS, and the traffic never leaves the
-    ///   local link, so requiring a certificate there would block the
-    ///   common self-hosting case for no real gain.
-    /// - **Everything else** — public IP literals *and* hostnames — must
-    ///   speak `https://`. These requests carry a Bearer token
-    ///   (`AuthTokenManager`), and cleartext to a routable address puts it
-    ///   on the wire for anyone on the path.
-    ///
-    /// Note the deliberate tradeoff this replaced: the previous
-    /// `*.api.tigerduck.app` allowlist also meant a Keychain value seeded
-    /// by a restored backup or MDM could not redirect the app anywhere
-    /// interesting. That mitigation is gone by design — self-hosting
-    /// requires it — and the remaining defence is the HTTPS floor plus the
-    /// fact that ``DebugEndpointStore/setOverride(_:)`` only writes an
-    /// endpoint that answered a TigerDuck health probe.
+    /// Whether `url` may be used as a runtime override. The backend is open
+    /// source and self-hostable, so any host is allowed; only transport is
+    /// checked. ``isPrivateOrLoopbackHost(_:)`` hosts may use `http://`, as LAN
+    /// and Simulator backends rarely have TLS and the traffic stays local.
+    /// Every other host needs `https://`, because requests carry the
+    /// `AuthTokenManager` Bearer token. With no host allowlist, a Keychain
+    /// value seeded by a backup or MDM can redirect the app.
+    /// See docs/decisions/0022-self-hosted-endpoint-override.md.
     static func isOverrideAllowed(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
@@ -101,11 +77,9 @@ nonisolated enum PushServerConfig {
         if let rewritten = components.url {
             return rewritten
         }
-        // Should be unreachable: we only flipped the scheme on a URL that
-        // already round-tripped through URLComponents above. If it ever
-        // fires, returning `url` would silently re-enable the
-        // WRONG_VERSION_NUMBER handshake failure this helper exists to
-        // prevent — log loudly so we notice in Sentry.
+        // Should be unreachable: only the scheme changed on a URL that
+        // URLComponents already parsed. Returning `url` revives the handshake
+        // failure this helper prevents, so assert and report it to Sentry.
         assertionFailure("PushServerConfig.normalize: URLComponents.url returned nil after scheme rewrite for \(url.absoluteString)")
         AppLogger.captureError(
             PushServerConfigError.schemeRewriteProducedNilURL,
@@ -116,19 +90,14 @@ nonisolated enum PushServerConfig {
 
     // MARK: - Host classification
 
-    /// True when `host` is an address that cannot be routed off the local
-    /// network, and so may be talked to over plain HTTP.
+    /// True when `host` cannot be routed off the local network, and so may
+    /// be reached over plain HTTP: `localhost` and RFC 6761 `*.localhost`,
+    /// IPv4 loopback, RFC 1918 and link-local, IPv6 `::1`, `fc00::/7` and
+    /// `fe80::/10`. IPv4-mapped forms such as `::ffff:192.168.1.5` are judged
+    /// by their IPv4 address, not waved through.
     ///
-    /// Covers `localhost` (and RFC 6761's `*.localhost`), IPv4 loopback /
-    /// RFC1918 / link-local, and the IPv6 equivalents — loopback `::1`,
-    /// unique-local `fc00::/7`, link-local `fe80::/10`, plus IPv4-mapped
-    /// forms like `::ffff:192.168.1.5`, which resolve to an IPv4 address
-    /// and must be classified by that address rather than waved through.
-    ///
-    /// Deliberately excluded: `100.64.0.0/10` (CGNAT) is routable by the
-    /// carrier, and `*.local` mDNS names, which are link-local in practice
-    /// but are names rather than the IP ranges this gate is specified in
-    /// terms of. A backend reached by an mDNS name therefore needs HTTPS.
+    /// Excluded: CGNAT `100.64.0.0/10`, which the carrier routes, and `*.local`
+    /// mDNS names, which are names rather than IP ranges; both need HTTPS.
     static func isPrivateOrLoopbackHost(_ host: String) -> Bool {
         let normalized = host.lowercased()
         if normalized == "localhost" || normalized.hasSuffix(".localhost") { return true }
@@ -249,10 +218,8 @@ nonisolated enum PushServerConfig {
             )
             return parsed as? NSDictionary
         } catch {
-            // File exists but can't be parsed (corrupt, wrong root type,
-            // wrong format). In Release this previously fell through to a
-            // nil shared secret and every authed push call 401'd with no
-            // breadcrumb — log so the failure is diagnosable in Sentry.
+            // The file exists but does not parse (corrupt, wrong root type or
+            // format). Report it so the failure is diagnosable in Sentry.
             AppLogger.captureError(error, context: ["phase": "secretsPlist.parse"])
             return nil
         }

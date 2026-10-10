@@ -1,25 +1,13 @@
 import Foundation
 
-/// Selects the single Live Activity snapshot that should be shown right now,
-/// or nil if no scenario qualifies under current preferences, or Live
-/// Activity is not currently available (`effectiveLiveActivityEnabled`).
-///
-/// Priority:
-/// 1. assignmentUrgent — earliest uncompleted assignment due within `assignmentLiveActivityLeadTime`
-/// 2. inClass         — current course not skipped
-/// 3. classPreparing  — next non-skipped course within `classPreparingLeadTime`
-///
-/// 作業放最高級是產品決策：未完成作業進入 lead time 時要優先蓋掉課堂，
-/// 讓學生在上課時仍然看得到「快遲交」警示。使用者可在設定裡關閉
-/// `showAssignmentScenario` 退回到原本「上課優先」的行為。
-///
-/// Tie-breakers:
-/// - assignmentUrgent: earliest due date
-/// - classPreparing:   soonest start
-/// - inClass:          earliest start — the resolver hands back every
-///                     concurrent (衝堂) slot in timeline order, and one
-///                     activity can only show one class, so we take the
-///                     first
+/// Picks the one Live Activity snapshot to show now, or nil when none qualifies or
+/// Live Activity is unavailable (`effectiveLiveActivityEnabled`). Assignments come
+/// first, a product decision, so a due-soon warning still shows during class; users
+/// who turn off `showAssignmentScenario` get class-first behavior. In priority order:
+/// 1. assignmentUrgent: the uncompleted assignment due soonest within `assignmentLiveActivityLeadTime`.
+/// 2. inClass: the current non-skipped course. Overlapping slots come back in timeline
+///    order and one activity shows one class, so the earliest start wins.
+/// 3. classPreparing: the soonest non-skipped course within `classPreparingLeadTime`.
 struct LiveActivityScenarioResolver {
     let timelineResolver: CourseTimelineResolver
 
@@ -41,9 +29,9 @@ struct LiveActivityScenarioResolver {
         calendar: AcademicCalendar = .empty,
         optedInHolidayIDs: Set<Int> = []
     ) -> LiveActivitySnapshot? {
-        // Spec §6: cloud sync off makes Live Activity unavailable, same as
-        // the user's own switch off. `effectiveLiveActivityEnabled` is the
-        // one place that combined answer is computed.
+        // Cloud sync off makes Live Activity unavailable, like the user's own
+        // switch off. `effectiveLiveActivityEnabled` is the one place that
+        // combined answer is computed.
         guard effectiveLiveActivityEnabled(
             isLiveActivityEnabled: preferences.isLiveActivityEnabled,
             cloudSyncEnabled: cloudSyncEnabled
@@ -95,10 +83,9 @@ struct LiveActivityScenarioResolver {
         return LiveActivitySnapshot(
             scenario: .inClass,
             title: slot.course.displayName,
-            // Render the active block's own range, not the day's first-to-last
-            // span — for a split same-day course (e.g. P3-P4 + P7-P8) the
-            // countdown/progress are scoped to this slot, so the subtitle
-            // must match or it announces a gap-spanning window.
+            // The active block's own range, not the day's first-to-last span. For a
+            // course split within a day, such as P3-P4 plus P7-P8, countdown and progress
+            // cover this slot, and the subtitle must match rather than span the gap.
             subtitle: "\(slot.start.timeString) - \(slot.end.timeString)",
             locationText: slot.course.classroom(for: weekday),
             instructor: nonEmpty(slot.course.instructor),

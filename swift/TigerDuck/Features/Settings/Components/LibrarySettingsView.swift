@@ -84,24 +84,14 @@ struct LibrarySettingsView: View {
         }
     }
 
-    /// Flip-to-Library: only available on iPhone (iPad use case is unclear
-    /// and the issue scope says "phone only"), where the gesture routes to
-    /// the Library tab. Android has the same switch on its library page,
-    /// shown there only while the feature is on, which this matches.
-    ///
-    /// The row is a sub-setting of the library feature switch above it, so
-    /// it goes away with the feature: with library off the gesture cannot
-    /// fire (`FlipToLibraryModifier.shouldBeActive` and its fire-time guard
-    /// both require `libraryFeatureEnabled`), and a live-looking switch for
-    /// something that does nothing reads as broken.
-    ///
-    /// Reading `libraryFeatureEnabled` rather than `libraryToggleBinding`
-    /// is deliberate: that binding also reports on for
-    /// `pendingLibraryEnable`, so this row would appear behind the
-    /// confirmation overlay and vanish again if the user cancels.
-    /// Confirming brings it back on this same screen, still carrying
-    /// whatever value was persisted, so the preference stays inspectable
-    /// wherever it can actually do anything.
+    /// Flip-to-Library is iPhone only (the iPad use case is unclear). As on Android,
+    /// the row shows only while the library feature is on: otherwise the gesture
+    /// cannot fire (`FlipToLibraryModifier.shouldBeActive` and its fire-time guard
+    /// require `libraryFeatureEnabled`), and a live switch that does nothing reads as
+    /// broken. It reads `libraryFeatureEnabled`, not `libraryToggleBinding`, which is
+    /// also on during `pendingLibraryEnable` and would show the row behind the
+    /// confirmation overlay, then hide it on cancel. Confirming shows it again with
+    /// the persisted value.
     private var showsFlipToLibrary: Bool {
         #if os(iOS)
         appState.libraryFeatureEnabled

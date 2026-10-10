@@ -46,10 +46,9 @@ struct AsyncSerialLockTests {
         // queues behind it.
         await lock.acquire()
 
-        // Each waiter is spawned only once the previous one has actually enqueued, which
-        // `waiterCount` reports as a fact instead of a sleep guessing at it. A `Task {}` is not
-        // guaranteed to reach its `acquire()` inside any fixed number of milliseconds, so the
-        // old 10 ms staggers could put B in the queue before A and fail a correct lock.
+        // Spawn each waiter only once the previous one has enqueued, as `waiterCount` reports,
+        // not after a sleep: a `Task {}` reaches `acquire()` in no fixed time, so a stagger could
+        // queue B before A and fail a correct lock.
         var tasks: [Task<Void, Never>] = []
         for name in ["A", "B", "C"] {
             tasks.append(Task {

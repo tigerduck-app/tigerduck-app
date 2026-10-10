@@ -1,30 +1,6 @@
-// Pins `BulletinPushOptOutMigration`'s behaviour against the real, process-
-// wide `Defaults`/`UserDefaults.standard` — there is no seam to fake here
-// (unlike `PendingReminderPurgeMigration`'s `PendingReminderPurgeCenter`):
-// the migration's whole job is reading and writing three real `Defaults`
-// keys, so the test doubles as the only place that can observe it.
-//
-// Every test runs inside `withRealMigrationKeys`, which takes the shared
-// gate (`RealDefaultsGate.swift`), resets the doneKey and all three flags
-// to their defaults, and afterwards puts back exactly what the test host
-// held — all four as present-or-absent, never as present-at-their-default.
-// Absence is the distinction that matters here: the migration reads an
-// absent doneKey as "not run yet", and a flag the host has never written
-// must not come back written just because its value would read the same.
-//
-// Restoring matters beyond tidiness: without it, `secondRunIsNoOp` leaves
-// the test host's own UserDefaults with the flag off and the doneKey set,
-// which used to be the never-registers state this migration exists to
-// repair — reproduced on the developer's simulator for every later manual
-// launch. The gate matters because `.serialized` orders this suite's tests
-// against each other and nothing else, while `PushRegistrationServiceTests`
-// pins two of the same keys across a 250 ms window.
-//
-// `doneKey` mirrors the migration's own private `UserDefaults.standard`
-// flag literal ("BulletinPushOptOutMigration.v1.done"). Duplicated here
-// rather than referenced because the production constant is intentionally
-// `private`, matching every other migration in this folder — see
-// Services/Migrations/AGENTS.md.
+// Runs on the real `Defaults` keys, which are the migration's whole job, inside
+// `withExclusiveRealDefaults`. Each key is restored as present or absent, not at its
+// default, because the migration reads an absent doneKey as "not run yet".
 import Defaults
 import Foundation
 import Testing
@@ -106,10 +82,8 @@ struct BulletinPushOptOutMigrationTests {
             BulletinPushOptOutMigration.runIfNeeded()
 
             #expect(Defaults[.serverPushUserOptOut] == true)
-            // The other two as well, so that "leave an existing opt-out
-            // alone" cannot be implemented as an early return above the
-            // writes — that would pass the assertion above while leaving
-            // this cohort's bulletin flag and migration marker untouched.
+            // Check the other two too, so keeping an existing opt-out cannot be an
+            // early return that passes the check above but skips the other writes.
             #expect(Defaults[.pushServerEnabled] == true)
             #expect(Defaults[.bulletinPushEnabled] == false)
         }
@@ -138,10 +112,8 @@ struct BulletinPushOptOutMigrationTests {
             #expect(Defaults[.pushServerEnabled] == true)
             #expect(Defaults[.bulletinPushEnabled] == false)
 
-            // Flip the flag back to `false` by hand, as if some other write
-            // set it again. If the doneKey guard were not honoured, a second
-            // run would re-apply the same rewrite; instead it must leave
-            // this exactly as set here.
+            // Set the flag back to `false` by hand, as another write might. A second
+            // run that ignored the doneKey would rewrite it; it must stay as set here.
             Defaults[.pushServerEnabled] = false
             BulletinPushOptOutMigration.runIfNeeded()
 

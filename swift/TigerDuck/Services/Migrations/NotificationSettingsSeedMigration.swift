@@ -1,25 +1,13 @@
 import Foundation
 
-/// One-shot migration: gets every upgrading user's own reminder and Live
-/// Activity preferences into the `notification` settings document.
-///
-/// Before 2.1.0 these preferences lived only on the device — iOS never
-/// wrote this document — and reminders were scheduled locally. From 2.1.0
-/// the backend sends them and reads the preferences from the document,
-/// falling back to its own defaults when there is none. Without this, an
-/// upgrader who never opens a settings screen gets the server's defaults
-/// instead of their own offsets, and one who had switched reminders off
-/// starts receiving them again.
-///
-/// It does not push. It runs the same read-before-write routine as every
-/// other trigger (`AppState.reconcileNotificationSettings`): a section the
-/// account already has — from another device — is adopted, and only a
-/// missing one is written from this device's values. The done flag is set
-/// only once that routine reports the document settled, so an upgrade
-/// whose first launch is offline, signed out or has course sync off tries
-/// again on the next one.
-///
-/// Keep until the minimum supported version is past 2.1.0.
+/// One-shot migration: gets each upgrading user's own reminder and Live Activity preferences
+/// into the `notification` settings document. From 2.1.0 the backend sends reminders and reads
+/// these from it, or uses its own defaults; before, they lived only on the device. Without this
+/// an upgrader who never opens settings gets the server's offsets, and one who had switched
+/// reminders off gets them again. It does not push: like every trigger it runs
+/// `AppState.reconcileNotificationSettings`, which adopts sections the account has and writes
+/// only missing ones. The done flag waits for that to settle, so a first launch offline, signed
+/// out or with course sync off retries. Keep until the minimum supported version is past 2.1.0.
 enum NotificationSettingsSeedMigration {
     private static let doneKey = "NotificationSettingsSeedMigration.v1.done"
 

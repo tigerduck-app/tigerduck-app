@@ -32,11 +32,9 @@ struct NotificationSettingsDocumentTests {
 
     @Test("every section and every field is optional, so no partial document fails to decode")
     func decodesEveryPartialShape() throws {
-        // Three clients write this namespace and the route validates
-        // nothing (`SettingsPut.document: dict`). A non-Optional property
-        // anywhere in this type turns one of these into a
-        // `DecodingError.keyNotFound`, and on the push path that is an
-        // abort with only a log line, repeated on every attempt forever.
+        // Three clients write this namespace and the backend validates nothing. One
+        // required property would make one of these throw `keyNotFound`, which on the
+        // push path aborts with only a log line, on every attempt.
         let shapes = [
             // Android's first write (spec W6): `live_activity` only.
             #"{"live_activity":{"show_in_class":true,"show_assignment":false,"show_class_preparing":true,"class_preparing_lead_seconds":3600,"assignment_lead_seconds":28800}}"#,
@@ -91,14 +89,9 @@ struct NotificationSettingsDocumentTests {
 
     @Test("keys this build does not model, beside and inside the sections it reads, leave every modeled field readable")
     func unknownKeysLeaveModeledFieldsReadable() throws {
-        // A newer client — or Android, which shares this namespace — may add
-        // a section, or a field inside one, that this build does not know.
-        // Reading the document must still yield every field it does know.
-        // The two sections this app adopts decode field by field, so a
-        // decoder that choked on, or blanked a section over, one unknown key
-        // would silently stop a pull from adopting anything. Keeping those
-        // keys across a *write* is a separate guarantee, pinned by
-        // `NotificationSettingsSyncTests.pushPreservesUnknownKeys`.
+        // A newer client or Android may add a section or field this build does not know;
+        // failing or blanking a section over one would stop a pull adopting anything.
+        // Writes keep such keys; see `NotificationSettingsSyncTests.pushPreservesUnknownKeys`.
         let json = Data("""
         {"assignments":{"enabled":false,"reminder_offsets_minutes":[1440,30],"future_field":{"a":1}},
          "live_activity":{"show_in_class":false,"assignment_lead_seconds":3600,"another_future_field":[1,2]},

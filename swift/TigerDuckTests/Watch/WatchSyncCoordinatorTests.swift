@@ -1,3 +1,4 @@
+import Testing
 import WatchConnectivity
 import XCTest
 @testable import TigerDuck
@@ -12,10 +13,9 @@ final class WatchSyncCoordinatorTests: XCTestCase {
         func updateApplicationContext(_ context: [String: Any]) throws {
             pushedContexts.append(context)
         }
-        // The coordinator's application-context path is what these tests
-        // exercise; the message/user-info members exist only to satisfy the
-        // protocol and are never called here (WCSessionUserInfoTransfer has no
-        // constructible stub value).
+        // These tests cover only the application-context path. The message and user-info members
+        // satisfy the protocol and are never called; `WCSessionUserInfoTransfer` has no
+        // constructible stub value.
         func transferUserInfo(_ userInfo: [String: Any]) -> WCSessionUserInfoTransfer {
             fatalError("transferUserInfo is not exercised by WatchSyncCoordinatorTests")
         }
@@ -60,14 +60,22 @@ final class WatchSyncCoordinatorTests: XCTestCase {
     @MainActor
     func test_debounce_coalescesBurstWithin500ms() async throws {
         let session = StubSession()
-        let coord = WatchSyncCoordinator(session: session)
-        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#A",
-                                    loggedIn: true, languageTag: nil, visualPreset: .default)
-        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#B",
-                                    loggedIn: true, languageTag: nil, visualPreset: .default)
-        coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#C",
-                                    loggedIn: true, languageTag: nil, visualPreset: .default)
-        try await Task.sleep(nanoseconds: 700_000_000)
+        let timer = ManualSleeper()
+        let coord = WatchSyncCoordinator(session: session, sleep: { await timer.sleep(for: $0) })
+        var windows: [Task<Void, Never>] = []
+        for accent in ["#A", "#B", "#C"] {
+            coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: accent,
+                                        loggedIn: true, languageTag: nil, visualPreset: .default)
+            windows.append(try XCTUnwrap(coord.debounceTask))
+        }
+        try await timer.waitUntilArmed(atLeast: 3)
+        let durations = await timer.requestedDurations
+        XCTAssertEqual(durations, [Duration](repeating: .milliseconds(500), count: 3))
+        XCTAssertTrue(session.pushedContexts.isEmpty)
+        // Each schedule cancelled the wait before it; firing ends the last. Counting once every
+        // wait has finished leaves no late push unseen.
+        await timer.fire()
+        for window in windows { await window.value }
         XCTAssertEqual(session.pushedContexts.count, 1)
         XCTAssertEqual(session.pushedContexts[0][WatchWireFormat.Key.accentHex] as? String, "#C")
     }

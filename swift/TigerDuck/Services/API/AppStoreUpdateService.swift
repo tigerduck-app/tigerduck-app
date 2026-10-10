@@ -1,17 +1,13 @@
 import Foundation
 
-/// Talks to Apple's public iTunes Lookup endpoint to discover whether a
-/// newer build of this app has been published to the App Store.
+/// Asks Apple's public iTunes Lookup endpoint whether a newer build of this
+/// app is on the App Store.
 ///
-/// **Lifecycle note**: until the iOS app ships publicly,
-/// `resultCount == 0` for this bundle id — the service surfaces that as
-/// ``LookupOutcome/noRecord``, the coordinator stamps the throttle (a
-/// successful "no record" is still a successful answer) and quietly
-/// no-ops without a prompt. The day the app lands on the App Store the
-/// same code path activates with zero additional release work.
-/// TestFlight builds are explicitly NOT indexed by this endpoint;
-/// that's a known gap of the iTunes Lookup approach and the reason
-/// this feature ships dormant during the TF phase.
+/// While the app is not on the App Store, `resultCount == 0` for its bundle
+/// id: the service returns ``LookupOutcome/noRecord``, and the coordinator
+/// stamps the throttle (a "no record" answer is still a success) and shows
+/// no prompt. Once the app is listed, the same path works with no release
+/// work. TestFlight builds are not indexed, so the feature is dormant there.
 enum AppStoreUpdateService {
     struct Lookup: Equatable {
         /// Latest marketing version on the App Store, e.g. `"1.8.0"`.

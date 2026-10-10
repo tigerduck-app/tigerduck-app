@@ -2,9 +2,9 @@
 import Foundation
 import Observation
 
-/// The School Mail account: its own login, separate from NTUST and the library
-/// (design doc §7). Signed-in state is `prefs.studentID`, not a Keychain read — an
-/// unreadable Keychain must never look like "signed out".
+/// The School Mail account: its own login, separate from NTUST and the library.
+/// Signed-in state is `prefs.studentID`, not a Keychain read, because an unreadable
+/// Keychain must never look like "signed out".
 @MainActor
 @Observable
 final class MailAccountManager {
@@ -48,20 +48,14 @@ final class MailAccountManager {
     private(set) var loginError: LoginError?
     private(set) var authFailed: Bool
 
-    /// The password the mail server most recently **rejected** for a manual sign-in.
-    ///
-    /// In memory for this process only: never persisted, never logged, never sent anywhere.
-    /// The sign-in screens read it so they do not prefill it again — a Mail2000 password is set
-    /// in webmail and need not match the NTUST one, so a mismatch is the *expected* failure
-    /// here, and re-offering the rejected password made another rejected `LOGIN` a single tap
-    /// on exactly the path §7.4 protects (repeated failures lock the school account and its
-    /// campus Wi-Fi). A *manual* rejection deliberately does not set `authFailed`, which is
-    /// reserved for a saved password failing in the background, so nothing else throttled this.
-    ///
-    /// Cleared by a sign-in the server accepted, and by nothing else: a sign-out does not clear
-    /// it, because the password it remembers is the NTUST one the prefill would offer again and
-    /// that has not become any more likely to work. Relaunching the app forgets it, which is the
-    /// escape hatch for someone who has since changed their Mail2000 password to match.
+    /// The password the server most recently rejected for a manual sign-in. In memory for this
+    /// process only: never persisted, logged or sent anywhere. The sign-in screens read it so
+    /// they do not prefill it again: a Mail2000 password need not match the NTUST one, and
+    /// repeated rejected `LOGIN`s lock the school account and its campus Wi-Fi. A manual
+    /// rejection does not set `authFailed`, which is for a saved password failing in the
+    /// background, so nothing else throttles this path. Only an accepted sign-in clears it; a
+    /// sign-out does not, as the prefill would offer the same NTUST password again. Relaunching
+    /// forgets it, for someone who has since changed their Mail2000 password to match.
     @ObservationIgnored private(set) var lastRejectedPassword: String?
 
     var displayName: String? {
@@ -102,22 +96,14 @@ final class MailAccountManager {
     /// Exposed (not `private`) only so tests can await it directly instead of guessing a
     /// delay; production callers never touch it.
     @ObservationIgnored private(set) var pendingCacheClear: Task<Void, Never>?
-    /// Which sign-in the account state belongs to. `logout()` bumps it; `login()` captures it
-    /// once and re-checks it after every suspension point, so a login still in flight when the
-    /// user signs out cannot write the session it was establishing back over the sign-out
-    /// (AGENTS.md: "do not write previous-user data back after logout").
-    ///
-    /// The same class of bug as `pendingCacheClear` above, one layer up: that one stops a
-    /// logout's *cache wipe* landing after a login, this one stops a login's *state writes*
-    /// landing after a logout. `logout()` is synchronous and this type is `@MainActor`, so it can
-    /// only interleave at an `await` — which is exactly what each check below sits after.
-    ///
-    /// The boundary is deliberate. Resource cleanup (`client.logout()`) still runs for a stale
-    /// login, because the alternative is an IMAP connection nothing will ever close. So does the
-    /// failure path's `lastRejectedPassword`, whose own documentation says a sign-out does not
-    /// clear it — suppressing it would re-offer a password §7.4 exists to stop being re-sent.
-    /// Everything that touches `credentials`, `prefs`, `studentID`, `displayName` or
-    /// `onSignedIn` is state, and only the current sign-in may write it.
+    /// Which sign-in the account state belongs to. `logout()` bumps it; `login()` captures it once
+    /// and re-checks it after every suspension point, so a login in flight at sign-out cannot
+    /// write its session back over it (swift/TigerDuck/AGENTS.md). It is the counterpart of
+    /// `pendingCacheClear`, which stops a logout's cache wipe landing after a login. `logout()` is
+    /// synchronous on this `@MainActor` type, so it can only interleave at an `await`. A stale
+    /// login still closes its IMAP connection, which nothing else would, and still records
+    /// `lastRejectedPassword`, so that password is not offered again. Only the current sign-in
+    /// may write `credentials`, `prefs`, `studentID` or `displayName`, or call `onSignedIn`.
     @ObservationIgnored private var loginGeneration = 0
     /// Where `didSignOut` is posted: `.default` for `shared`, which is what every page session and
     /// list listens on, and a private centre for any other instance — so a test's sign-outs,
@@ -146,7 +132,7 @@ final class MailAccountManager {
         notificationsEnabled = prefs.notificationsEnabled
     }
 
-    /// Checks the credentials with an IMAP LOGIN and saves them only if it succeeds (§7.1).
+    /// Checks the credentials with an IMAP LOGIN and saves them only if it succeeds.
     func login(studentID rawID: String, password: String) async {
         let id = Self.normalizedUsername(rawID)
         guard !id.isEmpty, !password.isEmpty, !isLoggingIn else { return }
@@ -161,11 +147,9 @@ final class MailAccountManager {
         // background (see `logout()`); wait for it to finish before this call writes
         // anything, so its clear can never land after (and wipe) this session's data.
         await pendingCacheClear?.value
-        // A logout during that wait started a wipe of its own, and `pendingCacheClear` now
-        // holds *that* task. Bailing out before the line below leaves its handle in place:
-        // clearing it here would leave the new wipe with nothing awaiting it, and the next
-        // login would race the very clear this field exists to be waited on. No LOGIN is sent
-        // either — the account it would sign into has just been signed out of.
+        // A logout during that wait started its own wipe, now in `pendingCacheClear`. Returning
+        // before it is set to nil keeps that handle, so the next login still waits for the wipe.
+        // No LOGIN is sent either: the user has just signed out of this account.
         guard generation == loginGeneration else { return }
         pendingCacheClear = nil
 
@@ -173,12 +157,9 @@ final class MailAccountManager {
         let client = makeClient(demo)
         do {
             try await client.login(studentID: id, password: password)
-            // LOGIN is a round trip, and a sign-out can land inside it. `logout()` has already
-            // run `credentials.clear()` by then, so saving here would put the password of an
-            // account the user just signed out of back into the Keychain — with nothing left
-            // that would ever clear it again. The connection is still closed: that is cleanup,
-            // not state. Nothing between here and `establishBaseline` suspends, so this one
-            // check also covers the `prefs` writes below it.
+            // A sign-out during LOGIN has already cleared the credentials; saving would put that
+            // account's password back in the Keychain for good. Closing still runs: it is cleanup.
+            // Nothing suspends before `establishBaseline`, so this also guards the `prefs` writes.
             guard generation == loginGeneration else {
                 await client.logout()
                 return
@@ -210,10 +191,9 @@ final class MailAccountManager {
         // whether or not the sign-in it belonged to is still the current one.
         await client.logout()
 
-        // The writes that make the app look signed in. A logout at any point above has already
-        // cleared the credentials these would be claiming to go with, so a stale login stops
-        // here — silently, because the user asked to be signed out and there is nothing to
-        // report. `isLoggingIn` is still lowered by the `defer`.
+        // The writes that make the app look signed in. After a logout anywhere above, the
+        // credentials they would go with are gone, so a stale login stops here without an error:
+        // the user asked to be signed out. The `defer` still lowers `isLoggingIn`.
         guard generation == loginGeneration else { return }
         authFailed = false
         studentID = id
@@ -239,12 +219,12 @@ final class MailAccountManager {
 
     /// A logged-in client for one unit of work. The caller logs it out.
     ///
-    /// Once the server has rejected the saved password, this throws without creating a
-    /// client or sending another LOGIN — never retried, even once, until the user re-enters
-    /// the password through `login(studentID:password:)` (spec §7.4: repeated failures can
-    /// lock the school account and Wi-Fi). Every caller (the page poll, pull-to-refresh,
-    /// background refresh) goes through this one choke point, so nothing else needs its own
-    /// `authFailed` check.
+    /// Once the server has rejected the saved password, this throws without creating a client
+    /// or sending another LOGIN. It never retries, even once, until the user re-enters the
+    /// password through `login(studentID:password:)`, because repeated failures can lock the
+    /// school account and Wi-Fi. Every caller (the page poll, pull-to-refresh, background
+    /// refresh) goes through this one choke point, so nothing else needs its own `authFailed`
+    /// check.
     func openSession() async throws -> any MailClient {
         guard !authFailed else { throw MailClientError.authenticationFailed }
         guard let id = prefs.studentID, let password = credentials.password() else {
@@ -269,7 +249,7 @@ final class MailAccountManager {
     }
 
     /// The server rejected the saved password: stop every background check at once and
-    /// never retry — repeated failures can lock the school account and Wi-Fi (§7.4).
+    /// never retry, because repeated failures can lock the school account and Wi-Fi.
     func handleAuthFailure() {
         guard !authFailed else { return }
         prefs.authFailed = true
@@ -278,13 +258,13 @@ final class MailAccountManager {
     }
 
     /// Wipes the password, display name, markers and scheduled work synchronously, and
-    /// starts wiping the on-disk caches (§7.5). NTUST and library sign-in are untouched.
+    /// starts wiping the on-disk caches. NTUST and library sign-in are untouched.
     ///
     /// `MailCache` does synchronous disk I/O and this type is `@MainActor`, so
-    /// `cache.clearAll()` never runs inline here — it runs detached, off the main actor,
-    /// and `login()` awaits it (via `pendingCacheClear`) before writing a new session's
-    /// state. This method's own signature stays synchronous: callers that only care about
-    /// the account/credential state (not the cache wipe finishing) don't need to `await`.
+    /// `cache.clearAll()` never runs inline here. It runs detached, off the main actor, and
+    /// `login()` awaits it (via `pendingCacheClear`) before writing a new session's state.
+    /// This method stays synchronous: callers that only care about the account and credential
+    /// state, not the cache wipe finishing, need not `await`.
     func logout() {
         // Before anything is cleared, so a `login()` suspended anywhere in its tail sees the
         // bump the moment it resumes and writes none of the session it was establishing.
@@ -314,7 +294,7 @@ final class MailAccountManager {
         }
     }
 
-    /// Re-runs a sign-out cache wipe that a process death interrupted (§7.5). Called at launch.
+    /// Re-runs a sign-out cache wipe that a process death interrupted. Called at launch.
     ///
     /// It goes through the same `pendingCacheClear` handle the in-process wipe uses, so
     /// `login()`'s existing wait covers it too: a student signing in seconds after launch can
@@ -336,8 +316,8 @@ final class MailAccountManager {
         prefs.inboxNextUID = status.uidNext
     }
 
-    /// §7.3: the display name Mail2000 webmail wrote on the newest mail in Sent that was
-    /// sent from this address.
+    /// The display name Mail2000 webmail wrote on the newest mail in Sent that was sent from
+    /// this address.
     private func discoverDisplayName(client: any MailClient, address: String) async -> String? {
         guard let folders = try? await client.listFolders(),
               let sent = MailFolderMap.resolve(available: folders)[.sent],

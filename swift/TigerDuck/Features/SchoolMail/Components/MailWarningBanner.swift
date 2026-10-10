@@ -32,11 +32,10 @@ struct MailWarningBanner: View {
     }
 }
 
-/// Tapping a link first shows where it really goes (§6.3); issues are listed in red. `target`
-/// carries the already-canonicalized href judged by `MailWarnings` — the same string shown here
-/// is the one `onOpen` opens (message-screen dispatch, 2026-09-16 additions 1–2). When
-/// `target.canOpen` is false (an http(s) href a browser-style parse rejected) there is no Open
-/// action at all.
+/// Tapping a link first shows where it really goes; issues are listed in red. `target` carries
+/// the already-canonicalized href judged by `MailWarnings`, and the string shown here is the one
+/// `onOpen` opens. When `target.canOpen` is false (an http(s) href a browser-style parse
+/// rejected) there is no Open action at all.
 struct MailLinkConfirmation: View {
     let target: MailLinkTarget
     let onOpen: () -> Void

@@ -62,8 +62,8 @@ struct ScoreCourseRow: View {
     }
 }
 
-/// Right-aligned grade pill — color and glyph both keyed off the combined
-/// grade + status so "通過" and "D" both read at a glance.
+/// Right-aligned grade pill. Color and glyph both key off the combined grade and status, so a
+/// pass on a pass/fail course and a "D" both read at a glance.
 private struct GradeChip: View {
     let course: CourseGrade
 

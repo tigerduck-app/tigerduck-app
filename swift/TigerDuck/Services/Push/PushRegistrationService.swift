@@ -62,17 +62,14 @@ nonisolated enum PushDeviceModel {
 /// re-parse build metadata.
 nonisolated enum PushDeviceClass {
     // `@MainActor`: reading `UIDevice.current.userInterfaceIdiom` requires the
-    // main actor. The only caller is `PushRegistrationService.init`'s default
-    // argument, which is evaluated at the `@MainActor` `PushCoordinator.init`
-    // call site, so the isolation requirement is always satisfied.
+    // main actor.
     @MainActor
     static var resolvedForBuild: String {
         #if os(macOS)
         return "mac"
         #else
-        // `.mac` covers the "Designed for iPad" runtime on Apple Silicon,
-        // where the iOS binary runs as a Mac app and the idiom reports
-        // `.mac`. Falling through to "iphone" there would mis-target
+        // An iOS binary running on an Apple Silicon Mac ("Designed for iPad")
+        // reports `.mac`. Falling through to "iphone" there would mis-target
         // operator pushes that filter on `device_class`.
         switch UIDevice.current.userInterfaceIdiom {
         case .pad:   return "ipad"
@@ -140,17 +137,21 @@ actor PushRegistrationService {
     private var deviceRegisterAttempts: Int = 0
     private let maxDeviceRegisterAttempts = 4
 
+    /// The registration debounce's wait, injectable so a test need not sleep through it. The
+    /// retry backoffs keep their own sleeps.
+    private let debounceSleep: @Sendable (Duration) async -> Void
+
     init(
         identity: PushIdentity,
         apiClient: PushAPIClient,
         bundleId: String = "org.ntust.app.TigerDuck",
         attrsType: String = "TigerDuckActivityAttributes",
         apnsEnv: String = PushAPNsEnv.resolvedForBuild,
-        // No default: `PushDeviceClass.resolvedForBuild` is `@MainActor` (it
-        // reads `UIDevice.current`), and an actor init's default-argument
-        // expressions are evaluated in a nonisolated context. Callers pass it
-        // from their own (MainActor) context instead.
-        deviceClass: String
+        // No default: `PushDeviceClass.resolvedForBuild` is `@MainActor`, and
+        // an actor init evaluates default arguments in a nonisolated context.
+        // Callers pass it from their own main-actor context.
+        deviceClass: String,
+        debounceSleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.identity = identity
         self.apiClient = apiClient
@@ -158,6 +159,7 @@ actor PushRegistrationService {
         self.attrsType = attrsType
         self.apnsEnv = apnsEnv
         self.deviceClass = deviceClass
+        self.debounceSleep = debounceSleep
     }
 
     // MARK: - Locale
@@ -239,23 +241,14 @@ actor PushRegistrationService {
         try await apiClient.putHolidayOverride(holidayID: holidayID, notify: notify)
     }
 
-    /// Called from the settings toggle. PATCHes the backend first; only
-    /// flips the local pref after a 2xx so a transient failure doesn't
-    /// leave local state pretending the server agrees. Throws on failure
-    /// so the caller can roll back the Toggle UI and surface the error.
-    /// The next `/devices/register` call also re-sends the value, so a
-    /// later success backstops eventual consistency.
+    /// Called from the settings toggle. Updates the server first and flips
+    /// the local pref only after a 2xx, so a transient failure cannot leave
+    /// local state claiming the server agrees. Throws so the caller can roll
+    /// back the toggle and show the error. The next `/devices/register` also
+    /// re-sends the value, so a later success restores consistency.
     ///
-    /// Concurrent calls are serialised through `optOutPatchChain` so two
-    /// rapid taps cannot interleave at the network suspension point. A
-    /// previous version short-circuited with `Task.checkCancellation()`
-    /// here, but cancellation can land *after* the server has already
-    /// accepted the PATCH — skipping the local `Defaults` write in that
-    /// window leaves Settings showing one value while the server holds
-    /// another (operator pushes silently disabled while the toggle still
-    /// reads enabled, and vice versa). Chaining instead lets every
-    /// successfully-applied server change reach `Defaults`, and tap
-    /// order is preserved because each task awaits its predecessor.
+    /// Calls run in tap order on `optOutPatchChain`, with no cancellation
+    /// check: a cancel after the server accepted would desync `Defaults`.
     func updateServerPushOptOut(_ optOut: Bool) async throws {
         let predecessor = optOutPatchChain
         let uuid = identity.uuid
@@ -270,13 +263,9 @@ actor PushRegistrationService {
             // need its work to be done before ours starts.
             _ = try? await predecessor?.value
             do {
-                // Two rows hold this flag and which one decides depends on
-                // whether there is an account: operator targeting reads
-                // `user_devices` while signed in and `device_registrations`
-                // while not. Announce unconditionally so the signed-out row
-                // is right both now and after a later sign-out, and PATCH
-                // only when there is a session to authenticate it — signed
-                // out that call is a guaranteed 401.
+                // Operator targeting reads `user_devices` while signed in and
+                // `device_registrations` while not. Announce regardless, for a
+                // later sign-out; PATCH only with a session, or it is a sure 401.
                 try await apiClient.registerAnonymousDevice(
                     PushAPI.AnonymousDeviceRequest(
                         device_id: uuid,
@@ -310,26 +299,14 @@ actor PushRegistrationService {
         try await task.value
     }
 
-    /// Called from the bulletin page's toggle. PATCHes the backend first;
-    /// only flips the local pref after a 2xx so a transient failure doesn't
-    /// leave local state pretending the server agrees. Throws on failure so
-    /// the caller can leave the page showing the pre-tap state. The next
-    /// `/devices/register` call also re-sends the value (see
-    /// `performRegister`), so a later success backstops eventual
-    /// consistency.
-    ///
-    /// Unlike `updateServerPushOptOut`, there is no signed-out row to
-    /// announce this to: bulletin delivery has no anonymous-pipeline
-    /// counterpart (`user_devices.bulletin_push_enabled` only), and this
-    /// page's other calls already require a session.
-    ///
-    /// Concurrent calls are serialised through `bulletinPatchChain` for the
-    /// same reason `updateServerPushOptOut` uses `optOutPatchChain`: two
-    /// taps inside one round trip would otherwise be two Tasks racing to
-    /// PATCH the same column, and the server would keep whichever landed
-    /// last rather than whichever the user meant last. Each link awaits its
-    /// predecessor, so the `apiClient → Defaults` pair stays atomic and tap
-    /// order is preserved.
+    /// Called from the bulletin page's toggle. PATCHes the server first and
+    /// flips the local pref only after a 2xx, so local state never claims a
+    /// change the server lacks; throws so the page keeps its pre-tap state.
+    /// The next `/devices/register` (`performRegister`) also re-sends it.
+    /// Unlike `updateServerPushOptOut` there is no signed-out row to announce
+    /// to: only `user_devices` holds this flag, and the page needs a session.
+    /// Calls run in tap order on `bulletinPatchChain`, so the server keeps the
+    /// last tap rather than whichever racing PATCH landed last.
     func updateBulletinPushEnabled(_ enabled: Bool) async throws {
         let predecessor = bulletinPatchChain
         let uuid = identity.uuid
@@ -344,11 +321,9 @@ actor PushRegistrationService {
                 let response = try await apiClient.updateDevicePreferences(
                     deviceId: uuid, bulletinPushEnabled: enabled
                 )
-                // A backend without the column answers 200 and ignores the
-                // request key it does not know, so a 2xx on its own is not
-                // evidence the change was applied. `DevicePreferencesResponse`
-                // stays decode-tolerant of a missing field for every other
-                // PATCH; here the missing field *is* the answer.
+                // A backend without the column ignores the key and answers 200,
+                // so compare the echo. `DevicePreferencesResponse` stays tolerant
+                // of a missing field for other PATCHes; here missing means failed.
                 guard response.bulletinPushEnabled == enabled else {
                     throw PushAPIError.invalidResponse
                 }
@@ -383,19 +358,13 @@ actor PushRegistrationService {
     }
 
     /// PATCHes the six "Synced content" switches as they stand when the
-    /// request goes out.
-    ///
-    /// The switches persist the moment they flip, and registration carries
-    /// none of them, so a PATCH that failed used to leave the server on the
-    /// old values until the next flip: assignment reminders switched off
-    /// while offline went on arriving. `syncPreferencesPushPending` goes up
-    /// before every PATCH and down only once one lands with the switches
-    /// still as it sent them, and each successful registration sends again
-    /// while it is up.
-    ///
-    /// Calls queue on `syncPreferencesPatchChain`, and each reads the
-    /// switches only when its turn comes, so the last PATCH to land carries
-    /// the latest values.
+    /// request goes out. They persist on flip and registration omits them,
+    /// so a failed PATCH would leave the server on old values until the next
+    /// flip. `syncPreferencesPushPending` is set before every PATCH, cleared
+    /// only when one lands with the switches unchanged, and while it is set
+    /// each successful registration is followed by another PATCH.
+    /// Calls queue on `syncPreferencesPatchChain` and read the switches on
+    /// their turn, so the last PATCH to land carries the latest values.
     func updateSyncPreferences() async {
         let predecessor = syncPreferencesPatchChain
         let uuid = identity.uuid
@@ -533,35 +502,23 @@ actor PushRegistrationService {
         #endif
     }
 
-    /// Registers as soon as the device holds either token. The standard
-    /// APNs token must not wait for the push-to-start one: it is where the
-    /// backend sends assignment reminders, and the registration is how the
-    /// server learns this device's app version, locale and cloud-sync flag.
-    /// A PTS token only exists while Live Activities are enabled, so
-    /// waiting for it left a device with them switched off unregistered
-    /// and unreachable. Whichever token arrives second is attached by a
-    /// fresh attempt, which re-sends every token held (see
-    /// `performRegister`).
-    ///
-    /// At app launch the PTS and APNs device tokens arrive within a few
-    /// tens of ms of each other, so the naive "POST on every update"
-    /// flow fired twice in a row — the first POST got cancelled mid-
-    /// flight by the second `lastAttempt?.cancel()` and surfaced as the
-    /// "register failed: 已取消" line in the logs. A 250ms debounce at
-    /// the head of the Task is enough to coalesce both arrivals into
-    /// one attempt, and `CancellationError`s are silenced since they're
-    /// the expected side-effect of a newer request winning.
-    ///
-    /// iOS only: the Mac registers passively (`registerPassiveDevice`),
-    /// never with a token.
+    /// Registers as soon as the device holds either token. The APNs token must
+    /// not wait for the push-to-start one, which exists only while Live
+    /// Activities are on: assignment reminders go to the APNs token, and
+    /// registering tells the server the app version, locale and cloud-sync flag.
+    /// A later token gets a fresh attempt that re-sends every token held.
+    /// Both arrive within tens of ms at launch, so a 250 ms debounce merges
+    /// them into one attempt; the superseded one's `CancellationError` is
+    /// expected and silenced. iOS only; the Mac uses `registerPassiveDevice`.
     private func registerIfReady() async {
         #if os(iOS)
         guard hasRegistrableToken else { return }
 
         lastAttempt?.cancel()
         let logger = self.logger
+        let sleep = debounceSleep
         lastAttempt = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(250))
+            await sleep(.milliseconds(250))
             if Task.isCancelled { return }
             guard let self else { return }
             await self.performRegister(logger: logger)
@@ -601,17 +558,9 @@ actor PushRegistrationService {
         guard !tokens.isEmpty else { return }
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
 
-        // Announce the hardware first, on every launch, signed in or not.
-        // `/devices/register` needs a session and writes `user_devices`, which
-        // operator push targeting never reads — it resolves its audience only
-        // from `device_registrations`. Without this a device is invisible to
-        // custom push whether or not anyone ever signed in on it, and while
-        // signed out the authed call just 401s into the retry ladder.
-        //
-        // Best effort and deliberately outside the do/catch below: a failure
-        // here must not mark the real registration as failed or trigger its
-        // backoff. The server links the two rows on sign-in and unlinks them
-        // on sign-out, so neither state double-pushes.
+        // Announce every launch, signed in or not: signed out, operator push
+        // reads only `device_registrations`. Best effort: an error here must
+        // not fail the registration. See docs/decisions/0008-device-announce.md.
         do {
             try await apiClient.registerAnonymousDevice(
                 PushAPI.AnonymousDeviceRequest(
@@ -620,11 +569,9 @@ actor PushRegistrationService {
                     device_class: deviceClass,
                     push_token: deviceTokenHex,
                     bundle_id: bundleId,
-                    // Carried on every announce, not just when it changes.
-                    // This row is what operator targeting filters on, and
-                    // while signed out the preferences PATCH has no session
-                    // to authenticate with — so the announce is the only
-                    // path the opt-out has to the server.
+                    // Sent on every announce, not only on change: signed out,
+                    // targeting filters on this row and the PATCH has no session,
+                    // so the announce is the opt-out's only path to the server.
                     server_push_enabled: !Defaults[.serverPushUserOptOut]
                 )
             )
@@ -713,21 +660,9 @@ actor PushRegistrationService {
         logger: Logger
     ) async {
         let snapshot = registration.snapshot
-        // v3: encode `countdown_target` as ISO 8601 string (the server expects a
-        // string field, not a nested object). Device identity comes from the JWT.
-        //
-        // Translated to real time first, like every other server-bound date:
-        // this becomes the `fire_at` of the end job, and the server dispatches
-        // on the real wall clock. `ScheduleSyncService.buildEvents` does the
-        // same to every `fireAt` it sends. Left raw, a debug clock override
-        // filed the end push at the fake-clock instant — days out, or already
-        // past, in which case the register endpoint skips the job entirely and
-        // the activity has no remote end at all. The snapshot's own dates stay
-        // in app-clock space; the widget translates those at render time.
-        //
-        // The conversion itself happened once, when the registration was made
-        // (see `countdownTargetRealTime`), so every retry of this send asks for
-        // the same instant.
+        // Identity comes from the JWT. `countdown_target` becomes the end job's
+        // `fire_at` on the server's real clock, so it is sent in real time and
+        // snapshot dates in app time. See docs/decisions/0006-debug-clock.md.
         let countdownISO: String?
         if let target = registration.countdownTargetRealTime {
             let formatter = ISO8601DateFormatter()
@@ -817,10 +752,9 @@ actor PushRegistrationService {
     private func retryActivityRegistration(
         _ registration: LiveActivityUpdateTokenRegistration
     ) async {
-        // If a newer registration replaced this activity's pending entry
-        // (Apple rotates update-tokens, or the client pushed a fresh
-        // snapshot) the newer call's own success/retry cycle owns the
-        // lifecycle from here — drop this retry.
+        // If a newer registration replaced this activity's pending entry (for
+        // example after Apple rotated the update token), its own success and
+        // retry cycle owns it from here, so drop this retry.
         guard
             pendingActivityRegistrations[registration.activityId]?.updateTokenHex
                 == registration.updateTokenHex
