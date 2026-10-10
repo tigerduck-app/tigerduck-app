@@ -1,9 +1,8 @@
 import Foundation
 
 /// Obtains and persists a long-lived Moodle Mobile App token through the NTUST OIDC SSO
-/// launch flow, following a HAR capture of the Moodle iOS app: `launch.php`, the SSO login
-/// form, the OIDC `form_post` back to Moodle, then `moodlemobile://token=<base64>` on the
-/// final page.
+/// launch flow the Moodle iOS app uses: `launch.php`, the SSO login form, the OIDC
+/// `form_post` back to Moodle, then `moodlemobile://token=<base64>` on the final page.
 ///
 /// Never POST to `/login/token.php` instead. NTUST Moodle is OIDC-only (auth_oidc), and that
 /// endpoint counts every request as a failed login and triggers `login_lockout`, banning the
