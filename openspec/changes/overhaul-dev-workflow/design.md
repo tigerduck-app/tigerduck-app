@@ -210,6 +210,16 @@ measurements show a gain. Neither was kept. The boot overlap was dropped before 
 start-up. Only 2 suites could leave the main actor, and that moved the local medians by under
 0.05 s, so it was reverted.
 
+### Dependency updates split between Dependabot and Renovate
+
+Dependabot updates the Swift packages: they live in the Xcode project, which Dependabot reads
+and Renovate's `swift` manager, limited to `Package.swift`, does not. Renovate updates GitHub
+Actions, the `api-poc` uv project and the submodules, which also keeps the submodule check from
+failing pull requests. Both open pull requests against `dev` and read their config from `main`,
+so they start after the next release. Dependabot security updates stay off, because they always
+target the default branch. Dependabot alerts report vulnerabilities, and Renovate opens fix
+pull requests from those alerts for its own managers.
+
 ### Order of work
 
 All work stays on one local branch until every group is done, then ships as one pull request

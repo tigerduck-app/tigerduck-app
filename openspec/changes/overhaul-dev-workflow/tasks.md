@@ -81,9 +81,14 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 
 - [ ] 12.1 Ask the maintainer to approve the push, then push `chore/workflow-overhaul` and open one pull request to `dev` whose description maps each commit range to its task group; verify every check runs
 - [ ] 12.2 Ask SamWang8891 to review `specs/code-comments/spec.md` and the new `AppState` rule in `swift/TigerDuck/AGENTS.md`; verify both maintainers approve (deferred by the maintainer on 2026-10-10)
-- [ ] 12.3 Address valid Greptile and Copilot comments, pushing only with the maintainer's approval; verify Greptile's review applies the comment rule
+- [ ] 12.3 Address valid Greptile comments, pushing only with the maintainer's approval; verify Greptile's review applies the comment rule
 - [ ] 12.4 Record the pull request's "ran for" times against the `dev` baseline (175 to 183 s) in the description; its whole-job times are not compared, because pull-request runs do not save caches
 - [ ] 12.5 After the merge, ask the maintainer to make the comment check required for `dev` and `main`, confirm that the first documentation-only pull request passes both unit-test legs in under two minutes, and archive the change with `openspec archive overhaul-dev-workflow`
+
+## 13. Contributor templates and dependency bots
+
+- [x] 13.1 Add English issue templates for bugs and feature requests, a template chooser whose only link is private security reporting, and a pull request template that follows the README contributing list, with README item 4 asking for Greptile's 5/5 instead of a Copilot review; verify the maintainer approves the wording before the push
+- [ ] 13.2 Add `.github/dependabot.yml` for the Xcode project's Swift packages and `.github/renovate.json` for GitHub Actions, the `api-poc` uv project and the submodules, both opening pull requests against `dev`; verify `renovate-config-validator --strict` passes and, once the next release reaches `main`, that each bot opens its first pull request against `dev`
 
 ## Workflow follow-up
 
