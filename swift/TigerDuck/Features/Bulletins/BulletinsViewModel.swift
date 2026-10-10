@@ -61,13 +61,52 @@ final class BulletinsViewModel {
         }
     }
 
+    /// What the last list ended with. More and Home build a new view model on every visit, so
+    /// the next one in this process shows it and resumes the cursor instead of fetching the
+    /// first page and walking every page behind it again. A pull refreshes it.
+    private struct ListSession {
+        let items: [BulletinAPI.BulletinSummary]
+        let nextCursor: Int?
+        let hasMore: Bool
+        let showDeleted: Bool
+    }
+
+    private static var listSession: ListSession?
+
+    static func forgetListSession() {
+        listSession = nil
+    }
+
     // MARK: - Public surface
 
     /// Initial load. No-op if already loaded so tab re-selection does not
     /// thrash the network — call `refresh()` to force.
     func loadIfNeeded() async {
-        if case .loaded = loadState { return }
+        if case .loaded = loadState {
+            resumePrefetchIfNeeded()
+            return
+        }
+        if let session = Self.listSession, session.showDeleted == showDeleted {
+            items = Self.merge(existing: items, incoming: session.items)
+            nextCursor = session.nextCursor
+            hasMore = session.hasMore
+            loadState = .loaded
+            refilter()
+            resumePrefetchIfNeeded()
+            return
+        }
         await refresh()
+    }
+
+    /// The list left the screen; its next appearance resumes from the cursor.
+    func pausePrefetch() {
+        prefetchTask?.cancel()
+        prefetchTask = nil
+    }
+
+    private func resumePrefetchIfNeeded() {
+        guard prefetchTask == nil, hasMore, nextCursor != nil else { return }
+        startBackgroundPrefetch()
     }
 
     func refresh() async {
@@ -263,6 +302,9 @@ final class BulletinsViewModel {
 
     private func persistSummaries() {
         DataCache.shared.saveBulletinSummaries(items)
+        Self.listSession = ListSession(
+            items: items, nextCursor: nextCursor, hasMore: hasMore, showDeleted: showDeleted
+        )
     }
 
     /// Dedupe by id and sort newest-first. Server-side ordering is

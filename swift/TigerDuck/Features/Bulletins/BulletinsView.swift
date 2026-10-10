@@ -58,6 +58,7 @@ struct BulletinsView: View {
             async let bulletins: Void = viewModel.loadIfNeeded()
             _ = await (tax, bulletins)
         }
+        .onDisappear { viewModel.pausePrefetch() }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             // Reset search only after more than 5 minutes in the background, so a
             // quick switch to another app keeps the query. Wall time, not the app

@@ -47,6 +47,7 @@ struct MacBulletinsView: View {
             // `execute(_:)` also marks `.private` (correlation tokens, echoed headers).
             logger.info("MacBulletinsView .task done — items=\(viewModel.filteredItems.count, privacy: .public) state=\(String(describing: viewModel.loadState), privacy: .private)")
         }
+        .onDisappear { viewModel.pausePrefetch() }
         .onChange(of: searchText) { _, newValue in
             viewModel.searchText = newValue
         }
