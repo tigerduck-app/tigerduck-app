@@ -90,6 +90,13 @@ enum CourseSelectionService {
         return courseNos
     }
 
+    /// Whether fetching `semester` would scrape the course-selection list, the one sync fetch
+    /// that needs the SSO session. The list serves a single term, and a day-long cache covers it.
+    nonisolated static func needsSchoolSession(studentId: String, semester: String) -> Bool {
+        semester == SemesterCatalog.selectionSemesterCode()
+            && loadEnrolledCoursesCache(studentId: studentId, semester: semester) == nil
+    }
+
     nonisolated static let enrolledCoursesCacheTTL: TimeInterval = 86_400
 
     nonisolated private static let enrolledCoursesCacheKey = "enrolledCourseNosCache"

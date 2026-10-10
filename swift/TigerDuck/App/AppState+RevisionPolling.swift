@@ -123,14 +123,18 @@ extension AppState {
         }
     }
 
-    /// Runs the NTUST-SSO-authenticated portion of background sync
-    /// (course list refresh). Factored out so `backgroundSync` can
-    /// launch it via `async let` alongside the independent Moodle and
-    /// ICS fetches. Returns the auth result purely so the call site
-    /// can use it as an `async let` value.
+    /// Runs the course list refresh of background sync. Factored out so `backgroundSync` can
+    /// launch it via `async let` alongside the independent Moodle and ICS fetches. It signs in
+    /// to SSO only when the course-selection list is due; the rest needs no school session.
     private func syncCoursesIfAuthenticated() async -> Bool {
-        guard await authService.ensureAuthenticated() else { return false }
-        _ = await AppServiceBridge.fetchCourses(authService: authService)
+        guard let studentId = authService.storedStudentId else { return false }
+        let semester = CourseSelectionService.currentSemesterCode()
+        if CourseSelectionService.needsSchoolSession(studentId: studentId, semester: semester) {
+            guard await authService.ensureAuthenticated() else { return false }
+        } else {
+            await authService.ensureBackendSignedIn()
+        }
+        _ = await AppServiceBridge.fetchCourses(authService: authService, semester: semester)
         return true
     }
 }
