@@ -79,7 +79,7 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 
 ## 12. Pull request
 
-- [ ] 12.1 Ask the maintainer to approve the push, then push `chore/workflow-overhaul` and open one pull request to `dev` whose description maps each commit range to its task group; verify every check runs
+- [x] 12.1 Ask the maintainer to approve the push, then push `chore/workflow-overhaul` and open one pull request to `dev` whose description maps each commit range to its task group; verify every check runs
 - [ ] 12.2 Ask SamWang8891 to review `specs/code-comments/spec.md` and the new `AppState` rule in `swift/TigerDuck/AGENTS.md`; verify both maintainers approve (deferred by the maintainer on 2026-10-10)
 - [ ] 12.3 Address valid Greptile comments, pushing only with the maintainer's approval; verify Greptile's review applies the comment rule
 - [ ] 12.4 Record the pull request's "ran for" times against the `dev` baseline (175 to 183 s) in the description; its whole-job times are not compared, because pull-request runs do not save caches
