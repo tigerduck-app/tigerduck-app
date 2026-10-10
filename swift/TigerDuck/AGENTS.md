@@ -9,8 +9,12 @@ working in those directories.
 - Add no new responsibilities to `AppState`; feature state lives in the feature's view model or
   service. Features read auth and protected-access state from `AppState` instead of keeping
   their own copy.
-- Feature view models are `@Observable` and show cached data first; app launch or an explicit
-  refresh does the network fetch.
+- Feature view models are `@Observable` and show cached data first. App launch, an explicit
+  refresh, or a return to the app once the school data is a minute old
+  (`AppServiceBridge.refreshAssignmentsIfDue`) does the network fetch.
+- Moodle assignments come from `AppServiceBridge.fetchAssignments`. It runs one round at a time
+  for every caller, rebuilds the calendar's Moodle rows and stamps `schoolDataSyncedAt`, which
+  the sync status popup shows. Only a pull passes `recheckSubmissions: true`.
 - Cross-feature updates go through the `NotificationCenter` names in `AppConstants`
   (`dataDidUpdate`, `liveActivityPreferencesDidChange`, `languageDidChange`, ...). There is no
   dependency-injection container or store framework.
