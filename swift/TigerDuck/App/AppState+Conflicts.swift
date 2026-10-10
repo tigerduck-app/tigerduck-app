@@ -283,7 +283,7 @@ extension AppState {
                     }
                     // Latched and stamped as in `deleteBackendCourses`: a sync that read a term
                     // mid-way would un-hide the courses the upload puts back before their deletes.
-                    let latched = Set(terms.filter { !$0.courses.isEmpty }.map(\.semester))
+                    let latched = Set(terms.map(\.semester))
                     resettingSemesters.formUnion(latched)
                     defer {
                         resettingSemesters.subtract(latched)
@@ -352,22 +352,30 @@ extension AppState {
         }
     }
 
-    /// "Use Local" for courses, term by term: reset the term, upload every course cached for it,
-    /// then delete the ones hidden here. The reset makes every tombstone in the term this device's,
-    /// which its upload releases. The deletes leave single-course tombstones, which bind this device
-    /// too, so the roster its next refresh uploads cannot bring a hidden course back. Not a full
-    /// reset: that erases every term's tombstones and sets `courses_reset_at`, which tells every
-    /// device, this one included, to drop its hidden and manual courses.
+    /// "Use Local" for courses, term by term: reset a term this device caches courses for, upload
+    /// them, then delete every course hidden here; one missing from the cache, which is per language,
+    /// goes up as a stub first so its delete has a row to remove. The reset makes every tombstone in
+    /// the term this device's, which the upload releases. The deletes leave single-course tombstones,
+    /// which bind this device too, so the roster its next refresh uploads cannot bring a hidden course
+    /// back. Not a full reset: that erases every term's tombstones and sets `courses_reset_at`, which
+    /// tells every device, this one included, to drop its hidden and manual courses.
     static func keepLocalCourses(
         _ terms: [(semester: String, courses: [SDCourse])],
         hiding deletedNos: Set<String>,
         on backend: some CourseSyncBackend
     ) async throws {
-        for (semester, courses) in terms where !courses.isEmpty {
-            try await backend.deleteAllCourses(semester: semester)
-            try await backend.uploadCourses(courseUploadRequest(courses, semester: semester, forceKeys: []))
-            for course in courses where CourseTombstone.isHidden(course.courseNo, semester: semester, in: deletedNos) {
-                try await backend.deleteCourse(courseKey: "client:\(semester):\(course.courseNo)")
+        for (semester, courses) in terms {
+            let cachedNos = Set(courses.map(\.courseNo))
+            let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
+                .union(cachedNos.filter { CourseTombstone.isHidden($0, semester: semester, in: deletedNos) })
+            let stubs = hiddenNos.subtracting(cachedNos).sorted().map { SDCourse(courseNo: $0, courseName: $0) }
+            guard !courses.isEmpty || !stubs.isEmpty else { continue }
+            if !courses.isEmpty {
+                try await backend.deleteAllCourses(semester: semester)
+            }
+            try await backend.uploadCourses(courseUploadRequest(courses + stubs, semester: semester, forceKeys: []))
+            for courseNo in hiddenNos.sorted() {
+                try await backend.deleteCourse(courseKey: "client:\(semester):\(courseNo)")
             }
         }
     }

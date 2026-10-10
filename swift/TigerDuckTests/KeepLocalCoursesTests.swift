@@ -1,5 +1,6 @@
 // "Use Local" for courses (`AppState.keepLocalCourses`) against `FakeCourseServer`, which keeps
 // the course rules of tigerduck-backend's server/routes/sync/courses.py and uploads.py.
+import Foundation
 import Testing
 @testable import TigerDuck
 
@@ -28,6 +29,41 @@ struct KeepLocalCoursesTests {
         #expect(server.rows == ["client:1151:CS1"])
     }
 
+    /// `termCached`: another course of the term is in this language's cache, so the term is reset.
+    @Test("a course hidden here but missing from the cache stays deleted",
+          arguments: [false, true], [false, true])
+    func uncachedHiddenCourseStaysDeleted(deletedOnServer: Bool, termCached: Bool) async throws {
+        let cached = termCached ? Self.roster("CS1") : []
+        let cachedKeys = Set(cached.map { "client:1151:\($0.courseNo)" })
+        let server = FakeCourseServer(
+            rows: deletedOnServer ? cachedKeys : cachedKeys.union(["client:1151:CS2"]),
+            tombstones: deletedOnServer ? ["client:1151:CS2": false] : [:]
+        )
+
+        try await AppState.keepLocalCourses([("1151", cached)], hiding: ["1151:CS2"], on: server)
+
+        // A refresh in the language that caches the course uploads it again.
+        try await server.uploadCourses(AppState.courseUploadRequest(
+            cached + Self.roster("CS2"), semester: "1151", forceKeys: []
+        ))
+        #expect(server.rows == cachedKeys)
+    }
+
+    @Test("a retry after a failed delete finishes it")
+    func retryAfterFailedDelete() async throws {
+        let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1151:CS2"])
+        let roster = Self.roster("CS1", "CS2")
+        server.failingDeletes = 1
+
+        await #expect(throws: URLError.self) {
+            try await AppState.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
+        }
+        try await AppState.keepLocalCourses([("1151", roster)], hiding: ["1151:CS2"], on: server)
+
+        try await server.uploadCourses(AppState.courseUploadRequest(roster, semester: "1151", forceKeys: []))
+        #expect(server.rows == ["client:1151:CS1"])
+    }
+
     @Test("Use Local resets only the terms it re-uploads, never every term at once")
     func resetsTermByTerm() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1142:CS9"])
@@ -48,6 +84,8 @@ private final class FakeCourseServer: CourseSyncBackend {
     private(set) var rows: Set<String>
     private(set) var tombstones: [String: Bool]
     private(set) var fullResets = 0
+    /// How many of the next `deleteCourse` calls fail before reaching the server.
+    var failingDeletes = 0
 
     init(rows: Set<String>, tombstones: [String: Bool] = [:]) {
         self.rows = rows
@@ -76,6 +114,10 @@ private final class FakeCourseServer: CourseSyncBackend {
     }
 
     func deleteCourse(courseKey: String) async throws {
+        if failingDeletes > 0 {
+            failingDeletes -= 1
+            throw URLError(.networkConnectionLost)
+        }
         guard rows.remove(courseKey) != nil else { return }
         tombstones[courseKey] = tombstones[courseKey] ?? false
     }
