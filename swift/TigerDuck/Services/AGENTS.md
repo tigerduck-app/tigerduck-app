@@ -30,6 +30,9 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
 - Do not call `AuthService.login` to re-authenticate silently: it harvests a new Moodle token
   and drops the course cache. The Moodle token renews itself on `.invalidToken`.
 - Do not ignore logout races; in-flight writes check cancellation and the login generation.
+- Do not invalidate `NTUSTSessionManager.session`: flows keep it, and a request on an
+  invalidated session ends the app with an exception. Sign-out cancels its tasks and moves
+  `generation`, which `SSOLoginService` checks before each POST.
 - Do not store secrets in `UserDefaults`; credentials live in the Keychain.
 - Do not route School Mail through the TigerDuck backend. The phone talks to the school's mail
   server directly, and the mail password stays on the device (`Mail/Store/MailCredentialStore.swift`).

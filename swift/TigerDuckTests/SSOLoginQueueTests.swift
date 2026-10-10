@@ -34,4 +34,21 @@ struct SSOLoginQueueTests {
         await login(tracker)
         #expect(tracker.finished == 4)
     }
+
+    @Test("a login for an account that signed out sends nothing")
+    func loginAfterSignOutStops() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [SettingsAPIStub.self]
+        let serviceURL = SettingsAPIStub.uniqueBaseURL()
+        await #expect(throws: CancellationError.self) {
+            try await SSOLoginService.ensureServiceLogin(
+                session: URLSession(configuration: config),
+                serviceURL: serviceURL,
+                studentId: "B00000000",
+                password: "unused",
+                generation: NTUSTSessionManager.shared.generation &- 1
+            )
+        }
+        #expect(SettingsAPIStub.requests(for: serviceURL).isEmpty)
+    }
 }

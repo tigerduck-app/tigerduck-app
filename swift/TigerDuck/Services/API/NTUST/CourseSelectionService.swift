@@ -36,12 +36,14 @@ enum CourseSelectionService {
             return cached
         }
 
+        let generation = NTUSTSessionManager.shared.generation
         if !(await NTUSTSessionManager.shared.probeCookiesValid()) {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
         }
@@ -61,7 +63,8 @@ enum CourseSelectionService {
                 session: session,
                 serviceURL: courseSelectionRoot,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             )
             guard loggedIn else { throw CourseServiceError.notAuthenticated }
 

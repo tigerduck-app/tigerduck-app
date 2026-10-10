@@ -156,7 +156,8 @@ final class AuthService {
                 session: session,
                 serviceURL: Self.ssoServiceURL,
                 studentId: normalizedId,
-                password: password
+                password: password,
+                generation: NTUSTSessionManager.shared.generation
             )
 
             if success {
@@ -228,6 +229,7 @@ final class AuthService {
         guard let studentId = storedStudentId, let password = storedPassword else {
             return false
         }
+        let generation = NTUSTSessionManager.shared.generation
 
         // Ask the server whether the cookies still unlock the SSO home (~30ms warm). The
         // local 1h TTL errs both ways: it drops working cookies after an hour and trusts
@@ -241,7 +243,9 @@ final class AuthService {
 
         isReauthenticating = true
         reauthErrorMessage = nil
-        let success = await renewSchoolSession(studentId: studentId, password: password)
+        let success = await renewSchoolSession(
+            studentId: studentId, password: password, generation: generation
+        )
         isReauthenticating = false
 
         if !success {
@@ -256,7 +260,7 @@ final class AuthService {
     /// The silent counterpart of ``login(studentId:password:)`` for stored credentials: it
     /// renews the SSO session only. The Moodle token outlives SSO cookies and every Moodle call
     /// renews it on `.invalidToken`, and the enrolled-course cache is still this account's.
-    private func renewSchoolSession(studentId: String, password: String) async -> Bool {
+    private func renewSchoolSession(studentId: String, password: String, generation: Int) async -> Bool {
         isLoggingIn = true
         loginError = nil
         defer { isLoggingIn = false }
@@ -265,8 +269,12 @@ final class AuthService {
                 session: NTUSTSessionManager.shared.session,
                 serviceURL: Self.ssoServiceURL,
                 studentId: studentId,
-                password: password
+                password: password,
+                generation: generation
             ) else { return false }
+        } catch is CancellationError {
+            // The account signed out meanwhile; the login screen shows no error for it.
+            return false
         } catch {
             if case SSOLoginError.loginFailed = error {} else {
                 AppLogger.captureError(error, context: ["flow": "ntustReauth"])

@@ -33,7 +33,11 @@ final class NTUSTSessionManager {
 
     var loadingState: LoadingState = .idle
 
-    private(set) var session: URLSession
+    let session: URLSession
+
+    /// Moved by ``invalidateSession()``. A sign-in flow checks it against the value it started
+    /// under, so a login for an account that signed out stops instead of signing it in again.
+    private(set) var generation = 0
 
     /// NTUST-only cookie jar. In `HTTPCookieStorage.shared`, NTUST SSO cookies would leak into
     /// every other URLSession in the process that does not opt out of shared storage (Library,
@@ -106,17 +110,6 @@ final class NTUSTSessionManager {
         for cookie in cookieStorage.cookies ?? [] where !Self.isSSOCookie(cookie) {
             cookieStorage.deleteCookie(cookie)
         }
-        session = Self.makeSession(cookieStorage: cookieStorage)
-    }
-
-    /// Cookies of ssoam2 and the parent domain carry the SSO session and the device the school
-    /// knows; every other host's belong to one service.
-    private static func isSSOCookie(_ cookie: HTTPCookie) -> Bool {
-        let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
-        return domain == "ssoam2.ntust.edu.tw" || domain == "ntust.edu.tw"
-    }
-
-    private static func makeSession(cookieStorage: HTTPCookieStorage) -> URLSession {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = cookieStorage
         config.httpCookieAcceptPolicy = .always
@@ -134,11 +127,18 @@ final class NTUSTSessionManager {
         // SPKI pin against the *.ntust.edu.tw set, so an MDM-pushed root CA on hostile campus
         // Wi-Fi cannot MITM SSO credentials. `NoRedirectSessionDelegate`, the per-task delegate
         // of `probeCookiesValid()`, forwards trust challenges here explicitly; its doc says why.
-        return URLSession(
+        session = URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
             delegateQueue: nil,
         )
+    }
+
+    /// Cookies of ssoam2 and the parent domain carry the SSO session and the device the school
+    /// knows; every other host's belong to one service.
+    private static func isSSOCookie(_ cookie: HTTPCookie) -> Bool {
+        let domain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return domain == "ssoam2.ntust.edu.tw" || domain == "ntust.edu.tw"
     }
 
     func markLoginSuccess() {
@@ -146,10 +146,11 @@ final class NTUSTSessionManager {
     }
 
     func invalidateSession() {
-        // A login or request still running for the departing account would put its cookies
-        // back after the purge below, and the next login would find that session signed in.
-        session.invalidateAndCancel()
-        session = Self.makeSession(cookieStorage: cookieStorage)
+        // The departing account's requests would put its cookies back after the purge below.
+        // Flows keep this session, and a request on an invalidated one ends the app with an
+        // exception, so its tasks are cancelled instead.
+        generation &+= 1
+        session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
         // Cookies live in the NTUST-only jar now; clear it wholesale —
         // no host-filter tip-toeing required, and Moodle / Library /
         // WebView state in `HTTPCookieStorage.shared` is untouched.
