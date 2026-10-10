@@ -45,7 +45,7 @@ TigerDuck 是由一群學生共同開發的校園助手
 - 學期 / 累計 GPA、排名、各科成績一次看完
 - 互動式圖表追蹤成績走勢
 
-### 🏛️ **圖書館**（實驗性）
+### 🏛️ **圖書館**
 - 秒開入館 QR-Code，無任何延遲
 
 ### 📬 **校園信箱**（iOS）
@@ -340,7 +340,7 @@ tigerduck-app/
 - watchOS 11 / 26 (/ 27 如果可以的話)
 - macOS 15 / 26 (/ 27 如果可以的話)
 3. 以 `feature/your-feature` 或 `fix/your-fix` 命名分支
-4. 發布 PR 時，目標分支為 `dev`，且必須勾選 Copilot 做 Revise
+4. 發布 PR 時，目標分支為 `dev`，並修正程式碼直到 Greptile 審查的自信度到達 5/5；若意外卡在 3 或 4，則酌情處理
 5. 翻譯字串請改 `app-translation/` 子模組（透過獨立 PR），不要直接改 `swift/.../*.lproj` 內的 symlink
 6. 程式碼註解一律使用英文並保持精簡，只寫「為什麼」，不寫程式在做什麼或修改經過；完整規則見 [AGENTS.md](AGENTS.md) 的 Comments 段落，CI 會檢查語言、長度與引用來源
 7. 跨多次工作階段、影響架構，或需要兩位維護者共同同意的工作，請在 `openspec/changes/` 以 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 規劃，並與實作一起 commit；詳見 [AGENTS.md](AGENTS.md) 的 Planning 段落

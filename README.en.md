@@ -45,7 +45,7 @@ It was created to solve common pain points: scattered resources, delayed notific
 - Per-semester / cumulative GPA, rankings, and per-course grades in one place
 - Interactive charts to track grade trends over time
 
-### 🏛️ **Library** (Experimental)
+### 🏛️ **Library**
 - Instant library entry QR code with zero delay
 
 ### 📬 **School Mail** (iOS)
@@ -339,7 +339,7 @@ Before submitting, please make sure to:
 - watchOS 11 / 26 (/ 27 if possible)
 - macOS 15 / 26 (/ 27 if possible)
 3. Name your branch using `feature/your-feature` or `fix/your-fix`
-4. Target the `dev` branch when opening a PR, and enable Copilot review
+4. Target the `dev` branch when opening a PR, and keep fixing the code until Greptile's confidence score reaches 5/5; a review stuck at 3 or 4 for an unexpected reason is handled case by case
 5. For translation strings, open a separate PR against the `app-translation/` submodule — do **not** edit the symlinked `*.lproj` files inside `swift/`
 6. Write code comments in English and keep them short: say why, not what the code does or how it changed. The full rules are in the Comments section of [AGENTS.md](AGENTS.md); CI checks language, length and citations
 7. Plan work that spans sessions, changes the architecture or needs both maintainers to agree as an [OpenSpec](https://github.com/Fission-AI/OpenSpec) change in `openspec/changes/`, committed with the work; see the Planning section of [AGENTS.md](AGENTS.md)
