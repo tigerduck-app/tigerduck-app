@@ -114,6 +114,7 @@ enum NTUSTScoreService {
         let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != scoreDisplayURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
         if landedElsewhere || bodyIsSSO {
+            NTUSTSessionManager.shared.dropServiceCookies(for: scoreDisplayURL)
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: scoreRootURL,

@@ -59,6 +59,7 @@ enum CourseSelectionService {
         let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != courseListURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
         if landedElsewhere || bodyIsSSO {
+            NTUSTSessionManager.shared.dropServiceCookies(for: courseListURL)
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,

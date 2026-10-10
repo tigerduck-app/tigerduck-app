@@ -141,6 +141,16 @@ final class NTUSTSessionManager {
         return domain == "ssoam2.ntust.edu.tw" || domain == "ntust.edu.tw"
     }
 
+    /// A service that sent its page elsewhere has a session that no longer works, and its
+    /// cookies can send the login's visit elsewhere too. Dropping them, as the launch does for
+    /// every service, lets the next visit sign it in through the SSO session.
+    func dropServiceCookies(for url: URL) {
+        for cookie in cookieStorage.cookies ?? []
+        where cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == url.host {
+            cookieStorage.deleteCookie(cookie)
+        }
+    }
+
     func markLoginSuccess() {
         Defaults[.ssoLoginTimestamp] = Date().timeIntervalSince1970
     }

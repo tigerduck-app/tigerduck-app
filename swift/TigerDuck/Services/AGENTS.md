@@ -50,7 +50,8 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
   with only the service's persisted sign-in cookie signs the account out of SSO, so
   `NTUSTSessionManager` drops every non-SSO cookie at launch.
 - A lapsed service session sends a page to the campus portal, `i.ntust.edu.tw`, not to ssoam2.
-  The course list and score fetches treat any final host but their own as a bounce.
+  The course list and score fetches treat any final host but their own as a bounce: they drop
+  that service's cookies and sign in again.
 - `Push/ScheduleSyncService.swift` builds the 48-hour event list it sends to the backend with
   the Live Activity resolvers, so a resolver change also changes what the server pushes.
 - Services follow NTUST and Moodle page behavior closely, so a parser change can affect several
