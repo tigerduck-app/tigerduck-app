@@ -88,7 +88,7 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 ## 13. Contributor templates and dependency bots
 
 - [x] 13.1 Add English issue templates for bugs and feature requests, a template chooser whose only link is private security reporting, and a pull request template that follows the README contributing list, with README item 4 asking for Greptile's 5/5 instead of a Copilot review; verify the maintainer approves the wording before the push
-- [ ] 13.2 Add `.github/dependabot.yml` for the Xcode project's Swift packages and `.github/renovate.json` for GitHub Actions, the `api-poc` uv project and the submodules, both opening pull requests against `dev`; verify `renovate-config-validator --strict` passes and, once the next release reaches `main`, that each bot opens its first pull request against `dev`
+- [ ] 13.2 Add `.github/dependabot.yml` for the Xcode project's Swift packages and `.github/renovate.json` for GitHub Actions, the `api-poc` uv project and the submodules, both opening pull requests against `dev`; verify `renovate-config-validator --strict` passes and, once the next release reaches `main`, that each bot opens its first pull request against `dev` (that check is tracked in #233)
 - [x] 13.3 Write the labeling guide in `docs/issue-triage.md`, set the label descriptions it relies on, add `dependencies`, drop `duplicate`, `invalid` and `wontfix`, and set the issue type from the templates; verify the maintainer approves the proposal before any label changes
 
 ## Workflow follow-up
