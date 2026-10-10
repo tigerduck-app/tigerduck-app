@@ -56,7 +56,7 @@ enum MoodleAssignmentService {
             } else {
                 token = try await tokenService.refreshTokenIfNeeded()
             }
-            let userId = try await MoodleSiteInfoService.shared.userId()
+            let userId = try await MoodleSiteInfoService.shared.userId(token: token)
             return try await doFetchSubmissionStatus(token: token, assignId: assignId, userId: userId)
         }
 

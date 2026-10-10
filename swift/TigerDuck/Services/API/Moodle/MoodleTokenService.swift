@@ -167,12 +167,6 @@ actor MoodleTokenService {
     }
 
     private nonisolated static func persist(triple: TokenTriple) {
-        // A token swap invalidates the per-user `cachedUserId` in MoodleSiteInfoService, even
-        // on an account switch through `obtainToken` that skips `clearToken()`. Otherwise
-        // `userId()` returns the previous account's cached userid and assignments load under it.
-        let previous = KeychainManager.loadString(
-            key: AppConstants.KeychainKeys.moodleToken
-        )
         KeychainManager.saveString(
             key: AppConstants.KeychainKeys.moodleToken,
             value: triple.wstoken,
@@ -186,9 +180,6 @@ actor MoodleTokenService {
             KeychainManager.delete(
                 key: AppConstants.KeychainKeys.moodlePrivateToken,
             )
-        }
-        if previous != triple.wstoken {
-            Task { await MoodleSiteInfoService.shared.invalidateCache() }
         }
     }
 
