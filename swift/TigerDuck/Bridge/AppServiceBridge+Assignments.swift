@@ -52,6 +52,39 @@ extension AppServiceBridge {
         return round.assignments
     }
 
+    /// A return to the app refreshes Moodle assignments once the school data is this old.
+    static let foregroundRefreshInterval: TimeInterval = 60
+
+    private static var lastForegroundAttempt: Date?
+
+    /// Due once neither the last answered round nor the last attempt is that recent, so a
+    /// Moodle that keeps failing is not asked on every return. A date ahead of the clock, left
+    /// by a clock set back, counts as old.
+    static func isForegroundRefreshDue(syncedAt: Date?, lastAttempt: Date?, now: Date) -> Bool {
+        [syncedAt, lastAttempt].allSatisfy { date in
+            guard let date else { return true }
+            let age = now.timeIntervalSince(date)
+            return age >= foregroundRefreshInterval || age < 0
+        }
+    }
+
+    /// Runs on every return to the foreground. Offline it does nothing, so the indicator does
+    /// not spin and Moodle is not marked failed.
+    static func refreshAssignmentsIfDue(authService: AuthService) async {
+        let now = Date()
+        guard authService.storedStudentId != nil,
+              isForegroundRefreshDue(
+                syncedAt: Defaults[.schoolDataSyncedAt], lastAttempt: lastForegroundAttempt, now: now
+              ),
+              await NetworkMonitor.shared.isReachable() else { return }
+        lastForegroundAttempt = now
+        let manager = NTUSTSessionManager.shared
+        manager.loadingState = .loading
+        _ = await fetchAssignments(authService: authService)
+        manager.loadingState = .loaded
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
+    }
+
     /// Sign-out stops the departing account's round; its writes would be skipped anyway.
     static func cancelAssignmentRound() {
         runningRound?.task?.cancel()
