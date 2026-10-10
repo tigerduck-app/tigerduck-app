@@ -40,7 +40,7 @@ final class WatchSyncCoordinator: NSObject {
 
     init(
         session: WatchSessionPushing = WCSession.default,
-        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0, clock: .suspending) }
     ) {
         self.session = session
         self.sleep = sleep
