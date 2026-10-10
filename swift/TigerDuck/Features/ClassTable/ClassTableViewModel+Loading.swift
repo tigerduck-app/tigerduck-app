@@ -118,7 +118,7 @@ extension ClassTableViewModel {
             semester: targetSemester,
             forceRefresh: true,
         )
-        async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService)
+        async let assignmentsTask = AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
         // Manual and cross-device courses only ever held the snapshot
         // taken when they were added; the pull is the "latest of
         // everything" gesture, so re-query them too.

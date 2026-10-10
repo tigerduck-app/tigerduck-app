@@ -633,7 +633,9 @@ enum AppServiceBridge {
         )
     }
 
-    static func fetchAssignments(authService: AuthService) async -> [SDAssignment] {
+    /// `recheckSubmissions` asks Moodle about every submission. Without it a round skips the
+    /// ones ``confirmedSubmissions(in:)`` lists, so a pull is what shows a reverted submission.
+    static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
         let startGeneration = authService.loginGeneration
         guard authService.storedStudentId != nil,
               authService.storedPassword != nil else {
@@ -692,11 +694,18 @@ enum AppServiceBridge {
                 }
             )
 
+            let cachedAssignments = DataCache.shared.loadAssignments()
+            let confirmed = recheckSubmissions ? [:] : confirmedSubmissions(in: cachedAssignments)
+            // Records without a due date or a submission are dropped below, so asking about
+            // them would only cost Moodle a request.
+            let recordsToAsk = records.filter {
+                $0.dueDate != nil && !$0.noSubmissions && confirmed[String($0.assignId)] == nil
+            }
             let statuses: [Int: MoodleSubmissionStatus] = await withTaskGroup(
                 of: (Int, MoodleSubmissionStatus)?.self,
                 returning: [Int: MoodleSubmissionStatus].self
             ) { group in
-                for record in records {
+                for record in recordsToAsk {
                     group.addTask {
                         guard let status = try? await MoodleAssignmentService.fetchSubmissionStatus(
                             assignId: record.assignId
@@ -726,26 +735,27 @@ enum AppServiceBridge {
                 let moodleCourse = moodleCoursesById[record.courseId]
                 let status = statuses[record.assignId]
                 let assignmentId = String(record.assignId)
+                let confirmedAt = confirmed[assignmentId]
                 return SDAssignment(
                     assignmentId: assignmentId,
                     courseNo: moodleCourse.flatMap { courseNoByMoodleId[$0.id] } ?? "",
                     courseName: moodleCourse.map { courseName(from: $0.fullname) } ?? "",
                     title: record.name,
                     dueDate: dueDate,
-                    isCompleted: status?.isSubmitted ?? false,
+                    isCompleted: status?.isSubmitted ?? (confirmedAt != nil),
                     isArchived: archivedIds.contains(assignmentId),
                     isLocallyCompleted: locallyCompletedIds.contains(assignmentId),
                     moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(record.cmId)",
                     cutoffDate: record.cutoffDate,
-                    submittedAt: status?.submittedAt
+                    submittedAt: status?.submittedAt ?? confirmedAt
                 )
             }
 
             let assignmentsToPersist: [SDAssignment]
-            if statuses.count < records.count {
+            if statuses.count < recordsToAsk.count {
                 assignmentsToPersist = preserveCompletionState(
                     freshAssignments: freshAssignments,
-                    cachedAssignments: DataCache.shared.loadAssignments()
+                    cachedAssignments: cachedAssignments
                 )
             } else {
                 assignmentsToPersist = freshAssignments
@@ -795,6 +805,18 @@ enum AppServiceBridge {
             }
             return DataCache.shared.loadAssignments()
         }
+    }
+
+    /// Submissions Moodle has confirmed, with their time, by assignment id. Moodle keeps a
+    /// submission once it has a time, short of a teacher reverting it to a draft.
+    static func confirmedSubmissions(in cached: [SDAssignment]) -> [String: Date] {
+        Dictionary(
+            cached.compactMap { assignment in
+                guard assignment.isCompleted, let submittedAt = assignment.submittedAt else { return nil }
+                return (assignment.assignmentId, submittedAt)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     static func preserveCompletionState(

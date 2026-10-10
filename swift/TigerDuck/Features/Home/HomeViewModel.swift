@@ -167,7 +167,7 @@ final class HomeViewModel {
         // trip. Courses come from AppState.backgroundSync at cold launch and from
         // ClassTable pull-to-refresh (`forceRefresh: true`); Home reads courseProvider.
         MoodleEnrolledCoursesService.dropSharedAnswer()
-        let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService)
+        let fetchedAssignments = await AppServiceBridge.fetchAssignments(authService: authService, recheckSubmissions: true)
         let allCourses = courseProvider.currentCourses()
         let todayFiltered = allCourses.coursesForToday()
         let semesterFiltered = filterToCurrentSemester(fetchedAssignments, courses: allCourses)
