@@ -110,7 +110,8 @@ extension AppState {
             // resurface the previous user's events.
             guard !Task.isCancelled else { return }
 
-            // The assignment round rebuilt the Moodle rows; only the school's change here.
+            // Moodle rows stay as they are: every assignment round writes them, and a pull's
+            // round may have written newer ones than this sync's while it fetched courses.
             var calendarCache = DataCache.shared.loadCalendarEvents()
             calendarCache.removeAll { $0.source == .school }
             calendarCache.append(contentsOf: fetchedSchoolEvents)
