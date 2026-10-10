@@ -30,7 +30,7 @@ actor MoodleTokenService {
     }
     private var inFlightTokenTask: (key: ObtainKey, task: Task<String, Error>)?
     private var inFlightRefreshTask: Task<String, Error>?
-    /// Moved by ``clearToken()``: a harvest that started before a sign-out stores nothing, or
+    /// Moved by ``signOut()``: a harvest that started before a sign-out stores nothing, or
     /// the departing account's token would be back in the keychain for the next one.
     private var signInGeneration = 0
 
@@ -144,13 +144,19 @@ actor MoodleTokenService {
         return try await task.value
     }
 
-    /// Clear stored Moodle token. Called on logout.
-    func clearToken() async {
+    /// Called on logout. A harvest in flight is cancelled and stores nothing.
+    func signOut() async {
         signInGeneration += 1
         inFlightTokenTask?.task.cancel()
         inFlightTokenTask = nil
         inFlightRefreshTask?.cancel()
         inFlightRefreshTask = nil
+        await clearToken()
+    }
+
+    /// Clear stored Moodle token, also after Moodle rejects it. A harvest in flight goes on, so
+    /// the parallel calls that met the dead token join one harvest.
+    func clearToken() async {
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
         // Purge SSO and Moodle cookies so stale anti-forgery and session cookies do not bleed
