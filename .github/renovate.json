@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranchPatterns": ["dev"],
+  "enabledManagers": ["github-actions", "pep621", "git-submodules"],
+  "ignorePaths": ["swift/Packages/**"],
+  "git-submodules": { "enabled": true },
+  "timezone": "Asia/Taipei",
+  "schedule": ["before 9am on monday"],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "matchManagers": ["github-actions", "pep621"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "matchManagers": ["git-submodules"],
+      "schedule": ["at any time"]
+    }
+  ]
+}

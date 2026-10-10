@@ -119,3 +119,6 @@ applies the rest. Before pushing, run `python3 tools/check_comments.py check --b
 - `swift/TigerDuckWatchWidget/` is not referenced by `project.pbxproj`; no target builds it.
 - `swift/Packages/SwiftMail/` is vendored; read its `VENDORED.md` before changing it.
 - Xcode Cloud runs `swift/ci_scripts/ci_post_clone.sh` after cloning; it fetches the submodules.
+- Dependabot updates the Swift packages (`.github/dependabot.yml`) and Renovate the rest
+  (`.github/renovate.json`). A Swift update fails `licenses.yaml` until
+  `python3 tools/generate_licenses.py` runs on its branch and the result is committed.
