@@ -4,6 +4,7 @@
   "baseBranchPatterns": ["dev"],
   "enabledManagers": ["github-actions", "pep621", "git-submodules"],
   "ignorePaths": ["swift/Packages/**"],
+  "labels": ["dependencies"],
   "git-submodules": { "enabled": true },
   "timezone": "Asia/Taipei",
   "schedule": ["before 9am on monday"],
