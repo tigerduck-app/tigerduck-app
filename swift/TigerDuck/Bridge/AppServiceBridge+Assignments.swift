@@ -79,10 +79,12 @@ extension AppServiceBridge {
               ),
               await NetworkMonitor.shared.isReachable() else { return }
         lastForegroundAttempt = now
+        // A sync that shows progress or an error owns the indicator, so this round leaves it.
         let manager = NTUSTSessionManager.shared
-        manager.loadingState = .loading
+        let showsProgress = manager.loadingState == .idle || manager.loadingState == .loaded
+        if showsProgress { manager.loadingState = .loading }
         _ = await fetchAssignments(authService: authService)
-        manager.loadingState = .loaded
+        if showsProgress { manager.loadingState = .loaded }
         NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
     }
 
