@@ -100,6 +100,10 @@ final class NTUSTSessionManager {
     }
 
     private init() {
+        session = Self.makeSession(cookieStorage: cookieStorage)
+    }
+
+    private static func makeSession(cookieStorage: HTTPCookieStorage) -> URLSession {
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = cookieStorage
         config.httpCookieAcceptPolicy = .always
@@ -117,7 +121,7 @@ final class NTUSTSessionManager {
         // SPKI pin against the *.ntust.edu.tw set, so an MDM-pushed root CA on hostile campus
         // Wi-Fi cannot MITM SSO credentials. `NoRedirectSessionDelegate`, the per-task delegate
         // of `probeCookiesValid()`, forwards trust challenges here explicitly; its doc says why.
-        session = URLSession(
+        return URLSession(
             configuration: config,
             delegate: TLSPinningDelegate.shared,
             delegateQueue: nil,
@@ -129,6 +133,10 @@ final class NTUSTSessionManager {
     }
 
     func invalidateSession() {
+        // A login or request still running for the departing account would put its cookies
+        // back after the purge below, and the next login would find that session signed in.
+        session.invalidateAndCancel()
+        session = Self.makeSession(cookieStorage: cookieStorage)
         // Cookies live in the NTUST-only jar now; clear it wholesale —
         // no host-filter tip-toeing required, and Moodle / Library /
         // WebView state in `HTTPCookieStorage.shared` is untouched.
