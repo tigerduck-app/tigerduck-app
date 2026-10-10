@@ -40,11 +40,10 @@ final class NTUSTSessionManager {
     /// WKWebViews, third-party SDKs). Every NTUST cookie lives here, so logout and explicit
     /// purges need only touch this jar.
     ///
-    /// `sharedCookieStorage(forGroupContainerIdentifier:)` returns a persistent store per
-    /// identifier, separate from `.shared` and invisible to it. The identifier only names the
-    /// storage namespace; it need not match an App Group entitlement.
+    /// The identifier must be an App Group in `TigerDuck.entitlements`. Any other gives a store
+    /// kept only in memory, which loses the SSO session on every relaunch.
     let cookieStorage: HTTPCookieStorage = HTTPCookieStorage
-        .sharedCookieStorage(forGroupContainerIdentifier: "org.ntust.app.TigerDuck.ntust-session")
+        .sharedCookieStorage(forGroupContainerIdentifier: "group.org.ntust.app.TigerDuck")
 
     private static let cookieTTL: TimeInterval = 3600 // 1 hour
 
