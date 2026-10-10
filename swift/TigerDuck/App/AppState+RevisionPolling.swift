@@ -1,6 +1,6 @@
 // The backend's monotonic revision counter answers "did anything change?" without
 // pulling the whole override set; a foreground timer polls it. `backgroundSync` is
-// the BGTaskScheduler entry point that fans out to the independent fetches.
+// the launch and sign-in sync that fans out to the independent fetches.
 
 import SwiftUI
 import SwiftData
