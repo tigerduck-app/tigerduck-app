@@ -9,6 +9,7 @@ import Testing
 /// `NavigationLink`, and `moreFeatures` filters on `isImplemented`, which
 /// `.settings` fails. Setting `AppFeature.settings.isImplemented` to `true`
 /// would silently strip Settings' back button; these tests make that loud.
+@MainActor
 struct MoreNavigationTests {
 
     @Test func settingsIsNotReachableThroughMoreFeatureDestination() {

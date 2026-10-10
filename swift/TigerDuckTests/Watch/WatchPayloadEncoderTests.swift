@@ -2,6 +2,7 @@ import XCTest
 import SwiftData
 @testable import TigerDuck
 
+@MainActor
 final class WatchPayloadEncoderTests: XCTestCase {
 
     private func makeCourse(

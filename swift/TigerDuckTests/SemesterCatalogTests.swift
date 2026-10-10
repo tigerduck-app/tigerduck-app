@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+@MainActor
 struct SemesterCatalogTests {
 
     /// Trimmed capture of `querycourse/api/semestersinfo`, reordered so the

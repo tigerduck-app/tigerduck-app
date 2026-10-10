@@ -2,6 +2,10 @@ import Testing
 import Foundation
 @testable import TigerDuck
 
+/// On the main actor, like `TimeSliderViewModel`, whose init prepares a `UIFeedbackGenerator`
+/// and can crash the test host off the main thread. The Swift 5 language mode does not flag a
+/// test that builds the model off the main actor.
+@MainActor
 struct TimeSliderViewModelTests {
 
     @Test func dateFromTimeString_parsesCorrectly() {
@@ -39,7 +43,7 @@ struct TimeSliderViewModelTests {
     /// Which days are quiet can change while the courses do not — a
     /// "still have class" toggle, a holiday published — and the timeline
     /// follows without waiting for the slider to reappear.
-    @Test @MainActor func quietDayChange_rebuildsTheTimeline() async throws {
+    @Test func quietDayChange_rebuildsTheTimeline() async throws {
         let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
         let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
         let today = AcademicCalendar.startOfDay(AppClock.now())

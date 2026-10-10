@@ -2,6 +2,7 @@ import XCTest
 import Defaults
 @testable import TigerDuck
 
+@MainActor
 final class NameAbbrServiceTests: XCTestCase {
     // The name-abbr JSON files ship in the app bundle via the Xcode
     // build's bundle step.

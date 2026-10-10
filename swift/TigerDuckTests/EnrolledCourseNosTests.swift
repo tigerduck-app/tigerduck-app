@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+@MainActor
 struct EnrolledCourseNosTests {
     @Test("選課 answered: it owns the term, so neither Moodle nor a stale transcript adds courses")
     func selectionIsAuthoritative() {

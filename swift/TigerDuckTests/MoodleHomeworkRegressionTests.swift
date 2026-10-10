@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
+@MainActor
 struct MoodleHomeworkRegressionTests {
     @Test func moodleDeepLink_usesFetchedMoodleUrl() {
         let assignment = SDAssignment(
@@ -623,7 +624,6 @@ struct MoodleHomeworkRegressionTests {
     // build draws its timetable from MacClassTableView), so this case is iOS-only
     // while the rest of the file is platform-neutral.
 #if os(iOS)
-    @MainActor
     @Test func classTableViewModel_displayLabel_formatsSemesterCode() {
         let vm = ClassTableViewModel()
         #expect(vm.displayLabel(for: "1142") == "114-2")
