@@ -17,7 +17,6 @@ permissions:
   contents: read
 
 jobs:
-  # Named apart from the other workflows' `check` jobs, so a ruleset can require this one.
   comments:
     runs-on: ubuntu-latest
     timeout-minutes: 10
