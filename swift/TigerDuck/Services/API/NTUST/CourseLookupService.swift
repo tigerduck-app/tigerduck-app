@@ -19,8 +19,9 @@ enum CourseLookupService {
         )
     }()
 
-    /// A course's rows change only when the school edits the course, and every course fetch
-    /// and class-table appearance looks each course up, so an answer is kept this long.
+    /// Every course fetch and class-table appearance looks each course up, and the times and
+    /// rooms they read seldom change, so an answer is kept this long. Seat counts move during
+    /// add and drop, so the searches in Add Course pass `fresh`.
     static let lookupLifetime: TimeInterval = 30 * 60
 
     struct LookupKey: Hashable {
@@ -31,7 +32,7 @@ enum CourseLookupService {
 
     private static var lookups: [LookupKey: (at: Date, results: [CourseSearchResult])] = [:]
 
-    /// `fresh` skips the kept answer; a class-table pull passes it.
+    /// `fresh` skips the kept answer; a class-table pull and Add Course pass it.
     static func lookupCourse(
         semester: String,
         courseNo: String,

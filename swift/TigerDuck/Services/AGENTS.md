@@ -14,7 +14,7 @@ School Mail, the TigerDuck backend clients, Watch sync, caches and logging.
   renews the SSO session alone. SSO logins queue through `SSOLoginService.oneAtATime`.
 - School answers are shared: `MoodleEnrolledCoursesService` keeps one per wstoken for a minute,
   `MoodleSiteInfoService` keys the user id by token, and `CourseLookupService` keeps lookups for
-  30 minutes. A pull skips them.
+  30 minutes. A pull skips them, and so does Add Course, which shows seat counts.
 - Services write fetched results through `DataCache`, so features and background sync read the
   same persisted data.
 - New TigerDuck backend clients copy the request construction, auth header and error handling
