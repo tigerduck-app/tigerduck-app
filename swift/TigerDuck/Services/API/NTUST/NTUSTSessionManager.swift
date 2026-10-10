@@ -31,7 +31,13 @@ final class NTUSTSessionManager {
         return "Mozilla/5.0 (iPhone; CPU iPhone OS \(osVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(majorVersion).0 Mobile/15E148 Safari/604.1"
     }()
 
-    var loadingState: LoadingState = .idle
+    var loadingState: LoadingState = .idle {
+        didSet { if loadingState == .loading { loadingStarts &+= 1 } }
+    }
+
+    /// Counts every move to `.loading`, so a sync can tell that another one started after it and
+    /// now owns the indicator.
+    private(set) var loadingStarts = 0
 
     let session: URLSession
 
