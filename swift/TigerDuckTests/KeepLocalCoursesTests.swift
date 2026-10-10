@@ -49,6 +49,18 @@ struct KeepLocalCoursesTests {
         #expect(server.rows == cachedKeys)
     }
 
+    @Test("a legacy entry, which hides its course in every term, keeps it deleted when the cache lacks it")
+    func uncachedLegacyHiddenCourseStaysDeleted() async throws {
+        let server = FakeCourseServer(rows: ["client:1151:CS1"], tombstones: ["client:1151:CS2": false])
+
+        try await AppState.keepLocalCourses([("1151", Self.roster("CS1"))], hiding: ["CS2"], on: server)
+
+        try await server.uploadCourses(AppState.courseUploadRequest(
+            Self.roster("CS1", "CS2"), semester: "1151", forceKeys: []
+        ))
+        #expect(server.rows == ["client:1151:CS1"])
+    }
+
     @Test("a retry after a failed delete finishes it")
     func retryAfterFailedDelete() async throws {
         let server = FakeCourseServer(rows: ["client:1151:CS1", "client:1151:CS2"])

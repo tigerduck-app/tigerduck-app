@@ -365,10 +365,9 @@ extension AppState {
         on backend: some CourseSyncBackend
     ) async throws {
         for (semester, courses) in terms {
-            let cachedNos = Set(courses.map(\.courseNo))
             let hiddenNos = CourseTombstone.courseNos(hiddenIn: semester, in: deletedNos)
-                .union(cachedNos.filter { CourseTombstone.isHidden($0, semester: semester, in: deletedNos) })
-            let stubs = hiddenNos.subtracting(cachedNos).sorted().map { SDCourse(courseNo: $0, courseName: $0) }
+            let stubs = hiddenNos.subtracting(courses.map(\.courseNo)).sorted()
+                .map { SDCourse(courseNo: $0, courseName: $0) }
             guard !courses.isEmpty || !stubs.isEmpty else { continue }
             if !courses.isEmpty {
                 try await backend.deleteAllCourses(semester: semester)
