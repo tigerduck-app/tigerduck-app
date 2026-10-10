@@ -72,7 +72,9 @@ extension AppState {
     /// lived OIDC token (no NTUST SSO dependency), the ICS calendar is
     /// public, and the courses track owns its own auth check so Moodle
     /// and ICS are never held up behind `ensureAuthenticated()`.
-    func backgroundSync() {
+    ///
+    /// `recheckSubmissions` is for Refresh on the Mac, which has no pull.
+    func backgroundSync(recheckSubmissions: Bool = false) {
         guard hasCompletedOnboarding else { return }
         startRevisionPolling()
         syncTask?.cancel()
@@ -91,7 +93,10 @@ extension AppState {
 
             // Moodle-direct for the assignment list (proven, correct
             // semester filtering). Backend handles override sync only.
-            _ = await AppServiceBridge.fetchAssignments(authService: authService)
+            if recheckSubmissions { MoodleEnrolledCoursesService.dropSharedAnswer() }
+            _ = await AppServiceBridge.fetchAssignments(
+                authService: authService, recheckSubmissions: recheckSubmissions
+            )
             await syncOverridesFromBackend()
 
             async let schoolEventsTask = CalendarService.fetchAndParseICS()

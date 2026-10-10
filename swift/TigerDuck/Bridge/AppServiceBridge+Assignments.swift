@@ -24,7 +24,8 @@ extension AppServiceBridge {
     /// account, unless it wants submissions rechecked and that round does not.
     ///
     /// `recheckSubmissions` asks Moodle about every submission. Without it a round skips the
-    /// ones ``confirmedSubmissions(in:)`` lists, so a pull is what shows a reverted submission.
+    /// ones ``confirmedSubmissions(in:)`` lists, so a pull, or Refresh on the Mac, is what shows
+    /// a reverted submission.
     static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
         await sharedRound(generation: authService.loginGeneration, rechecks: recheckSubmissions) {
             await runAssignmentRound(authService: authService, recheckSubmissions: recheckSubmissions)
