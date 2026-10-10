@@ -303,6 +303,7 @@ final class AuthService {
         KeychainManager.delete(key: AppConstants.KeychainKeys.studentId)
         KeychainManager.delete(key: AppConstants.KeychainKeys.password)
         Task { await MoodleTokenService.shared.clearToken() }
+        MoodleEnrolledCoursesService.dropSharedAnswer()
         NTUSTSessionManager.shared.invalidateSession()
         // Drop the enrolled-courses cache so the next user does not see
         // the previous account's course list while their own data is

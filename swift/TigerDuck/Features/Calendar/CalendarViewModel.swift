@@ -101,6 +101,7 @@ final class CalendarViewModel {
         }
         await MainActor.run { manager.loadingState = .loading }
 
+        MoodleEnrolledCoursesService.dropSharedAnswer()
         async let moodleEvents = fetchMoodleEvents(authService: authService)
         async let schoolEvents = fetchSchoolEvents()
         let (moodle, school) = await (moodleEvents, schoolEvents)

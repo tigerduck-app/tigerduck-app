@@ -112,6 +112,7 @@ extension ClassTableViewModel {
         // Class Table's pull-to-refresh asks for the latest enrolment, so skip
         // the CourseService cache: add/drop shows up at once instead of after
         // the 24h TTL that absorbs cheaper background refreshes.
+        MoodleEnrolledCoursesService.dropSharedAnswer()
         async let coursesTask = AppServiceBridge.fetchCourses(
             authService: authService,
             semester: targetSemester,
