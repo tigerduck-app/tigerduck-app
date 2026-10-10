@@ -33,6 +33,14 @@ nonisolated enum CourseTombstone {
         tombstones.filter { $0.hasPrefix("\(semester):") || !$0.contains(":") }
     }
 
+    /// The course numbers `isHidden` hides in `semester`: its scoped keys plus every legacy bare entry.
+    static func courseNos(hiddenIn semester: String, in tombstones: Set<String>) -> Set<String> {
+        let prefix = key(semester: semester, courseNo: "")
+        return Set(entries(resetting: semester, in: tombstones).map {
+            $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : $0
+        })
+    }
+
     /// Upgrade path for stores written before the semester scope: a bare
     /// entry is pinned to every term whose roster carries the course, so
     /// the per-semester sync sees one scoped key per term instead of a
