@@ -83,12 +83,12 @@ watch unit tests and the macOS build pass, and a review subagent finds no lost o
 - [ ] 12.2 Ask SamWang8891 to review `specs/code-comments/spec.md` and the new `AppState` rule in `swift/TigerDuck/AGENTS.md`; verify both maintainers approve (deferred by the maintainer on 2026-10-10)
 - [x] 12.3 Address valid Greptile comments, pushing only with the maintainer's approval; verify Greptile's review applies the comment rule
 - [x] 12.4 Record the pull request's "ran for" times against the `dev` baseline (175 to 183 s) in the description; its whole-job times are not compared, because pull-request runs do not save caches (95 s and 191 s)
-- [ ] 12.5 After the merge, ask the maintainer to make the comment check required for `dev` and `main`, confirm that the first documentation-only pull request passes both unit-test legs in under two minutes, and archive the change with `openspec archive overhaul-dev-workflow`
+- [x] 12.5 After the merge, ask the maintainer to make the comment check required for `dev` and `main`, confirm that the first documentation-only pull request passes both unit-test legs in under two minutes, and archive the change with `openspec archive overhaul-dev-workflow` (#232 named the job `comments` for the ruleset; #234's legs took 12 s each)
 
 ## 13. Contributor templates and dependency bots
 
 - [x] 13.1 Add English issue templates for bugs and feature requests, a template chooser whose only link is private security reporting, and a pull request template that follows the README contributing list, with README item 4 asking for Greptile's 5/5 instead of a Copilot review; verify the maintainer approves the wording before the push
-- [ ] 13.2 Add `.github/dependabot.yml` for the Xcode project's Swift packages and `.github/renovate.json` for GitHub Actions, the `api-poc` uv project and the submodules, both opening pull requests against `dev`; verify `renovate-config-validator --strict` passes and, once the next release reaches `main`, that each bot opens its first pull request against `dev`
+- [ ] 13.2 Add `.github/dependabot.yml` for the Xcode project's Swift packages and `.github/renovate.json` for GitHub Actions, the `api-poc` uv project and the submodules, both opening pull requests against `dev`; verify `renovate-config-validator --strict` passes and, once the next release reaches `main`, that each bot opens its first pull request against `dev` (that check is tracked in #233)
 - [x] 13.3 Write the labeling guide in `docs/issue-triage.md`, set the label descriptions it relies on, add `dependencies`, drop `duplicate`, `invalid` and `wontfix`, and set the issue type from the templates; verify the maintainer approves the proposal before any label changes
 
 ## Workflow follow-up
