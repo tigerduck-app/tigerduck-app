@@ -70,9 +70,10 @@ struct NotificationSettingsPushQueueTests {
         // enqueued.
         NotificationSettingsPushQueue.debounce({
             NotificationSettingsPushQueue.enqueue { ran.append("accountA") }
-        }, sleep: { _ in await timer.sleep() })
+        }, sleep: { await timer.sleep(for: $0) })
         let debounce = try #require(NotificationSettingsPushQueue.pendingDebounce)
         await timer.waitUntilArmed()
+        #expect(await timer.requestedDurations == [.milliseconds(250)])
 
         // The account logs out while the debounce is still sleeping.
         NotificationSettingsPushQueue.cancelAll()

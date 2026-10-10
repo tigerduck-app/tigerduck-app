@@ -64,7 +64,7 @@ final class WatchSyncCoordinatorTests: XCTestCase {
     func test_debounce_coalescesBurstWithin500ms() async throws {
         let session = StubSession()
         let timer = ManualSleeper()
-        let coord = WatchSyncCoordinator(session: session, sleep: { _ in await timer.sleep() })
+        let coord = WatchSyncCoordinator(session: session, sleep: { await timer.sleep(for: $0) })
         let pushed = expectation(description: "the debounced push")
         session.onPush = { pushed.fulfill() }
         coord.scheduleDebouncedPush(courses: [], customNames: [:], accentHex: "#A",
@@ -75,6 +75,8 @@ final class WatchSyncCoordinatorTests: XCTestCase {
                                     loggedIn: true, languageTag: nil, visualPreset: .default)
         // All three waits are running; firing them together is the window passing.
         await timer.waitUntilArmed(atLeast: 3)
+        let windows = await timer.requestedDurations
+        XCTAssertEqual(windows, [Duration](repeating: .milliseconds(500), count: 3))
         XCTAssertTrue(session.pushedContexts.isEmpty)
         await timer.fire()
         await fulfillment(of: [pushed], timeout: 60)

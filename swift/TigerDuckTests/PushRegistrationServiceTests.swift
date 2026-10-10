@@ -4,6 +4,7 @@
 import Defaults
 import Foundation
 import Testing
+import os
 @testable import TigerDuck
 
 @Suite("Push device registration")
@@ -12,7 +13,10 @@ struct PushRegistrationServiceTests {
 
     // MARK: - Fixtures
 
-    private static func makeService(baseURL: URL) -> PushRegistrationService {
+    private static func makeService(
+        baseURL: URL,
+        debounces: OSAllocatedUnfairLock<[Duration]> = .init(initialState: [])
+    ) -> PushRegistrationService {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         return PushRegistrationService(
@@ -23,8 +27,8 @@ struct PushRegistrationServiceTests {
             ),
             deviceClass: "iphone",
             // Each test awaits its attempt with `awaitPendingRegistration()`, so the debounce
-            // has nothing to merge and ends at once.
-            debounceSleep: { _ in }
+            // has nothing to merge: it ends at once and only records the window it asked for.
+            debounceSleep: { window in debounces.withLock { $0.append(window) } }
         )
     }
 
@@ -209,12 +213,14 @@ struct PushRegistrationServiceTests {
     func registersWithoutPushToStartToken() async throws {
         try await Self.withPinnedDeliveryPreferences {
             let baseURL = SettingsAPIStub.uniqueBaseURL()
-            let service = Self.makeService(baseURL: baseURL)
+            let debounces = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+            let service = Self.makeService(baseURL: baseURL, debounces: debounces)
             Self.expectAttempt(baseURL, registrations: 1)
 
             // Live Activities are off, so iOS never hands over a PTS token.
             await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
             await service.awaitPendingRegistration()
+            #expect(debounces.withLock { $0 } == [.milliseconds(250)])
 
             let sent = try Self.sentRegistrations(baseURL)
             try #require(sent.count == 1)
@@ -245,7 +251,8 @@ struct PushRegistrationServiceTests {
     @Test("a push-to-start token that arrives later is attached by a second registration")
     func laterPushToStartTokenIsAttached() async throws {
         let baseURL = SettingsAPIStub.uniqueBaseURL()
-        let service = Self.makeService(baseURL: baseURL)
+        let debounces = OSAllocatedUnfairLock<[Duration]>(initialState: [])
+        let service = Self.makeService(baseURL: baseURL, debounces: debounces)
 
         Self.expectAttempt(baseURL, registrations: 1)
         await service.update(deviceToken: Data([0x01, 0x02]))
@@ -258,6 +265,7 @@ struct PushRegistrationServiceTests {
         Self.expectAttempt(baseURL, registrations: 2)
         await service.update(ptsTokenHex: "a1b2")
         await service.awaitPendingRegistration()
+        #expect(debounces.withLock { $0 } == [.milliseconds(250), .milliseconds(250)])
 
         let secondAttempt = Array(try Self.sentRegistrations(baseURL).dropFirst())
         let pts = try #require(secondAttempt.first { Self.tokenKind($0) == "push_to_start" })

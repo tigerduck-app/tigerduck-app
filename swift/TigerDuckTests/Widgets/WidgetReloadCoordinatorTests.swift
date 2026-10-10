@@ -21,9 +21,10 @@ struct WidgetReloadCoordinatorTests {
     @Test func collapses_rapidCalls_intoOne() async throws {
         let fake = FakeReloader()
         let timer = ManualSleeper()
-        let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { _ in await timer.sleep() })
+        let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { await timer.sleep(for: $0) })
         for _ in 0..<5 { coordinator.requestReload() }
         await timer.waitUntilArmed(atLeast: 5)
+        #expect(await timer.requestedDurations == [Duration](repeating: .milliseconds(300), count: 5))
         #expect(fake.callCount == 0)
         // Every request's window ends at once; only the one no later request cancelled reloads.
         await timer.fire()
@@ -34,13 +35,14 @@ struct WidgetReloadCoordinatorTests {
     @Test func fires_oncePerWindow() async throws {
         let fake = FakeReloader()
         let timer = ManualSleeper()
-        let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { _ in await timer.sleep() })
+        let coordinator = WidgetReloadCoordinator(reloader: fake, sleep: { await timer.sleep(for: $0) })
         coordinator.requestReload()
         await timer.waitUntilArmed()
         await timer.fire()
         try await waitUntil { fake.callCount == 1 }
         coordinator.requestReload()
         await timer.waitUntilArmed(atLeast: 2)
+        #expect(await timer.requestedDurations == [.milliseconds(300), .milliseconds(300)])
         await timer.fire()
         try await waitUntil { fake.callCount == 2 }
     }
