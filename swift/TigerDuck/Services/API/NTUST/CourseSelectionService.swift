@@ -51,12 +51,12 @@ enum CourseSelectionService {
             throw CourseServiceError.noCourseData
         }
 
-        // Re-auth silently on an ssoam2 redirect or on an SSO login body served inline with
-        // HTTP 200 by the course-selection host. Checking the URL alone misses the inline case,
-        // and the regex then falls through to "no courses".
-        let landedOnSSO = (response as? HTTPURLResponse)?.url?.host == "ssoam2.ntust.edu.tw"
+        // Re-auth silently when the list came from another host (ssoam2, or the campus portal a
+        // lapsed course-selection session is sent to) or as an SSO login body served inline
+        // with HTTP 200. Either way the regex would fall through to "no courses".
+        let landedElsewhere = (response as? HTTPURLResponse)?.url?.host != courseListURL.host
         let bodyIsSSO = HTMLParser.looksLikeSSOLoginBody(html)
-        if landedOnSSO || bodyIsSSO {
+        if landedElsewhere || bodyIsSSO {
             let loggedIn = try await SSOLoginService.ensureServiceLogin(
                 session: session,
                 serviceURL: courseSelectionRoot,
@@ -70,7 +70,7 @@ enum CourseSelectionService {
                 throw CourseServiceError.noCourseData
             }
             let retryHost = (retryResponse as? HTTPURLResponse)?.url?.host
-            if retryHost == "ssoam2.ntust.edu.tw" || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
+            if retryHost != courseListURL.host || HTMLParser.looksLikeSSOLoginBody(retryHTML) {
                 throw CourseServiceError.redirectedToSSO
             }
             let retryCourseNos = retryHTML.matches(of: courseNoRegex).map { String($0.1) }
