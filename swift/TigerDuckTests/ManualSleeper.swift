@@ -9,6 +9,9 @@ actor ManualSleeper {
     /// The duration of every wait so far, in the order the waits started.
     private(set) var requestedDurations: [Duration] = []
 
+    /// How many waits have started.
+    var armedCount: Int { requestedDurations.count }
+
     /// One wait for `duration`, parked until `fire()`.
     func sleep(for duration: Duration) async {
         requestedDurations.append(duration)
@@ -18,7 +21,7 @@ actor ManualSleeper {
     /// Returns once at least `count` waits have started. If they never do, it records an issue at
     /// the caller after `waitUntil`'s timeout and returns, so the test fails instead of hanging.
     func waitUntilArmed(atLeast count: Int = 1, sourceLocation: SourceLocation = #_sourceLocation) async {
-        try? await waitUntil({ requestedDurations.count >= count }, sourceLocation: sourceLocation)
+        try? await waitUntil({ armedCount >= count }, sourceLocation: sourceLocation)
     }
 
     /// Ends every wait in progress, as if its duration had passed.

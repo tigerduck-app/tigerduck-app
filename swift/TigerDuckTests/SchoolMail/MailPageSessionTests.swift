@@ -8,49 +8,17 @@ import Testing
 /// connection so the next call reconnects, but only once every concurrent `use(_:)` is done.
 ///
 /// Nothing here waits on a clock. An in-flight `use(_:)` is parked inside the client on
-/// `FakeMailClient`'s command gate, and the idle-close timer is the injected `sleep:` below,
-/// which the test fires by hand, so "the delay has passed" and "the call is still in flight"
-/// are facts the test establishes rather than timing margins, which flake.
+/// `FakeMailClient`'s command gate, and the idle-close timer is a `ManualSleeper` the test
+/// fires by hand, so "the delay has passed" and "the call is still in flight" are facts the
+/// test establishes rather than timing margins, which flake.
 @MainActor
 struct MailPageSessionTests {
     private static let idleClose: Duration = .milliseconds(200)
 
-    /// Stands in for the idle-close `Task.sleep`. Each call reports that the timer is armed and
-    /// then suspends until the test fires it.
-    private actor CloseTimer {
-        private var sleepers: [CheckedContinuation<Void, Never>] = []
-        private var armings = 0
-        private var armWaiters: [CheckedContinuation<Void, Never>] = []
-
-        /// One armed idle-close wait.
-        func sleep() async {
-            armings += 1
-            for waiter in armWaiters { waiter.resume() }
-            armWaiters = []
-            await withCheckedContinuation { sleepers.append($0) }
-        }
-
-        /// Returns once the session has armed a close at least `count` times.
-        func waitUntilArmed(atLeast count: Int = 1) async {
-            while armings < count {
-                await withCheckedContinuation { armWaiters.append($0) }
-            }
-        }
-
-        var armedCount: Int { armings }
-
-        /// Lets every armed timer's wait finish, as if the idle delay had elapsed.
-        func fire() {
-            let waiting = sleepers
-            sleepers = []
-            for sleeper in waiting { sleeper.resume() }
-        }
-    }
-
     @Test func closeIsDeferredWhileAUseIsInFlightAndHappensAfterItEnds() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
-        let timer = CloseTimer()
-        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { _ in await timer.sleep() })
+        let timer = ManualSleeper()
+        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { await timer.sleep(for: $0) })
         _ = try await session.use { _ in }
 
         await fake.update { $0.hold("status") }
@@ -68,6 +36,7 @@ struct MailPageSessionTests {
         _ = try await useTask.value // the use is done; the deferred close is armed now
 
         await timer.waitUntilArmed()
+        #expect(await timer.requestedDurations == [Self.idleClose])
         await timer.fire() // the whole idle delay, with no clock
         await fake.waitForArrival("logout")
         #expect(await fake.calls.contains("logout"))
@@ -75,8 +44,8 @@ struct MailPageSessionTests {
 
     @Test func aStaleTimerDoesNothing() async throws {
         let fake = FakeMailClient(folders: ["INBOX": []])
-        let timer = CloseTimer()
-        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { _ in await timer.sleep() })
+        let timer = ManualSleeper()
+        let session = MailPageSession(idleClose: Self.idleClose, open: { fake }, sleep: { await timer.sleep(for: $0) })
         _ = try await session.use { _ in }
         session.releaseSoon() // arms a close at generation N
         await timer.waitUntilArmed()
