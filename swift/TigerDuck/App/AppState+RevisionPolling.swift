@@ -112,10 +112,12 @@ extension AppState {
 
             // Moodle rows stay as they are: every assignment round writes them, and a pull's
             // round may have written newer ones than this sync's while it fetched courses.
-            var calendarCache = DataCache.shared.loadCalendarEvents()
-            calendarCache.removeAll { $0.source == .school }
-            calendarCache.append(contentsOf: fetchedSchoolEvents)
-            DataCache.shared.saveCalendarEvents(calendarCache)
+            if let fetchedSchoolEvents {
+                var calendarCache = DataCache.shared.loadCalendarEvents()
+                calendarCache.removeAll { $0.source == .school }
+                calendarCache.append(contentsOf: fetchedSchoolEvents)
+                DataCache.shared.saveCalendarEvents(calendarCache)
+            }
 
             await MainActor.run {
                 guard !Task.isCancelled else { return }
