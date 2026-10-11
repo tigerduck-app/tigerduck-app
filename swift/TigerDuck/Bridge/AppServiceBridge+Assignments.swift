@@ -24,8 +24,8 @@ extension AppServiceBridge {
     /// account, unless it wants submissions rechecked and that round does not.
     ///
     /// `recheckSubmissions` asks Moodle about every submission. Without it a round skips the
-    /// ones ``confirmedSubmissions(in:)`` lists, so a pull, or Refresh on the Mac, is what shows
-    /// a reverted submission.
+    /// ones ``recordsToAskAbout(_:cached:confirmed:lastAnsweredRound:)`` leaves out, so a pull,
+    /// or Refresh on the Mac, is what shows a reverted submission.
     static func fetchAssignments(authService: AuthService, recheckSubmissions: Bool = false) async -> [SDAssignment] {
         await sharedRound(generation: authService.loginGeneration, rechecks: recheckSubmissions) {
             await runAssignmentRound(authService: authService, recheckSubmissions: recheckSubmissions)
@@ -174,34 +174,21 @@ extension AppServiceBridge {
 
             let cachedAssignments = DataCache.shared.loadAssignments()
             let confirmed = recheckSubmissions ? [:] : confirmedSubmissions(in: cachedAssignments)
-            // Records without a due date or a submission are dropped below, so asking about
-            // them would only cost Moodle a request.
-            let recordsToAsk = records.filter {
-                $0.dueDate != nil && !$0.noSubmissions && confirmed[String($0.assignId)] == nil
-            }
-            let statuses: [Int: MoodleSubmissionStatus] = await withTaskGroup(
-                of: (Int, MoodleSubmissionStatus)?.self,
-                returning: [Int: MoodleSubmissionStatus].self
-            ) { group in
-                for record in recordsToAsk {
-                    group.addTask {
-                        guard let status = try? await MoodleAssignmentService.fetchSubmissionStatus(
-                            assignId: record.assignId
-                        ) else {
-                            return nil
-                        }
-                        return (record.assignId, status)
-                    }
+            let recordsToAsk = recordsToAskAbout(
+                records,
+                cached: cachedAssignments,
+                confirmed: confirmed,
+                lastAnsweredRound: recheckSubmissions ? nil : Defaults[.schoolDataSyncedAt]
+            )
+            let answers = await concurrentMap(recordsToAsk) { record -> (Int, MoodleSubmissionStatus)? in
+                guard let status = try? await MoodleAssignmentService.fetchSubmissionStatus(
+                    assignId: record.assignId
+                ) else {
+                    return nil
                 }
-
-                var result: [Int: MoodleSubmissionStatus] = [:]
-                for await pair in group {
-                    if let (id, status) = pair {
-                        result[id] = status
-                    }
-                }
-                return result
+                return (record.assignId, status)
             }
+            let statuses = Dictionary(answers.compactMap { $0 }, uniquingKeysWith: { first, _ in first })
 
             let locallyCompletedIds = DataCache.shared.loadLocallyCompletedAssignmentIds()
             let archivedIds = DataCache.shared.loadArchivedAssignmentIds()
@@ -292,6 +279,27 @@ extension AppServiceBridge {
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()
+        }
+    }
+
+    /// The records a round asks Moodle about. One without a due date or a submission is dropped
+    /// from the list, and Moodle keeps a submission it confirmed. Unless a pull passes no
+    /// `lastAnsweredRound`, a round also skips one still unsubmitted whose cutoff came before the
+    /// last round Moodle answered in full, since Moodle takes no submission after the cutoff.
+    static func recordsToAskAbout(
+        _ records: [MoodleAssignmentRecord],
+        cached: [SDAssignment],
+        confirmed: [String: Date],
+        lastAnsweredRound: Date?
+    ) -> [MoodleAssignmentRecord] {
+        let unsubmitted = Set(cached.filter { !$0.isCompleted }.map(\.assignmentId))
+        return records.filter { record in
+            let id = String(record.assignId)
+            guard record.dueDate != nil, !record.noSubmissions, confirmed[id] == nil else { return false }
+            guard let cutoff = record.cutoffDate, let lastAnsweredRound, unsubmitted.contains(id) else {
+                return true
+            }
+            return cutoff >= lastAnsweredRound
         }
     }
 
