@@ -26,6 +26,95 @@ nonisolated enum MoodleWebserviceClient {
             delegateQueue: nil,
         )
     }()
+
+    /// Where ``withToken(_:_:)`` reads, drops and renews the Moodle token. Tests pass stand-ins.
+    struct TokenSource: Sendable {
+        let stored: @Sendable () async -> String?
+        let discard: @Sendable () async -> Void
+        let renew: @Sendable () async throws -> String
+
+        static let keychain = TokenSource(
+            stored: { await MoodleTokenService.shared.currentToken() },
+            discard: { await MoodleTokenService.shared.clearToken() },
+            renew: { try await MoodleTokenService.shared.refreshTokenIfNeeded() }
+        )
+    }
+
+    /// Runs `body` with the stored token, or a renewed one when none is stored. Once Moodle calls
+    /// that token invalid, it is dropped and renewed and `body` runs once more. A call that needs
+    /// the token's user id asks for it inside `body`, so a stale token there is renewed too.
+    static func withToken<T>(
+        _ tokens: TokenSource = .keychain,
+        _ body: (String) async throws -> T
+    ) async throws -> T {
+        do {
+            let token = if let stored = await tokens.stored() { stored } else { try await tokens.renew() }
+            return try await body(token)
+        } catch MoodleWebserviceError.invalidToken {
+            await tokens.discard()
+            return try await body(try await tokens.renew())
+        }
+    }
+
+    /// Calls the webservice `function` with `token` and decodes the answer as `T` off the main
+    /// actor. A Moodle error body throws its case whatever the HTTP status.
+    static func call<T: Decodable & Sendable>(
+        _ function: String,
+        params: [(String, String)] = [],
+        token: String,
+        as type: T.Type,
+        session: URLSession = MoodleWebserviceClient.session,
+        siteURL: URL = siteBaseURL
+    ) async throws -> T {
+        guard var components = URLComponents(url: siteURL, resolvingAgainstBaseURL: false) else {
+            throw MoodleWebserviceError.malformedResponse(detail: "invalid base URL")
+        }
+        components.path = webservicePath
+        components.queryItems = [
+            URLQueryItem(name: "moodlewsrestformat", value: "json"),
+            URLQueryItem(name: "wsfunction", value: function),
+            URLQueryItem(name: "wstoken", value: token),
+        ]
+        guard let url = components.url else {
+            throw MoodleWebserviceError.malformedResponse(detail: "invalid webservice URL for \(function)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(formBody(params).utf8)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError {
+            throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
+        }
+        guard let status = (response as? HTTPURLResponse)?.statusCode else {
+            throw MoodleWebserviceError.malformedResponse(detail: "No HTTP response")
+        }
+        return try await Task.detached(priority: .userInitiated) {
+            if let moodleError = MoodleWebserviceError.from(jsonData: data) { throw moodleError }
+            guard status == 200 else { throw MoodleWebserviceError.httpStatus(code: status) }
+            do {
+                return try JSONDecoder().decode(T.self, from: data)
+            } catch {
+                throw MoodleWebserviceError.malformedResponse(detail: "Unable to decode \(function): \(error)")
+            }
+        }.value
+    }
+
+    /// `application/x-www-form-urlencoded` with everything outside RFC 3986's unreserved
+    /// characters percent-encoded.
+    static func formBody(_ params: [(String, String)]) -> String {
+        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
+        return params.map { key, value in
+            let encodedKey = key.addingPercentEncoding(withAllowedCharacters: unreserved) ?? key
+            let encodedValue = value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
+            return "\(encodedKey)=\(encodedValue)"
+        }
+        .joined(separator: "&")
+    }
 }
 
 // MARK: - Enrolled Courses (core_enrol_get_users_courses)
