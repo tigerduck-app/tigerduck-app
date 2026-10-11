@@ -30,8 +30,17 @@ final class ScoreViewModel {
     /// each semester header used to rebuild the whole GPA trend.
     private(set) var groupedCourses: [(term: String, courses: [CourseGrade])] = []
     private(set) var gpaTrend: [GPATrendPoint] = []
-    private(set) var isRefreshing = false
     private(set) var errorMessage: String?
+
+    /// The sign-in the refresh in flight fetches for. Only a refresh for the same sign-in shares
+    /// it, and an account change disowns it, so the next account never waits on the previous one.
+    private var inFlightRefresh: RefreshOwner?
+    var isRefreshing: Bool { inFlightRefresh != nil }
+
+    private struct RefreshOwner: Equatable {
+        let studentId: String
+        let generation: Int
+    }
 
     var rankingScope: RankingScope = .semester
 
@@ -85,13 +94,6 @@ final class ScoreViewModel {
         apply(cached.report, cachedAt: cached.cachedAt)
     }
 
-    /// Shows a report fetched for `studentId`, unless the screen moved on to another account
-    /// while it was fetched.
-    func showFetchedReport(_ fetched: ScoreReport, for studentId: String) {
-        guard studentId == reportStudentId else { return }
-        apply(fetched, cachedAt: Date())
-    }
-
     private func switchAccount(to studentId: String?) {
         guard studentId != reportStudentId else { return }
         reportStudentId = studentId
@@ -101,6 +103,7 @@ final class ScoreViewModel {
         gpaTrend = []
         collapsedTerms = []
         errorMessage = nil
+        inFlightRefresh = nil
     }
 
     /// Coalesced fire-and-forget refresh. Designed for pull-to-refresh
@@ -118,22 +121,60 @@ final class ScoreViewModel {
     }
 
     func refresh(authService: AuthService, force: Bool = true) async {
-        guard !isRefreshing else { return }
+        // The auth generation that owns this fetch, read with the credentials before any await:
+        // if the user logs out or swaps accounts before the fetch returns, the persist guard
+        // rejects the cache write, so the next user does not inherit the previous user's report.
+        let generation = authService.loginGeneration
         guard let studentId = authService.storedStudentId,
               let password = authService.storedPassword else {
+            switchAccount(to: nil)
             errorMessage = String(localized: "common_not_signed_in")
             return
         }
-        switchAccount(to: studentId)
+        let session = NTUSTSessionManager.shared.session
+        await refresh(
+            for: studentId,
+            generation: generation,
+            isCurrent: { [weak authService] in authService?.loginGeneration == generation },
+            isReachable: { await NetworkMonitor.shared.isReachable() },
+            fetch: {
+                try await NTUSTScoreService.fetchScoreReport(
+                    session: session,
+                    studentId: studentId,
+                    password: password,
+                    forceRefresh: force,
+                    persistGuard: { @Sendable [weak authService] in
+                        authService?.loginGeneration == generation
+                    }
+                )
+            }
+        )
+    }
 
-        isRefreshing = true
+    /// The rest of `refresh(authService:force:)`, with the sign-in check, the reachability probe
+    /// and the fetch passed in so a test can sign out while it waits.
+    func refresh(
+        for studentId: String,
+        generation: Int,
+        isCurrent: () -> Bool,
+        isReachable: () async -> Bool,
+        fetch: () async throws -> ScoreReport
+    ) async {
+        switchAccount(to: studentId)
+        let owner = RefreshOwner(studentId: studentId, generation: generation)
+        guard inFlightRefresh != owner else { return }
+        inFlightRefresh = owner
+        defer { if inFlightRefresh == owner { inFlightRefresh = nil } }
         errorMessage = nil
         let manager = NTUSTSessionManager.shared
         // Captive-portal pre-flight: NTUSTScoreService rides the pinned SSO chain, so a portal
         // would surface as a confusing TLS error. Setting `manager.loadingState` as the other tabs'
         // bail paths do keeps ScoreView's SyncStatusDot in the same offline state as theirs.
-        guard await NetworkMonitor.shared.isReachable() else {
-            isRefreshing = false
+        let reachable = await isReachable()
+        // Signed out during the probe, the fetch would sign the departing account back in to the
+        // school with these credentials; moved to another account, the screen no longer wants it.
+        guard isCurrent(), inFlightRefresh == owner else { return }
+        guard reachable else {
             let message = String(localized: "error_network_unavailable")
             errorMessage = message
             manager.loadingState = .error(message)
@@ -141,38 +182,31 @@ final class ScoreViewModel {
         }
         manager.loadingState = .loading
 
-        // The auth generation that owns this fetch: if the user logs out or swaps accounts before
-        // the network hop returns, the persist guard rejects the cache write and the answer, or its
-        // error, stays off the screen, so the next user does not inherit the previous user's report.
-        let auth = authService
-        let capturedGeneration = auth.loginGeneration
+        let outcome: Result<ScoreReport, any Error>
         do {
             #if DEBUG
             try await ServerFailureSimulator.shared.check(.courseSelection)
             #endif
-            let fresh = try await NTUSTScoreService.fetchScoreReport(
-                session: manager.session,
-                studentId: studentId,
-                password: password,
-                forceRefresh: force,
-                persistGuard: { @Sendable [weak auth] in
-                    auth?.loginGeneration == capturedGeneration
-                }
-            )
-            if auth.loginGeneration == capturedGeneration {
-                showFetchedReport(fresh, for: studentId)
-                ServerStatusTracker.shared.set(.ok, for: .courseSelection)
-            }
-            manager.loadingState = .loaded
-        } catch where auth.loginGeneration != capturedGeneration {
-            manager.loadingState = .loaded
+            outcome = .success(try await fetch())
         } catch {
+            outcome = .failure(error)
+        }
+        // Signed out, or the screen moved to another account, while the fetch ran: the answer
+        // and its error belong to the previous account.
+        guard isCurrent(), inFlightRefresh == owner else {
+            manager.loadingState = .loaded
+            return
+        }
+        switch outcome {
+        case .success(let fresh):
+            apply(fresh, cachedAt: Date())
+            ServerStatusTracker.shared.set(.ok, for: .courseSelection)
+            manager.loadingState = .loaded
+        case .failure(let error):
             ServerStatusTracker.shared.set(.failed, for: .courseSelection)
             errorMessage = error.localizedDescription
             manager.loadingState = .error(error.localizedDescription)
         }
-
-        isRefreshing = false
     }
 
     func toggleCollapse(term: String) {

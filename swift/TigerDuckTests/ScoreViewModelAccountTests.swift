@@ -1,11 +1,47 @@
 import Foundation
+import os
 import Testing
 @testable import TigerDuck
 
 /// A report on screen belongs to whoever was signed in when it was read. Sign-out deletes the
-/// cached report, not the copy the screen holds, so the account change has to take that down.
+/// cached report, not the copy the screen holds, so the account change has to take that down,
+/// and a refresh still in flight for the previous account must not put it back.
 @MainActor
 struct ScoreViewModelAccountTests {
+    /// A sign-in that a test ends while a refresh waits.
+    private final class SignIn: Sendable {
+        private let signedIn = OSAllocatedUnfairLock(initialState: true)
+        var isCurrent: Bool { signedIn.withLock { $0 } }
+        func signOut() { signedIn.withLock { $0 = false } }
+    }
+
+    /// Stands in for the reachability probe and the score fetch, and holds either until the
+    /// test releases it.
+    @MainActor
+    private final class School {
+        var holdsProbe = false
+        var holdsFetch = false
+        private(set) var fetches = 0
+        private var held: [CheckedContinuation<Void, Never>] = []
+        var isHolding: Bool { !held.isEmpty }
+
+        func probe() async -> Bool {
+            if holdsProbe { await withCheckedContinuation { held.append($0) } }
+            return true
+        }
+
+        func fetch(_ report: ScoreReport) async -> ScoreReport {
+            fetches += 1
+            if holdsFetch { await withCheckedContinuation { held.append($0) } }
+            return report
+        }
+
+        func release() {
+            held.forEach { $0.resume() }
+            held = []
+        }
+    }
+
     private static func report(for student: String) -> ScoreReport {
         func grade(_ term: String, _ code: String, _ name: String, _ grade: String) -> CourseGrade {
             CourseGrade(
@@ -25,7 +61,7 @@ struct ScoreViewModelAccountTests {
         )
     }
 
-    /// A student ID no real account has, so the cached report never collides with one.
+    /// A student ID no real account has, so a cached report never collides with one.
     private static func testStudentId() -> String {
         "TEST\(UUID().uuidString)"
     }
@@ -35,6 +71,22 @@ struct ScoreViewModelAccountTests {
         DataCache.shared.saveScoreReport(report(for: studentId), studentId: studentId)
         defer { DataCache.shared.invalidateScoreReport(studentId: studentId) }
         body(studentId)
+    }
+
+    private static func refresh(
+        _ model: ScoreViewModel,
+        for studentId: String,
+        generation: Int = 1,
+        signIn: SignIn,
+        school: School
+    ) async {
+        await model.refresh(
+            for: studentId,
+            generation: generation,
+            isCurrent: { signIn.isCurrent },
+            isReachable: { await school.probe() },
+            fetch: { await school.fetch(report(for: studentId)) }
+        )
     }
 
     @Test func anotherAccountsReportComesOffTheScreen() {
@@ -80,16 +132,75 @@ struct ScoreViewModelAccountTests {
         }
     }
 
-    @Test func aReportFetchedForThePreviousAccountStaysOffTheNextOnesScreen() {
+    @Test func aFetchThatASignOutOvertookStaysOffTheScreen() async throws {
+        let model = ScoreViewModel()
+        let signIn = SignIn()
+        let school = School()
+        school.holdsFetch = true
+        let refresh = Task { await Self.refresh(model, for: Self.testStudentId(), signIn: signIn, school: school) }
+        try await waitUntil { school.isHolding }
+
+        signIn.signOut()
+        school.release()
+        await refresh.value
+
+        #expect(!model.hasContent)
+        #expect(!model.isRefreshing)
+    }
+
+    @Test func aSignOutDuringTheReachabilityProbeStopsTheFetch() async throws {
+        let model = ScoreViewModel()
+        let signIn = SignIn()
+        let school = School()
+        school.holdsProbe = true
+        let refresh = Task { await Self.refresh(model, for: Self.testStudentId(), signIn: signIn, school: school) }
+        try await waitUntil { school.isHolding }
+
+        signIn.signOut()
+        school.release()
+        await refresh.value
+
+        #expect(school.fetches == 0)
+        #expect(!model.hasContent)
+    }
+
+    @Test func theNextAccountsRefreshDoesNotWaitOnThePreviousOnes() async throws {
         let model = ScoreViewModel()
         let previous = Self.testStudentId()
         let next = Self.testStudentId()
+        let departing = SignIn()
+        let slowSchool = School()
+        slowSchool.holdsFetch = true
+        let first = Task {
+            await Self.refresh(model, for: previous, generation: 1, signIn: departing, school: slowSchool)
+        }
+        try await waitUntil { slowSchool.isHolding }
+
+        departing.signOut()
         model.showCachedReport(for: next)
-
-        model.showFetchedReport(Self.report(for: previous), for: previous)
-        #expect(!model.hasContent)
-
-        model.showFetchedReport(Self.report(for: next), for: next)
+        await Self.refresh(model, for: next, generation: 2, signIn: SignIn(), school: School())
         #expect(model.report.student == next)
+
+        slowSchool.release()
+        await first.value
+        #expect(model.report.student == next)
+        #expect(!model.isRefreshing)
+    }
+
+    @Test func aSecondRefreshForTheSameSignInSharesTheFirst() async throws {
+        let model = ScoreViewModel()
+        let student = Self.testStudentId()
+        let signIn = SignIn()
+        let school = School()
+        school.holdsFetch = true
+        let first = Task { await Self.refresh(model, for: student, signIn: signIn, school: school) }
+        try await waitUntil { school.isHolding }
+
+        await Self.refresh(model, for: student, signIn: signIn, school: school)
+        #expect(school.fetches == 1)
+
+        school.release()
+        await first.value
+        #expect(model.report.student == student)
     }
 }
