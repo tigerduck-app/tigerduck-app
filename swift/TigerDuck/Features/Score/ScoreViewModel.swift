@@ -22,6 +22,9 @@ final class ScoreViewModel {
     // MARK: - State
 
     private(set) var report: ScoreReport = .empty
+    /// Whose report `report` is. Sign-out deletes the cached report but not this copy, which the
+    /// next account would otherwise see until its own fetch landed.
+    private var reportStudentId: String?
     private(set) var cachedAt: Date?
     /// Derived once per report change instead of on every body pass —
     /// each semester header used to rebuild the whole GPA trend.
@@ -64,16 +67,40 @@ final class ScoreViewModel {
     // MARK: - Load / refresh
 
     func load(authService: AuthService) {
-        guard let studentId = authService.storedStudentId else { return }
-
-        // Paint the cache at once, avoiding a blank flash while the background refresh resolves.
-        // Skipped once a report is in: `load` runs on every tab appearance, and decoding the cache
-        // each time is wasted main-thread work.
-        if report == .empty, let cached = NTUSTScoreService.cachedScoreReport(studentId: studentId) {
-            apply(cached.report, cachedAt: cached.cachedAt)
-        }
+        let studentId = authService.storedStudentId
+        showCachedReport(for: studentId)
+        guard studentId != nil else { return }
 
         Task { await self.refresh(authService: authService, force: false) }
+    }
+
+    /// Paints `studentId`'s cached report at once, avoiding a blank flash while the background
+    /// refresh resolves, and empties the screen for nil, signed out. Skipped once its report is
+    /// in: `load` runs on every tab appearance, and decoding the cache each time is wasted
+    /// main-thread work.
+    func showCachedReport(for studentId: String?) {
+        switchAccount(to: studentId)
+        guard let studentId, report == .empty,
+              let cached = NTUSTScoreService.cachedScoreReport(studentId: studentId) else { return }
+        apply(cached.report, cachedAt: cached.cachedAt)
+    }
+
+    /// Shows a report fetched for `studentId`, unless the screen moved on to another account
+    /// while it was fetched.
+    func showFetchedReport(_ fetched: ScoreReport, for studentId: String) {
+        guard studentId == reportStudentId else { return }
+        apply(fetched, cachedAt: Date())
+    }
+
+    private func switchAccount(to studentId: String?) {
+        guard studentId != reportStudentId else { return }
+        reportStudentId = studentId
+        report = .empty
+        cachedAt = nil
+        groupedCourses = []
+        gpaTrend = []
+        collapsedTerms = []
+        errorMessage = nil
     }
 
     /// Coalesced fire-and-forget refresh. Designed for pull-to-refresh
@@ -97,6 +124,7 @@ final class ScoreViewModel {
             errorMessage = String(localized: "common_not_signed_in")
             return
         }
+        switchAccount(to: studentId)
 
         isRefreshing = true
         errorMessage = nil
@@ -114,8 +142,8 @@ final class ScoreViewModel {
         manager.loadingState = .loading
 
         // The auth generation that owns this fetch: if the user logs out or swaps accounts before
-        // the network hop returns, the persist guard below rejects the cache write, so the next
-        // user does not inherit the previous user's score report.
+        // the network hop returns, the persist guard rejects the cache write and the answer, or its
+        // error, stays off the screen, so the next user does not inherit the previous user's report.
         let auth = authService
         let capturedGeneration = auth.loginGeneration
         do {
@@ -131,8 +159,12 @@ final class ScoreViewModel {
                     auth?.loginGeneration == capturedGeneration
                 }
             )
-            apply(fresh, cachedAt: Date())
-            ServerStatusTracker.shared.set(.ok, for: .courseSelection)
+            if auth.loginGeneration == capturedGeneration {
+                showFetchedReport(fresh, for: studentId)
+                ServerStatusTracker.shared.set(.ok, for: .courseSelection)
+            }
+            manager.loadingState = .loaded
+        } catch where auth.loginGeneration != capturedGeneration {
             manager.loadingState = .loaded
         } catch {
             ServerStatusTracker.shared.set(.failed, for: .courseSelection)
