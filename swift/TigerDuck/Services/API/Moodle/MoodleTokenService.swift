@@ -180,7 +180,7 @@ actor MoodleTokenService {
 
     // MARK: - OIDC flow
 
-    private struct TokenTriple: Sendable {
+    struct TokenTriple: Sendable {
         let signature: String
         let wstoken: String
         let privatetoken: String?
@@ -442,7 +442,7 @@ actor MoodleTokenService {
         )
     }
 
-    private nonisolated static func decodeTokenTriple(from base64Token: String) throws -> TokenTriple {
+    nonisolated static func decodeTokenTriple(from base64Token: String) throws -> TokenTriple {
         // `Data(base64Encoded:)` takes only the standard padded alphabet, so map the URL-safe
         // `-` and `_` and pad. The extraction regex allows `-` and `_` since Moodle may emit
         // either encoding.
