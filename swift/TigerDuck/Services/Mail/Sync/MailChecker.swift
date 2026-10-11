@@ -298,7 +298,8 @@ actor MailChecker {
             guard !Task.isCancelled, stillSignedIn(as: account) else { return }
             if cache.loadDetail(folder: MailConstants.inbox, uidValidity: uidValidity, uid: uid) != nil { continue }
             do {
-                let detail = try await client.detail(folder: MailConstants.inbox, uid: uid, expectedUIDValidity: uidValidity)
+                let detail = try await client.detail(folder: MailConstants.inbox, uid: uid, expectedUIDValidity: uidValidity,
+                                                     inlineImages: false)
                 guard !Task.isCancelled, stillSignedIn(as: account) else { return }
                 cache.saveDetail(detail, folder: MailConstants.inbox, uidValidity: uidValidity)
             } catch let error as MailClientError where Self.endsPrefetch(error) {

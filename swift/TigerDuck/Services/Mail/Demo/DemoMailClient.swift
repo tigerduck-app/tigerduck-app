@@ -95,8 +95,7 @@ actor DemoMailClient: MailClient {
     func status(folder: String) async throws -> MailboxStatusInfo {
         let messages = folders[folder] ?? []
         return MailboxStatusInfo(uidValidity: fixture.uidValidity,
-                                 uidNext: (messages.map(\.summary.uid).max() ?? 0) + 1,
-                                 unseen: messages.filter { !$0.summary.isSeen }.count)
+                                 uidNext: (messages.map(\.summary.uid).max() ?? 0) + 1)
     }
 
     func page(folder: String, olderThanSequence: Int?, pageSize: Int) async throws -> MailFolderPage {
@@ -130,7 +129,7 @@ actor DemoMailClient: MailClient {
         return result
     }
 
-    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages: Bool) async throws -> MailMessageDetail {
         try assertUIDValidity(expectedUIDValidity)
         let stored = try find(folder: folder, uid: uid)
         var parts = [MailBodyPart(section: "1", contentType: "text/plain", charset: "utf-8", transferEncoding: "8bit",

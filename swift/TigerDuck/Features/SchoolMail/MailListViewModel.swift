@@ -649,7 +649,7 @@ final class MailListViewModel {
             if cached != nil { continue }
             do {
                 let detail = try await session.use { client in
-                    try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity)
+                    try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity, inlineImages: false)
                 }
                 guard epoch == accountEpoch else { return }
                 chainCacheWrite { cache.saveDetail(detail, folder: inbox, uidValidity: validity) }

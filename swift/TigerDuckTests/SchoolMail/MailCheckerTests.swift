@@ -542,6 +542,9 @@ struct MailCheckerTests {
         let h = Self.harness(inbox: [FakeMailClient.message(uid: 3, text: "hello")], marker: 3, cache: cache)
         #expect(await h.checker.check(trigger: .backgroundTask) == .newMail(1))
         #expect(cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 3)?.textBody == "hello")
+        // Inline images can be megabytes each, on cellular in Background App Refresh; opening the
+        // mail fetches it again with them.
+        #expect(await h.fake.detailsWithoutImages == [3])
     }
 
     @Test func aBurstPrefetchesOnlyTheNewestFive() async {

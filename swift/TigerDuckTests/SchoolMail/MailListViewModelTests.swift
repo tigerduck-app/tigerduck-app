@@ -1032,6 +1032,7 @@ struct MailListViewModelTests {
         await h.model.pollOnce()
         #expect(h.model.rows.first?.uid == 5)
         #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == ["detail INBOX 5"])
+        #expect(await h.fake.detailsWithoutImages == [5])
         await h.model.waitForCacheWrites()
         #expect(h.cache.loadDetail(folder: "INBOX", uidValidity: 1, uid: 5)?.textBody == "new")
     }

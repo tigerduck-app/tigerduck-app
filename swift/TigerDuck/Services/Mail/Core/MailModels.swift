@@ -221,7 +221,6 @@ nonisolated struct MailFolderPage: Codable, Sendable {
 nonisolated struct MailboxStatusInfo: Equatable, Sendable {
     var uidValidity: UInt32
     var uidNext: UInt32
-    var unseen: Int?
 }
 
 nonisolated extension String {

@@ -88,6 +88,8 @@ actor FakeMailClient: MailClient {
     /// pin from a `nil` one; only the recorded argument can. Tests assert this rather than
     /// hoping a generation mismatch happens to be arranged.
     private(set) var attachmentPins: [UInt32?] = []
+    /// The UIDs of `detail` calls that asked for no inline images.
+    private(set) var detailsWithoutImages: [UInt32] = []
     private(set) var sent: [(message: Data, from: String, to: [String])] = []
     /// Commands currently gated by `hold(_:)`.
     private var heldCommands: Set<String> = []
@@ -213,12 +215,7 @@ actor FakeMailClient: MailClient {
         calls.append("status \(folder)")
         await gate("status")
         if let statusError { throw statusError }
-        let messages = folders[folder] ?? []
-        return MailboxStatusInfo(
-            uidValidity: uidValidity[folder] ?? 1,
-            uidNext: nextUID(folder),
-            unseen: messages.filter { !$0.summary.isSeen }.count
-        )
+        return MailboxStatusInfo(uidValidity: uidValidity[folder] ?? 1, uidNext: nextUID(folder))
     }
 
     private func nextUID(_ folder: String) -> UInt32 {
@@ -269,8 +266,9 @@ actor FakeMailClient: MailClient {
         return result
     }
 
-    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages: Bool) async throws -> MailMessageDetail {
         calls.append("detail \(folder) \(uid)")
+        if !inlineImages { detailsWithoutImages.append(uid) }
         await gate("detail")
         if let detailError { throw detailError }
         try assertUIDValidity(expectedUIDValidity, folder: folder)

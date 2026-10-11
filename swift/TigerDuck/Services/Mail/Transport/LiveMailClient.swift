@@ -122,27 +122,11 @@ actor LiveMailClient: MailClient {
 
     func status(folder: String) async throws -> MailboxStatusInfo {
         try await run {
-            // RFC 3501 §6.3.10: STATUS SHOULD NOT be used on the selected mailbox, so it runs
-            // before EXAMINE, never after. A rejected STATUS (`IMAPError.commandFailed`) only
-            // costs the unseen count; any other failure propagates through `map` like the rest.
-            let unseen: Int?
-            do {
-                unseen = try await self.imap.mailboxStatus(folder).unseenCount
-            } catch let error as IMAPError {
-                switch error {
-                case .commandFailed: unseen = nil
-                default: throw error
-                }
-            }
-            // `IMAPServer.mailboxStatus` asks STATUS for UIDNEXT/UIDVALIDITY only when the server
-            // advertises UIDPLUS, though both are base RFC 3501 items, and Mail2000 has no UIDPLUS.
-            // EXAMINE's response always carries them, the same source `page(folder:...)` uses.
+            // EXAMINE, not STATUS: `IMAPServer.mailboxStatus` asks STATUS for UIDNEXT and
+            // UIDVALIDITY only when the server advertises UIDPLUS, which Mail2000 does not, and
+            // EXAMINE's response always carries both, the same source `page(folder:...)` uses.
             let selection = try await self.imap.examineMailbox(folder)
-            return MailboxStatusInfo(
-                uidValidity: selection.uidValidity.value,
-                uidNext: selection.uidNext.value,
-                unseen: unseen
-            )
+            return MailboxStatusInfo(uidValidity: selection.uidValidity.value, uidNext: selection.uidNext.value)
         }
     }
 
@@ -206,7 +190,7 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages includeImages: Bool) async throws -> MailMessageDetail {
         try await run {
             let selection = try await self.imap.examineMailbox(folder)
             try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
@@ -234,7 +218,7 @@ actor LiveMailClient: MailClient {
                 } else if type.hasPrefix("text/html"), htmlBody == nil {
                     let data = try await self.imap.fetchAndDecodeMessagePartData(messageInfo: info, part: part)
                     htmlBody = MailCharset.decode(data, label: part.declaredCharset)
-                } else if type.hasPrefix("image/"), let cid = part.contentId,
+                } else if includeImages, type.hasPrefix("image/"), let cid = part.contentId,
                           (part.size ?? 0) <= MailConstants.maxInlineImageBytes {
                     let data = try await self.imap.fetchAndDecodeMessagePartData(messageInfo: info, part: part)
                     inlineImages[Self.bareContentID(cid)] = MailInlineImage(mimeType: type, data: data)

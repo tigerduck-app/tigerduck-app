@@ -59,6 +59,8 @@ struct MailMessageViewModelTests {
         #expect(h.model.plainText == "請立即驗證")
         #expect(h.model.warnings.contains(.externalSender(address: "admin@evil.example")))
         #expect(h.model.warnings.contains(.passwordBait))
+        // A prefetch leaves the inline images out; the open is what brings them.
+        #expect(await h.fake.detailsWithoutImages.isEmpty)
     }
 
     @Test func htmlOnlyMailGetsAPlainTextView() async {

@@ -47,8 +47,9 @@ protocol MailClient: Actor {
     /// fetched. A folder recreated server-side reuses its UIDs, so the same folder+UID then names
     /// a different message — one that would be shown on the screen the caller opened for the old
     /// one, and cached under the old generation's key. A caller that holds no pin passes `nil` and
-    /// gets no check, exactly as `setFlag` allows.
-    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail
+    /// gets no check, exactly as `setFlag` allows. `inlineImages: false` leaves out the `cid:`
+    /// images, for a prefetch: opening the mail fetches it again with them.
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages: Bool) async throws -> MailMessageDetail
     /// `BODY.PEEK[]` — does not mark the message read.
     func rawSource(folder: String, uid: UInt32) async throws -> Data
     /// `expectedUIDValidity` as in `detail`, one step further along the same chain: this returns
@@ -95,5 +96,11 @@ protocol MailClient: Actor {
     func append(_ message: Data, to folder: String, flags: [MailFlag]) async throws
     func containsMessageID(_ messageID: String, in folder: String) async throws -> Bool
     func send(_ message: Data, from sender: String, to recipients: [String]) async throws
+}
+
+extension MailClient {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
+        try await detail(folder: folder, uid: uid, expectedUIDValidity: expectedUIDValidity, inlineImages: true)
+    }
 }
 #endif
