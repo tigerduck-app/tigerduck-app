@@ -125,13 +125,15 @@ extension AppState {
         // Signing out turns "Sync course information" off through the preference, like every
         // other writer, so the change runs its usual course in `cloudSyncEnabledDidChange(to:)`.
         cloudSyncEnabled = false
+        // Before the network calls below, which offline run until they time out: the widgets
+        // show the departing account's timetable until this rewrites their snapshot.
+        NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         Task { @MainActor in
             await cloudSyncCoordinator.settleForSignOut()
             await pushCoordinator.disable()
             #if os(iOS)
             await liveActivityCoordinator.endAll()
             #endif
-            NotificationCenter.default.post(name: AppConstants.dataDidUpdate, object: nil)
         }
     }
 
