@@ -97,6 +97,30 @@ struct AdditionalHeaderFieldsTests {
         #expect(decoded.additionalHeaderFields?[1].value == "<https://example.com/unsubscribe>")
     }
 
+    /// TigerDuck patch 11: `MessageInfo` has no Reply-To field, so the header section is the only
+    /// place a reply can find it.
+    @Test
+    func testReplyToIsKeptWithTheAdditionalFields() async throws {
+        let headerBlock = """
+        Reply-To: office@example.com\r
+        \r
+        """
+
+        let infos = try await executeFetch(
+            [
+                fetchResponse(
+                    sequenceNumber: 1,
+                    envelope: envelopeAttribute(messageId: "<msg@example.com>"),
+                    headerFields: ["Reply-To"],
+                    headerBlock: headerBlock
+                ),
+                "A001 OK FETCH completed\r\n"
+            ]
+        )
+
+        #expect(infos.first?.additionalHeaderFields == [HeaderField(name: "reply-to", value: "office@example.com")])
+    }
+
     private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
