@@ -11,6 +11,7 @@ nonisolated struct MailOriginal: Sendable {
     var messageID: String?
     var references: [String]
     var bodyText: String
+    var replyTo: [MailAddress] = []
 }
 
 /// Reply and forward rules.

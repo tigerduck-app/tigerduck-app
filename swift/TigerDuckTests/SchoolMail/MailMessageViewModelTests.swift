@@ -63,6 +63,13 @@ struct MailMessageViewModelTests {
         #expect(await h.fake.detailsWithoutImages.isEmpty)
     }
 
+    @Test func aReplyStartsFromTheOpenedMailsReplyTo() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, from: "teacher@mail.ntust.edu.tw",
+                                                    replyTo: "教務處 <office@mail.ntust.edu.tw>, b@x.tw"))
+        await h.model.load()
+        #expect(h.model.original?.replyTo.map(\.address) == ["office@mail.ntust.edu.tw", "b@x.tw"])
+    }
+
     @Test func htmlOnlyMailGetsAPlainTextView() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: nil, html: "<p>a</p><p>b</p>"))
         await h.model.load()

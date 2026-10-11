@@ -207,15 +207,8 @@ final class MailComposeViewModel {
             let dateText = original.date.map(MailDateFormatter.detailString(for:)) ?? ""
             switch mode {
             case .reply, .replyAll:
-                // Best-effort: everything else a reply prefill needs is in `context.original`, so a
-                // failed Reply-To download must not empty the form or drop threading. Replies then
-                // go to the sender's own address, as if the mail had no Reply-To header.
-                var replyTo: [MailAddress] = []
-                if let folder, let uid, let raw = try? await session.use({ client in try await client.rawSource(folder: folder, uid: uid) }) {
-                    replyTo = MailRawHeaders.value(named: "Reply-To", in: raw).map(MailAddress.parseList) ?? []
-                }
-                let recipients = MailReplyComposer.replyRecipients(to: original, replyTo: replyTo, me: sender.address,
-                                                                   replyAll: mode == .replyAll)
+                let recipients = MailReplyComposer.replyRecipients(to: original, replyTo: original.replyTo,
+                                                                   me: sender.address, replyAll: mode == .replyAll)
                 applyPrefill(
                     to: Self.format(recipients.to),
                     cc: Self.format(recipients.cc),

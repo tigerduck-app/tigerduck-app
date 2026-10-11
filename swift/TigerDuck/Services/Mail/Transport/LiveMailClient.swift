@@ -230,6 +230,7 @@ actor LiveMailClient: MailClient {
                 inReplyTo: info.inReplyTo.map(Self.angleBracketed),
                 references: info.references?.map(Self.angleBracketed),
                 returnPath: Self.returnPath(from: info),
+                replyTo: Self.replyTo(from: info),
                 parts: info.parts.map(Self.bodyPart(from:)),
                 textBody: textBody,
                 htmlBody: htmlBody,
@@ -319,6 +320,7 @@ actor LiveMailClient: MailClient {
             inReplyTo: info.inReplyTo.map(angleBracketed),
             references: info.references?.map(angleBracketed),
             returnPath: returnPath(from: info),
+            replyTo: replyTo(from: info),
             parts: message.parts.map(bodyPart(from:)),
             textBody: textBody,
             htmlBody: htmlBody,
@@ -739,6 +741,12 @@ actor LiveMailClient: MailClient {
     nonisolated static func returnPath(from info: MessageInfo) -> String? {
         info.additionalHeaderFields?.first { $0.name.lowercased() == "return-path" }?.value
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// `Reply-To` off the same header section as `returnPath`, decoded the way `MailAddress.parseList`
+    /// expects.
+    nonisolated static func replyTo(from info: MessageInfo) -> String? {
+        info.additionalHeaderFields?.first { $0.name.lowercased() == "reply-to" }.map { RFC2047.decode($0.value) }
     }
 
     nonisolated static func isAttachment(_ part: MessagePart) -> Bool {

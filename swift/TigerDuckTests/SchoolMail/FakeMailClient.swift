@@ -166,7 +166,8 @@ actor FakeMailClient: MailClient {
         messageID: String? = nil,
         /// Only the detail fetch carries headers, so this reaches `MailMessageDetail` and never
         /// the summary — the same split the real client has.
-        returnPath: String? = nil
+        returnPath: String? = nil,
+        replyTo: String? = nil
     ) -> Message {
         let subject = subject ?? "subject \(uid)"
         // Mirrors `LiveMailClient.summary`: a From with no usable address (a Mail2000 bounce's
@@ -180,7 +181,7 @@ actor FakeMailClient: MailClient {
             isExternal: address.map { !MailWarnings.isSchoolDomain(MailWarnings.domain(ofAddress: $0)) } ?? false
         )
         let detail = MailMessageDetail(summary: summary, messageID: messageID, inReplyTo: nil, references: nil,
-                                       returnPath: returnPath,
+                                       returnPath: returnPath, replyTo: replyTo,
                                        parts: [], textBody: text, htmlBody: html, inlineImages: nil)
         let raw = Data("From: \(from)\r\nSubject: \(subject)\r\nMessage-ID: \(messageID ?? "<\(uid)@fake>")\r\n\r\n\(text ?? "")\r\n".utf8)
         return Message(summary: summary, detail: detail, raw: raw, attachments: [:], messageID: messageID)

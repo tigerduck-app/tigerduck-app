@@ -224,7 +224,8 @@ final class MailMessageViewModel {
             date: summary.date,
             messageID: detail.messageID,
             references: detail.references ?? [],
-            bodyText: plainText
+            bodyText: plainText,
+            replyTo: detail.replyTo.map(MailAddress.parseList) ?? []
         )
     }
 
