@@ -32,6 +32,16 @@ enum HTMLParser {
                 (try? doc.select("input[name=Password]").first()) != nil)
     }
 
+    /// Check if a response landed on the NetIQ sign-in form of the other SSO host, ssoam. It
+    /// submits through an invisible reCAPTCHA, so only a browser can sign in there.
+    static func isNetIQLoginPage(html: String, url: URL) -> Bool {
+        guard url.host == "ssoam.ntust.edu.tw", let doc = try? SwiftSoup.parse(html) else { return false }
+
+        return (try? doc.select("form#IDPLogin").first()) != nil ||
+            ((try? doc.select("input[name=Ecom_User_ID]").first()) != nil &&
+                (try? doc.select("input[name=Ecom_Password]").first()) != nil)
+    }
+
     /// Find a form by its id attribute and extract action + input fields
     static func findFormById(_ html: String, id: String) -> FormData? {
         guard let doc = try? SwiftSoup.parse(html),

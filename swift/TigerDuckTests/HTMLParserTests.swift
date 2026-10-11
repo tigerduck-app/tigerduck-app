@@ -111,6 +111,19 @@ struct HTMLParserTests {
         #expect(!HTMLParser.isSSOLoginPage(html: Pages.netIQLogin, url: Pages.netIQLoginURL))
     }
 
+    @Test("ssoam's NetIQ form is told apart from the ssoam2 form")
+    func netIQSignInPage() {
+        #expect(HTMLParser.isNetIQLoginPage(html: Pages.netIQLogin, url: Pages.netIQLoginURL))
+        let fieldsOnly = #"<form action="/nidp/app/login"><input name="Ecom_User_ID"><input name="Ecom_Password"></form>"#
+        #expect(HTMLParser.isNetIQLoginPage(html: fieldsOnly, url: Pages.netIQLoginURL))
+
+        #expect(!HTMLParser.isNetIQLoginPage(html: Pages.netIQLogin, url: Pages.ssoam2LoginURL))
+        #expect(!HTMLParser.isNetIQLoginPage(html: Pages.ssoam2Login, url: Pages.netIQLoginURL))
+        #expect(!HTMLParser.isNetIQLoginPage(html: Pages.maintenance, url: Pages.netIQLoginURL))
+        let userIdOnly = #"<form action="/nidp/app/login"><input name="Ecom_User_ID"></form>"#
+        #expect(!HTMLParser.isNetIQLoginPage(html: userIdOnly, url: Pages.netIQLoginURL))
+    }
+
     @Test("the sign-in form gives its action and every named input, entities decoded")
     func signInForm() throws {
         let form = try #require(HTMLParser.findFormById(Pages.ssoam2Login, id: "loginForm"))
