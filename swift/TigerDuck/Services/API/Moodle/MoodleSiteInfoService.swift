@@ -37,48 +37,12 @@ actor MoodleSiteInfoService {
     }
 
     private nonisolated static func fetchUserId(token: String) async throws -> Int {
-        guard var components = URLComponents(
-            url: MoodleWebserviceClient.siteBaseURL,
-            resolvingAgainstBaseURL: false
-        ) else {
-            throw MoodleWebserviceError.malformedResponse(detail: "invalid site_info URL base")
-        }
-        components.path = "/webservice/rest/server.php"
-        components.queryItems = [
-            URLQueryItem(name: "moodlewsrestformat", value: "json"),
-            URLQueryItem(name: "wsfunction", value: "core_webservice_get_site_info"),
-            URLQueryItem(name: "wstoken", value: token),
-        ]
+        try await MoodleWebserviceClient.call(
+            "core_webservice_get_site_info", token: token, as: SiteInfo.self
+        ).userid
+    }
 
-        guard let url = components.url else {
-            throw MoodleWebserviceError.malformedResponse(detail: "invalid site_info URL")
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await MoodleWebserviceClient.session.data(for: request)
-        } catch let urlError as URLError {
-            throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw MoodleWebserviceError.httpStatus(code: (response as? HTTPURLResponse)?.statusCode ?? 0)
-        }
-
-        if let moodleError = MoodleWebserviceError.from(jsonData: data) {
-            throw moodleError
-        }
-
-        guard let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw MoodleWebserviceError.malformedResponse(detail: "site_info response not a JSON object")
-        }
-        guard let userId = info["userid"] as? Int else {
-            throw MoodleWebserviceError.malformedResponse(detail: "userid missing from site_info")
-        }
-        return userId
+    private nonisolated struct SiteInfo: Decodable, Sendable {
+        let userid: Int
     }
 }
