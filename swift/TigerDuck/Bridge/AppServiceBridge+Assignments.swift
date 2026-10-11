@@ -143,7 +143,10 @@ extension AppServiceBridge {
             if currentCourseNos.isEmpty {
                 relevantCourses = moodleEnrolled.filter { $0.semester == currentSemester }
             } else {
-                relevantCourses = moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) }
+                relevantCourses = coursesForTerm(
+                    moodleEnrolled.filter { currentCourseNos.contains($0.courseNo) },
+                    semester: currentSemester
+                )
             }
             let relevantMoodleCourseIds = relevantCourses.map(\.id)
             guard !relevantMoodleCourseIds.isEmpty else {
@@ -289,6 +292,18 @@ extension AppServiceBridge {
                 AppLogger.captureError(error, context: ["bridge": "fetchAssignments"])
             }
             return DataCache.shared.loadAssignments()
+        }
+    }
+
+    /// One Moodle course per course number. Moodle keeps past enrolments, so a retaken course
+    /// has one for each term it was taken in; this term's wins, else the one that started last.
+    static func coursesForTerm(_ courses: [MoodleEnrolledCourse], semester: String) -> [MoodleEnrolledCourse] {
+        let byCourseNo = Dictionary(grouping: courses, by: \.courseNo)
+        return courses.filter { course in
+            guard let siblings = byCourseNo[course.courseNo], siblings.count > 1 else { return true }
+            if siblings.contains(where: { $0.semester == semester }) { return course.semester == semester }
+            let latest = siblings.max { ($0.startDate ?? .distantPast, $0.id) < ($1.startDate ?? .distantPast, $1.id) }
+            return course.id == latest?.id
         }
     }
 
