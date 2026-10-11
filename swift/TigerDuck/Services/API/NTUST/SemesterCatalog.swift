@@ -13,6 +13,14 @@ enum SemesterCatalog {
         "https://querycourse.ntust.edu.tw/QueryCourse/api/semestersinfo"
     )
 
+    /// Pinned as `CourseLookupService` is for the same host: the answer decides which term the
+    /// courses are filed under. Ephemeral, so no cookie from the shared jar goes along.
+    static let session = URLSession(
+        configuration: .ephemeral,
+        delegate: TLSPinningDelegate.shared,
+        delegateQueue: nil
+    )
+
     private nonisolated static let listKey = "semesterCatalog.semesters"
     private nonisolated static let selectionKey = "semesterCatalog.selectionSemester"
     private static let refreshedAtKey = "semesterCatalog.refreshedAt"
@@ -134,7 +142,7 @@ enum SemesterCatalog {
     private static func fetch() async throws -> [SemesterInfo] {
         var request = URLRequest(url: semestersAPI, timeoutInterval: 15)
         request.httpMethod = "GET"
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await session.data(for: request)
         return try decodeSemesters(data)
     }
 
