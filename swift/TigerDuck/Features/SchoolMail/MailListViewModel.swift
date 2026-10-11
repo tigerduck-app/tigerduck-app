@@ -35,7 +35,7 @@ final class MailListViewModel {
 
     @ObservationIgnored let session: MailPageSession
     @ObservationIgnored private let cache: MailCache
-    @ObservationIgnored private let runPageCheck: (any MailClient) async -> MailCheckOutcome
+    @ObservationIgnored private let noteSeenByPage: (MailboxStatusInfo) async -> Void
     /// One page per *real* folder, keyed by folder name. All mail holds two of them and merges
     /// them at read time (`rebuildRows`); there is no merged page and nothing new on disk, so
     /// the existing per-folder cache files and their UIDVALIDITY pins keep meaning exactly what
@@ -84,7 +84,7 @@ final class MailListViewModel {
     init(
         session: MailPageSession? = nil,
         cache: MailCache? = nil,
-        runPageCheck: @escaping (any MailClient) async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .page, using: $0) },
+        noteSeenByPage: @escaping (MailboxStatusInfo) async -> Void = { await MailChecker.shared.noteSeenByPage($0) },
         signOutEvents: NotificationCenter = .default,
         warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.warmStartDelay) }
     ) {
@@ -93,7 +93,7 @@ final class MailListViewModel {
         // `MailAccountManager.shared`, both MainActor-isolated, would warn there in Swift 6 mode.
         self.session = session ?? MailPageSession()
         self.cache = cache ?? MailAccountManager.shared.cache
-        self.runPageCheck = runPageCheck
+        self.noteSeenByPage = noteSeenByPage
         self.signOutEvents = signOutEvents
         self.warmDelay = warmDelay
         // The view model survives a sign-out (`@State` on `SchoolMailView`). Without this reset the
@@ -502,7 +502,9 @@ final class MailListViewModel {
 
     // MARK: Polling (60 s while the page is visible)
 
-    func startPolling() {
+    /// - Parameter pollFirst: checks once before the first wait, for a return to the app, when
+    ///   mail may have arrived while the list was away.
+    func startPolling(pollFirst: Bool = false) {
         isPaused = false
         // Leaving cancels the warm, and a visit that left inside its start delay — following a
         // notification and coming straight back — would otherwise leave every other folder cold
@@ -510,6 +512,7 @@ final class MailListViewModel {
         if !warmDone, warmTask == nil { startWarmIfLoaded() }
         pollTask?.cancel()
         pollTask = Task { [weak self] in
+            if pollFirst { await self?.pollOnce() }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(MailConstants.pagePollInterval))
                 guard !Task.isCancelled, let self else { return }
@@ -585,34 +588,43 @@ final class MailListViewModel {
         sentCopyNotice = nil
     }
 
-    /// Reloads when the inbox is on screen, which includes All mail: it merges the inbox in and
-    /// is the screen the list opens on. A `selection == .real(inbox)` check would never fire
-    /// there, and new mail would not appear without a pull-to-refresh.
+    /// Reloads when the inbox is on screen, which includes All mail (it merges the inbox in and
+    /// is the screen the list opens on), and holds mail the list has not shown
+    /// (`inboxHasUnshownMail`). A merged reload costs one extra `page` round trip, Sent's, per
+    /// poll that finds new mail, not per poll.
     ///
-    /// The check itself (`runPageCheck`) is inbox-only and is the only thing here that touches
-    /// the notification baseline; `load()` only reads pages. So a merged reload costs one extra
-    /// `page` round trip (Sent's) per poll that finds new mail, not per poll, and moves nothing
-    /// the notification side reads.
+    /// Once the list shows the inbox up to the STATUS it read, the notification marker moves up
+    /// to it (`noteSeenByPage`). A reload that failed leaves the marker, so those mails are still
+    /// announced.
     func pollOnce() async {
-        let check = runPageCheck
-        guard let outcome = try? await session.use({ client in await check(client) }) else { return }
-        // `.baselineReset` reloads like `.newMail`: INBOX's UIDVALIDITY changed, so every UID on
-        // screen is from a generation the server discarded. Without the reload the list keeps
-        // painting it, and answering taps with `folderChanged`, until something forces a reload.
-        switch outcome {
-        case .newMail:
-            guard showsInbox, searchResults == nil else { return }
-            // Read before the reload, from the inbox's own page: in All mail the rows also hold
+        guard showsInbox, searchResults == nil else { return }
+        let selection = self.selection
+        let epoch = accountEpoch
+        let inbox = MailConstants.inbox
+        guard let status = try? await session.use({ client in try await client.status(folder: inbox) }),
+              isCurrent(selection, epoch), searchResults == nil else { return }
+        let before = pages[inbox]
+        if Self.inboxHasUnshownMail(status, page: before) {
+            await load()
+            guard isCurrent(selection, epoch) else { return }
+            // Arrivals are judged against the inbox's own page: in All mail the rows also hold
             // Sent's, whose UIDs say nothing about the inbox's.
-            let previousNewest = pages[MailConstants.inbox]?.summaries.map(\.uid).max() ?? 0
-            await load()
-            await prefetchArrivedBodies(after: previousNewest)
-        case .baselineReset:
-            guard showsInbox, searchResults == nil else { return }
-            await load()
-        default:
-            return
+            if let before, before.uidValidity == status.uidValidity {
+                await prefetchArrivedBodies(after: before.summaries.map(\.uid).max() ?? 0)
+            }
         }
+        guard isCurrent(selection, epoch), !Self.inboxHasUnshownMail(status, page: pages[inbox]) else { return }
+        await noteSeenByPage(status)
+    }
+
+    /// Whether the inbox holds mail `page` does not: UIDNEXT has moved past the value the page was
+    /// fetched at, or UIDVALIDITY changed and every UID on screen is from a discarded generation.
+    /// Not judged by the notification marker, which the foreground and background checks advance
+    /// as they notify, nor by the newest UID shown, which a deleted newest mail leaves below
+    /// UIDNEXT for good. A page without a UIDNEXT, or no page at all, counts as behind.
+    nonisolated static func inboxHasUnshownMail(_ status: MailboxStatusInfo, page: MailFolderPage?) -> Bool {
+        guard let page, page.uidValidity == status.uidValidity, let shown = page.uidNext else { return true }
+        return status.uidNext > shown
     }
 
     /// The new-mail body prefetch `MailChecker` does for a notification, on the page poll's path.
@@ -820,7 +832,7 @@ final class MailListViewModel {
         }
         let mergedPage = MailFolderPage(
             folder: folder, uidValidity: fresh.uidValidity, messageCount: fresh.messageCount,
-            summaries: merged, oldestLoadedSequence: oldestLoadedSequence
+            summaries: merged, oldestLoadedSequence: oldestLoadedSequence, uidNext: fresh.uidNext
         )
         pages[folder] = mergedPage
         return mergedPage
@@ -848,7 +860,7 @@ final class MailListViewModel {
             current = MailFolderPage(
                 folder: current.folder, uidValidity: current.uidValidity, messageCount: current.messageCount,
                 summaries: older.summaries.sorted { $0.uid > $1.uid },
-                oldestLoadedSequence: older.oldestLoadedSequence
+                oldestLoadedSequence: older.oldestLoadedSequence, uidNext: current.uidNext
             )
             pages[folder] = current
             rebuildRows()

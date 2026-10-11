@@ -213,6 +213,9 @@ nonisolated struct MailFolderPage: Codable, Sendable {
     var summaries: [MailSummary]
     /// Lowest sequence number loaded; nil once the oldest message is loaded.
     var oldestLoadedSequence: Int?
+    /// The folder's UIDNEXT when its newest page was fetched. Mail at or above it is not in this
+    /// page. Nil in pages cached before it was recorded.
+    var uidNext: UInt32? = nil
 }
 
 nonisolated struct MailboxStatusInfo: Equatable, Sendable {

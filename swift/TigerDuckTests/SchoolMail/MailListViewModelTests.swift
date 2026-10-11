@@ -5,16 +5,16 @@ import Testing
 
 @MainActor
 struct MailListViewModelTests {
-    final class CheckScript {
-        var outcome: MailCheckOutcome = .noNewMail
-        var calls = 0
+    /// What the poll reported to the notification marker.
+    final class SeenLog {
+        var noted: [MailboxStatusInfo] = []
     }
 
     struct Harness {
         let model: MailListViewModel
         let fake: FakeMailClient
         let cache: MailCache
-        let script: CheckScript
+        let seen: SeenLog
     }
 
     /// `nonisolated` because the fake-server `update` closures below are nonisolated, and the
@@ -47,13 +47,11 @@ struct MailListViewModelTests {
         }
         let fake = FakeMailClient(folders: folders)
         let cache = SchoolMailTestDoubles.temporaryCache()
-        let script = CheckScript()
+        let seen = SeenLog()
         let session = MailPageSession(idleClose: .milliseconds(10), open: open ?? { fake }, signOutEvents: signOutEvents)
-        let model = MailListViewModel(session: session, cache: cache, runPageCheck: { _ in
-            script.calls += 1
-            return script.outcome
-        }, signOutEvents: signOutEvents, warmDelay: warmDelay)
-        return Harness(model: model, fake: fake, cache: cache, script: script)
+        let model = MailListViewModel(session: session, cache: cache, noteSeenByPage: { seen.noted.append($0) },
+                                      signOutEvents: signOutEvents, warmDelay: warmDelay)
+        return Harness(model: model, fake: fake, cache: cache, seen: seen)
     }
 
     @Test func loadsFoldersAndTheNewestPage() async {
@@ -196,10 +194,57 @@ struct MailListViewModelTests {
     @Test func pollingReloadsWhenNewMailArrives() async {
         let h = Self.harness(inboxCount: 3)
         await h.model.load()
-        h.script.outcome = .newMail(1)
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 4)) }
         await h.model.pollOnce()
-        #expect(h.script.calls == 1)
         #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 2)
+        #expect(h.model.rows.first?.uid == 4)
+        #expect(h.seen.noted.map(\.uidNext) == [5])
+    }
+
+    /// A mail read on webmail before the poll is not new to the notification side, but the list
+    /// has still not shown it.
+    @Test func thePollReloadsForMailAlreadyReadElsewhere() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 4, seen: true)) }
+        await h.model.pollOnce()
+        #expect(h.model.rows.first?.uid == 4)
+    }
+
+    /// A deleted newest mail leaves UIDNEXT above the newest UID for good. Judged by the newest
+    /// UID, every poll would reload a list that is already current.
+    @Test func thePollLeavesACurrentListAloneAfterTheNewestMailWasDeleted() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.fake.update {
+            $0.folders["INBOX"]?.removeAll { $0.summary.uid == 3 }
+            $0.uidNext["INBOX"] = 4
+        }
+        await h.model.load()
+        await h.model.pollOnce()
+        #expect(await h.fake.calls.filter { $0 == "page INBOX" }.count == 1)
+        #expect(h.seen.noted.map(\.uidNext) == [4])
+    }
+
+    /// A reload that failed has not shown the new mail, so the marker stays for the checks that
+    /// notify.
+    @Test func aFailedReloadLeavesTheMarker() async {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        await h.fake.update {
+            $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 4))
+            $0.pageError = .serverBusy
+        }
+        await h.model.pollOnce()
+        #expect(h.seen.noted.isEmpty)
+    }
+
+    @Test func returningToTheAppPollsWithoutWaitingAMinute() async throws {
+        let h = Self.harness(inboxCount: 3)
+        await h.model.load()
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 4)) }
+        h.model.startPolling(pollFirst: true)
+        try await waitUntil { h.model.rows.first?.uid == 4 }
+        h.model.stopPolling()
     }
 
     @Test func switchingFoldersLoadsThatFolder() async {
@@ -260,7 +305,7 @@ struct MailListViewModelTests {
         await h.model.load()
         #expect(h.model.loadState == .failed(MailAccountManager.LoginError.credentials.message))
         await h.model.pollOnce()
-        #expect(h.script.calls == 0)
+        #expect(h.seen.noted.isEmpty)
     }
 
     // MARK: Merging refreshes and discarding stale results
@@ -296,10 +341,10 @@ struct MailListViewModelTests {
         let last = try #require(h.model.rows.last)
         await h.model.loadMoreIfNeeded(after: last)
         #expect(h.model.rows.count == 60)
-        h.script.outcome = .newMail(1)
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 61)) }
         await h.model.pollOnce()
-        #expect(h.model.rows.count == 60)
-        #expect(h.model.rows.first?.uid == 60)
+        #expect(h.model.rows.count == 61)
+        #expect(h.model.rows.first?.uid == 61)
         #expect(h.model.rows.last?.uid == 1)
     }
 
@@ -312,7 +357,7 @@ struct MailListViewModelTests {
         await h.model.loadMoreIfNeeded(after: last)
         #expect(h.model.rows.count == 60)
         let pagesBeforePoll = await h.fake.calls.filter { $0 == "page INBOX" }.count
-        h.script.outcome = .newMail(1)
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 61)) }
         await h.model.pollOnce()
         let pagesAfterPoll = await h.fake.calls.filter { $0 == "page INBOX" }.count
         #expect(pagesAfterPoll > pagesBeforePoll)
@@ -452,20 +497,23 @@ struct MailListViewModelTests {
         #expect(h.model.rows.map(\.uid) == [3, 2, 1])
     }
 
-    /// The 60 s poll used to act on `.newMail` only, so after a UIDVALIDITY change the list kept
-    /// painting a generation the server had thrown away until something else forced a reload.
-    @Test func aBaselineResetFromThePollReloadsTheList() async {
+    /// After a UIDVALIDITY change every UID on screen is from a generation the server threw away,
+    /// so the poll reloads even though UIDNEXT may well have gone down.
+    @Test func aNewUIDValidityFromThePollReloadsTheList() async {
         let h = Self.harness(inboxCount: 4)
         await h.model.load()
         let before = await h.fake.calls.filter { $0.hasPrefix("page INBOX") }.count
 
-        h.script.outcome = .noNewMail
         await h.model.pollOnce()
         #expect(await h.fake.calls.filter { $0.hasPrefix("page INBOX") }.count == before)
 
-        h.script.outcome = .baselineReset
+        await h.fake.update {
+            $0.uidValidity["INBOX"] = 2
+            $0.folders["INBOX"] = [FakeMailClient.message(uid: 1)]
+        }
         await h.model.pollOnce()
         #expect(await h.fake.calls.filter { $0.hasPrefix("page INBOX") }.count > before)
+        #expect(h.model.rows.filter { $0.folder == "INBOX" }.map(\.uid) == [1])
     }
 
     // MARK: All mail — the client-side merge of Inbox and Sent
@@ -681,9 +729,8 @@ struct MailListViewModelTests {
         await h.model.load()
         #expect(h.model.selection == .allMail)
         let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
-        h.script.outcome = .newMail(1)
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 1_000)) }
         await h.model.pollOnce()
-        #expect(h.script.calls == 1)
         // Both merged folders, because that is what the screen is showing.
         #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before + 2)
     }
@@ -694,10 +741,10 @@ struct MailListViewModelTests {
         await h.model.load()
         await h.model.select(.real(MailFolderRole.trash.imapName))
         let before = await h.fake.calls.filter { $0.hasPrefix("page ") }.count
-        h.script.outcome = .newMail(1)
+        await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 1_000)) }
         await h.model.pollOnce()
-        #expect(h.script.calls == 1)
         #expect(await h.fake.calls.filter { $0.hasPrefix("page ") }.count == before)
+        #expect(await !h.fake.calls.contains("status INBOX"))
     }
 
     // MARK: The selection the list opens on
@@ -982,7 +1029,6 @@ struct MailListViewModelTests {
         let h = Self.harness(inboxCount: 4, includeSent: false)
         await h.model.load()
         await h.fake.update { $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 5, text: "new")) }
-        h.script.outcome = .newMail(1)
         await h.model.pollOnce()
         #expect(h.model.rows.first?.uid == 5)
         #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == ["detail INBOX 5"])
@@ -996,7 +1042,6 @@ struct MailListViewModelTests {
         await h.fake.update { fake in
             for uid in UInt32(5)...12 { fake.folders["INBOX"]?.append(FakeMailClient.message(uid: uid)) }
         }
-        h.script.outcome = .newMail(8)
         await h.model.pollOnce()
         #expect(await h.fake.calls.filter { $0.hasPrefix("detail") } == (8...12).reversed().map { "detail INBOX \($0)" })
     }
@@ -1008,7 +1053,6 @@ struct MailListViewModelTests {
             $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 5))
             $0.detailError = .protocolError("no")
         }
-        h.script.outcome = .newMail(1)
         await h.model.pollOnce()
         #expect(await h.fake.calls.contains("detail INBOX 5"))
         #expect(h.model.loadState == .loaded)
@@ -1019,9 +1063,11 @@ struct MailListViewModelTests {
     @Test func onlyNewMailIsPrefetched() async {
         let h = Self.harness(inboxCount: 4, includeSent: false)
         await h.model.load()
-        h.script.outcome = .noNewMail
         await h.model.pollOnce()
-        h.script.outcome = .baselineReset
+        await h.fake.update {
+            $0.uidValidity["INBOX"] = 2
+            $0.folders["INBOX"]?.append(FakeMailClient.message(uid: 5))
+        }
         await h.model.pollOnce()
         #expect(await !h.fake.calls.contains { $0.hasPrefix("detail") })
     }

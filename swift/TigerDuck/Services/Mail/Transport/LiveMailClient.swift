@@ -153,7 +153,8 @@ actor LiveMailClient: MailClient {
             let upper = min((olderThanSequence ?? total + 1) - 1, total)
             guard upper >= 1 else {
                 return MailFolderPage(folder: folder, uidValidity: selection.uidValidity.value,
-                                      messageCount: total, summaries: [], oldestLoadedSequence: nil)
+                                      messageCount: total, summaries: [], oldestLoadedSequence: nil,
+                                      uidNext: selection.uidNext.value)
             }
             let lower = max(1, upper - pageSize + 1)
             let infos = try await self.imap.fetchMessageInfos(
@@ -162,7 +163,8 @@ actor LiveMailClient: MailClient {
             )
             let summaries = infos.compactMap(Self.summary(from:)).filter { !$0.isDeleted }.sorted { $0.uid > $1.uid }
             return MailFolderPage(folder: folder, uidValidity: selection.uidValidity.value, messageCount: total,
-                                  summaries: summaries, oldestLoadedSequence: lower > 1 ? lower : nil)
+                                  summaries: summaries, oldestLoadedSequence: lower > 1 ? lower : nil,
+                                  uidNext: selection.uidNext.value)
         }
     }
 

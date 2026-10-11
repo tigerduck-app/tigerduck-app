@@ -15,6 +15,9 @@ actor FakeMailClient: MailClient {
 
     var folders: [String: [Message]] = [:]
     var uidValidity: [String: UInt32] = [:]
+    /// A folder's UIDNEXT when a test sets one, as after its newest mail was expunged; otherwise
+    /// one above its highest UID.
+    var uidNext: [String: UInt32] = [:]
     var loginError: MailClientError?
     var statusError: MailClientError?
     /// Simulates a `page` the server refused (e.g. unreachable partway through a session) —
@@ -213,9 +216,13 @@ actor FakeMailClient: MailClient {
         let messages = folders[folder] ?? []
         return MailboxStatusInfo(
             uidValidity: uidValidity[folder] ?? 1,
-            uidNext: (messages.map(\.summary.uid).max() ?? 0) + 1,
+            uidNext: nextUID(folder),
             unseen: messages.filter { !$0.summary.isSeen }.count
         )
+    }
+
+    private func nextUID(_ folder: String) -> UInt32 {
+        uidNext[folder] ?? ((folders[folder] ?? []).map(\.summary.uid).max() ?? 0) + 1
     }
 
     func page(folder: String, olderThanSequence: Int?, pageSize: Int) async throws -> MailFolderPage {
@@ -232,7 +239,8 @@ actor FakeMailClient: MailClient {
         return MailFolderPage(
             folder: folder, uidValidity: uidValidity[folder] ?? 1, messageCount: total,
             summaries: Array(slice.map(\.summary).filter { !$0.isDeleted }.reversed()),
-            oldestLoadedSequence: upper >= 1 && lower > 1 ? lower : nil
+            oldestLoadedSequence: upper >= 1 && lower > 1 ? lower : nil,
+            uidNext: nextUID(folder)
         )
     }
 
