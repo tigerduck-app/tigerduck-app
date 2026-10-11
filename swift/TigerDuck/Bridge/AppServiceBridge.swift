@@ -468,7 +468,8 @@ enum AppServiceBridge {
     /// snapshot taken when they were added. Rows the lookup cannot find
     /// keep that snapshot. Persists and returns the semester's user-added
     /// list.
-    static func refreshUserAddedCourses(semester: String) async -> [SDCourse] {
+    static func refreshUserAddedCourses(semester: String, authService: AuthService) async -> [SDCourse] {
+        let startGeneration = authService.loginGeneration
         let stored = DataCache.shared.loadUserAddedCourses()
         let targets = stored.filter { DataCache.userAddedCourse($0, belongsTo: semester) }
         guard !targets.isEmpty else { return [] }
@@ -494,6 +495,8 @@ enum AppServiceBridge {
                 if let data { refreshed[courseNo] = data }
             }
         }
+        // A sign-out during the lookups cleared the list `stored` would write back.
+        guard authService.loginGeneration == startGeneration else { return [] }
         guard !refreshed.isEmpty else { return targets }
 
         let updated = stored.map { course -> SDCourse in

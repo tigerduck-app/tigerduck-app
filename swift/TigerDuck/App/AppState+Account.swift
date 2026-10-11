@@ -105,6 +105,12 @@ extension AppState {
         didSkipMacLogin = false
         DataCache.shared.clearUserScopedData()
         BulletinsViewModel.forgetListSession()
+        // Unresolved conflicts come from the departing account's data; resolving one would write
+        // its server marks into the next account's caches, or upload its own to that account.
+        syncConflicts = []
+        pendingSyncServerArchived = []
+        pendingSyncServerCompleted = []
+        reenableConflict = nil
         // Holiday choices are account-scoped but live in UserDefaults, out of reach of
         // `clearUserScopedData`. Cancel the queue first, or a link still waiting to run
         // sends the departing user's toggle over the next account's session.
