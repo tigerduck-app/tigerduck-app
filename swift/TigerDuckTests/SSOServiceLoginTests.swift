@@ -3,8 +3,9 @@ import Foundation
 import Testing
 @testable import TigerDuck
 
-/// `SSOLoginService.ensureServiceLogin` against `SSOServerStub`. Serialized: the SSO probe asks
-/// one fixed URL, and the stub's queues are shared.
+/// School sign-ins against stand-ins: `SSOLoginService.ensureServiceLogin` against
+/// `SSOServerStub`, and the Moodle token renewal with a stub harvest. Serialized: the SSO probe
+/// asks one fixed URL, the stub's queues are shared, and so is the stored-password latch.
 @MainActor
 @Suite(.serialized)
 struct SSOServiceLoginTests {
@@ -31,22 +32,43 @@ struct SSOServiceLoginTests {
         SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: loginURL)
     }
 
-    /// The sign-in, with the stub reset first and the probe's login stamp put back after.
-    private func signIn(_ serviceURL: URL, setUp: () -> Void) async -> Result<Bool, Error> {
+    private struct Outcome {
+        let result: Result<Bool, Error>
+        /// `SSOLoginService.storedPasswordRejected` when the sign-in ended.
+        let rejected: Bool
+    }
+
+    /// Runs `body` with the latch set to `rejected`, then puts the latch and the login stamp back.
+    private func withLatch<T>(_ rejected: Bool, _ body: () async -> T) async -> T {
+        let saved = (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp])
+        SSOLoginService.storedPasswordRejected = rejected
+        defer { (SSOLoginService.storedPasswordRejected, Defaults[.ssoLoginTimestamp]) = saved }
+        return await body()
+    }
+
+    private func signIn(
+        _ serviceURL: URL,
+        interactive: Bool = false,
+        rejectedBefore: Bool = false,
+        setUp: () -> Void
+    ) async -> Outcome {
         SSOServerStub.reset()
         setUp()
-        let stamp = Defaults[.ssoLoginTimestamp]
-        defer { Defaults[.ssoLoginTimestamp] = stamp }
-        do {
-            return .success(try await SSOLoginService.ensureServiceLogin(
-                session: SSOServerStub.session(),
-                serviceURL: serviceURL,
-                studentId: "B00000000",
-                password: "unused",
-                generation: NTUSTSessionManager.shared.generation
-            ))
-        } catch {
-            return .failure(error)
+        return await withLatch(rejectedBefore) {
+            let result: Result<Bool, Error>
+            do {
+                result = .success(try await SSOLoginService.ensureServiceLogin(
+                    session: SSOServerStub.session(),
+                    serviceURL: serviceURL,
+                    studentId: "B00000000",
+                    password: "unused",
+                    generation: NTUSTSessionManager.shared.generation,
+                    interactive: interactive
+                ))
+            } catch {
+                result = .failure(error)
+            }
+            return Outcome(result: result, rejected: SSOLoginService.storedPasswordRejected)
         }
     }
 
@@ -54,32 +76,35 @@ struct SSOServiceLoginTests {
         SSOServerStub.requests.filter { $0.method == "POST" }
     }
 
+    // MARK: - What counts as signed in
+
     @Test("a maintenance page without a live SSO session is not a sign-in")
     func maintenancePageIsNoSignIn() async {
         let service = Self.serviceURL()
-        let result = await signIn(service) {
+        let outcome = await signIn(service) {
             SSOServerStub.enqueue(.page(Pages.maintenance, status: 503), for: service)
             SSOServerStub.enqueue(.page(Pages.maintenance, status: 503), for: service)
             SSOServerStub.enqueue(Self.notSignedIn, for: Self.probeURL)
             SSOServerStub.enqueue(Self.notSignedIn, for: Self.probeURL)
         }
-        guard case .failure(SSOLoginError.loginFormNotFound) = result else {
-            Issue.record("expected loginFormNotFound, got \(result)")
+        guard case .failure(SSOLoginError.loginFormNotFound) = outcome.result else {
+            Issue.record("expected loginFormNotFound, got \(outcome.result)")
             return
         }
         #expect(posts.isEmpty)
         #expect(SSOServerStub.requests.filter { $0.url == service }.count == 2)
+        #expect(!outcome.rejected)
     }
 
     @Test("ssoam's NetIQ form asks for a browser sign-in")
     func netIQFormNeedsABrowser() async {
         let service = Self.serviceURL()
-        let result = await signIn(service) {
+        let outcome = await signIn(service) {
             SSOServerStub.enqueue(.follow(to: Pages.netIQLoginURL), for: service)
             SSOServerStub.enqueue(.page(Pages.netIQLogin), for: Pages.netIQLoginURL)
         }
-        guard case .failure(SSOLoginError.interactiveLoginRequired) = result else {
-            Issue.record("expected interactiveLoginRequired, got \(result)")
+        guard case .failure(SSOLoginError.interactiveLoginRequired) = outcome.result else {
+            Issue.record("expected interactiveLoginRequired, got \(outcome.result)")
             return
         }
         #expect(SSOServerStub.requests.map(\.url) == [service, Pages.netIQLoginURL])
@@ -88,12 +113,12 @@ struct SSOServiceLoginTests {
     @Test("a service page with a live SSO session signs in without posting")
     func liveSessionSignsIn() async {
         let service = Self.serviceURL()
-        let result = await signIn(service) {
+        let outcome = await signIn(service) {
             SSOServerStub.enqueue(.page(Self.servicePage), for: service)
             SSOServerStub.enqueue(.redirect(to: "/Home/Index"), for: Self.probeURL)
         }
-        guard case .success(true) = result else {
-            Issue.record("expected a sign-in, got \(result)")
+        guard case .success(true) = outcome.result else {
+            Issue.record("expected a sign-in, got \(outcome.result)")
             return
         }
         #expect(posts.isEmpty)
@@ -103,18 +128,131 @@ struct SSOServiceLoginTests {
     func portalVisitSignsInThroughTheForm() async {
         let service = Self.serviceURL()
         let portal = "<html><body><h1>臺科大校園入口</h1><a href=\"/login\">登入</a></body></html>"
-        let result = await signIn(service) {
+        let outcome = await signIn(service) {
             SSOServerStub.enqueue(.page(portal), for: service)
             SSOServerStub.enqueue(Self.notSignedIn, for: Self.probeURL)
             Self.enqueueSignInForm(for: service)
             Self.enqueueSignInForm(for: service)
             SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
         }
-        guard case .success(true) = result else {
-            Issue.record("expected a sign-in, got \(result)")
+        guard case .success(true) = outcome.result else {
+            Issue.record("expected a sign-in, got \(outcome.result)")
             return
         }
         #expect(posts.map(\.url) == [Self.postURL])
         #expect(posts.first?.body.contains("Username=B00000000") == true)
+    }
+
+    // MARK: - A rejected stored password
+
+    @Test("a sign-in the user did not start posts no password the school rejected")
+    func rejectedPasswordIsNotPostedAgain() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, rejectedBefore: true) {
+            Self.enqueueSignInForm(for: service)
+        }
+        guard case .failure(SSOLoginError.loginFailed) = outcome.result else {
+            Issue.record("expected loginFailed, got \(outcome.result)")
+            return
+        }
+        #expect(SSOServerStub.requests.map(\.url) == [service, Self.loginURL])
+        #expect(outcome.rejected)
+    }
+
+    @Test("a rejection in a sign-in the user did not start stops the next ones")
+    func silentRejectionLatches() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: Self.postURL)
+        }
+        guard case .failure(SSOLoginError.loginFailed) = outcome.result else {
+            Issue.record("expected loginFailed, got \(outcome.result)")
+            return
+        }
+        #expect(posts.count == 1)
+        #expect(outcome.rejected)
+    }
+
+    @Test("a sign-in the user starts posts after a rejection and lifts it")
+    func interactiveSignInLiftsTheLatch() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, interactive: true, rejectedBefore: true) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Self.servicePage), for: Self.postURL)
+        }
+        guard case .success(true) = outcome.result else {
+            Issue.record("expected a sign-in, got \(outcome.result)")
+            return
+        }
+        #expect(posts.count == 1)
+        #expect(!outcome.rejected)
+    }
+
+    @Test("a mistyped password in a sign-in the user starts sets no latch")
+    func interactiveRejectionDoesNotLatch() async {
+        let service = Self.serviceURL()
+        let outcome = await signIn(service, interactive: true) {
+            Self.enqueueSignInForm(for: service)
+            Self.enqueueSignInForm(for: service)
+            SSOServerStub.enqueue(.page(Pages.ssoam2Login), for: Self.postURL)
+        }
+        guard case .failure(SSOLoginError.loginFailed) = outcome.result else {
+            Issue.record("expected loginFailed, got \(outcome.result)")
+            return
+        }
+        #expect(!outcome.rejected)
+    }
+
+    // MARK: - Moodle token renewal
+
+    private actor HarvestLog {
+        private(set) var calls = 0
+        func record() { calls += 1 }
+    }
+
+    private func tokenService(log: HarvestLog, failure: MoodleWebserviceError) -> MoodleTokenService {
+        MoodleTokenService(
+            storedCredentials: { (studentId: "b00000000", password: "unused") },
+            harvest: { _, _ in
+                await log.record()
+                throw failure
+            }
+        )
+    }
+
+    @Test("a renewal the school rejected stops the next one")
+    func rejectedRenewalLatches() async {
+        let log = HarvestLog()
+        let service = tokenService(log: log, failure: .ssoLoginRejected(reason: "帳號或密碼錯誤"))
+        let rejected = await withLatch(false) {
+            await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: "帳號或密碼錯誤")) {
+                try await service.refreshTokenIfNeeded()
+            }
+            await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: nil)) {
+                try await service.refreshTokenIfNeeded()
+            }
+            return SSOLoginService.storedPasswordRejected
+        }
+        #expect(rejected)
+        #expect(await log.calls == 1)
+    }
+
+    @Test("a renewal that fails for another reason does not stop the next one")
+    func otherRenewalFailuresDoNotLatch() async {
+        let log = HarvestLog()
+        let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"))
+        let rejected = await withLatch(false) {
+            for _ in 0..<2 {
+                await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: "offline")) {
+                    try await service.refreshTokenIfNeeded()
+                }
+            }
+            return SSOLoginService.storedPasswordRejected
+        }
+        #expect(!rejected)
+        #expect(await log.calls == 2)
     }
 }

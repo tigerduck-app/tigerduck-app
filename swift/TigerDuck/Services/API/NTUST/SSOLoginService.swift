@@ -1,3 +1,4 @@
+import Defaults
 import Foundation
 
 enum SSOLoginError: LocalizedError {
@@ -54,6 +55,14 @@ enum SSOLoginService {
         "ssoam2.ntust.edu.tw",
     ]
 
+    /// The school rejected the stored password in a sign-in the user did not start. Each
+    /// rejection counts toward the account's lockout, so those sign-ins stop posting it until
+    /// the user signs in again.
+    nonisolated static var storedPasswordRejected: Bool {
+        get { Defaults[.ntustStoredPasswordRejected] }
+        set { Defaults[.ntustStoredPasswordRejected] = newValue }
+    }
+
     private static var isLoginRunning = false
     private static var waitingLogins: [CheckedContinuation<Void, Never>] = []
 
@@ -81,19 +90,24 @@ enum SSOLoginService {
     ///
     /// `generation` is ``NTUSTSessionManager/generation`` when the credentials were read. Once
     /// a sign-out moves it, the login throws `CancellationError` before its next request.
+    /// `interactive` marks a sign-in the user started; any other posts no password once the
+    /// school has rejected it (``storedPasswordRejected``).
     static func ensureServiceLogin(
         session: URLSession,
         serviceURL: URL,
         studentId: String,
         password: String,
-        generation: Int
+        generation: Int,
+        interactive: Bool = false
     ) async throws -> Bool {
         try await oneAtATime {
             try checkSignedIn(generation)
-            return try await performServiceLogin(
+            let signedIn = try await performServiceLogin(
                 session: session, serviceURL: serviceURL, studentId: studentId, password: password,
-                generation: generation
+                generation: generation, interactive: interactive
             )
+            if interactive, signedIn { storedPasswordRejected = false }
+            return signedIn
         }
     }
 
@@ -106,7 +120,8 @@ enum SSOLoginService {
         serviceURL: URL,
         studentId: String,
         password: String,
-        generation: Int
+        generation: Int,
+        interactive: Bool
     ) async throws -> Bool {
         do {
             // Steps 1 and 2: Visit service URL (follows redirects automatically) and resolve any
@@ -127,6 +142,8 @@ enum SSOLoginService {
                     return true
                 }
             }
+
+            if !interactive, storedPasswordRejected { throw SSOLoginError.loginFailed }
 
             // Step 4: Clear only the SSO cookies; keeping Moodle and service cookies avoids
             // device-change warnings. They are in the session's jar, the NTUST-private one:
@@ -196,6 +213,9 @@ enum SSOLoginService {
 
             // Step 7: Check if still on SSO page → login failed
             if HTMLParser.isSSOLoginPage(html: currentHTML, url: currentURL) {
+                if !interactive, NTUSTSessionManager.shared.generation == generation {
+                    storedPasswordRejected = true
+                }
                 throw SSOLoginError.loginFailed
             }
 

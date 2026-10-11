@@ -8,7 +8,21 @@ import Foundation
 /// endpoint counts every request as a failed login and triggers `login_lockout`, banning the
 /// account within about 10 attempts. See docs/decisions/0019-moodle-oidc-token-flow.md.
 actor MoodleTokenService {
-    static let shared = MoodleTokenService()
+    static let shared = MoodleTokenService(
+        storedCredentials: {
+            guard let studentId = KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
+                  let password = KeychainManager.loadString(key: AppConstants.KeychainKeys.password) else {
+                return nil
+            }
+            return (studentId, password)
+        },
+        harvest: { try await performOidcLogin(studentId: $0, password: $1) }
+    )
+
+    /// The keychain's NTUST account and the OIDC harvest. Tests pass stand-ins, so no request
+    /// reaches the school.
+    private let storedCredentials: @Sendable () -> (studentId: String, password: String)?
+    private let harvest: @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
 
     private static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
     private static let ssoBaseURL = URL(string: "https://ssoam2.ntust.edu.tw")!
@@ -76,7 +90,13 @@ actor MoodleTokenService {
         return try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
     }
 
-    private init() {}
+    init(
+        storedCredentials: @escaping @Sendable () -> (studentId: String, password: String)?,
+        harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
+    ) {
+        self.storedCredentials = storedCredentials
+        self.harvest = harvest
+    }
 
     // MARK: - Public API
 
@@ -98,9 +118,7 @@ actor MoodleTokenService {
         }
         let generation = signInGeneration
         let task = Task<String, Error> {
-            let triple = try await Self.performOidcLogin(
-                studentId: normalizedId, password: password,
-            )
+            let triple = try await harvest(normalizedId, password)
             guard signInGeneration == generation else { throw CancellationError() }
             Self.persist(triple: triple)
             return triple.wstoken
@@ -118,21 +136,27 @@ actor MoodleTokenService {
         if let existing = inFlightRefreshTask {
             return try await existing.value
         }
+        // The harvest posts the stored password, so it stops as the SSO sign-ins do.
+        guard !SSOLoginService.storedPasswordRejected else {
+            throw MoodleWebserviceError.ssoLoginRejected(reason: nil)
+        }
         let generation = signInGeneration
         let task = Task<String, Error> {
-            let creds = (
-                KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId),
-                KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
-            )
-            guard let sid = creds.0, let pwd = creds.1 else {
+            guard let creds = storedCredentials() else {
                 throw MoodleWebserviceError.missingStoredCredentials
             }
-            let normalizedId = sid
+            let normalizedId = creds.studentId
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .uppercased()
-            let triple = try await Self.performOidcLogin(
-                studentId: normalizedId, password: pwd,
-            )
+            let triple: TokenTriple
+            do {
+                triple = try await harvest(normalizedId, creds.password)
+            } catch let error as MoodleWebserviceError {
+                if case .ssoLoginRejected = error, signInGeneration == generation {
+                    SSOLoginService.storedPasswordRejected = true
+                }
+                throw error
+            }
             guard signInGeneration == generation else { throw CancellationError() }
             Self.persist(triple: triple)
             return triple.wstoken
