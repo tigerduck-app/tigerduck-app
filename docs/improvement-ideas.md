@@ -348,7 +348,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 ### 6.1 fix(Mail): reload the open list when the inbox grew（#286）
 
 - **現況**：回到 App 時，信箱頁只重新開始 polling，不會重新載入（`swift/TigerDuck/Features/SchoolMail/SchoolMailView.swift:337-340`），而且 polling 會先等 60 秒（`swift/TigerDuck/Features/SchoolMail/MailListViewModel.swift:505-518`）。頁面 poll 要不要重載，看的是和前景、背景檢查共用的 `inboxNextUID`（`swift/TigerDuck/Services/Mail/Sync/MailChecker.swift:244`）。通知開著時，回到 App 會先跑一次前景檢查，推一則 App 內的 banner，再把 marker 往前推（`swift/TigerDuck/Services/Mail/Sync/MailBackgroundRefresh.swift:93-103`、`MailChecker.swift:255-271`）；接著頁面 poll 得到 `.noNewMail`，列表就一直看不到那封信，直到使用者下拉、切換資料夾或收到下一封新信。背景檢查之後也一樣。
-- **建議**：`pollOnce` 改成拿 inbox 的 `uidNext` 和列表自己最新的 UID 比較，比較大就重載，marker 只往前推；`.active` 時立刻 poll 一次。這是 Android 的做法（`android:…/ui/screen/mail/SchoolMailListViewModel.kt:468-480`）。做完可以拿掉 `.page` trigger 與 `existing:` 參數。另外，頁面 poll 也會寫進只有 10 筆的診斷紀錄（`MailChecker.swift:165`），在信箱頁待 10 分鐘，背景檢查的紀錄就全被擠掉，可以一起處理。
+- **建議**：`pollOnce` 改成拿 inbox 的 `uidNext` 和列表自己最新的 UID 比較，大於最新 UID 加一就重載（最後一封 UID 是 100 的信箱，`uidNext` 是 101），否則 marker 只往前推；`.active` 時立刻 poll 一次。這是 Android 的做法（`android:…/ui/screen/mail/SchoolMailListViewModel.kt:468-480`）。做完可以拿掉 `.page` trigger 與 `existing:` 參數。另外，頁面 poll 也會寫進只有 10 筆的診斷紀錄（`MailChecker.swift:165`），在信箱頁待 10 分鐘，背景檢查的紀錄就全被擠掉，可以一起處理。
 - **評估**：效益高；成本 S；風險低；配合：Android 已經這樣做；信心高。
 
 ### 6.2 fix(Mail): stop SwiftMail's fixed IMAP deadlines failing large transfers（#287）
@@ -420,7 +420,7 @@ PR #237 刻意沒做三件事：revision 變動時的 delta sync、revision poll
 ### 7.3 ci(Tests): build the macOS app on pull requests（#296）
 
 - **現況**：`tests.yaml` 只跑手機與手錶的單元測試，檔頭寫明不測 macOS（`.github/workflows/tests.yaml:3-4`）；`tools/check_macos_sources.py` 只檢查檔案歸屬。過去就有 Mac 專屬的編譯錯誤進到分支（ad7616cd 修的 `LibraryQRImageCache`、45cfb081 修的 `AppState+CourseReconcile`）。
-- **建議**：matrix 加一個 `mac`：`xcodebuild build -scheme TigerDuck -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO`，共用現有的快取。不需要模擬器，熱快取下約 3–5 分鐘，和其他 job 並行；repo 是 public，Actions 分鐘數不收費。
+- **建議**：matrix 加一個 `mac`：`xcodebuild build -project swift/TigerDuck.xcodeproj -scheme TigerDuck -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO`，共用現有的快取。不需要模擬器，熱快取下約 3–5 分鐘，和其他 job 並行；repo 是 public，Actions 分鐘數不收費。
 - **評估**：效益高；成本 S；風險低；配合：不需要；信心高。
 
 ### 7.4 test(SSO): fixture tests for HTMLParser, the Moodle token decoder and error mapping（#297）
