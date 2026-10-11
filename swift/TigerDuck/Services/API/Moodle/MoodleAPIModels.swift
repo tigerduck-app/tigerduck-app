@@ -3,7 +3,6 @@ import Foundation
 // MARK: - Shared webservice session
 
 nonisolated enum MoodleWebserviceClient {
-    static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
     static let webservicePath = "/webservice/rest/server.php"
     static let session: URLSession = {
         let userAgent = (
@@ -64,7 +63,7 @@ nonisolated enum MoodleWebserviceClient {
         token: String,
         as type: T.Type,
         session: URLSession = MoodleWebserviceClient.session,
-        siteURL: URL = siteBaseURL
+        siteURL: URL = AppConstants.moodleBaseURL
     ) async throws -> T {
         guard var components = URLComponents(url: siteURL, resolvingAgainstBaseURL: false) else {
             throw MoodleWebserviceError.malformedResponse(detail: "invalid base URL")

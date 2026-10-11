@@ -210,7 +210,7 @@ extension AppServiceBridge {
                     isCompleted: status?.isSubmitted ?? (confirmedAt != nil),
                     isArchived: archivedIds.contains(assignmentId),
                     isLocallyCompleted: locallyCompletedIds.contains(assignmentId),
-                    moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(record.cmId)",
+                    moodleUrl: "\(AppConstants.moodleBaseURL.absoluteString)/mod/assign/view.php?id=\(record.cmId)",
                     cutoffDate: record.cutoffDate,
                     submittedAt: status?.submittedAt ?? confirmedAt
                 )

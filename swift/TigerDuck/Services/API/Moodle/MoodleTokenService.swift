@@ -24,7 +24,6 @@ actor MoodleTokenService {
     private let storedCredentials: @Sendable () -> (studentId: String, password: String)?
     private let harvest: @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
 
-    private static let siteBaseURL = URL(string: "https://moodle2.ntust.edu.tw")!
     private static let ssoBaseURL = URL(string: "https://ssoam2.ntust.edu.tw")!
     private static let service = "moodle_mobile_app"
     private static let urlScheme = "moodlemobile"
@@ -260,7 +259,7 @@ actor MoodleTokenService {
         // `1e-06` or a locale's `,`, either of which Moodle's `weblogin` may reject.
         let passport = Int(Double.random(in: 0..<1) * 1000)
         var launchComps = URLComponents(
-            url: siteBaseURL.appendingPathComponent("admin/tool/mobile/launch.php"),
+            url: AppConstants.moodleBaseURL.appendingPathComponent("admin/tool/mobile/launch.php"),
             resolvingAgainstBaseURL: false,
         )!
         launchComps.queryItems = [
