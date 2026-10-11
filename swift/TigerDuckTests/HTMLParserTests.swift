@@ -111,6 +111,15 @@ struct HTMLParserTests {
         #expect(!HTMLParser.isSSOLoginPage(html: Pages.netIQLogin, url: Pages.netIQLoginURL))
     }
 
+    @Test("field names in another case still read as the sign-in form, off the main actor too")
+    func signInBodyInAnyCaseOffTheMainActor() async {
+        let lowercase = #"<form action="/x"><input name="username"><input name="PASSWORD"></form>"#
+        let found = await Task.detached {
+            (HTMLParser.looksLikeSSOLoginBody(lowercase), HTMLParser.looksLikeSSOLoginBody(SSOPageFixtures.maintenance))
+        }.value
+        #expect(found == (true, false))
+    }
+
     @Test("ssoam's NetIQ form is told apart from the ssoam2 form")
     func netIQSignInPage() {
         #expect(HTMLParser.isNetIQLoginPage(html: Pages.netIQLogin, url: Pages.netIQLoginURL))

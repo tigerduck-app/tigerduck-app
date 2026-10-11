@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSoup
 
-enum HTMLParser {
+nonisolated enum HTMLParser {
 
     struct FormData {
         let action: String
@@ -25,7 +25,10 @@ enum HTMLParser {
     /// would miss that case and the HTML parser would fall through
     /// to `.empty`.
     static func looksLikeSSOLoginBody(_ html: String) -> Bool {
-        guard let doc = try? SwiftSoup.parse(html) else { return false }
+        // Most pages checked are the service's own. One without either marker cannot match the
+        // selectors below, whose attribute values match in any case, so only a hit is parsed.
+        guard html.contains("loginForm") || html.range(of: "username", options: .caseInsensitive) != nil,
+              let doc = try? SwiftSoup.parse(html) else { return false }
 
         return (try? doc.select("form#loginForm").first()) != nil ||
             ((try? doc.select("input[name=Username]").first()) != nil &&
