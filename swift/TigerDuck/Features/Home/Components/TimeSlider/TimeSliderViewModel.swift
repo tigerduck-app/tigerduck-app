@@ -23,10 +23,9 @@ final class TimeSliderViewModel {
     /// Tracks which haptic interval the user was last in, to fire once per crossing.
     private var lastHapticSlot: Int = 0
     private let hapticGenerator = UISelectionFeedbackGenerator()
-    /// Whether classes do not meet on a day — `TimeSliderSection` passes the
-    /// school calendar with the user's "still have class" choices, and a
-    /// slot on such a day is left off the timeline. Never, by default, so a
-    /// test does not read the device's cached calendar.
+    /// Whether classes do not meet on a day; a slot on such a day is left off
+    /// the timeline. Never, by default, so a test does not read the device's
+    /// cached calendar.
     private let isQuietDay: (Date) -> Bool
     // `nonisolated(unsafe)` so `deinit` can remove them; `@ObservationIgnored`
     // keeps the macro from swapping the storage out from under the modifier.
@@ -56,6 +55,13 @@ final class TimeSliderViewModel {
                     MainActor.assumeIsolated { self?.reloadQuietDays() }
                 }
             }
+    }
+
+    /// Home's slider. Its window spans weeks, so near either end of the term it reaches days
+    /// outside it; a day is quiet unless `calendarStore` makes it a class day, the check the
+    /// class table's carousel makes.
+    convenience init(calendarStore: AcademicCalendarStore) {
+        self.init(isQuietDay: { !calendarStore.isClassDay($0) })
     }
 
     deinit {
