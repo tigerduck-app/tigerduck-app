@@ -1,3 +1,4 @@
+import Defaults
 import Testing
 import Foundation
 @testable import TigerDuck
@@ -59,6 +60,24 @@ struct TimeSliderViewModelTests {
         NotificationCenter.default.post(name: AppConstants.holidayNotifyDidChange, object: nil)
 
         try await waitUntil { !viewModel.timeSlots.contains(where: onToday) }
+    }
+
+    /// Home's slider spans weeks, so near the end of a term it reaches days after it, when no
+    /// class meets. Those are left off, as a quiet holiday is.
+    @Test func homeSlider_leavesOffDaysOutsideTheTerm() throws {
+        let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+        let course = SDCourse(courseNo: "TEST100", courseName: "Test", schedule: allDays)
+        let today = AcademicCalendar.startOfDay(AppClock.now())
+        let weekAgo = try #require(AcademicCalendar.calendar.date(byAdding: .day, value: -7, to: today))
+        let term = SemesterTerm(code: "1151", start: weekAgo, end: today)
+        let store = try calendarStore(holding: AcademicCalendar(revision: 1, terms: [term], holidays: []))
+
+        let viewModel = TimeSliderViewModel(calendarStore: store)
+        viewModel.configure(courses: [course])
+
+        let days = Set(viewModel.timeSlots.map { AcademicCalendar.startOfDay($0.date) })
+        #expect(days.count == 8)
+        #expect(days.allSatisfy(term.contains))
     }
 
     @Test func xOffset_returnsZeroWithNoCourses() {
@@ -301,6 +320,15 @@ struct TimeSliderViewModelTests {
         ])
 
         #expect(lanes.isEmpty)
+    }
+
+    /// The store reads its cache once, at init, so the device's own cache is back before the
+    /// test goes on.
+    private func calendarStore(holding calendar: AcademicCalendar) throws -> AcademicCalendarStore {
+        let saved = Defaults[.academicCalendarCache]
+        defer { Defaults[.academicCalendarCache] = saved }
+        Defaults[.academicCalendarCache] = try JSONEncoder().encode(calendar)
+        return AcademicCalendarStore()
     }
 
     private func makeMockSlot(courseNo: String, start: Date, end: Date) -> CourseTimeSlot {
