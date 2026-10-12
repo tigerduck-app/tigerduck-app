@@ -207,6 +207,12 @@ struct SettingsView: View {
                 #endif
 
                 Group {
+                    NavigationLink(String(localized: "settings_class_reminder")) {
+                        ClassReminderSettingsView(store: appState.liveActivityPreferences)
+                    }
+                    // The backend schedules class reminders from the courses a device
+                    // uploads, so with course sync off nothing set here would take effect.
+                    .disabled(!cloudSyncEnabled)
                     NavigationLink(String(localized: "live_activity_settings_assignment_notification_header")) {
                         AssignmentReminderSettingsView(store: appState.liveActivityPreferences)
                     }

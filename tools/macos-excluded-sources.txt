@@ -113,6 +113,7 @@ ScoreView.swift
 # Features/Settings — iOS settings screens; macOS uses MacSettingsScene
 AboutOthersView.swift
 AssignmentReminderSettingsView.swift
+ClassReminderSettingsView.swift
 CloudSyncSettingsView.swift
 FontSizeSettingsView.swift
 LibrarySettingsView.swift
