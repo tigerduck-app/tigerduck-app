@@ -1,5 +1,6 @@
 import SwiftUI
 import EventKit
+import UIKit
 
 // `EKEventStore.requestFullAccessToEvents` calls back off the main actor, and
 // mutating state from there races SwiftUI's reads of @Observable storage.
@@ -46,7 +47,7 @@ final class CalendarViewModel {
     }
 
     func goToToday() {
-        withAnimation(.smoothSpring) {
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .smoothSpring) {
             selectedDate = .now
             displayedMonth = .now
         }

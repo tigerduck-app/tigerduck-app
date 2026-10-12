@@ -200,8 +200,11 @@ struct ClassTableView: View {
                 Text(String(localized: "error_network_unavailable"))
             }
             .sheet(item: $viewModel.courseToRecolor) { course in
+                let authService = appState.authService
+                let generation = authService.loginGeneration
                 CourseColorPickerSheet(
                     course: course,
+                    isCurrent: { authService.loginGeneration == generation },
                     onSelect: { viewModel.setColor(hex: $0, for: course) }
                 )
                 .presentationDetents([.medium, .large])

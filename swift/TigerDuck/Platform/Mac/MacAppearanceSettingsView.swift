@@ -12,7 +12,7 @@ struct MacAppearanceSettingsView: View {
             Section(String(localized: "settings_accent_color")) {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
                     ForEach(AppState.themeColors, id: \.hex) { entry in
-                        accentSwatch(hex: entry.hex)
+                        accentSwatch(hex: entry.hex, nameKey: entry.nameKey)
                     }
                 }
                 .padding(.vertical, 4)
@@ -43,7 +43,7 @@ struct MacAppearanceSettingsView: View {
         }
     }
 
-    private func accentSwatch(hex: Int) -> some View {
+    private func accentSwatch(hex: Int, nameKey: String) -> some View {
         let color = Color(hex: UInt(bitPattern: Int(hex)))
         let isSelected = appState.accentColorHex == hex
         return Button {
@@ -66,6 +66,8 @@ struct MacAppearanceSettingsView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(String(localized: String.LocalizationValue(nameKey))))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

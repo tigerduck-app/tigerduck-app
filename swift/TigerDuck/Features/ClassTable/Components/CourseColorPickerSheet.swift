@@ -20,11 +20,19 @@ struct CourseColorPickerSheet: View {
     /// sheet stays open) because `currentHex` can still be stale for that
     /// render pass.
     @State private var suppressNextColorChange = false
+    @State private var customPicks: CustomColorPickDebouncer
 
-    init(course: SDCourse, onSelect: @escaping (UInt32) -> Void) {
+    /// `isCurrent` says whether the account that opened the sheet is still signed in.
+    init(course: SDCourse, isCurrent: @escaping () -> Bool, onSelect: @escaping (UInt32) -> Void) {
         self.course = course
         self.onSelect = onSelect
         _customColor = State(initialValue: Color(hex: UInt(TigerDuckTheme.assignedHex(for: course.courseNo))))
+        let courseNo = course.courseNo
+        _customPicks = State(initialValue: CustomColorPickDebouncer(
+            apply: onSelect,
+            appliedHex: { TigerDuckTheme.assignedHex(for: courseNo) },
+            isCurrent: isCurrent
+        ))
     }
 
     /// Index of the preset that matches the course's currently-assigned hex,
@@ -60,6 +68,8 @@ struct CourseColorPickerSheet: View {
                 }
             }
         }
+        // Closing mid-pause still applies the colour the drag ended on.
+        .onDisappear { customPicks.flush() }
     }
 
     private var header: some View {
@@ -86,6 +96,7 @@ struct CourseColorPickerSheet: View {
             ForEach(Array(TigerDuckTheme.courseColors.enumerated()), id: \.offset) { index, color in
                 Button {
                     let hex = TigerDuckTheme.coursePaletteHexes[index]
+                    customPicks.cancel()
                     suppressNextColorChange = true
                     customColor = Color(hex: UInt(hex))
                     onSelect(hex)
@@ -97,6 +108,7 @@ struct CourseColorPickerSheet: View {
                     swatch(color: color, isSelected: index == activePresetIndex)
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(index == activePresetIndex ? .isSelected : [])
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -143,12 +155,10 @@ struct CourseColorPickerSheet: View {
                     suppressNextColorChange = false
                     return
                 }
-                let hex = hexFrom(color: newValue)
-                // Skip the no-op tick SwiftUI emits when the picker first shows the
-                // current course color, or just opening the sheet would issue a
-                // needless setColor call and broadcast.
-                guard hex != currentHex else { return }
-                onSelect(hex)
+                // This also sees the no-op tick SwiftUI emits when the picker first shows
+                // the current course color; the debouncer applies nothing for it, so just
+                // opening the sheet issues no setColor call and broadcast.
+                customPicks.pick(hexFrom(color: newValue))
             }
         }
     }
@@ -202,5 +212,67 @@ struct CourseColorPickerSheet: View {
         let g = UInt32(max(0, min(1, components.count > 1 ? components[1] : components[0])) * 255)
         let b = UInt32(max(0, min(1, components.count > 2 ? components[2] : components[0])) * 255)
         return (r << 16) | (g << 8) | b
+    }
+}
+
+/// Holds a custom colour back until the drag pauses. The `ColorPicker` reports every
+/// step of a drag, and each applied pick writes the colour map, posts `dataDidUpdate`,
+/// which reloads Home, Class Table, Calendar and the Live Activity, and queues a sync.
+@MainActor
+final class CustomColorPickDebouncer {
+    static let pause: Duration = .milliseconds(300)
+
+    private let apply: (UInt32) -> Void
+    /// The course's colour now, which a pick back on it leaves as it is.
+    private let appliedHex: () -> UInt32
+    /// False once the account that picked has signed out: sign-out clears the colour map,
+    /// and a late pick would write the departing account's colour into the next one's.
+    private let isCurrent: () -> Bool
+    private let sleep: @Sendable (Duration) async -> Void
+    private var pendingHex: UInt32?
+    private(set) var pendingTask: Task<Void, Never>?
+
+    init(
+        apply: @escaping (UInt32) -> Void,
+        appliedHex: @escaping () -> UInt32,
+        isCurrent: @escaping () -> Bool,
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
+    ) {
+        self.apply = apply
+        self.appliedHex = appliedHex
+        self.isCurrent = isCurrent
+        self.sleep = sleep
+    }
+
+    func pick(_ hex: UInt32) {
+        guard hex != appliedHex() else {
+            cancel()
+            return
+        }
+        pendingHex = hex
+        pendingTask?.cancel()
+        let sleep = sleep
+        pendingTask = Task { [weak self] in
+            await sleep(Self.pause)
+            guard !Task.isCancelled else { return }
+            self?.flush()
+        }
+    }
+
+    /// Applies the pick still waiting, if any, now.
+    func flush() {
+        pendingTask?.cancel()
+        pendingTask = nil
+        guard let hex = pendingHex else { return }
+        pendingHex = nil
+        guard isCurrent() else { return }
+        apply(hex)
+    }
+
+    /// Drops the pick still waiting, for a preset that replaces it.
+    func cancel() {
+        pendingTask?.cancel()
+        pendingTask = nil
+        pendingHex = nil
     }
 }

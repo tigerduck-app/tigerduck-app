@@ -27,7 +27,7 @@ final class HomeViewModel {
     /// Cached source-of-truth assignment list, already filtered to the current
     /// semester. The visible `upcomingAssignments` is derived from this via
     /// `assignmentFilter` so toggling filters is instant and does not refetch.
-    private var allAssignmentsCache: [SDAssignment] = []
+    var allAssignmentsCache: [SDAssignment] = []
 
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
@@ -273,7 +273,7 @@ final class HomeViewModel {
     }
 
     func assignmentsFor(courseNo: String) -> [SDAssignment] {
-        upcomingAssignments.unfinished(for: courseNo)
+        allAssignmentsCache.unfinished(for: courseNo).sorted { $0.dueDate < $1.dueDate }
     }
 
     func removeSection(_ section: HomeSection) {

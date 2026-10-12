@@ -28,4 +28,25 @@ struct StoredCredentialResolutionTests {
         #expect(!AuthService.resolveHasCredentials(
             keychainSaysPresent: false, mirrorSaysPresent: false))
     }
+
+    /// Counts keychain reads; AuthService keeps the closure.
+    @MainActor
+    private final class KeychainReads {
+        var count = 0
+    }
+
+    @MainActor
+    @Test func redrawsReadTheLastKeychainAnswerNotTheKeychain() {
+        // The Class Table reads `hasStoredCredentials` several times per redraw, and each
+        // keychain answer costs two reads. A false answer leaves the real mirror alone.
+        let reads = KeychainReads()
+        let auth = AuthService(keychainHasCredentials: {
+            reads.count += 1
+            return false
+        })
+
+        for _ in 0..<5 { _ = auth.hasStoredCredentials }
+
+        #expect(reads.count == 1)
+    }
 }

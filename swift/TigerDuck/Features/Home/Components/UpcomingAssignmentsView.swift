@@ -261,7 +261,7 @@ struct UpcomingAssignmentsView: View {
 
     private func openAssignment(_ assignment: SDAssignment) {
         if let url = assignment.moodleDeepLink {
-            openURL(url)
+            openURL(url, fallback: assignment.moodleWebURL)
         }
     }
 
@@ -346,6 +346,16 @@ private struct SwipeableRow<Content: View>: View {
         .simultaneousGesture(dragGesture)
         .accessibilityAddTraits(tapHint != nil ? .isButton : [])
         .accessibilityHint(tapHint.map { Text($0) } ?? Text(""))
+        // The swipes are custom drags, which VoiceOver, Voice Control, Switch Control and a
+        // keyboard cannot perform; the same actions are offered as accessibility actions.
+        .accessibilityActions {
+            if let leadingAction {
+                Button(leadingAction.label, action: leadingAction.action)
+            }
+            if let trailingAction {
+                Button(trailingAction.label, action: trailingAction.action)
+            }
+        }
     }
 
     @ViewBuilder

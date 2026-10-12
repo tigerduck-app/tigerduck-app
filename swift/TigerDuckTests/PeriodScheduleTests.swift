@@ -56,6 +56,18 @@ struct PeriodScheduleTests {
             .isSubset(of: Set(AppConstants.Periods.chronologicalOrder)))
     }
 
+    /// VoiceOver reads a class table cell through `a11y_timetable_cell`, whose Chinese
+    /// templates put the word for "weekday" before the label. A date formatter's short
+    /// weekday symbol carries that word too, so passing one reads the word twice.
+    @Test func shortWeekdayLabel_isTheShortLabelForEachScheduleWeekday() {
+        let expected = [
+            "weekday_mon_short", "weekday_tue_short", "weekday_wed_short", "weekday_thu_short",
+            "weekday_fri_short", "weekday_sat_short", "weekday_sun_short",
+        ].map { String(localized: String.LocalizationValue($0)) }
+        #expect((1...7).map(AppConstants.Periods.shortWeekdayLabel) == expected)
+        #expect(AppConstants.Periods.shortWeekdayLabel(8) == "8")
+    }
+
     private static func minuteOfDay(_ hhmm: String) -> Int {
         let parts = hhmm.split(separator: ":").compactMap { Int($0) }
         guard parts.count == 2 else { return -1 }

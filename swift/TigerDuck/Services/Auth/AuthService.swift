@@ -22,9 +22,13 @@ final class AuthService {
     private(set) var loginGeneration: Int = 0
 
     /// What the keychain answered the last time credentials demonstrably
-    /// changed. Only used to keep ``revalidateStoredCredentials()`` from
-    /// bumping ``_revision`` when nothing actually moved.
+    /// changed. ``hasStoredCredentials`` answers from it, and it keeps
+    /// ``revalidateStoredCredentials()`` from bumping ``_revision`` when
+    /// nothing actually moved.
     private var lastKnownHasCredentials: Bool?
+
+    /// Whether the keychain holds both credentials; two keychain reads.
+    private let keychainHasCredentials: () -> Bool
 
     private var credentialObservers: [any NSObjectProtocol] = []
 
@@ -36,8 +40,9 @@ final class AuthService {
     /// So this re-checks when protected data becomes available and when the app activates.
     /// Otherwise ``_revision`` moves only on login and logout, and after an unlock the Class
     /// Table stays on the login prompt until an unrelated redraw such as pull-to-refresh.
-    init() {
-        let present = storedStudentId != nil && storedPassword != nil
+    init(keychainHasCredentials: @escaping () -> Bool = AuthService.readKeychainHasCredentials) {
+        self.keychainHasCredentials = keychainHasCredentials
+        let present = keychainHasCredentials()
         lastKnownHasCredentials = present
         // Only ever raised here. A false read at this point may just mean the
         // keychain was not readable yet, which is not something to record.
@@ -65,7 +70,7 @@ final class AuthService {
     /// Re-read the keychain and invalidate only if its answer changed, so a
     /// routine foreground doesn't redraw every view that reads credentials.
     private func revalidateStoredCredentials() {
-        let current = storedStudentId != nil && storedPassword != nil
+        let current = keychainHasCredentials()
         if current { Defaults[.ntustCredentialsPresent] = true }
         guard current != lastKnownHasCredentials else { return }
         lastKnownHasCredentials = current
@@ -75,7 +80,7 @@ final class AuthService {
     /// Invalidate after a login or logout has moved the keychain, and
     /// re-snapshot so the next activation doesn't bump a second time.
     private func markCredentialsChanged() {
-        let present = storedStudentId != nil && storedPassword != nil
+        let present = keychainHasCredentials()
         // The only authoritative read there is: we just wrote or cleared the
         // keychain ourselves, so a nil here really does mean absent. This is
         // the one path allowed to lower the mirror.
@@ -101,14 +106,15 @@ final class AuthService {
         keychainSaysPresent || mirrorSaysPresent
     }
 
+    /// Answers from the last keychain read, not a new one: screens such as the Class Table
+    /// read this several times per redraw.
     var hasStoredCredentials: Bool {
         _ = _revision
-        if storedStudentId != nil && storedPassword != nil { return true }
         // A nil read means absent or just unreadable, so fall back to `ntustCredentialsPresent`:
         // readable when the keychain is not, lowered only by a real logout. Revalidation bumps
         // `_revision` only on change, so two nil reads would strand a signed-in user at login.
         return Self.resolveHasCredentials(
-            keychainSaysPresent: false,
+            keychainSaysPresent: lastKnownHasCredentials ?? false,
             mirrorSaysPresent: Defaults[.ntustCredentialsPresent]
         )
     }
@@ -140,6 +146,11 @@ final class AuthService {
     var storedPassword: String? {
         _ = _revision
         return KeychainManager.loadString(key: AppConstants.KeychainKeys.password)
+    }
+
+    nonisolated static func readKeychainHasCredentials() -> Bool {
+        KeychainManager.loadString(key: AppConstants.KeychainKeys.studentId) != nil
+            && KeychainManager.loadString(key: AppConstants.KeychainKeys.password) != nil
     }
 
     private static let ssoServiceURL = URL.knownGood("https://courseselection.ntust.edu.tw/")

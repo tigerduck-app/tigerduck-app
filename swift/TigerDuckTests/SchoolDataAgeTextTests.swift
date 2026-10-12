@@ -4,6 +4,14 @@ import Testing
 
 @MainActor
 struct SchoolDataAgeTextTests {
+    @Test("with Differentiate Without Color, OK and failed differ in shape as well")
+    func statusGlyphs() {
+        #expect(SyncStatusDot.glyph(.ok) != nil)
+        #expect(SyncStatusDot.glyph(.failed) != nil)
+        #expect(SyncStatusDot.glyph(.ok) != SyncStatusDot.glyph(.failed))
+        #expect(SyncStatusDot.glyph(.unknown) == nil)
+    }
+
     @Test("the age reads never synced, just now, then minutes, hours and days")
     func ageSteps() {
         let now = Date()

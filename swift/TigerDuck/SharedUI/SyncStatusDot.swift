@@ -40,6 +40,7 @@ struct SyncStatusDot: View {
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     /// Optional so the dot still renders in a preview with no `AppState`
     /// injected, where "signed out" is the conservative read.
     @Environment(AppState.self) private var appState: AppState?
@@ -164,10 +165,7 @@ struct SyncStatusDot: View {
                 if isLoading {
                     ring.transition(.scale.combined(with: .opacity))
                 } else {
-                    Circle()
-                        .fill(Self.color(summary))
-                        .frame(width: 10, height: 10)
-                        .transition(.scale.combined(with: .opacity))
+                    mark.transition(.scale.combined(with: .opacity))
                 }
             }
             // The 28pt frame is the tap target, not a backing: the mark
@@ -202,6 +200,21 @@ struct SyncStatusDot: View {
             try? await Task.sleep(for: Self.idleDelay)
             guard !Task.isCancelled else { return }
             dimmed = true
+        }
+    }
+
+    /// Red and green alone do not tell the states apart for everyone, so with
+    /// Differentiate Without Color on, OK and failed also differ in shape.
+    @ViewBuilder
+    private var mark: some View {
+        if differentiateWithoutColor, let glyph = Self.glyph(summary) {
+            Image(systemName: glyph)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Self.color(summary))
+        } else {
+            Circle()
+                .fill(Self.color(summary))
+                .frame(width: 10, height: 10)
         }
     }
 
@@ -283,6 +296,16 @@ struct SyncStatusDot: View {
         case .unknown: .gray
         case .ok: .green
         case .failed: .red
+        }
+    }
+
+    /// The shape that tells OK from failed without their colours. Grey, nothing
+    /// reported yet, keeps the plain dot.
+    static func glyph(_ status: ServerStatus) -> String? {
+        switch status {
+        case .unknown: nil
+        case .ok: "checkmark.circle.fill"
+        case .failed: "exclamationmark.circle.fill"
         }
     }
 
