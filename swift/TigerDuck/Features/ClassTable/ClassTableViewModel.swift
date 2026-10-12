@@ -321,7 +321,9 @@ final class ClassTableViewModel {
     /// Memoised `cellRole(weekday:periodIndex:)` results. Invalidated whenever
     /// `courseLookup` is rebuilt (course list change). The grid view calls
     /// `cellRole` once per (weekday, periodIdx) per render, and the lookup
-    /// inside is O(span) — caching keeps re-renders cheap.
+    /// inside is O(span), so caching keeps re-renders cheap. Not observed: the
+    /// grid fills it while its body runs, and a tracked write would redraw it.
+    @ObservationIgnored
     var cellRoleCache: [CellRoleKey: CellRole] = [:]
 
     struct CellRoleKey: Hashable {
