@@ -283,10 +283,12 @@ struct SSOServiceLoginTests {
         log: HarvestLog,
         failure: MoodleWebserviceError,
         stored: StoredPassword = StoredPassword("unused"),
+        token: String? = nil,
         duringHarvest: @escaping @Sendable () -> Void = {}
     ) -> MoodleTokenService {
         MoodleTokenService(
             storedCredentials: { (studentId: "b00000000", password: stored.current) },
+            storedToken: { token },
             harvest: { _, _ in
                 await log.record()
                 duringHarvest()
@@ -342,5 +344,21 @@ struct SSOServiceLoginTests {
         }
         #expect(!rejected)
         #expect(await log.calls == 2)
+    }
+
+    @Test("a renewal for a token another call already replaced returns the stored one")
+    func renewalOfAReplacedTokenDoesNotHarvest() async {
+        let log = HarvestLog()
+        let service = tokenService(log: log, failure: .transientNetwork(underlying: "offline"), token: "new")
+        let token = await withLatch(false) { try? await service.refreshTokenIfNeeded(replacing: "old") }
+        #expect(token == "new")
+        #expect(await log.calls == 0)
+
+        await withLatch(false) {
+            await #expect(throws: MoodleWebserviceError.transientNetwork(underlying: "offline")) {
+                try await service.refreshTokenIfNeeded(replacing: "new")
+            }
+        }
+        #expect(await log.calls == 1)
     }
 }

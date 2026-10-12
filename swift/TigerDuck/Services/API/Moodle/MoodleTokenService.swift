@@ -16,12 +16,14 @@ actor MoodleTokenService {
             }
             return (studentId, password)
         },
+        storedToken: { KeychainManager.loadString(key: AppConstants.KeychainKeys.moodleToken) },
         harvest: { try await performOidcLogin(studentId: $0, password: $1) }
     )
 
-    /// The keychain's NTUST account and the OIDC harvest. Tests pass stand-ins, so no request
-    /// reaches the school.
+    /// The keychain's NTUST account and Moodle token, and the OIDC harvest. Tests pass stand-ins,
+    /// so no request reaches the school.
     private let storedCredentials: @Sendable () -> (studentId: String, password: String)?
+    private let storedToken: @Sendable () -> String?
     private let harvest: @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
 
     private static let ssoBaseURL = URL(string: "https://ssoam2.ntust.edu.tw")!
@@ -79,9 +81,11 @@ actor MoodleTokenService {
     )
     init(
         storedCredentials: @escaping @Sendable () -> (studentId: String, password: String)?,
+        storedToken: @escaping @Sendable () -> String?,
         harvest: @escaping @Sendable (_ studentId: String, _ password: String) async throws -> TokenTriple
     ) {
         self.storedCredentials = storedCredentials
+        self.storedToken = storedToken
         self.harvest = harvest
     }
 
@@ -117,11 +121,15 @@ actor MoodleTokenService {
         return try await task.value
     }
 
-    /// Silently refresh the Moodle token using stored NTUST credentials.
-    /// Concurrent calls share the same in-flight refresh task.
-    func refreshTokenIfNeeded() async throws -> String {
+    /// Silently refresh the Moodle token using stored NTUST credentials, unless another call has
+    /// already replaced `rejected`: then the stored token comes back. The rejected token stays
+    /// until a harvest succeeds. Concurrent calls share the same in-flight refresh task.
+    func refreshTokenIfNeeded(replacing rejected: String? = nil) async throws -> String {
         if let existing = inFlightRefreshTask {
             return try await existing.value
+        }
+        if let current = storedToken(), current != rejected {
+            return current
         }
         // The harvest posts the stored password, so it stops as the SSO sign-ins do.
         guard !SSOLoginService.storedPasswordRejected else {
@@ -167,9 +175,9 @@ actor MoodleTokenService {
         await clearToken()
     }
 
-    /// Clear stored Moodle token, also after Moodle rejects it. A harvest in flight goes on, so
-    /// the parallel calls that met the dead token join one harvest.
-    func clearToken() async {
+    /// Only sign-out clears the token and the cookies. A renewal leaves the cookies alone, since
+    /// a harvest that another call started may be using them.
+    private func clearToken() async {
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodleToken)
         KeychainManager.delete(key: AppConstants.KeychainKeys.moodlePrivateToken)
         // Purge SSO and Moodle cookies so stale anti-forgery and session cookies do not bleed
@@ -188,7 +196,7 @@ actor MoodleTokenService {
 
     /// Return the currently stored token, or nil if none.
     func currentToken() async -> String? {
-        KeychainManager.loadString(key: AppConstants.KeychainKeys.moodleToken)
+        storedToken()
     }
 
     // MARK: - OIDC flow

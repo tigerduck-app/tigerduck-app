@@ -91,9 +91,8 @@ struct MoodleWebserviceClientTests {
     private static func tokens(stored: String?, renewed: String, log: TokenLog) -> MoodleWebserviceClient.TokenSource {
         MoodleWebserviceClient.TokenSource(
             stored: { stored },
-            discard: { await log.record("discard") },
-            renew: {
-                await log.record("renew")
+            renew: { rejected in
+                await log.record("renew \(rejected ?? "none")")
                 return renewed
             }
         )
@@ -107,7 +106,7 @@ struct MoodleWebserviceClientTests {
         #expect(await log.events.isEmpty)
     }
 
-    @Test("a token Moodle calls invalid is dropped and renewed, and the call runs once more")
+    @Test("a token Moodle calls invalid is renewed in its place, and the call runs once more")
     func invalidTokenIsRenewedOnce() async throws {
         let log = TokenLog()
         var tried: [String] = []
@@ -118,7 +117,7 @@ struct MoodleWebserviceClientTests {
         }
         #expect(used == "new")
         #expect(tried == ["old", "new"])
-        #expect(await log.events == ["discard", "renew"])
+        #expect(await log.events == ["renew old"])
 
         var attempts = 0
         await #expect(throws: MoodleWebserviceError.invalidToken) {
@@ -145,6 +144,6 @@ struct MoodleWebserviceClientTests {
 
         let used = try await MoodleWebserviceClient.withToken(Self.tokens(stored: nil, renewed: "new", log: log)) { $0 }
         #expect(used == "new")
-        #expect(await log.events == ["renew"])
+        #expect(await log.events == ["renew none"])
     }
 }

@@ -26,32 +26,30 @@ nonisolated enum MoodleWebserviceClient {
         )
     }()
 
-    /// Where ``withToken(_:_:)`` reads, drops and renews the Moodle token. Tests pass stand-ins.
+    /// Where ``withToken(_:_:)`` reads and renews the Moodle token. Tests pass stand-ins.
     struct TokenSource: Sendable {
         let stored: @Sendable () async -> String?
-        let discard: @Sendable () async -> Void
-        let renew: @Sendable () async throws -> String
+        /// A token in place of `rejected`, which is nil when none was stored.
+        let renew: @Sendable (_ rejected: String?) async throws -> String
 
         static let keychain = TokenSource(
             stored: { await MoodleTokenService.shared.currentToken() },
-            discard: { await MoodleTokenService.shared.clearToken() },
-            renew: { try await MoodleTokenService.shared.refreshTokenIfNeeded() }
+            renew: { try await MoodleTokenService.shared.refreshTokenIfNeeded(replacing: $0) }
         )
     }
 
     /// Runs `body` with the stored token, or a renewed one when none is stored. Once Moodle calls
-    /// that token invalid, it is dropped and renewed and `body` runs once more. A call that needs
+    /// that token invalid, a renewed one replaces it and `body` runs once more. A call that needs
     /// the token's user id asks for it inside `body`, so a stale token there is renewed too.
     static func withToken<T>(
         _ tokens: TokenSource = .keychain,
         _ body: (String) async throws -> T
     ) async throws -> T {
+        let token = if let stored = await tokens.stored() { stored } else { try await tokens.renew(nil) }
         do {
-            let token = if let stored = await tokens.stored() { stored } else { try await tokens.renew() }
             return try await body(token)
         } catch MoodleWebserviceError.invalidToken {
-            await tokens.discard()
-            return try await body(try await tokens.renew())
+            return try await body(try await tokens.renew(token))
         }
     }
 
