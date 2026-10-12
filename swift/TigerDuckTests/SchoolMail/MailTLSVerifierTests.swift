@@ -16,6 +16,7 @@ struct MailTLSVerifierTests {
     static let appPins: Set<String> = [
         "Nz3wUtBXZ+2HPXuSyx4enXs62i/PH4MKtayV9N4X0PE=",
         "9VZ7Yd685RTXsE6rL/puuMbnejYaXwaZasGL7c+Uolc=",
+        "BxOmElsPeD54MBOb5h+TPNJnBlsAk6spRc/wLnko0cc=",
     ]
 
     @Test func mailHostUsesTheAppPins() {
