@@ -20,7 +20,12 @@ The Android app pins the same hosts in `app/src/main/res/xml/network_security_co
   the pin table fall through to system trust, so it is safe on a session that also reaches
   other hosts.
 - Each pin set holds the leaf and the intermediate, so a leaf rotation that keeps the
-  intermediate does not break the app.
+  intermediate does not break the app. The `ntust.edu.tw` set also holds TWCA SSL
+  Certification Authority (TWCA CYBER Root CA), which NTUST's newer certificates come from, so
+  a renewal through either TWCA intermediate keeps working.
+- Each pin set has its own expiration date, six months after the leaf it pins expires. The
+  intermediate pins carry the set through that leaf's renewal, and a build that is never
+  updated stops pinning within months if the chain moves to an intermediate it does not pin.
 - `swift/TigerDuck/Services/Mail/Transport/MailTLSVerifier.swift` applies the same rules to
   IMAP and SMTP: the system chain and the hostname must pass, then some certificate's SPKI must
   be in the host's pin set. Its custom verification callback replaces all of BoringSSL's
@@ -41,6 +46,7 @@ The Android app pins the same hosts in `app/src/main/res/xml/network_security_co
 ## Consequences
 
 - Pins must be rotated before they expire, in both repositories at once; diverging pin sets
-  break one platform before the other. A release-calendar reminder before each expiration date
-  prompts a build with new pins, and the post-expiry fault in the system log shows a missed
-  rotation. The `tls-pin-rotation` skill has the steps.
+  break one platform before the other. `swift/TigerDuckTests/TLSPinningDelegateTests.swift`
+  fails 45 days before any pin set expires, as Android's `NetworkSecurityConfigTest` does, so
+  CI asks for a build with new pins in time, and the post-expiry fault in the system log shows
+  a missed rotation. The `tls-pin-rotation` skill has the steps.

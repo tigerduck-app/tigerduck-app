@@ -18,7 +18,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
     /// is immutable + static).
     static let shared = TLSPinningDelegate()
 
-    private struct PinSet {
+    struct PinSet {
         /// Bare host suffix without leading dot. For exact-match-only
         /// hosts set `includeSubdomains = false`.
         let hostSuffix: String
@@ -32,26 +32,29 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
         let pins: Set<String>
     }
 
-    /// Pins lifted verbatim from `tigerduck-app-android`'s
-    /// `network_security_config.xml`. Keep both repos updated together
-    /// at every rotation — diverging pin sets means one platform
-    /// breaks before the other.
-    nonisolated private static let pinSets: [PinSet] = {
+    /// Pins and expiration dates match `tigerduck-app-android`'s
+    /// `network_security_config.xml`. Rotate both repos together: diverging
+    /// pin sets break one platform before the other.
+    nonisolated static let pinSets: [PinSet] = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
-        guard let expiration = formatter.date(from: "2027-01-18") else {
-            fatalError("TLSPinningDelegate: invalid expiration date literal")
+        func expiration(_ literal: String) -> Date {
+            guard let date = formatter.date(from: literal) else {
+                fatalError("TLSPinningDelegate: invalid expiration date literal \(literal)")
+            }
+            return date
         }
         return [
-            // *.ntust.edu.tw — TWCA Secure SSL Certification Authority.
-            // Covers ssoam2, moodle2, courseselection, stuinfosys, etc.
+            // The *.ntust.edu.tw leaf and its TWCA Secure SSL CA, plus the TWCA SSL CA (TWCA CYBER
+            // Root CA) that newer NTUST certificates come from, so a renewal from either works.
             PinSet(
                 hostSuffix: "ntust.edu.tw",
                 includeSubdomains: true,
-                expiration: expiration,
+                expiration: expiration("2027-08-18"),
                 pins: [
                     "Nz3wUtBXZ+2HPXuSyx4enXs62i/PH4MKtayV9N4X0PE=",
                     "9VZ7Yd685RTXsE6rL/puuMbnejYaXwaZasGL7c+Uolc=",
+                    "BxOmElsPeD54MBOb5h+TPNJnBlsAk6spRc/wLnko0cc=",
                 ]
             ),
             // api.lib.ntust.edu.tw — distinct chain from the rest of
@@ -59,7 +62,7 @@ final class TLSPinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendabl
             PinSet(
                 hostSuffix: "api.lib.ntust.edu.tw",
                 includeSubdomains: true,
-                expiration: expiration,
+                expiration: expiration("2027-05-04"),
                 pins: [
                     "m8Epf0KqJFv9abCXfipePZ79hfOMjddCKxz+RSZIDKY=",
                     "ZSagvDzjltLkewXEBuDxIzpW/dpVw1Juvvmd0hhkzdY=",
