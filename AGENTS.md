@@ -118,7 +118,10 @@ applies the rest. Before pushing, run `python3 tools/check_comments.py check --b
 - Pull requests from `dev` to `main` must raise `MARKETING_VERSION` by one SemVer step, or keep
   it and raise `CURRENT_PROJECT_VERSION` by exactly 1, and `swift/TigerDuck/whatsnew.json` must
   have an entry for the marketing version. The `release-bump` skill does this.
-- `swift/TigerDuckWatchWidget/` is not referenced by `project.pbxproj`; no target builds it.
+- The Watch complication target, `TigerDuckWatchWidgetExtension`, compiles only the files from
+  `swift/Shared/`, the Watch app and `Clock/` that its membership exceptions in `project.pbxproj`
+  list, so a file they come to need joins that list. The Watch app also compiles the
+  complication's entry, provider and views, for `TigerDuckWatch Watch AppTests`.
 - `swift/Packages/SwiftMail/` is vendored; read its `VENDORED.md` before changing it.
 - Xcode Cloud runs `swift/ci_scripts/ci_post_clone.sh` after cloning; it fetches the submodules.
 - Dependabot updates the Swift packages (`.github/dependabot.yml`) and Renovate the rest

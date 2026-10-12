@@ -22,10 +22,9 @@ Watch app shows the day's classes too.
   and `MacSettingsScene` has no slider. The Mac widgets share the widget views and read the
   store, but nothing on the Mac moves it off the default, so they render at the baseline. Mac
   surfaces are sized for a desktop window.
-- watchOS: the Watch app and the Watch widget sources (`swift/TigerDuckWatchWidget/`, which no
-  target builds) use their own App Group (`group.org.ntust.app.TigerDuck.watch`) and do not read
-  the scale. They show course names in system text styles such as `.headline`, which follow the
-  watch's own text size.
+- watchOS: the Watch app and its complication (`swift/TigerDuckWatchWidget/`) use their own App
+  Group (`group.org.ntust.app.TigerDuck.watch`) and do not read the scale. They show course names
+  in system text styles such as `.headline`, which follow the watch's own text size.
 
 ## Alternatives
 
