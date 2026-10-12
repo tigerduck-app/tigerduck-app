@@ -67,7 +67,8 @@ struct MoodleTokenDecodingTests {
         ("invalidlogin", .invalidCredentials),
         ("enablewsdescription", .webserviceDisabled),
         ("servicenotloaded", .webserviceDisabled),
-        ("sitemaintenance", .malformedResponse(detail: "sitemaintenance")),
+        ("sitemaintenance", .siteMaintenance),
+        ("invalidparameter", .malformedResponse(detail: "invalidparameter")),
     ])
     func errorBodies(errorcode: String, expected: MoodleWebserviceError) {
         let body = #"{"exception":"moodle_exception","errorcode":"\#(errorcode)","message":"msg"}"#

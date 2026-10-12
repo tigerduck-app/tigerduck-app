@@ -7,6 +7,7 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
     case missingStoredCredentials
     case ssoLoginRejected(reason: String?)
     case webserviceDisabled
+    case siteMaintenance
     case transientNetwork(underlying: String)
     case malformedResponse(detail: String)
     case httpStatus(code: Int)
@@ -26,6 +27,8 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
             return String(localized: "error_moodle_sso_rejected")
         case .accessDenied, .webserviceDisabled:
             return String(localized: "error_moodle_webservice_disabled")
+        case .siteMaintenance:
+            return String(localized: "error_moodle_site_maintenance")
         case .transientNetwork(let underlying):
             return String(format: String(localized: "error_moodle_network_format"), underlying)
         case .malformedResponse(let detail):
@@ -41,7 +44,7 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
             String(localized: "error_moodle_recovery_re_sign_in_ntust")
         case .invalidCredentials:
             String(localized: "error_moodle_recovery_check_credentials")
-        case .accessDenied, .webserviceDisabled, .transientNetwork, .malformedResponse, .httpStatus:
+        case .accessDenied, .webserviceDisabled, .siteMaintenance, .transientNetwork, .malformedResponse, .httpStatus:
             nil
         }
     }
@@ -66,6 +69,8 @@ enum MoodleWebserviceError: Error, Equatable, LocalizedError {
             return .invalidCredentials
         case "enablewsdescription", "servicenotloaded":
             return .webserviceDisabled
+        case "sitemaintenance":
+            return .siteMaintenance
         case let code?:
             return .malformedResponse(detail: code)
         default:
