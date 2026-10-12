@@ -224,6 +224,9 @@ final class PushCoordinator {
     /// The lists the server accepted. In memory, so a relaunch sends again; sign-out, a term
     /// reset and a sync switch coming back on forget them.
     private var uploads = UploadLedger()
+    /// The last upload of each list. The next one waits for it, so its check sees what that one
+    /// left: an edit undone while its upload was out still goes up after it.
+    private var lastUploads: [String: Task<Void, Never>] = [:]
 
     nonisolated static func uploadIsDue(accepted: (fingerprint: Int, at: Date)?, fingerprint: Int, now: Date) -> Bool {
         guard let accepted, accepted.fingerprint == fingerprint else { return true }
@@ -238,28 +241,50 @@ final class PushCoordinator {
         semester: String,
         resend: Bool = false
     ) async throws -> Bool {
-        let key = UploadLedger.courses(semester)
-        let fingerprint = Self.fingerprint(of: request)
-        let now = Date()
-        guard resend || !request.forceKeys.isEmpty || uploads.isDue(key, fingerprint: fingerprint, now: now) else {
-            return false
+        let client = apiClient
+        return try await uploadIfChanged(
+            UploadLedger.courses(semester),
+            fingerprint: Self.fingerprint(of: request),
+            always: resend || !request.forceKeys.isEmpty
+        ) {
+            try await client.uploadCourses(request)
         }
-        let started = uploads.generation(of: key)
-        try await apiClient.uploadCourses(request)
-        uploads.record(key, fingerprint: fingerprint, at: now, startedIn: started)
-        return true
     }
 
     /// Uploads the assignment list unless the server accepted the same one within
     /// `unchangedUploadInterval`. Returns whether it sent.
     func uploadAssignmentsIfChanged(_ request: PushAPI.AssignmentUploadRequest) async throws -> Bool {
-        let fingerprint = Self.fingerprint(of: request)
-        let now = Date()
-        guard uploads.isDue(UploadLedger.assignments, fingerprint: fingerprint, now: now) else { return false }
-        let started = uploads.generation(of: UploadLedger.assignments)
-        try await apiClient.uploadAssignments(request)
-        uploads.record(UploadLedger.assignments, fingerprint: fingerprint, at: now, startedIn: started)
-        return true
+        let client = apiClient
+        return try await uploadIfChanged(
+            UploadLedger.assignments, fingerprint: Self.fingerprint(of: request), always: false
+        ) {
+            try await client.uploadAssignments(request)
+        }
+    }
+
+    /// Runs `send` for list `key` once the list's previous upload has ended, unless `always` is
+    /// false and the ledger holds `fingerprint` as accepted within `unchangedUploadInterval`.
+    func uploadIfChanged(
+        _ key: String,
+        fingerprint: Int,
+        always: Bool,
+        send: @escaping @MainActor () async throws -> Void
+    ) async throws -> Bool {
+        let previous = lastUploads[key]
+        let upload = Task { @MainActor [weak self] () async throws -> Bool in
+            await previous?.value
+            guard let self else { return false }
+            let now = Date()
+            guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else { return false }
+            let started = self.uploads.generation(of: key)
+            try await send()
+            self.uploads.record(key, fingerprint: fingerprint, at: now, startedIn: started)
+            return true
+        }
+        let ended = Task<Void, Never> { _ = try? await upload.value }
+        lastUploads[key] = ended
+        defer { if lastUploads[key] == ended { lastUploads[key] = nil } }
+        return try await upload.value
     }
 
     /// Forgets the accepted course lists of `semester`, or of every term and the assignment list

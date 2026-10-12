@@ -128,5 +128,49 @@ struct UnchangedUploadTests {
         ledger.record(other, fingerprint: 3, at: now, startedIn: started)
         #expect(ledger.isDue(other, fingerprint: 3, now: now))
     }
+
+    /// A send that records which list went and parks while `holds`, until `release()`.
+    @MainActor
+    private final class Sends {
+        private(set) var sent: [Int] = []
+        var holds = false
+        private var parked: CheckedContinuation<Void, Never>?
+
+        func send(_ list: Int) async {
+            sent.append(list)
+            if holds {
+                holds = false
+                await withCheckedContinuation { parked = $0 }
+            }
+        }
+
+        var isParked: Bool { parked != nil }
+
+        func release() {
+            parked?.resume()
+            parked = nil
+        }
+    }
+
+    @Test("An edit undone while its upload is out still goes up after it")
+    func undoneEditStillGoes() async throws {
+        let coordinator = Backend().makeCoordinator()
+        let sends = Sends()
+        let key = UploadLedger.courses("1151")
+        #expect(try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false) { await sends.send(1) })
+
+        sends.holds = true
+        let edit = Task { try await coordinator.uploadIfChanged(key, fingerprint: 2, always: false) { await sends.send(2) } }
+        try await waitUntil { sends.isParked }
+        let undo = Task { try await coordinator.uploadIfChanged(key, fingerprint: 1, always: false) { await sends.send(1) } }
+        // Let the undo reach its check while the edit's request is still out.
+        for _ in 0..<50 { await Task.yield() }
+        #expect(sends.isParked)
+        sends.release()
+
+        #expect(try await edit.value)
+        #expect(try await undo.value)
+        #expect(sends.sent == [1, 2, 1])
+    }
 }
 
