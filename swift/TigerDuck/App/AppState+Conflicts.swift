@@ -32,11 +32,15 @@ extension AppState {
                 // in flight to the server and must survive "keep server".
                 let inFlight = await cloudSyncCoordinator.pendingAssignmentOverrideIds()
                 let protectedOverrides = pendingOverrides.union(inFlight)
-                let safeArchived = serverArchived.union(
-                    DataCache.shared.loadArchivedAssignmentIds().filter { protectedOverrides.contains($0) }
+                let safeArchived = Self.mergedMarks(
+                    server: serverArchived,
+                    local: DataCache.shared.loadArchivedAssignmentIds(),
+                    protected: protectedOverrides
                 )
-                let safeCompleted = serverCompleted.union(
-                    DataCache.shared.loadLocallyCompletedAssignmentIds().filter { protectedOverrides.contains($0) }
+                let safeCompleted = Self.mergedMarks(
+                    server: serverCompleted,
+                    local: DataCache.shared.loadLocallyCompletedAssignmentIds(),
+                    protected: protectedOverrides
                 )
                 DataCache.shared.replaceArchivedAssignmentIds(safeArchived)
                 DataCache.shared.replaceLocallyCompletedAssignmentIds(safeCompleted)

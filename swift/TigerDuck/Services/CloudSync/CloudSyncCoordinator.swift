@@ -230,17 +230,22 @@ final class CloudSyncCoordinator {
         await outbox.enqueue(op)
     }
 
-    /// Moodle assignment ids (as strings) with a queued outbox op that has
-    /// not yet reached the server. Conflict detection must treat these as
-    /// local-pending rather than cross-device conflicts.
+    /// Moodle assignment ids (as strings) with a queued or parked outbox op
+    /// that has not yet reached the server. Conflict detection must treat
+    /// these as local-pending rather than cross-device conflicts.
     func pendingAssignmentOverrideIds() async -> Set<String> {
         var ids = Set<String>()
-        for entry in await outbox.snapshot() {
+        for entry in await outbox.snapshot() + outbox.parkedSnapshot() {
             if case .assignmentOverride(_, let moodleAssignmentId, _, _) = entry.op {
                 ids.insert(String(moodleAssignmentId))
             }
         }
         return ids
+    }
+
+    /// Gives each mark the server kept refusing one more try. Called by every full sync.
+    func requeueParkedMarks() async {
+        await outbox.requeueParked()
     }
 
     // MARK: - Execute resolved op

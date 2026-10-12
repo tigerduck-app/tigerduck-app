@@ -33,6 +33,7 @@ extension AppState {
         // marker makes `applySyncedOverrides` sit out this cycle rather than
         // race it, and the next sync applies the settled state.
         retryUnacknowledgedHolidayOverrides()
+        await cloudSyncCoordinator.requeueParkedMarks()
         #if os(iOS)
         // Same repair for a reminder or Live Activity preference whose settings document
         // write never landed (dropped debounce, expired session, offline, 5xx). A no-op
@@ -130,10 +131,16 @@ extension AppState {
 
                 // Always apply non-conflicting items
                 let conflictIds = Set(conflicts.map(\.id))
-                var safeArchived = serverArchivedIds.filter { !conflictIds.contains($0) }
-                    .union(DataCache.shared.loadArchivedAssignmentIds().filter { protectedOverrides.contains($0) })
-                var safeCompleted = serverCompletedIds.filter { !conflictIds.contains($0) }
-                    .union(DataCache.shared.loadLocallyCompletedAssignmentIds().filter { protectedOverrides.contains($0) })
+                var safeArchived = Self.mergedMarks(
+                    server: serverArchivedIds.subtracting(conflictIds),
+                    local: DataCache.shared.loadArchivedAssignmentIds(),
+                    protected: protectedOverrides
+                )
+                var safeCompleted = Self.mergedMarks(
+                    server: serverCompletedIds.subtracting(conflictIds),
+                    local: DataCache.shared.loadLocallyCompletedAssignmentIds(),
+                    protected: protectedOverrides
+                )
                 // Preserve local state for conflicting items until user resolves
                 for c in conflicts {
                     switch c.local {
@@ -229,6 +236,16 @@ extension AppState {
             }
             AppLogger.sync.error("syncOverrides failed: \(error, privacy: .public)")
         }
+    }
+
+    /// One status's marks after a pull: the server's, except for marks with an edit not on the
+    /// server yet (`protected`), which keep the local status whether it sets or clears the mark.
+    nonisolated static func mergedMarks(
+        server: Set<String>,
+        local: Set<String>,
+        protected: Set<String>
+    ) -> Set<String> {
+        server.subtracting(protected).union(local.intersection(protected))
     }
 
     /// Whether a full sync begun under login `generation` may still write. A sign-out moves the

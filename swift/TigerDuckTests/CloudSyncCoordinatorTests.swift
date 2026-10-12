@@ -56,4 +56,33 @@ struct CloudSyncCoordinatorTests {
         #expect(backend.requests("sync/full").isEmpty)
         #expect(await coordinator.outbox.pendingCount() == 0)
     }
+
+    @Test("A mark the backend answers 503 stays queued for a later tick")
+    func serverErrorKeepsTheMarkQueued() async {
+        let backend = Backend()
+        for _ in 0...SyncOutbox.maxAttempts {
+            backend.answer("sync/assignments/42/override", status: 503)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+
+        for _ in 0...SyncOutbox.maxAttempts { await coordinator.syncTick() }
+
+        #expect(await coordinator.outbox.snapshot().map(\.attempts) == [0])
+    }
+
+    @Test("A mark the backend keeps refusing still counts as pending, so a pull leaves it alone")
+    func refusedMarkStaysPending() async {
+        let backend = Backend()
+        for _ in 0..<SyncOutbox.maxAttempts {
+            backend.answer("sync/assignments/42/override", status: 404)
+        }
+        let coordinator = Self.makeCoordinator(backend)
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+
+        for _ in 0..<SyncOutbox.maxAttempts { await coordinator.syncTick() }
+
+        #expect(await coordinator.outbox.pendingCount() == 0)
+        #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
+    }
 }
