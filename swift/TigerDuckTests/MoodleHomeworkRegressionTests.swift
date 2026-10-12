@@ -1,4 +1,6 @@
+import Defaults
 import Foundation
+import SwiftUI
 import Testing
 @testable import TigerDuck
 
@@ -18,6 +20,52 @@ struct MoodleHomeworkRegressionTests {
             assignment.moodleDeepLink?.absoluteString
                 == "moodlemobile://https://moodle2.ntust.edu.tw?redirect=/mod/assign/view.php?id%3D12345"
         )
+    }
+
+    /// Records what an `OpenURLAction` was asked to open; the action's completion is `@Sendable`.
+    private final class OpenedURLs: @unchecked Sendable {
+        var urls: [URL] = []
+    }
+
+    @Test func moodleLink_opensTheWebPageWhenNoAppTakesTheDeepLink() async throws {
+        let assignment = SDAssignment(
+            assignmentId: "event-42",
+            courseNo: "EC1013701",
+            courseName: "資料結構",
+            title: "HW1",
+            dueDate: Date(),
+            moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=12345"
+        )
+        let deepLink = try #require(assignment.moodleDeepLink)
+        let webPage = try #require(assignment.moodleWebURL)
+        let opened = OpenedURLs()
+        // No Moodle app: nothing takes `moodlemobile://`, a browser takes the web page.
+        let openURL = OpenURLAction { url in
+            opened.urls.append(url)
+            return url.scheme == "https" ? .handled : .discarded
+        }
+
+        openURL(deepLink, fallback: webPage)
+
+        try await waitUntil { opened.urls.count == 2 }
+        #expect(opened.urls == [deepLink, webPage])
+    }
+
+    @Test func moodleLink_staysInTheMoodleAppWhenItTakesTheDeepLink() async throws {
+        let deepLink = try #require(URL(string: "moodlemobile://https://moodle2.ntust.edu.tw?redirect=/my/"))
+        let webPage = try #require(URL(string: "https://moodle2.ntust.edu.tw/my/"))
+        let opened = OpenedURLs()
+        let openURL = OpenURLAction { url in
+            opened.urls.append(url)
+            return .handled
+        }
+
+        openURL(deepLink, fallback: webPage)
+
+        try await waitUntil { !opened.urls.isEmpty }
+        // A late fallback would arrive within a hop of the first open.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(opened.urls == [deepLink])
     }
 
     @Test func courseNoFromMoodleId_onlyStripsNumericSemesterPrefix() {
@@ -645,6 +693,35 @@ struct MoodleHomeworkRegressionTests {
         #expect(AssignmentFilter.visibleFilters(hasIgnored: false) == [.incomplete, .all])
         #expect(AssignmentFilter.visibleFilters(hasIgnored: true) == [.incomplete, .all, .ignored])
     }
+
+    // HomeViewModel is iOS-only, like ClassTableViewModel above.
+#if os(iOS)
+    @Test func homeCourseSheet_listsTheCourseWorkUnderTheIgnoredFilter() {
+        let savedFilter = Defaults[.homeAssignmentFilter]
+        defer { Defaults[.homeAssignmentFilter] = savedFilter }
+        Defaults[.homeAssignmentFilter] = AssignmentFilter.incomplete.rawValue
+        let now = Date()
+        let ignored = SDAssignment(
+            assignmentId: "ignored", courseNo: "CS1", courseName: "C", title: "Ignored",
+            dueDate: now.addingTimeInterval(3600), isArchived: true
+        )
+        let later = SDAssignment(
+            assignmentId: "later", courseNo: "CS1", courseName: "C", title: "Later",
+            dueDate: now.addingTimeInterval(7200)
+        )
+        let sooner = SDAssignment(
+            assignmentId: "sooner", courseNo: "CS1", courseName: "C", title: "Sooner",
+            dueDate: now.addingTimeInterval(5400)
+        )
+        let viewModel = HomeViewModel()
+        viewModel.allAssignmentsCache = [ignored, later, sooner]
+
+        viewModel.assignmentFilter = .ignored
+
+        #expect(viewModel.upcomingAssignments.map(\.assignmentId) == ["ignored"])
+        #expect(viewModel.assignmentsFor(courseNo: "CS1").map(\.assignmentId) == ["sooner", "later"])
+    }
+#endif
 
     @Test func latestSemesterFilter_excludesOtherSemesters() {
         let currentCourseNos: Set<String> = ["EC1013701", "CS5164701"]

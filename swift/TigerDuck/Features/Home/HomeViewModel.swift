@@ -27,7 +27,7 @@ final class HomeViewModel {
     /// Cached source-of-truth assignment list, already filtered to the current
     /// semester. The visible `upcomingAssignments` is derived from this via
     /// `assignmentFilter` so toggling filters is instant and does not refetch.
-    private var allAssignmentsCache: [SDAssignment] = []
+    var allAssignmentsCache: [SDAssignment] = []
 
     private var hasLoaded = false
     private var isUpdatingFromNetwork = false
@@ -272,12 +272,14 @@ final class HomeViewModel {
         isUpdatingFromNetwork = false
     }
 
+    // From the whole cache, not `upcomingAssignments`: under the Ignored filter that list
+    // holds only ignored rows, and a course's sheet still lists what is due.
     func hasUnfinishedAssignment(for courseNo: String) -> Bool {
-        upcomingAssignments.hasUnfinished(for: courseNo)
+        allAssignmentsCache.hasUnfinished(for: courseNo)
     }
 
     func assignmentsFor(courseNo: String) -> [SDAssignment] {
-        upcomingAssignments.unfinished(for: courseNo)
+        allAssignmentsCache.unfinished(for: courseNo).sorted { $0.dueDate < $1.dueDate }
     }
 
     func removeSection(_ section: HomeSection) {

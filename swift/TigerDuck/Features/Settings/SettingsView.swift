@@ -104,6 +104,8 @@ struct SettingsView: View {
                                     }
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(Text(String(localized: String.LocalizationValue(theme.nameKey))))
+                            .accessibilityAddTraits(appState.accentColorHex == theme.hex ? .isSelected : [])
                         }
                     }
                 }

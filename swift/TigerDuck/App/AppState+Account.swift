@@ -99,6 +99,8 @@ extension AppState {
         // green before anything has synced.
         ServerStatusTracker.shared.reset()
         Defaults[.schoolDataSyncedAt] = nil
+        // The next account opens the class table on the newest term, not on this one's pick.
+        Defaults[.classTableSelectedSemester] = nil
         // Drop the Mac skip-login bypass too; otherwise a Mac user who
         // skipped, then logged in, then logged out, would stay in
         // `MacContentView` instead of returning to `MacLoginView`.

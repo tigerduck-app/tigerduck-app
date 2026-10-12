@@ -57,15 +57,18 @@ final class ClassTableViewModel {
         return options.contains(selected) ? options : options + [selected]
     }
 
-    /// The catalogue can land after `init` on a cold launch, so re-apply the
-    /// "never picked → newest term" rule once it does.
-    private func followNewestSemesterIfUnpicked() {
+    /// The catalogue can land after `init` on a cold launch, and refreshes while
+    /// the app runs, so re-apply the "never picked → newest term" rule each time.
+    /// Returns whether it moved the table, which reloaded it.
+    @discardableResult
+    private func followNewestSemesterIfUnpicked() -> Bool {
         guard Defaults[.classTableSelectedSemester] == nil,
               let newest = SemesterCatalog.availableSemesters().first,
-              newest != currentSemester else { return }
+              newest != currentSemester else { return false }
         isFollowingNewestSemester = true
         currentSemester = newest
         isFollowingNewestSemester = false
+        return true
     }
 
     /// Format semester code for display: "1142" → "114-2"
@@ -160,6 +163,11 @@ final class ClassTableViewModel {
     private nonisolated(unsafe) var dataObserver: Any?
     @ObservationIgnored
     private nonisolated(unsafe) var languageObserver: Any?
+    @ObservationIgnored
+    private nonisolated(unsafe) var holidayObserver: Any?
+    /// Bumped on a "still have class" toggle, which `isClassDay` reads where Observation
+    /// cannot see it.
+    private var classDayRevision = 0
 
     /// Mirrors `Defaults[.alwaysShowAllPeriods]`. `activePeriods` has to read
     /// this rather than the key directly: a raw `Defaults` read registers no
@@ -216,6 +224,14 @@ final class ClassTableViewModel {
             }
         }
 
+        holidayObserver = NotificationCenter.default.addObserver(
+            forName: AppConstants.holidayNotifyDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.classDayRevision &+= 1 }
+        }
+
         languageObserver = NotificationCenter.default.addObserver(
             forName: AppConstants.languageDidChange,
             object: nil,
@@ -234,6 +250,9 @@ final class ClassTableViewModel {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = languageObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = holidayObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -255,6 +274,9 @@ final class ClassTableViewModel {
     }
 
     func reloadFromCache() {
+        // A term published while the app runs reaches the picker here.
+        guard !followNewestSemesterIfUnpicked() else { return }
+        availableSemesters = Self.semesterOptions(including: currentSemester)
         // Re-read the per-user customizations on every reload: logout deletes
         // their files and posts dataDidUpdate, and a copy read once at init
         // would apply the last account's deletions and renames to the next user.
@@ -299,7 +321,9 @@ final class ClassTableViewModel {
     /// Memoised `cellRole(weekday:periodIndex:)` results. Invalidated whenever
     /// `courseLookup` is rebuilt (course list change). The grid view calls
     /// `cellRole` once per (weekday, periodIdx) per render, and the lookup
-    /// inside is O(span) — caching keeps re-renders cheap.
+    /// inside is O(span), so caching keeps re-renders cheap. Not observed: the
+    /// grid fills it while its body runs, and a tracked write would redraw it.
+    @ObservationIgnored
     var cellRoleCache: [CellRoleKey: CellRole] = [:]
 
     struct CellRoleKey: Hashable {
@@ -332,9 +356,9 @@ final class ClassTableViewModel {
         // SwiftUI aware of debug time-override flips.
         _ = AppClockState.shared.version
         _ = minuteTicker.tick
+        _ = classDayRevision
         // Empty outside the term, where the carousel would show a stale day, and on a
         // holiday the user has not opted back into, as the Live Activity and widgets do.
-        // Empty hides the section; the 5 s tick above catches a calendar-tab toggle.
         guard isClassDay(AppClock.now()) else { return [] }
         return currentSemesterCourses.coursesForToday()
     }
@@ -355,10 +379,10 @@ final class ClassTableViewModel {
         )
     }
 
-    /// 5-second ticker that re-publishes minute-of-day-derived state.
-    /// Matches Android's `_currentDayTime` poll so the "Current class"
-    /// card slides into view within a few seconds of the wall-clock
-    /// minute boundary, not up to a minute later.
+    /// Re-publishes minute-of-day-derived state when the minute changes,
+    /// checked every 5 seconds like Android's `_currentDayTime` poll, so the
+    /// "Current class" card slides into view within a few seconds of the
+    /// wall-clock minute boundary, not up to a minute later.
     @ObservationIgnored
     private let minuteTicker = MinuteTicker()
 

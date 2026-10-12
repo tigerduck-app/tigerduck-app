@@ -172,6 +172,22 @@ enum AppFeature: String, CaseIterable, Identifiable, Codable {
         tabs.filter { libraryEnabled || !libraryRelatedFeatures.contains($0) }
     }
 
+    /// Where opening `feature` lands: its own tab when the bar shows one, otherwise More, which
+    /// pushes `moreDeepLink`. A selection no `Tab` matches breaks the `TabView`.
+    static func tabRoute(
+        to feature: AppFeature,
+        visibleTabs: [AppFeature]
+    ) -> (tab: AppFeature, moreDeepLink: AppFeature?) {
+        visibleTabs.contains(feature) ? (feature, nil) : (.more, feature)
+    }
+
+    /// The tab to keep selected once the bar shows `visibleTabs`: the current one while it is
+    /// still there, else the first tab, else More, the one tab every bar has.
+    static func selection(_ selected: AppFeature, keptOn visibleTabs: [AppFeature]) -> AppFeature {
+        if selected == .more || visibleTabs.contains(selected) { return selected }
+        return visibleTabs.first ?? .more
+    }
+
     /// The bar a new install starts with, and what the tab editor's Reset
     /// restores. Calendar until 2.3.0, when Mail took its place — an
     /// existing user who never customized keeps Calendar

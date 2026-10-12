@@ -75,7 +75,8 @@ struct TimeSliderSection: View {
 
     private var sliderContent: some View {
         let policy = appState.visualStylePolicy
-        return TimelineView(.periodic(from: .now, by: 1)) { context in
+        // Once a minute: the track moves under a point a minute and the label shows minutes.
+        return TimelineView(.everyMinute) { context in
             VStack(spacing: 12) {
                 CourseTimeCard(
                     state: viewModel.currentCourseState,

@@ -104,7 +104,11 @@ private struct DayCellView: View {
                 Text("\(AppConstants.taipeiCalendar.component(.day, from: date))")
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(isSelected ? AnyShapeStyle(.white) : isToday ? AnyShapeStyle(.tint) : AnyShapeStyle(Color.textPrimary))
-                    .frame(width: 32, height: 32)
+                    // The row keeps its height, so at accessibility sizes the number shrinks
+                    // to fit instead of truncating to "2…", which names no day.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.4)
+                    .frame(minWidth: 32, minHeight: 32)
                     .background {
                         if isSelected {
                             Circle().fill(.tint)
