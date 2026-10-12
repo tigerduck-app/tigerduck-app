@@ -191,7 +191,7 @@ final class PushCoordinator {
     func patchAssignmentOverride(
         moodleAssignmentId: String,
         localStatus: String
-    ) async throws -> PushAPI.AssignmentOverrideResponse {
+    ) async throws {
         try await apiClient.patchAssignmentOverride(
             moodleAssignmentId: moodleAssignmentId,
             localStatus: localStatus
@@ -214,6 +214,117 @@ final class PushCoordinator {
 
     func uploadCourses(_ request: PushAPI.CourseUploadRequest) async throws {
         try await apiClient.uploadCourses(request)
+    }
+
+    /// How often an unchanged course or assignment list goes to the server again. The backend
+    /// upserts every row of an upload, but an unchanged one moves no revision, so skipping it
+    /// loses only the server's bookkeeping: `last_seen_at`, a log row, its sync push-back.
+    nonisolated static let unchangedUploadInterval: TimeInterval = 6 * 3600
+
+    /// The lists the server accepted. In memory, so a relaunch sends again; sign-out, a term
+    /// reset and a sync switch coming back on forget them.
+    private var uploads = UploadLedger()
+    /// The last upload of each list. The next one waits for it, so its check sees what that one
+    /// left: an edit undone while its upload was out still goes up after it.
+    private var lastUploads: [String: Task<Void, Never>] = [:]
+
+    nonisolated static func uploadIsDue(accepted: (fingerprint: Int, at: Date)?, fingerprint: Int, now: Date) -> Bool {
+        guard let accepted, accepted.fingerprint == fingerprint else { return true }
+        let age = now.timeIntervalSince(accepted.at)
+        return age >= unchangedUploadInterval || age < 0
+    }
+
+    /// Uploads a term's course list unless the server accepted the same one within
+    /// `unchangedUploadInterval`. `forceKeys` and `resend` always send. Returns whether it sent.
+    func uploadCoursesIfChanged(
+        _ request: PushAPI.CourseUploadRequest,
+        semester: String,
+        resend: Bool = false,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) async throws -> Bool {
+        let client = apiClient
+        return try await uploadIfChanged(
+            UploadLedger.courses(semester),
+            fingerprint: Self.fingerprint(of: request),
+            always: resend || !request.forceKeys.isEmpty,
+            isCurrent: isCurrent
+        ) {
+            try await client.uploadCourses(request)
+        }
+    }
+
+    /// Uploads the assignment list unless the server accepted the same one within
+    /// `unchangedUploadInterval`. Returns whether it sent.
+    func uploadAssignmentsIfChanged(
+        _ request: PushAPI.AssignmentUploadRequest,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) async throws -> Bool {
+        let client = apiClient
+        return try await uploadIfChanged(
+            UploadLedger.assignments, fingerprint: Self.fingerprint(of: request), always: false,
+            isCurrent: isCurrent
+        ) {
+            try await client.uploadAssignments(request)
+        }
+    }
+
+    /// Runs `send` for list `key` once the list's previous upload has ended, unless `always` is
+    /// false and the ledger holds `fingerprint` as accepted within `unchangedUploadInterval`.
+    /// `isCurrent` is checked after that wait, which can span a sign-out: the request would
+    /// carry the departing account's list on the next account's token.
+    func uploadIfChanged(
+        _ key: String,
+        fingerprint: Int,
+        always: Bool,
+        isCurrent: @escaping @MainActor () -> Bool,
+        send: @escaping @MainActor () async throws -> Void
+    ) async throws -> Bool {
+        let previous = lastUploads[key]
+        let upload = Task { @MainActor [weak self] () async throws -> Bool in
+            await previous?.value
+            guard let self, isCurrent() else { return false }
+            let now = Date()
+            guard always || self.uploads.isDue(key, fingerprint: fingerprint, now: now) else { return false }
+            let started = self.uploads.generation(of: key)
+            try await send()
+            self.uploads.record(key, fingerprint: fingerprint, at: now, startedIn: started)
+            return true
+        }
+        let ended = Task<Void, Never> { _ = try? await upload.value }
+        lastUploads[key] = ended
+        defer { if lastUploads[key] == ended { lastUploads[key] = nil } }
+        return try await upload.value
+    }
+
+    /// Forgets the accepted course lists of `semester`, or of every term and the assignment list
+    /// when nil, so the next upload goes whatever it holds.
+    func forgetUploads(semester: String? = nil) {
+        uploads.forget(semester.map(UploadLedger.courses))
+    }
+
+    /// The same list in any order gives the same fingerprint. Force keys are left out: a request
+    /// with any always goes.
+    static func fingerprint(of request: PushAPI.CourseUploadRequest) -> Int {
+        encodedFingerprint(PushAPI.CourseUploadRequest(
+            courses: request.courses.sorted { $0.courseNo < $1.courseNo },
+            courseOverrides: request.courseOverrides.sorted { $0.courseKey < $1.courseKey }
+        ))
+    }
+
+    static func fingerprint(of request: PushAPI.AssignmentUploadRequest) -> Int {
+        encodedFingerprint(PushAPI.AssignmentUploadRequest(
+            assignments: request.assignments.sorted { $0.moodleAssignmentId < $1.moodleAssignmentId }
+        ))
+    }
+
+    private static func encodedFingerprint(_ value: some Encodable) -> Int {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var hasher = Hasher()
+        // A list that does not encode cannot be told apart from the last one, so it always goes.
+        guard let data = try? encoder.encode(value) else { return Int.random(in: .min ... .max) }
+        hasher.combine(data)
+        return hasher.finalize()
     }
 
     func deleteAllCourses(semester: String? = nil) async throws {
@@ -338,5 +449,42 @@ final class PushCoordinator {
             PushAPNsEnv.resolvedForBuild == expectedEnv,
             "Push env mismatch: build is \(expectedEnv) but PushAPNsEnv = \(PushAPNsEnv.resolvedForBuild)"
         )
+    }
+}
+
+/// The fingerprint of each list the server last accepted, by `courses(_:)` or `assignments`.
+nonisolated struct UploadLedger {
+    static let assignments = "assignments"
+    static func courses(_ semester: String) -> String { "courses:\(semester)" }
+
+    private var accepted: [String: (fingerprint: Int, at: Date)] = [:]
+    private var forgetsOfKey: [String: Int] = [:]
+    private var forgetsOfAll = 0
+
+    /// Moved by a forget of `key` or of every list. An upload in flight across one records
+    /// nothing: it may have reached the server before what the forget answers, a term reset, so
+    /// its list is not on the server now.
+    func generation(of key: String) -> (all: Int, key: Int) {
+        (forgetsOfAll, forgetsOfKey[key, default: 0])
+    }
+
+    func isDue(_ key: String, fingerprint: Int, now: Date) -> Bool {
+        PushCoordinator.uploadIsDue(accepted: accepted[key], fingerprint: fingerprint, now: now)
+    }
+
+    mutating func record(_ key: String, fingerprint: Int, at date: Date, startedIn started: (all: Int, key: Int)) {
+        guard started == generation(of: key) else { return }
+        accepted[key] = (fingerprint, date)
+    }
+
+    /// `key` nil forgets every list.
+    mutating func forget(_ key: String?) {
+        if let key {
+            forgetsOfKey[key, default: 0] &+= 1
+            accepted[key] = nil
+        } else {
+            forgetsOfAll &+= 1
+            accepted = [:]
+        }
     }
 }

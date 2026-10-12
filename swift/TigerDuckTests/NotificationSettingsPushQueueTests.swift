@@ -296,4 +296,23 @@ struct NotificationSettingsPushQueueTests {
             #expect(SettingsAPIStub.requests(for: url).map(\.httpMethod) == ["GET"])
         }
     }
+
+    @Test("a full sync's copy of the document stands only while no link finishes after its fetch")
+    func snapshotCopyOnlyUntilALinkFinishes() async {
+        Self.resetQueue()
+        defer { Self.resetQueue() }
+        let before = NotificationSettingsPushQueue.finishedLinks
+
+        if case .read = NotificationSettingsPushQueue.source(.snapshot(nil), linksBeforeSnapshot: before) {
+            Issue.record("nothing ran since the fetch, so the copy is current")
+        }
+
+        await NotificationSettingsPushQueue.enqueue {}.value
+
+        guard case .read = NotificationSettingsPushQueue.source(.snapshot(nil), linksBeforeSnapshot: before) else {
+            Issue.record("a push that finished after the fetch may have written past the copy")
+            return
+        }
+    }
 }
+

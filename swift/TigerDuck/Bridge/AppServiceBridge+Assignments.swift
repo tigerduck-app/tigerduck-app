@@ -246,7 +246,7 @@ extension AppServiceBridge {
                 // so it can populate its assignments table for cross-device
                 // sync and notification scheduling.
                 #if os(iOS)
-                if Defaults[.cloudSyncEnabled], let atm = authService.authTokenManager {
+                if Defaults[.cloudSyncEnabled] {
                     let iso = ISO8601DateFormatter()
                     iso.formatOptions = [.withInternetDateTime]
                     let entries = assignmentsToPersist.compactMap { a -> PushAPI.AssignmentUploadEntry? in
@@ -262,14 +262,7 @@ extension AppServiceBridge {
                             grade: nil
                         )
                     }
-                    let client = PushAPIClient(
-                        authHeaderProvider: { await atm.authorizationHeader() }
-                    )
-                    Task.detached {
-                        try? await client.uploadAssignments(
-                            PushAPI.AssignmentUploadRequest(assignments: entries)
-                        )
-                    }
+                    assignmentUploader?(PushAPI.AssignmentUploadRequest(assignments: entries))
                 }
                 #endif
             }

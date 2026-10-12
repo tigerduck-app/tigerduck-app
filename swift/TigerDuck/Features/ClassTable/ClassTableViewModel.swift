@@ -409,6 +409,7 @@ final class ClassTableViewModel {
     }
 
     var onSyncCourseOverride: ((_ moodleCourseId: String, _ colorHex: String?, _ customName: String?, _ locale: String?) -> Void)?
+    var onSyncColorPick: ((_ hex: UInt32, _ course: SDCourse, _ changed: [String: UInt32]) -> Void)?
     var onCoursesChanged: ((_ courses: [SDCourse], _ semester: String) -> Void)?
     var onCourseAdded: ((_ courses: [SDCourse], _ semester: String, _ addedCourseNo: String) -> Void)?
     var onCourseDeleted: ((_ courseNo: String, _ semester: String) -> Void)?

@@ -83,9 +83,17 @@ struct RefreshedCourseDataTests {
         #expect(row?.schedule.isEmpty == true)
     }
 
-    @Test("An answer with no rows falls back to Moodle, as for a term NTUST no longer indexes")
-    func emptyAnswerFallsBackToMoodle() async {
+    @Test("An answer with no rows, as for a term NTUST no longer indexes, keeps the cached row")
+    func emptyAnswerKeepsTheCachedRow() async {
         let row = await Self.refreshed(cached: Self.cached, moodle: Self.moodle) { [] }
+        #expect(row?.schedule == Self.cached.schedule)
+        #expect(row?.classroomMap == Self.cached.classroomMap)
+        #expect(row?.courseName == "程式設計")
+    }
+
+    @Test("An answer with no rows for a course not cached yet falls back to Moodle")
+    func emptyAnswerWithoutACachedRowFallsBack() async {
+        let row = await Self.refreshed(cached: nil, moodle: Self.moodle) { [] }
         #expect(row?.courseName == Self.moodle.fullname)
         #expect(row?.schedule.isEmpty == true)
     }

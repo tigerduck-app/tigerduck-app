@@ -57,12 +57,16 @@ extension AppState {
     /// The one routine that reads the `notification` document: it adopts each synced section
     /// the server has and writes only the ones it lacks (`NotificationSettingsSync.reconcile`).
     /// It runs on the push queue, so it never interleaves with a push or outlives a logout.
-    /// Called after upgrade, after each successful full sync, when a notification settings
-    /// screen opens, and after sign-in, which must read first: a push could write a previous
-    /// account's values over the new account's document. An unacknowledged local edit wins and
-    /// its push runs instead. Gated on cloud sync and a session like the push; `onSettled` runs
-    /// only once the document was read and every synced section settled.
-    func reconcileNotificationSettings(onSettled: (@MainActor () -> Void)? = nil) {
+    /// Called after upgrade, after each full sync, which passes its snapshot's copy, when a
+    /// notification settings screen opens, and after sign-in, which must read first: a push could
+    /// write a previous account's values over the new account's document. An unacknowledged local
+    /// edit wins and its push runs instead. Gated on cloud sync and a session like the push;
+    /// `onSettled` runs only once the document was read and every synced section settled.
+    func reconcileNotificationSettings(
+        onSettled: (@MainActor () -> Void)? = nil,
+        snapshot: NotificationSettingsSync.DocumentSource = .read,
+        linksBeforeSnapshot: Int = 0
+    ) {
         NotificationSettingsPushQueue.enqueueReconcile { [weak self] isCurrent in
             guard let self, Defaults[.cloudSyncEnabled] else { return }
             guard await self.authTokenManager.isLoggedIn, isCurrent() else { return }
@@ -79,7 +83,8 @@ extension AppState {
                     syncAssignmentRemindersEnabled: Defaults[.syncAssignmentReminders],
                     syncLiveActivityEnabled: Defaults[.syncLiveActivity],
                     isPushPending: { Defaults[.notificationSettingsPushPending] },
-                    isCurrent: isCurrent
+                    isCurrent: isCurrent,
+                    source: NotificationSettingsPushQueue.source(snapshot, linksBeforeSnapshot: linksBeforeSnapshot)
                 )
                 switch outcome {
                 case .settled:
@@ -176,6 +181,16 @@ enum NotificationSettingsPushQueue {
     /// next. Mirrors `HolidayUploadQueue.generation`
     /// (`AppState+PushServer.swift`).
     static var generation = 0
+    /// Links that have run, push or reconcile. One that finished after a full sync's snapshot
+    /// went out may have written past the snapshot's copy of the document.
+    private(set) static var finishedLinks = 0
+
+    static func source(
+        _ snapshot: NotificationSettingsSync.DocumentSource,
+        linksBeforeSnapshot: Int
+    ) -> NotificationSettingsSync.DocumentSource {
+        finishedLinks == linksBeforeSnapshot ? snapshot : .read
+    }
 
     /// Replaces the sleeping debounce: `work` runs once 250 ms pass with no newer call and no
     /// `cancelAll()`. The wait is injectable so a test can end it by hand.
@@ -206,6 +221,7 @@ enum NotificationSettingsPushQueue {
             // over whoever signed in since.
             guard queuedGeneration == generation else { return }
             await work()
+            finishedLinks &+= 1
         }
         tail = task
         return task
@@ -559,7 +575,29 @@ nonisolated enum NotificationSettingsSync {
         case liveActivity = "live_activity"
     }
 
-    /// What one ``reconcile(store:client:cloudSyncEnabled:syncAssignmentRemindersEnabled:syncLiveActivityEnabled:isPushPending:isCurrent:)``
+    /// Where ``reconcile(store:client:cloudSyncEnabled:syncAssignmentRemindersEnabled:syncLiveActivityEnabled:isPushPending:isCurrent:source:)``
+    /// gets the document: a read of its own, or the copy in a full sync's snapshot, nil when the
+    /// account has none.
+    enum DocumentSource: Sendable {
+        case read
+        case snapshot((document: Data, revision: Int)?)
+    }
+
+    /// The `notification` document in a `/sync/full` snapshot. `.read` when the snapshot has no
+    /// `settings_documents`, as from an older backend, or an entry this build cannot read.
+    static func documentSource(fromSnapshot json: [String: Any]) -> DocumentSource {
+        guard let entries = json["settings_documents"] as? [[String: Any]] else { return .read }
+        guard let entry = entries.first(where: { $0["namespace"] as? String == namespace }) else {
+            return .snapshot(nil)
+        }
+        guard let revision = entry["revision"] as? Int,
+              let object = entry["document"], JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object)
+        else { return .read }
+        return .snapshot((document: data, revision: revision))
+    }
+
+    /// What one ``reconcile(store:client:cloudSyncEnabled:syncAssignmentRemindersEnabled:syncLiveActivityEnabled:isPushPending:isCurrent:source:)``
     /// run did.
     enum ReconcileOutcome: Equatable, Sendable {
         /// Nothing to do — cloud sync is off, or neither section syncs on
@@ -591,7 +629,8 @@ nonisolated enum NotificationSettingsSync {
         syncAssignmentRemindersEnabled: Bool,
         syncLiveActivityEnabled: Bool,
         isPushPending: () -> Bool,
-        isCurrent: () -> Bool = { true }
+        isCurrent: () -> Bool = { true },
+        source: DocumentSource = .read
     ) async throws -> ReconcileOutcome {
         var synced: Set<OwnedSection> = []
         if syncAssignmentRemindersEnabled { synced.insert(.assignments) }
@@ -600,7 +639,11 @@ nonisolated enum NotificationSettingsSync {
         guard !isPushPending() else { return .deferredToPendingPush }
 
         var expected = LocalPreferences(from: store)
-        let stored = try await client.read(namespace: namespace)
+        let stored: (document: Data, revision: Int)?
+        switch source {
+        case .read: stored = try await client.read(namespace: namespace)
+        case .snapshot(let document): stored = document
+        }
         var existing = stored.map { Self.object(from: $0.document) } ?? [:]
         var baseRevision = stored?.revision
         var adopted: Set<OwnedSection> = []
