@@ -203,28 +203,48 @@ struct TimetableGridView: View {
                 }
                 .zIndex(1)
 
-        case .conflictStart(let segments, let combinedSpan):
-            let clusterHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
-            Color.clear
-                .overlay(alignment: .top) {
-                    ConflictClusterView(
-                        viewModel: viewModel,
-                        showsAssignmentBadges: showsAssignmentBadges,
-                        differentiateWithoutColorOverride: differentiateWithoutColor,
-                        segments: segments,
-                        combinedSpan: combinedSpan,
-                        cellHeight: cellHeight,
-                        rowSpacing: rowSpacing,
-                        weekday: weekday,
-                        periodId: periodId
-                    )
-                    .frame(height: clusterHeight)
-                }
-                .zIndex(1)
+        case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
+            conflictCluster(
+                segments: [
+                    ClassTableConflictSegment(course: courseA, span: spanA, offset: offsetA),
+                    ClassTableConflictSegment(course: courseB, span: spanB, offset: offsetB),
+                ],
+                combinedSpan: combinedSpan,
+                weekday: weekday,
+                periodId: periodId
+            )
+
+        case let .conflictMany(segments, combinedSpan):
+            conflictCluster(segments: segments, combinedSpan: combinedSpan, weekday: weekday, periodId: periodId)
 
         case .skip:
             Color.clear
         }
+    }
+
+    private func conflictCluster(
+        segments: [ClassTableConflictSegment<SDCourse>],
+        combinedSpan: Int,
+        weekday: Int,
+        periodId: String
+    ) -> some View {
+        let clusterHeight = CGFloat(combinedSpan) * cellHeight + CGFloat(combinedSpan - 1) * rowSpacing
+        return Color.clear
+            .overlay(alignment: .top) {
+                ConflictClusterView(
+                    viewModel: viewModel,
+                    showsAssignmentBadges: showsAssignmentBadges,
+                    differentiateWithoutColorOverride: differentiateWithoutColor,
+                    segments: segments,
+                    combinedSpan: combinedSpan,
+                    cellHeight: cellHeight,
+                    rowSpacing: rowSpacing,
+                    weekday: weekday,
+                    periodId: periodId
+                )
+                .frame(height: clusterHeight)
+            }
+            .zIndex(1)
     }
 }
 
@@ -238,7 +258,7 @@ private struct ConflictClusterView: View {
     let viewModel: ClassTableViewModel
     let showsAssignmentBadges: Bool
     let differentiateWithoutColorOverride: Bool?
-    let segments: [ClassTableViewModel.ConflictSegment]
+    let segments: [ClassTableConflictSegment<SDCourse>]
     let combinedSpan: Int
     let cellHeight: CGFloat
     let rowSpacing: CGFloat
@@ -405,7 +425,7 @@ private struct ConflictClusterView: View {
         }
     }
 
-    private func conflictColumn(segment: ClassTableViewModel.ConflictSegment) -> some View {
+    private func conflictColumn(segment: ClassTableConflictSegment<SDCourse>) -> some View {
         let course = segment.course
         let span = segment.span
         let offset = segment.offset
