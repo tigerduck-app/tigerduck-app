@@ -196,6 +196,8 @@ nonisolated extension Defaults.Keys {
     static let pendingConflictCategories = Key<Set<String>>("pendingConflictCategories", default: [])
     /// This account's marks have been through a full sync on this device, so a server holding
     /// none is the truth. Cleared at sign-out. See `AppState.uploadsLocalMarksAsFirstSync`.
+    /// Turning sync off keeps it, though that drops queued marks: turning it back on marks the
+    /// category for the re-enable check, and a pull leaves marks alone until the user picks a side.
     static let assignmentMarksSyncedOnce = Key<Bool>("assignmentMarksSyncedOnce", default: false)
 
     // MARK: Academic calendar
