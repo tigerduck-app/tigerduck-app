@@ -160,7 +160,6 @@ struct HomeView: View {
                 timeRange: slot.map { "\($0.start.timeString) - \($0.end.timeString)" },
                 weekday: slot?.date.scheduleWeekday ?? AppClock.now().scheduleWeekday
             )
-            .presentationDetents([.medium, .large])
             .onDisappear { viewModel.selectedCourseSlot = nil }
         }
         .onChange(of: viewModel.isEditingHome) { _, isEditing in

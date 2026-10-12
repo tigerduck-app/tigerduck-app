@@ -44,11 +44,12 @@ final class NextClassResolverTests: XCTestCase {
         XCTAssertEqual(r.next?.id, "B")
     }
 
-    func test_afterLastClass_bothNil() {
+    func test_afterLastClass_nextIsTheSameClassNextWeek() {
         let c1 = course("A", weekday: 1, start: "10:20", end: "11:10")
         let r = NextClassResolver.resolve(courses: [c1], now: mondayAt("18:00"))
         XCTAssertNil(r.current)
-        XCTAssertNil(r.next)
+        XCTAssertEqual(r.next?.id, "A")
+        XCTAssertEqual(r.nextDay, .later(weekday: 1))
     }
 
     func test_emptyCourses_bothNil() {
@@ -69,7 +70,8 @@ final class NextClassResolverTests: XCTestCase {
         let now = mondayAt("10:45")
         let r = NextClassResolver.resolve(courses: [a], now: now, quietDays: [SharedTaipei.dayKey(for: now)])
         XCTAssertNil(r.current)
-        XCTAssertNil(r.next)
+        XCTAssertEqual(r.next?.id, "A")
+        XCTAssertEqual(r.nextDay, .later(weekday: 1))
     }
 
     func test_holidayOnAnotherDay_changesNothing() {

@@ -25,6 +25,8 @@ struct MacClassTableView: View {
     /// term, so that assignment doesn't get recorded as a user pick.
     @State private var isFollowingNewestSemester = false
     @State var selectedSlot: SelectedSlot?
+    /// The Moodle screens pushed in the course detail overlay, which Escape leaves first.
+    @State private var detailMoodlePath: [MoodleCourseRoute] = []
     @State private var showAddCourse: Bool = false
     /// Non-nil while the macOS color picker sheet is presented. Set from the
     /// per-cell context menu; the iOS path stores this on its view-model, but
@@ -264,6 +266,8 @@ struct MacClassTableView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: selectedSlot?.id)
+        .onChange(of: selectedSlot?.id) { detailMoodlePath = [] }
+        .preference(key: MacRefreshShortcutClaimKey.self, value: detailMoodlePath.last?.refreshesOnItsOwn ?? false)
     }
 
     @ViewBuilder
@@ -279,7 +283,8 @@ struct MacClassTableView: View {
                 course: slot.course,
                 assignments: DataCache.shared.loadAssignments().unfinished(for: slot.course.courseNo),
                 timeRange: slot.course.timeRange(for: slot.weekday),
-                weekday: slot.weekday
+                weekday: slot.weekday,
+                moodlePath: $detailMoodlePath
             )
             // Max bounds, not a fixed size: a small window shrinks the overlay to fit, and a
             // large one gives the inner ScrollView more room before it scrolls.
@@ -290,10 +295,16 @@ struct MacClassTableView: View {
             // Swallow taps on the content so they don't reach the backdrop.
             .onTapGesture { }
 
-            // Restore ESC dismissal — custom overlays don't inherit a sheet's
-            // automatic cancel handling. Hidden button keeps the shortcut
-            // active without affecting the visible layout.
-            Button("") { selectedSlot = nil }
+            // Restore ESC dismissal: custom overlays don't inherit a sheet's automatic
+            // cancel handling. Hidden button keeps the shortcut active without affecting
+            // the visible layout. A Moodle screen pushed in the overlay goes back first.
+            Button("") {
+                if detailMoodlePath.isEmpty {
+                    selectedSlot = nil
+                } else {
+                    detailMoodlePath.removeLast()
+                }
+            }
                 .keyboardShortcut(.escape, modifiers: [])
                 .opacity(0)
                 .frame(width: 0, height: 0)

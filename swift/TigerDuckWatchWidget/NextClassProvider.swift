@@ -11,6 +11,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
             date: Date(),
             current: nil,
             next: Self.sampleCourse(),
+            nextDay: .today,
             accentHex: WatchSnapshot.defaultAccentHex,
             languageTag: nil,
             relevance: nil
@@ -86,7 +87,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
     }
 
     /// The state at `appNow` on the app clock, shown from `date` on the real clock. Holidays and
-    /// skipped dates leave no class, as on the Watch's Now & Next tab.
+    /// skipped dates leave no class that day, as on the Watch's Now & Next tab.
     private func entry(for snapshot: WatchSnapshot?, at appNow: Date, date: Date) -> NextClassEntry {
         let r = NextClassResolver.resolve(
             courses: snapshot?.courses ?? [], now: appNow, quietDays: snapshot?.quietDays ?? []
@@ -95,6 +96,7 @@ nonisolated struct NextClassProvider: TimelineProvider {
             date: date,
             current: r.current,
             next: r.next,
+            nextDay: r.nextDay,
             accentHex: snapshot?.accentHex ?? WatchSnapshot.defaultAccentHex,
             languageTag: snapshot?.languageTag,
             relevance: relevance(for: r, now: appNow)
@@ -113,15 +115,23 @@ nonisolated struct NextClassProvider: TimelineProvider {
         return cal.date(from: dc)
     }
 
+    /// The start time goes on the day the class meets: a later day's class put on today's date can
+    /// look about to start or already started.
     private func relevance(for r: NextClassResolver.Result, now: Date) -> TimelineEntryRelevance? {
-        guard let next = r.next, let start = combine(hhmm: next.startHHmm, with: now) else {
-            return TimelineEntryRelevance(score: 30, duration: 0)
+        let low = TimelineEntryRelevance(score: 30, duration: 0)
+        let daysAhead: Int
+        switch r.nextDay {
+        case .today: daysAhead = 0
+        case .tomorrow: daysAhead = 1
+        case .later: return low
         }
+        guard let next = r.next,
+              let day = SharedTaipei.calendar.date(byAdding: .day, value: daysAhead, to: now),
+              let start = combine(hhmm: next.startHHmm, with: day)
+        else { return low }
         let minutesUntil = start.timeIntervalSince(now) / 60
-        if minutesUntil <= 30 {
-            return TimelineEntryRelevance(score: 90, duration: minutesUntil * 60)
-        }
-        return TimelineEntryRelevance(score: 30, duration: 0)
+        guard minutesUntil > 0, minutesUntil <= 30 else { return low }
+        return TimelineEntryRelevance(score: 90, duration: minutesUntil * 60)
     }
 
     static func sampleCourse() -> WatchCourse {

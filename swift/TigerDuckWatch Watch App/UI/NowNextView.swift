@@ -22,7 +22,7 @@ struct NowNextView: View {
                             ClassCard(title: String(localized: "watch_now"), course: current, policy: policy)
                         }
                         if let next = result.next {
-                            ClassCard(title: String(localized: "watch_next"), course: next, policy: policy)
+                            ClassCard(title: result.nextDay.headline, course: next, policy: policy)
                         }
                         if result.current == nil && result.next == nil {
                             ContentUnavailableView(

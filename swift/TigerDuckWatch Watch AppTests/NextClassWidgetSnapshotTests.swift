@@ -9,6 +9,7 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
             date: Date(),
             current: now ? sampleCourse(name: "現在") : nil,
             next: next ? sampleCourse(name: "下一堂") : nil,
+            nextDay: .today,
             accentHex: "#FF8800",
             languageTag: nil,
             relevance: nil

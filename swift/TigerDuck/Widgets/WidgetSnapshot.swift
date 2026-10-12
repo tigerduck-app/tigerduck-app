@@ -11,7 +11,7 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     let activeWeekdays: [Int]
     let activePeriodIds: [String]
     /// `yyyy-MM-dd` keys on which classes do not meet: school holidays the
-    /// user has not opted back into.
+    /// user has not opted back into, and days outside the term.
     ///
     /// Carried here rather than read by the extension: the calendar cache lives in
     /// the app's own `UserDefaults`, and this file is already the app→extension channel.
