@@ -62,7 +62,8 @@ nonisolated enum MoodleWebserviceClient {
     }
 
     /// The answer is decoded off the main actor. A Moodle error body throws its case whatever
-    /// the HTTP status, since Moodle sends most errors with a 200.
+    /// the HTTP status, since Moodle sends most errors with a 200. A 503 with `Retry-After` is
+    /// Moodle's CLI maintenance page, which an upgrade shows for every request.
     static func call<T: Decodable & Sendable>(
         _ function: String,
         params: [(String, String)] = [],
@@ -95,11 +96,14 @@ nonisolated enum MoodleWebserviceClient {
         } catch let urlError as URLError {
             throw MoodleWebserviceError.transientNetwork(underlying: urlError.localizedDescription)
         }
-        guard let status = (response as? HTTPURLResponse)?.statusCode else {
+        guard let http = response as? HTTPURLResponse else {
             throw MoodleWebserviceError.malformedResponse(detail: "No HTTP response")
         }
+        let status = http.statusCode
+        let underMaintenance = status == 503 && http.value(forHTTPHeaderField: "Retry-After") != nil
         return try await Task.detached(priority: .userInitiated) {
             if let moodleError = MoodleWebserviceError.from(jsonData: data) { throw moodleError }
+            if underMaintenance { throw MoodleWebserviceError.siteMaintenance }
             guard status == 200 else { throw MoodleWebserviceError.httpStatus(code: status) }
             do {
                 return try JSONDecoder().decode(T.self, from: data)

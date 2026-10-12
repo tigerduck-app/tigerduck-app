@@ -8,6 +8,7 @@ nonisolated final class SettingsAPIStub: URLProtocol {
     nonisolated struct StubResponse {
         let statusCode: Int
         let body: Data
+        var headerFields: [String: String] = [:]
     }
 
     private static let lock = NSLock()
@@ -89,7 +90,7 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         }
         let response = HTTPURLResponse(
             url: url, statusCode: next.statusCode, httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: ["Content-Type": "application/json"].merging(next.headerFields) { $1 }
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: next.body)

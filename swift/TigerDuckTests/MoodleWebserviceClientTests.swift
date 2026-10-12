@@ -29,8 +29,13 @@ struct MoodleWebserviceClientTests {
         )
     }
 
-    private func answer(_ status: Int, _ body: String, function: String = "core_webservice_get_site_info", token: String) {
-        SettingsAPIStub.enqueue(.init(statusCode: status, body: Data(body.utf8)), for: Self.endpoint(function, token: token))
+    private func answer(
+        _ status: Int, _ body: String, headers: [String: String] = [:],
+        function: String = "core_webservice_get_site_info", token: String
+    ) {
+        SettingsAPIStub.enqueue(
+            .init(statusCode: status, body: Data(body.utf8), headerFields: headers), for: Self.endpoint(function, token: token)
+        )
     }
 
     @Test("a call posts the function, the token and the form-encoded parameters, and decodes the answer")
@@ -48,7 +53,7 @@ struct MoodleWebserviceClientTests {
         #expect(body == "courseids%5B0%5D=7&q=a%20b%26c")
     }
 
-    @Test("a Moodle error body throws its case with HTTP 200 or another status")
+    @Test("a Moodle error body throws its case with HTTP 200 or another status, even a 503 with Retry-After")
     func errorBodies() async {
         let ok = UUID().uuidString
         answer(200, #"{"exception":"moodle_exception","errorcode":"invalidtoken"}"#, token: ok)
@@ -57,6 +62,10 @@ struct MoodleWebserviceClientTests {
         let failed = UUID().uuidString
         answer(500, #"{"exception":"moodle_exception","errorcode":"servicenotloaded"}"#, token: failed)
         await #expect(throws: MoodleWebserviceError.webserviceDisabled) { try await call(token: failed) }
+
+        let busy = UUID().uuidString
+        answer(503, #"{"exception":"moodle_exception","errorcode":"invalidtoken"}"#, headers: ["Retry-After": "300"], token: busy)
+        await #expect(throws: MoodleWebserviceError.invalidToken) { try await call(token: busy) }
     }
 
     @Test("an error page, a network failure and an answer of another shape map to their cases")
@@ -79,6 +88,16 @@ struct MoodleWebserviceClientTests {
             Issue.record("expected a malformed response, got \(String(describing: decodeError))")
             return
         }
+    }
+
+    @Test("a 503 page with Retry-After is Moodle's upgrade maintenance", arguments: ["Retry-After", "retry-after"])
+    func cliMaintenance(header: String) async {
+        let token = UUID().uuidString
+        answer(
+            503, "<html>Moodle under maintenance</html>",
+            headers: [header: "300", "Content-Type": "text/html; charset=utf-8"], token: token
+        )
+        await #expect(throws: MoodleWebserviceError.siteMaintenance) { try await call(token: token) }
     }
 
     // MARK: - Token
