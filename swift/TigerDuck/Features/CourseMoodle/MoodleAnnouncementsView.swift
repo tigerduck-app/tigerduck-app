@@ -38,7 +38,9 @@ struct MoodleAnnouncementsView: View {
                         }
                     }
                     .task {
-                        if discussion.id == discussions.last?.id { await store.loadMoreAnnouncements() }
+                        if discussion.id == discussions.last?.id {
+                            await store.loadMoreAnnouncements(after: discussion.id)
+                        }
                     }
                 }
                 if store.isLoadingMoreAnnouncements {
@@ -47,6 +49,8 @@ struct MoodleAnnouncementsView: View {
                         .padding(.vertical, TigerDuckTheme.Spacing.md)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
+                } else if let failure = store.announcementsPageFailure, list.hasMore {
+                    pageRetry(failure, after: discussions.last?.id)
                 }
             } else {
                 MoodleFirstLoadView(
@@ -72,5 +76,23 @@ struct MoodleAnnouncementsView: View {
         .moodleAutoRefresh(every: MoodleRefreshInterval.announcements, fetchedAt: { store.announcementsFetchedAt }) {
             await store.refreshAnnouncements()
         }
+    }
+
+    /// The list's end when its next page failed, so a partial list does not pass for the whole.
+    private func pageRetry(_ failure: any Error, after lastId: Int?) -> some View {
+        VStack(spacing: TigerDuckTheme.Spacing.sm) {
+            Text(MoodleFirstLoadView.message(for: failure))
+                .font(TigerDuckTheme.Typography.caption)
+                .foregroundStyle(Color.textSecondary)
+                .multilineTextAlignment(.center)
+            Button(String(localized: "action_retry")) {
+                Task { await store.loadMoreAnnouncements(after: lastId) }
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, TigerDuckTheme.Spacing.md)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 }

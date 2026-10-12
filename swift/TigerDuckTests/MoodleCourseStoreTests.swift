@@ -49,7 +49,12 @@ struct MoodleCourseStoreTests {
         var discussionPages: [Int] { lock.withLock { _discussionCalls.map(\.page) } }
         var viewed: [Int] { lock.withLock { _viewed } }
 
-        func api(beforeForums: @escaping @Sendable () async -> Void = {}) -> MoodleCourseAPI {
+        /// `beforePage` runs before each page answers, with the page and how many times it was
+        /// asked for before; it throws to fail that request.
+        func api(
+            beforeForums: @escaping @Sendable () async -> Void = {},
+            beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in }
+        ) -> MoodleCourseAPI {
             MoodleCourseAPI(
                 functions: { self.lock.withLock { self._functions } },
                 forums: { courseIds in
@@ -58,10 +63,13 @@ struct MoodleCourseStoreTests {
                     return self.lock.withLock { self._forums }
                 },
                 discussions: { forumId, page in
-                    self.lock.withLock {
+                    let earlier = self.lock.withLock {
+                        let earlier = self._discussionCalls.filter { $0.page == page }.count
                         self._discussionCalls.append((forumId, page))
-                        return page < self._pages.count ? self._pages[page] : []
+                        return earlier
                     }
+                    try await beforePage(page, earlier)
+                    return self.lock.withLock { page < self._pages.count ? self._pages[page] : [] }
                 },
                 markViewed: { id in self.lock.withLock { self._viewed.append(id) } }
             )
@@ -86,13 +94,14 @@ struct MoodleCourseStoreTests {
         site: Site,
         account: String = "B11399001",
         signedIn: OSAllocatedUnfairLock<Bool> = OSAllocatedUnfairLock(initialState: true),
-        beforeForums: @escaping @Sendable () async -> Void = {}
+        beforeForums: @escaping @Sendable () async -> Void = {},
+        beforePage: @escaping @Sendable (_ page: Int, _ earlier: Int) async throws -> Void = { _, _ in }
     ) -> MoodleCourseStore {
         MoodleCourseStore(
             courseId: courseId,
             termCourseIds: [20103, courseId],
             context: MoodleCacheContext(account: account, cache: folder.cache, isCurrent: { signedIn.withLock { $0 } }),
-            api: site.api(beforeForums: beforeForums)
+            api: site.api(beforeForums: beforeForums, beforePage: beforePage)
         )
     }
 
@@ -210,7 +219,7 @@ struct MoodleCourseStoreTests {
         #expect(site.discussionPages == [0])
         #expect(store.announcementList?.hasMore == true)
 
-        await store.loadMoreAnnouncements()
+        await store.loadMoreAnnouncements(after: store.announcementList?.sorted.last?.id)
         #expect(site.discussionPages == [0, 1])
         #expect(store.announcementList?.discussions.count == MoodleForumService.discussionsPerPage + 1)
         #expect(store.announcementList?.hasMore == false)
@@ -218,6 +227,62 @@ struct MoodleCourseStoreTests {
         // A refresh fetches as many pages as the list shows, so it keeps its length.
         await store.refreshAnnouncements()
         #expect(site.discussionPages == [0, 1, 0, 1])
+        #expect(store.announcementList?.discussions.count == MoodleForumService.discussionsPerPage + 1)
+    }
+
+    @Test("a refresh during a page load waits for it, so the page that loaded stays")
+    func refreshWaitsForAPageLoad() async throws {
+        let folder = Folder()
+        let site = Site()
+        let full = (1...MoodleForumService.discussionsPerPage).map { Self.discussion(800 + $0, created: TimeInterval($0)) }
+        site.set(pages: [full, [Self.discussion(900)]])
+        let nextPage = ManualSleeper()
+        let refreshFirstPage = ManualSleeper()
+        let store = Self.store(folder, site: site, beforePage: { page, earlier in
+            if page == 1, earlier == 0 { await nextPage.sleep(for: .zero) }
+            if page == 0, earlier == 1 { await refreshFirstPage.sleep(for: .zero) }
+        })
+        await store.refreshForums()
+        await store.refreshAnnouncements()
+
+        let paging = Task { await store.loadMoreAnnouncements(after: store.announcementList?.sorted.last?.id) }
+        try await nextPage.waitUntilArmed()
+        let refresh = Task { await store.refreshAnnouncements() }
+        // A refresh not held back would start here, sized to the list before the next page.
+        for _ in 0..<5 { await Task.yield() }
+        await nextPage.fire()
+        await paging.value
+        try await refreshFirstPage.waitUntilArmed()
+        await refreshFirstPage.fire()
+        await refresh.value
+
+        #expect(store.announcementList?.discussions.count == MoodleForumService.discussionsPerPage + 1)
+        #expect(site.discussionPages == [0, 1, 0, 1])
+    }
+
+    @Test("a page that fails to load stays offered for a retry, and loads on it")
+    func failedPageOffersARetry() async {
+        let folder = Folder()
+        let site = Site()
+        let full = (1...MoodleForumService.discussionsPerPage).map { Self.discussion(800 + $0, created: TimeInterval($0)) }
+        site.set(pages: [full, [Self.discussion(900)]])
+        let store = Self.store(folder, site: site, beforePage: { page, earlier in
+            if page == 1, earlier == 0 { throw MoodleWebserviceError.transientNetwork(underlying: "offline") }
+        })
+        await store.refreshForums()
+        await store.refreshAnnouncements()
+        let last = store.announcementList?.sorted.last?.id
+
+        await store.loadMoreAnnouncements(after: last)
+        #expect(store.announcementsPageFailure != nil)
+        #expect(store.announcementList?.hasMore == true)
+
+        // A page asked for by a row that is no longer the last one is not loaded.
+        await store.loadMoreAnnouncements(after: 999)
+        #expect(site.discussionPages == [0, 1])
+
+        await store.loadMoreAnnouncements(after: last)
+        #expect(store.announcementsPageFailure == nil)
         #expect(store.announcementList?.discussions.count == MoodleForumService.discussionsPerPage + 1)
     }
 
@@ -258,7 +323,7 @@ struct MoodleCourseStoreTests {
         let store = Self.store(folder, site: site)
         await store.refreshForums()
         await store.refreshAnnouncements()
-        await store.loadMoreAnnouncements()
+        await store.loadMoreAnnouncements(after: store.announcementList?.sorted.last?.id)
         #expect(site.viewed.isEmpty)
         #expect(store.sectionRows.first?.hasUnread == true)
 

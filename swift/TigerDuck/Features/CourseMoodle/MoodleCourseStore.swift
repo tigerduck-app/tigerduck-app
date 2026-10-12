@@ -77,11 +77,6 @@ final class MoodleFeed<Value: Codable & Sendable> {
         if running == task { running = nil }
     }
 
-    /// Returns once no refresh is running.
-    func waitUntilIdle() async {
-        await running?.value
-    }
-
     /// Applies a change made here, such as a discussion read, keeping the time of the fetch the
     /// value came from.
     func update(_ change: (inout Value) -> Void) {
@@ -183,10 +178,12 @@ final class MoodleCourseStore {
     let forums: MoodleFeed<MoodleTermForums>
     let announcements: MoodleFeed<MoodleDiscussionList>
     private(set) var isLoadingMoreAnnouncements = false
+    private(set) var announcementsPageFailure: (any Error)?
 
     /// Every course of the term, which one forums call covers.
     @ObservationIgnored private let termCourseIds: [Int]
     @ObservationIgnored private let api: MoodleCourseAPI
+    @ObservationIgnored private var listWork: Task<Void, Never>?
 
     init(courseId: Int, termCourseIds: [Int], context: MoodleCacheContext, api: MoodleCourseAPI = .live) {
         self.courseId = courseId
@@ -244,40 +241,56 @@ final class MoodleCourseStore {
     /// Fetches again every page shown so far. A complete answer also corrects the section row,
     /// so a list that emptied takes its row with it.
     func refreshAnnouncements() async {
-        guard let forum = newsForum else { return }
-        let pages = max(1, announcementList?.pageCount ?? 1)
-        await announcements.refresh { [api] in
-            var list = MoodleDiscussionList(forumId: forum.id, discussions: [], pageCount: 0, hasMore: false)
-            repeat {
-                list.append(page: try await api.discussions(forum.id, list.pageCount))
-            } while list.hasMore && list.pageCount < pages
-            return list
-        }
-        guard announcements.status == .ok, let list = announcementList, !list.hasMore else { return }
-        forums.update { term in
-            guard let index = term.forums.firstIndex(where: { $0.id == forum.id }) else { return }
-            term.forums[index].discussionCount = list.discussions.count
-            term.forums[index].unreadPostCount = list.discussions.reduce(0) { $0 + $1.unreadCount }
+        await serially { [self] in
+            guard let forum = newsForum else { return }
+            let pages = max(1, announcementList?.pageCount ?? 1)
+            await announcements.refresh { [api] in
+                var list = MoodleDiscussionList(forumId: forum.id, discussions: [], pageCount: 0, hasMore: false)
+                repeat {
+                    list.append(page: try await api.discussions(forum.id, list.pageCount))
+                } while list.hasMore && list.pageCount < pages
+                return list
+            }
+            guard announcements.status == .ok, let list = announcementList, !list.hasMore else { return }
+            announcementsPageFailure = nil
+            forums.update { term in
+                guard let index = term.forums.firstIndex(where: { $0.id == forum.id }) else { return }
+                term.forums[index].discussionCount = list.discussions.count
+                term.forums[index].unreadPostCount = list.discussions.reduce(0) { $0 + $1.unreadCount }
+            }
         }
     }
 
-    /// The next page, once the list reaches its end.
-    func loadMoreAnnouncements() async {
-        await announcements.waitUntilIdle()
-        guard !isLoadingMoreAnnouncements, let list = announcementList, list.hasMore else { return }
-        isLoadingMoreAnnouncements = true
-        defer { isLoadingMoreAnnouncements = false }
-        let page: [MoodleDiscussion]
-        do {
-            page = try await api.discussions(list.forumId, list.pageCount)
-        } catch {
-            AppLogger.breadcrumb("moodle announcements page \(list.pageCount) failed: \(error)", category: "moodle")
-            return
+    /// The next page, when the list's last announcement, `lastId`, comes on screen. A failure stays
+    /// in ``announcementsPageFailure`` until a page loads, so the list can offer a retry.
+    func loadMoreAnnouncements(after lastId: Int?) async {
+        await serially { [self] in
+            guard let list = announcementList, list.hasMore, lastId == list.sorted.last?.id else { return }
+            isLoadingMoreAnnouncements = true
+            defer { isLoadingMoreAnnouncements = false }
+            do {
+                let page = try await api.discussions(list.forumId, list.pageCount)
+                announcementsPageFailure = nil
+                announcements.update { current in
+                    guard current.forumId == list.forumId, current.pageCount == list.pageCount else { return }
+                    current.append(page: page)
+                }
+            } catch {
+                announcementsPageFailure = error
+            }
         }
-        announcements.update { current in
-            guard current.forumId == list.forumId, current.pageCount == list.pageCount else { return }
-            current.append(page: page)
+    }
+
+    /// Runs `work` after the list changes already queued: a refresh that started during a page
+    /// load would otherwise end with fewer pages than the list just gained.
+    private func serially(_ work: @escaping @MainActor () async -> Void) async {
+        let previous = listWork
+        let task = Task {
+            await previous?.value
+            await work()
         }
+        listWork = task
+        await task.value
     }
 
     /// An announcement opened on screen: read here at once, and on Moodle through
