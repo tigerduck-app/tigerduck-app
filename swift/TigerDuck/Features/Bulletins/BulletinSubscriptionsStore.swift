@@ -6,10 +6,8 @@ import os
 ///
 /// Rules live in memory as drafts (`pending`) until the user hits save.
 /// That gives the editor a clean undo (just re-load) and avoids hitting
-/// the server on every keystroke. The v3 backend exposes individual CRUD
-/// endpoints, but this store retains the snapshot-replacement model for
-/// simplicity: load all → edit locally → PUT all. Migrating to per-rule
-/// CRUD is tracked separately.
+/// the server on every keystroke. Saving replaces the whole rule set:
+/// load all → edit locally → PUT all.
 @MainActor
 @Observable
 final class BulletinSubscriptionsStore {
