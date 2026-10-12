@@ -8,6 +8,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
             LockScreenView(snapshot: context.state.snapshot)
                 .activityBackgroundTint(hexColor(context.state.snapshot.accentHex).opacity(0.12))
                 .activitySystemActionForegroundColor(.primary)
+                .widgetURL(context.state.snapshot.deepLink)
         } dynamicIsland: { context in
             let snapshot = context.state.snapshot
             return DynamicIsland {
