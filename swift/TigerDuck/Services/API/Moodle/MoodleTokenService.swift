@@ -151,7 +151,9 @@ actor MoodleTokenService {
             do {
                 triple = try await harvest(normalizedId, creds.password)
             } catch let error as MoodleWebserviceError {
-                if case .ssoLoginRejected = error, signInGeneration == generation {
+                // A sign-in with a new password can finish while this harvest runs on the old one.
+                if case .ssoLoginRejected = error, signInGeneration == generation,
+                   storedCredentials()?.password == creds.password {
                     SSOLoginService.storedPasswordRejected = true
                 }
                 throw error

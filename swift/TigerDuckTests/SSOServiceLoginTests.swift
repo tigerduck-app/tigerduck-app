@@ -231,11 +231,30 @@ struct SSOServiceLoginTests {
         func record() { calls += 1 }
     }
 
-    private func tokenService(log: HarvestLog, failure: MoodleWebserviceError) -> MoodleTokenService {
+    /// The keychain password a stand-in token service reads; a harvest can change it meanwhile.
+    private final class StoredPassword: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: String
+
+        init(_ value: String) { self.value = value }
+
+        var current: String {
+            get { lock.withLock { value } }
+            set { lock.withLock { value = newValue } }
+        }
+    }
+
+    private func tokenService(
+        log: HarvestLog,
+        failure: MoodleWebserviceError,
+        stored: StoredPassword = StoredPassword("unused"),
+        duringHarvest: @escaping @Sendable () -> Void = {}
+    ) -> MoodleTokenService {
         MoodleTokenService(
-            storedCredentials: { (studentId: "b00000000", password: "unused") },
+            storedCredentials: { (studentId: "b00000000", password: stored.current) },
             harvest: { _, _ in
                 await log.record()
+                duringHarvest()
                 throw failure
             }
         )
@@ -256,6 +275,22 @@ struct SSOServiceLoginTests {
         }
         #expect(rejected)
         #expect(await log.calls == 1)
+    }
+
+    @Test("a renewal that ran on a password replaced meanwhile sets no latch")
+    func renewalOnAReplacedPasswordDoesNotLatch() async {
+        let log = HarvestLog()
+        let stored = StoredPassword("old")
+        let service = tokenService(log: log, failure: .ssoLoginRejected(reason: nil), stored: stored) {
+            stored.current = "new"
+        }
+        let rejected = await withLatch(false) {
+            await #expect(throws: MoodleWebserviceError.ssoLoginRejected(reason: nil)) {
+                try await service.refreshTokenIfNeeded()
+            }
+            return SSOLoginService.storedPasswordRejected
+        }
+        #expect(!rejected)
     }
 
     @Test("a renewal that fails for another reason does not stop the next one")
