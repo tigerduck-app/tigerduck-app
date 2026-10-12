@@ -14,6 +14,10 @@ final class MoodleAutologinService {
     /// NTUST) and refuses the rest, counting the keys the Moodle app asks for too.
     nonisolated static let keyInterval: TimeInterval = 360
 
+    /// How long an open waits for its key before the page opens signed out. A request held up by
+    /// a slow network or a token renewal can take up to the 20-second request timeout.
+    nonisolated static let keyWait: Duration = .seconds(3)
+
     nonisolated struct Key: Sendable {
         let userId: Int
         let value: String
@@ -23,8 +27,9 @@ final class MoodleAutologinService {
     private let keySource: @Sendable () async throws -> Key?
     private let now: () -> Date
     private let signInGeneration: () -> Int
+    private let sleep: @Sendable (Duration) async -> Void
     private var lastKeyAt: Date?
-    private var isRequesting = false
+    private(set) var isRequesting = false
 
     /// `now` defaults to the real clock, not `AppClock`: Moodle counts ``keyInterval`` in real
     /// time, and a debug clock override would stretch or skip it. `signInGeneration` moves on
@@ -32,34 +37,62 @@ final class MoodleAutologinService {
     init(
         keySource: @escaping @Sendable () async throws -> Key?,
         now: @escaping () -> Date = { Date() },
-        signInGeneration: @escaping () -> Int = { NTUSTSessionManager.shared.generation }
+        signInGeneration: @escaping () -> Int = { NTUSTSessionManager.shared.generation },
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.keySource = keySource
         self.now = now
         self.signInGeneration = signInGeneration
+        self.sleep = sleep
     }
 
     /// `url` behind a one-time sign-in when it is an HTTPS page on the Moodle site, else `url`.
     /// Without a key the page opens signed out rather than later: Moodle refuses a key within
     /// ``keyInterval`` of the last one, a request already on its way gets the only key coming,
-    /// and the user is waiting on the page, so a failed request is not retried. A key that
-    /// arrives after a sign-out is dropped too: it would sign the browser in to the account
-    /// that left.
+    /// and the user is waiting on the page, so a failed request is not retried and a key that
+    /// takes longer than ``keyWait`` is not waited for. A key that arrives after a sign-out is
+    /// dropped too: it would sign the browser in to the account that left.
     func url(for url: URL) async -> URL {
         guard Self.isMoodlePage(url), !isRequesting, isKeyDue() else { return url }
-        isRequesting = true
-        defer { isRequesting = false }
         let generation = signInGeneration()
-        let key: Key?
-        do {
-            key = try await keySource()
-        } catch {
-            AppLogger.breadcrumb("autologin key unavailable: \(error)", category: "moodle")
-            return url
-        }
-        guard let key, !key.value.isEmpty, signInGeneration() == generation else { return url }
-        lastKeyAt = now()
+        guard let key = await answer(of: startKeyRequest(generation: generation)),
+              signInGeneration() == generation else { return url }
         return Self.signedInURL(key, opening: url) ?? url
+    }
+
+    /// Asks for a key in a task of its own, which runs to its end after the open that started it
+    /// stops waiting: Moodle starts ``keyInterval`` at the request, so a key that comes late counts.
+    private func startKeyRequest(generation: Int) -> Task<Key?, Never> {
+        isRequesting = true
+        return Task {
+            defer { isRequesting = false }
+            let key: Key?
+            do {
+                key = try await keySource()
+            } catch {
+                AppLogger.breadcrumb("autologin key unavailable: \(error)", category: "moodle")
+                return nil
+            }
+            guard let key, !key.value.isEmpty, signInGeneration() == generation else { return nil }
+            lastKeyAt = now()
+            return key
+        }
+    }
+
+    /// The key `request` ends with, or nil once ``keyWait`` passes first.
+    private func answer(of request: Task<Key?, Never>) async -> Key? {
+        let (answers, continuation) = AsyncStream<Key?>.makeStream()
+        Task { continuation.yield(await request.value) }
+        let deadline = Task { [sleep] in
+            await sleep(Self.keyWait)
+            continuation.yield(nil)
+        }
+        defer {
+            deadline.cancel()
+            continuation.finish()
+        }
+        for await key in answers { return key }
+        return nil
     }
 
     /// A last key stamped ahead of the clock, left by a clock set back, counts as old.
