@@ -1,6 +1,6 @@
 // The revision poll's change feed (https://github.com/tigerduck-app/tigerduck-app/issues/241):
-// what `ChangeFeedPlan` makes of a `GET /sync` page, when a read may move the watermark, and how
-// `PushAPIClient.fetchChanges` reads a page. Bodies copy `server/routes/sync/snapshot.py`'s.
+// what `ChangeFeedPlan` makes of a page, when a read may move the watermark, and how
+// `PushAPIClient.fetchChanges` reads the backend's bodies, linked from `PushAPI.SyncChangesPage`.
 import Foundation
 import Testing
 @testable import TigerDuck
