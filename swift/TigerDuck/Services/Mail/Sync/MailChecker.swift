@@ -115,7 +115,8 @@ actor MailChecker {
         notifier: MailNotifier(center: SystemMailNotificationCenter()),
         openSession: { try await MailAccountManager.shared.openSession() },
         onAuthFailure: { await MailAccountManager.shared.handleAuthFailure() },
-        cache: .shared
+        cache: .shared,
+        notificationsDenied: { await MailNotificationPermission.isDenied() }
     )
 
     nonisolated let notifier: MailNotifier
@@ -126,6 +127,9 @@ actor MailChecker {
     /// Where `prefetchBodies` puts the bodies of the mail a check notified about. `nil` turns the
     /// prefetch off — the default, so a test that is not about it never writes a cache anywhere.
     private let cache: MailCache?
+    /// Whether iOS denies the app notifications. Every check exists to notify, so while it does a
+    /// check would sign in for nothing. Tests default to allowed and never read the real setting.
+    private let notificationsDenied: @Sendable () async -> Bool
     private var isRunning = false
 
     init(
@@ -134,7 +138,8 @@ actor MailChecker {
         openSession: @escaping @Sendable () async throws -> any MailClient,
         onAuthFailure: @escaping @Sendable () async -> Void,
         now: @escaping @Sendable () -> Date = { Date() },
-        cache: MailCache? = nil
+        cache: MailCache? = nil,
+        notificationsDenied: @escaping @Sendable () async -> Bool = { false }
     ) {
         self.prefs = prefs
         self.notifier = notifier
@@ -142,6 +147,7 @@ actor MailChecker {
         self.onAuthFailure = onAuthFailure
         self.now = now
         self.cache = cache
+        self.notificationsDenied = notificationsDenied
     }
 
     /// The account is captured before the first `await` and re-checked (`stillSignedIn(as:)`)
@@ -156,6 +162,7 @@ actor MailChecker {
         guard prefs.notificationsEnabled else { return .skippedDisabled }
         isRunning = true
         defer { isRunning = false }
+        if await notificationsDenied() { return .skippedDisabled }
         prefs.lastCheckAt = now()
         let outcome = await run(for: account)
         // Re-checked here as well as inside the run: `run` ends with a `logout()` await of its

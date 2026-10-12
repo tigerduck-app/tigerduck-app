@@ -35,7 +35,8 @@ struct MailSettingsTests {
             for authFailed in [true, false] {
                 let offered = MailNotificationSettingsView.notificationsToggleIsEnabled(isLoggedIn: isLoggedIn, authFailed: authFailed)
                 let wouldReschedule = MailBackgroundRefresh.shouldRescheduleAfterHandling(
-                    featureEnabled: true, signedIn: isLoggedIn, notificationsEnabled: true, authFailed: authFailed)
+                    featureEnabled: true, signedIn: isLoggedIn, notificationsEnabled: true, authFailed: authFailed,
+                    notificationsDenied: false)
                 #expect(offered == wouldReschedule)
             }
         }

@@ -131,7 +131,7 @@ struct MailCheckerTests {
     }
 
     static func harness(inbox: [FakeMailClient.Message], validity: UInt32? = 1, marker: UInt32? = nil,
-                        cache: MailCache? = nil) -> Harness {
+                        cache: MailCache? = nil, notificationsDenied: Bool = false) -> Harness {
         let prefs = InMemoryMailPreferences()
         prefs.studentID = "B10000000"
         prefs.inboxUIDValidity = validity
@@ -147,7 +147,8 @@ struct MailCheckerTests {
                 prefs.authFailed = true
                 await authFailures.increment()
             },
-            cache: cache
+            cache: cache,
+            notificationsDenied: { notificationsDenied }
         )
         return Harness(checker: checker, prefs: prefs, fake: fake, center: center, authFailures: authFailures)
     }
@@ -298,6 +299,17 @@ struct MailCheckerTests {
         h.prefs.notificationsEnabled = false
         #expect(await h.checker.check(trigger: .backgroundTask) == .skippedDisabled)
         #expect(await h.checker.check(trigger: .foreground) == .skippedDisabled)
+    }
+
+    /// With the in-app switch on but notifications denied in iOS, nothing a check finds can be
+    /// shown, so it must not sign in at all.
+    @Test func deniedNotificationPermissionSkipsEveryCheckWithoutSigningIn() async {
+        let h = Self.harness(inbox: [FakeMailClient.message(uid: 1)], marker: nil, notificationsDenied: true)
+        #expect(await h.checker.check(trigger: .backgroundTask) == .skippedDisabled)
+        #expect(await h.checker.check(trigger: .foreground) == .skippedDisabled)
+        #expect(await h.fake.calls.isEmpty)
+        #expect(h.prefs.lastCheckAt == nil)
+        #expect(h.prefs.inboxNextUID == nil)
     }
 
     @Test func signedOutSkipsEverything() async {
