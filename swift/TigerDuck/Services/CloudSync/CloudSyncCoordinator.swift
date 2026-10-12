@@ -260,6 +260,14 @@ final class CloudSyncCoordinator {
             moodleCourseId: moodleCourseId, ignore: ignore, stamp: Date()))
     }
 
+    /// For Use Server, which takes the server's settings over the ones still on their way up.
+    func discardCourseIgnores() async {
+        await outbox.discard { op in
+            if case .courseIgnore = op { return true }
+            return false
+        }
+    }
+
     /// `CourseTombstone` keys of the courses whose ignore setting is queued or parked, not yet on
     /// the server, which a pull leaves as they are here. A numeric id sent alone changes no setting.
     func pendingCourseIgnoreKeys() async -> Set<String> {

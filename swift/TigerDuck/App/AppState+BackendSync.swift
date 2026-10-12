@@ -368,6 +368,14 @@ extension AppState {
         ))
     }
 
+    /// The courses Keep Local stops ignoring on the server: ignored there, not on this device.
+    nonisolated static func courseIgnoresToClear(
+        server: [ServerIgnoredCourse],
+        local: Set<String>
+    ) -> [ServerIgnoredCourse] {
+        server.filter { !local.contains($0.key) }
+    }
+
     /// Whether the re-enabled Assignments switch's check finds the course settings differ, in the
     /// terms a pull would apply them to. A backend without the setting has none to compare.
     nonisolated static func ignoredCoursesDiffer(

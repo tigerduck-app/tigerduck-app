@@ -62,6 +62,58 @@ struct CourseIgnoreOutboxTests {
         #expect(await outbox.pendingCount() == 0)
         #expect(await outbox.parkedSnapshot().map(\.op.dedupKey) == [Self.setting(true).dedupKey])
     }
+
+    private static let isSetting: @Sendable (SyncOp) -> Bool = { op in
+        if case .courseIgnore = op { return true }
+        return false
+    }
+
+    private static let colour = SyncOp.courseOverride(
+        semester: "1151", moodleId: "1151EE2005301", customName: nil, colorHex: "#FF6B6B",
+        locale: nil, stamp: Date())
+
+    @Test("Discarding the settings drops the queued and parked ones and keeps every other edit")
+    func discardDropsOnlyTheSettings() async {
+        let outbox = SyncOutbox(directory: Self.freshDirectory())
+        await outbox.enqueue(Self.setting(true))
+        for _ in 0..<SyncOutbox.maxAttempts {
+            await outbox.drain { _ in throw PushAPIError.httpStatus(404, body: "") }
+        }
+        await outbox.enqueue(.courseIgnore(semester: "1151", courseNo: "EE2005301", moodleId: "1151EE2005301",
+                                           moodleCourseId: nil, ignore: false, stamp: Date()))
+        await outbox.enqueue(Self.colour)
+
+        await outbox.discard(where: Self.isSetting)
+
+        #expect(await outbox.snapshot().map(\.op.dedupKey) == [Self.colour.dedupKey])
+        #expect(await outbox.parkedSnapshot().isEmpty)
+    }
+
+    @Test("A drain under way neither keeps nor parks a setting discarded while it ran")
+    func drainDoesNotBringADiscardedSettingBack() async {
+        let outbox = SyncOutbox(directory: Self.freshDirectory())
+        await outbox.enqueue(Self.setting(true))
+        await outbox.enqueue(Self.colour)
+
+        // Refused once, then discarded while the colour's request is out: no copy is kept.
+        await outbox.drain { op in
+            if case .courseIgnore = op { throw PushAPIError.httpStatus(404, body: "") }
+            await outbox.discard(where: Self.isSetting)
+        }
+        #expect(await outbox.snapshot().isEmpty)
+
+        // Discarded while its own request is out, on the attempt that would park it.
+        await outbox.enqueue(Self.setting(true))
+        for _ in 0..<(SyncOutbox.maxAttempts - 1) {
+            await outbox.drain { _ in throw PushAPIError.httpStatus(404, body: "") }
+        }
+        await outbox.drain { _ in
+            await outbox.discard(where: Self.isSetting)
+            throw PushAPIError.httpStatus(404, body: "")
+        }
+        #expect(await outbox.snapshot().isEmpty)
+        #expect(await outbox.parkedSnapshot().isEmpty)
+    }
 }
 
 @MainActor
@@ -176,6 +228,21 @@ struct CourseIgnoreCoordinatorTests {
     }
 }
 
+extension CourseIgnoreCoordinatorTests {
+    @Test("Use Server drops the settings still waiting to go up, and leaves the marks")
+    func useServerDropsWaitingSettings() async {
+        let coordinator = Self.makeCoordinator(Backend()) { false }
+        await coordinator.enqueueCourseIgnore(semester: "1151", courseNo: "CS1001301", moodleId: "1151CS1001301",
+                                              moodleCourseId: nil, ignore: true)
+        await coordinator.enqueueAssignmentOverride(moodleCourseId: 0, moodleAssignmentId: 42, localStatus: "ignored")
+
+        await coordinator.discardCourseIgnores()
+
+        #expect(await coordinator.pendingCourseIgnoreKeys().isEmpty)
+        #expect(await coordinator.pendingAssignmentOverrideIds() == ["42"])
+    }
+}
+
 /// What a full sync reads from the snapshot's `course_overrides` (`AppState+BackendSync.swift`).
 @MainActor
 struct CourseIgnorePullTests {
@@ -249,5 +316,14 @@ struct CourseIgnorePullTests {
 
         #expect(toSend.map { $0.moodleId } == ["1151CS1"])
         #expect(toSend.map { $0.moodleCourseId } == [4242])
+    }
+
+    @Test("Keep Local stops ignoring on the server what this device does not ignore")
+    func keepLocalClearsServerOnlySettings() throws {
+        let server = try #require(AppState.serverIgnoredCourses([Self.row("CS1"), Self.row("EE2")]))
+
+        let cleared = AppState.courseIgnoresToClear(server: server, local: ["1151:CS1", "1142:GE3"])
+
+        #expect(cleared.map(\.key) == ["1151:EE2"])
     }
 }

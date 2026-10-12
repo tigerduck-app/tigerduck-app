@@ -155,6 +155,14 @@ actor SyncOutbox {
         persist()
     }
 
+    /// Drops the queued and parked ops `isDropped` names, edits the user chose to throw away. A
+    /// drain under way keeps none of them; one already sent stays sent.
+    func discard(where isDropped: @Sendable (SyncOp) -> Bool) {
+        entries.removeAll { isDropped($0.op) }
+        parked.removeAll { isDropped($0.op) }
+        persist()
+    }
+
     /// Queues every parked mark again with one attempt left. One whose old copy a drain still
     /// holds stays parked: that drain drops the copy when it ends, so requeuing would lose both.
     func requeueParked() {
@@ -212,9 +220,11 @@ actor SyncOutbox {
             let newlyEnqueued = entries.filter { !snapshotIds.contains($0.id) }
             // A mid-drain enqueue can share a dedupKey with a retained entry. The new op is the
             // last writer, so drop the retained entry it supersedes; keeping both would make the
-            // next drain PATCH the stale value before the fresh one.
+            // next drain PATCH the stale value before the fresh one. A discarded one goes too.
             let freshKeys = Set(newlyEnqueued.map { $0.op.dedupKey })
-            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) } + newlyEnqueued
+            let stillQueued = Set(entries.map(\.id))
+            entries = kept.filter { !freshKeys.contains($0.op.dedupKey) && stillQueued.contains($0.id) }
+                + newlyEnqueued
             parked.removeAll { freshKeys.contains($0.op.dedupKey) }
             persist()
         }
@@ -268,7 +278,8 @@ actor SyncOutbox {
         }
         logger.warning("Outbox: gave up on \(kind, privacy: .public) after \(Self.maxAttempts) attempts")
         AppLogger.captureError(error, context: ["phase": "cloudSync.outbox.giveUp", "op": kind])
-        guard parks else { return }
+        // One discarded or superseded while its request was out is not parked either.
+        guard parks, entries.contains(where: { $0.id == entry.id }) else { return }
         parked.removeAll { $0.op.dedupKey == entry.op.dedupKey }
         parked.append(entry)
     }
