@@ -36,4 +36,28 @@ struct MoreNavigationTests {
         let unbacked = AppFeature.moreFeatures.filter { !destinationsWithRealPages.contains($0) }
         #expect(unbacked.isEmpty, "More rows with no real destination: \(unbacked)")
     }
+
+    @Test func unpinnedClassTableOpensThroughMore() {
+        // The class table widgets open `tigerduck://classtable`. Selecting a tab the bar does
+        // not show breaks the `TabView`, so More takes the selection and pushes the page.
+        let route = AppFeature.tabRoute(to: .classTable, visibleTabs: [.home, .calendar])
+        #expect(route.tab == .more)
+        #expect(route.moreDeepLink == .classTable)
+    }
+
+    @Test func pinnedFeatureOpensItsOwnTab() {
+        let route = AppFeature.tabRoute(to: .classTable, visibleTabs: [.home, .classTable])
+        #expect(route.tab == .classTable)
+        #expect(route.moreDeepLink == nil)
+    }
+
+    @Test func removingEveryTabFallsBackToMore() {
+        #expect(AppFeature.selection(.home, keptOn: []) == .more)
+    }
+
+    @Test func removingTheSelectedTabSelectsTheFirstOneLeft() {
+        #expect(AppFeature.selection(.calendar, keptOn: [.classTable, .home]) == .classTable)
+        #expect(AppFeature.selection(.home, keptOn: [.classTable, .home]) == .home)
+        #expect(AppFeature.selection(.more, keptOn: [.classTable]) == .more)
+    }
 }

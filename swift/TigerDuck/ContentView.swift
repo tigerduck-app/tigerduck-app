@@ -87,10 +87,9 @@ struct MainTabView: View {
         ) {
             Button(String(localized: "action_got_it"), role: .cancel) { }
         }
-        .onChange(of: visibleTabs) { _, newTabs in
-            if selectedTab != .more, !newTabs.contains(selectedTab), let first = newTabs.first {
-                selectedTab = first
-            }
+        // `initial` too: the bar may open without Home, the starting selection.
+        .onChange(of: visibleTabs, initial: true) { _, newTabs in
+            selectedTab = AppFeature.selection(selectedTab, keptOn: newTabs)
         }
         .onAppear {
             drainPendingWidgetDestination()
@@ -157,12 +156,7 @@ struct MainTabView: View {
     /// downstream view clears it after acting.
     private func routeBulletinDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
         guard case .bulletin = link else { return }
-        if visibleTabs.contains(.announcements) {
-            selectedTab = .announcements
-        } else {
-            selectedTab = .more
-            appState.pendingMoreDeepLink = .announcements
-        }
+        open(.announcements)
     }
 
     /// Switches to the School Mail tab (or routes via More if it isn't
@@ -171,35 +165,32 @@ struct MainTabView: View {
     /// never opens the feature on a build where it's hidden.
     private func routeSchoolMailDeepLinkIfNeeded(_ link: AppState.DeepLink?) {
         guard case .schoolMail = link, SchoolMailAvailability.isEnabled else { return }
-        if visibleTabs.contains(.schoolMail) {
-            selectedTab = .schoolMail
-        } else {
-            selectedTab = .more
-            appState.pendingMoreDeepLink = .schoolMail
-        }
+        open(.schoolMail)
     }
     #endif
+
+    private func open(_ feature: AppFeature) {
+        let route = AppFeature.tabRoute(to: feature, visibleTabs: visibleTabs)
+        selectedTab = route.tab
+        if let page = route.moreDeepLink {
+            appState.pendingMoreDeepLink = page
+        }
+    }
 
     private func drainPendingWidgetDestination() {
         guard let destination = appState.pendingWidgetDestination else { return }
         switch destination {
         case .library:
-            // Disabled: open More with an "enable first" alert, as Android does. Enabled
-            // but unpinned: a selection no `Tab` matches breaks the `TabView`, so MoreView
-            // pushes Library; switching to More alone would never show the QR.
+            // Disabled: open More with an "enable first" alert, as Android does. Enabled but
+            // unpinned, MoreView pushes Library; switching to More alone would never show the QR.
             if appState.libraryFeatureEnabled {
-                if visibleTabs.contains(.library) {
-                    selectedTab = .library
-                } else {
-                    selectedTab = .more
-                    appState.pendingMoreDeepLink = .library
-                }
+                open(.library)
             } else {
                 selectedTab = .more
                 appState.pendingLibraryEnablePrompt = true
             }
         case .classTable:
-            selectedTab = .classTable
+            open(.classTable)
         }
         appState.clearPendingWidgetDestination()
     }
