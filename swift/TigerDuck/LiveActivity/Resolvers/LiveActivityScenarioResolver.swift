@@ -136,7 +136,7 @@ struct LiveActivityScenarioResolver {
             countdownTarget: assignment.dueDate,
             progressStart: progressStart,
             accentHex: accentHex,
-            deepLink: assignment.moodleDeepLink,
+            deepLink: WidgetURLRouter.assignmentURL(id: assignment.assignmentId),
             sourceId: assignment.assignmentId
         )
     }

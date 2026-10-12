@@ -335,4 +335,25 @@ struct LiveActivityScenarioResolverTests {
         #expect(snapshot.progressStart == due.addingTimeInterval(-8 * 3600))
         #expect(snapshot.sourceId == "42")
     }
+
+    @Test func assignmentTapOpensTigerDuck() {
+        // The tap goes to TigerDuck's own link, which `TigerDuckApp` opens in the Moodle app or
+        // the web page, rather than to the `moodlemobile://` one the assignment has.
+        let assignment = SDAssignment(
+            assignmentId: "42",
+            courseNo: "CS101",
+            courseName: "Algorithms",
+            title: "Lab 3",
+            dueDate: LiveActivityScenarioCases.tuesday(23, 59),
+            moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=5501"
+        )
+
+        let snapshot = LiveActivityScenarioResolver.assignmentSnapshot(
+            assignment: assignment,
+            leadTime: 8 * 3600,
+            accentHex: 0
+        )
+
+        #expect(snapshot.deepLink?.absoluteString == "tigerduck://assignment/42")
+    }
 }

@@ -111,6 +111,13 @@ struct TigerDuckApp: App {
                     UNUserNotificationCenter.current().setBadgeCount(0)
                 }
                 .onOpenURL { url in
+                    if let id = WidgetURLRouter.assignmentId(from: url) {
+                        let assignments = DataCache.shared.loadAssignments()
+                        if let assignment = assignments.first(where: { $0.assignmentId == id }) {
+                            Self.openInMoodle(assignment)
+                        }
+                        return
+                    }
                     guard let destination = WidgetURLRouter.route(url) else { return }
                     appState.openFromWidget(destination)
                 }
