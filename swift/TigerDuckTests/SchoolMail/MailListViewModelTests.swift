@@ -475,29 +475,51 @@ struct MailListViewModelTests {
 
     /// A previous visit cached rows below the newest window, and a refresh renews only the window.
     /// Paging back lists those rows again, so mail read on webmail since shows read and mail
-    /// deleted there goes, instead of both staying as cached on every later launch.
+    /// deleted there goes, instead of both staying as cached on every later launch. 71 and 70 sit
+    /// at the edges of the two windows, where no visible row of either one bounds them.
     @Test func pagingBackRelistsTheRowsAPreviousVisitCached() async throws {
         let h = Self.harness(inboxCount: 120)
         h.cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 120,
                                         summaries: (UInt32(21)...120).reversed().map { SchoolMailTestDoubles.summary(uid: $0) },
                                         oldestLoadedSequence: 21, uidNext: 121))
+        let deleted: Set<UInt32> = [60, 70, 71]
         await h.fake.update { fake in
             fake.folders["INBOX"] = fake.folders["INBOX"]?.map { message in
                 var message = message
                 if message.summary.uid == 69 { message.summary.isSeen = true }
-                if message.summary.uid == 60 { message.summary.isDeleted = true }
+                if deleted.contains(message.summary.uid) { message.summary.isDeleted = true }
+                return message
+            }
+        }
+        await h.model.load()
+        #expect(!h.model.rows.contains { $0.uid == 71 })
+        let last = try #require(h.model.rows.last)
+        #expect(last.uid == 21)
+        await h.model.loadMoreIfNeeded(after: last)
+        #expect(h.model.rows.first { $0.uid == 69 }?.summary.isSeen == true)
+        #expect(!h.model.rows.contains { deleted.contains($0.uid) })
+        // The relisted rows added no last row to page from, so the same call went on to older mail.
+        #expect(h.model.rows.last?.uid == 1)
+        #expect(h.model.rows.count == 117)
+    }
+
+    /// A page of nothing but `\Deleted` mail adds no last row either, and must not end the paging
+    /// while older mail is still there.
+    @Test func aPageOfOnlyDeletedMailDoesNotEndThePaging() async throws {
+        let h = Self.harness(inboxCount: 110)
+        await h.fake.update { fake in
+            fake.folders["INBOX"] = fake.folders["INBOX"]?.map { message in
+                var message = message
+                if (11...60).contains(message.summary.uid) { message.summary.isDeleted = true }
                 return message
             }
         }
         await h.model.load()
         let last = try #require(h.model.rows.last)
-        #expect(last.uid == 21)
+        #expect(last.uid == 61)
         await h.model.loadMoreIfNeeded(after: last)
-        #expect(h.model.rows.first { $0.uid == 69 }?.summary.isSeen == true)
-        #expect(!h.model.rows.contains { $0.uid == 60 })
-        // The relisted rows added no last row to page from, so the same call went on to older mail.
         #expect(h.model.rows.last?.uid == 1)
-        #expect(h.model.rows.count == 119)
+        #expect(h.model.rows.count == 60)
     }
 
     /// However far a folder was paged, its cache keeps the newest rows only, and that copy pages

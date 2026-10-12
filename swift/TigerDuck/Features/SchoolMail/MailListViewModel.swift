@@ -255,6 +255,7 @@ final class MailListViewModel {
         defer { isPaginating = false }
         for (folder, first) in cursors {
             var cursor: Int? = first
+            var extraPages = 0
             while let older = cursor {
                 do {
                     let next = try await session.use { client in
@@ -268,13 +269,19 @@ final class MailListViewModel {
                         await recoverFromFolderChange(folder)
                         return
                     }
-                    // A page of rows a previous visit cached, none below the lowest row listed, adds
-                    // no last row to ask for more with, so paging goes on past them.
-                    let floor = next.summaries.map(\.uid).min()
-                    let relisted = floor.map { floor in page.summaries.contains { $0.uid <= floor } } ?? false
-                    pages[folder] = Self.mergeOlderPage(next, into: page)
+                    let lowest = page.summaries.map(\.uid).min()
+                    let merged = Self.mergeOlderPage(next, into: page)
+                    pages[folder] = merged
                     rebuildRows()
-                    cursor = relisted ? next.oldestLoadedSequence : nil
+                    // A page holding only rows a previous visit cached, or only `\Deleted` mail, adds
+                    // no row below the last one, and nothing would ask for more, so a few more follow.
+                    let addedOlder = lowest.map { lowest in merged.summaries.contains { $0.uid < lowest } } ?? !merged.summaries.isEmpty
+                    if addedOlder || extraPages == MailConstants.emptyWindowWalkbackPages {
+                        cursor = nil
+                    } else {
+                        cursor = next.oldestLoadedSequence
+                        extraPages += 1
+                    }
                 } catch MailClientError.folderChanged {
                     await recoverFromFolderChange(folder)
                     return
@@ -823,7 +830,7 @@ final class MailListViewModel {
         let fromCache = cachePaintedFolders.remove(folder) != nil
         let existing = previous?.summaries ?? []
         let windowHidEverything = fresh.summaries.isEmpty && fresh.messageCount > 0
-        let windowFloor = fresh.summaries.last?.uid
+        let windowFloor = fresh.windowUIDs?.lowerBound ?? fresh.summaries.last?.uid
         let keptExisting: [MailSummary]
         if windowHidEverything {
             keptExisting = existing
@@ -850,13 +857,12 @@ final class MailListViewModel {
     }
 
     /// Merges an older page the way `mergeFreshPage` merges the newest: every UID in `older` wins,
-    /// and a loaded row inside its UID range that it lacks was expunged, moved or flagged `\Deleted`
-    /// elsewhere and goes. Rows outside the range stay, as do all of them when `older` is empty.
+    /// and a loaded row inside the window's UIDs that it lacks was expunged, moved or flagged
+    /// `\Deleted` elsewhere and goes. Rows outside the window stay.
     nonisolated private static func mergeOlderPage(_ older: MailFolderPage, into page: MailFolderPage) -> MailFolderPage {
         var merged = page
-        let uids = older.summaries.map(\.uid)
-        if let top = uids.max(), let floor = uids.min() {
-            let kept = page.summaries.filter { $0.uid > top || $0.uid < floor }
+        if let window = older.windowUIDs ?? MailFolderPage.span(of: older.summaries.map(\.uid)) {
+            let kept = page.summaries.filter { !window.contains($0.uid) }
             merged.summaries = (older.summaries + kept).sorted { $0.uid > $1.uid }
         }
         merged.oldestLoadedSequence = older.oldestLoadedSequence

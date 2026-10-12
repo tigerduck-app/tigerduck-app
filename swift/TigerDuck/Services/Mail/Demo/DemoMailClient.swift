@@ -107,7 +107,8 @@ actor DemoMailClient: MailClient {
         return MailFolderPage(folder: folder, uidValidity: fixture.uidValidity, messageCount: total,
                               summaries: Array(slice.map(\.summary).filter { !$0.isDeleted }.reversed()),
                               oldestLoadedSequence: upper >= 1 && lower > 1 ? lower : nil,
-                              uidNext: (ordered.last?.summary.uid ?? 0) + 1)
+                              uidNext: (ordered.last?.summary.uid ?? 0) + 1,
+                              windowUIDs: MailFolderPage.span(of: slice.map(\.summary.uid)))
     }
 
     func summaries(folder: String, fromUID: UInt32) async throws -> [MailSummary] {

@@ -238,7 +238,8 @@ actor FakeMailClient: MailClient {
             folder: folder, uidValidity: uidValidity[folder] ?? 1, messageCount: total,
             summaries: Array(slice.map(\.summary).filter { !$0.isDeleted }.reversed()),
             oldestLoadedSequence: upper >= 1 && lower > 1 ? lower : nil,
-            uidNext: nextUID(folder)
+            uidNext: nextUID(folder),
+            windowUIDs: MailFolderPage.span(of: slice.map(\.summary.uid))
         )
     }
 

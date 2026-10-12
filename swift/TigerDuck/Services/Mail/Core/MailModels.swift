@@ -219,6 +219,14 @@ nonisolated struct MailFolderPage: Codable, Sendable {
     /// The folder's UIDNEXT when its newest page was fetched. Mail at or above it is not in this
     /// page. Nil in pages cached before it was recorded.
     var uidNext: UInt32? = nil
+    /// The UIDs a fetched window spans, the `\Deleted` mail `summaries` leaves out included, so a
+    /// merge knows which listed rows the window answered for. Nil in a page merged from several.
+    var windowUIDs: ClosedRange<UInt32>? = nil
+
+    static func span(of uids: [UInt32]) -> ClosedRange<UInt32>? {
+        guard let low = uids.min(), let high = uids.max() else { return nil }
+        return low...high
+    }
 }
 
 nonisolated struct MailboxStatusInfo: Equatable, Sendable {

@@ -148,7 +148,8 @@ actor LiveMailClient: MailClient {
             let summaries = infos.compactMap(Self.summary(from:)).filter { !$0.isDeleted }.sorted { $0.uid > $1.uid }
             return MailFolderPage(folder: folder, uidValidity: selection.uidValidity.value, messageCount: total,
                                   summaries: summaries, oldestLoadedSequence: lower > 1 ? lower : nil,
-                                  uidNext: selection.uidNext.value)
+                                  uidNext: selection.uidNext.value,
+                                  windowUIDs: MailFolderPage.span(of: infos.compactMap { $0.uid?.value }))
         }
     }
 
