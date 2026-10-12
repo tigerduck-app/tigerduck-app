@@ -80,5 +80,17 @@ struct CourseColorPickTests {
         #expect(apply(once) == once)
         #expect(apply(start) == once)
     }
+
+    @Test("A displaced course merged from another device is found among the manual rows")
+    func displacedMergedCourseHasAnId() {
+        let picked = SDCourse(courseNo: "CS1", courseName: "CS1", moodleIdNumber: "1151CS1")
+        let enrolled = SDCourse(courseNo: "CS2", courseName: "CS2", moodleIdNumber: "1151CS2")
+        let merged = SDCourse(courseNo: "CS3", courseName: "CS3", moodleIdNumber: "1151CS3", semester: "1151")
+        let manual = SDCourse(courseNo: "CS4", courseName: "CS4", semester: "1151")
+
+        let ids = AppState.moodleIdsByCourseNo(picked: picked, termCourses: [enrolled], userAdded: [merged, manual])
+
+        #expect(ids == ["CS1": "1151CS1", "CS2": "1151CS2", "CS3": "1151CS3"])
+    }
 }
 

@@ -46,18 +46,30 @@ extension AppState {
         guard Defaults[.cloudSyncEnabled] else { return }
         var colors = changed
         colors[picked.courseNo] = hex & 0xFFFFFF
-        var moodleIds: [String: String] = [:]
-        moodleIds[picked.courseNo] = picked.moodleIdNumber
-        if colors.count > 1 {
-            for semester in SemesterCatalog.availableSemesters() {
-                for course in DataCache.shared.loadCourses(semester: semester) where moodleIds[course.courseNo] == nil {
-                    moodleIds[course.courseNo] = course.moodleIdNumber
-                }
-            }
-        }
+        let moodleIds = colors.count > 1
+            ? Self.moodleIdsByCourseNo(
+                picked: picked,
+                termCourses: SemesterCatalog.availableSemesters().flatMap { DataCache.shared.loadCourses(semester: $0) },
+                userAdded: DataCache.shared.loadUserAddedCourses()
+            )
+            : Self.moodleIdsByCourseNo(picked: picked, termCourses: [], userAdded: [])
         for override in Self.courseColorOverrides(colors, moodleIds: moodleIds) {
             syncCourseOverride(moodleCourseId: override.moodleId, colorHex: override.colorHex)
         }
+    }
+
+    /// The picked course's own id first, then the cached terms', newest first, then the manual and
+    /// merged rows: a row merged from another device's upload carries a Moodle id too.
+    static func moodleIdsByCourseNo(
+        picked: SDCourse,
+        termCourses: [SDCourse],
+        userAdded: [SDCourse]
+    ) -> [String: String] {
+        var ids: [String: String] = [:]
+        for course in [picked] + termCourses + userAdded where ids[course.courseNo] == nil {
+            ids[course.courseNo] = course.moodleIdNumber
+        }
+        return ids
     }
 
     nonisolated static func courseColorOverrides(
