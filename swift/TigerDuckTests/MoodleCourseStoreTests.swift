@@ -260,6 +260,29 @@ struct MoodleCourseStoreTests {
         #expect(site.discussionPages == [0, 1, 0, 1])
     }
 
+    @Test("a refresh asked for during another joins it rather than fetching the list again")
+    func overlappingRefreshesFetchOnce() async throws {
+        let folder = Folder()
+        let site = Site()
+        site.set(pages: [[Self.discussion(801)]])
+        let firstPage = ManualSleeper()
+        let store = Self.store(folder, site: site, beforePage: { page, earlier in
+            if page == 0, earlier == 1 { await firstPage.sleep(for: .zero) }
+        })
+        await store.refreshForums()
+        await store.refreshAnnouncements()
+
+        let timed = Task { await store.refreshAnnouncements() }
+        try await firstPage.waitUntilArmed()
+        let pull = Task { await store.refreshAnnouncements() }
+        for _ in 0..<5 { await Task.yield() }
+        await firstPage.fire()
+        await timed.value
+        await pull.value
+
+        #expect(site.discussionPages == [0, 0])
+    }
+
     @Test("a page that fails to load stays offered for a retry, and loads on it")
     func failedPageOffersARetry() async {
         let folder = Folder()

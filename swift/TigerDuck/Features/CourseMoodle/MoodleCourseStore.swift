@@ -184,6 +184,7 @@ final class MoodleCourseStore {
     @ObservationIgnored private let termCourseIds: [Int]
     @ObservationIgnored private let api: MoodleCourseAPI
     @ObservationIgnored private var listWork: Task<Void, Never>?
+    @ObservationIgnored private var announcementsRefresh: Task<Void, Never>?
 
     init(courseId: Int, termCourseIds: [Int], context: MoodleCacheContext, api: MoodleCourseAPI = .live) {
         self.courseId = courseId
@@ -239,8 +240,20 @@ final class MoodleCourseStore {
     }
 
     /// Fetches again every page shown so far. A complete answer also corrects the section row,
-    /// so a list that emptied takes its row with it.
+    /// so a list that emptied takes its row with it. A refresh asked for while one is queued or
+    /// running joins it, so a pull during a timed refresh fetches once.
     func refreshAnnouncements() async {
+        if let announcementsRefresh {
+            await announcementsRefresh.value
+            return
+        }
+        let task = Task { await refreshAnnouncementsInTurn() }
+        announcementsRefresh = task
+        await task.value
+        if announcementsRefresh == task { announcementsRefresh = nil }
+    }
+
+    private func refreshAnnouncementsInTurn() async {
         await serially { [self] in
             guard let forum = newsForum else { return }
             let pages = max(1, announcementList?.pageCount ?? 1)
