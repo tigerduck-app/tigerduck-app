@@ -308,12 +308,20 @@ extension AppState {
         guard let conflict = reenableConflict else { return }
         AppLogger.sync.info("[reenable] resolve: keepLocal=\(keepLocal, privacy: .public) categories=\(conflict.categories, privacy: .public)")
         reenableConflict = nil
-        // Subtract, not clear: a category re-enabled after this check started was not in this
-        // dialog, so clearing it would record a decision the user was never asked to make.
-        // Left pending, the next check presents it on its own.
-        Defaults[.pendingConflictCategories].subtract(conflict.categories)
         let coordinator = pushCoordinator
         Task {
+            if !keepLocal, conflict.categories.contains("assignments") {
+                // Before the subtract below: until then the pending check holds these in the
+                // outbox, and once it ends a drain could send them before they are dropped.
+                await cloudSyncCoordinator.discardAssignmentOverrides()
+                if conflict.serverIgnoredCourses != nil {
+                    await cloudSyncCoordinator.discardCourseIgnores()
+                }
+            }
+            // Subtract, not clear: a category re-enabled after this check started was not in this
+            // dialog, so clearing it would record a decision the user was never asked to make.
+            // Left pending, the next check presents it on its own.
+            Defaults[.pendingConflictCategories].subtract(conflict.categories)
             if keepLocal {
                 if conflict.categories.contains("courses"), CourseUploadPolicy.uploadsCourses {
                     let terms = SemesterCatalog.availableSemesters().map { semester in
@@ -402,11 +410,9 @@ extension AppState {
                     DataCache.shared.saveCourseCustomNames([:])
                 }
                 if conflict.categories.contains("assignments") {
-                    await cloudSyncCoordinator.discardAssignmentOverrides()
                     DataCache.shared.replaceArchivedAssignmentIds([])
                     DataCache.shared.replaceLocallyCompletedAssignmentIds([])
                     if conflict.serverIgnoredCourses != nil {
-                        await cloudSyncCoordinator.discardCourseIgnores()
                         DataCache.shared.replaceIgnoredAssignmentCourses([])
                     }
                 }
