@@ -95,8 +95,7 @@ actor DemoMailClient: MailClient {
     func status(folder: String) async throws -> MailboxStatusInfo {
         let messages = folders[folder] ?? []
         return MailboxStatusInfo(uidValidity: fixture.uidValidity,
-                                 uidNext: (messages.map(\.summary.uid).max() ?? 0) + 1,
-                                 unseen: messages.filter { !$0.summary.isSeen }.count)
+                                 uidNext: (messages.map(\.summary.uid).max() ?? 0) + 1)
     }
 
     func page(folder: String, olderThanSequence: Int?, pageSize: Int) async throws -> MailFolderPage {
@@ -107,7 +106,9 @@ actor DemoMailClient: MailClient {
         let slice = upper >= 1 ? Array(ordered[(lower - 1)..<upper]) : []
         return MailFolderPage(folder: folder, uidValidity: fixture.uidValidity, messageCount: total,
                               summaries: Array(slice.map(\.summary).filter { !$0.isDeleted }.reversed()),
-                              oldestLoadedSequence: upper >= 1 && lower > 1 ? lower : nil)
+                              oldestLoadedSequence: upper >= 1 && lower > 1 ? lower : nil,
+                              uidNext: (ordered.last?.summary.uid ?? 0) + 1,
+                              windowUIDs: MailFolderPage.span(of: slice.map(\.summary.uid)))
     }
 
     func summaries(folder: String, fromUID: UInt32) async throws -> [MailSummary] {
@@ -129,18 +130,19 @@ actor DemoMailClient: MailClient {
         return result
     }
 
-    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages: Bool) async throws -> MailMessageDetail {
         try assertUIDValidity(expectedUIDValidity)
         let stored = try find(folder: folder, uid: uid)
         var parts = [MailBodyPart(section: "1", contentType: "text/plain", charset: "utf-8", transferEncoding: "8bit",
                                   filename: nil, contentID: nil, size: stored.text.utf8.count, isAttachment: false)]
         parts += stored.attachments.keys.sorted { $0.section < $1.section }
         return MailMessageDetail(summary: stored.summary, messageID: "<demo-\(uid)@\(MailConstants.addressDomain)>",
-                                 inReplyTo: nil, references: nil, parts: parts, textBody: stored.text,
+                                 inReplyTo: nil, references: nil, replyTo: "", parts: parts, textBody: stored.text,
                                  htmlBody: stored.html, inlineImages: nil)
     }
 
-    func rawSource(folder: String, uid: UInt32) async throws -> Data {
+    func rawSource(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> Data {
+        try assertUIDValidity(expectedUIDValidity)
         let stored = try find(folder: folder, uid: uid)
         let mail = OutgoingMail(
             from: MailAddress(name: stored.summary.fromName, address: stored.summary.fromAddress ?? ""),

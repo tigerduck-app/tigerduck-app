@@ -15,6 +15,9 @@ actor FakeMailClient: MailClient {
 
     var folders: [String: [Message]] = [:]
     var uidValidity: [String: UInt32] = [:]
+    /// A folder's UIDNEXT when a test sets one, as after its newest mail was expunged; otherwise
+    /// one above its highest UID.
+    var uidNext: [String: UInt32] = [:]
     var loginError: MailClientError?
     var statusError: MailClientError?
     /// Simulates a `page` the server refused (e.g. unreachable partway through a session) —
@@ -85,11 +88,13 @@ actor FakeMailClient: MailClient {
     /// pin from a `nil` one; only the recorded argument can. Tests assert this rather than
     /// hoping a generation mismatch happens to be arranged.
     private(set) var attachmentPins: [UInt32?] = []
+    /// The UIDs of `detail` calls that asked for no inline images.
+    private(set) var detailsWithoutImages: [UInt32] = []
     private(set) var sent: [(message: Data, from: String, to: [String])] = []
     /// Commands currently gated by `hold(_:)`.
     private var heldCommands: Set<String> = []
-    /// One suspended, held command per name, waiting for `release(_:)`.
-    private var releaseGates: [String: CheckedContinuation<Void, Never>] = [:]
+    /// The suspended calls of each held command, waiting for `release(_:)`.
+    private var releaseGates: [String: [CheckedContinuation<Void, Never>]] = [:]
     /// Commands that have reached the gate at least once, which `waitForArrival(_:)` polls, so
     /// one that runs after the fact returns at once.
     private var arrivedCommands: Set<String> = []
@@ -115,7 +120,7 @@ actor FakeMailClient: MailClient {
     /// Lets a held command continue (and stops holding later ones).
     func release(_ command: String) {
         heldCommands.remove(command)
-        if let gate = releaseGates.removeValue(forKey: command) { gate.resume() }
+        for gate in releaseGates.removeValue(forKey: command) ?? [] { gate.resume() }
     }
 
     /// Returns once the named command has reached its gate, so the call really is in flight
@@ -128,7 +133,7 @@ actor FakeMailClient: MailClient {
     private func gate(_ command: String) async {
         arrivedCommands.insert(command)
         guard heldCommands.contains(command) else { return }
-        await withCheckedContinuation { releaseGates[command] = $0 }
+        await withCheckedContinuation { releaseGates[command, default: []].append($0) }
     }
 
     func releaseStatus() {
@@ -161,7 +166,8 @@ actor FakeMailClient: MailClient {
         messageID: String? = nil,
         /// Only the detail fetch carries headers, so this reaches `MailMessageDetail` and never
         /// the summary — the same split the real client has.
-        returnPath: String? = nil
+        returnPath: String? = nil,
+        replyTo: String? = nil
     ) -> Message {
         let subject = subject ?? "subject \(uid)"
         // Mirrors `LiveMailClient.summary`: a From with no usable address (a Mail2000 bounce's
@@ -175,7 +181,7 @@ actor FakeMailClient: MailClient {
             isExternal: address.map { !MailWarnings.isSchoolDomain(MailWarnings.domain(ofAddress: $0)) } ?? false
         )
         let detail = MailMessageDetail(summary: summary, messageID: messageID, inReplyTo: nil, references: nil,
-                                       returnPath: returnPath,
+                                       returnPath: returnPath, replyTo: replyTo,
                                        parts: [], textBody: text, htmlBody: html, inlineImages: nil)
         let raw = Data("From: \(from)\r\nSubject: \(subject)\r\nMessage-ID: \(messageID ?? "<\(uid)@fake>")\r\n\r\n\(text ?? "")\r\n".utf8)
         return Message(summary: summary, detail: detail, raw: raw, attachments: [:], messageID: messageID)
@@ -210,12 +216,11 @@ actor FakeMailClient: MailClient {
         calls.append("status \(folder)")
         await gate("status")
         if let statusError { throw statusError }
-        let messages = folders[folder] ?? []
-        return MailboxStatusInfo(
-            uidValidity: uidValidity[folder] ?? 1,
-            uidNext: (messages.map(\.summary.uid).max() ?? 0) + 1,
-            unseen: messages.filter { !$0.summary.isSeen }.count
-        )
+        return MailboxStatusInfo(uidValidity: uidValidity[folder] ?? 1, uidNext: nextUID(folder))
+    }
+
+    private func nextUID(_ folder: String) -> UInt32 {
+        uidNext[folder] ?? ((folders[folder] ?? []).map(\.summary.uid).max() ?? 0) + 1
     }
 
     func page(folder: String, olderThanSequence: Int?, pageSize: Int) async throws -> MailFolderPage {
@@ -232,7 +237,9 @@ actor FakeMailClient: MailClient {
         return MailFolderPage(
             folder: folder, uidValidity: uidValidity[folder] ?? 1, messageCount: total,
             summaries: Array(slice.map(\.summary).filter { !$0.isDeleted }.reversed()),
-            oldestLoadedSequence: upper >= 1 && lower > 1 ? lower : nil
+            oldestLoadedSequence: upper >= 1 && lower > 1 ? lower : nil,
+            uidNext: nextUID(folder),
+            windowUIDs: MailFolderPage.span(of: slice.map(\.summary.uid))
         )
     }
 
@@ -261,8 +268,9 @@ actor FakeMailClient: MailClient {
         return result
     }
 
-    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages: Bool) async throws -> MailMessageDetail {
         calls.append("detail \(folder) \(uid)")
+        if !inlineImages { detailsWithoutImages.append(uid) }
         await gate("detail")
         if let detailError { throw detailError }
         try assertUIDValidity(expectedUIDValidity, folder: folder)
@@ -275,15 +283,17 @@ actor FakeMailClient: MailClient {
         return detail
     }
 
-    func rawSource(folder: String, uid: UInt32) async throws -> Data {
+    func rawSource(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> Data {
         calls.append("rawSource \(folder) \(uid)")
         if let rawSourceError { throw rawSourceError }
+        try assertUIDValidity(expectedUIDValidity, folder: folder)
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.raw ?? Data()
     }
 
     func attachment(folder: String, uid: UInt32, part: MailBodyPart, expectedUIDValidity: UInt32?) async throws -> Data {
         calls.append("attachment \(uid) \(part.section)")
         attachmentPins.append(expectedUIDValidity)
+        await gate("attachment")
         try assertUIDValidity(expectedUIDValidity, folder: folder)
         return folders[folder]?.first(where: { $0.summary.uid == uid })?.attachments[part.section] ?? Data()
     }

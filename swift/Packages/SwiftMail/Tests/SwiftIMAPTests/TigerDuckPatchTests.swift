@@ -9,14 +9,14 @@ import Testing
 // rest of this test target does (see SearchCommandTests.swift).
 private typealias UID = SwiftMail.UID
 
-/// The TigerDuck patches this file pins: **patch 1** (the `.custom` certificate-verification
-/// policy) and **patch 3** (`CHARSET UTF-8` on `SEARCH`/`UID SEARCH` for non-ASCII criteria),
-/// plus the charset-resolver hook of **patch 2**. `VENDORED.md` lists all nine changes and
-/// names this file; it is the only test covering patches 1 and 3, so a re-vendor that drops it
-/// drops the only thing that would notice those patches going missing.
+/// The TigerDuck patches this file pins: patch 1 (the `.custom` certificate-verification
+/// policy) and patch 3 (`CHARSET UTF-8` on `SEARCH`/`UID SEARCH` for non-ASCII criteria),
+/// plus the charset-resolver hook of patch 2 and the transfer timeouts of patch 10.
+/// `VENDORED.md` lists every change and names this file; it is the only test covering patches
+/// 1, 3 and 10, so a re-vendor that drops it drops the only thing that would notice them going.
 ///
-/// Note what the patch-1 tests do and do not say. `.custom` keeps `certificateVerification` at
-/// `.fullVerification` so NIOSSL runs the callback at all — it does not mean NIOSSL still
+/// The patch-1 tests say less than they seem to. `.custom` keeps `certificateVerification` at
+/// `.fullVerification` so NIOSSL runs the callback at all; it does not mean NIOSSL still
 /// validates anything. The callback replaces BoringSSL's verification entirely, hostname
 /// checking included; the verifier owns the whole evaluation.
 @Suite("TigerDuck patches", .serialized, .timeLimit(.minutes(1)))
@@ -41,6 +41,15 @@ struct TigerDuckPatchTests {
         let c = MailCertificateVerifier(identifier: "other") { _, _ in true }
         #expect(MailCertificateVerificationPolicy.custom(a) == .custom(b))
         #expect(MailCertificateVerificationPolicy.custom(a) != .custom(c))
+    }
+
+    /// Patch 10. The timer starts when the command is sent and never resets on progress, so it
+    /// bounds the whole transfer of a message or part that can be tens of megabytes.
+    @Test("Message and part transfers get five minutes")
+    func transferTimeouts() {
+        #expect(FetchMessagePartCommand(identifier: UID(1), section: Section([1])).timeoutSeconds == 300)
+        #expect(FetchRawMessageCommand(identifier: UID(1)).timeoutSeconds == 300)
+        #expect(AppendCommand(mailboxName: "Sent", message: "x", flags: [], internalDate: nil).timeoutSeconds == 300)
     }
 
     @Test("A custom policy builds a client handler")

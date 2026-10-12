@@ -146,7 +146,8 @@ nonisolated final class MailCache: @unchecked Sendable {
 
     // MARK: Attachments
 
-    /// A fresh file for an opened attachment; removed by `clearAll()` (sign-out).
+    /// A fresh file for an opened attachment. No budget bounds these, so each call first deletes
+    /// those opened over a day earlier; `clearAll()` (sign-out) removes the rest.
     ///
     /// `filename` comes from the server (RFC 2047-decoded), so `.` or `..` would otherwise
     /// resolve `appendingPathComponent` up out of this call's fresh per-attachment UUID folder —
@@ -154,8 +155,10 @@ nonisolated final class MailCache: @unchecked Sendable {
     /// generic `attachment` instead; `/` is still replaced so nothing but the final path
     /// component can be attacker-influenced.
     func temporaryFileURL(filename: String) throws -> URL {
-        let folder = directory.appendingPathComponent("attachments", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let attachments = directory.appendingPathComponent("attachments", isDirectory: true)
+        let cutoff = Date().addingTimeInterval(-MailConstants.openedAttachmentLifetime)
+        lock.withLock { removeEntries(in: attachments, modifiedBefore: cutoff) }
+        let folder = attachments.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try createDirectory(folder)
         return folder.appendingPathComponent(Self.safeAttachmentName(filename))
     }
@@ -276,6 +279,14 @@ nonisolated final class MailCache: @unchecked Sendable {
         return urls.map { url in
             let values = try? url.resourceValues(forKeys: Set(keys))
             return (url, values?.fileSize ?? 0, values?.contentModificationDate ?? .distantPast)
+        }
+    }
+
+    private func removeEntries(in folder: URL, modifiedBefore cutoff: Date) {
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey]
+        let entries = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: Array(keys))) ?? []
+        for entry in entries where ((try? entry.resourceValues(forKeys: keys))?.contentModificationDate ?? .distantPast) < cutoff {
+            try? FileManager.default.removeItem(at: entry)
         }
     }
 

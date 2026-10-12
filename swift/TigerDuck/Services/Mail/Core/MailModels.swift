@@ -196,6 +196,9 @@ nonisolated struct MailMessageDetail: Codable, Sendable {
     /// simply reads back nil, and the mail is judged exactly as it was before) and so the
     /// existing call sites need no change.
     var returnPath: String? = nil
+    /// The `Reply-To` header, RFC 2047 decoded, and empty for mail without one. Nil when that is
+    /// unknown: the fetch carried no header section, or the body was cached before this field.
+    var replyTo: String? = nil
     var parts: [MailBodyPart]
     var textBody: String?
     var htmlBody: String?
@@ -213,12 +216,22 @@ nonisolated struct MailFolderPage: Codable, Sendable {
     var summaries: [MailSummary]
     /// Lowest sequence number loaded; nil once the oldest message is loaded.
     var oldestLoadedSequence: Int?
+    /// The folder's UIDNEXT when its newest page was fetched. Mail at or above it is not in this
+    /// page. Nil in pages cached before it was recorded.
+    var uidNext: UInt32? = nil
+    /// The UIDs a fetched window spans, the `\Deleted` mail `summaries` leaves out included, so a
+    /// merge knows which listed rows the window answered for. Nil in a page merged from several.
+    var windowUIDs: ClosedRange<UInt32>? = nil
+
+    static func span(of uids: [UInt32]) -> ClosedRange<UInt32>? {
+        guard let low = uids.min(), let high = uids.max() else { return nil }
+        return low...high
+    }
 }
 
 nonisolated struct MailboxStatusInfo: Equatable, Sendable {
     var uidValidity: UInt32
     var uidNext: UInt32
-    var unseen: Int?
 }
 
 nonisolated extension String {

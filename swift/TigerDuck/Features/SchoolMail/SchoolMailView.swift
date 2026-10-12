@@ -20,6 +20,8 @@ struct SchoolMailView: View {
     @State private var compose: MailComposeContext?
     /// Whether the search row is out — see `searchField`.
     @State private var isSearchRevealed = false
+    /// Between appearing and disappearing. A tab the user left still sees scene-phase changes.
+    @State private var isOnScreen = false
     @FocusState private var isSearchFocused: Bool
     @ScaledMetric(relativeTo: .largeTitle) private var heroIconSize: CGFloat = 36
     /// See the compose button in the header row: the glyph's own vertical bias, measured at
@@ -322,7 +324,10 @@ struct SchoolMailView: View {
                 onFolderRolesChanged: { roles in viewModel.adoptFolderRoles(roles) }
             )
         }
-        .onAppear { drainDeepLink() }
+        .onAppear {
+            isOnScreen = true
+            drainDeepLink()
+        }
         .onChange(of: appState.pendingDeepLink) { _, _ in drainDeepLink() }
         .sheet(item: $compose, onDismiss: { Task { await viewModel.refresh() } }) { context in
             MailComposeView(context: context, session: viewModel.session, folderRoles: viewModel.folderRoles,
@@ -333,10 +338,13 @@ struct SchoolMailView: View {
             await viewModel.refresh()
             viewModel.startPolling()
         }
-        .onDisappear { viewModel.stopPolling() }
+        .onDisappear {
+            isOnScreen = false
+            viewModel.stopPolling()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { viewModel.stopPolling() }
-            if phase == .active { viewModel.startPolling() }
+            if phase == .active, isOnScreen { viewModel.startPolling(pollFirst: true) }
         }
     }
 

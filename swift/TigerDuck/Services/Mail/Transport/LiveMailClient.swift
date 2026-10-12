@@ -122,27 +122,11 @@ actor LiveMailClient: MailClient {
 
     func status(folder: String) async throws -> MailboxStatusInfo {
         try await run {
-            // RFC 3501 §6.3.10: STATUS SHOULD NOT be used on the selected mailbox, so it runs
-            // before EXAMINE, never after. A rejected STATUS (`IMAPError.commandFailed`) only
-            // costs the unseen count; any other failure propagates through `map` like the rest.
-            let unseen: Int?
-            do {
-                unseen = try await self.imap.mailboxStatus(folder).unseenCount
-            } catch let error as IMAPError {
-                switch error {
-                case .commandFailed: unseen = nil
-                default: throw error
-                }
-            }
-            // `IMAPServer.mailboxStatus` asks STATUS for UIDNEXT/UIDVALIDITY only when the server
-            // advertises UIDPLUS, though both are base RFC 3501 items, and Mail2000 has no UIDPLUS.
-            // EXAMINE's response always carries them, the same source `page(folder:...)` uses.
+            // EXAMINE, not STATUS: `IMAPServer.mailboxStatus` asks STATUS for UIDNEXT and
+            // UIDVALIDITY only when the server advertises UIDPLUS, which Mail2000 does not, and
+            // EXAMINE's response always carries both, the same source `page(folder:...)` uses.
             let selection = try await self.imap.examineMailbox(folder)
-            return MailboxStatusInfo(
-                uidValidity: selection.uidValidity.value,
-                uidNext: selection.uidNext.value,
-                unseen: unseen
-            )
+            return MailboxStatusInfo(uidValidity: selection.uidValidity.value, uidNext: selection.uidNext.value)
         }
     }
 
@@ -153,7 +137,8 @@ actor LiveMailClient: MailClient {
             let upper = min((olderThanSequence ?? total + 1) - 1, total)
             guard upper >= 1 else {
                 return MailFolderPage(folder: folder, uidValidity: selection.uidValidity.value,
-                                      messageCount: total, summaries: [], oldestLoadedSequence: nil)
+                                      messageCount: total, summaries: [], oldestLoadedSequence: nil,
+                                      uidNext: selection.uidNext.value)
             }
             let lower = max(1, upper - pageSize + 1)
             let infos = try await self.imap.fetchMessageInfos(
@@ -162,7 +147,9 @@ actor LiveMailClient: MailClient {
             )
             let summaries = infos.compactMap(Self.summary(from:)).filter { !$0.isDeleted }.sorted { $0.uid > $1.uid }
             return MailFolderPage(folder: folder, uidValidity: selection.uidValidity.value, messageCount: total,
-                                  summaries: summaries, oldestLoadedSequence: lower > 1 ? lower : nil)
+                                  summaries: summaries, oldestLoadedSequence: lower > 1 ? lower : nil,
+                                  uidNext: selection.uidNext.value,
+                                  windowUIDs: MailFolderPage.span(of: infos.compactMap { $0.uid?.value }))
         }
     }
 
@@ -204,7 +191,7 @@ actor LiveMailClient: MailClient {
         }
     }
 
-    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> MailMessageDetail {
+    func detail(folder: String, uid: UInt32, expectedUIDValidity: UInt32?, inlineImages includeImages: Bool) async throws -> MailMessageDetail {
         try await run {
             let selection = try await self.imap.examineMailbox(folder)
             try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
@@ -232,7 +219,7 @@ actor LiveMailClient: MailClient {
                 } else if type.hasPrefix("text/html"), htmlBody == nil {
                     let data = try await self.imap.fetchAndDecodeMessagePartData(messageInfo: info, part: part)
                     htmlBody = MailCharset.decode(data, label: part.declaredCharset)
-                } else if type.hasPrefix("image/"), let cid = part.contentId,
+                } else if includeImages, type.hasPrefix("image/"), let cid = part.contentId,
                           (part.size ?? 0) <= MailConstants.maxInlineImageBytes {
                     let data = try await self.imap.fetchAndDecodeMessagePartData(messageInfo: info, part: part)
                     inlineImages[Self.bareContentID(cid)] = MailInlineImage(mimeType: type, data: data)
@@ -244,6 +231,7 @@ actor LiveMailClient: MailClient {
                 inReplyTo: info.inReplyTo.map(Self.angleBracketed),
                 references: info.references?.map(Self.angleBracketed),
                 returnPath: Self.returnPath(from: info),
+                replyTo: Self.replyTo(from: info),
                 parts: info.parts.map(Self.bodyPart(from:)),
                 textBody: textBody,
                 htmlBody: htmlBody,
@@ -333,6 +321,7 @@ actor LiveMailClient: MailClient {
             inReplyTo: info.inReplyTo.map(angleBracketed),
             references: info.references?.map(angleBracketed),
             returnPath: returnPath(from: info),
+            replyTo: replyTo(from: info),
             parts: message.parts.map(bodyPart(from:)),
             textBody: textBody,
             htmlBody: htmlBody,
@@ -348,9 +337,10 @@ actor LiveMailClient: MailClient {
         return MailCharset.decode(data, label: part.declaredCharset)
     }
 
-    func rawSource(folder: String, uid: UInt32) async throws -> Data {
+    func rawSource(folder: String, uid: UInt32, expectedUIDValidity: UInt32?) async throws -> Data {
         try await run {
-            _ = try await self.imap.examineMailbox(folder)
+            let selection = try await self.imap.examineMailbox(folder)
+            try Self.assertUIDValidity(expected: expectedUIDValidity, current: selection.uidValidity.value)
             return try await self.imap.fetchRawMessage(identifier: UID(uid))
         }
     }
@@ -753,6 +743,13 @@ actor LiveMailClient: MailClient {
     nonisolated static func returnPath(from info: MessageInfo) -> String? {
         info.additionalHeaderFields?.first { $0.name.lowercased() == "return-path" }?.value
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// `Reply-To` off the same header section as `returnPath`, decoded the way `MailAddress.parseList`
+    /// expects: empty when the section has none, nil when no section was fetched.
+    nonisolated static func replyTo(from info: MessageInfo) -> String? {
+        guard let fields = info.additionalHeaderFields else { return nil }
+        return fields.first { $0.name.lowercased() == "reply-to" }.map { RFC2047.decode($0.value) } ?? ""
     }
 
     nonisolated static func isAttachment(_ part: MessagePart) -> Bool {

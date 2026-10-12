@@ -59,6 +59,24 @@ struct MailMessageViewModelTests {
         #expect(h.model.plainText == "請立即驗證")
         #expect(h.model.warnings.contains(.externalSender(address: "admin@evil.example")))
         #expect(h.model.warnings.contains(.passwordBait))
+        // A prefetch leaves the inline images out; the open is what brings them.
+        #expect(await h.fake.detailsWithoutImages.isEmpty)
+    }
+
+    @Test func aReplyStartsFromTheOpenedMailsReplyTo() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, from: "teacher@mail.ntust.edu.tw",
+                                                    replyTo: "教務處 <office@mail.ntust.edu.tw>, b@x.tw"))
+        await h.model.load()
+        #expect(h.model.original?.replyTo?.map(\.address) == ["office@mail.ntust.edu.tw", "b@x.tw"])
+    }
+
+    /// A detail that does not say whether the mail has a Reply-To must not read as one without:
+    /// compose would answer the sender instead of looking it up.
+    @Test func aDetailWithoutItsHeaderSectionLeavesReplyToUnknown() async throws {
+        let h = Self.harness(FakeMailClient.message(uid: 5, replyTo: nil))
+        await h.model.load()
+        let original = try #require(h.model.original)
+        #expect(original.replyTo == nil)
     }
 
     @Test func htmlOnlyMailGetsAPlainTextView() async {
@@ -216,6 +234,18 @@ struct MailMessageViewModelTests {
 
     /// A failed source load must end the spinner in a terminal, retryable state rather than
     /// spinning forever.
+    /// The source is pinned to the generation the mail was opened under: after a folder
+    /// recreation its UID names another message, which must be neither shown nor cached here.
+    @Test func aSourceFetchAfterAFolderRecreationIsRefused() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5))
+        await h.model.load()
+        await h.fake.update { $0.uidValidity["INBOX"] = 2 }
+        await h.model.loadSource()
+        #expect(h.model.source == nil)
+        #expect(h.model.sourceLoadFailed)
+        #expect(h.cache.loadSource(folder: "INBOX", uidValidity: 1, uid: 5) == nil)
+    }
+
     @Test func aFailedSourceLoadEndsTheSpinnerWithARetryableFailedState() async {
         let h = Self.harness(FakeMailClient.message(uid: 5))
         await h.model.load()
@@ -459,6 +489,29 @@ struct MailMessageViewModelTests {
         #expect(await h.fake.attachmentPins == [1])
     }
 
+    /// A large attachment takes a minute to arrive, so a second tap is expected. It must not queue
+    /// another whole download on the connection the list's poll waits for too.
+    @Test func aRepeatTapDuringAnAttachmentDownloadIsIgnored() async {
+        let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
+                                filename: "課程.pdf", contentID: nil, size: 4, isAttachment: true)
+        var message = FakeMailClient.message(uid: 5)
+        message.detail?.parts = [part]
+        message.attachments = ["2": Data("%PDF".utf8)]
+        let h = Self.harness(message)
+        await h.model.load()
+        await h.fake.hold("attachment")
+        let first = Task { await h.model.prepareAttachment(part) }
+        await h.fake.waitForArrival("attachment")
+        #expect(h.model.downloading == ["2"])
+        let second = Task { await h.model.prepareAttachment(part) }
+        await Task.yield()
+        await h.fake.release("attachment")
+        #expect(await first.value != nil)
+        #expect(await second.value == nil)
+        #expect(h.model.downloading.isEmpty)
+        #expect((await h.fake.calls).filter { $0.hasPrefix("attachment ") }.count == 1)
+    }
+
     /// `prepareAttachment` is where a mail's bytes leave the app — into a temp file, then Quick
     /// Look or the share sheet. `load()` pins its `detail`, but the part fetch that follows used
     /// to carry no pin at all, so a folder recreated between opening the mail and tapping the
@@ -477,6 +530,8 @@ struct MailMessageViewModelTests {
         #expect(await h.model.prepareAttachment(part) == nil)
         #expect(h.model.actionError == MailAccountManager.LoginError(MailClientError.folderChanged).message)
         #expect(await h.fake.attachmentPins == [1])
+        // A failed download gives the row its actions back.
+        #expect(h.model.downloading.isEmpty)
     }
 
     /// Mirrors Android's `SchoolMailMessageViewModel.needsConfirmation`: a `text/html` or

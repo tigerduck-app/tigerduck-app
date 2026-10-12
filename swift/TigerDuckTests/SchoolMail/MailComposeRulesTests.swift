@@ -98,6 +98,16 @@ struct MailComposeRulesTests {
         #expect(text.hasSuffix("--B--\r\n"))
     }
 
+    @Test func attachmentsAreBase64InLinesOf76() {
+        let data = Data((0..<200).map { UInt8($0) })
+        let text = Self.text(Self.mail(attachments: [OutgoingAttachment(filename: "a.bin", mimeType: "application/octet-stream", data: data)]))
+        let encoded = data.base64EncodedString()
+        let lines = stride(from: 0, to: encoded.count, by: 76).map { start in
+            String(encoded.dropFirst(start).prefix(76))
+        }
+        #expect(text.contains("\r\n\r\n" + lines.joined(separator: "\r\n") + "\r\n--B--\r\n"))
+    }
+
     /// A hostile `mimeType` (whitespace, a control character, or anything else that
     /// isn't a plain `type/subtype` token) must never be written into the `Content-Type`
     /// header verbatim; it falls back to a safe default instead.
