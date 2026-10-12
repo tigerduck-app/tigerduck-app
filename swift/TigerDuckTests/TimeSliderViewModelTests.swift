@@ -268,6 +268,41 @@ struct TimeSliderViewModelTests {
         vm.isUserDragging = false
     }
 
+    /// Clashing courses stack in lanes on the track: A and C never meet, so beside B they share
+    /// one of two lanes, and a course that meets none keeps the full height.
+    @Test func clashingSlotsStackInLanes() {
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
+        func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
+        let vm = TimeSliderViewModel()
+
+        vm.timeSlots = [
+            makeMockSlot(courseNo: "A", start: at(9), end: at(11)),
+            makeMockSlot(courseNo: "B", start: at(10), end: at(12)),
+            makeMockSlot(courseNo: "C", start: at(11), end: at(13)),
+            makeMockSlot(courseNo: "D", start: at(14), end: at(15)),
+        ]
+
+        #expect(vm.slotLanes["A"] == TimeSliderLane(lane: 0, count: 2))
+        #expect(vm.slotLanes["B"] == TimeSliderLane(lane: 1, count: 2))
+        #expect(vm.slotLanes["C"] == TimeSliderLane(lane: 0, count: 2))
+        #expect(vm.slotLanes["D"] == nil)
+    }
+
+    /// A class that ends as the next one starts does not clash with it.
+    @Test func backToBackSlotsKeepTheFullHeight() {
+        let calendar = AppConstants.taipeiCalendar
+        let today = calendar.startOfDay(for: AppClock.now())
+        func at(_ hour: Int) -> Date { calendar.date(byAdding: .hour, value: hour, to: today)! }
+
+        let lanes = TimeSliderViewModel.lanes(for: [
+            makeMockSlot(courseNo: "A", start: at(9), end: at(10)),
+            makeMockSlot(courseNo: "B", start: at(10), end: at(11)),
+        ])
+
+        #expect(lanes.isEmpty)
+    }
+
     private func makeMockSlot(courseNo: String, start: Date, end: Date) -> CourseTimeSlot {
         let course = SDCourse(
             courseNo: courseNo,
