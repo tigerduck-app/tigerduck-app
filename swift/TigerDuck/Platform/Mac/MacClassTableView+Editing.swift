@@ -155,7 +155,6 @@ extension MacClassTableView {
         }
     }
 
-    /// Mirrors `ClassTableViewModel.setIgnoresAssignments`.
     func setIgnoresAssignments(_ ignore: Bool, for course: SDCourse) {
         guard isViewingCurrentSemester else { return }
         DataCache.shared.setAssignmentsIgnored(ignore, semester: selectedSemester, courseNo: course.courseNo)

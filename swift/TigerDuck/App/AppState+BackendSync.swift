@@ -394,7 +394,6 @@ extension AppState {
         })
     }
 
-    /// Keys of the courses a snapshot's `courses` lists.
     nonisolated static func listedCourses(_ courses: [[String: Any]]) -> Set<String> {
         Set(courses.compactMap { row in
             guard let semester = row["semester"] as? String, !semester.isEmpty,
