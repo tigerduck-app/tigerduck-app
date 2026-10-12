@@ -39,12 +39,12 @@ struct WidgetTimelineDerivationTests {
         )
     }
 
-    /// Pick a fixed Monday for deterministic tests (2024-01-01 was a Monday).
+    /// A fixed Monday in Taipei time, which the widget reads periods in (2024-01-01 was a Monday).
     private func monday(_ hour: Int, _ minute: Int) -> Date {
         var components = DateComponents()
         components.year = 2024; components.month = 1; components.day = 1
         components.hour = hour; components.minute = minute
-        return Calendar(identifier: .gregorian).date(from: components)!
+        return WidgetTaipei.calendar.date(from: components)!
     }
 
     @Test func notLoggedIn_emitsSignInState() {
@@ -184,7 +184,7 @@ struct WidgetTimelineDerivationTests {
     @Test func skippedTomorrow_advancesToDayAfter() {
         let now = monday(18, 0)
         let tomorrowKey = WidgetTimelineDerivation.dateKey(
-            for: Calendar(identifier: .gregorian).date(byAdding: .day, value: 1, to: now)!
+            for: WidgetTaipei.calendar.date(byAdding: .day, value: 1, to: now)!
         )
         let snap = snapshot(courses: [
             course(courseNo: "A", displayName: "TuesSkip", weekday: 2, periods: ["B"], skippedDates: [tomorrowKey]),
@@ -292,7 +292,7 @@ struct WidgetTimelineDerivationTests {
     @Test func holidayTomorrow_advancesToTheNextClassDay() {
         let now = monday(18, 0)
         let tomorrowKey = WidgetTimelineDerivation.dateKey(
-            for: Calendar(identifier: .gregorian).date(byAdding: .day, value: 1, to: now)!
+            for: WidgetTaipei.calendar.date(byAdding: .day, value: 1, to: now)!
         )
         var snap = snapshot(courses: [
             course(courseNo: "A", displayName: "TuesClass", weekday: 2, periods: ["B"]),

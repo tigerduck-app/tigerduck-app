@@ -57,20 +57,14 @@ final class NTUSTSessionManager {
 
     private static let cookieTTL: TimeInterval = 3600 // 1 hour
 
-    /// Legacy timestamp-based check — retained for synchronous UI
-    /// surfaces (Settings "last login" display, `@Observable` computed
-    /// properties that cannot `await`). Auth flows should prefer
-    /// ``probeCookiesValid()`` which asks the server directly.
+    /// Legacy timestamp-based check, retained for synchronous readers such as
+    /// `@Observable` computed properties that cannot `await`. Auth flows should
+    /// prefer ``probeCookiesValid()`` which asks the server directly.
     var cookiesValid: Bool {
         guard let timestamp = Defaults[.ssoLoginTimestamp] else {
             return false
         }
         return Date().timeIntervalSince1970 - timestamp < Self.cookieTTL
-    }
-
-    var loginTimestamp: Date? {
-        guard let ts = Defaults[.ssoLoginTimestamp] else { return nil }
-        return Date(timeIntervalSince1970: ts)
     }
 
     /// Server-side probe (~30ms warm): GET `ssoam2.ntust.edu.tw/` and look for a

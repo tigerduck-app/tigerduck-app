@@ -4,7 +4,7 @@ import os
 /// URLSession-based client for the bulletin HTTP API (v3).
 ///
 /// Public GET endpoints (`/taxonomy`, list, detail) do not require auth.
-/// Subscription CRUD endpoints use Bearer auth via `authHeaderProvider`.
+/// Subscription endpoints use Bearer auth via `authHeaderProvider`.
 final class BulletinAPIClient: Sendable {
     private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
@@ -54,7 +54,7 @@ final class BulletinAPIClient: Sendable {
         try await get(path: "/bulletins/\(id)", returning: BulletinAPI.BulletinDetail.self)
     }
 
-    // MARK: - Subscription CRUD (v3)
+    // MARK: - Subscriptions (v3)
 
     /// GET /bulletin-subscriptions — list all rules for the authenticated device.
     func getSubscriptions() async throws -> BulletinAPI.SubscriptionsResponse {
@@ -64,38 +64,7 @@ final class BulletinAPIClient: Sendable {
         )
     }
 
-    /// POST /bulletin-subscriptions — create a single rule.
-    func createSubscription(
-        rule: BulletinAPI.SubscriptionRule
-    ) async throws -> BulletinAPI.SubscriptionRule {
-        return try await post(
-            path: "/bulletin-subscriptions",
-            body: rule,
-            returning: BulletinAPI.SubscriptionRule.self
-        )
-    }
-
-    /// PATCH /bulletin-subscriptions/{id} — update a rule.
-    func updateSubscription(
-        id: Int,
-        rule: BulletinAPI.SubscriptionRule
-    ) async throws -> BulletinAPI.SubscriptionRule {
-        return try await patch(
-            path: "/bulletin-subscriptions/\(id)",
-            body: rule,
-            returning: BulletinAPI.SubscriptionRule.self
-        )
-    }
-
-    /// DELETE /bulletin-subscriptions/{id} — delete a rule.
-    func deleteSubscription(id: Int) async throws {
-        try await deleteRequest(path: "/bulletin-subscriptions/\(id)")
-    }
-
-    // MARK: - Legacy snapshot PUT (kept for backward compatibility)
-
-    /// PUT snapshot-style replacement. Retained because `BulletinSubscriptionsStore`
-    /// still uses the snapshot model. Prefer CRUD methods for new code.
+    /// PUT /bulletin-subscriptions replaces all rules of the authenticated device with `rules`.
     func putSubscriptions(
         rules: [BulletinAPI.SubscriptionRule]
     ) async throws -> BulletinAPI.SubscriptionsResponse {
@@ -124,27 +93,6 @@ final class BulletinAPIClient: Sendable {
         return try decode(data, path: path)
     }
 
-    private func post<Request: Encodable, Response: Decodable>(
-        path: String,
-        body: Request,
-        returning _: Response.Type
-    ) async throws -> Response {
-        let baseURL = baseURLProvider()
-        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        await applyAuth(to: &request)
-        do {
-            request.httpBody = try Self.encoder.encode(body)
-        } catch {
-            throw BulletinAPIError.encodingFailed(error)
-        }
-        let data = try await execute(request)
-        return try decode(data, path: path)
-    }
-
     private func put<Request: Encodable, Response: Decodable>(
         path: String,
         body: Request,
@@ -164,36 +112,6 @@ final class BulletinAPIClient: Sendable {
         }
         let data = try await execute(request)
         return try decode(data, path: path)
-    }
-
-    private func patch<Request: Encodable, Response: Decodable>(
-        path: String,
-        body: Request,
-        returning _: Response.Type
-    ) async throws -> Response {
-        let baseURL = baseURLProvider()
-        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        await applyAuth(to: &request)
-        do {
-            request.httpBody = try Self.encoder.encode(body)
-        } catch {
-            throw BulletinAPIError.encodingFailed(error)
-        }
-        let data = try await execute(request)
-        return try decode(data, path: path)
-    }
-
-    private func deleteRequest(path: String) async throws {
-        let baseURL = baseURLProvider()
-        let url = try Self.resolveURL(baseURL: baseURL, path: path, query: [])
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        await applyAuth(to: &request)
-        _ = try await execute(request)
     }
 
     /// Apply `Authorization: Bearer <token>` header when the user is logged in.
@@ -286,21 +204,6 @@ final class BulletinAPIClient: Sendable {
         decoder.dateDecodingStrategy = .iso8601WithFractionalSecondsFallback
         return decoder
     }()
-
-    private static func percentEncoded(_ value: String) -> String {
-        // Strict allowlist — `urlPathAllowed` keeps `=`, `&`, `:`, `+`, `@`,
-        // any of which can path/query-inject if a device id ever embeds
-        // them.
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.~"))
-        // On failure return "", not the raw value: in the rare UTF-16
-        // surrogate-pair failure, unencoded bytes in a URL path could
-        // path-inject. An empty segment yields a clean 404 instead.
-        guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else {
-            assertionFailure("percentEncoded failed for value of length \(value.count)")
-            return ""
-        }
-        return encoded
-    }
 }
 
 enum BulletinAPIError: Error, LocalizedError {

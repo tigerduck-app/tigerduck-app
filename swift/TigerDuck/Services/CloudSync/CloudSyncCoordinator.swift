@@ -29,7 +29,6 @@ final class CloudSyncCoordinator {
     // MARK: Tunables
 
     enum Tunables {
-        static let dataUpdateDebounce: TimeInterval = 30
         static let tickInterval: TimeInterval = 5 * 60
     }
 
@@ -63,7 +62,6 @@ final class CloudSyncCoordinator {
     // Observer plumbing
     @ObservationIgnored var notificationTokens: [NSObjectProtocol] = []
     @ObservationIgnored var tickTimer: Timer?
-    @ObservationIgnored var dataDebounceTask: Task<Void, Never>?
 
     // MARK: Init
 
@@ -309,8 +307,6 @@ final class CloudSyncCoordinator {
             NotificationCenter.default.removeObserver(token)
         }
         notificationTokens = []
-        dataDebounceTask?.cancel()
-        dataDebounceTask = nil
         started = false
     }
 

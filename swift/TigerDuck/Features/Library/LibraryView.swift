@@ -12,7 +12,6 @@ struct LibraryView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @State private var viewModel = LibraryViewModel()
-    @State private var showNotImplementedAlert = false
     @FocusState private var loginField: LoginField?
 
     private enum LoginField { case username, password }
@@ -371,48 +370,5 @@ struct LibraryView: View {
                 : String(localized: "library_sign_in_action"))
                 .font(TigerDuckTheme.Typography.headline)
         }
-    }
-
-    // MARK: - Library Features
-
-    private var libraryFeaturesSection: some View {
-        HStack(spacing: TigerDuckTheme.Spacing.md) {
-            featureCard(
-                icon: "door.left.hand.open",
-                title: String(localized: "library_feature_discussion_room"),
-                subtitle: String(localized: "library_coming_soon_badge")
-            )
-            featureCard(
-                icon: "mic.fill",
-                title: String(localized: "library_feature_lecture"),
-                subtitle: String(localized: "library_coming_soon_badge")
-            )
-        }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
-        .notImplementedAlert(isPresented: $showNotImplementedAlert)
-    }
-
-    private func featureCard(icon: String, title: String, subtitle: String) -> some View {
-        Button {
-            showNotImplementedAlert = true
-        } label: {
-            VStack(spacing: TigerDuckTheme.Spacing.sm) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundStyle(.tint)
-
-                Text(title)
-                    .font(TigerDuckTheme.Typography.headline)
-                    .foregroundStyle(Color.textPrimary)
-
-                Text(subtitle)
-                    .font(TigerDuckTheme.Typography.caption2)
-                    .foregroundStyle(Color.textSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, TigerDuckTheme.Spacing.lg)
-            .glassCard()
-        }
-        .buttonStyle(.plain)
     }
 }
