@@ -261,7 +261,7 @@ struct UpcomingAssignmentsView: View {
 
     private func openAssignment(_ assignment: SDAssignment) {
         if let url = assignment.moodleDeepLink {
-            openURL(url)
+            openURL(url, fallback: assignment.moodleWebURL)
         }
     }
 

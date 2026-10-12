@@ -194,7 +194,7 @@ struct CourseDetailSheet: View {
             ForEach(Array(assignments.enumerated()), id: \.element.assignmentId) { _, assignment in
                 Button {
                     if let url = assignment.moodleOpenURL {
-                        openURL(url)
+                        openURL(url, fallback: assignment.moodleWebURL)
                     }
                 } label: {
                     HStack {
@@ -225,12 +225,13 @@ struct CourseDetailSheet: View {
     // MARK: - Actions
 
     /// On iOS, route through the `moodlemobile://` deep link so Moodle Mobile
-    /// picks the user up inside the app. On macOS no Moodle Mac app exists
-    /// and the deep link would surface as an "unhandled URL" error, so the
-    /// platform-aware `moodleOpenURL` returns the HTTPS URL instead.
+    /// picks the user up inside the app, and open the web page when it is not
+    /// installed. On macOS no Moodle Mac app exists and the deep link would
+    /// surface as an "unhandled URL" error, so the platform-aware
+    /// `moodleOpenURL` returns the HTTPS URL instead.
     private func openMoodleCourse() {
         guard let url = course.moodleOpenURL else { return }
-        openURL(url)
+        openURL(url, fallback: course.moodleWebURL)
     }
 
     /// The course code is what students paste into course add/drop, the portal
