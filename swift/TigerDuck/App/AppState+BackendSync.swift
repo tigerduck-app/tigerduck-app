@@ -181,7 +181,7 @@ extension AppState {
                 if let serverIgnoredCourses, Defaults[.syncCourses] {
                     changed = applyIgnoredCourses(
                         serverIgnoredCourses, decided: Self.serverDecidedCourses(courseOverrides),
-                        coursesArray: coursesArray, protected: protectedOverrides
+                        coursesArray: coursesArray, protected: protectedOverrides, fetchedAt: fetchedAt
                     ) || changed
                 }
             }
@@ -404,20 +404,34 @@ extension AppState {
         })
     }
 
+    /// Whether a pull takes the snapshot's word on `key`: not for a course hidden here, whose row
+    /// a delete may not have reached yet, nor in a term reset since the snapshot was fetched,
+    /// which still holds it from before the reset.
+    nonisolated static func pullApplies(to key: String, tombstones: Set<String>, resetSemesters: Set<String>) -> Bool {
+        guard let (semester, courseNo) = CourseTombstone.parts(of: key) else { return false }
+        return !resetSemesters.contains(semester)
+            && !CourseTombstone.isHidden(courseNo, semester: semester, in: tombstones)
+    }
+
     /// The ignored courses after a pull, as `mergedIgnoredCourses` says, and the ones to send
     /// again (`resend`): ignored here and listed by the server with no device's setting, as when it
     /// dropped the settings with the course rows while no device synced courses. Those stay ignored.
+    /// The courses and terms `pullApplies(to:)` turns down are left out of the snapshot.
     nonisolated static func ignoredCoursesAfterPull(
         server: Set<String>,
         decided: Set<String>,
         listed: Set<String>,
         local: Set<String>,
         protected: Set<String>,
-        snapshotSemesters: Set<String>
+        snapshotSemesters: Set<String>,
+        tombstones: Set<String> = [],
+        resetSemesters: Set<String> = []
     ) -> (ignored: Set<String>, resend: Set<String>) {
-        let resend = local.intersection(listed).subtracting(decided).subtracting(protected)
+        let applies = { pullApplies(to: $0, tombstones: tombstones, resetSemesters: resetSemesters) }
+        let resend = local.intersection(listed.filter(applies)).subtracting(decided).subtracting(protected)
         let ignored = mergedIgnoredCourses(
-            server: server, local: local, protected: protected.union(resend), snapshotSemesters: snapshotSemesters
+            server: server.filter(applies), local: local, protected: protected.union(resend),
+            snapshotSemesters: snapshotSemesters.subtracting(resetSemesters)
         )
         return (ignored, resend)
     }
@@ -460,8 +474,16 @@ extension AppState {
         _ server: [ServerIgnoredCourse],
         decided: Set<String>,
         coursesArray: [[String: Any]],
-        protected: Set<String>
+        protected: Set<String>,
+        fetchedAt: Date
     ) -> Bool {
+        let tombstones = Set(DataCache.shared.loadDeletedCourseNos())
+        let resetSemesters = resettingSemesters.union(
+            DataCache.shared.loadSemesterResetAt().filter { $0.value > fetchedAt }.keys
+        )
+        let server = server.filter {
+            Self.pullApplies(to: $0.key, tombstones: tombstones, resetSemesters: resetSemesters)
+        }
         let missingIds = Self.moodleCourseIdsToSend(server, protected: protected) {
             DataCache.shared.lookupMoodleCourseId(idnumber: $0)
         }
@@ -481,7 +503,9 @@ extension AppState {
             listed: Self.listedCourses(coursesArray),
             local: current,
             protected: protected,
-            snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String })
+            snapshotSemesters: Set(coursesArray.compactMap { $0["semester"] as? String }),
+            tombstones: tombstones,
+            resetSemesters: resetSemesters
         )
         if !resend.isEmpty {
             AppLogger.sync.info("[syncOverrides] sending \(resend.count, privacy: .public) course settings the server lost again")

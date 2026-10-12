@@ -425,6 +425,21 @@ struct CourseIgnorePullTests {
         #expect(pull.resend == ["1151:CS1"])
     }
 
+    @Test("A course deleted here and a term reset since the snapshot take nothing from it")
+    func deletedCoursesAndResetTermsAreLeftOut() {
+        let pull = AppState.ignoredCoursesAfterPull(
+            server: ["1151:CS1", "1142:EE2"], decided: ["1151:CS1", "1142:EE2"],
+            listed: ["1151:CS1", "1151:GE3", "1142:EE2", "1142:PE4"], local: ["1151:GE3", "1142:PE4"],
+            protected: [], snapshotSemesters: ["1151", "1142"],
+            tombstones: ["1151:CS1", "GE3"], resetSemesters: ["1142"]
+        )
+        // CS1 was deleted here, GE3 by a legacy bare tombstone, which hides it in every term, and
+        // 1142 was reset after the snapshot was fetched.
+        #expect(pull.ignored == ["1142:PE4"])
+        #expect(pull.resend.isEmpty)
+        #expect(AppState.pullApplies(to: "1151:EE2", tombstones: ["1151:CS1", "GE3"], resetSemesters: ["1142"]))
+    }
+
     @Test("The numeric id goes up for an ignored course the server has none for, once this device knows it")
     func missingNumericIdsAreSent() throws {
         let courses = try #require(AppState.serverIgnoredCourses([
