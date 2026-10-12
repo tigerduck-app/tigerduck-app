@@ -231,6 +231,17 @@ struct WidgetTimelineDerivationTests {
         #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).map(\.id) == ["Y-B"])
     }
 
+    /// On a school holiday the Today widget shows its empty state, as now and next have no class.
+    @Test func todayRows_areEmptyOnAHoliday() {
+        let now = monday(8, 0)
+        var snap = snapshot(courses: [
+            course(courseNo: "X", displayName: "Monday", weekday: 1, periods: ["A"]),
+        ])
+        snap.quietDayKeys = [WidgetTimelineDerivation.dateKey(for: now)]
+
+        #expect(WidgetTimelineDerivation.todayRows(snapshot: snap, at: now).isEmpty)
+    }
+
     /// A course in a different room for each block shows the room of the block in question,
     /// not every room joined, which the week grid cut to "TR-313, ...".
     @Test func eachBlockShowsItsOwnRoom() {

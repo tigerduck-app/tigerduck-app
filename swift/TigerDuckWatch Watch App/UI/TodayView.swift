@@ -5,15 +5,9 @@ struct TodayView: View {
 
     private var todaysCourses: [WatchCourse] {
         guard let snapshot = store.snapshot else { return [] }
-        // Pinned to Taipei so the watch shows Taiwan's "today" even when
-        // the wearer is in a different timezone — class schedules are
-        // authored in Taipei wall time.
-        let cal = SharedTaipei.calendar
-        let raw = cal.component(.weekday, from: AppClock.now())
-        let iso = ((raw + 5) % 7) + 1
-        return snapshot.courses
-            .filter { $0.weekday == iso }
-            .sorted { $0.startHHmm < $1.startHHmm }
+        return NextClassResolver.todaysClasses(
+            courses: snapshot.courses, now: AppClock.now(), quietDays: snapshot.quietDays
+        )
     }
 
     private var policy: WatchVisualStylePolicy {
