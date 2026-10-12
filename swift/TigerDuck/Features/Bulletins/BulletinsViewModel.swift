@@ -50,9 +50,9 @@ final class BulletinsViewModel {
     private var isPrefetchPaused = false
 
     init(apiClient: BulletinAPIClient? = nil) {
-        // The default providers re-resolve PushServerConfig on every request, as the
-        // push stack does, so a Debug endpoint override applies to bulletin fetches
-        // at once and the shared secret follows the endpoint.
+        // The default URL provider re-resolves PushServerConfig on every request, as
+        // the push stack does, so a Debug endpoint override applies to bulletin
+        // fetches at once.
         self.apiClient = apiClient ?? BulletinAPIClient()
         // Seed synchronously from disk so the very first render after
         // launch paints real cards instead of a spinner.
