@@ -22,16 +22,19 @@ struct MoodleAutologinServiceTests {
     }
 
     /// A service with its own sign-in generation, never the app's session generation, which
-    /// any test that signs out would move under this one.
+    /// any test that signs out would move under this one. Its wait for a key ends only when the
+    /// test fires `deadline`, so a slow runner never opens a page signed out.
     private static func service(
         clock: OSAllocatedUnfairLock<Date> = OSAllocatedUnfairLock(initialState: start),
         signInGeneration: @escaping () -> Int = { 0 },
+        deadline: ManualSleeper = ManualSleeper(),
         keySource: @escaping @Sendable () async throws -> MoodleAutologinService.Key?
     ) -> MoodleAutologinService {
         MoodleAutologinService(
             keySource: keySource,
             now: { clock.withLock { $0 } },
-            signInGeneration: signInGeneration
+            signInGeneration: signInGeneration,
+            sleep: { await deadline.sleep(for: $0) }
         )
     }
 
@@ -143,6 +146,81 @@ struct MoodleAutologinServiceTests {
         #expect(second.withLock { $0 } == Self.page)
         #expect(await first.value == Self.signedInPage)
         #expect(await requests.count == 1)
+    }
+
+    // MARK: - Wait
+
+    /// Opens `page` on a task of its own and holds the URL it opens with, so an open that never
+    /// stops waiting fails a `waitUntil` instead of hanging the test.
+    private static func open(_ page: URL, with service: MoodleAutologinService) -> OSAllocatedUnfairLock<URL?> {
+        let opened = OSAllocatedUnfairLock<URL?>(initialState: nil)
+        Task {
+            let url = await service.url(for: page)
+            opened.withLock { $0 = url }
+        }
+        return opened
+    }
+
+    @Test("a key slower than the wait opens the page as it is, and the late key still starts the six minutes")
+    func slowKey() async throws {
+        let requests = KeyRequests()
+        let keyArrives = ManualSleeper()
+        let deadline = ManualSleeper()
+        let clock = OSAllocatedUnfairLock(initialState: Self.start)
+        let key = Self.key
+        let service = Self.service(clock: clock, deadline: deadline) {
+            await requests.record()
+            if await requests.count == 1 { await keyArrives.sleep(for: .zero) }
+            return key
+        }
+
+        let first = Self.open(Self.page, with: service)
+        try await deadline.waitUntilArmed()
+        #expect(await deadline.requestedDurations == [MoodleAutologinService.keyWait])
+        await deadline.fire()
+        try await waitUntil { first.withLock { $0 } != nil }
+        #expect(first.withLock { $0 } == Self.page)
+
+        // The request is still on its way and gets the only key coming.
+        #expect(await service.url(for: Self.page) == Self.page)
+        #expect(await requests.count == 1)
+
+        try await keyArrives.waitUntilArmed()
+        await keyArrives.fire()
+        try await waitUntil { !service.isRequesting }
+        clock.withLock { $0 += MoodleAutologinService.keyInterval - 1 }
+        #expect(await service.url(for: Self.page) == Self.page)
+        #expect(await requests.count == 1)
+
+        clock.withLock { $0 += 1 }
+        #expect(await service.url(for: Self.page) == Self.signedInPage)
+        #expect(await requests.count == 2)
+    }
+
+    @Test("a request that fails after the wait lets the next page ask again")
+    func slowFailure() async throws {
+        let requests = KeyRequests()
+        let answerArrives = ManualSleeper()
+        let deadline = ManualSleeper()
+        let key = Self.key
+        let service = Self.service(deadline: deadline) {
+            await requests.record()
+            guard await requests.count == 1 else { return key }
+            await answerArrives.sleep(for: .zero)
+            throw MoodleWebserviceError.transientNetwork(underlying: "timed out")
+        }
+
+        let first = Self.open(Self.page, with: service)
+        try await deadline.waitUntilArmed()
+        await deadline.fire()
+        try await waitUntil { first.withLock { $0 } != nil }
+        #expect(first.withLock { $0 } == Self.page)
+
+        try await answerArrives.waitUntilArmed()
+        await answerArrives.fire()
+        try await waitUntil { !service.isRequesting }
+        #expect(await service.url(for: Self.page) == Self.signedInPage)
+        #expect(await requests.count == 2)
     }
 
     // MARK: - Fallbacks
