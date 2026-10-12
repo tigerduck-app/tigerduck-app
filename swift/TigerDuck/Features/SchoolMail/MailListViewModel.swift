@@ -87,16 +87,16 @@ final class MailListViewModel {
     init(
         session: MailPageSession? = nil,
         cache: MailCache? = nil,
-        noteSeenByPage: @escaping (MailboxStatusInfo) async -> Void = { await MailChecker.shared.noteSeenByPage($0) },
+        noteSeenByPage: ((MailboxStatusInfo) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
         warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.warmStartDelay) }
     ) {
-        // Both defaults are resolved in the body, not the parameter list: a default-argument
-        // expression runs outside the init's MainActor isolation, so `MailPageSession()` and
-        // `MailAccountManager.shared`, both MainActor-isolated, would warn there in Swift 6 mode.
+        // Resolved in the body, not the parameter list: a default-argument expression runs outside
+        // the init's MainActor isolation, where `MailPageSession()` and `MailAccountManager.shared`
+        // warn in Swift 6 mode and the checker's closure would be isolated to `MailChecker`.
         self.session = session ?? MailPageSession()
         self.cache = cache ?? MailAccountManager.shared.cache
-        self.noteSeenByPage = noteSeenByPage
+        self.noteSeenByPage = noteSeenByPage ?? { await MailChecker.shared.noteSeenByPage($0) }
         self.signOutEvents = signOutEvents
         self.warmDelay = warmDelay
         // The view model survives a sign-out (`@State` on `SchoolMailView`). Without this reset the
