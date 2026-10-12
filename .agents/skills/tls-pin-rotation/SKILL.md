@@ -31,9 +31,10 @@ The pin table is `pinSets` in `swift/Shared/TLSPinningDelegate.swift`; the reaso
 2. Set each set's `pins` to those values, keeping any intermediate a renewal may still come
    from, and its `expiration` to six months after the `notAfter` of the leaf it pins.
 3. Update the tests that hold certificate data: `appPins` in
-   `swift/TigerDuckTests/SchoolMail/MailTLSVerifierTests.swift`, and the captured chains in
-   `TLSPinningDelegateTests`, which must include a certificate for every pin. Add a new leaf
-   there as base64 DER (`openssl x509 -outform der | openssl enc -base64 -A`).
+   `swift/TigerDuckTests/SchoolMail/MailTLSVerifierTests.swift`, and `servedChains` in
+   `TLSPinningDelegateTests`. Each set needs a chain one of its hosts served, with a date inside
+   the chain's validity, that holds a certificate for every pin in the set. Add a chain as
+   base64 DER, one certificate each (`openssl x509 -outform der | openssl enc -base64 -A`).
 4. Make the same change in `tigerduck-app-android`: the pin sets in both
    `app/src/main/res/xml/network_security_config.xml` and
    `app/src/debug/res/xml/network_security_config.xml`, and `PIN_EXPIRY_EPOCH` in

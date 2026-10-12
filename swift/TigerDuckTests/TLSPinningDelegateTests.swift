@@ -22,10 +22,12 @@ struct TLSPinningDelegateTests {
 
 #if os(iOS)
 extension TLSPinningDelegateTests {
-    /// The leaf and intermediate api.lib.ntust.edu.tw served on 2026-10-13 (public data).
+    /// The chain api.lib.ntust.edu.tw served on 2026-10-13 (public data): its leaf, Sectigo DV
+    /// E36, and Sectigo Public Server Authentication Root E46 cross-signed by USERTrust ECC.
     static let libraryChain = [
         [UInt8](Data(base64Encoded: "MIIEoTCCBEigAwIBAgIQOqkiLkqszV8f//K74ZSLZDAKBggqhkjOPQQDAjBgMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQDEy5TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gQ0EgRFYgRTM2MB4XDTI1MTAyMTAwMDAwMFoXDTI2MTEwNDIzNTk1OVowHzEdMBsGA1UEAxMUYXBpLmxpYi5udHVzdC5lZHUudHcwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAS+nMDc055O76kbTMx+iKQXWtVtwZW4XtkpsLzvQp0xvFUvkmCT2EZkGHQal/VeCvy1GBWHQPZmDGGY6TvKigJSB8CPxIW1rTR9J6+8GzCUvKRdewICsG84nXLTi+cUtmejggMGMIIDAjAfBgNVHSMEGDAWgBQXmagEwW/kLXCoChA9A9PpGrgmYzAdBgNVHQ4EFgQU+nKECd3NpLUpnm3BbZGmuMblWqwwDgYDVR0PAQH/BAQDAgeAMAwGA1UdEwEB/wQCMAAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwSQYDVR0gBEIwQDA0BgsrBgEEAbIxAQICBzAlMCMGCCsGAQUFBwIBFhdodHRwczovL3NlY3RpZ28uY29tL0NQUzAIBgZngQwBAgEwgYQGCCsGAQUFBwEBBHgwdjBPBggrBgEFBQcwAoZDaHR0cDovL2NydC5zZWN0aWdvLmNvbS9TZWN0aWdvUHVibGljU2VydmVyQXV0aGVudGljYXRpb25DQURWRTM2LmNydDAjBggrBgEFBQcwAYYXaHR0cDovL29jc3Auc2VjdGlnby5jb20wOQYDVR0RBDIwMIIUYXBpLmxpYi5udHVzdC5lZHUudHeCGHd3dy5hcGkubGliLm50dXN0LmVkdS50dzCCAX4GCisGAQQB1nkCBAIEggFuBIIBagFoAHYA2AlVO5RPev/IFhlvlE+Fq7D4/F6HVSYPFdEucrtFSxQAAAGaByt6rQAABAMARzBFAiEAqKg3DgbTXqDNR4CokVhOPAX4j46MfLNVqSHdFSuuf60CIHWym/n3WXhu0Yd+PwAMrxApa/Jv/cAMjAZ46DNBXhs8AHcAr2eIO1ewTt2Pptl+9i6o64EKx3Fg8CReVdYML+eFhzoAAAGaByt7EgAABAMASDBGAiEAxpud8G2Jyl4AQapectBosW3AX0x/1UuhE4HNCsGDLrYCIQC58XiMNzieWwrzC8MWbdntEDvwD8gwaVuCyxiHu3vpAAB1AKyrMHBs6+yEMfQT0vSRXxEeQiRDsfKmjE88KzunHgLDAAABmgcrek8AAAQDAEYwRAIgEFcM7ZsDLZDM31A7LSqIPSrNQBZKTuQE1Y/57xNTdRYCICc4IvViW2GqMQ2uVA2YgDiBRYJwMeEq+mbEvg8ryWg0MAoGCCqGSM49BAMCA0cAMEQCIA/V8wdTaQ/oyIpvum3tgc0nD7q/nBcu0bueky84uP+0AiBzC9YR8D9I891OcspF6bVzyjzskAekVvcHNI14fflDow==")!),
         [UInt8](Data(base64Encoded: "MIIDXzCCAuagAwIBAgIQNuBZ7YiN1Xrt1XC2cn+b2jAKBggqhkjOPQQDAzBfMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTYwNAYDVQQDEy1TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gUm9vdCBFNDYwHhcNMjEwMzIyMDAwMDAwWhcNMzYwMzIxMjM1OTU5WjBgMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQDEy5TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gQ0EgRFYgRTM2MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEaKGnbAUnBYljHDmn/yUhxe3TLxKYuyzc9VXoSaCEV5F73Fhfa/Si/RMsmwTFW3R9s7J6JpYZFmu4do3vk/Vgl6OCAYEwggF9MB8GA1UdIwQYMBaAFNEi2kxZ8UtfJjiqndbu6w3D+6lhMB0GA1UdDgQWBBQXmagEwW/kLXCoChA9A9PpGrgmYzAOBgNVHQ8BAf8EBAMCAYYwEgYDVR0TAQH/BAgwBgEB/wIBADAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwGwYDVR0gBBQwEjAGBgRVHSAAMAgGBmeBDAECATBUBgNVHR8ETTBLMEmgR6BFhkNodHRwOi8vY3JsLnNlY3RpZ28uY29tL1NlY3RpZ29QdWJsaWNTZXJ2ZXJBdXRoZW50aWNhdGlvblJvb3RFNDYuY3JsMIGEBggrBgEFBQcBAQR4MHYwTwYIKwYBBQUHMAKGQ2h0dHA6Ly9jcnQuc2VjdGlnby5jb20vU2VjdGlnb1B1YmxpY1NlcnZlckF1dGhlbnRpY2F0aW9uUm9vdEU0Ni5wN2MwIwYIKwYBBQUHMAGGF2h0dHA6Ly9vY3NwLnNlY3RpZ28uY29tMAoGCCqGSM49BAMDA2cAMGQCMFsKnBQDh64l+v+aUYWjDCJKQMxHUUGmcwAYDIjJ9pbRYItMCIx5xu0oUb6sIfTXqQIwPddcsDE4KdeLu1hJdpHgdLvsHAK3vygyLGujMU9xBJCDackRT93VHEE0gppgNqdV")!),
+        [UInt8](Data(base64Encoded: "MIIDRjCCAsugAwIBAgIQGp6v7G3o4ZtcGTFBto2Q3TAKBggqhkjOPQQDAzCBiDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNleSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMTJVVTRVJUcnVzdCBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMjEwMzIyMDAwMDAwWhcNMzgwMTE4MjM1OTU5WjBfMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTYwNAYDVQQDEy1TZWN0aWdvIFB1YmxpYyBTZXJ2ZXIgQXV0aGVudGljYXRpb24gUm9vdCBFNDYwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAR2+pmpbiDt+dd34wc7qNs9Xzjoq1WmVk/WSOrsfy2qw7LFeeyZYX8QeccCWvkEN/U0NSt3zn8gj1KjAIns1aeibVvjS5KToID1AZTc8GgHHs3u/iVStSBDHBv+6xnOQ6OjggEgMIIBHDAfBgNVHSMEGDAWgBQ64QmG1M8ZwpZ2dEl23OA1xmNjmjAdBgNVHQ4EFgQU0SLaTFnxS18mOKqd1u7rDcP7qWEwDgYDVR0PAQH/BAQDAgGGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMBEGA1UdIAQKMAgwBgYEVR0gADBQBgNVHR8ESTBHMEWgQ6BBhj9odHRwOi8vY3JsLnVzZXJ0cnVzdC5jb20vVVNFUlRydXN0RUNDQ2VydGlmaWNhdGlvbkF1dGhvcml0eS5jcmwwNQYIKwYBBQUHAQEEKTAnMCUGCCsGAQUFBzABhhlodHRwOi8vb2NzcC51c2VydHJ1c3QuY29tMAoGCCqGSM49BAMDA2kAMGYCMQCMCyBit99vX2ba6xEkDe+YO7vC0twjbkv9PKpqGGuZ61JZryjFsp+DFpEclCVy4noCMQCwvZDXD/m2Ko1HA5Bkmz7YQOFAiNDD49IWa2wdT7R3DtODaSXH/BiXv8fwB9su4tU=")!),
     ]
 
     /// The chain cardsystem.ntust.edu.tw served on 2026-10-13 (public data): its leaf, TWCA SSL
@@ -37,23 +39,35 @@ extension TLSPinningDelegateTests {
     ]
     static let capturedDate = ISO8601DateFormatter().date(from: "2026-10-13T00:00:00Z")!
 
-    @Test("Every pin is the SPKI hash, as the app computes it, of a certificate NTUST serves")
-    func pinsMatchTheServedChains() {
-        let chains = MailTLSVerifierTests.chain + Self.libraryChain + Self.cyberChain
-        let served = Set(chains.compactMap { der in
-            SecCertificateCreateWithData(nil, Data(der) as CFData)
-                .flatMap(TLSPinningDelegate.sha256SPKIBase64(of:))
-        })
+    /// Each chain with a host that served it and a date inside its validity.
+    static let servedChains: [(host: String, date: Date, chain: [[UInt8]])] = [
+        ("mail.ntust.edu.tw", MailTLSVerifierTests.pinnedDate, MailTLSVerifierTests.chain),
+        ("cardsystem.ntust.edu.tw", capturedDate, cyberChain),
+        ("api.lib.ntust.edu.tw", capturedDate, libraryChain),
+    ]
+
+    @Test("Every pin is the SPKI hash, as the app computes it, of a certificate its own hosts serve")
+    func pinsMatchTheirHostsChains() {
         for set in TLSPinningDelegate.pinSets {
+            let served = Set(Self.servedChains
+                .filter { TLSPinningDelegate.pinPolicy(forHost: $0.host, now: $0.date) == .pinned(set.pins) }
+                .flatMap(\.chain)
+                .compactMap { der in
+                    SecCertificateCreateWithData(nil, Data(der) as CFData)
+                        .flatMap(TLSPinningDelegate.sha256SPKIBase64(of:))
+                })
+            #expect(!set.pins.isEmpty, "\(set.hostSuffix) has no pins")
             #expect(set.pins.isSubset(of: served), "\(set.hostSuffix): \(set.pins.subtracting(served))")
         }
     }
 
-    @Test("A campus certificate from TWCA's CYBER hierarchy passes the ntust.edu.tw pins")
-    func cyberHierarchyChainPassesForACampusHost() {
-        #expect(MailTLSVerifier.verify(
-            derChain: Self.cyberChain, host: "cardsystem.ntust.edu.tw", now: Self.capturedDate
-        ))
+    /// cardsystem's chain comes from TWCA's CYBER hierarchy, which NTUST's newer certificates use.
+    @Test("Each captured chain passes the pins of the host that served it")
+    func servedChainsPassTheirHostsPins() {
+        for (host, date, chain) in Self.servedChains {
+            let accepted = MailTLSVerifier.verify(derChain: chain, host: host, now: date)
+            #expect(accepted, "\(host) refuses the chain it served")
+        }
     }
 }
 #endif
