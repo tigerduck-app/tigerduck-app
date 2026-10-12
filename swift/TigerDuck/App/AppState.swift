@@ -29,7 +29,7 @@ final class AppState {
     /// unauthenticated `MacContentView`).
     var didSkipMacLogin = false
 
-    let authService = AuthService()
+    let authService: AuthService
     let sessionManager = NTUSTSessionManager.shared
 
     /// Coordinator owning the iTunes Lookup + What's New plumbing. Lives
@@ -75,6 +75,10 @@ final class AppState {
                 Defaults[.appHasBeenInstalled] = true
             }
         }
+
+        // After the purge: AuthService's first keychain read raises the credentials mirror
+        // when it finds credentials, and only a sign-in or sign-out lowers it again.
+        self.authService = AuthService()
 
         let identity = PushIdentity.loadOrCreate()
         let atm = AuthTokenManager(deviceUUID: identity.uuid)
