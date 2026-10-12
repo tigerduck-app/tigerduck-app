@@ -35,12 +35,15 @@ final class MailListViewModel {
 
     @ObservationIgnored let session: MailPageSession
     @ObservationIgnored private let cache: MailCache
-    @ObservationIgnored private let runPageCheck: (any MailClient) async -> MailCheckOutcome
+    @ObservationIgnored private let noteSeenByPage: (MailboxStatusInfo) async -> Void
     /// One page per *real* folder, keyed by folder name. All mail holds two of them and merges
     /// them at read time (`rebuildRows`); there is no merged page and nothing new on disk, so
     /// the existing per-folder cache files and their UIDVALIDITY pins keep meaning exactly what
     /// they meant before.
     @ObservationIgnored private var pages: [String: MailFolderPage] = [:]
+    /// Folders whose page came from the cache and has met no fresh first page since. Its rows below
+    /// the newest window are a previous visit's, so `mergeFreshPage` pages back from the window.
+    @ObservationIgnored private var cachePaintedFolders: Set<String> = []
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     /// The selection a `load()` call currently in flight is fetching, so a second call for that
     /// same selection (e.g. a pull-to-refresh landing while the 60 s poll's own reload is still
@@ -84,16 +87,16 @@ final class MailListViewModel {
     init(
         session: MailPageSession? = nil,
         cache: MailCache? = nil,
-        runPageCheck: @escaping (any MailClient) async -> MailCheckOutcome = { await MailChecker.shared.check(trigger: .page, using: $0) },
+        noteSeenByPage: ((MailboxStatusInfo) async -> Void)? = nil,
         signOutEvents: NotificationCenter = .default,
         warmDelay: @escaping @Sendable () async -> Void = { try? await Task.sleep(for: MailConstants.warmStartDelay) }
     ) {
-        // Both defaults are resolved in the body, not the parameter list: a default-argument
-        // expression runs outside the init's MainActor isolation, so `MailPageSession()` and
-        // `MailAccountManager.shared`, both MainActor-isolated, would warn there in Swift 6 mode.
+        // Resolved in the body, not the parameter list: a default-argument expression runs outside
+        // the init's MainActor isolation, where `MailPageSession()` and `MailAccountManager.shared`
+        // warn in Swift 6 mode and the checker's closure would be isolated to `MailChecker`.
         self.session = session ?? MailPageSession()
         self.cache = cache ?? MailAccountManager.shared.cache
-        self.runPageCheck = runPageCheck
+        self.noteSeenByPage = noteSeenByPage ?? { await MailChecker.shared.noteSeenByPage($0) }
         self.signOutEvents = signOutEvents
         self.warmDelay = warmDelay
         // The view model survives a sign-out (`@State` on `SchoolMailView`). Without this reset the
@@ -250,31 +253,43 @@ final class MailListViewModel {
         guard !cursors.isEmpty else { return }
         isPaginating = true
         defer { isPaginating = false }
-        for (folder, older) in cursors {
-            do {
-                let next = try await session.use { client in
-                    try await client.page(folder: folder, olderThanSequence: older, pageSize: MailConstants.pageSize)
-                }
-                guard isCurrent(selection, epoch), var page = pages[folder] else { return }
-                // The merge dedupes by UID, which holds only within one UIDVALIDITY: across a
-                // recreated folder it would keep stale rows and drop new mail reusing their UIDs.
-                // `page()` cannot detect this, so recover like the `folderChanged` arm below.
-                guard next.uidValidity == page.uidValidity else {
+        for (folder, first) in cursors {
+            var cursor: Int? = first
+            var extraPages = 0
+            while let older = cursor {
+                do {
+                    let next = try await session.use { client in
+                        try await client.page(folder: folder, olderThanSequence: older, pageSize: MailConstants.pageSize)
+                    }
+                    guard isCurrent(selection, epoch), let page = pages[folder] else { return }
+                    // The merge matches rows by UID, which holds only within one UIDVALIDITY: across
+                    // a recreated folder it would mix two generations' mail. `page()` cannot detect
+                    // this, so recover like the `folderChanged` arm below.
+                    guard next.uidValidity == page.uidValidity else {
+                        await recoverFromFolderChange(folder)
+                        return
+                    }
+                    let lowest = page.summaries.map(\.uid).min()
+                    let merged = Self.mergeOlderPage(next, into: page)
+                    pages[folder] = merged
+                    rebuildRows()
+                    // A page holding only rows a previous visit cached, or only `\Deleted` mail, adds
+                    // no row below the last one, and nothing would ask for more, so a few more follow.
+                    let addedOlder = lowest.map { lowest in merged.summaries.contains { $0.uid < lowest } } ?? !merged.summaries.isEmpty
+                    if addedOlder || extraPages == MailConstants.emptyWindowWalkbackPages {
+                        cursor = nil
+                    } else {
+                        cursor = next.oldestLoadedSequence
+                        extraPages += 1
+                    }
+                } catch MailClientError.folderChanged {
                     await recoverFromFolderChange(folder)
                     return
+                } catch {
+                    guard isCurrent(selection, epoch) else { return }
+                    serverStatus = .failed
+                    return
                 }
-                let known = Set(page.summaries.map(\.uid))
-                page.summaries += next.summaries.filter { !known.contains($0.uid) }
-                page.oldestLoadedSequence = next.oldestLoadedSequence
-                pages[folder] = page
-                rebuildRows()
-            } catch MailClientError.folderChanged {
-                await recoverFromFolderChange(folder)
-                return
-            } catch {
-                guard isCurrent(selection, epoch) else { return }
-                serverStatus = .failed
-                return
             }
         }
     }
@@ -502,7 +517,9 @@ final class MailListViewModel {
 
     // MARK: Polling (60 s while the page is visible)
 
-    func startPolling() {
+    /// - Parameter pollFirst: checks once before the first wait, for a return to the app, when
+    ///   mail may have arrived while the list was away.
+    func startPolling(pollFirst: Bool = false) {
         isPaused = false
         // Leaving cancels the warm, and a visit that left inside its start delay — following a
         // notification and coming straight back — would otherwise leave every other folder cold
@@ -510,6 +527,7 @@ final class MailListViewModel {
         if !warmDone, warmTask == nil { startWarmIfLoaded() }
         pollTask?.cancel()
         pollTask = Task { [weak self] in
+            if pollFirst { await self?.pollOnce() }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(MailConstants.pagePollInterval))
                 guard !Task.isCancelled, let self else { return }
@@ -570,6 +588,7 @@ final class MailListViewModel {
         folderRoles = [:]
         otherFolders = []
         pages = [:]
+        cachePaintedFolders = []
         rows = []
         searchResults = nil
         searchUsedLocalFallback = false
@@ -585,34 +604,43 @@ final class MailListViewModel {
         sentCopyNotice = nil
     }
 
-    /// Reloads when the inbox is on screen, which includes All mail: it merges the inbox in and
-    /// is the screen the list opens on. A `selection == .real(inbox)` check would never fire
-    /// there, and new mail would not appear without a pull-to-refresh.
+    /// Reloads when the inbox is on screen, which includes All mail (it merges the inbox in and
+    /// is the screen the list opens on), and holds mail the list has not shown
+    /// (`inboxHasUnshownMail`). A merged reload costs one extra `page` round trip, Sent's, per
+    /// poll that finds new mail, not per poll.
     ///
-    /// The check itself (`runPageCheck`) is inbox-only and is the only thing here that touches
-    /// the notification baseline; `load()` only reads pages. So a merged reload costs one extra
-    /// `page` round trip (Sent's) per poll that finds new mail, not per poll, and moves nothing
-    /// the notification side reads.
+    /// Once the list shows the inbox up to the STATUS it read, the notification marker moves up
+    /// to it (`noteSeenByPage`). A reload that failed leaves the marker, so those mails are still
+    /// announced.
     func pollOnce() async {
-        let check = runPageCheck
-        guard let outcome = try? await session.use({ client in await check(client) }) else { return }
-        // `.baselineReset` reloads like `.newMail`: INBOX's UIDVALIDITY changed, so every UID on
-        // screen is from a generation the server discarded. Without the reload the list keeps
-        // painting it, and answering taps with `folderChanged`, until something forces a reload.
-        switch outcome {
-        case .newMail:
-            guard showsInbox, searchResults == nil else { return }
-            // Read before the reload, from the inbox's own page: in All mail the rows also hold
+        guard showsInbox, searchResults == nil else { return }
+        let selection = self.selection
+        let epoch = accountEpoch
+        let inbox = MailConstants.inbox
+        guard let status = try? await session.use({ client in try await client.status(folder: inbox) }),
+              isCurrent(selection, epoch), searchResults == nil else { return }
+        let before = pages[inbox]
+        if Self.inboxHasUnshownMail(status, page: before) {
+            await load()
+            guard isCurrent(selection, epoch) else { return }
+            // Arrivals are judged against the inbox's own page: in All mail the rows also hold
             // Sent's, whose UIDs say nothing about the inbox's.
-            let previousNewest = pages[MailConstants.inbox]?.summaries.map(\.uid).max() ?? 0
-            await load()
-            await prefetchArrivedBodies(after: previousNewest)
-        case .baselineReset:
-            guard showsInbox, searchResults == nil else { return }
-            await load()
-        default:
-            return
+            if let before, before.uidValidity == status.uidValidity {
+                await prefetchArrivedBodies(after: before.summaries.map(\.uid).max() ?? 0)
+            }
         }
+        guard isCurrent(selection, epoch), !Self.inboxHasUnshownMail(status, page: pages[inbox]) else { return }
+        await noteSeenByPage(status)
+    }
+
+    /// Whether the inbox holds mail `page` does not: UIDNEXT has moved past the value the page was
+    /// fetched at, or UIDVALIDITY changed and every UID on screen is from a discarded generation.
+    /// Not judged by the notification marker, which the foreground and background checks advance
+    /// as they notify, nor by the newest UID shown, which a deleted newest mail leaves below
+    /// UIDNEXT for good. A page without a UIDNEXT, or no page at all, counts as behind.
+    nonisolated static func inboxHasUnshownMail(_ status: MailboxStatusInfo, page: MailFolderPage?) -> Bool {
+        guard let page, page.uidValidity == status.uidValidity, let shown = page.uidNext else { return true }
+        return status.uidNext > shown
     }
 
     /// The new-mail body prefetch `MailChecker` does for a notification, on the page poll's path.
@@ -637,7 +665,7 @@ final class MailListViewModel {
             if cached != nil { continue }
             do {
                 let detail = try await session.use { client in
-                    try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity)
+                    try await client.detail(folder: inbox, uid: uid, expectedUIDValidity: validity, inlineImages: false)
                 }
                 guard epoch == accountEpoch else { return }
                 chainCacheWrite { cache.saveDetail(detail, folder: inbox, uidValidity: validity) }
@@ -749,6 +777,7 @@ final class MailListViewModel {
         for folder in targets where pages[folder] == nil {
             if let cached = await Self.cachedPage(cache: cache, folder: folder) {
                 pages[folder] = cached
+                cachePaintedFolders.insert(folder)
                 painted = true
             }
         }
@@ -791,16 +820,17 @@ final class MailListViewModel {
     /// window's floor; one inside it that `fresh` lacks was expunged, moved or flagged `\Deleted`
     /// elsewhere and goes. An empty `fresh` keeps every row unless `messageCount == 0`: `page()`
     /// hides `\Deleted` rows, a read can transiently come back empty, and blanking would overwrite
-    /// the cache with no row to paginate from. A later window that reaches the stale ones corrects
-    /// them. The cursor stays the existing page's, as new mail only appends sequence numbers; an
-    /// empty `fresh` with no rows kept takes its own. Per folder: All mail merges two of these.
+    /// the cache with no row to paginate from. The cursor stays the existing page's, as new mail
+    /// only appends sequence numbers, but a page from the cache and an empty `fresh` keeping no row
+    /// take `fresh`'s: paging back then lists the cached rows again (`mergeOlderPage`).
     @discardableResult
     private func mergeFreshPage(_ fresh: MailFolderPage, folder: String) -> MailFolderPage {
         let previous = pages[folder]
         let hadPreviousPage = previous != nil
+        let fromCache = cachePaintedFolders.remove(folder) != nil
         let existing = previous?.summaries ?? []
         let windowHidEverything = fresh.summaries.isEmpty && fresh.messageCount > 0
-        let windowFloor = fresh.summaries.last?.uid
+        let windowFloor = fresh.windowUIDs?.lowerBound ?? fresh.summaries.last?.uid
         let keptExisting: [MailSummary]
         if windowHidEverything {
             keptExisting = existing
@@ -809,21 +839,45 @@ final class MailListViewModel {
         }
         let merged = (fresh.summaries + keptExisting).sorted { $0.uid > $1.uid }
         let oldestLoadedSequence: Int?
-        if windowHidEverything, hadPreviousPage, !keptExisting.isEmpty {
+        if windowHidEverything, hadPreviousPage, !fromCache, !keptExisting.isEmpty {
             oldestLoadedSequence = previous?.oldestLoadedSequence
         } else if fresh.summaries.isEmpty {
             oldestLoadedSequence = fresh.oldestLoadedSequence
-        } else if hadPreviousPage {
+        } else if hadPreviousPage, !fromCache {
             oldestLoadedSequence = previous?.oldestLoadedSequence
         } else {
             oldestLoadedSequence = fresh.oldestLoadedSequence
         }
         let mergedPage = MailFolderPage(
             folder: folder, uidValidity: fresh.uidValidity, messageCount: fresh.messageCount,
-            summaries: merged, oldestLoadedSequence: oldestLoadedSequence
+            summaries: merged, oldestLoadedSequence: oldestLoadedSequence, uidNext: fresh.uidNext
         )
         pages[folder] = mergedPage
         return mergedPage
+    }
+
+    /// Merges an older page the way `mergeFreshPage` merges the newest: every UID in `older` wins,
+    /// and a loaded row inside the window's UIDs that it lacks was expunged, moved or flagged
+    /// `\Deleted` elsewhere and goes. Rows outside the window stay.
+    nonisolated private static func mergeOlderPage(_ older: MailFolderPage, into page: MailFolderPage) -> MailFolderPage {
+        var merged = page
+        if let window = older.windowUIDs ?? MailFolderPage.span(of: older.summaries.map(\.uid)) {
+            let kept = page.summaries.filter { !window.contains($0.uid) }
+            merged.summaries = (older.summaries + kept).sorted { $0.uid > $1.uid }
+        }
+        merged.oldestLoadedSequence = older.oldestLoadedSequence
+        return merged
+    }
+
+    /// What the cache keeps of `page`: its newest `MailConstants.cachedPageRows` rows. A trimmed
+    /// copy pages back from the newest window, since its own cursor would skip the dropped rows.
+    nonisolated private static func cachedCopy(of page: MailFolderPage) -> MailFolderPage {
+        guard page.summaries.count > MailConstants.cachedPageRows else { return page }
+        var copy = page
+        copy.summaries = Array(page.summaries.prefix(MailConstants.cachedPageRows))
+        let newestWindowStart = page.messageCount - MailConstants.pageSize + 1
+        copy.oldestLoadedSequence = newestWindowStart > 1 ? newestWindowStart : nil
+        return copy
     }
 
     /// Pagination hangs off the last row's `.task` (`SchoolMailView`), so a list with no rows can
@@ -848,7 +902,7 @@ final class MailListViewModel {
             current = MailFolderPage(
                 folder: current.folder, uidValidity: current.uidValidity, messageCount: current.messageCount,
                 summaries: older.summaries.sorted { $0.uid > $1.uid },
-                oldestLoadedSequence: older.oldestLoadedSequence
+                oldestLoadedSequence: older.oldestLoadedSequence, uidNext: current.uidNext
             )
             pages[folder] = current
             rebuildRows()
@@ -876,7 +930,7 @@ final class MailListViewModel {
     /// without awaiting), so the disk write can't be awaited here — it's queued through
     /// `chainCacheWrite` instead, fire-and-forget.
     private func persist(folder: String) {
-        guard let page = pages[folder] else { return }
+        guard let page = pages[folder].map(Self.cachedCopy(of:)) else { return }
         let cache = self.cache
         chainCacheWrite { cache.savePage(page) }
     }
@@ -889,7 +943,8 @@ final class MailListViewModel {
 
     private func save(_ page: MailFolderPage) async {
         let cache = self.cache
-        await chainCacheWrite { cache.savePage(page) }.value
+        let stored = Self.cachedCopy(of: page)
+        await chainCacheWrite { cache.savePage(stored) }.value
     }
 
     private func dropFolder(_ folder: String) async {

@@ -295,6 +295,25 @@ struct MailStoreTests {
         #expect(!FileManager.default.fileExists(atPath: temp.path))
     }
 
+    /// Opened attachments count against no budget, so each new one deletes those opened over a
+    /// day earlier and keeps the recent ones Quick Look or the share sheet may still be reading.
+    @Test func openingAnAttachmentDeletesTheOnesOpenedOverADayAgo() throws {
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        defer { cache.clearAll() }
+        let old = try cache.temporaryFileURL(filename: "old.pdf")
+        try Data("old".utf8).write(to: old)
+        let recent = try cache.temporaryFileURL(filename: "recent.pdf")
+        try Data("recent".utf8).write(to: recent)
+        let dayAgo = Date().addingTimeInterval(-MailConstants.openedAttachmentLifetime - 60)
+        try FileManager.default.setAttributes([.modificationDate: dayAgo], ofItemAtPath: old.deletingLastPathComponent().path)
+
+        let fresh = try cache.temporaryFileURL(filename: "fresh.pdf")
+
+        #expect(!FileManager.default.fileExists(atPath: old.deletingLastPathComponent().path))
+        #expect(FileManager.default.fileExists(atPath: recent.path))
+        #expect(FileManager.default.fileExists(atPath: fresh.deletingLastPathComponent().path))
+    }
+
     /// A server-supplied filename of just `.` or `..` would otherwise make
     /// `appendingPathComponent` resolve up out of the fresh per-attachment UUID folder this call
     /// creates: `.` back into `attachments/`, `..` one level above that.

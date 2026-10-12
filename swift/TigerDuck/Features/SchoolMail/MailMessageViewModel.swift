@@ -107,6 +107,9 @@ final class MailMessageViewModel {
     /// every affordance that starts one while it is set; `performMove` refuses as well, so a tap
     /// the view somehow lets through still cannot file the same mail into two folders.
     private(set) var isMoving = false
+    /// Sections of the attachments being downloaded. A repeat tap on one is ignored instead of
+    /// queueing another whole download on the connection the list's poll also waits for.
+    private(set) var downloading: Set<String> = []
     /// The account's role folders, as the list resolved them when this screen opened — and as
     /// `prepareDelete()` re-resolves them after creating a missing Trash. Observed (not
     /// `@ObservationIgnored`) precisely because it changes: `deleteIsPermanent` and the move
@@ -224,7 +227,8 @@ final class MailMessageViewModel {
             date: summary.date,
             messageID: detail.messageID,
             references: detail.references ?? [],
-            bodyText: plainText
+            bodyText: plainText,
+            replyTo: detail.replyTo.map(MailAddress.parseList)
         )
     }
 
@@ -334,7 +338,9 @@ final class MailMessageViewModel {
             return
         }
         do {
-            let data = try await session.use { client in try await client.rawSource(folder: folder, uid: uid) }
+            let data = try await session.use { client in
+                try await client.rawSource(folder: folder, uid: uid, expectedUIDValidity: validity)
+            }
             let text = await Task.detached { String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? "" }.value
             source = text
             // As in `load()`: never filed under a student other than the one it was fetched for.
@@ -487,6 +493,9 @@ final class MailMessageViewModel {
     /// `MailClient` actor already, and the temp-file write is detached since `MailCache` does
     /// synchronous disk I/O.
     func prepareAttachment(_ part: MailBodyPart) async -> URL? {
+        guard !downloading.contains(part.section) else { return nil }
+        downloading.insert(part.section)
+        defer { downloading.remove(part.section) }
         let folder = route.folder
         let uid = route.uid
         // The same pin `load()` fetched `part` under. Without it, after a server-side folder

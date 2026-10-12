@@ -54,16 +54,20 @@ struct MailComposeViewModelTests {
             from: MailAddress(name: "林老師", address: "teacher@mail.ntust.edu.tw"),
             to: [MailAddress(name: nil, address: "b10000000@mail.ntust.edu.tw"), MailAddress(name: nil, address: "b@x.tw")],
             cc: [MailAddress(name: nil, address: "c@x.tw")],
-            subject: "作業", date: message.summary.date, messageID: "<m3@mail.ntust.edu.tw>", references: [], bodyText: "請繳交"
+            subject: "作業", date: message.summary.date, messageID: "<m3@mail.ntust.edu.tw>", references: [], bodyText: "請繳交",
+            replyTo: [MailAddress(name: nil, address: "office@mail.ntust.edu.tw")]
         )
         return MailComposeContext(mode: mode, folder: "INBOX", uid: 3, original: original,
                                   attachments: mode == .forward ? message.detail?.parts ?? [] : [])
     }
 
     @Test func replyGoesToReplyToWithAQuotedBody() async {
-        let model = Self.model(Self.originalContext(.reply), fake: Self.fake())
+        let fake = Self.fake()
+        let model = Self.model(Self.originalContext(.reply), fake: fake)
         await model.prepare()
         #expect(model.to == "office@mail.ntust.edu.tw")
+        // Reply-To came with the opened message; the whole message is not downloaded for it.
+        #expect(await !fake.calls.contains { $0.hasPrefix("rawSource") })
         #expect(model.cc.isEmpty)
         #expect(model.subject == "Re: 作業")
         #expect(model.body.hasSuffix("> 請繳交"))
@@ -333,9 +337,8 @@ struct MailComposeViewModelTests {
     // It offers a retry that keeps what was typed, never marks the original answered, and never
     // discards or replaces a draft.
 
-    // A failed Reply-To fetch does not fail the prefill (see
-    // `replyToFetchFailureIsBestEffortAndStillMarksAnswered` below), so this fails the draft
-    // load (`detail`) instead: the other realistic way `prepare()` can fail.
+    // A reply prefill reads only `context.original`, so this fails the draft load (`detail`)
+    // instead: the realistic way `prepare()` can fail.
     @Test func retryPrepareKeepsTypedTextAndPickedAttachmentsAfterAFailure() async {
         let fake = FakeMailClient(folders: [Self.drafts: [FakeMailClient.message(uid: 1, subject: "草稿", text: "舊內容")], Self.sent: []])
         await fake.update { $0.detailError = .unreachable }
@@ -369,20 +372,62 @@ struct MailComposeViewModelTests {
 
     // MARK: Prefill fallbacks and the draft replacement guard
 
-    // Everything a reply prefill needs is already in `context.original`, so a failed Reply-To
-    // download must fall back to the sender's own address rather than emptying the whole form,
-    // and threading and "mark answered" must still work.
-    @Test func replyToFetchFailureIsBestEffortAndStillMarksAnswered() async {
+    // A mail without Reply-To is answered to the sender's own address, with threading and "mark
+    // answered" intact, and nothing is downloaded to find that out.
+    @Test func aReplyWithoutReplyToGoesToTheSenderAndMarksAnswered() async {
         let fake = Self.fake()
-        await fake.update { $0.rawSourceError = .unreachable }
-        let model = Self.model(Self.originalContext(.reply), fake: fake)
+        var context = Self.originalContext(.reply)
+        context.original?.replyTo = []
+        let model = Self.model(context, fake: fake)
         await model.prepare()
         #expect(model.loadError == nil)
         #expect(model.to == "林老師 <teacher@mail.ntust.edu.tw>")
+        #expect(await !fake.calls.contains { $0.hasPrefix("rawSource") })
         await model.send()
         #expect(await fake.calls.contains("setFlag answered true [3]"))
         let raw = String(decoding: await fake.sent.first?.message ?? Data(), as: UTF8.self)
         #expect(raw.contains("In-Reply-To: <m3@mail.ntust.edu.tw>"))
+    }
+
+    // Opened without its header section, or from a body cached by an older build, a mail does not
+    // say whether it has a Reply-To, so the reply reads it from the raw message.
+    @Test func anUnknownReplyToIsReadFromTheRawMessage() async {
+        let fake = Self.fake()
+        var context = Self.originalContext(.reply)
+        context.original?.replyTo = nil
+        let model = Self.model(context, fake: fake)
+        await model.prepare()
+        #expect(model.to == "office@mail.ntust.edu.tw")
+        #expect(await fake.calls.contains("rawSource INBOX 3"))
+    }
+
+    // After a folder recreation the same UID names another mail, whose Reply-To must not address a
+    // reply quoting this one: the download is pinned to the cached page's generation and refused.
+    @Test func anUnknownReplyToIsNeverReadFromAnotherGeneration() async {
+        let fake = Self.fake()
+        await fake.update { $0.uidValidity["INBOX"] = 2 }
+        let cache = SchoolMailTestDoubles.temporaryCache()
+        cache.savePage(MailFolderPage(folder: "INBOX", uidValidity: 1, messageCount: 1, summaries: [], oldestLoadedSequence: nil))
+        var context = Self.originalContext(.reply)
+        context.original?.replyTo = nil
+        let model = Self.model(context, fake: fake, cache: cache)
+        await model.prepare()
+        #expect(await fake.calls.contains("rawSource INBOX 3"))
+        #expect(model.to == "林老師 <teacher@mail.ntust.edu.tw>")
+    }
+
+    // That download is best-effort: when it fails the reply goes to the sender, as for mail
+    // without Reply-To, and the rest of the prefill stands.
+    @Test func aFailedReplyToDownloadAnswersTheSender() async {
+        let fake = Self.fake()
+        await fake.update { $0.rawSourceError = .unreachable }
+        var context = Self.originalContext(.reply)
+        context.original?.replyTo = nil
+        let model = Self.model(context, fake: fake)
+        await model.prepare()
+        #expect(model.loadError == nil)
+        #expect(model.to == "林老師 <teacher@mail.ntust.edu.tw>")
+        #expect(model.subject == "Re: 作業")
     }
 
     // After a successful retry, an edit made before it must still count as unsaved: the

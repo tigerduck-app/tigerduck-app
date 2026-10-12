@@ -122,23 +122,46 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
    Keeping the annotation meant one permanent, un-actionable warning in every build; the method
    body is untouched, and a re-vendor that restores the annotation restores only the warning.
 
+10. Five-minute timeouts for the commands that move a whole message or part:
+    `FetchMessagePartCommand` (60 s upstream), `FetchRawMessageCommand` (10 s) and
+    `AppendCommand` (30 s) (`IMAP/IMAP/Commands/FetchCommands.swift`,
+    `IMAP/IMAP/Commands/AppendCommand.swift`). The timer starts when the command is sent and is
+    cancelled only when it completes, never reset by progress, so it bounds the whole transfer.
+    TigerDuck handles messages up to 50 MB (`MailConstants`); at about 3 Mbps a 20 MB attachment
+    failed at 60 s, View Source of a message over a few MB at 10 s, and the Sent copy of a 12 MB
+    mail at 30 s. Each timeout surfaced as "Can't reach the mail server" and dropped the
+    connection. Resetting the timer on progress would detect a stalled link sooner, but needs a
+    handler that sees every inbound and outbound byte; a stall now waits up to five minutes. Every
+    other command keeps its upstream limit. Pinned by `TigerDuckPatchTests`.
+
+11. `FetchMessageInfoHandler` keeps `Reply-To` in `additionalFields` and `additionalHeaderFields`
+    (`IMAP/IMAP/Handler/FetchMessageInfoHandler.swift`). Upstream drops it with the headers it
+    says ENVELOPE already exposes, but `MessageInfo` has no Reply-To field, so a fetched header
+    section was the only source and the caller never saw it. TigerDuck downloaded the whole raw
+    message to read that one header for every reply. Additive for callers: one more entry in the
+    two collections when the message has the header. Pinned by
+    `AdditionalHeaderFieldsTests.testReplyToIsKeptWithTheAdditionalFields`.
+
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.
 
 ## Tests TigerDuck added
 
-Both live in the upstream test targets, so `swift test` runs them and a re-vendor that drops
+They live in the upstream test targets, so `swift test` runs them and a re-vendor that drops
 them fails loudly rather than quietly.
 
-- `Tests/SwiftIMAPTests/TigerDuckPatchTests.swift` — the only test pinning **patches 1 and 3**:
-  that a `.custom` policy keeps `certificateVerification` at `.fullVerification` (patch 1's
+- `Tests/SwiftIMAPTests/TigerDuckPatchTests.swift` — the only test pinning **patches 1, 3 and
+  10**: that a `.custom` policy keeps `certificateVerification` at `.fullVerification` (patch 1's
   callback is skipped entirely otherwise), that verifiers compare by identifier, that a
-  `.custom` policy builds a client handler, and that `SEARCH`/`UID SEARCH` carry `CHARSET UTF-8`
-  exactly when a criterion contains non-ASCII text. Undocumented, this is the file whose loss at
-  the next re-vendor would take two patches with it unnoticed.
+  `.custom` policy builds a client handler, that `SEARCH`/`UID SEARCH` carry `CHARSET UTF-8`
+  exactly when a criterion contains non-ASCII text, and the transfer timeouts. Undocumented, this
+  is the file whose loss at the next re-vendor would take three patches with it unnoticed.
 - `Tests/SwiftIMAPTests/InvalidBodyStructureTests.swift` — pins **patch 6**, driving the real
   `FetchMessageInfoHandler` behind `IMAPClientHandler`.
+- `testReplyToIsKeptWithTheAdditionalFields` in the upstream
+  `Tests/SwiftIMAPTests/AdditionalHeaderFieldsTests.swift` pins **patch 11** with that file's
+  fetch helpers.
 
 ## Re-vendoring
 
@@ -160,6 +183,8 @@ What each patch is protected by:
 | 7 (`SendableMetatype`) | compile-time — dropping it fails to build |
 | 8 (`Package.swift` trimming) | compile-time |
 | 9 (`search` deprecation) | compile-time |
+| 10 (transfer timeouts) | `TigerDuckPatchTests` |
+| 11 (`Reply-To` kept) | `AdditionalHeaderFieldsTests`, plus app-level `MailComposeViewModelTests` |
 
 To move to a newer upstream:
 

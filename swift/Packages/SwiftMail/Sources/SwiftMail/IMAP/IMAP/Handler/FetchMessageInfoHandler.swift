@@ -104,7 +104,8 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         let allHeaders = Dictionary(orderedHeaders.map { ($0.key, $0.value) },
                                     uniquingKeysWith: { _, last in last })
 
-        // Headers already exposed via ENVELOPE or stored in dedicated fields
+        // Headers already exposed via ENVELOPE or stored in dedicated fields. Not Reply-To:
+        // `MessageInfo` has no field for it, so this is the only place a caller can read it.
         let envelopeKeys: Set<String> = [
             "from",
             "to",
@@ -114,8 +115,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             "date",
             "message-id",
             "in-reply-to",
-            "references",
-            "reply-to"
+            "references"
         ]
 
         let referencesValue = allHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines)

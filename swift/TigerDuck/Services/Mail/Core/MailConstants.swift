@@ -20,7 +20,11 @@ nonisolated enum MailConstants {
     static let pagePollInterval: TimeInterval = 60
     static let foregroundCheckThrottle: TimeInterval = 60
     static let pageSize = 50
+    /// Rows per folder the list caches. A later visit lists those below the newest window again as
+    /// the user pages (`MailListViewModel.loadMoreIfNeeded`), so this bounds what it fetches twice.
+    static let cachedPageRows = 200
     static let bodyCacheLimitBytes = 20 * 1024 * 1024
+    static let openedAttachmentLifetime: TimeInterval = 24 * 60 * 60
     static let maxEncodedMessageBytes = 50 * 1024 * 1024
     static let maxInlineImageBytes = 5 * 1024 * 1024
     /// The largest message `LiveMailClient` downloads whole to parse its MIME locally, when the
@@ -36,9 +40,9 @@ nonisolated enum MailConstants {
     static let connectionIdleClose: TimeInterval = 30
     static let sentCopyDedupeDelay: Duration = .seconds(3)
     static let diagnosticsLimit = 10
-    /// How many further pages the list walks back when a first page comes back with every row
-    /// `\Deleted` (`MailListViewModel.walkBackToVisibleMail`). Not an Appendix A.6 value — a
-    /// bound on an added recovery, so a folder with thousands of flagged messages costs a few
+    /// How many further pages the list fetches when a page adds no row below the last one: a first
+    /// page with every row `\Deleted` (`MailListViewModel.walkBackToVisibleMail`), or an older one
+    /// (`loadMoreIfNeeded`). A bound, so a folder with thousands of flagged messages costs a few
     /// round trips rather than an unbounded scan.
     static let emptyWindowWalkbackPages = 4
     /// Rows per folder a background warm fetches (`MailListViewModel.startWarm`): enough to fill

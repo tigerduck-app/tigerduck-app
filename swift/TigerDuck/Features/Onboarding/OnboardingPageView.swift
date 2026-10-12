@@ -86,10 +86,10 @@ struct OnboardingPageView<Content: View, Actions: View>: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .contentShape(Rectangle())
         #if canImport(UIKit)
-        // `dismissTapGesture` uses `.simultaneousGesture`, not `.onTapGesture`: a plain tap
+        // `simultaneousTapGesture` uses `.simultaneousGesture`, not `.onTapGesture`: a plain tap
         // recognizer on the page root competes with, and on iOS 18 swallows, taps on the `Link`s
         // and `Button`s in `content` (the welcome page's GitHub link). See View+ScrollSafeGesture.
-        .dismissTapGesture { UIApplication.dismissKeyboard() }
+        .simultaneousTapGesture { UIApplication.dismissKeyboard() }
         #endif
     }
 

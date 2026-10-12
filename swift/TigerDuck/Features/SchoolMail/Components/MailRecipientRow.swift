@@ -55,7 +55,7 @@ struct MailRecipientRow: View {
     private var hiddenCount: Int { recipients.count - shown.count }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.xs) {
+        let row = HStack(alignment: .firstTextBaseline, spacing: TigerDuckTheme.Spacing.xs) {
             Text(label)
             // Never cut short: a recipient too long for the line — the student's own address
             // included — wraps onto the next one. Collapsing only hides the other recipients.
@@ -76,13 +76,11 @@ struct MailRecipientRow: View {
         // rather than a centred minimum height: the first line then stays exactly where it was
         // and opening only adds lines below it, instead of the whole block re-centring upwards.
         .padding(.vertical, isCollapsible ? 14 : 0)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard isCollapsible else { return }
-            withAnimation(.snappy) { isExpanded.toggle() }
+        if isCollapsible {
+            row.scrollSafeTapAction { withAnimation(.snappy) { isExpanded.toggle() } }
+        } else {
+            row.accessibilityElement(children: .combine)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isCollapsible ? .isButton : [])
     }
 
     /// The shown recipients, one per line after a comma, then "+N" for the ones collapsed away.
